@@ -12,6 +12,10 @@ import { photosRouter } from './routes/photos';
 import { summaryRouter } from './routes/summary';
 import { timelineRouter } from './routes/timeline';
 import { chaptersRouter } from './routes/chapters';
+import { correctionsRouter } from './routes/corrections';
+import { canonRouter } from './routes/canon';
+import { ladderRouter } from './routes/ladder';
+import { peoplePlacesRouter } from './routes/peoplePlaces';
 
 assertConfig();
 
@@ -37,6 +41,10 @@ app.use('/api/chat', chatRouter);
 app.use('/api/timeline', timelineRouter);
 app.use('/api/summary', summaryRouter);
 app.use('/api/chapters', chaptersRouter);
+app.use('/api/corrections', correctionsRouter);
+app.use('/api/canon', canonRouter);
+app.use('/api/ladder', ladderRouter);
+app.use('/api/people-places', peoplePlacesRouter);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ err }, 'Unhandled error');
