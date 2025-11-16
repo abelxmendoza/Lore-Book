@@ -20,9 +20,17 @@ pnpm run dev:server      # http://localhost:4000
 pnpm run dev:web         # http://localhost:5173
 ```
 
-Fill out `.env` based on `.env.example` before running either service.
-- `OPENAI_API_MODEL` is used by the server for GPT calls (defaults to `gpt-4o-mini`).
-- `OPENAI_EMBEDDING_MODEL` powers semantic search embeddings (defaults to `text-embedding-3-small`).
+Fill out `.env` based on `.env.example` before running either service. The `.env` file should be placed in the project root directory.
+
+**Required Environment Variables:**
+- `OPENAI_API_KEY` - Your OpenAI API key (required for GPT-4 and chatbot features)
+- `SUPABASE_URL` - Your Supabase project URL
+- `SUPABASE_ANON_KEY` - Your Supabase anonymous key
+- `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key (for backend operations)
+- `OPENAI_API_MODEL` - Model used by the server for GPT calls (defaults to `gpt-4o-mini`)
+- `OPENAI_EMBEDDING_MODEL` - Model for semantic search embeddings (defaults to `text-embedding-3-small`)
+
+**Note:** The backend will log warnings for missing environment variables but will attempt to start in development mode. Ensure all required variables are set for full functionality.
 
 ### Required Database Tables
 
@@ -98,7 +106,7 @@ Grant `select/insert/update` on both tables to the `service_role` used by the AP
 | `/api/photos` | GET | Get all user photos |
 | `/api/photos/sync` | POST | Sync photo metadata from device (mobile) |
 | `/api/calendar/sync` | POST | Sync calendar events from device (mobile) - creates journal entries |
-| `/api/chat` | POST | "Ask Lore Keeper" – returns GPT-4 answer grounded in journal data |
+| `/api/chat` | POST | "Ask Lore Keeper" – returns GPT-4 answer grounded in journal data with persona support (The Archivist, The Confidante, Angel Negro) |
 | `/api/timeline` | GET | Chapter + month grouped timeline feed |
 | `/api/timeline/tags` | GET | Tag cloud metadata |
 | `/api/summary` | POST | Date range summary (weekly digest, etc.) |
@@ -124,7 +132,12 @@ All endpoints expect a Supabase auth token via `Authorization: Bearer <access_to
 - Chapters dashboard with collapsible arcs + unassigned entries, and chapter summaries via GPT
 - **Background Photo Processing** - Photos are processed automatically to create journal entries (no gallery UI)
 - Composer supports optional AES-GCM client-side encryption and voice uploads that transcribe with Whisper.
-- Dual-column dashboard: timeline, tag cloud, AI summary, and "Ask Lore Keeper" panel
+- **Interactive "Ask Lore Keeper" Chatbot** - Query your memories with three personas:
+  - **The Archivist**: Analytical and precise, focuses on facts and patterns
+  - **The Confidante**: Warm and empathetic, provides emotional insights
+  - **Angel Negro**: Creative and poetic, offers unique perspectives
+- Dual-column dashboard: timeline, tag cloud, AI summary, and chatbot panel
+- Real-time error handling with helpful messages for backend connectivity issues
 - Local cache (localStorage) for offline-first memory preview
 - Dark cyberpunk palette, neon accents, Omega splash copy
 
@@ -141,17 +154,39 @@ All endpoints expect a Supabase auth token via `Authorization: Bearer <access_to
 
 1. User signs in through Supabase; session is reused for API calls.
 2. Composer can either save raw content or ask GPT to recall info. Keywords trigger automatic persistence server-side too.
-3. **Calendar events** are synced from iPhone and automatically create journal entries with location, attendees, and context.
+3. **Calendar events** are synced from iPhone and automatically create journal entries with location, attendees, and context using GPT-4 to generate meaningful entries.
 4. **Photos** are processed in the background - metadata creates journal entries without storing photos.
 5. Entries are stored with `date, content, tags, chapter_id, mood, summary, source, metadata` schema.
 6. Timeline endpoint groups entries per chapter (and unassigned) and then by month; summary endpoints leverage GPT to condense a date range or a chapter arc.
-7. Node cron hook (`registerSyncJob`) is ready for future nightly summarization or webhook ingests.
+7. **Chatbot queries** (`/api/chat`) use semantic search to find relevant memories and generate contextual responses based on your journal history.
+8. Node cron hook (`registerSyncJob`) is ready for future nightly summarization or webhook ingests.
+
+### Troubleshooting
+
+**Backend won't start:**
+- Ensure `.env` file exists in the project root directory
+- Check that all required environment variables are set
+- Verify port 4000 is not already in use: `lsof -i :4000`
+- Check backend logs for specific error messages
+
+**Chatbot not working:**
+- Ensure backend server is running (`pnpm run dev:server`)
+- Verify `OPENAI_API_KEY` is set correctly in `.env`
+- Check browser console for error messages
+- Ensure you're authenticated (Supabase session active)
+
+**API requests failing:**
+- Backend server must be running on `http://localhost:4000`
+- Check that Supabase credentials are correct
+- Verify authentication token is being sent with requests
 
 ### Next Ideas
 
 1. Wire Supabase edge functions or webhooks to push ChatGPT transcripts directly.
-2. Implement embedding search (pgvector) so `Ask Lore Keeper` can reference semantic matches.
+2. ✅ Embedding search (pgvector) implemented - `Ask Lore Keeper` uses semantic matches.
 3. Add export routines (Markdown/PDF) and toggle for public blog feed.
 4. Extend cron job to automatically create daily summaries and AI prompts.
+5. Add more chatbot personas and customization options.
+6. Implement real-time memory graph visualization.
 
 Have fun crafting your lore ✨
