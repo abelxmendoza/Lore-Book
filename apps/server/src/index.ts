@@ -22,6 +22,7 @@ import { peoplePlacesRouter } from './routes/peoplePlaces';
 import { locationsRouter } from './routes/locations';
 import { xRouter } from './routes/x';
 import { tasksRouter } from './routes/tasks';
+import { insightsRouter } from './routes/insights';
 import { authMiddleware } from './middleware/auth';
 import { rateLimitMiddleware } from './middleware/rateLimit';
 import { inputSanitizer } from './middleware/sanitize';
@@ -29,6 +30,9 @@ import { secureHeaders } from './middleware/secureHeaders';
 import { auditLogger } from './middleware/auditLogger';
 import { accountRouter } from './routes/account';
 import { onboardingRouter } from './routes/onboarding';
+import { agentsRouter } from './routes/agents';
+import { autopilotRouter } from './routes/autopilot';
+import { personaRouter } from './routes/persona';
 
 assertConfig();
 
@@ -68,6 +72,10 @@ apiRouter.use('/x', xRouter);
 apiRouter.use('/tasks', tasksRouter);
 apiRouter.use('/account', accountRouter);
 apiRouter.use('/onboarding', onboardingRouter);
+apiRouter.use('/agents', agentsRouter);
+apiRouter.use('/autopilot', autopilotRouter);
+apiRouter.use('/insights', insightsRouter);
+apiRouter.use('/persona', personaRouter);
 
 app.use('/api', apiRouter);
 
