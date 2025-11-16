@@ -13,6 +13,7 @@ create table if not exists public.characters (
   first_appearance date,
   summary text,
   tags text[] default '{}',
+  embedding vector(1536),
   metadata jsonb default '{}'::jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
@@ -70,6 +71,15 @@ create index if not exists character_relationships_source_idx on public.characte
 create index if not exists character_relationships_target_idx on public.character_relationships (user_id, target_character_id);
 create index if not exists character_memories_character_idx on public.character_memories (user_id, character_id);
 create index if not exists character_memories_entry_idx on public.character_memories (journal_entry_id);
+create index if not exists character_embedding_idx on public.characters using ivfflat (embedding vector_cosine_ops);
+
+create or replace view public.character_relationship_adjacency as
+select
+  source_character_id,
+  user_id,
+  jsonb_agg(jsonb_build_object('target', target_character_id, 'relationship_type', relationship_type, 'status', status)) as edges
+from public.character_relationships
+group by user_id, source_character_id;
 
 -- Materialized view sketching the ER-friendly knowledge base
 create or replace view public.character_knowledge_base as

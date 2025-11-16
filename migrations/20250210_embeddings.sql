@@ -4,11 +4,19 @@ create extension if not exists vector;
 -- Add embedding column to journal entries
 alter table if exists public.journal_entries
   add column if not exists embedding vector(1536);
+alter table if exists public.journal_entries
+  add column if not exists year_shard int;
+
+update public.journal_entries
+  set year_shard = extract(year from date)
+  where year_shard is null;
 
 -- Speed up similarity queries
 create index if not exists journal_entries_embedding_idx
   on public.journal_entries using ivfflat (embedding vector_cosine_ops)
   with (lists = 100);
+create index if not exists journal_entries_year_shard_idx
+  on public.journal_entries (year_shard);
 
 -- Helper function for semantic matches scoped per user
 create or replace function public.match_journal_entries(

@@ -140,7 +140,7 @@ class WeeklyArcEngine:
             }
 
         ordered_events = sorted(events, key=lambda e: e.date)
-        sections = self.narrative_stitcher.cluster_events(ordered_events)
+        sections = self.narrative_stitcher.segment_events(ordered_events)
         hook_event = ordered_events[0]
         hook = f"The week opened on {hook_event.date} with {hook_event.title}."
 

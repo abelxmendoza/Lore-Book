@@ -23,6 +23,10 @@ create table if not exists public.tasks (
 
 create index if not exists tasks_user_status_idx on public.tasks(user_id, status);
 create index if not exists tasks_due_idx on public.tasks(user_id, due_date);
+create index if not exists tasks_due_date_idx on public.tasks(due_date);
+create index if not exists tasks_priority_idx on public.tasks(priority);
+create index if not exists tasks_created_at_idx on public.tasks(created_at);
+create index if not exists task_category_idx on public.tasks(category);
 
 create table if not exists public.task_sync_state (
   id uuid primary key default gen_random_uuid(),

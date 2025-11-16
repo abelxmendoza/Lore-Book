@@ -15,6 +15,50 @@ import type {
 import { supabaseAdmin } from './supabaseClient';
 import { taskTimelineService } from './taskTimelineService';
 
+class TagTrieNode {
+  children: Map<string, TagTrieNode> = new Map();
+  isWord = false;
+  word: string | null = null;
+}
+
+class TagTrie {
+  private root = new TagTrieNode();
+
+  insert(word: string) {
+    let node = this.root;
+    for (const char of word.toLowerCase()) {
+      if (!node.children.has(char)) {
+        node.children.set(char, new TagTrieNode());
+      }
+      node = node.children.get(char)!;
+    }
+    node.isWord = true;
+    node.word = word.toLowerCase();
+  }
+
+  suggest(prefix: string, limit = 10): string[] {
+    let node = this.root;
+    for (const char of prefix.toLowerCase()) {
+      const next = node.children.get(char);
+      if (!next) return [];
+      node = next;
+    }
+
+    const results: string[] = [];
+    const stack: TagTrieNode[] = [node];
+    while (stack.length && results.length < limit) {
+      const current = stack.pop()!;
+      if (current.isWord && current.word) {
+        results.push(current.word);
+      }
+      for (const child of current.children.values()) {
+        stack.push(child);
+      }
+    }
+    return results;
+  }
+}
+
 type TaskInput = {
   title: string;
   description?: string;
@@ -74,6 +118,18 @@ const TAG_KEYWORDS: Record<string, string[]> = {
 };
 
 class TaskEngineService {
+  private tagTrie: TagTrie;
+
+  constructor() {
+    this.tagTrie = new TagTrie();
+    this.bootstrapTagTrie();
+  }
+
+  private bootstrapTagTrie() {
+    Object.keys(TAG_KEYWORDS).forEach((tag) => this.tagTrie.insert(tag));
+    Object.values(TAG_KEYWORDS).forEach((keywords) => keywords.forEach((keyword) => this.tagTrie.insert(keyword)));
+  }
+
   private detectDueDate(text?: string | null): string | null {
     if (!text) return null;
     const normalized = text.toLowerCase();
@@ -139,7 +195,21 @@ class TaskEngineService {
     if (/bjj|jiu/.test(normalized)) tags.add('bjj');
     if (/finance|budget|tax|invoice/.test(normalized)) tags.add('finance');
     if (/omega|season/.test(normalized)) tags.add('seasonal');
+
+    const tokens = normalized.split(/\s+/);
+    for (const token of tokens) {
+      for (const suggestion of this.tagTrie.suggest(token, 5)) {
+        if (suggestion.length >= 3) {
+          tags.add(suggestion);
+        }
+      }
+    }
+
     return Array.from(tags);
+  }
+
+  getTagSuggestions(prefix: string): string[] {
+    return this.tagTrie.suggest(prefix, 10);
   }
 
   private computeConfidenceFromSignals(signals: Array<boolean | number>): number {
@@ -148,12 +218,13 @@ class TaskEngineService {
     return Math.min(1, Math.max(0.3, score / max));
   }
 
-  private explainPriority(priority: number, urgency: number, impact: number, effort: number): string {
+  private explainPriority(priority: number, components: Record<string, number>): string {
     const priorityLabel = priority >= 6 ? 'critical' : priority >= 4 ? 'important' : 'nice-to-have';
-    const urgencyLabel = urgency >= 2 ? 'time-sensitive' : 'flexible';
-    const impactLabel = impact >= 3 ? 'high-impact' : impact >= 2 ? 'moderate-impact' : 'low-impact';
-    const effortLabel = effort >= 2 ? 'heavy' : effort === 1 ? 'medium' : 'light';
-    return `${priorityLabel}; ${urgencyLabel}; ${impactLabel}; effort=${effortLabel}`;
+    const urgencyLabel = components.due_date_urgency >= 0.75 ? 'time-sensitive' : 'flexible';
+    const impactLabel = components.category_weight >= 0.66 ? 'high-impact' : components.category_weight >= 0.33 ? 'moderate-impact' : 'low-impact';
+    const effortLabel = components.task_complexity >= 0.66 ? 'heavy' : components.task_complexity >= 0.33 ? 'medium' : 'light';
+    const recurrenceLabel = components.recurrence_factor > 0 ? 'recurring' : 'single-run';
+    return `${priorityLabel}; ${urgencyLabel}; ${impactLabel}; effort=${effortLabel}; ${recurrenceLabel}`;
   }
 
   private scorePriority(
@@ -161,25 +232,62 @@ class TaskEngineService {
     dueDate?: string | null,
     intent?: TaskIntent | null,
     effort = 0,
-    priorityOverride?: number | null
+    priorityOverride?: number | null,
+    metadata?: Record<string, unknown>
   ) {
+    const weights = {
+      due: 0.35,
+      category: 0.25,
+      streak: 0.15,
+      complexity: 0.15,
+      recurrence: 0.1
+    } as const;
+
     const impact = IMPACT_BY_CATEGORY[category] ?? 1;
-    let urgency = 1;
+    let due_date_urgency = 0.2;
     if (dueDate) {
-      const now = new Date();
-      const due = parseISO(dueDate);
+      const now = startOfDay(new Date());
+      const due = startOfDay(parseISO(dueDate));
       const diff = differenceInCalendarDays(due, now);
-      if (diff <= 1) urgency = 3;
-      else if (diff <= 7) urgency = 2;
-      else if (diff > 30) urgency = 0;
+      if (diff <= 1) due_date_urgency = 1;
+      else if (diff <= 7) due_date_urgency = 0.75;
+      else if (diff <= 30) due_date_urgency = 0.5;
+      else due_date_urgency = 0.25;
     }
 
-    const intentBoost = intent === 'contact' || intent === 'plan' ? 1 : 0;
-    const computed = Math.min(8, Math.max(1, urgency + impact + effort + intentBoost));
-    const priority = priorityOverride ? Math.min(8, Math.max(1, priorityOverride)) : computed;
+    const category_weight = Math.min(1, (impact || 1) / 3);
+    const streak_factor = intent === 'build' || intent === 'learn' ? 0.8 : intent ? 0.6 : 0.4;
+    const task_complexity = Math.min(1, effort / 3 + (intent === 'build' ? 0.2 : 0));
+    const recurrence_factor = metadata && 'recurrence' in metadata ? 0.6 : 0.0;
 
-    const explanation = this.explainPriority(priority, urgency, impact, effort);
-    return { priority, urgency, impact, effort, explanation };
+    const weighted_score =
+      weights.due * due_date_urgency +
+      weights.category * category_weight +
+      weights.streak * streak_factor +
+      weights.complexity * task_complexity +
+      weights.recurrence * recurrence_factor;
+
+    const scaled = Math.round(weighted_score * 10);
+    const priority = priorityOverride ? Math.min(8, Math.max(1, priorityOverride)) : Math.min(8, Math.max(1, scaled));
+
+    const explanation = this.explainPriority(priority, {
+      due_date_urgency,
+      category_weight,
+      streak_factor,
+      task_complexity,
+      recurrence_factor
+    });
+
+    return {
+      priority,
+      urgency: Math.round(due_date_urgency * 3),
+      impact,
+      effort,
+      explanation,
+      streak: streak_factor,
+      recurrence: recurrence_factor,
+      task_complexity
+    };
   }
 
   private async recordEvent(userId: string, taskId: string, event_type: string, description: string, metadata?: object) {
@@ -219,7 +327,7 @@ class TaskEngineService {
     const intent = input.intent ?? this.detectIntent(input.title + ' ' + (input.description ?? ''));
     const dueDate = input.dueDate ?? this.detectDueDate(input.title + ' ' + (input.description ?? ''));
     const effort = this.detectEffort(input.description ?? input.title);
-    const scores = this.scorePriority(category, dueDate, intent, effort, input.priority ?? null);
+    const scores = this.scorePriority(category, dueDate, intent, effort, input.priority ?? null, input.metadata ?? {});
     const suggestedTags = this.suggestTags(input.title + ' ' + (input.description ?? ''));
     const metadata = {
       ...(input.metadata ?? {}),
@@ -267,7 +375,8 @@ class TaskEngineService {
           dueDate,
           intent ?? null,
           this.detectEffort(updates.description ?? updates.title ?? ''),
-          updates.priority ?? null
+          updates.priority ?? null,
+          updates.metadata ?? {}
         )
       : null;
 
