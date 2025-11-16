@@ -79,6 +79,95 @@ language sql stable as $$
 $$;
 ```
 
+### Character Knowledge Base (Entity-Relationship Schema)
+
+```sql
+-- Characters: central entities in the lore graph
+create table if not exists public.characters (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  name text not null,
+  alias text[],
+  pronouns text,
+  archetype text,
+  role text,
+  status text default 'active',
+  first_appearance date,
+  summary text,
+  tags text[] default '{}',
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (user_id, name)
+);
+
+-- Relationship edges: directional link from a source character to a target character
+create table if not exists public.character_relationships (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  source_character_id uuid references public.characters(id) on delete cascade,
+  target_character_id uuid references public.characters(id) on delete cascade,
+  relationship_type text not null,
+  closeness_score smallint check (closeness_score between -10 and 10),
+  status text default 'active',
+  summary text,
+  last_shared_memory_id uuid references public.journal_entries(id),
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (user_id, source_character_id, target_character_id, relationship_type)
+);
+
+-- Character memories: bridge between characters and journal entries/chapters
+create table if not exists public.character_memories (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  character_id uuid references public.characters(id) on delete cascade,
+  journal_entry_id uuid references public.journal_entries(id) on delete cascade,
+  chapter_id uuid references public.chapters(id),
+  role text,
+  emotion text,
+  perspective text,
+  summary text,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (user_id, character_id, journal_entry_id)
+);
+
+-- ER-friendly view that blends characters, their memories, and outbound relationships
+create or replace view public.character_knowledge_base as
+select
+  c.id as character_id,
+  c.user_id,
+  c.name,
+  c.alias,
+  c.pronouns,
+  c.archetype,
+  c.role,
+  c.status,
+  c.tags,
+  cm.journal_entry_id,
+  cm.chapter_id,
+  cm.role as memory_role,
+  cm.emotion as memory_emotion,
+  cm.perspective,
+  cm.summary as memory_summary,
+  cr.target_character_id,
+  cr.relationship_type,
+  cr.closeness_score,
+  cr.summary as relationship_summary
+from public.characters c
+left join public.character_memories cm
+  on cm.character_id = c.id
+left join public.character_relationships cr
+  on cr.source_character_id = c.id;
+```
+
+- **Entity relationships**: `characters` are the primary nodes, `character_relationships` provide directional edges (ally, rival, mentor, sibling, etc.), and `character_memories` bridge characters to `journal_entries`/`chapters` so you can walk from people to specific story beats.
+- **Shared memories**: the `character_memories` table and the `character_knowledge_base` view keep a queryable log of when characters appear together and how they felt/perspective-wise during a scene.
+- **Indices**: each table includes user-scoped indexes to keep persona graphs and memory lookups fast at lore scale.
+
 Grant `select/insert/update` on both tables to the `service_role` used by the API. Frontend reads data through the API so you do not need row level policies for now, but enabling RLS is recommended if you later expose Supabase directly to the client.
 
 ### API Surface
