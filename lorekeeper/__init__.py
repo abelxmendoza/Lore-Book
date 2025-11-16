@@ -7,6 +7,7 @@ from .drift_auditor import DriftAuditor
 from .weekly_arc.arc_engine import WeeklyArcEngine
 from .daily_briefing.briefing_engine import DailyBriefingEngine
 from .season_engine.season_engine import SeasonEngine
+from .monthly_arc.monthly_engine import MonthlyArcEngine
 
 __all__ = [
     "TimelineManager",
@@ -19,4 +20,5 @@ __all__ = [
     "WeeklyArcEngine",
     "DailyBriefingEngine",
     "SeasonEngine",
+    "MonthlyArcEngine",
 ]
