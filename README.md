@@ -290,6 +290,12 @@ Grant `select/insert/update` on both tables to the `service_role` used by the AP
 | `/api/tasks` | GET | List tasks for authenticated user (filter by status) |
 | `/api/tasks` | POST | Create a new task |
 | `/api/tasks/from-chat` | POST | Extract and create tasks from chat messages |
+| `/api/autopilot/daily` | GET | Autopilot Engine daily plan (JSON or markdown) |
+| `/api/autopilot/weekly` | GET | Weekly Autopilot strategy (JSON or markdown) |
+| `/api/autopilot/monthly` | GET | Monthly course correction recommendations |
+| `/api/autopilot/transition` | GET | Arc/identity transition guidance |
+| `/api/autopilot/alerts` | GET | Burnout, slump, and focus-window alerts |
+| `/api/autopilot/momentum` | GET | Skill momentum signal |
 | `/api/tasks/sync/microsoft` | POST | Sync tasks from Microsoft To Do |
 | `/api/tasks/events` | GET | Get task events and activity |
 | `/api/tasks/:taskId` | PATCH | Update a task |
@@ -353,6 +359,16 @@ All endpoints expect a Supabase auth token via `Authorization: Bearer <access_to
 10. **Chatbot queries** (`/api/chat`) use semantic search to find relevant memories and generate contextual responses based on your journal history.
 11. **Corrections** archive original entries and create corrected versions, preserving full history.
 12. Node cron hook (`registerSyncJob`) is ready for future nightly summarization or webhook ingests.
+
+### AutopilotEngine — AI Life Guidance
+
+The AutopilotEngine blends timeline density, task pressure, identity motifs, and seasonal arcs to recommend what to do next.
+
+- **What it does:** Detects cadence cycles, focus windows, identity shifts, and burnout/slump risk to generate daily, weekly, and monthly guidance.
+- **Available routes:** `/api/autopilot/daily`, `/weekly`, `/monthly`, `/transition`, `/alerts`, `/momentum` (all support `?format=markdown`).
+- **Sample outputs:** Daily plan with prioritized tasks + focus window, weekly strategy with top focus areas, monthly course corrections, and alerts for burnout or skill momentum.
+- **CLI usage:** `python -m lorekeeper.autopilot daily --format json` (also supports `weekly`, `monthly`, `transition`, `alerts`, `momentum`). Pipe a JSON payload to stdin to override the demo data.
+- **Integration:** The Express router calls the Python AutopilotEngine via a bridge that streams timeline entries, task engine data, identity motifs, and arc metadata.
 
 ### Troubleshooting
 

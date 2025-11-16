@@ -11,6 +11,13 @@ from .monthly_arc.monthly_engine import MonthlyArcEngine
 from .book.book_engine import BookEngine
 from .identity.identity_engine import IdentityEngine
 from .autopilot_engine import AutopilotEngine
+from .autopilot_types import (
+    DailyRecommendation,
+    WeeklyStrategy,
+    MonthlyCorrection,
+    TransitionGuidance,
+    RiskAlert,
+    MomentumSignal,
 from .insight_engine import InsightEngine
 from .insights_types import (
     PatternInsight,
@@ -36,6 +43,12 @@ __all__ = [
     "BookEngine",
     "IdentityEngine",
     "AutopilotEngine",
+    "DailyRecommendation",
+    "WeeklyStrategy",
+    "MonthlyCorrection",
+    "TransitionGuidance",
+    "RiskAlert",
+    "MomentumSignal",
     "InsightEngine",
     "PatternInsight",
     "CorrelationInsight",

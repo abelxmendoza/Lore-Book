@@ -30,6 +30,7 @@ import { secureHeaders } from './middleware/secureHeaders';
 import { auditLogger } from './middleware/auditLogger';
 import { accountRouter } from './routes/account';
 import { onboardingRouter } from './routes/onboarding';
+import { autopilotRouter } from './routes/autopilot';
 import { personaRouter } from './routes/persona';
 
 assertConfig();
@@ -70,6 +71,7 @@ apiRouter.use('/x', xRouter);
 apiRouter.use('/tasks', tasksRouter);
 apiRouter.use('/account', accountRouter);
 apiRouter.use('/onboarding', onboardingRouter);
+apiRouter.use('/autopilot', autopilotRouter);
 apiRouter.use('/insights', insightsRouter);
 apiRouter.use('/persona', personaRouter);
 
