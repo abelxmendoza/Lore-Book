@@ -5,6 +5,7 @@ from .narrative_stitcher import NarrativeStitcher
 from .voice_memo_ingestion import VoiceMemoIngestor, VoiceMemo
 from .drift_auditor import DriftAuditor
 from .daily_briefing.briefing_engine import DailyBriefingEngine
+from .monthly_arc.monthly_engine import MonthlyArcEngine
 
 __all__ = [
     "TimelineManager",
@@ -15,4 +16,5 @@ __all__ = [
     "VoiceMemo",
     "DriftAuditor",
     "DailyBriefingEngine",
+    "MonthlyArcEngine",
 ]
