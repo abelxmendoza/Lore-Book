@@ -1,4 +1,4 @@
-import { addDays, differenceInCalendarDays, parseISO } from 'date-fns';
+import { addDays, differenceInCalendarDays, parseISO, startOfDay } from 'date-fns';
 import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
@@ -9,9 +9,11 @@ import type {
   TaskIntent,
   TaskRecord,
   TaskSource,
-  TaskStatus
+  TaskStatus,
+  TaskSuggestion
 } from '../types';
 import { supabaseAdmin } from './supabaseClient';
+import { taskTimelineService } from './taskTimelineService';
 
 type TaskInput = {
   title: string;
@@ -57,6 +59,18 @@ const IMPACT_BY_CATEGORY: Partial<Record<TaskCategory, number>> = {
   home: 2,
   content: 2,
   admin: 1
+};
+
+const TAG_KEYWORDS: Record<string, string[]> = {
+  robotics: ['robot', 'jetson', 'ros', 'imu', 'lidar', 'servo', 'sensor'],
+  personal: ['weekend', 'personal', 'errand', 'family', 'birthday', 'friends'],
+  japanese: ['japanese', 'kanji', 'nihongo', 'grammar'],
+  bjj: ['bjj', 'jiujitsu', 'jiu-jitsu', 'roll', 'grapple'],
+  fitness: ['gym', 'train', 'cardio', 'lift', 'run'],
+  finance: ['budget', 'invoice', 'tax', 'bill', 'payment'],
+  work: ['client', 'deliverable', 'deploy', 'review'],
+  school: ['assignment', 'homework', 'class', 'lesson'],
+  content: ['video', 'edit', 'youtube', 'post']
 };
 
 class TaskEngineService {
@@ -110,6 +124,38 @@ class TaskEngineService {
     return 0;
   }
 
+  private suggestTags(text: string): string[] {
+    const normalized = text.toLowerCase();
+    const tags = new Set<string>();
+    Object.entries(TAG_KEYWORDS).forEach(([tag, keywords]) => {
+      if (keywords.some((keyword) => normalized.includes(keyword))) {
+        tags.add(tag);
+      }
+    });
+
+    if (/deadline|due|tomorrow|today|weekend/.test(normalized)) tags.add('time-sensitive');
+    if (/robot|jetson/.test(normalized)) tags.add('robotics');
+    if (/kanji|japanese/.test(normalized)) tags.add('japanese');
+    if (/bjj|jiu/.test(normalized)) tags.add('bjj');
+    if (/finance|budget|tax|invoice/.test(normalized)) tags.add('finance');
+    if (/omega|season/.test(normalized)) tags.add('seasonal');
+    return Array.from(tags);
+  }
+
+  private computeConfidenceFromSignals(signals: Array<boolean | number>): number {
+    const score = signals.reduce((acc, signal) => acc + (signal ? 1 : 0), 0);
+    const max = signals.length || 1;
+    return Math.min(1, Math.max(0.3, score / max));
+  }
+
+  private explainPriority(priority: number, urgency: number, impact: number, effort: number): string {
+    const priorityLabel = priority >= 6 ? 'critical' : priority >= 4 ? 'important' : 'nice-to-have';
+    const urgencyLabel = urgency >= 2 ? 'time-sensitive' : 'flexible';
+    const impactLabel = impact >= 3 ? 'high-impact' : impact >= 2 ? 'moderate-impact' : 'low-impact';
+    const effortLabel = effort >= 2 ? 'heavy' : effort === 1 ? 'medium' : 'light';
+    return `${priorityLabel}; ${urgencyLabel}; ${impactLabel}; effort=${effortLabel}`;
+  }
+
   private scorePriority(
     category: TaskCategory,
     dueDate?: string | null,
@@ -132,7 +178,8 @@ class TaskEngineService {
     const computed = Math.min(8, Math.max(1, urgency + impact + effort + intentBoost));
     const priority = priorityOverride ? Math.min(8, Math.max(1, priorityOverride)) : computed;
 
-    return { priority, urgency, impact, effort };
+    const explanation = this.explainPriority(priority, urgency, impact, effort);
+    return { priority, urgency, impact, effort, explanation };
   }
 
   private async recordEvent(userId: string, taskId: string, event_type: string, description: string, metadata?: object) {
@@ -173,6 +220,12 @@ class TaskEngineService {
     const dueDate = input.dueDate ?? this.detectDueDate(input.title + ' ' + (input.description ?? ''));
     const effort = this.detectEffort(input.description ?? input.title);
     const scores = this.scorePriority(category, dueDate, intent, effort, input.priority ?? null);
+    const suggestedTags = this.suggestTags(input.title + ' ' + (input.description ?? ''));
+    const metadata = {
+      ...(input.metadata ?? {}),
+      suggested_tags: suggestedTags,
+      priority_explanation: scores.explanation
+    } as Record<string, unknown>;
 
     const task: TaskRecord = {
       id: uuid(),
@@ -190,7 +243,7 @@ class TaskEngineService {
       effort: scores.effort,
       external_id: input.externalId ?? null,
       external_source: input.externalSource ?? null,
-      metadata: input.metadata ?? {}
+      metadata
     };
 
     const { error } = await supabaseAdmin.from('tasks').insert(task);
@@ -200,6 +253,7 @@ class TaskEngineService {
     }
 
     await this.recordEvent(userId, task.id, 'created', `Task created: ${task.title}`, { source: task.source });
+    void taskTimelineService.linkTaskCreation(userId, task);
     return task;
   }
 
@@ -271,6 +325,16 @@ class TaskEngineService {
 
     if (data) {
       await this.recordEvent(userId, taskId, 'completed', `Task completed: ${data.title}`);
+      void taskTimelineService
+        .linkTaskCompletion(userId, data as TaskRecord)
+        .then((result) => {
+          if (result?.reflection) {
+            void this.recordEvent(userId, taskId, 'reflection', 'Task reflection logged', {
+              reflection: result.reflection
+            });
+          }
+        })
+        .catch((linkError) => logger.warn({ linkError }, 'Task completion bridge failed'));
     }
 
     return data as TaskRecord;
@@ -310,6 +374,45 @@ class TaskEngineService {
     });
 
     return candidates;
+  }
+
+  private buildSuggestions(message: string): TaskSuggestion[] {
+    const candidates = this.parseCandidates(message);
+    return candidates.map((candidate) => {
+      const intent = candidate.intent ?? this.detectIntent(candidate.title);
+      const dueDate = candidate.dueDate ?? this.detectDueDate(candidate.title);
+      const effort = this.detectEffort(candidate.description ?? candidate.title);
+      const scores = this.scorePriority(candidate.category ?? 'admin', dueDate, intent, effort, candidate.priority ?? null);
+      const tags = this.suggestTags(candidate.title + ' ' + (candidate.description ?? ''));
+      const confidence = this.computeConfidenceFromSignals([
+        Boolean(intent),
+        Boolean(dueDate),
+        scores.priority >= 4,
+        tags.length > 0
+      ]);
+
+      return {
+        title: candidate.title,
+        description: candidate.description,
+        category: candidate.category ?? 'admin',
+        intent: intent ?? null,
+        dueDate,
+        tags,
+        priority: scores.priority,
+        urgency: scores.urgency,
+        impact: scores.impact,
+        effort: scores.effort,
+        confidence
+      } satisfies TaskSuggestion;
+    });
+  }
+
+  suggestTaskMetadata(message: string): { suggestions: TaskSuggestion[]; commands: string[] } {
+    const suggestions = this.buildSuggestions(message);
+    const commands = suggestions
+      .filter((suggestion) => suggestion.dueDate)
+      .map((suggestion) => `Auto-detected due date for ${suggestion.title}`);
+    return { suggestions, commands };
   }
 
   async handleChatMessage(userId: string, message: string): Promise<ChatExtraction> {
@@ -377,6 +480,44 @@ class TaskEngineService {
     }
 
     return (data as TaskEvent[]) ?? [];
+  }
+
+  async getDailyBriefing(userId: string) {
+    const tasks = await this.listTasks(userId, { limit: 200 });
+    const today = startOfDay(new Date());
+
+    const dueToday = tasks.filter(
+      (task) => task.status === 'incomplete' && task.due_date && startOfDay(parseISO(task.due_date)).getTime() === today.getTime()
+    );
+    const overdue = tasks.filter(
+      (task) => task.status === 'incomplete' && task.due_date && startOfDay(parseISO(task.due_date)) < today
+    );
+    const upcomingWeek = tasks.filter((task) => {
+      if (!task.due_date || task.status !== 'incomplete') return false;
+      const due = startOfDay(parseISO(task.due_date));
+      const diff = differenceInCalendarDays(due, today);
+      return diff > 0 && diff <= 7;
+    });
+
+    const predictedImportant = tasks
+      .filter((task) => task.status === 'incomplete')
+      .sort((a, b) => b.priority - a.priority || (b.urgency ?? 0) - (a.urgency ?? 0))
+      .slice(0, 5);
+
+    const timelineEvents = await taskTimelineService.getRecentEvents(userId, 20);
+
+    return {
+      dueToday,
+      overdue,
+      upcomingWeek,
+      predictedImportant,
+      timelineEvents,
+      stats: {
+        totalOpen: tasks.filter((task) => task.status === 'incomplete').length,
+        dueThisWeek: upcomingWeek.length + dueToday.length,
+        overdue: overdue.length
+      }
+    };
   }
 
   async syncMicrosoftTasks(userId: string, accessToken: string, listId?: string) {
