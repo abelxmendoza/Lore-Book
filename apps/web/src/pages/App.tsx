@@ -13,6 +13,7 @@ import { useLoreKeeper } from '../hooks/useLoreKeeper';
 import { Button } from '../components/ui/button';
 import { ChaptersList } from '../components/ChaptersList';
 import { CreateChapterModal } from '../components/CreateChapterModal';
+import { ChapterViewer } from '../components/ChapterViewer';
 import { MemoryTimeline } from '../components/MemoryTimeline';
 import { fetchJson } from '../lib/api';
 
@@ -37,6 +38,7 @@ const AppContent = () => {
     createEntry,
     createChapter,
     chapters,
+    chapterCandidates,
     summarizeChapter,
     summarize,
     loading,
@@ -120,6 +122,34 @@ const AppContent = () => {
             </div>
           </div>
         </header>
+        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+          <div className="space-y-6">
+            <JournalComposer
+              loading={loading}
+              chapters={chapters}
+              onSave={async (content, options) => {
+                await createEntry(content, { chapter_id: options?.chapterId ?? null, metadata: options?.metadata });
+                await Promise.all([refreshEntries(), refreshTimeline()]);
+              }}
+              onAsk={async (content) => {
+                setLastPrompt(content);
+                await askLoreKeeper(content, persona);
+              }}
+              onVoiceUpload={async (file) => {
+                await uploadVoiceEntry(file);
+                await Promise.all([refreshEntries(), refreshTimeline()]);
+              }}
+            />
+            <div className="rounded-2xl border border-border/60 bg-black/40 p-4 shadow-panel">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 text-sm text-white/70">
+                  <Search className="h-4 w-4 text-primary" />
+                  <input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Ask for robotics last year or heartbreak entries..."
+                    className="w-72 rounded-lg border border-border/50 bg-black/60 px-3 py-2 text-sm text-white"
+                  />
         <div className="flex flex-wrap items-center gap-3">
           <Button variant={activeTab === 'log' ? 'default' : 'outline'} onClick={() => setActiveTab('log')} size="sm">
             Memory Log
@@ -236,6 +266,8 @@ const AppContent = () => {
               </div>
             </div>
           </div>
+        </div>
+        <ChapterViewer chapters={chapters} candidates={chapterCandidates} onRefresh={refreshChapters} />
         )}
         <div className="grid gap-6 lg:grid-cols-2">
           <ChatPanel

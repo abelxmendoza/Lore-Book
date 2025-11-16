@@ -67,6 +67,29 @@ export type Chapter = {
   updated_at?: string;
 };
 
+export type ChapterFacet = { label: string; score: number };
+
+export type ChapterProfile = Chapter & {
+  entry_ids: string[];
+  timeline: MonthGroup[];
+  emotion_cloud: ChapterFacet[];
+  top_tags: ChapterFacet[];
+  chapter_traits: string[];
+  featured_people: string[];
+  featured_places: string[];
+};
+
+export type ChapterCandidate = {
+  id: string;
+  chapter_title: string;
+  start_date: string;
+  end_date: string;
+  summary: string;
+  chapter_traits: string[];
+  entry_ids: string[];
+  confidence: number;
+};
+
 export type ChapterInput = {
   title: string;
   startDate: string;

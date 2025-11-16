@@ -4,6 +4,8 @@ import { z } from 'zod';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { chapterService } from '../services/chapterService';
 import { chatService } from '../services/chatService';
+import { chapterInsightsService } from '../services/chapterInsightsService';
+import { correctionService } from '../services/correctionService';
 import { memoryService } from '../services/memoryService';
 
 const chapterSchema = z.object({
@@ -30,8 +32,30 @@ export const createChapter = async (req: AuthenticatedRequest, res: Response) =>
 };
 
 export const listChapters = async (req: AuthenticatedRequest, res: Response) => {
-  const chapters = await chapterService.listChapters(req.user!.id);
-  return res.json({ chapters });
+  const [chapters, candidates] = await Promise.all([
+    chapterInsightsService.buildProfiles(req.user!.id),
+    chapterInsightsService.detectCandidates(req.user!.id)
+  ]);
+
+  return res.json({ chapters, candidates });
+};
+
+export const getChapterEntries = async (req: AuthenticatedRequest, res: Response) => {
+  const chapterId = req.params.chapterId;
+  const chapter = await chapterService.getChapter(req.user!.id, chapterId);
+  if (!chapter) {
+    return res.status(404).json({ error: 'Chapter not found' });
+  }
+
+  const entries = await memoryService.searchEntries(req.user!.id, { chapterId, limit: 200 });
+  const resolved = correctionService.applyCorrectionsToEntries(entries);
+
+  return res.json({ chapter, entries: resolved });
+};
+
+export const detectChapterCandidates = async (req: AuthenticatedRequest, res: Response) => {
+  const candidates = await chapterInsightsService.detectCandidates(req.user!.id);
+  return res.json({ candidates });
 };
 
 export const summarizeChapter = async (req: AuthenticatedRequest, res: Response) => {
