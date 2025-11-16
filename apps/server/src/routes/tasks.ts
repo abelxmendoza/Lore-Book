@@ -53,6 +53,30 @@ router.post('/from-chat', requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 });
 
+router.post('/suggest', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const schema = z.object({ message: z.string().min(3) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json(parsed.error.flatten());
+  }
+
+  try {
+    const suggestions = taskEngineService.suggestTaskMetadata(parsed.data.message);
+    res.json(suggestions);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to generate suggestions' });
+  }
+});
+
+router.get('/briefing', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const briefing = await taskEngineService.getDailyBriefing(req.user!.id);
+    res.json({ briefing });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to build briefing' });
+  }
+});
+
 router.get('/events', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const events = await taskEngineService.getEvents(req.user!.id, 100);

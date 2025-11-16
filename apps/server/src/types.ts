@@ -259,6 +259,44 @@ export type TaskSyncState = {
   updated_at?: string;
 };
 
+export type TimelineEvent = {
+  id: string;
+  user_id: string;
+  task_id?: string | null;
+  title: string;
+  description?: string | null;
+  tags: string[];
+  occurred_at: string;
+  context?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type TaskMemoryBridge = {
+  id: string;
+  user_id: string;
+  task_id: string;
+  timeline_event_id: string;
+  journal_entry_id?: string | null;
+  bridge_type: string;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string;
+};
+
+export type TaskSuggestion = {
+  title: string;
+  description?: string;
+  category: TaskCategory;
+  intent?: TaskIntent | null;
+  dueDate?: string | null;
+  tags: string[];
+  priority: number;
+  urgency: number;
+  impact: number;
+  effort: number;
+  confidence: number;
+};
+
 export type LocationCoordinates = { lat: number; lng: number };
 
 export type LocationVisit = {
