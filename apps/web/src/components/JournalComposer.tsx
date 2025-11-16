@@ -16,6 +16,7 @@ export type JournalComposerProps = {
 
 const toBase64 = (buffer: ArrayBuffer) =>
   btoa(String.fromCharCode(...Array.from(new Uint8Array(buffer))));
+const toBase64 = (buffer: ArrayBuffer) => btoa(String.fromCharCode(...Array.from(new Uint8Array(buffer))));
 
 const encryptText = async (content: string, passphrase: string) => {
   const encoder = new TextEncoder();
@@ -46,6 +47,8 @@ export const JournalComposer = ({ onSave, onAsk, onVoiceUpload, loading, chapter
     await onSave(content, { chapterId, metadata });
     setValue('');
     setChapterId(null);
+    setEncrypt(false);
+    setPassphrase('');
   };
 
   const handleAsk = async () => {

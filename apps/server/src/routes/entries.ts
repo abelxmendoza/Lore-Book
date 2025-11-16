@@ -21,6 +21,15 @@ const entrySchema = z.object({
   summary: z.string().nullable().optional(),
   source: z.enum(['chat', 'manual', 'api', 'system', 'photo', 'calendar']).optional(),
   metadata: z.record(z.any()).optional()
+  metadata: z.record(z.any()).optional(),
+  relationships: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        tag: z.enum(['friend', 'family', 'coach', 'romantic', 'professional', 'other'])
+      })
+    )
+    .optional()
 });
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -56,6 +65,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     ...parsed.data,
     tags: parsed.data.tags ?? extractTags(parsed.data.content),
     metadata: parsed.data.metadata
+    metadata: parsed.data.metadata,
+    relationships: parsed.data.relationships
   });
 
   res.status(201).json({ entry });
