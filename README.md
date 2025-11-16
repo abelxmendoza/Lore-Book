@@ -10,7 +10,9 @@ Lore Keeper is an AI-powered journaling platform that blends Supabase auth, GPT-
 
 - **Frontend**: React + Vite, Tailwind, shadcn-inspired UI primitives, Zustand state helpers
 - **Backend**: Express + TypeScript, OpenAI GPT-4, Supabase/Postgres for storage, cron-ready jobs
-- **Auth & DB**: Supabase Auth + Supabase/Postgres tables for `journal_entries` and `daily_summaries`
+- **Python Package**: Timeline management, narrative engines (daily/weekly/monthly arcs), voice memo ingestion, drift auditing
+- **Mobile**: React Native with Expo for iOS/Android
+- **Auth & DB**: Supabase Auth + Supabase/Postgres tables for `journal_entries`, `daily_summaries`, `chapters`, `tasks`, `timeline_events`, `characters`, and more
 - **Insight Engine**: Python-based signal detector that clusters embeddings, surfaces motifs, and predicts new arcs
 - **Persona Engine**: Deterministic Omega Persona Engine that blends identity arcs, seasonal trends, and emotional slopes into a live persona state
 
@@ -46,6 +48,7 @@ pnpm run dev:web         # http://localhost:5173
 Fill out `.env` based on `.env.example` before running either service. The `.env` file should be placed in the project root directory.
 
 **Required Environment Variables:**
+
 - `OPENAI_API_KEY` - Your OpenAI API key (required for GPT-4 and chatbot features)
 - `SUPABASE_URL` - Your Supabase project URL
 - `SUPABASE_ANON_KEY` - Your Supabase anonymous key
@@ -269,28 +272,55 @@ Grant `select/insert/update` on both tables to the `service_role` used by the AP
 
 ### API Surface
 
+#### Journal Entries & Memory
+
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/api/entries` | GET | Search entries by tag, date range, or chapter |
+| `/api/entries` | GET | Search entries by tag, date range, or chapter (supports semantic search) |
 | `/api/entries` | POST | Create a manual entry (keywords auto-tagged) |
 | `/api/entries/suggest-tags` | POST | GPT-assisted tag suggestions |
 | `/api/entries/detect` | POST | Check if a message should be auto-saved |
 | `/api/entries/voice` | POST | Upload an audio clip; Whisper transcribes and GPT formats a journal entry |
+
+#### Chapters
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
 | `/api/chapters` | GET | List chapters for the authenticated user |
 | `/api/chapters` | POST | Create a chapter (title + dates + description) |
 | `/api/chapters/:chapter_id/summary` | POST | Generate & store a GPT summary for a chapter |
+
+#### Media & Integrations
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
 | `/api/photos/upload` | POST | Upload photo(s) and auto-generate journal entry |
 | `/api/photos/upload/batch` | POST | Upload multiple photos at once |
 | `/api/photos` | GET | Get all user photos |
 | `/api/photos/sync` | POST | Sync photo metadata from device (mobile) |
 | `/api/x/sync` | POST | Import recent X posts into the timeline with AI summaries |
 | `/api/calendar/sync` | POST | Sync calendar events from device (mobile) - creates journal entries |
+
+#### Chat & AI
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
 | `/api/chat` | POST | "Ask Lore Keeper" – returns GPT-4 answer grounded in journal data with persona support (The Archivist, The Confidante, Angel Negro) |
+
+#### Timeline & Summaries
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
 | `/api/timeline` | GET | Chapter + month grouped timeline feed |
 | `/api/timeline/tags` | GET | Tag cloud metadata |
 | `/api/summary` | POST | Date range summary (weekly digest, etc.) |
 | `/api/summary/reflect` | POST | GPT reflect mode; analyze a month, entry, or give advice |
 | `/api/evolution` | GET | Dynamic persona insights, echoes, and era nudges based on recent entries |
+
+#### Tasks & Task Engine
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
 | `/api/tasks` | GET | List tasks for authenticated user (filter by status) |
 | `/api/tasks` | POST | Create a new task |
 | `/api/tasks/from-chat` | POST | Extract and create tasks from chat messages |
@@ -307,6 +337,30 @@ Grant `select/insert/update` on both tables to the `service_role` used by the AP
 | `/api/tasks/:taskId` | DELETE | Delete a task |
 | `/api/tasks/briefing` | GET | Get daily briefing with tasks, timeline events, and activity summary |
 
+#### Corrections & Canon
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/corrections/:entryId` | GET | Get entry with correction history |
+| `/api/corrections/:entryId` | POST | Create a correction for an entry |
+| `/api/canon` | GET | Build canonical alignment from corrections and archived entries |
+
+#### Memory Graph & Visualization
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/memory-graph` | GET | Build memory graph visualization |
+| `/api/memory-ladder` | GET | Render memory ladder (daily/weekly/monthly intervals) |
+| `/api/ladder` | GET | Build narrative ladder from timeline |
+
+#### People, Places & Locations
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/people-places` | GET | List people and places entities |
+| `/api/people-places/stats` | GET | Get statistics for people and places |
+| `/api/locations` | GET | List all locations from journal entries |
+
 All endpoints expect a Supabase auth token via `Authorization: Bearer <access_token>` header.
 
 ### Chapters feature
@@ -321,20 +375,25 @@ All endpoints expect a Supabase auth token via `Authorization: Bearer <access_to
 
 ### Frontend Highlights
 
-- Auth gate with email magic link or Google OAuth
-- Chat-style journal composer with auto keyword detection ("log", "update", "chapter", …)
-- Chapters dashboard with collapsible arcs + unassigned entries, and chapter summaries via GPT
-- **Background Photo Processing** - Photos are processed automatically to create journal entries (no gallery UI)
-- Composer supports optional AES-GCM client-side encryption and voice uploads that transcribe with Whisper
-- **Interactive "Ask Lore Keeper" Chatbot** - Query your memories with three personas:
+- **Authentication**: Email magic link or Google OAuth via Supabase
+- **Journal Composer**: Chat-style interface with auto keyword detection ("log", "update", "chapter", …)
+- **Chapters Dashboard**: Collapsible arcs + unassigned entries, chapter summaries via GPT
+- **Photo Processing**: Background processing automatically creates journal entries (no gallery UI)
+- **Voice Memos**: Optional AES-GCM client-side encryption and voice uploads that transcribe with Whisper
+- **Interactive "Ask Lore Keeper" Chatbot**: Query your memories with three personas:
   - **The Archivist**: Analytical and precise, focuses on facts and patterns
   - **The Confidante**: Warm and empathetic, provides emotional insights
   - **Angel Negro**: Creative and poetic, offers unique perspectives
-- **Task Engine Panel** - Manage tasks extracted from chat, sync with Microsoft To Do, track task events
-- **Daily Briefing** - Executive-style summaries combining tasks, timeline events, and activity patterns
-- **Task Timeline Links** - Automatic linking of tasks to timeline events and journal entries for unified memory tracking
-- **Semantic Search** - Natural language search with meaning-based matching (toggle semantic/keyword modes)
-- **Corrections System** - Archive and correct entries while preserving history
+- **Task Engine Panel**: Manage tasks extracted from chat, sync with Microsoft To Do, track task events
+- **Daily Briefing**: Executive-style summaries combining tasks, timeline events, and activity patterns
+- **Task Timeline Links**: Automatic linking of tasks to timeline events and journal entries for unified memory tracking
+- **Semantic Search**: Natural language search with meaning-based matching (toggle semantic/keyword modes)
+- **Corrections System**: Archive and correct entries while preserving history
+- **Memory Graph**: Visualize connections between memories, people, and places
+- **Memory Ladder**: View narrative progression over daily/weekly/monthly intervals
+- **People & Places**: Track entities mentioned across your journal entries
+- **Location Tracking**: See all locations from your journal entries
+- **Canon View**: View canonical alignment from corrections and archived entries
 - Dual-column dashboard: timeline, tag cloud, AI summary, chatbot panel, and task management
 - Real-time error handling with helpful messages for backend connectivity issues
 - Local cache (localStorage) for offline-first memory preview
@@ -352,6 +411,21 @@ The autonomous maintenance layer of Lore Keeper. Agents self-correct drift, enri
 - Automatic location and EXIF metadata extraction
 - Creates journal entries automatically from photos and calendar events
 - No photo gallery UI - just syncs metadata to build your lore
+
+### Python Package (`lorekeeper/`)
+
+The project includes a Python package for advanced timeline management and narrative generation:
+
+- **TimelineManager**: Append-only timeline system with year-sharded JSON storage
+- **TimelineAgentInterface**: Agent-friendly interface for timeline operations
+- **NarrativeStitcher**: Stitches together narrative arcs from timeline events
+- **VoiceMemoIngestor**: Processes voice memos into structured timeline events
+- **DriftAuditor**: Detects and prevents timeline drift
+- **DailyBriefingEngine**: Generates daily executive briefings
+- **WeeklyArcEngine**: Creates weekly narrative arcs
+- **MonthlyArcEngine**: Generates monthly narrative summaries
+
+See [`lorekeeper/README.md`](lorekeeper/README.md) for detailed Python package documentation.
 
 ### Memory Flow
 
@@ -381,21 +455,39 @@ The AutopilotEngine blends timeline density, task pressure, identity motifs, and
 ### Troubleshooting
 
 **Backend won't start:**
+
 - Ensure `.env` file exists in the project root directory
 - Check that all required environment variables are set
 - Verify port 4000 is not already in use: `lsof -i :4000`
 - Check backend logs for specific error messages
 
 **Chatbot not working:**
+
 - Ensure backend server is running (`pnpm run dev:server`)
 - Verify `OPENAI_API_KEY` is set correctly in `.env`
 - Check browser console for error messages
 - Ensure you're authenticated (Supabase session active)
 
 **API requests failing:**
+
 - Backend server must be running on `http://localhost:4000`
 - Check that Supabase credentials are correct
 - Verify authentication token is being sent with requests
+
+### Project Structure
+
+```text
+lorekeeper/
+├── apps/
+│   ├── web/              # React + Vite frontend
+│   ├── server/           # Express + TypeScript backend
+│   └── mobile/           # React Native mobile app
+├── lorekeeper/           # Python package for timeline management
+│   ├── daily_briefing/   # Daily briefing engine
+│   ├── weekly_arc/       # Weekly narrative arcs
+│   └── monthly_arc/      # Monthly narrative summaries
+└── migrations/           # SQL migration files
+```
 
 ### Next Ideas
 
@@ -406,10 +498,13 @@ The AutopilotEngine blends timeline density, task pressure, identity motifs, and
 5. ✅ X (Twitter) integration implemented - sync posts into timeline.
 6. ✅ Daily briefing engine implemented - executive summaries from timeline, tasks, and narrative data.
 7. ✅ Task timeline links implemented - bridge tasks to timeline events and journal entries.
-8. Add export routines (Markdown/PDF) and toggle for public blog feed.
-9. Extend cron job to automatically create daily summaries and AI prompts.
-10. Add more chatbot personas and customization options.
-11. Implement real-time memory graph visualization.
-12. Build character relationship graph UI.
+8. ✅ Memory graph visualization implemented - see connections between memories.
+9. ✅ Corrections system implemented - archive and correct entries with full history.
+10. ✅ Memory ladder implemented - view narrative progression over time.
+11. Add export routines (Markdown/PDF) and toggle for public blog feed.
+12. Extend cron job to automatically create daily summaries and AI prompts.
+13. Add more chatbot personas and customization options.
+14. Build character relationship graph UI.
+15. Integrate Python narrative engines with backend API.
 
 Have fun crafting your lore ✨
