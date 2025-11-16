@@ -8,7 +8,6 @@ import { Textarea } from './ui/textarea';
 
 export type JournalComposerProps = {
   onSave: (content: string, options?: { chapterId?: string | null; metadata?: Record<string, unknown> }) => Promise<void>;
-  onSave: (content: string, options?: { chapterId?: string | null }) => Promise<void>;
   onAsk: (content: string) => Promise<void>;
   onVoiceUpload?: (file: File) => Promise<void>;
   loading?: boolean;
@@ -17,6 +16,7 @@ export type JournalComposerProps = {
 
 const toBase64 = (buffer: ArrayBuffer) =>
   btoa(String.fromCharCode(...Array.from(new Uint8Array(buffer))));
+const toBase64 = (buffer: ArrayBuffer) => btoa(String.fromCharCode(...Array.from(new Uint8Array(buffer))));
 
 const encryptText = async (content: string, passphrase: string) => {
   const encoder = new TextEncoder();
@@ -45,15 +45,10 @@ export const JournalComposer = ({ onSave, onAsk, onVoiceUpload, loading, chapter
     }
 
     await onSave(content, { chapterId, metadata });
-export const JournalComposer = ({ onSave, onAsk, loading, chapters = [] }: JournalComposerProps) => {
-  const [value, setValue] = useState('');
-  const [chapterId, setChapterId] = useState<string | null>(null);
-
-  const handleSave = async () => {
-    if (!value.trim()) return;
-    await onSave(value.trim(), { chapterId });
     setValue('');
     setChapterId(null);
+    setEncrypt(false);
+    setPassphrase('');
   };
 
   const handleAsk = async () => {

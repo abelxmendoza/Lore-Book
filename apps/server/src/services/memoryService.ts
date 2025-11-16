@@ -2,6 +2,9 @@ import { format, parseISO, startOfDay } from 'date-fns';
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../logger';
+import type { ChapterTimeline, JournalQuery, MemoryEntry, MemorySource, MonthGroup } from '../types';
+import { chapterService } from './chapterService';
+import { embeddingService } from './embeddingService';
 import type {
   ChapterTimeline,
   EntryRelationship,
