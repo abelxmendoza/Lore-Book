@@ -135,3 +135,30 @@ export type PeoplePlacesStats = {
   mostMentioned: { id: string; name: string; total_mentions: number; type: 'person' | 'place' }[];
   topRelationships: Partial<Record<RelationshipTag, number>>;
 };
+
+export type LocationCoordinates = { lat: number; lng: number };
+
+export type LocationVisit = {
+  id: string;
+  date: string;
+  tags: string[];
+  chapter_id?: string | null;
+  mood?: string | null;
+  summary?: string | null;
+  source: MemorySource;
+};
+
+export type LocationProfile = {
+  id: string;
+  name: string;
+  visitCount: number;
+  firstVisited?: string;
+  lastVisited?: string;
+  coordinates?: LocationCoordinates | null;
+  relatedPeople: { id: string; name: string; total_mentions: number; entryCount: number }[];
+  tagCounts: { tag: string; count: number }[];
+  chapters: { id: string; title?: string; count: number }[];
+  moods: { mood: string; count: number }[];
+  entries: LocationVisit[];
+  sources: string[];
+};
