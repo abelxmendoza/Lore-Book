@@ -11,6 +11,8 @@ import { entriesRouter } from './routes/entries';
 import { photosRouter } from './routes/photos';
 import { summaryRouter } from './routes/summary';
 import { timelineRouter } from './routes/timeline';
+import { chaptersRouter } from './routes/chapters';
+import { evolutionRouter } from './routes/evolution';
 
 assertConfig();
 
@@ -35,6 +37,8 @@ app.use('/api/calendar', calendarRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/timeline', timelineRouter);
 app.use('/api/summary', summaryRouter);
+app.use('/api/chapters', chaptersRouter);
+app.use('/api/evolution', evolutionRouter);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ err }, 'Unhandled error');
