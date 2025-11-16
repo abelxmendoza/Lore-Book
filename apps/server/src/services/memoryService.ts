@@ -1,14 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
 import { format, parseISO, startOfDay } from 'date-fns';
 import { v4 as uuid } from 'uuid';
 
-import { config } from '../config';
 import { logger } from '../logger';
-import type { JournalQuery, MemoryEntry, MemorySource } from '../types';
-
-const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-  auth: { persistSession: false }
-});
+import type { ChapterTimeline, JournalQuery, MemoryEntry, MemorySource, MonthGroup } from '../types';
+import { chapterService } from './chapterService';
+import { supabaseAdmin } from './supabaseClient';
 
 export type SaveEntryPayload = {
   userId: string;
@@ -37,7 +33,7 @@ class MemoryService {
       metadata: payload.metadata ?? {}
     };
 
-    const { error } = await supabase.from('journal_entries').insert(entry);
+    const { error } = await supabaseAdmin.from('journal_entries').insert(entry);
     if (error) {
       logger.error({ error }, 'Failed to save entry');
       throw error;
@@ -53,7 +49,7 @@ class MemoryService {
     tags: string[]
   ): Promise<void> {
     const normalizedDate = format(startOfDay(parseISO(date)), 'yyyy-MM-dd');
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('daily_summaries')
       .upsert({ id: uuid(), user_id: userId, date: normalizedDate, summary, tags });
     if (error) {
@@ -63,7 +59,7 @@ class MemoryService {
   }
 
   async searchEntries(userId: string, query: JournalQuery = {}): Promise<MemoryEntry[]> {
-    let builder = supabase.from('journal_entries').select('*').eq('user_id', userId);
+    let builder = supabaseAdmin.from('journal_entries').select('*').eq('user_id', userId);
 
     if (query.search) {
       builder = builder.ilike('content', `%${query.search}%`);
@@ -90,8 +86,7 @@ class MemoryService {
     return data ?? [];
   }
 
-  async getTimeline(userId: string) {
-    const entries = await this.searchEntries(userId, { limit: 365 });
+  private groupByMonth(entries: MemoryEntry[]): MonthGroup[] {
     const grouped = entries.reduce<Record<string, MemoryEntry[]>>((acc, entry) => {
       const month = format(parseISO(entry.date), 'yyyy MMMM');
       acc[month] = acc[month] ?? [];
@@ -103,6 +98,37 @@ class MemoryService {
       month,
       entries: monthEntries
     }));
+  }
+
+  async getTimeline(userId: string): Promise<ChapterTimeline> {
+    const [entries, chapters] = await Promise.all([
+      this.searchEntries(userId, { limit: 365 }),
+      chapterService.listChapters(userId)
+    ]);
+
+    const chapterGroups = new Map<string, MemoryEntry[]>();
+    chapters.forEach((chapter) => {
+      chapterGroups.set(chapter.id, []);
+    });
+    const unassigned: MemoryEntry[] = [];
+
+    entries.forEach((entry) => {
+      if (entry.chapter_id && chapterGroups.has(entry.chapter_id)) {
+        chapterGroups.get(entry.chapter_id)!.push(entry);
+      } else {
+        unassigned.push(entry);
+      }
+    });
+
+    const chapterTimelines = chapters.map((chapter) => ({
+      ...chapter,
+      months: this.groupByMonth(chapterGroups.get(chapter.id) ?? [])
+    }));
+
+    return {
+      chapters: chapterTimelines,
+      unassigned: this.groupByMonth(unassigned)
+    };
   }
 
   async listTags(userId: string) {

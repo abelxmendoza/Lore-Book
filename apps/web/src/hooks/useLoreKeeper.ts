@@ -18,6 +18,20 @@ export type TimelineGroup = {
   entries: JournalEntry[];
 };
 
+export type Chapter = {
+  id: string;
+  title: string;
+  start_date: string;
+  end_date?: string | null;
+  description?: string | null;
+  summary?: string | null;
+};
+
+export type TimelineResponse = {
+  chapters: (Chapter & { months: TimelineGroup[] })[];
+  unassigned: TimelineGroup[];
+};
+
 const fetchJson = async <T>(input: RequestInfo, init?: RequestInit): Promise<T> => {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -48,7 +62,8 @@ export const useLoreKeeper = () => {
       return [];
     }
   });
-  const [timeline, setTimeline] = useState<TimelineGroup[]>([]);
+  const [timeline, setTimeline] = useState<TimelineResponse>({ chapters: [], unassigned: [] });
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
   const [answer, setAnswer] = useState('');
   const [loading, setLoading] = useState(false);
@@ -60,15 +75,26 @@ export const useLoreKeeper = () => {
 
   const refreshTimeline = useCallback(async () => {
     const [timelineData, tagData] = await Promise.all([
-      fetchJson<{ timeline: TimelineGroup[] }>('/api/timeline'),
+      fetchJson<{ timeline: TimelineResponse }>('/api/timeline'),
       fetchJson<{ tags: { name: string; count: number }[] }>('/api/timeline/tags')
     ]);
     setTimeline(timelineData.timeline);
     setTags(tagData.tags);
   }, []);
 
+  const refreshChapters = useCallback(async () => {
+    const data = await fetchJson<{ chapters: Chapter[] }>('/api/chapters');
+    setChapters(data.chapters);
+  }, []);
+
   const createEntry = useCallback(async (content: string, overrides?: Partial<JournalEntry>) => {
-    const payload = { content, ...overrides };
+    const payload: Record<string, unknown> = { content };
+    if (overrides) {
+      Object.assign(payload, overrides);
+      if ('chapter_id' in overrides || 'chapterId' in overrides) {
+        payload.chapterId = (overrides as Record<string, unknown>).chapterId ?? overrides.chapter_id ?? null;
+      }
+    }
     const data = await fetchJson<{ entry: JournalEntry }>('/api/entries', {
       method: 'POST',
       body: JSON.stringify(payload)
@@ -99,32 +125,60 @@ export const useLoreKeeper = () => {
     return data;
   }, []);
 
+  const createChapter = useCallback(
+    async (payload: { title: string; startDate: string; endDate?: string | null; description?: string | null }) => {
+      const data = await fetchJson<{ chapter: Chapter }>('/api/chapters', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      setChapters((prev) => [data.chapter, ...prev]);
+      return data.chapter;
+    },
+    []
+  );
+
+  const summarizeChapter = useCallback(async (chapterId: string) => {
+    const data = await fetchJson<{ summary: string }>(`/api/chapters/${chapterId}/summary`, {
+      method: 'POST'
+    });
+    return data.summary;
+  }, []);
+
   useEffect(() => {
     refreshEntries();
     refreshTimeline();
-  }, [refreshEntries, refreshTimeline]);
+    refreshChapters();
+  }, [refreshEntries, refreshTimeline, refreshChapters]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('lorekeeper-cache', JSON.stringify(entries.slice(0, 10)));
   }, [entries]);
 
-  const timelineCount = useMemo(
-    () => timeline.reduce((acc, group) => acc + group.entries.length, 0),
-    [timeline]
-  );
+  const timelineCount = useMemo(() => {
+    const chapterCount = timeline.chapters.reduce(
+      (acc, chapter) => acc + chapter.months.reduce((chapterAcc, group) => chapterAcc + group.entries.length, 0),
+      0
+    );
+    const unassignedCount = timeline.unassigned.reduce((acc, group) => acc + group.entries.length, 0);
+    return chapterCount + unassignedCount;
+  }, [timeline]);
 
   return {
     entries,
     timeline,
     tags,
     timelineCount,
+    chapters,
     answer,
     askLoreKeeper,
     createEntry,
+    createChapter,
     refreshEntries,
     refreshTimeline,
+    refreshChapters,
     summarize,
+    summarizeChapter,
     loading
   };
 };

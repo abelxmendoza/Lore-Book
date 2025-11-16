@@ -24,6 +24,35 @@ export type JournalQuery = {
   limit?: number;
 };
 
+export type MonthGroup = {
+  month: string;
+  entries: MemoryEntry[];
+};
+
+export type Chapter = {
+  id: string;
+  user_id: string;
+  title: string;
+  start_date: string;
+  end_date?: string | null;
+  description?: string | null;
+  summary?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ChapterInput = {
+  title: string;
+  startDate: string;
+  endDate?: string | null;
+  description?: string | null;
+};
+
+export type ChapterTimeline = {
+  chapters: (Chapter & { months: MonthGroup[] })[];
+  unassigned: MonthGroup[];
+};
+
 export type LoreKeeperPrompt = {
   message: string;
   context?: string;

@@ -46,7 +46,11 @@ class ChatService {
     return { answer, relatedEntries };
   }
 
-  async summarizeEntries(userId: string, entries: MemoryEntry[]) {
+  async summarizeEntries(
+    userId: string,
+    entries: MemoryEntry[],
+    chapterContext?: { title: string; description?: string }
+  ) {
     if (!entries.length) {
       return 'No entries found for that time range yet.';
     }
@@ -62,9 +66,13 @@ class ChatService {
         messages: [
           {
             role: 'system',
-            content: 'Summarize the following journal entries in 5 bullet points and mention any chapters or milestones.'
+            content:
+              'Summarize the following journal entries in 5 bullet points and mention any chapters or milestones. Include the chapter context if provided.'
           },
-          { role: 'user', content: prompt }
+          {
+            role: 'user',
+            content: `${chapterContext ? `Chapter: ${chapterContext.title}\n${chapterContext.description ?? ''}\n` : ''}${prompt}`
+          }
         ]
       });
 

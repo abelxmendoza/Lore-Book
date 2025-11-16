@@ -11,6 +11,8 @@ import { TagCloud } from '../components/TagCloud';
 import { TimelinePanel } from '../components/TimelinePanel';
 import { useLoreKeeper } from '../hooks/useLoreKeeper';
 import { Button } from '../components/ui/button';
+import { ChaptersList } from '../components/ChaptersList';
+import { CreateChapterModal } from '../components/CreateChapterModal';
 
 const formatRange = (days = 7) => {
   const end = new Date();
@@ -24,11 +26,28 @@ const formatRange = (days = 7) => {
 };
 
 const AppContent = () => {
-  const { entries, timeline, tags, answer, askLoreKeeper, createEntry, summarize, loading, refreshEntries } =
-    useLoreKeeper();
+  const {
+    entries,
+    timeline,
+    tags,
+    answer,
+    askLoreKeeper,
+    createEntry,
+    createChapter,
+    chapters,
+    summarizeChapter,
+    summarize,
+    loading,
+    refreshEntries,
+    refreshTimeline,
+    refreshChapters,
+    timelineCount
+  } = useLoreKeeper();
   const [summary, setSummary] = useState('');
   const [rangeLabel, setRangeLabel] = useState(formatRange().label);
   const [lastPrompt, setLastPrompt] = useState('');
+  const [chapterModalOpen, setChapterModalOpen] = useState(false);
+  const [chapterSummary, setChapterSummary] = useState('');
 
   const handleSummary = async () => {
     const range = formatRange();
@@ -55,11 +74,15 @@ const AppContent = () => {
           <div className="mt-4 flex flex-wrap gap-6 text-sm text-white/60">
             <div>
               <p className="text-xs uppercase tracking-widest text-primary/70">Timeline Nodes</p>
-              <p className="text-xl font-semibold text-white">{timeline.length}</p>
+              <p className="text-xl font-semibold text-white">{timelineCount}</p>
             </div>
             <div>
               <p className="text-xs uppercase tracking-widest text-primary/70">Tracked Tags</p>
               <p className="text-xl font-semibold text-white">{tags.length}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-primary/70">Chapters</p>
+              <p className="text-xl font-semibold text-white">{chapters.length}</p>
             </div>
           </div>
         </header>
@@ -67,8 +90,10 @@ const AppContent = () => {
           <div className="space-y-6">
             <JournalComposer
               loading={loading}
-              onSave={async (content) => {
-                await createEntry(content);
+              chapters={chapters}
+              onSave={async (content, options) => {
+                await createEntry(content, { chapter_id: options?.chapterId ?? null });
+                await Promise.all([refreshEntries(), refreshTimeline()]);
               }}
               onAsk={async (content) => {
                 setLastPrompt(content);
@@ -79,6 +104,15 @@ const AppContent = () => {
           </div>
           <div className="space-y-6">
             <TimelinePanel timeline={timeline} />
+            <ChaptersList
+              timeline={timeline}
+              onCreateClick={() => setChapterModalOpen(true)}
+              onSummarize={async (chapterId) => {
+                const summaryText = await summarizeChapter(chapterId);
+                setChapterSummary(summaryText);
+                await Promise.all([refreshTimeline(), refreshChapters()]);
+              }}
+            />
             <div className="rounded-2xl border border-border/60 bg-black/40 p-6 shadow-panel">
               <div className="flex items-center justify-between">
                 <div>
@@ -114,8 +148,23 @@ const AppContent = () => {
             <p className="mt-4 text-sm text-white/80">
               {summary || 'Generate a summary to see your latest milestones compacted into lore.'}
             </p>
+            {chapterSummary && (
+              <div className="mt-4 rounded-xl border border-primary/30 bg-primary/10 p-3 text-sm text-white/80">
+                <p className="text-xs uppercase text-primary/70">Chapter Summary</p>
+                <p className="mt-2">{chapterSummary}</p>
+              </div>
+            )}
           </div>
         </div>
+        <CreateChapterModal
+          open={chapterModalOpen}
+          onClose={() => setChapterModalOpen(false)}
+          onCreate={async (payload) => {
+            const chapter = await createChapter(payload);
+            await Promise.all([refreshTimeline(), refreshChapters()]);
+            return chapter;
+          }}
+        />
       </main>
     </div>
   );

@@ -18,3 +18,13 @@ body {
   background: rgba(192, 38, 211, 0.6);
   border-radius: 999px;
 }
+
+@keyframes flicker {
+  0% { opacity: 0.7; transform: scale(0.98) translateY(0); }
+  50% { opacity: 1; transform: scale(1.05) translateY(-1px); }
+  100% { opacity: 0.85; transform: scale(0.98) translateY(0); }
+}
+
+.flicker {
+  animation: flicker 1.4s ease-in-out infinite;
+}

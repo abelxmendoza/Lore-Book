@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { chapterService } from '../services/chapterService';
 import { memoryService } from '../services/memoryService';
 import { tagService } from '../services/tagService';
 import { extractTags, shouldPersistMessage } from '../utils/keywordDetector';
@@ -34,6 +35,13 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const parsed = entrySchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json(parsed.error.flatten());
+  }
+
+  if (parsed.data.chapterId) {
+    const chapter = await chapterService.getChapter(req.user!.id, parsed.data.chapterId);
+    if (!chapter) {
+      return res.status(400).json({ error: 'Invalid chapter assignment' });
+    }
   }
 
   const entry = await memoryService.saveEntry({
