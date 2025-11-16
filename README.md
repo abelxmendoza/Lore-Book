@@ -23,6 +23,7 @@ pnpm run dev:web         # http://localhost:5173
 Fill out `.env` based on `.env.example` before running either service.
 - `OPENAI_API_MODEL` is used by the server for GPT calls (defaults to `gpt-4o-mini`).
 - `OPENAI_EMBEDDING_MODEL` powers semantic search embeddings (defaults to `text-embedding-3-small`).
+- `X_API_BEARER_TOKEN` enables syncing X posts into your lore timeline.
 
 ### Required Database Tables
 
@@ -97,6 +98,7 @@ Grant `select/insert/update` on both tables to the `service_role` used by the AP
 | `/api/photos/upload/batch` | POST | Upload multiple photos at once |
 | `/api/photos` | GET | Get all user photos |
 | `/api/photos/sync` | POST | Sync photo metadata from device (mobile) |
+| `/api/x/sync` | POST | Import recent X posts into the timeline with AI summaries |
 | `/api/calendar/sync` | POST | Sync calendar events from device (mobile) - creates journal entries |
 | `/api/chat` | POST | "Ask Lore Keeper" – returns GPT-4 answer grounded in journal data |
 | `/api/timeline` | GET | Chapter + month grouped timeline feed |

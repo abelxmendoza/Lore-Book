@@ -32,6 +32,7 @@ type EnvConfig = {
   supabaseServiceRoleKey: string;
   defaultModel: string;
   embeddingModel: string;
+  xBearerToken?: string;
 };
 
 export const config: EnvConfig = {
@@ -41,7 +42,8 @@ export const config: EnvConfig = {
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
   defaultModel: process.env.OPENAI_API_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
-  embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
+  embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
+  xBearerToken: process.env.X_API_BEARER_TOKEN ?? process.env.TWITTER_BEARER_TOKEN ?? ''
 };
 
 export const assertConfig = () => {
