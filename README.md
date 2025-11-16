@@ -86,6 +86,38 @@ language sql stable as $$
   order by embedding <=> query_embedding
   limit match_count;
 $$;
+
+-- Task timeline and memory bridge tables
+create table if not exists public.timeline_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  task_id uuid references public.tasks(id) on delete cascade,
+  title text not null,
+  description text,
+  tags text[] default array[]::text[],
+  occurred_at timestamptz not null default now(),
+  context jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists timeline_events_user_idx on public.timeline_events(user_id, occurred_at desc);
+create index if not exists timeline_events_task_idx on public.timeline_events(task_id);
+
+create table if not exists public.task_memory_bridges (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  task_id uuid references public.tasks(id) on delete cascade,
+  timeline_event_id uuid references public.timeline_events(id) on delete cascade,
+  journal_entry_id uuid references public.journal_entries(id) on delete cascade,
+  bridge_type text not null default 'task_timeline',
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+create index if not exists task_memory_bridges_user_idx on public.task_memory_bridges(user_id, created_at desc);
+create index if not exists task_memory_bridges_task_idx on public.task_memory_bridges(task_id);
+create index if not exists task_memory_bridges_timeline_idx on public.task_memory_bridges(timeline_event_id);
 ```
 
 ### Character Knowledge Base (Entity-Relationship Schema)
@@ -203,6 +235,15 @@ Grant `select/insert/update` on both tables to the `service_role` used by the AP
 | `/api/summary` | POST | Date range summary (weekly digest, etc.) |
 | `/api/summary/reflect` | POST | GPT reflect mode; analyze a month, entry, or give advice |
 | `/api/evolution` | GET | Dynamic persona insights, echoes, and era nudges based on recent entries |
+| `/api/tasks` | GET | List tasks for authenticated user (filter by status) |
+| `/api/tasks` | POST | Create a new task |
+| `/api/tasks/from-chat` | POST | Extract and create tasks from chat messages |
+| `/api/tasks/sync/microsoft` | POST | Sync tasks from Microsoft To Do |
+| `/api/tasks/events` | GET | Get task events and activity |
+| `/api/tasks/:taskId` | PATCH | Update a task |
+| `/api/tasks/:taskId/complete` | POST | Mark a task as complete |
+| `/api/tasks/:taskId` | DELETE | Delete a task |
+| `/api/tasks/briefing` | GET | Get daily briefing with tasks, timeline events, and activity summary |
 
 All endpoints expect a Supabase auth token via `Authorization: Bearer <access_token>` header.
 
@@ -222,12 +263,17 @@ All endpoints expect a Supabase auth token via `Authorization: Bearer <access_to
 - Chat-style journal composer with auto keyword detection ("log", "update", "chapter", …)
 - Chapters dashboard with collapsible arcs + unassigned entries, and chapter summaries via GPT
 - **Background Photo Processing** - Photos are processed automatically to create journal entries (no gallery UI)
-- Composer supports optional AES-GCM client-side encryption and voice uploads that transcribe with Whisper.
+- Composer supports optional AES-GCM client-side encryption and voice uploads that transcribe with Whisper
 - **Interactive "Ask Lore Keeper" Chatbot** - Query your memories with three personas:
   - **The Archivist**: Analytical and precise, focuses on facts and patterns
   - **The Confidante**: Warm and empathetic, provides emotional insights
   - **Angel Negro**: Creative and poetic, offers unique perspectives
-- Dual-column dashboard: timeline, tag cloud, AI summary, and chatbot panel
+- **Task Engine Panel** - Manage tasks extracted from chat, sync with Microsoft To Do, track task events
+- **Daily Briefing** - Executive-style summaries combining tasks, timeline events, and activity patterns
+- **Task Timeline Links** - Automatic linking of tasks to timeline events and journal entries for unified memory tracking
+- **Semantic Search** - Natural language search with meaning-based matching (toggle semantic/keyword modes)
+- **Corrections System** - Archive and correct entries while preserving history
+- Dual-column dashboard: timeline, tag cloud, AI summary, chatbot panel, and task management
 - Real-time error handling with helpful messages for backend connectivity issues
 - Local cache (localStorage) for offline-first memory preview
 - Dark cyberpunk palette, neon accents, Omega splash copy
@@ -247,10 +293,14 @@ All endpoints expect a Supabase auth token via `Authorization: Bearer <access_to
 2. Composer can either save raw content or ask GPT to recall info. Keywords trigger automatic persistence server-side too.
 3. **Calendar events** are synced from iPhone and automatically create journal entries with location, attendees, and context using GPT-4 to generate meaningful entries.
 4. **Photos** are processed in the background - metadata creates journal entries without storing photos.
-5. Entries are stored with `date, content, tags, chapter_id, mood, summary, source, metadata` schema.
-6. Timeline endpoint groups entries per chapter (and unassigned) and then by month; summary endpoints leverage GPT to condense a date range or a chapter arc.
-7. **Chatbot queries** (`/api/chat`) use semantic search to find relevant memories and generate contextual responses based on your journal history.
-8. Node cron hook (`registerSyncJob`) is ready for future nightly summarization or webhook ingests.
+5. **X posts** can be synced via `/api/x/sync` - posts are imported and summarized into timeline entries.
+6. **Tasks** can be extracted from chat messages or created manually, with optional Microsoft To Do sync. Task creation and completion automatically create timeline events and memory bridges.
+7. **Daily Briefing** generates executive summaries combining recent activity, task status, narrative arcs, and drift detection.
+8. Entries are stored with `date, content, tags, chapter_id, mood, summary, source, metadata` schema.
+9. Timeline endpoint groups entries per chapter (and unassigned) and then by month; summary endpoints leverage GPT to condense a date range or a chapter arc.
+10. **Chatbot queries** (`/api/chat`) use semantic search to find relevant memories and generate contextual responses based on your journal history.
+11. **Corrections** archive original entries and create corrected versions, preserving full history.
+12. Node cron hook (`registerSyncJob`) is ready for future nightly summarization or webhook ingests.
 
 ### Troubleshooting
 
@@ -275,9 +325,15 @@ All endpoints expect a Supabase auth token via `Authorization: Bearer <access_to
 
 1. Wire Supabase edge functions or webhooks to push ChatGPT transcripts directly.
 2. ✅ Embedding search (pgvector) implemented - `Ask Lore Keeper` uses semantic matches.
-3. Add export routines (Markdown/PDF) and toggle for public blog feed.
-4. Extend cron job to automatically create daily summaries and AI prompts.
-5. Add more chatbot personas and customization options.
-6. Implement real-time memory graph visualization.
+3. ✅ Task engine implemented - extract tasks from chat and sync with Microsoft To Do.
+4. ✅ Character knowledge base implemented - track relationships and shared memories.
+5. ✅ X (Twitter) integration implemented - sync posts into timeline.
+6. ✅ Daily briefing engine implemented - executive summaries from timeline, tasks, and narrative data.
+7. ✅ Task timeline links implemented - bridge tasks to timeline events and journal entries.
+8. Add export routines (Markdown/PDF) and toggle for public blog feed.
+9. Extend cron job to automatically create daily summaries and AI prompts.
+10. Add more chatbot personas and customization options.
+11. Implement real-time memory graph visualization.
+12. Build character relationship graph UI.
 
 Have fun crafting your lore ✨
