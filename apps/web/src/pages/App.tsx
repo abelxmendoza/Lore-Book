@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CalendarRange, Search, Wand2 } from 'lucide-react';
 import { CalendarRange, PenLine, PlusCircle, Search, Wand2 } from 'lucide-react';
 
 import { AuthGate } from '../components/AuthGate';
@@ -13,6 +14,7 @@ import { useLoreKeeper } from '../hooks/useLoreKeeper';
 import { Button } from '../components/ui/button';
 import { ChaptersList } from '../components/ChaptersList';
 import { CreateChapterModal } from '../components/CreateChapterModal';
+import { EvolutionPanel } from '../components/EvolutionPanel';
 import { ChapterViewer } from '../components/ChapterViewer';
 import { MemoryTimeline } from '../components/MemoryTimeline';
 import { fetchJson } from '../lib/api';
@@ -50,6 +52,9 @@ const AppContent = () => {
     searchResults,
     reflect,
     reflection,
+    uploadVoiceEntry,
+    evolution,
+    refreshEvolution
     uploadVoiceEntry
   } = useLoreKeeper();
   const [summary, setSummary] = useState('');
@@ -150,6 +155,29 @@ const AppContent = () => {
                     placeholder="Ask for robotics last year or heartbreak entries..."
                     className="w-72 rounded-lg border border-border/50 bg-black/60 px-3 py-2 text-sm text-white"
                   />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-white/60">
+                  <input
+                    type="checkbox"
+                    checked={semantic}
+                    onChange={(event) => setSemantic(event.target.checked)}
+                    className="h-4 w-4 rounded border-border/50 bg-black/60"
+                  />
+                  Semantic
+                </label>
+                <Button
+                  size="sm"
+                  onClick={() => searchTerm && semanticSearch(searchTerm, semantic)}
+                  leftIcon={<Wand2 className="h-4 w-4 text-primary" />}
+                >
+                  Search
+                </Button>
+              </div>
+              {searchResults.length > 0 && (
+                <p className="mt-2 text-xs text-white/50">Showing {searchResults.length} semantic matches.</p>
+              )}
+            </div>
+            <EntryList entries={(searchResults.length ? searchResults : entries).slice(0, 8)} />
         <div className="flex flex-wrap items-center gap-3">
           <Button variant={activeTab === 'log' ? 'default' : 'outline'} onClick={() => setActiveTab('log')} size="sm">
             Memory Log
@@ -239,6 +267,21 @@ const AppContent = () => {
           </div>
         ) : (
           <div className="space-y-6">
+            <TimelinePanel timeline={timeline} />
+            <ChaptersList
+              timeline={timeline}
+              onCreateClick={() => setChapterModalOpen(true)}
+              onSummarize={async (chapterId) => {
+                const summaryText = await summarizeChapter(chapterId);
+                setChapterSummary(summaryText);
+                await Promise.all([refreshTimeline(), refreshChapters()]);
+              }}
+            />
+            <div className="rounded-2xl border border-border/60 bg-black/40 p-6 shadow-panel">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase text-white/50">Tag Cloud</p>
+                  <h3 className="text-lg font-semibold">Topics</h3>
             <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
               <MemoryTimeline />
               <div className="space-y-6">
@@ -267,6 +310,29 @@ const AppContent = () => {
             </div>
           </div>
         </div>
+        <div className="grid gap-6 xl:grid-cols-3">
+          <div className="xl:col-span-2">
+            <ChatPanel
+              answer={answer}
+              loading={loading}
+              persona={persona}
+              onPersonaChange={setPersona}
+              onRefresh={() => {
+                if (lastPrompt) askLoreKeeper(lastPrompt, persona);
+              }}
+            />
+          </div>
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-border/60 bg-black/40 p-6 shadow-panel">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase text-white/50">Summaries</p>
+                  <h3 className="text-lg font-semibold">Weekly Debrief</h3>
+                  <p className="text-xs text-white/40">{rangeLabel}</p>
+                </div>
+                <Button size="sm" variant="ghost" leftIcon={<CalendarRange className="h-4 w-4" />} onClick={handleSummary}>
+                  Generate
+                </Button>
         <ChapterViewer chapters={chapters} candidates={chapterCandidates} onRefresh={refreshChapters} />
         )}
         <div className="grid gap-6 lg:grid-cols-2">
@@ -286,10 +352,49 @@ const AppContent = () => {
                 <h3 className="text-lg font-semibold">Weekly Debrief</h3>
                 <p className="text-xs text-white/40">{rangeLabel}</p>
               </div>
-              <Button size="sm" variant="ghost" leftIcon={<CalendarRange className="h-4 w-4" />} onClick={handleSummary}>
-                Generate
-              </Button>
+              <p className="mt-4 text-sm text-white/80">
+                {summary || 'Generate a summary to see your latest milestones compacted into lore.'}
+              </p>
+              <div className="mt-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase text-white/50">Reflect Mode</p>
+                  <p className="text-xs text-white/40">Ask for advice on this month.</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  leftIcon={<Wand2 className="h-4 w-4" />}
+                  disabled={reflecting}
+                  onClick={async () => {
+                    const now = new Date();
+                    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                    setReflecting(true);
+                    try {
+                      await reflect({ mode: 'month', month: monthKey, persona });
+                    } finally {
+                      setReflecting(false);
+                    }
+                  }}
+                >
+                  {reflecting ? 'Reflecting…' : 'Reflect'}
+                </Button>
+              </div>
+              {reflection && (
+                <div className="mt-3 rounded-xl border border-primary/30 bg-primary/10 p-3 text-sm text-white/80">
+                  <p className="text-xs uppercase text-primary/70">Insight</p>
+                  <p className="mt-2 whitespace-pre-line">{reflection}</p>
+                </div>
+              )}
+              {chapterSummary && (
+                <div className="mt-4 rounded-xl border border-primary/30 bg-primary/10 p-3 text-sm text-white/80">
+                  <p className="text-xs uppercase text-primary/70">Chapter Summary</p>
+                  <p className="mt-2">{chapterSummary}</p>
+                </div>
+              )}
             </div>
+            <EvolutionPanel insights={evolution} loading={loading} onRefresh={refreshEvolution} />
+          </div>
+        </div>
             <p className="mt-4 text-sm text-white/80">
               {summary || 'Generate a summary to see your latest milestones compacted into lore.'}
             </p>

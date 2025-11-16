@@ -163,6 +163,19 @@ export type LoreKeeperPrompt = {
   date?: string;
 };
 
+export type EvolutionInsights = {
+  personaTitle: string;
+  personaTraits: string[];
+  toneShift: string;
+  emotionalPatterns: string[];
+  tagTrends: {
+    top: string[];
+    rising: string[];
+    fading: string[];
+  };
+  echoes: Array<{ title: string; referenceDate: string; quote?: string }>;
+  reminders: string[];
+  nextEra: string;
 export type PeoplePlaceEntity = {
   id: string;
   user_id: string;

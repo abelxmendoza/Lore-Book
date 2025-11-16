@@ -2,6 +2,7 @@ import { useState, type ChangeEvent } from 'react';
 import { Sparkles } from 'lucide-react';
 
 import type { Chapter } from '../hooks/useLoreKeeper';
+
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 
@@ -13,6 +14,8 @@ export type JournalComposerProps = {
   chapters?: Chapter[];
 };
 
+const toBase64 = (buffer: ArrayBuffer) =>
+  btoa(String.fromCharCode(...Array.from(new Uint8Array(buffer))));
 const toBase64 = (buffer: ArrayBuffer) => btoa(String.fromCharCode(...Array.from(new Uint8Array(buffer))));
 
 const encryptText = async (content: string, passphrase: string) => {

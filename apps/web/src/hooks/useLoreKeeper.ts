@@ -28,6 +28,37 @@ export type Chapter = {
   summary?: string | null;
 };
 
+export type TimelineResponse = {
+  chapters: (Chapter & { months: TimelineGroup[] })[];
+  unassigned: TimelineGroup[];
+};
+
+export type EvolutionInsights = {
+  personaTitle: string;
+  personaTraits: string[];
+  toneShift: string;
+  emotionalPatterns: string[];
+  tagTrends: {
+    top: string[];
+    rising: string[];
+    fading: string[];
+  };
+  echoes: { title: string; referenceDate: string; quote?: string }[];
+  reminders: string[];
+  nextEra: string;
+};
+
+const fetchJson = async <T>(input: RequestInfo, init?: RequestInit): Promise<T> => {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  const res = await fetch(input, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    ...init
+  });
 export type ChapterFacet = { label: string; score: number };
 
 export type ChapterProfile = Chapter & {
@@ -68,6 +99,7 @@ export const useLoreKeeper = () => {
     }
   });
   const [timeline, setTimeline] = useState<TimelineResponse>({ chapters: [], unassigned: [] });
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [chapters, setChapters] = useState<ChapterProfile[]>([]);
   const [chapterCandidates, setChapterCandidates] = useState<ChapterCandidate[]>([]);
   const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
@@ -75,6 +107,7 @@ export const useLoreKeeper = () => {
   const [reflection, setReflection] = useState('');
   const [searchResults, setSearchResults] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [evolution, setEvolution] = useState<EvolutionInsights | null>(null);
 
   const hydrateChapter = useCallback(
     (chapter: Chapter): ChapterProfile => ({
@@ -105,6 +138,13 @@ export const useLoreKeeper = () => {
   }, []);
 
   const refreshChapters = useCallback(async () => {
+    const data = await fetchJson<{ chapters: Chapter[] }>('/api/chapters');
+    setChapters(data.chapters);
+  }, []);
+
+  const refreshEvolution = useCallback(async () => {
+    const data = await fetchJson<{ insights: EvolutionInsights }>('/api/evolution');
+    setEvolution(data.insights);
     const data = await fetchJson<{ chapters: ChapterProfile[]; candidates?: ChapterCandidate[] }>('/api/chapters');
     setChapters(data.chapters);
     setChapterCandidates(data.candidates ?? []);
@@ -196,6 +236,10 @@ export const useLoreKeeper = () => {
         method: 'POST',
         body: JSON.stringify(payload)
       });
+      setChapters((prev) => [data.chapter, ...prev]);
+      return data.chapter;
+    },
+    []
       setChapters((prev) => [hydrateChapter(data.chapter), ...prev]);
       return data.chapter;
     },
@@ -213,6 +257,8 @@ export const useLoreKeeper = () => {
     refreshEntries();
     refreshTimeline();
     refreshChapters();
+    refreshEvolution();
+  }, [refreshEntries, refreshTimeline, refreshChapters, refreshEvolution]);
   }, [refreshEntries, refreshTimeline, refreshChapters]);
 
   useEffect(() => {
@@ -235,6 +281,9 @@ export const useLoreKeeper = () => {
     tags,
     timelineCount,
     chapters,
+    answer,
+    reflection,
+    evolution,
     chapterCandidates,
     answer,
     reflection,
@@ -248,6 +297,7 @@ export const useLoreKeeper = () => {
     refreshEntries,
     refreshTimeline,
     refreshChapters,
+    refreshEvolution,
     summarize,
     summarizeChapter,
     loading

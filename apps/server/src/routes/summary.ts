@@ -44,6 +44,10 @@ router.post('/reflect', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   const { mode, entryId, month, persona, prompt } = parsed.data;
+  let entries = [] as Awaited<ReturnType<typeof memoryService.searchEntries>>;
+
+  if (mode === 'entry' && entryId) {
+    const entry = await memoryService.getEntry(req.user!.id, entryId);
   let entries = [] as Awaited<ReturnType<typeof memoryService.searchEntriesWithCorrections>>;
 
   if (mode === 'entry' && entryId) {
@@ -53,12 +57,14 @@ router.post('/reflect', requireAuth, async (req: AuthenticatedRequest, res) => {
     const start = new Date(`${month}-01T00:00:00Z`);
     const end = new Date(start);
     end.setMonth(start.getMonth() + 1);
+    entries = await memoryService.searchEntries(req.user!.id, {
     entries = await memoryService.searchEntriesWithCorrections(req.user!.id, {
       from: start.toISOString(),
       to: end.toISOString(),
       limit: 120
     });
   } else {
+    entries = await memoryService.searchEntries(req.user!.id, { limit: 50 });
     entries = await memoryService.searchEntriesWithCorrections(req.user!.id, { limit: 50 });
   }
 
