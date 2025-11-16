@@ -22,6 +22,12 @@ import { peoplePlacesRouter } from './routes/peoplePlaces';
 import { locationsRouter } from './routes/locations';
 import { xRouter } from './routes/x';
 import { tasksRouter } from './routes/tasks';
+import { authMiddleware } from './middleware/auth';
+import { rateLimitMiddleware } from './middleware/rateLimit';
+import { inputSanitizer } from './middleware/sanitize';
+import { secureHeaders } from './middleware/secureHeaders';
+import { auditLogger } from './middleware/auditLogger';
+import { accountRouter } from './routes/account';
 
 assertConfig();
 
@@ -40,23 +46,28 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', name: 'Lore Keeper API' });
 });
 
-app.use('/api/entries', entriesRouter);
-app.use('/api/photos', photosRouter);
-app.use('/api/calendar', calendarRouter);
-app.use('/api/chat', chatRouter);
-app.use('/api/timeline', timelineRouter);
-app.use('/api/summary', summaryRouter);
-app.use('/api/chapters', chaptersRouter);
-app.use('/api/evolution', evolutionRouter);
-app.use('/api/corrections', correctionsRouter);
-app.use('/api/canon', canonRouter);
-app.use('/api/ladder', ladderRouter);
-app.use('/api/memory-graph', memoryGraphRouter);
-app.use('/api/memory-ladder', memoryLadderRouter);
-app.use('/api/people-places', peoplePlacesRouter);
-app.use('/api/locations', locationsRouter);
-app.use('/api/x', xRouter);
-app.use('/api/tasks', tasksRouter);
+const apiRouter = express.Router();
+apiRouter.use(authMiddleware, rateLimitMiddleware, inputSanitizer, secureHeaders, auditLogger);
+apiRouter.use('/entries', entriesRouter);
+apiRouter.use('/photos', photosRouter);
+apiRouter.use('/calendar', calendarRouter);
+apiRouter.use('/chat', chatRouter);
+apiRouter.use('/timeline', timelineRouter);
+apiRouter.use('/summary', summaryRouter);
+apiRouter.use('/chapters', chaptersRouter);
+apiRouter.use('/evolution', evolutionRouter);
+apiRouter.use('/corrections', correctionsRouter);
+apiRouter.use('/canon', canonRouter);
+apiRouter.use('/ladder', ladderRouter);
+apiRouter.use('/memory-graph', memoryGraphRouter);
+apiRouter.use('/memory-ladder', memoryLadderRouter);
+apiRouter.use('/people-places', peoplePlacesRouter);
+apiRouter.use('/locations', locationsRouter);
+apiRouter.use('/x', xRouter);
+apiRouter.use('/tasks', tasksRouter);
+apiRouter.use('/account', accountRouter);
+
+app.use('/api', apiRouter);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ err }, 'Unhandled error');

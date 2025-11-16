@@ -37,6 +37,7 @@ type EnvConfig = {
   microsoftClientSecret?: string;
   microsoftTenantId?: string;
   microsoftRedirectUri?: string;
+  encryptionSalt?: string;
 };
 
 export const config: EnvConfig = {
@@ -51,7 +52,8 @@ export const config: EnvConfig = {
   microsoftClientId: process.env.MICROSOFT_CLIENT_ID ?? '',
   microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET ?? '',
   microsoftTenantId: process.env.MICROSOFT_TENANT_ID ?? 'common',
-  microsoftRedirectUri: process.env.MICROSOFT_REDIRECT_URI ?? ''
+  microsoftRedirectUri: process.env.MICROSOFT_REDIRECT_URI ?? '',
+  encryptionSalt: process.env.ENCRYPTION_SALT ?? ''
 };
 
 export const assertConfig = () => {

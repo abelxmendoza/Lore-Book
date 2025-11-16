@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import DefaultDict, Iterable, List, Optional
 
 from .event_schema import TimelineEvent
+from .security import secure_load_json
 
 
 class TimelineManager:
@@ -54,6 +55,8 @@ class TimelineManager:
         return self.base_path / f"{year}.compact.json"
 
     def _load_raw_year(self, year: int) -> List[dict]:
+        path = self._year_file(year)
+        return secure_load_json(path, base_dir=self.base_path)
         """Load a specific year's shard, preferring compacted data when present."""
 
         compact_path = self._compact_file(year)

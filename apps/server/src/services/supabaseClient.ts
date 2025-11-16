@@ -13,6 +13,7 @@ const createMockQueryBuilder = () => {
     data: null,
     error: missingConfigError,
     insert: () => builder,
+    delete: () => builder,
     update: () => builder,
     upsert: () => builder,
     select: () => builder,

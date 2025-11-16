@@ -5,6 +5,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+import re
 
 from .event_schema import TimelineEvent
 from .timeline_manager import TimelineManager
@@ -13,15 +14,45 @@ from .timeline_manager import TimelineManager
 class TimelineAgentInterface:
     """Provides helper methods for agent-driven timeline operations."""
 
-    def __init__(self, base_path: Path | None = None, max_context_events: int = 20) -> None:
-        self.manager = TimelineManager(base_path=base_path)
+    def __init__(
+        self,
+        base_path: Path | None = None,
+        max_context_events: int = 20,
+        user_id: str | None = None,
+    ) -> None:
+        safe_user = re.sub(r"[^a-zA-Z0-9_-]", "_", user_id or "shared")
+        scoped_base = (base_path or Path(__file__).resolve().parent / "timeline") / safe_user
+        self.manager = TimelineManager(base_path=scoped_base)
         self.max_context_events = max_context_events
+        self.user_id = user_id
 
-    def load_timeline_context(self) -> List[dict]:
+    def _filter_private(self, events: List[TimelineEvent]) -> List[TimelineEvent]:
+        filtered: List[TimelineEvent] = []
+        for event in events:
+            metadata = getattr(event, "metadata", {}) or {}
+            if metadata.get("visibility") == "private" or metadata.get("encrypted"):
+                # Do not expose private or encrypted entries unless decrypted upstream
+                continue
+            filtered.append(event)
+        return filtered
+
+    def load_timeline_context(
+        self,
+        *,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> List[dict]:
         """Load a limited set of recent, non-archived events for prompt injection."""
 
-        events = self.manager.get_events(include_archived=False)
-        sorted_events = sorted(events, key=lambda e: e.date, reverse=True)
+        events = self.manager.get_events(
+            include_archived=False,
+            start_date=start_date,
+            end_date=end_date,
+            tags=tags,
+        )
+        scoped = self._filter_private(events)
+        sorted_events = sorted(scoped, key=lambda e: e.date, reverse=True)
         trimmed = sorted_events[: self.max_context_events]
         return [asdict(event) for event in trimmed]
 
@@ -29,8 +60,9 @@ class TimelineAgentInterface:
         """Convenience helper to fetch events for common context windows."""
 
         events = self.manager.get_events_by_period(period, tags=tags, include_archived=False)
-        sorted_events = sorted(events, key=lambda e: e.date, reverse=True)
-        return [asdict(event) for event in sorted_events]
+        scoped = self._filter_private(events)
+        sorted_events = sorted(scoped, key=lambda e: e.date, reverse=True)
+        return [asdict(event) for event in sorted_events[: self.max_context_events]]
 
     def add_event_from_text(
         self,
@@ -78,7 +110,9 @@ class TimelineAgentInterface:
         """Return authoritative events matching a query to reduce ambiguity."""
 
         tags = tags or []
-        candidates = self.manager.get_events(tags=tags, include_archived=True)
+        candidates = self._filter_private(
+            self.manager.get_events(tags=tags, include_archived=True)
+        )
         lower_query = query.lower()
         matches = [event for event in candidates if lower_query in event.details.lower() or lower_query in event.title.lower()]
         return matches
