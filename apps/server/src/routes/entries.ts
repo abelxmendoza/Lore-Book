@@ -19,7 +19,7 @@ const entrySchema = z.object({
   chapterId: z.string().nullable().optional(),
   mood: z.string().nullable().optional(),
   summary: z.string().nullable().optional(),
-  source: z.enum(['chat', 'manual', 'api', 'system', 'photo', 'calendar']).optional(),
+  source: z.enum(['chat', 'manual', 'api', 'system', 'photo', 'calendar', 'x']).optional(),
   metadata: z.record(z.any()).optional(),
   relationships: z
     .array(

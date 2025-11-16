@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 
 import { logger } from '../logger';
-import { memoryService } from '../services/memoryService';
+import { taskEngineService } from '../services/taskEngineService';
 
 export const registerSyncJob = () => {
   cron.schedule('30 2 * * *', async () => {
@@ -10,6 +10,7 @@ export const registerSyncJob = () => {
     // This example demonstrates how a summary job could be wired.
     try {
       // Implement multi-tenant summary logic via Supabase functions if needed.
+      await taskEngineService.runScheduledSync();
     } catch (error) {
       logger.error({ error }, 'Nightly sync failed');
     }
