@@ -17,6 +17,13 @@ export type MemoryEntry = {
   updated_at?: string;
 };
 
+export type RelationshipTag = 'friend' | 'family' | 'coach' | 'romantic' | 'professional' | 'other';
+
+export type EntryRelationship = {
+  name: string;
+  tag: RelationshipTag;
+};
+
 export type EntryCorrection = {
   id: string;
   corrected_text: string;
@@ -106,4 +113,25 @@ export type LoreKeeperPrompt = {
   message: string;
   context?: string;
   date?: string;
+};
+
+export type PeoplePlaceEntity = {
+  id: string;
+  user_id: string;
+  name: string;
+  type: 'person' | 'place';
+  first_mentioned_at: string;
+  last_mentioned_at: string;
+  total_mentions: number;
+  related_entries: string[];
+  corrected_names: string[];
+  relationship_counts?: Partial<Record<RelationshipTag, number>>;
+};
+
+export type PeoplePlacesStats = {
+  total: number;
+  people: number;
+  places: number;
+  mostMentioned: { id: string; name: string; total_mentions: number; type: 'person' | 'place' }[];
+  topRelationships: Partial<Record<RelationshipTag, number>>;
 };
