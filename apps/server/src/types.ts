@@ -157,6 +157,20 @@ export type MemoryLadderGroup = {
   entries: MemoryLadderEntry[];
 };
 
+export type PersonaSnapshot = {
+  version: string;
+  motifs: string[];
+  toneProfile: Record<string, string>;
+  behavioralBiases: Record<string, unknown>;
+  emotionalVector: Record<string, unknown>;
+  description: string;
+  lastUpdated: string;
+};
+
+export type PersonaHistory = {
+  snapshots: PersonaSnapshot[];
+};
+
 export type LoreKeeperPrompt = {
   message: string;
   context?: string;

@@ -11,6 +11,25 @@ Lore Keeper is an AI-powered journaling platform that blends Supabase auth, GPT-
 - **Frontend**: React + Vite, Tailwind, shadcn-inspired UI primitives, Zustand state helpers
 - **Backend**: Express + TypeScript, OpenAI GPT-4, Supabase/Postgres for storage, cron-ready jobs
 - **Auth & DB**: Supabase Auth + Supabase/Postgres tables for `journal_entries` and `daily_summaries`
+- **Insight Engine**: Python-based signal detector that clusters embeddings, surfaces motifs, and predicts new arcs
+- **Persona Engine**: Deterministic Omega Persona Engine that blends identity arcs, seasonal trends, and emotional slopes into a live persona state
+
+## Omega Persona Engine
+
+The new persona layer keeps Lore Keeper's assistant aligned with who the user is *right now*.
+
+- **Python core**: `lorekeeper/persona` derives persona versions, motifs, and tone based on identity, emotional slopes, and seasonal arcs.
+- **Behavior rules**: Lightweight heuristics translate persona state into deterministic tone and language guidance.
+- **API**: `/api/persona`, `/api/persona/update`, and `/api/persona/description` expose persona state to the web app and other services.
+- **UI**: `/persona` page visualizes the current persona, motifs, tone profile, and recent evolution.
+
+Architecture sketch:
+
+```
+Timeline → IdentityEngine → OmegaPersonaEngine → Persona Rules → API/Chat UI
+                  ↑                 ↓
+            SeasonEngine      Daily/Weekly Briefings
+```
 
 ## Getting Started
 
@@ -32,6 +51,39 @@ Fill out `.env` based on `.env.example` before running either service. The `.env
 - `X_API_BEARER_TOKEN` - (Optional) Enables syncing X posts into your lore timeline
 
 **Note:** The backend will log warnings for missing environment variables but will attempt to start in development mode. Ensure all required variables are set for full functionality.
+
+## Insight Engine
+
+The InsightEngine (`lorekeeper/insight_engine.py`) ingests timeline events, arcs, identity snapshots, and optional character/location metadata. It builds lightweight embeddings, performs quick clustering, and emits structured insights for:
+
+- **Patterns**: thematic clusters based on embeddings
+- **Correlations**: co-occurring tags and recurring character mentions
+- **Cycles**: weekly/seasonal rhythms inferred from timestamps
+- **Motifs**: frequently resurfacing tokens
+- **Identity Shifts**: changes in stated traits over time
+- **Predictions**: rising tags that may define the next arc
+
+Data classes for these outputs live in `lorekeeper/insights_types.py` so they can be reused across agents and UI panels.
+
+## Insight API Routes
+
+- `GET /api/insights/recent` — run the engine on the latest timeline events.
+- `GET /api/insights/monthly/:year/:month` — scoped insights for a calendar month.
+- `GET /api/insights/yearly/:year` — yearly rollups.
+- `POST /api/insights/predict` — accept custom payloads (timeline/arcs/identity) to forecast upcoming arcs.
+
+## Example Insight Output
+
+```
+{
+  "patterns": [{"description": "Cluster 1 centers around running, health"}],
+  "correlations": [{"variables": ["health", "running"], "confidence": 0.7}],
+  "cycles": [{"period": "weekly", "evidence": ["3 entries on weekday 0"]}],
+  "motifs": [{"motif": "running", "action_suggestion": "Collect representative stories"}],
+  "identity_shifts": [{"shift": "Identity markers evolved: gained coach; less emphasis on runner"}],
+  "predictions": [{"description": "Design is gaining momentum and may define the next arc."}]
+}
+```
 
 ### Required Database Tables
 
@@ -238,6 +290,12 @@ Grant `select/insert/update` on both tables to the `service_role` used by the AP
 | `/api/tasks` | GET | List tasks for authenticated user (filter by status) |
 | `/api/tasks` | POST | Create a new task |
 | `/api/tasks/from-chat` | POST | Extract and create tasks from chat messages |
+| `/api/autopilot/daily` | GET | Autopilot Engine daily plan (JSON or markdown) |
+| `/api/autopilot/weekly` | GET | Weekly Autopilot strategy (JSON or markdown) |
+| `/api/autopilot/monthly` | GET | Monthly course correction recommendations |
+| `/api/autopilot/transition` | GET | Arc/identity transition guidance |
+| `/api/autopilot/alerts` | GET | Burnout, slump, and focus-window alerts |
+| `/api/autopilot/momentum` | GET | Skill momentum signal |
 | `/api/tasks/sync/microsoft` | POST | Sync tasks from Microsoft To Do |
 | `/api/tasks/events` | GET | Get task events and activity |
 | `/api/tasks/:taskId` | PATCH | Update a task |
@@ -305,6 +363,16 @@ The autonomous maintenance layer of Lore Keeper. Agents self-correct drift, enri
 10. **Chatbot queries** (`/api/chat`) use semantic search to find relevant memories and generate contextual responses based on your journal history.
 11. **Corrections** archive original entries and create corrected versions, preserving full history.
 12. Node cron hook (`registerSyncJob`) is ready for future nightly summarization or webhook ingests.
+
+### AutopilotEngine — AI Life Guidance
+
+The AutopilotEngine blends timeline density, task pressure, identity motifs, and seasonal arcs to recommend what to do next.
+
+- **What it does:** Detects cadence cycles, focus windows, identity shifts, and burnout/slump risk to generate daily, weekly, and monthly guidance.
+- **Available routes:** `/api/autopilot/daily`, `/weekly`, `/monthly`, `/transition`, `/alerts`, `/momentum` (all support `?format=markdown`).
+- **Sample outputs:** Daily plan with prioritized tasks + focus window, weekly strategy with top focus areas, monthly course corrections, and alerts for burnout or skill momentum.
+- **CLI usage:** `python -m lorekeeper.autopilot daily --format json` (also supports `weekly`, `monthly`, `transition`, `alerts`, `momentum`). Pipe a JSON payload to stdin to override the demo data.
+- **Integration:** The Express router calls the Python AutopilotEngine via a bridge that streams timeline entries, task engine data, identity motifs, and arc metadata.
 
 ### Troubleshooting
 
