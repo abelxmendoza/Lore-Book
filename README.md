@@ -278,6 +278,10 @@ All endpoints expect a Supabase auth token via `Authorization: Bearer <access_to
 - Local cache (localStorage) for offline-first memory preview
 - Dark cyberpunk palette, neon accents, Omega splash copy
 
+## Omega Agent Network
+
+The autonomous maintenance layer of Lore Keeper. Agents self-correct drift, enrich metadata, regenerate narratives, refresh embeddings, maintain identity arcs, and run nightly summaries.
+
 ### Mobile App (iOS/Android)
 
 - React Native app with Expo
