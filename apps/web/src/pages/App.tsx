@@ -20,6 +20,7 @@ import { fetchJson } from '../lib/api';
 import { TaskEnginePanel } from '../components/TaskEnginePanel';
 import { useTaskEngine } from '../hooks/useTaskEngine';
 import { AccountSafetyPanel } from '../components/settings/AccountSafetyPanel';
+import { AgentPanel } from '../components/AgentPanel';
 
 const formatRange = (days = 7) => {
   const end = new Date();
@@ -398,6 +399,7 @@ const AppContent = () => {
               onChatCommand={processChat}
               onSync={syncMicrosoft}
             />
+            <AgentPanel />
             <ChapterViewer chapters={chapters} candidates={chapterCandidates} onRefresh={refreshChapters} />
           </div>
         </div>
