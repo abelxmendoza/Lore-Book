@@ -2,17 +2,21 @@ import OpenAI from 'openai';
 
 import { config } from '../config';
 import { logger } from '../logger';
-import type { MemoryEntry } from '../types';
+import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
 import { memoryService } from './memoryService';
 import { extractTags, shouldPersistMessage } from '../utils/keywordDetector';
+import { correctionService } from './correctionService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
 class ChatService {
   async askLoreKeeper(userId: string, message: string, persona?: string) {
-    const relatedEntries = await memoryService.searchEntries(userId, { search: message, limit: 12 });
+    const relatedEntries = await memoryService.searchEntriesWithCorrections(userId, {
+      search: message,
+      limit: 12
+    });
     const context = relatedEntries
-      .map((entry) => `Date: ${entry.date}\nSummary: ${entry.summary ?? entry.content}`)
+      .map((entry) => `Date: ${entry.date}\nSummary: ${entry.summary ?? entry.corrected_content ?? entry.content}`)
       .join('\n---\n');
 
     const name = persona ?? 'The Archivist';
@@ -56,8 +60,9 @@ class ChatService {
       return 'No entries found for that time range yet.';
     }
 
-    const prompt = entries
-      .map((entry) => `Date: ${entry.date}\n${entry.summary ?? entry.content}`)
+    const resolvedEntries = correctionService.applyCorrectionsToEntries(entries);
+    const prompt = resolvedEntries
+      .map((entry) => `Date: ${entry.date}\n${entry.summary ?? entry.corrected_content ?? entry.content}`)
       .join('\n');
 
     try {
@@ -93,8 +98,12 @@ class ChatService {
       return 'No entries available for reflection yet.';
     }
 
-    const context = entries
-      .map((entry) => `Date: ${entry.date}\nTags: ${(entry.tags || []).join(', ')}\n${entry.summary ?? entry.content}`)
+    const resolvedEntries: ResolvedMemoryEntry[] = correctionService.applyCorrectionsToEntries(entries);
+    const context = resolvedEntries
+      .map(
+        (entry) =>
+          `Date: ${entry.date}\nTags: ${(entry.tags || []).join(', ')}\n${entry.summary ?? entry.corrected_content ?? entry.content}`
+      )
       .join('\n---\n');
 
     const completion = await openai.chat.completions.create({
