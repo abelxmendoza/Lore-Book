@@ -12,9 +12,9 @@ const menu = [
 
 export const Sidebar = () => (
   <aside className="hidden w-64 flex-col border-r border-border/60 bg-black/20 p-6 text-white lg:flex">
-    <div>
-      <Logo size="md" showText={true} />
-      <p className="mt-3 text-xs text-white/50">Cyberpunk journal with GPT-4 memory.</p>
+    <div className="mb-6">
+      <Logo size="lg" showText={true} />
+      <p className="mt-4 text-xs text-white/50">Cyberpunk journal with GPT-4 memory.</p>
     </div>
     <div className="mt-8 space-y-2">
       {menu.map((item) => (

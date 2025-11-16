@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="apps/web/public/images/LoreKeeperlogo.png" alt="Lore Keeper Logo" width="300" />
+  <img src="apps/web/public/images/loreKeeperlogo3.png" alt="Lore Keeper Logo" width="300" />
 </div>
 
 # Lore Keeper by Omega Technologies
