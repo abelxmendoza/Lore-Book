@@ -17,6 +17,8 @@ import { EvolutionPanel } from '../components/EvolutionPanel';
 import { ChapterViewer } from '../components/ChapterViewer';
 import { MemoryTimeline } from '../components/MemoryTimeline';
 import { fetchJson } from '../lib/api';
+import { TaskEnginePanel } from '../components/TaskEnginePanel';
+import { useTaskEngine } from '../hooks/useTaskEngine';
 
 const formatRange = (days = 7) => {
   const end = new Date();
@@ -55,6 +57,16 @@ const AppContent = () => {
     evolution,
     refreshEvolution
   } = useLoreKeeper();
+  const {
+    tasks: taskList,
+    events: taskEvents,
+    briefing: taskBriefing,
+    createTask,
+    completeTask,
+    deleteTask,
+    processChat,
+    syncMicrosoft
+  } = useTaskEngine();
   const [summary, setSummary] = useState('');
   const [rangeLabel, setRangeLabel] = useState(formatRange().label);
   const [lastPrompt, setLastPrompt] = useState('');
@@ -355,10 +367,10 @@ const AppContent = () => {
                   <h3 className="text-lg font-semibold">Weekly Debrief</h3>
                   <p className="text-xs text-white/40">{rangeLabel}</p>
                 </div>
-                <Button 
-                  size="sm" 
-                  variant="ghost" 
-                  leftIcon={<CalendarRange className="h-4 w-4" />} 
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  leftIcon={<CalendarRange className="h-4 w-4" />}
                   onClick={handleSummary}
                   disabled={generatingSummary || loading}
                 >
@@ -372,6 +384,17 @@ const AppContent = () => {
                 </div>
               )}
             </div>
+            <TaskEnginePanel
+              tasks={taskList}
+              events={taskEvents}
+              briefing={taskBriefing}
+              loading={loading}
+              onCreate={(payload) => createTask(payload)}
+              onComplete={completeTask}
+              onDelete={deleteTask}
+              onChatCommand={processChat}
+              onSync={syncMicrosoft}
+            />
             <ChapterViewer chapters={chapters} candidates={chapterCandidates} onRefresh={refreshChapters} />
           </div>
         </div>

@@ -21,6 +21,7 @@ import { memoryLadderRouter } from './routes/memoryLadder';
 import { peoplePlacesRouter } from './routes/peoplePlaces';
 import { locationsRouter } from './routes/locations';
 import { xRouter } from './routes/x';
+import { tasksRouter } from './routes/tasks';
 
 assertConfig();
 
@@ -55,6 +56,7 @@ app.use('/api/memory-ladder', memoryLadderRouter);
 app.use('/api/people-places', peoplePlacesRouter);
 app.use('/api/locations', locationsRouter);
 app.use('/api/x', xRouter);
+app.use('/api/tasks', tasksRouter);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error({ err }, 'Unhandled error');

@@ -200,6 +200,65 @@ export type PeoplePlacesStats = {
   topRelationships: Partial<Record<RelationshipTag, number>>;
 };
 
+export type TaskSource = 'chat' | 'manual' | 'microsoft' | 'system';
+
+export type TaskStatus = 'incomplete' | 'completed' | 'deleted';
+
+export type TaskIntent = 'learn' | 'build' | 'fix' | 'buy' | 'plan' | 'contact' | 'capture';
+
+export type TaskCategory =
+  | 'robotics'
+  | 'finance'
+  | 'fitness'
+  | 'school'
+  | 'home'
+  | 'content'
+  | 'work'
+  | 'admin';
+
+export type TaskRecord = {
+  id: string;
+  user_id: string;
+  title: string;
+  description?: string | null;
+  category: TaskCategory;
+  intent?: TaskIntent | null;
+  source: TaskSource;
+  status: TaskStatus;
+  priority: number;
+  urgency: number;
+  impact: number;
+  effort: number;
+  due_date?: string | null;
+  external_id?: string | null;
+  external_source?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type TaskEvent = {
+  id: string;
+  user_id: string;
+  task_id: string;
+  event_type: string;
+  description?: string | null;
+  created_at: string;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type TaskSyncState = {
+  id: string;
+  user_id: string;
+  provider: string;
+  last_cursor?: string | null;
+  last_synced_at?: string | null;
+  status: string;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type LocationCoordinates = { lat: number; lng: number };
 
 export type LocationVisit = {
