@@ -233,6 +233,7 @@ class TimelineManager:
             if year is not None and not str(getattr(event, "date", "")).startswith(str(year)):
                 return False
             if tags and not set(tags).intersection(event.tags):
+                return False
             if allowed_ids is not None and event.id not in allowed_ids:
                 return False
             if start_date and event.date < start_date:
