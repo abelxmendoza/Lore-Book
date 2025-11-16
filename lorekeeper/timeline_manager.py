@@ -5,9 +5,10 @@ import json
 from dataclasses import asdict
 from datetime import datetime, timedelta, date
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Dict
 
 from .event_schema import TimelineEvent
+from .indexing import BPlusTree, SkipList, TagDictionary, SemanticCache
 
 
 class TimelineManager:
@@ -16,6 +17,12 @@ class TimelineManager:
     def __init__(self, base_path: Path | None = None) -> None:
         self.base_path = base_path or Path(__file__).resolve().parent / "timeline"
         self.base_path.mkdir(parents=True, exist_ok=True)
+        self.date_index: BPlusTree[str, TimelineEvent] = BPlusTree()
+        self.recency_index: SkipList[str, TimelineEvent] = SkipList()
+        self.tag_index = TagDictionary()
+        self.semantic_cache = SemanticCache(capacity=200)
+        self._events_by_id: Dict[str, TimelineEvent] = {}
+        self._refresh_indexes()
 
     def _year_file(self, year: int) -> Path:
         return self.base_path / f"{year}.json"
@@ -27,6 +34,29 @@ class TimelineManager:
             return []
         return json.loads(path.read_text(encoding="utf-8"))
 
+    def _index_event(self, event: TimelineEvent) -> None:
+        if event.id in self._events_by_id:
+            return
+        self._events_by_id[event.id] = event
+        self.date_index.insert(event.date, event)
+        self.recency_index.insert(event.date, event)
+        self.tag_index.add(event.id, event.tags)
+
+    def _refresh_indexes(self) -> None:
+        self.date_index = BPlusTree()
+        self.recency_index = SkipList()
+        self.tag_index = TagDictionary()
+        self._events_by_id = {}
+
+        for path in sorted(self.base_path.glob("*.json")):
+            try:
+                year_number = int(path.stem)
+            except ValueError:
+                continue
+            for item in self._load_raw_year(year_number):
+                event = TimelineEvent(**item)
+                self._index_event(event)
+
     def _save_year(self, year: int, events: Iterable[dict]) -> None:
         path = self._year_file(year)
         path.write_text(json.dumps(list(events), indent=2, ensure_ascii=False), encoding="utf-8")
@@ -35,7 +65,12 @@ class TimelineManager:
         """Load all events for a given year, initializing the file if needed."""
 
         raw_events = self._load_raw_year(year)
-        return [TimelineEvent(**item) for item in raw_events]
+        events: List[TimelineEvent] = []
+        for item in raw_events:
+            event = TimelineEvent(**item)
+            events.append(event)
+            self._index_event(event)
+        return events
 
     def add_event(self, event: TimelineEvent) -> TimelineEvent:
         """Append a new immutable event into its year shard without modifying existing data."""
@@ -44,6 +79,7 @@ class TimelineManager:
         events = self._load_raw_year(event_year)
         events.append(asdict(event))
         self._save_year(event_year, events)
+        self._index_event(event)
         return event
 
     def get_events(
@@ -57,19 +93,22 @@ class TimelineManager:
         """Retrieve events filtered by year, date range, and tags."""
 
         tags = tags or []
-        candidates: List[TimelineEvent] = []
-        if year is not None:
-            candidates.extend(self.load_year(year))
+        candidates: List[TimelineEvent]
+        if tags:
+            tag_sets = [self.tag_index.get(tag) for tag in tags]
+            if not tag_sets:
+                return []
+            matching_ids = set.intersection(*tag_sets) if len(tag_sets) > 1 else tag_sets[0]
+            candidates = [self._events_by_id[event_id] for event_id in matching_ids if event_id in self._events_by_id]
+        elif start_date or end_date:
+            candidates = self.date_index.range_query(start=start_date, end=end_date)
         else:
-            for path in sorted(self.base_path.glob("*.json")):
-                try:
-                    year_number = int(path.stem)
-                except ValueError:
-                    continue
-                candidates.extend(self.load_year(year_number))
+            candidates = list(self._events_by_id.values())
 
         def in_range(event: TimelineEvent) -> bool:
             if not include_archived and event.archived:
+                return False
+            if year is not None and not str(getattr(event, "date", "")).startswith(str(year)):
                 return False
             if tags and not set(tags).intersection(event.tags):
                 return False
@@ -79,7 +118,7 @@ class TimelineManager:
                 return False
             return True
 
-        return [event for event in candidates if in_range(event)]
+        return sorted((event for event in candidates if in_range(event)), key=lambda e: e.date)
 
     def _resolve_period_range(self, period: str, reference_date: Optional[date] = None) -> tuple[str, str]:
         """Translate a named period into an ISO date range inclusive of the reference date."""
@@ -130,6 +169,7 @@ class TimelineManager:
                 updated.append(item)
             if archived_event:
                 self._save_year(year, updated)
+                self._refresh_indexes()
                 return archived_event
         return None
 
@@ -152,4 +192,5 @@ class TimelineManager:
                 archived=corrected_event.archived,
             )
         self.add_event(corrected)
+        self._refresh_indexes()
         return corrected
