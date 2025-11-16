@@ -103,6 +103,7 @@ Grant `select/insert/update` on both tables to the `service_role` used by the AP
 | `/api/timeline/tags` | GET | Tag cloud metadata |
 | `/api/summary` | POST | Date range summary (weekly digest, etc.) |
 | `/api/summary/reflect` | POST | GPT reflect mode; analyze a month, entry, or give advice |
+| `/api/evolution` | GET | Dynamic persona insights, echoes, and era nudges based on recent entries |
 
 All endpoints expect a Supabase auth token via `Authorization: Bearer <access_token>` header.
 
@@ -114,6 +115,7 @@ All endpoints expect a Supabase auth token via `Authorization: Bearer <access_to
 - Semantic search is backed by pgvector embeddings; pass `?semantic=true&search=...` to `/api/entries` to fetch cosine-similar memories.
 - Voice-to-entry uploads use Whisper to transcribe and GPT to normalize the entry.
 - Reflect Mode (`/api/summary/reflect`) packages recent entries into a persona-aware insight.
+- **Evolving Persona Mode** (`/api/evolution`) analyzes your recent moods, tags, and chapters to propose tone shifts, echo past moments, and suggest the next era title for your lorekeeper persona.
 
 ### Frontend Highlights
 

@@ -2,8 +2,12 @@ import { format, parseISO, startOfDay } from 'date-fns';
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../logger';
+import type { ChapterTimeline, JournalQuery, MemoryEntry, MemorySource, MonthGroup } from '../types';
+import { chapterService } from './chapterService';
+import { embeddingService } from './embeddingService';
 import type {
   ChapterTimeline,
+  EntryRelationship,
   JournalQuery,
   MemoryEntry,
   MemorySource,
@@ -13,6 +17,7 @@ import type {
 import { chapterService } from './chapterService';
 import { correctionService } from './correctionService';
 import { embeddingService } from './embeddingService';
+import { peoplePlacesService } from './peoplePlacesService';
 import { supabaseAdmin } from './supabaseClient';
 
 export type SaveEntryPayload = {
@@ -25,11 +30,16 @@ export type SaveEntryPayload = {
   summary?: string | null;
   source?: MemorySource;
   metadata?: Record<string, unknown>;
+  relationships?: EntryRelationship[];
 };
 
 class MemoryService {
   async saveEntry(payload: SaveEntryPayload): Promise<MemoryEntry> {
     const isEncrypted = Boolean((payload.metadata as { encrypted?: boolean } | undefined)?.encrypted);
+    const metadata = { ...(payload.metadata ?? {}) } as Record<string, unknown>;
+    if (payload.relationships?.length) {
+      metadata.relationships = payload.relationships;
+    }
     const entry: MemoryEntry = {
       id: uuid(),
       user_id: payload.userId,
@@ -40,7 +50,7 @@ class MemoryService {
       mood: payload.mood ?? null,
       summary: payload.summary ?? null,
       source: payload.source ?? 'manual',
-      metadata: payload.metadata ?? {}
+      metadata
     };
 
     if (!isEncrypted) {
@@ -56,6 +66,12 @@ class MemoryService {
     if (error) {
       logger.error({ error }, 'Failed to save entry');
       throw error;
+    }
+
+    try {
+      await peoplePlacesService.recordEntitiesForEntry(entry, payload.relationships);
+    } catch (serviceError) {
+      logger.warn({ serviceError }, 'Entry saved but failed to track people/places');
     }
 
     return entry;
