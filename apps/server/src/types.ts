@@ -135,3 +135,37 @@ export type PeoplePlacesStats = {
   mostMentioned: { id: string; name: string; total_mentions: number; type: 'person' | 'place' }[];
   topRelationships: Partial<Record<RelationshipTag, number>>;
 };
+
+export type MemoryGraphNodeType = 'event' | 'person' | 'place' | 'tag' | 'theme' | 'chapter';
+
+export type MemoryGraphEdgeType =
+  | 'co_occurrence'
+  | 'emotional'
+  | 'frequency'
+  | 'sentiment_shift'
+  | 'temporal';
+
+export type MemoryGraphNode = {
+  id: string;
+  type: MemoryGraphNodeType;
+  label: string;
+  weight?: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type MemoryGraphEdge = {
+  source: string;
+  target: string;
+  type: MemoryGraphEdgeType;
+  weight: number;
+  firstSeen: string;
+  lastSeen: string;
+  recency: number;
+  context?: Record<string, unknown>;
+};
+
+export type MemoryGraph = {
+  nodes: MemoryGraphNode[];
+  edges: MemoryGraphEdge[];
+  generatedAt: string;
+};
