@@ -11,6 +11,24 @@ Lore Keeper is an AI-powered journaling platform that blends Supabase auth, GPT-
 - **Frontend**: React + Vite, Tailwind, shadcn-inspired UI primitives, Zustand state helpers
 - **Backend**: Express + TypeScript, OpenAI GPT-4, Supabase/Postgres for storage, cron-ready jobs
 - **Auth & DB**: Supabase Auth + Supabase/Postgres tables for `journal_entries` and `daily_summaries`
+- **Persona Engine**: Deterministic Omega Persona Engine that blends identity arcs, seasonal trends, and emotional slopes into a live persona state
+
+## Omega Persona Engine
+
+The new persona layer keeps Lore Keeper's assistant aligned with who the user is *right now*.
+
+- **Python core**: `lorekeeper/persona` derives persona versions, motifs, and tone based on identity, emotional slopes, and seasonal arcs.
+- **Behavior rules**: Lightweight heuristics translate persona state into deterministic tone and language guidance.
+- **API**: `/api/persona`, `/api/persona/update`, and `/api/persona/description` expose persona state to the web app and other services.
+- **UI**: `/persona` page visualizes the current persona, motifs, tone profile, and recent evolution.
+
+Architecture sketch:
+
+```
+Timeline → IdentityEngine → OmegaPersonaEngine → Persona Rules → API/Chat UI
+                  ↑                 ↓
+            SeasonEngine      Daily/Weekly Briefings
+```
 
 ## Getting Started
 

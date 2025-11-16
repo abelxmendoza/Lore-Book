@@ -9,9 +9,22 @@ A minimal, drift-proof timeline system that keeps every life event as an immutab
   event_schema.py
   timeline_manager.py
   agent_timeline_interface.py
+  persona/               # Omega Persona Engine (state, rules, templates)
   timeline/                # Year-sharded JSON files live here
   test_timeline.py
 ```
+
+## Omega Persona Engine
+
+The persona package anchors the user-facing AI voice in identity, seasonal arcs, and emotional trajectories. It layers on top of
+the IdentityEngine and SeasonEngine to compute a `PersonaState` with motifs, tone guidance, and behavioral biases.
+
+- `persona_engine.py` exposes `OmegaPersonaEngine`, which derives persona versions, motifs, behavioral slopes, and a narrative description.
+- `persona_state.py` defines the persisted persona snapshot structure.
+- `persona_rules.py` turns persona state into deterministic guidance for tone, language, and goal alignment.
+- `templates/` includes markdown/JSON stubs for persona description, motifs, and voice defaults.
+
+Use it alongside onboarding, saga, season, and chat flows to keep replies aligned to the user's current identity arc.
 
 ## Event Schema
 
