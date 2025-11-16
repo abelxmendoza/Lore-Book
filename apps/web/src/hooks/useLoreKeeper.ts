@@ -27,6 +27,29 @@ export type Chapter = {
   summary?: string | null;
 };
 
+export type ChapterFacet = { label: string; score: number };
+
+export type ChapterProfile = Chapter & {
+  entry_ids: string[];
+  timeline: TimelineGroup[];
+  emotion_cloud: ChapterFacet[];
+  top_tags: ChapterFacet[];
+  chapter_traits: string[];
+  featured_people: string[];
+  featured_places: string[];
+};
+
+export type ChapterCandidate = {
+  id: string;
+  chapter_title: string;
+  start_date: string;
+  end_date: string;
+  summary: string;
+  chapter_traits: string[];
+  entry_ids: string[];
+  confidence: number;
+};
+
 export type TimelineResponse = {
   chapters: (Chapter & { months: TimelineGroup[] })[];
   unassigned: TimelineGroup[];
@@ -63,12 +86,27 @@ export const useLoreKeeper = () => {
     }
   });
   const [timeline, setTimeline] = useState<TimelineResponse>({ chapters: [], unassigned: [] });
-  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chapters, setChapters] = useState<ChapterProfile[]>([]);
+  const [chapterCandidates, setChapterCandidates] = useState<ChapterCandidate[]>([]);
   const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
   const [answer, setAnswer] = useState('');
   const [reflection, setReflection] = useState('');
   const [searchResults, setSearchResults] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const hydrateChapter = useCallback(
+    (chapter: Chapter): ChapterProfile => ({
+      ...chapter,
+      entry_ids: [],
+      timeline: [],
+      emotion_cloud: [],
+      top_tags: [],
+      chapter_traits: [],
+      featured_people: [],
+      featured_places: []
+    }),
+    []
+  );
 
   const refreshEntries = useCallback(async () => {
     const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries');
@@ -85,8 +123,9 @@ export const useLoreKeeper = () => {
   }, []);
 
   const refreshChapters = useCallback(async () => {
-    const data = await fetchJson<{ chapters: Chapter[] }>('/api/chapters');
+    const data = await fetchJson<{ chapters: ChapterProfile[]; candidates?: ChapterCandidate[] }>('/api/chapters');
     setChapters(data.chapters);
+    setChapterCandidates(data.candidates ?? []);
   }, []);
 
   const createEntry = useCallback(async (content: string, overrides?: Partial<JournalEntry>) => {
@@ -175,10 +214,10 @@ export const useLoreKeeper = () => {
         method: 'POST',
         body: JSON.stringify(payload)
       });
-      setChapters((prev) => [data.chapter, ...prev]);
+      setChapters((prev) => [hydrateChapter(data.chapter), ...prev]);
       return data.chapter;
     },
-    []
+    [hydrateChapter]
   );
 
   const summarizeChapter = useCallback(async (chapterId: string) => {
@@ -214,6 +253,7 @@ export const useLoreKeeper = () => {
     tags,
     timelineCount,
     chapters,
+    chapterCandidates,
     answer,
     reflection,
     searchResults,

@@ -13,6 +13,7 @@ import { useLoreKeeper } from '../hooks/useLoreKeeper';
 import { Button } from '../components/ui/button';
 import { ChaptersList } from '../components/ChaptersList';
 import { CreateChapterModal } from '../components/CreateChapterModal';
+import { ChapterViewer } from '../components/ChapterViewer';
 
 const formatRange = (days = 7) => {
   const end = new Date();
@@ -35,6 +36,7 @@ const AppContent = () => {
     createEntry,
     createChapter,
     chapters,
+    chapterCandidates,
     summarizeChapter,
     summarize,
     loading,
@@ -47,7 +49,6 @@ const AppContent = () => {
     reflect,
     reflection,
     uploadVoiceEntry
-    timelineCount
   } = useLoreKeeper();
   const [summary, setSummary] = useState('');
   const [rangeLabel, setRangeLabel] = useState(formatRange().label);
@@ -103,7 +104,6 @@ const AppContent = () => {
               chapters={chapters}
               onSave={async (content, options) => {
                 await createEntry(content, { chapter_id: options?.chapterId ?? null, metadata: options?.metadata });
-                await createEntry(content, { chapter_id: options?.chapterId ?? null });
                 await Promise.all([refreshEntries(), refreshTimeline()]);
               }}
               onAsk={async (content) => {
@@ -173,6 +173,7 @@ const AppContent = () => {
             </div>
           </div>
         </div>
+        <ChapterViewer chapters={chapters} candidates={chapterCandidates} onRefresh={refreshChapters} />
         <div className="grid gap-6 lg:grid-cols-2">
           <ChatPanel
             answer={answer}
