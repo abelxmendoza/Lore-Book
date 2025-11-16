@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { fetchJson } from '../lib/api';
 import { supabase } from '../lib/supabase';
 
 export type JournalEntry = {
@@ -32,6 +33,21 @@ export type TimelineResponse = {
   unassigned: TimelineGroup[];
 };
 
+export type EvolutionInsights = {
+  personaTitle: string;
+  personaTraits: string[];
+  toneShift: string;
+  emotionalPatterns: string[];
+  tagTrends: {
+    top: string[];
+    rising: string[];
+    fading: string[];
+  };
+  echoes: { title: string; referenceDate: string; quote?: string }[];
+  reminders: string[];
+  nextEra: string;
+};
+
 const fetchJson = async <T>(input: RequestInfo, init?: RequestInit): Promise<T> => {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -43,12 +59,32 @@ const fetchJson = async <T>(input: RequestInfo, init?: RequestInit): Promise<T> 
     },
     ...init
   });
+export type ChapterFacet = { label: string; score: number };
 
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(error.error ?? 'Request failed');
-  }
-  return res.json();
+export type ChapterProfile = Chapter & {
+  entry_ids: string[];
+  timeline: TimelineGroup[];
+  emotion_cloud: ChapterFacet[];
+  top_tags: ChapterFacet[];
+  chapter_traits: string[];
+  featured_people: string[];
+  featured_places: string[];
+};
+
+export type ChapterCandidate = {
+  id: string;
+  chapter_title: string;
+  start_date: string;
+  end_date: string;
+  summary: string;
+  chapter_traits: string[];
+  entry_ids: string[];
+  confidence: number;
+};
+
+export type TimelineResponse = {
+  chapters: (Chapter & { months: TimelineGroup[] })[];
+  unassigned: TimelineGroup[];
 };
 
 export const useLoreKeeper = () => {
@@ -64,11 +100,28 @@ export const useLoreKeeper = () => {
   });
   const [timeline, setTimeline] = useState<TimelineResponse>({ chapters: [], unassigned: [] });
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chapters, setChapters] = useState<ChapterProfile[]>([]);
+  const [chapterCandidates, setChapterCandidates] = useState<ChapterCandidate[]>([]);
   const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
   const [answer, setAnswer] = useState('');
   const [reflection, setReflection] = useState('');
   const [searchResults, setSearchResults] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [evolution, setEvolution] = useState<EvolutionInsights | null>(null);
+
+  const hydrateChapter = useCallback(
+    (chapter: Chapter): ChapterProfile => ({
+      ...chapter,
+      entry_ids: [],
+      timeline: [],
+      emotion_cloud: [],
+      top_tags: [],
+      chapter_traits: [],
+      featured_people: [],
+      featured_places: []
+    }),
+    []
+  );
 
   const refreshEntries = useCallback(async () => {
     const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries');
@@ -87,6 +140,14 @@ export const useLoreKeeper = () => {
   const refreshChapters = useCallback(async () => {
     const data = await fetchJson<{ chapters: Chapter[] }>('/api/chapters');
     setChapters(data.chapters);
+  }, []);
+
+  const refreshEvolution = useCallback(async () => {
+    const data = await fetchJson<{ insights: EvolutionInsights }>('/api/evolution');
+    setEvolution(data.insights);
+    const data = await fetchJson<{ chapters: ChapterProfile[]; candidates?: ChapterCandidate[] }>('/api/chapters');
+    setChapters(data.chapters);
+    setChapterCandidates(data.candidates ?? []);
   }, []);
 
   const createEntry = useCallback(async (content: string, overrides?: Partial<JournalEntry>) => {
@@ -179,6 +240,10 @@ export const useLoreKeeper = () => {
       return data.chapter;
     },
     []
+      setChapters((prev) => [hydrateChapter(data.chapter), ...prev]);
+      return data.chapter;
+    },
+    [hydrateChapter]
   );
 
   const summarizeChapter = useCallback(async (chapterId: string) => {
@@ -192,6 +257,8 @@ export const useLoreKeeper = () => {
     refreshEntries();
     refreshTimeline();
     refreshChapters();
+    refreshEvolution();
+  }, [refreshEntries, refreshTimeline, refreshChapters, refreshEvolution]);
   }, [refreshEntries, refreshTimeline, refreshChapters]);
 
   useEffect(() => {
@@ -216,6 +283,10 @@ export const useLoreKeeper = () => {
     chapters,
     answer,
     reflection,
+    evolution,
+    chapterCandidates,
+    answer,
+    reflection,
     searchResults,
     askLoreKeeper,
     createEntry,
@@ -226,6 +297,7 @@ export const useLoreKeeper = () => {
     refreshEntries,
     refreshTimeline,
     refreshChapters,
+    refreshEvolution,
     summarize,
     summarizeChapter,
     loading

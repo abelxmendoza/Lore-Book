@@ -67,6 +67,29 @@ export type Chapter = {
   updated_at?: string;
 };
 
+export type ChapterFacet = { label: string; score: number };
+
+export type ChapterProfile = Chapter & {
+  entry_ids: string[];
+  timeline: MonthGroup[];
+  emotion_cloud: ChapterFacet[];
+  top_tags: ChapterFacet[];
+  chapter_traits: string[];
+  featured_people: string[];
+  featured_places: string[];
+};
+
+export type ChapterCandidate = {
+  id: string;
+  chapter_title: string;
+  start_date: string;
+  end_date: string;
+  summary: string;
+  chapter_traits: string[];
+  entry_ids: string[];
+  confidence: number;
+};
+
 export type ChapterInput = {
   title: string;
   startDate: string;
@@ -109,12 +132,82 @@ export type MemoryLadder = {
   monthly: LadderRung[];
 };
 
+export type MemoryLadderInterval = 'daily' | 'weekly' | 'monthly';
+
+export type MemoryLadderEntry = {
+  id: string;
+  title: string;
+  date: string;
+  key_tags: string[];
+  emotion_summary?: string | null;
+  echoes: string[];
+  traits_detected: string[];
+  content_preview: string;
+  corrected_content?: string;
+  summary?: string | null;
+  resolution_notes?: string;
+  corrections?: EntryCorrection[];
+  source: MemorySource;
+};
+
+export type MemoryLadderGroup = {
+  label: string;
+  start: string;
+  end: string;
+  entries: MemoryLadderEntry[];
+};
+
 export type LoreKeeperPrompt = {
   message: string;
   context?: string;
   date?: string;
 };
 
+export type MemoryGraphNodeType = 'entry' | 'person' | 'place' | 'event' | 'tag' | 'theme';
+
+export type MemoryGraphNode = {
+  id: string;
+  type: MemoryGraphNodeType;
+  label: string;
+  weight: number;
+  firstSeen: string;
+  lastSeen: string;
+  sentiments?: {
+    score: number;
+    samples: string[];
+  };
+  meta?: Record<string, unknown>;
+};
+
+export type MemoryGraphEdge = {
+  id: string;
+  from: string;
+  to: string;
+  weight: number;
+  reasons: string[];
+  lastSeen: string;
+  decay: number;
+  sentimentImpact?: number;
+};
+
+export type MemoryGraph = {
+  nodes: MemoryGraphNode[];
+  edges: MemoryGraphEdge[];
+  generatedAt: string;
+  entryCount: number;
+export type EvolutionInsights = {
+  personaTitle: string;
+  personaTraits: string[];
+  toneShift: string;
+  emotionalPatterns: string[];
+  tagTrends: {
+    top: string[];
+    rising: string[];
+    fading: string[];
+  };
+  echoes: Array<{ title: string; referenceDate: string; quote?: string }>;
+  reminders: string[];
+  nextEra: string;
 export type PeoplePlaceEntity = {
   id: string;
   user_id: string;
