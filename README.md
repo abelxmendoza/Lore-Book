@@ -11,6 +11,7 @@ Lore Keeper is an AI-powered journaling platform that blends Supabase auth, GPT-
 - **Frontend**: React + Vite, Tailwind, shadcn-inspired UI primitives, Zustand state helpers
 - **Backend**: Express + TypeScript, OpenAI GPT-4, Supabase/Postgres for storage, cron-ready jobs
 - **Auth & DB**: Supabase Auth + Supabase/Postgres tables for `journal_entries` and `daily_summaries`
+- **Insight Engine**: Python-based signal detector that clusters embeddings, surfaces motifs, and predicts new arcs
 - **Persona Engine**: Deterministic Omega Persona Engine that blends identity arcs, seasonal trends, and emotional slopes into a live persona state
 
 ## Omega Persona Engine
@@ -50,6 +51,39 @@ Fill out `.env` based on `.env.example` before running either service. The `.env
 - `X_API_BEARER_TOKEN` - (Optional) Enables syncing X posts into your lore timeline
 
 **Note:** The backend will log warnings for missing environment variables but will attempt to start in development mode. Ensure all required variables are set for full functionality.
+
+## Insight Engine
+
+The InsightEngine (`lorekeeper/insight_engine.py`) ingests timeline events, arcs, identity snapshots, and optional character/location metadata. It builds lightweight embeddings, performs quick clustering, and emits structured insights for:
+
+- **Patterns**: thematic clusters based on embeddings
+- **Correlations**: co-occurring tags and recurring character mentions
+- **Cycles**: weekly/seasonal rhythms inferred from timestamps
+- **Motifs**: frequently resurfacing tokens
+- **Identity Shifts**: changes in stated traits over time
+- **Predictions**: rising tags that may define the next arc
+
+Data classes for these outputs live in `lorekeeper/insights_types.py` so they can be reused across agents and UI panels.
+
+## Insight API Routes
+
+- `GET /api/insights/recent` — run the engine on the latest timeline events.
+- `GET /api/insights/monthly/:year/:month` — scoped insights for a calendar month.
+- `GET /api/insights/yearly/:year` — yearly rollups.
+- `POST /api/insights/predict` — accept custom payloads (timeline/arcs/identity) to forecast upcoming arcs.
+
+## Example Insight Output
+
+```
+{
+  "patterns": [{"description": "Cluster 1 centers around running, health"}],
+  "correlations": [{"variables": ["health", "running"], "confidence": 0.7}],
+  "cycles": [{"period": "weekly", "evidence": ["3 entries on weekday 0"]}],
+  "motifs": [{"motif": "running", "action_suggestion": "Collect representative stories"}],
+  "identity_shifts": [{"shift": "Identity markers evolved: gained coach; less emphasis on runner"}],
+  "predictions": [{"description": "Design is gaining momentum and may define the next arc."}]
+}
+```
 
 ### Required Database Tables
 

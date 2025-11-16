@@ -22,6 +22,7 @@ import { peoplePlacesRouter } from './routes/peoplePlaces';
 import { locationsRouter } from './routes/locations';
 import { xRouter } from './routes/x';
 import { tasksRouter } from './routes/tasks';
+import { insightsRouter } from './routes/insights';
 import { authMiddleware } from './middleware/auth';
 import { rateLimitMiddleware } from './middleware/rateLimit';
 import { inputSanitizer } from './middleware/sanitize';
@@ -69,6 +70,7 @@ apiRouter.use('/x', xRouter);
 apiRouter.use('/tasks', tasksRouter);
 apiRouter.use('/account', accountRouter);
 apiRouter.use('/onboarding', onboardingRouter);
+apiRouter.use('/insights', insightsRouter);
 apiRouter.use('/persona', personaRouter);
 
 app.use('/api', apiRouter);
