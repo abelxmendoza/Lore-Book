@@ -27,7 +27,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     return res.status(400).json(parsed.error.flatten());
   }
 
-  const entries = await memoryService.searchEntries(req.user!.id, {
+  const entries = await memoryService.searchEntriesWithCorrections(req.user!.id, {
     from: parsed.data.from,
     to: parsed.data.to,
     tag: parsed.data.tags?.[0]
@@ -44,22 +44,22 @@ router.post('/reflect', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   const { mode, entryId, month, persona, prompt } = parsed.data;
-  let entries = [] as Awaited<ReturnType<typeof memoryService.searchEntries>>;
+  let entries = [] as Awaited<ReturnType<typeof memoryService.searchEntriesWithCorrections>>;
 
   if (mode === 'entry' && entryId) {
-    const entry = await memoryService.getEntry(req.user!.id, entryId);
+    const entry = await memoryService.getResolvedEntry(req.user!.id, entryId);
     entries = entry ? [entry] : [];
   } else if (mode === 'month' && month) {
     const start = new Date(`${month}-01T00:00:00Z`);
     const end = new Date(start);
     end.setMonth(start.getMonth() + 1);
-    entries = await memoryService.searchEntries(req.user!.id, {
+    entries = await memoryService.searchEntriesWithCorrections(req.user!.id, {
       from: start.toISOString(),
       to: end.toISOString(),
       limit: 120
     });
   } else {
-    entries = await memoryService.searchEntries(req.user!.id, { limit: 50 });
+    entries = await memoryService.searchEntriesWithCorrections(req.user!.id, { limit: 50 });
   }
 
   const defaultPrompt =

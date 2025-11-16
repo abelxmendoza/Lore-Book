@@ -2,8 +2,16 @@ import { format, parseISO, startOfDay } from 'date-fns';
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../logger';
-import type { ChapterTimeline, JournalQuery, MemoryEntry, MemorySource, MonthGroup } from '../types';
+import type {
+  ChapterTimeline,
+  JournalQuery,
+  MemoryEntry,
+  MemorySource,
+  MonthGroup,
+  ResolvedMemoryEntry
+} from '../types';
 import { chapterService } from './chapterService';
+import { correctionService } from './correctionService';
 import { embeddingService } from './embeddingService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -117,6 +125,11 @@ class MemoryService {
     return data as MemoryEntry;
   }
 
+  async getResolvedEntry(userId: string, entryId: string): Promise<ResolvedMemoryEntry | null> {
+    const entry = await this.getEntry(userId, entryId);
+    return entry ? correctionService.applyCorrections(entry) : null;
+  }
+
   async semanticSearchEntries(
     userId: string,
     search: string,
@@ -138,6 +151,11 @@ class MemoryService {
     }
 
     return (data as MemoryEntry[]) ?? [];
+  }
+
+  async searchEntriesWithCorrections(userId: string, query: JournalQuery = {}): Promise<ResolvedMemoryEntry[]> {
+    const entries = await this.searchEntries(userId, query);
+    return correctionService.applyCorrectionsToEntries(entries);
   }
 
   private groupByMonth(entries: MemoryEntry[]): MonthGroup[] {
