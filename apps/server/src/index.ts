@@ -28,6 +28,7 @@ import { inputSanitizer } from './middleware/sanitize';
 import { secureHeaders } from './middleware/secureHeaders';
 import { auditLogger } from './middleware/auditLogger';
 import { accountRouter } from './routes/account';
+import { onboardingRouter } from './routes/onboarding';
 
 assertConfig();
 
@@ -66,6 +67,7 @@ apiRouter.use('/locations', locationsRouter);
 apiRouter.use('/x', xRouter);
 apiRouter.use('/tasks', tasksRouter);
 apiRouter.use('/account', accountRouter);
+apiRouter.use('/onboarding', onboardingRouter);
 
 app.use('/api', apiRouter);
 
