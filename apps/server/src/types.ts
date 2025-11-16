@@ -11,6 +11,8 @@ export type MemoryEntry = {
   summary?: string | null;
   source: MemorySource;
   metadata?: Record<string, unknown>;
+  embedding?: number[] | null;
+  similarity?: number;
   created_at?: string;
   updated_at?: string;
 };
@@ -22,6 +24,37 @@ export type JournalQuery = {
   from?: string;
   to?: string;
   limit?: number;
+  semantic?: boolean;
+  threshold?: number;
+};
+
+export type MonthGroup = {
+  month: string;
+  entries: MemoryEntry[];
+};
+
+export type Chapter = {
+  id: string;
+  user_id: string;
+  title: string;
+  start_date: string;
+  end_date?: string | null;
+  description?: string | null;
+  summary?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ChapterInput = {
+  title: string;
+  startDate: string;
+  endDate?: string | null;
+  description?: string | null;
+};
+
+export type ChapterTimeline = {
+  chapters: (Chapter & { months: MonthGroup[] })[];
+  unassigned: MonthGroup[];
 };
 
 export type LoreKeeperPrompt = {

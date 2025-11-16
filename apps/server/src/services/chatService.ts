@@ -9,13 +9,14 @@ import { extractTags, shouldPersistMessage } from '../utils/keywordDetector';
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
 class ChatService {
-  async askLoreKeeper(userId: string, message: string) {
+  async askLoreKeeper(userId: string, message: string, persona?: string) {
     const relatedEntries = await memoryService.searchEntries(userId, { search: message, limit: 12 });
     const context = relatedEntries
       .map((entry) => `Date: ${entry.date}\nSummary: ${entry.summary ?? entry.content}`)
       .join('\n---\n');
 
-    const system = `You are Lore Keeper, an archivist AI that references the user's journaling history. Answer succinctly while citing dates when possible.`;
+    const name = persona ?? 'The Archivist';
+    const system = `${name} is a loyal lorekeeper that references the user's journaling history. Answer succinctly while citing dates when possible and keep responses reflective.`;
 
     const messages = [
       { role: 'system' as const, content: system },
@@ -46,7 +47,11 @@ class ChatService {
     return { answer, relatedEntries };
   }
 
-  async summarizeEntries(userId: string, entries: MemoryEntry[]) {
+  async summarizeEntries(
+    userId: string,
+    entries: MemoryEntry[],
+    chapterContext?: { title: string; description?: string }
+  ) {
     if (!entries.length) {
       return 'No entries found for that time range yet.';
     }
@@ -62,9 +67,13 @@ class ChatService {
         messages: [
           {
             role: 'system',
-            content: 'Summarize the following journal entries in 5 bullet points and mention any chapters or milestones.'
+            content:
+              'Summarize the following journal entries in 5 bullet points and mention any chapters or milestones. Include the chapter context if provided.'
           },
-          { role: 'user', content: prompt }
+          {
+            role: 'user',
+            content: `${chapterContext ? `Chapter: ${chapterContext.title}\n${chapterContext.description ?? ''}\n` : ''}${prompt}`
+          }
         ]
       });
 
@@ -73,6 +82,37 @@ class ChatService {
       logger.error({ error }, 'Failed to summarize entries');
       throw error;
     }
+  }
+
+  async reflectOnEntries(
+    entries: MemoryEntry[],
+    prompt: string,
+    persona = 'The Archivist'
+  ) {
+    if (!entries.length) {
+      return 'No entries available for reflection yet.';
+    }
+
+    const context = entries
+      .map((entry) => `Date: ${entry.date}\nTags: ${(entry.tags || []).join(', ')}\n${entry.summary ?? entry.content}`)
+      .join('\n---\n');
+
+    const completion = await openai.chat.completions.create({
+      model: config.defaultModel,
+      temperature: 0.5,
+      messages: [
+        {
+          role: 'system',
+          content: `${persona} is a therapeutic, reflective guide. Provide insights, patterns, and advice grounded in the entries. Avoid generic platitudes.`
+        },
+        {
+          role: 'user',
+          content: `${prompt}\n\nJournal context:\n${context}`
+        }
+      ]
+    });
+
+    return completion.choices[0]?.message?.content ?? 'No reflection available right now.';
   }
 }
 

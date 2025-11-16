@@ -12,6 +12,7 @@ type EnvConfig = {
   supabaseAnonKey: string;
   supabaseServiceRoleKey: string;
   defaultModel: string;
+  embeddingModel: string;
 };
 
 export const config: EnvConfig = {
@@ -20,7 +21,8 @@ export const config: EnvConfig = {
   supabaseUrl: process.env.SUPABASE_URL ?? '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-  defaultModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini'
+  defaultModel: process.env.OPENAI_API_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+  embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small'
 };
 
 export const assertConfig = () => {

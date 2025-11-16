@@ -11,6 +11,7 @@ const router = Router();
 const chatSchema = z.object({
   message: z.string().min(2),
   save: z.boolean().optional(),
+  persona: z.string().optional(),
   metadata: z.record(z.any()).optional()
 });
 
@@ -22,7 +23,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
   const { answer, relatedEntries } = await chatService.askLoreKeeper(
     req.user!.id,
-    parsed.data.message
+    parsed.data.message,
+    parsed.data.persona
   );
 
   const shouldSave = parsed.data.save ?? shouldPersistMessage(parsed.data.message);
