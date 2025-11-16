@@ -102,6 +102,31 @@ export type MemoryLadder = {
   monthly: LadderRung[];
 };
 
+export type MemoryLadderInterval = 'daily' | 'weekly' | 'monthly';
+
+export type MemoryLadderEntry = {
+  id: string;
+  title: string;
+  date: string;
+  key_tags: string[];
+  emotion_summary?: string | null;
+  echoes: string[];
+  traits_detected: string[];
+  content_preview: string;
+  corrected_content?: string;
+  summary?: string | null;
+  resolution_notes?: string;
+  corrections?: EntryCorrection[];
+  source: MemorySource;
+};
+
+export type MemoryLadderGroup = {
+  label: string;
+  start: string;
+  end: string;
+  entries: MemoryLadderEntry[];
+};
+
 export type LoreKeeperPrompt = {
   message: string;
   context?: string;
