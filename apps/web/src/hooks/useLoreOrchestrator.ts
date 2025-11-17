@@ -1,26 +1,51 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
 import api from "../api";
+import { useOrchestratorStream, type OrchestratorSnapshot } from "./useOrchestratorStream";
+
+const createInitialState = (): OrchestratorSnapshot => ({
+  summary: null,
+  timeline: null,
+  identity: null,
+  continuity: null,
+  saga: null,
+  fabric: null,
+  tasks: null,
+});
 
 export function useLoreOrchestrator() {
-  const [summary, setSummary] = useState(null);
-  const [timeline, setTimeline] = useState(null);
-  const [identity, setIdentity] = useState(null);
-  const [continuity, setContinuity] = useState(null);
-  const [saga, setSaga] = useState(null);
+  const [orchestratorState, setOrchestratorState] = useState<OrchestratorSnapshot>(createInitialState);
+  const { lastDelta, applyDeltaToState } = useOrchestratorStream();
 
   useEffect(() => {
-    api.orchestrator.summary().then(setSummary);
-    api.orchestrator.timeline().then(setTimeline);
-    api.orchestrator.identity().then(setIdentity);
-    api.orchestrator.continuity().then(setContinuity);
-    api.orchestrator.saga().then(setSaga);
+    Promise.all([
+      api.orchestrator.summary(),
+      api.orchestrator.timeline(),
+      api.orchestrator.identity(),
+      api.orchestrator.continuity(),
+      api.orchestrator.saga(),
+    ]).then(([summary, timeline, identity, continuity, saga]) => {
+      setOrchestratorState((prev) => ({ ...prev, summary, timeline, identity, continuity, saga }));
+    });
   }, []);
 
-  return {
-    summary,
-    timeline,
-    identity,
-    continuity,
-    saga,
-  };
+  useEffect(() => {
+    if (!lastDelta) return;
+    setOrchestratorState((prev) => applyDeltaToState(prev, lastDelta));
+  }, [lastDelta, applyDeltaToState]);
+
+  const derived = useMemo(
+    () => ({
+      summary: orchestratorState.summary,
+      timeline: orchestratorState.timeline,
+      identity: orchestratorState.identity,
+      continuity: orchestratorState.continuity,
+      saga: orchestratorState.saga,
+      orchestratorState,
+      lastDelta,
+    }),
+    [lastDelta, orchestratorState]
+  );
+
+  return derived;
 }
