@@ -36,6 +36,7 @@ import { autopilotRouter } from './routes/autopilot';
 import { personaRouter } from './routes/persona';
 import { orchestratorRouter } from './routes/orchestrator';
 import { continuityRouter } from './routes/continuity';
+import { integrationsRouter } from './routes/integrations';
 import { githubRouter } from './routes/github';
 import { journalRouter } from './routes/journal';
 import { charactersRouter } from './routes/characters';
@@ -43,6 +44,7 @@ import { notebookRouter } from './routes/notebook';
 import { identityRouter } from './routes/identity';
 import orchestratorRouter from './routes/orchestrator';
 import { externalHubRouter } from './external/external_hub.router';
+import { harmonizationRouter } from './harmonization/harmonization.router';
 
 assertConfig();
 
@@ -96,11 +98,13 @@ apiRouter.use('/insights', insightsRouter);
 apiRouter.use('/persona', personaRouter);
 apiRouter.use('/orchestrator', orchestratorRouter);
 apiRouter.use('/continuity', continuityRouter);
+apiRouter.use('/integrations', integrationsRouter);
 apiRouter.use('/journal', journalRouter);
 apiRouter.use('/characters', charactersRouter);
 apiRouter.use('/', notebookRouter);
 apiRouter.use('/identity', identityRouter);
 apiRouter.use('/orchestrator', orchestratorRouter);
+apiRouter.use('/harmonization', harmonizationRouter);
 
 app.use('/api', apiRouter);
 
