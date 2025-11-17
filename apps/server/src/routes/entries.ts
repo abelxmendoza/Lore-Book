@@ -8,6 +8,7 @@ import { memoryService } from '../services/memoryService';
 import { tagService } from '../services/tagService';
 import { voiceService } from '../services/voiceService';
 import { extractTags, shouldPersistMessage } from '../utils/keywordDetector';
+import { emitDelta } from '../realtime/orchestratorEmitter';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -72,6 +73,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     relationships: parsed.data.relationships
   });
 
+  void emitDelta('timeline.add', { entry }, req.user!.id);
+
   res.status(201).json({ entry });
 });
 
@@ -103,6 +106,8 @@ router.post('/voice', requireAuth, upload.single('audio'), async (req: Authentic
     metadata: { transcript, source: 'voice' },
     source: 'manual'
   });
+
+  void emitDelta('timeline.add', { entry }, req.user!.id);
 
   res.status(201).json({ entry, transcript, formatted });
 });

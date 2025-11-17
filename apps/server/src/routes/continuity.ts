@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { emitDelta } from '../realtime/orchestratorEmitter';
 
 const router = Router();
 
@@ -69,7 +70,9 @@ router.get('/conflicts', requireAuth, async (_req: AuthenticatedRequest, res) =>
 
 router.post('/recompute', requireAuth, async (_req: AuthenticatedRequest, res) => {
   // Placeholder recompute hook. In a full build, this would invoke the Python continuity engine.
-  res.json({ state, refreshedAt: new Date().toISOString() });
+  const refreshedAt = new Date().toISOString();
+  void emitDelta('continuity.recompute', { state, refreshedAt }, _req.user!.id);
+  res.json({ state, refreshedAt });
 });
 
 router.get('/report', requireAuth, async (_req: AuthenticatedRequest, res) => {

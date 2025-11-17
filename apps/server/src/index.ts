@@ -39,6 +39,8 @@ import { continuityRouter } from './routes/continuity';
 import { journalRouter } from './routes/journal';
 import { charactersRouter } from './routes/characters';
 import { notebookRouter } from './routes/notebook';
+import { identityRouter } from './routes/identity';
+import orchestratorRouter from './routes/orchestrator';
 
 assertConfig();
 
@@ -88,6 +90,8 @@ apiRouter.use('/continuity', continuityRouter);
 apiRouter.use('/journal', journalRouter);
 apiRouter.use('/characters', charactersRouter);
 apiRouter.use('/', notebookRouter);
+apiRouter.use('/identity', identityRouter);
+apiRouter.use('/orchestrator', orchestratorRouter);
 
 app.use('/api', apiRouter);
 
