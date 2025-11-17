@@ -13,7 +13,6 @@ from .identity.identity_engine import IdentityEngine
 from .hqi_engine import HQIEngine, HQIResult, MemoryEdge, MemoryFabric, MemoryNode
 from .memory_fabric import MemoryFabric, FabricNode, FabricEdge
 from .agents import FabricAgent, BaseAgent
-from .autopilot_engine import AutopilotEngine
 from .autopilot_types import (
     DailyRecommendation,
     WeeklyStrategy,
@@ -56,6 +55,12 @@ __all__ = [
     "FabricEdge",
     "FabricAgent",
     "BaseAgent",
+    "DailyRecommendation",
+    "WeeklyStrategy",
+    "MonthlyCorrection",
+    "TransitionGuidance",
+    "RiskAlert",
+    "MomentumSignal",
     "InsightEngine",
     "PatternInsight",
     "CorrelationInsight",
