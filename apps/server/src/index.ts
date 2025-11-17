@@ -41,6 +41,7 @@ import { charactersRouter } from './routes/characters';
 import { notebookRouter } from './routes/notebook';
 import { identityRouter } from './routes/identity';
 import orchestratorRouter from './routes/orchestrator';
+import { harmonizationRouter } from './harmonization/harmonization.router';
 
 assertConfig();
 
@@ -92,6 +93,7 @@ apiRouter.use('/characters', charactersRouter);
 apiRouter.use('/', notebookRouter);
 apiRouter.use('/identity', identityRouter);
 apiRouter.use('/orchestrator', orchestratorRouter);
+apiRouter.use('/harmonization', harmonizationRouter);
 
 app.use('/api', apiRouter);
 
