@@ -184,3 +184,18 @@ def test_summary_includes_all_components(orchestrator):
     assert summary["autopilot"]["daily"]["next_action"] == "Draft chapter outline"
     assert len(summary["characters"]) == 2
     assert summary["saga"]["title"] == "Reclamation"
+import unittest
+
+from lorekeeper.orchestrator import LoreOrchestrator
+
+
+class TestOrchestrator(unittest.TestCase):
+    def test_summary(self):
+        orchestrator = LoreOrchestrator("demo")
+        summary = orchestrator.get_summary()
+        self.assertIn("identity", summary.identity)
+        self.assertIsNotNone(summary.persona)
+
+
+if __name__ == "__main__":
+    unittest.main()
