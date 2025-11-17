@@ -43,6 +43,7 @@ import { charactersRouter } from './routes/characters';
 import { notebookRouter } from './routes/notebook';
 import { identityRouter } from './routes/identity';
 import orchestratorRouter from './routes/orchestrator';
+import { externalHubRouter } from './external/external_hub.router';
 import { harmonizationRouter } from './harmonization/harmonization.router';
 
 assertConfig();
@@ -91,6 +92,7 @@ apiRouter.use('/agents', agentsRouter);
   apiRouter.use('/orchestrator', orchestratorRouter);
   apiRouter.use('/continuity', continuityRouter);
   apiRouter.use('/github', githubRouter);
+  apiRouter.use('/external-hub', externalHubRouter);
 apiRouter.use('/autopilot', autopilotRouter);
 apiRouter.use('/insights', insightsRouter);
 apiRouter.use('/persona', personaRouter);
