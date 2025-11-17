@@ -21,6 +21,7 @@ import { TaskEnginePanel } from '../components/TaskEnginePanel';
 import { useTaskEngine } from '../hooks/useTaskEngine';
 import { AccountSafetyPanel } from '../components/settings/AccountSafetyPanel';
 import { AgentPanel } from '../components/AgentPanel';
+import { NeonNotebook } from '../components/neon-notebook/NeonNotebook';
 
 const formatRange = (days = 7) => {
   const end = new Date();
@@ -154,6 +155,7 @@ const AppContent = () => {
         </header>
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-6">
+            <NeonNotebook />
             <JournalComposer
               loading={loading}
               chapters={chapters}
