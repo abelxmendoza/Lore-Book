@@ -89,13 +89,14 @@ class ChapterInsightsService {
   }
 
   async buildProfiles(userId: string): Promise<ChapterProfile[]> {
-    const [chapters, entries] = await Promise.all([
-      chapterService.listChapters(userId),
-      memoryService.searchEntries(userId, { limit: 400 })
-    ]);
-    const resolved = correctionService.applyCorrectionsToEntries(entries);
+    try {
+      const [chapters, entries] = await Promise.all([
+        chapterService.listChapters(userId),
+        memoryService.searchEntries(userId, { limit: 400 })
+      ]);
+      const resolved = correctionService.applyCorrectionsToEntries(entries);
 
-    return chapters.map((chapter) => {
+      return chapters.map((chapter) => {
       const chapterEntries = resolved.filter((entry) => entry.chapter_id === chapter.id);
       const { tagCounts, moodCounts, people, places } = this.extractCounts(chapterEntries);
       const traits = this.inferTraits(Array.from(tagCounts.keys()));
@@ -115,27 +116,36 @@ class ChapterInsightsService {
         timeline
       } satisfies ChapterProfile;
     });
+    } catch (error) {
+      // Return empty array on error (e.g., tables don't exist)
+      return [];
+    }
   }
 
   async detectCandidates(userId: string): Promise<ChapterCandidate[]> {
-    const entries = await memoryService.searchEntries(userId, { limit: 400 });
-    const resolved = correctionService.applyCorrectionsToEntries(entries).sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+    try {
+      const entries = await memoryService.searchEntries(userId, { limit: 400 });
+      const resolved = correctionService.applyCorrectionsToEntries(entries).sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
 
-    const candidates: MemoryEntry[][] = [];
-    resolved.forEach((entry) => {
-      const current = candidates.at(-1);
-      if (!current || this.shouldStartNewChapter(current[current.length - 1], entry)) {
-        candidates.push([entry]);
-        return;
-      }
-      current.push(entry);
-    });
+      const candidates: MemoryEntry[][] = [];
+      resolved.forEach((entry) => {
+        const current = candidates.at(-1);
+        if (!current || this.shouldStartNewChapter(current[current.length - 1], entry)) {
+          candidates.push([entry]);
+          return;
+        }
+        current.push(entry);
+      });
 
-    return candidates
-      .filter((group) => group.length >= 2)
-      .map((group, index) => this.toCandidate(group, index));
+      return candidates
+        .filter((group) => group.length >= 2)
+        .map((group, index) => this.toCandidate(group, index));
+    } catch (error) {
+      // Return empty array on error (e.g., tables don't exist)
+      return [];
+    }
   }
 
   private shouldStartNewChapter(prev: MemoryEntry, next: MemoryEntry): boolean {

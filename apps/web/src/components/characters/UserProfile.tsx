@@ -1,10 +1,30 @@
-import { useState, useEffect, useMemo } from 'react';
-import { User, Calendar, BookOpen, Users, Tag, TrendingUp, Sparkles, Clock, FileText, Heart, MapPin, Award, BarChart3 } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { User, Calendar, BookOpen, Users, Tag, TrendingUp, Sparkles, Clock, FileText, Heart, MapPin, Award, BarChart3, AlertCircle, Bug, Activity, Brain } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { fetchJson } from '../../lib/api';
-import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
-import { InsightsPanel } from '../InsightsPanel';
+import { IdentityPulseModal } from '../identity/IdentityPulseModal';
+import { InsightsModal } from '../InsightsModal';
+
+const DEBUG = true; // Set to false in production
+
+const debugLog = (component: string, message: string, data?: any) => {
+  if (DEBUG) {
+    console.log(`[UserProfile:${component}]`, message, data || '');
+  }
+};
+
+const debugError = (component: string, message: string, error: any) => {
+  console.error(`[UserProfile:${component}] ERROR:`, message, error);
+  if (DEBUG) {
+    console.error('Error details:', {
+      message: error?.message,
+      stack: error?.stack,
+      response: error?.response,
+      status: error?.status
+    });
+  }
+};
 
 type UserStats = {
   totalEntries: number;
@@ -31,56 +51,112 @@ export const UserProfile = () => {
   const [charactersLoaded, setCharactersLoaded] = useState(false);
   const [insights, setInsights] = useState<any>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [identityPulseModalOpen, setIdentityPulseModalOpen] = useState(false);
+  const [insightsModalOpen, setInsightsModalOpen] = useState(false);
 
   useEffect(() => {
+    debugLog('useEffect', 'Component mounted, loading initial data');
     loadCharacters();
     loadLanguageStyle();
     loadInsights();
   }, []);
 
   const loadInsights = async () => {
+    debugLog('loadInsights', 'Starting to load insights');
     setInsightsLoading(true);
+    setErrors(prev => ({ ...prev, insights: '' }));
     try {
       const result = await fetchJson<{ insights?: any }>('/api/insights/recent');
+      debugLog('loadInsights', 'Insights loaded successfully', { hasInsights: !!result.insights });
       setInsights(result.insights || result);
-    } catch (error) {
-      console.error('Failed to load insights:', error);
+    } catch (error: any) {
+      debugError('loadInsights', 'Failed to load insights', error);
       // Insights are optional, so don't fail if they're not available
       setInsights(null);
+      setErrors(prev => ({ 
+        ...prev, 
+        insights: error?.message || 'Failed to load insights (optional)' 
+      }));
     } finally {
       setInsightsLoading(false);
     }
   };
 
+  // Use refs to track previous values and prevent unnecessary reloads
+  const prevDataRef = useRef<{ entriesLength: number; charactersLength: number; chaptersLength: number; tagsLength: number } | null>(null);
+  
   useEffect(() => {
     // Only load stats once characters are loaded
-    if (charactersLoaded) {
-      loadStats();
+    if (!charactersLoaded) return;
+    
+    // Check if data has actually changed
+    const currentData = {
+      entriesLength: entries?.length || 0,
+      charactersLength: characters?.length || 0,
+      chaptersLength: chapters?.length || 0,
+      tagsLength: tags?.length || 0
+    };
+    
+    const prevData = prevDataRef.current;
+    if (prevData && 
+        prevData.entriesLength === currentData.entriesLength &&
+        prevData.charactersLength === currentData.charactersLength &&
+        prevData.chaptersLength === currentData.chaptersLength &&
+        prevData.tagsLength === currentData.tagsLength) {
+      // Data hasn't changed, skip reload
+      return;
     }
-  }, [entries, characters, chapters, tags, charactersLoaded]);
+    
+    prevDataRef.current = currentData;
+    loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [charactersLoaded, entries?.length, characters?.length, chapters?.length, tags?.length]);
 
   const loadCharacters = async () => {
+    debugLog('loadCharacters', 'Starting to load characters');
+    setErrors(prev => ({ ...prev, characters: '' }));
     try {
       const response = await fetchJson<{ characters: any[] }>('/api/characters/list');
-      setCharacters(response.characters || []);
+      const characterList = response.characters || [];
+      debugLog('loadCharacters', 'Characters loaded successfully', { count: characterList.length });
+      setCharacters(characterList);
       setCharactersLoaded(true);
-    } catch (error) {
-      console.error('Failed to load characters:', error);
+    } catch (error: any) {
+      debugError('loadCharacters', 'Failed to load characters', error);
       setCharactersLoaded(true); // Still mark as loaded even on error to prevent infinite loading
+      setErrors(prev => ({ 
+        ...prev, 
+        characters: error?.message || 'Failed to load characters' 
+      }));
     }
   };
 
   const loadLanguageStyle = async () => {
+    debugLog('loadLanguageStyle', 'Starting to load language style');
+    setErrors(prev => ({ ...prev, languageStyle: '' }));
     try {
       const result = await fetchJson<{ languageStyle: string | null }>('/api/documents/language-style');
+      debugLog('loadLanguageStyle', 'Language style loaded', { hasStyle: !!result.languageStyle });
       setLanguageStyle(result.languageStyle);
-    } catch (error) {
-      console.error('Failed to load language style:', error);
+    } catch (error: any) {
+      debugError('loadLanguageStyle', 'Failed to load language style', error);
+      setErrors(prev => ({ 
+        ...prev, 
+        languageStyle: error?.message || 'Failed to load language style (optional)' 
+      }));
     }
   };
 
   const loadStats = async () => {
+    debugLog('loadStats', 'Starting to calculate stats', {
+      entriesCount: entries?.length || 0,
+      charactersCount: characters?.length || 0,
+      chaptersCount: chapters?.length || 0,
+      tagsCount: tags?.length || 0
+    });
     setLoading(true);
+    setErrors(prev => ({ ...prev, stats: '' }));
     try {
       // Ensure we have arrays (handle undefined)
       const safeEntries = entries || [];
@@ -210,25 +286,58 @@ export const UserProfile = () => {
         mostActivePeriod,
         topTags,
         memoirProgress,
-        writingStreak,
+        writingStreak: streak,
         averageEntriesPerWeek: Math.round(averageEntriesPerWeek * 10) / 10,
         characterRelationships,
         mostMentionedCharacters,
         entryFrequency: { thisWeek: thisWeekEntries, lastWeek: lastWeekEntries, trend }
       });
-    } catch (error) {
-      console.error('Failed to load stats:', error);
+      debugLog('loadStats', 'Stats calculated successfully');
+    } catch (error: any) {
+      debugError('loadStats', 'Failed to calculate stats', error);
+      setErrors(prev => ({ 
+        ...prev, 
+        stats: error?.message || 'Failed to calculate stats' 
+      }));
     } finally {
       setLoading(false);
     }
   };
 
+  // Debug info display
+  const hasErrors = Object.values(errors).some(e => e);
+  
   if (loading || !stats) {
     return (
       <Card className="bg-black/40 border-border/60">
         <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="space-y-4">
+            {DEBUG && (
+              <div className="flex items-center gap-2 text-xs text-yellow-300/80 mb-2">
+                <Bug className="h-3 w-3" />
+                <span>DEBUG: Loading stats...</span>
+                <span className="text-yellow-300/60">·</span>
+                <span>Characters loaded: {charactersLoaded ? 'Yes' : 'No'}</span>
+                {hasErrors && (
+                  <>
+                    <span className="text-yellow-300/60">·</span>
+                    <span className="text-red-400">Errors: {Object.keys(errors).filter(k => errors[k]).length}</span>
+                  </>
+                )}
+              </div>
+            )}
+            {hasErrors && DEBUG && (
+              <div className="bg-red-950/20 border border-red-500/30 rounded p-2 text-xs">
+                {Object.entries(errors).filter(([_, msg]) => msg).map(([key, msg]) => (
+                  <div key={key} className="text-red-400">
+                    {key}: {msg}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -237,6 +346,52 @@ export const UserProfile = () => {
 
   return (
     <div className="space-y-6">
+      {/* Debug Info */}
+      {DEBUG && (
+        <Card className="bg-yellow-950/20 border-yellow-500/30">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-xs text-yellow-300/80 flex-wrap">
+              <Bug className="h-3 w-3" />
+              <span>DEBUG MODE</span>
+              <span className="text-yellow-300/60">·</span>
+              <span>Stats loaded: {stats ? 'Yes' : 'No'}</span>
+              <span className="text-yellow-300/60">·</span>
+              <span>Entries: {entries?.length || 0}</span>
+              <span className="text-yellow-300/60">·</span>
+              <span>Characters: {characters?.length || 0}</span>
+              <span className="text-yellow-300/60">·</span>
+              <span>Chapters: {chapters?.length || 0}</span>
+              {hasErrors && (
+                <>
+                  <span className="text-yellow-300/60">·</span>
+                  <span className="text-red-400">Errors: {Object.keys(errors).filter(k => errors[k]).length}</span>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error Display */}
+      {hasErrors && (
+        <Card className="bg-red-950/20 border-red-500/30">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-red-400 mb-2">Some data failed to load</h3>
+                <div className="space-y-1 text-xs text-white/80">
+                  {Object.entries(errors).filter(([_, msg]) => msg).map(([key, msg]) => (
+                    <div key={key}>
+                      <span className="font-semibold">{key}:</span> {msg}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {/* Main Profile Card */}
       <Card className="bg-gradient-to-br from-primary/10 to-purple-900/20 border-primary/30">
         <CardHeader>
@@ -453,14 +608,66 @@ export const UserProfile = () => {
               </div>
             </div>
           </div>
+
+          {/* Identity Pulse & Insights - Clickable Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <button
+              onClick={() => setIdentityPulseModalOpen(true)}
+              className="bg-gradient-to-br from-primary/10 to-purple-900/20 border border-primary/30 rounded-lg p-4 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/20 transition-all text-left group cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50"
+              aria-label="Open Identity Pulse modal"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30 group-hover:bg-primary/30 transition-colors">
+                  <Activity className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white group-hover:text-primary transition-colors">Identity Pulse</h3>
+                  <p className="text-xs text-white/60">Active persona signature</p>
+                </div>
+              </div>
+              <p className="text-sm text-white/70 mt-2">View your identity metrics, emotional trajectory, and stability indicators</p>
+              <div className="mt-3 text-xs text-primary/70 flex items-center gap-1">
+                <span>Click to explore</span>
+                <span>→</span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setInsightsModalOpen(true)}
+              className="bg-gradient-to-br from-primary/10 to-purple-900/20 border border-primary/30 rounded-lg p-4 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/20 transition-all text-left group cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50"
+              aria-label="Open AI-Assisted Patterns modal"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30 group-hover:bg-primary/30 transition-colors">
+                  <Brain className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-white group-hover:text-primary transition-colors">AI-Assisted Patterns</h3>
+                  <p className="text-xs text-white/60">Discover insights</p>
+                </div>
+              </div>
+              <p className="text-sm text-white/70 mt-2">Explore patterns, correlations, cycles, and predictions in your journal</p>
+              <div className="mt-3 text-xs text-primary/70 flex items-center gap-1">
+                <span>Click to explore</span>
+                <span>→</span>
+              </div>
+            </button>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Identity Pulse & Insights */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <IdentityPulsePanel />
-        <InsightsPanel insights={insights} loading={insightsLoading} onRefresh={loadInsights} />
-      </div>
+      {/* Modals */}
+      <IdentityPulseModal
+        isOpen={identityPulseModalOpen}
+        onClose={() => setIdentityPulseModalOpen(false)}
+      />
+      <InsightsModal
+        isOpen={insightsModalOpen}
+        onClose={() => setInsightsModalOpen(false)}
+        insights={insights}
+        loading={insightsLoading}
+        onRefresh={loadInsights}
+      />
     </div>
   );
 };

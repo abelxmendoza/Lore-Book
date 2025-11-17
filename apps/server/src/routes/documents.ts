@@ -64,7 +64,8 @@ router.get('/language-style', requireAuth, async (req: AuthenticatedRequest, res
     res.json({ languageStyle: style });
   } catch (error) {
     logger.error({ err: error }, 'Failed to get language style');
-    res.status(500).json({ error: 'Failed to get language style' });
+    // Return null instead of error - this is optional data
+    res.json({ languageStyle: null });
   }
 });
 

@@ -5,7 +5,6 @@ import helmet from 'helmet';
 import { assertConfig, config } from './config';
 import { logger } from './logger';
 import { calendarRouter } from './routes/calendar';
-import { chatRouter } from './routes/chat';
 import { registerSyncJob } from './jobs/syncJob';
 import { entriesRouter } from './routes/entries';
 import { photosRouter } from './routes/photos';
@@ -51,6 +50,8 @@ import { documentsRouter } from './routes/documents';
 import { devRouter } from './routes/dev';
 import healthRouter from './routes/health';
 import { timeRouter } from './routes/time';
+import { errorHandler } from './middleware/errorHandler';
+import { asyncHandler } from './middleware/errorHandler';
 
 assertConfig();
 
@@ -66,7 +67,7 @@ app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
 // Health check routes (no auth required)
-app.use(healthRouter);
+app.use('/', healthRouter);
 
 const apiRouter = express.Router();
 apiRouter.use(authMiddleware, rateLimitMiddleware, inputSanitizer, secureHeaders, auditLogger);
@@ -113,10 +114,13 @@ apiRouter.use('/dev', devRouter);
 
 app.use('/api', apiRouter);
 
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  logger.error({ err }, 'Unhandled error');
-  res.status(500).json({ error: 'Unexpected error' });
+// 404 handler
+app.use((req: express.Request, res: express.Response) => {
+  res.status(404).json({ error: 'Route not found', path: req.path });
 });
+
+// Global error handler (must be last)
+app.use(errorHandler);
 
 try {
   registerSyncJob();

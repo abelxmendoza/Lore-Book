@@ -2,13 +2,14 @@ import type { Response } from 'express';
 
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { memoryService } from '../services/memoryService';
+import { logger } from '../logger';
 
 export const getTimeline = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const timeline = await memoryService.getTimeline(req.user!.id);
     res.json({ timeline });
   } catch (error) {
-    console.error('Error fetching timeline:', error);
+    logger.error({ error }, 'Error fetching timeline');
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch timeline' });
   }
 };

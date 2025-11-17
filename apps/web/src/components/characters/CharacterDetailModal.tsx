@@ -374,39 +374,101 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
             )}
 
             {!loadingDetails && activeTab === 'relationships' && (
-              <div className="space-y-4">
-                <p className="text-sm text-white/60">
-                  Relationships and connections will appear here as they're discovered in your journal entries.
-                </p>
-                {editedCharacter.relationships && editedCharacter.relationships.length > 0 ? (
-                  <div className="space-y-2">
-                    {editedCharacter.relationships.map((rel) => (
-                      <Card key={rel.id} className="bg-black/40 border-border/50">
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium">{rel.relationship_type}</p>
-                                {rel.character_name && (
-                                  <span className="text-sm text-primary/70">with {rel.character_name}</span>
-                                )}
+              <div className="space-y-6">
+                {/* Relationship to You */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                    <Users className="h-5 w-5 text-primary" />
+                    Relationship to You
+                  </h3>
+                  <Card className="bg-gradient-to-br from-primary/10 to-purple-900/20 border-primary/30">
+                    <CardContent className="p-4">
+                      <div className="space-y-2">
+                        {editedCharacter.role && (
+                          <div>
+                            <span className="text-xs text-white/50 uppercase">Role</span>
+                            <p className="text-white font-medium">{editedCharacter.role}</p>
+                          </div>
+                        )}
+                        {editedCharacter.archetype && (
+                          <div>
+                            <span className="text-xs text-white/50 uppercase">Archetype</span>
+                            <p className="text-white font-medium">{editedCharacter.archetype}</p>
+                          </div>
+                        )}
+                        {editedCharacter.summary && (
+                          <div>
+                            <span className="text-xs text-white/50 uppercase">Summary</span>
+                            <p className="text-white/80 text-sm mt-1">{editedCharacter.summary}</p>
+                          </div>
+                        )}
+                        {editedCharacter.relationships && editedCharacter.relationships.length > 0 && (
+                          <div>
+                            <span className="text-xs text-white/50 uppercase">Closeness</span>
+                            {editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name) && (
+                              <div className="mt-1">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 bg-black/40 rounded-full h-2">
+                                    <div 
+                                      className="bg-primary h-2 rounded-full"
+                                      style={{ 
+                                        width: `${((editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name)?.closeness_score || 0) / 10) * 100}%` 
+                                      }}
+                                    />
+                                  </div>
+                                  <span className="text-sm text-white/70">
+                                    {editedCharacter.relationships.find(r => r.character_name === 'You' || !r.character_name)?.closeness_score || 0}/10
+                                  </span>
+                                </div>
                               </div>
-                              {rel.summary && <p className="text-sm text-white/60 mt-1">{rel.summary}</p>}
-                            </div>
-                            {rel.closeness_score !== undefined && (
-                              <span className="text-xs text-white/40 whitespace-nowrap ml-4">
-                                Closeness: {rel.closeness_score}/10
-                              </span>
                             )}
                           </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-white/40">
-                    <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>No relationships tracked yet</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Mutual Connections */}
+                {editedCharacter.relationships && editedCharacter.relationships.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                      <Users className="h-5 w-5 text-primary" />
+                      Mutual Connections
+                    </h3>
+                    <div className="space-y-2">
+                      {editedCharacter.relationships
+                        .filter(rel => rel.character_name && rel.character_name !== 'You')
+                        .map((rel) => (
+                          <Card key={rel.id} className="bg-black/40 border-border/50">
+                            <CardContent className="p-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-white">{rel.character_name}</p>
+                                    <span className="text-xs text-primary/70 px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
+                                      {rel.relationship_type}
+                                    </span>
+                                  </div>
+                                  {rel.summary && <p className="text-sm text-white/60 mt-1">{rel.summary}</p>}
+                                </div>
+                                {rel.closeness_score !== undefined && (
+                                  <div className="text-right ml-4">
+                                    <span className="text-xs text-white/50 block">Closeness</span>
+                                    <span className="text-sm font-medium text-primary">{rel.closeness_score}/10</span>
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      {editedCharacter.relationships.filter(rel => rel.character_name && rel.character_name !== 'You').length === 0 && (
+                        <div className="text-center py-8 text-white/40">
+                          <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p>No mutual connections tracked yet</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -414,24 +476,62 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
 
             {!loadingDetails && activeTab === 'history' && (
               <div className="space-y-4">
-                <p className="text-sm text-white/60">
-                  Shared memories and history with this character from your journal entries.
-                </p>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <Calendar className="h-5 w-5 text-primary" />
+                      Shared Timeline & Memories
+                    </h3>
+                    <p className="text-sm text-white/60 mt-1">
+                      Stories and moments you've shared with {editedCharacter.name}
+                    </p>
+                  </div>
+                  {editedCharacter.shared_memories && editedCharacter.shared_memories.length > 0 && (
+                    <span className="text-sm text-white/50">
+                      {editedCharacter.shared_memories.length} {editedCharacter.shared_memories.length === 1 ? 'memory' : 'memories'}
+                    </span>
+                  )}
+                </div>
                 {editedCharacter.shared_memories && editedCharacter.shared_memories.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {editedCharacter.shared_memories.map((memory) => (
-                      <Card key={memory.id} className="bg-black/40 border-border/50">
+                      <Card key={memory.id} className="bg-black/40 border-border/50 hover:border-primary/30 transition-colors">
                         <CardContent className="p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <Calendar className="h-3 w-3 text-white/40" />
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+                              <Calendar className="h-5 w-5 text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs font-medium text-primary/80">
+                                  {new Date(memory.date).toLocaleDateString('en-US', { 
+                                    month: 'short', 
+                                    day: 'numeric', 
+                                    year: 'numeric' 
+                                  })}
+                                </span>
                                 <span className="text-xs text-white/40">
-                                  {new Date(memory.date).toLocaleDateString()}
+                                  {new Date(memory.date).toLocaleTimeString('en-US', { 
+                                    hour: 'numeric', 
+                                    minute: '2-digit' 
+                                  })}
                                 </span>
                               </div>
-                              {memory.summary && (
-                                <p className="text-sm text-white/80">{memory.summary}</p>
+                              {memory.summary ? (
+                                <p className="text-sm text-white/90 leading-relaxed">{memory.summary}</p>
+                              ) : (
+                                <p className="text-sm text-white/60 italic">Memory recorded</p>
+                              )}
+                              {memory.entry_id && (
+                                <button 
+                                  className="text-xs text-primary/70 hover:text-primary mt-2"
+                                  onClick={() => {
+                                    // Could navigate to entry if needed
+                                    console.log('View entry:', memory.entry_id);
+                                  }}
+                                >
+                                  View full entry →
+                                </button>
                               )}
                             </div>
                           </div>
@@ -440,9 +540,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-white/40">
-                    <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>No shared history yet</p>
+                  <div className="text-center py-12 text-white/40">
+                    <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-lg font-medium mb-1">No shared memories yet</p>
+                    <p className="text-sm">Memories will appear here as you mention {editedCharacter.name} in your journal entries</p>
                   </div>
                 )}
               </div>

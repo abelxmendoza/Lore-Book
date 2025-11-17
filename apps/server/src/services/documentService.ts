@@ -248,15 +248,31 @@ Return JSON with this structure:
   }
 
   async getLanguageStyle(userId: string): Promise<string | null> {
-    const { data } = await supabaseAdmin
-      .from('original_documents')
-      .select('language_style')
-      .eq('user_id', userId)
-      .order('uploaded_at', { ascending: false })
-      .limit(1)
-      .single();
+    try {
+      // Try to get from memoir outline metadata first
+      const outline = await memoirService.getOutline(userId);
+      if (outline.metadata?.languageStyle) {
+        return outline.metadata.languageStyle as string;
+      }
 
-    return data?.language_style || null;
+      // Fallback to original_documents table if it exists
+      const { data, error } = await supabaseAdmin
+        .from('original_documents')
+        .select('language_style')
+        .eq('user_id', userId)
+        .order('uploaded_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        logger.warn({ error }, 'Error fetching language style from original_documents');
+      }
+
+      return data?.language_style || null;
+    } catch (error) {
+      logger.warn({ error }, 'Failed to get language style');
+      return null;
+    }
   }
 }
 

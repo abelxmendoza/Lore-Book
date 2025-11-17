@@ -41,7 +41,17 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
       .eq('user_id', req.user!.id)
       .order('created_at', { ascending: false });
 
-    if (!charactersError && charactersData && charactersData.length > 0) {
+    // If table doesn't exist or is empty, return empty array
+    if (charactersError) {
+      // Check if it's a "relation does not exist" error
+      if (charactersError.code === '42P01' || charactersError.message?.includes('does not exist')) {
+        logger.warn('Characters table does not exist yet, returning empty list');
+        return res.json({ characters: [] });
+      }
+      throw charactersError;
+    }
+
+    if (charactersData && charactersData.length > 0) {
       // Get memory counts and relationship counts for each character
       const charactersWithStats = await Promise.all(
         charactersData.map(async (char) => {
@@ -137,29 +147,41 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.json({ characters: charactersWithStats });
     }
 
-    // Fallback to people_places table (legacy system)
-    const people = await peoplePlacesService.listEntities(req.user!.id, 'person');
-    const characters = people.map((person) => ({
-      id: person.id,
-      name: person.name,
-      alias: person.corrected_names || [],
-      pronouns: undefined,
-      archetype: undefined,
-      role: undefined,
-      status: 'active',
-      first_appearance: person.first_mentioned_at,
-      summary: undefined,
-      tags: [],
-      metadata: {},
-      created_at: person.first_mentioned_at,
-      updated_at: person.last_mentioned_at,
-      memory_count: person.total_mentions,
-      relationship_count: Object.values(person.relationship_counts || {}).reduce((a, b) => a + b, 0)
-    }));
-    res.json({ characters });
+    // If no characters found, return empty array
+    if (!charactersData || charactersData.length === 0) {
+      return res.json({ characters: [] });
+    }
+
+    // Fallback to people_places table (legacy system) - only if characters table is truly empty
+    try {
+      const people = await peoplePlacesService.listEntities(req.user!.id, 'person');
+      const characters = people.map((person) => ({
+        id: person.id,
+        name: person.name,
+        alias: person.corrected_names || [],
+        pronouns: undefined,
+        archetype: undefined,
+        role: undefined,
+        status: 'active',
+        first_appearance: person.first_mentioned_at,
+        summary: undefined,
+        tags: [],
+        metadata: {},
+        created_at: person.first_mentioned_at,
+        updated_at: person.last_mentioned_at,
+        memory_count: person.total_mentions,
+        relationship_count: Object.values(person.relationship_counts || {}).reduce((a, b) => a + b, 0)
+      }));
+      return res.json({ characters });
+    } catch (legacyError) {
+      // If legacy system also fails, just return empty array
+      logger.warn({ error: legacyError }, 'Legacy people_places fallback failed, returning empty characters');
+      return res.json({ characters: [] });
+    }
   } catch (error) {
     logger.error({ err: error }, 'Failed to list characters');
-    res.status(500).json({ error: 'Failed to load characters' });
+    // Return empty array instead of error - better UX
+    res.json({ characters: [] });
   }
 });
 

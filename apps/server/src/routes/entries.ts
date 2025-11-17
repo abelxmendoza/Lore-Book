@@ -47,35 +47,45 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     });
     res.json({ entries });
   } catch (error) {
-    console.error('Error fetching entries:', error);
+    logger.error({ error }, 'Error fetching entries');
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch entries' });
   }
 });
 
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
-  const parsed = entrySchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json(parsed.error.flatten());
-  }
-
-  if (parsed.data.chapterId) {
-    const chapter = await chapterService.getChapter(req.user!.id, parsed.data.chapterId);
-    if (!chapter) {
-      return res.status(400).json({ error: 'Invalid chapter assignment' });
+  try {
+    const parsed = entrySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error.flatten());
     }
+
+    if (parsed.data.chapterId) {
+      try {
+        const chapter = await chapterService.getChapter(req.user!.id, parsed.data.chapterId);
+        if (!chapter) {
+          return res.status(400).json({ error: 'Invalid chapter assignment' });
+        }
+      } catch (error) {
+        logger.warn({ error, chapterId: parsed.data.chapterId }, 'Error checking chapter, continuing without assignment');
+        // Continue without chapter assignment if check fails
+      }
+    }
+
+    const entry = await memoryService.saveEntry({
+      userId: req.user!.id,
+      ...parsed.data,
+      tags: parsed.data.tags ?? extractTags(parsed.data.content),
+      metadata: parsed.data.metadata,
+      relationships: parsed.data.relationships
+    });
+
+    void emitDelta('timeline.add', { entry }, req.user!.id);
+
+    res.status(201).json({ entry });
+  } catch (error) {
+    logger.error({ error }, 'Error creating entry');
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create entry' });
   }
-
-  const entry = await memoryService.saveEntry({
-    userId: req.user!.id,
-    ...parsed.data,
-    tags: parsed.data.tags ?? extractTags(parsed.data.content),
-    metadata: parsed.data.metadata,
-    relationships: parsed.data.relationships
-  });
-
-  void emitDelta('timeline.add', { entry }, req.user!.id);
-
-  res.status(201).json({ entry });
 });
 
 router.post('/suggest-tags', requireAuth, async (req: AuthenticatedRequest, res) => {

@@ -12,7 +12,10 @@
     "dev:server": "pnpm --filter server dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test:coverage",
+    "test:e2e": "pnpm --filter web test:e2e"
   },
   "devDependencies": {
     "prettier": "^3.2.5"

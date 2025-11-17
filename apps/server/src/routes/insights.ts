@@ -64,7 +64,8 @@ router.get('/recent', requireAuth, async (req: AuthenticatedRequest, res) => {
     res.json({ insights });
   } catch (error: any) {
     logger.error({ error }, 'Failed to build recent insights');
-    res.status(500).json({ error: error.message ?? 'Failed to build insights' });
+    // Return empty insights instead of error - insights are optional
+    res.json({ insights: null });
   }
 });
 

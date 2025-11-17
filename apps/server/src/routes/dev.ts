@@ -346,7 +346,8 @@ router.post('/populate-dummy-data', requireAuth, async (req: AuthenticatedReques
       entries: 0,
       characters: 0,
       memoirSections: 0,
-      tasks: 0
+      tasks: 0,
+      errors: [] as string[]
     };
 
     logger.info({ userId }, 'Starting comprehensive dummy data population...');
@@ -355,14 +356,20 @@ router.post('/populate-dummy-data', requireAuth, async (req: AuthenticatedReques
     logger.info({ userId }, 'Creating dummy chapters...');
     const chapterIds: string[] = [];
     for (const chapterData of dummyChapters) {
-      const chapter = await chapterService.createChapter(userId, {
-        title: chapterData.title,
-        startDate: chapterData.startDate,
-        endDate: chapterData.endDate || undefined,
-        description: chapterData.description
-      });
-      chapterIds.push(chapter.id);
-      results.chapters++;
+      try {
+        const chapter = await chapterService.createChapter(userId, {
+          title: chapterData.title,
+          startDate: chapterData.startDate,
+          endDate: chapterData.endDate || undefined,
+          description: chapterData.description
+        });
+        chapterIds.push(chapter.id);
+        results.chapters++;
+      } catch (error) {
+        const errorMsg = `Failed to create chapter "${chapterData.title}": ${error instanceof Error ? error.message : String(error)}`;
+        logger.error({ error, chapterData }, errorMsg);
+        results.errors.push(errorMsg);
+      }
     }
 
     // Create characters/places by creating entries that mention them
@@ -383,95 +390,130 @@ router.post('/populate-dummy-data', requireAuth, async (req: AuthenticatedReques
     
     // Create entries to trigger entity detection
     for (const entryData of characterEntries) {
-      const entry = await memoryService.saveEntry({
-        userId,
-        content: entryData.content,
-        date: subMonths(now, 24).toISOString(),
-        tags: [],
-        source: 'manual',
-        relationships: entryData.relationships
-      });
-      await peoplePlacesService.recordEntitiesForEntry(entry, entryData.relationships);
-      results.characters++;
+      try {
+        const entry = await memoryService.saveEntry({
+          userId,
+          content: entryData.content,
+          date: subMonths(now, 24).toISOString(),
+          tags: [],
+          source: 'manual',
+          relationships: entryData.relationships
+        });
+        try {
+          await peoplePlacesService.recordEntitiesForEntry(entry, entryData.relationships);
+        } catch (error) {
+          logger.warn({ error }, 'Failed to record entities for entry, continuing');
+        }
+        results.characters++;
+      } catch (error) {
+        const errorMsg = `Failed to create character entry: ${error instanceof Error ? error.message : String(error)}`;
+        logger.error({ error, entryData }, errorMsg);
+        results.errors.push(errorMsg);
+      }
     }
 
     // Create journal entries with proper chapter assignment
     logger.info({ userId }, 'Creating dummy entries...');
     for (const entryData of dummyEntries) {
-      // Determine which chapter this entry belongs to based on date
-      let chapterId: string | undefined;
-      const entryDate = new Date(entryData.date);
-      
-      if (entryDate >= new Date(subMonths(now, 6))) {
-        chapterId = chapterIds[2]; // Current Chapter
-      } else if (entryDate >= new Date(subMonths(now, 18))) {
-        chapterId = chapterIds[1]; // Building Momentum
-      } else {
-        chapterId = chapterIds[0]; // The Beginning
-      }
+      try {
+        // Determine which chapter this entry belongs to based on date
+        let chapterId: string | undefined;
+        const entryDate = new Date(entryData.date);
+        
+        if (entryDate >= new Date(subMonths(now, 6))) {
+          chapterId = chapterIds[2]; // Current Chapter
+        } else if (entryDate >= new Date(subMonths(now, 18))) {
+          chapterId = chapterIds[1]; // Building Momentum
+        } else {
+          chapterId = chapterIds[0]; // The Beginning
+        }
 
-      await memoryService.saveEntry({
-        userId,
-        content: entryData.content,
-        date: entryData.date,
-        tags: entryData.tags,
-        mood: entryData.mood,
-        summary: entryData.summary,
-        chapterId,
-        source: 'manual',
-        relationships: entryData.relationships
-      });
-      results.entries++;
+        await memoryService.saveEntry({
+          userId,
+          content: entryData.content,
+          date: entryData.date,
+          tags: entryData.tags,
+          mood: entryData.mood,
+          summary: entryData.summary,
+          chapterId,
+          source: 'manual',
+          relationships: entryData.relationships
+        });
+        results.entries++;
+      } catch (error) {
+        const errorMsg = `Failed to create entry: ${error instanceof Error ? error.message : String(error)}`;
+        logger.error({ error, entryData }, errorMsg);
+        results.errors.push(errorMsg);
+      }
     }
 
     // Create memoir sections via outline
     logger.info({ userId }, 'Creating dummy memoir sections...');
-    const outline = await memoirService.getOutline(userId);
-    const sections = dummyMemoirSections.map((section, index) => ({
-      id: uuid(),
-      title: section.title,
-      content: section.content,
-      order: index,
-      period: section.period,
-      lastUpdated: section.period.to || new Date().toISOString()
-    }));
+    try {
+      const outline = await memoirService.getOutline(userId);
+      const sections = dummyMemoirSections.map((section, index) => ({
+        id: uuid(),
+        title: section.title,
+        content: section.content,
+        order: index,
+        period: section.period,
+        lastUpdated: section.period.to || new Date().toISOString()
+      }));
 
-    outline.sections = sections;
-    outline.title = 'My Life Story';
-    outline.metadata = {
-      languageStyle: 'reflective and introspective'
-    };
+      outline.sections = sections;
+      outline.title = 'My Life Story';
+      outline.metadata = {
+        languageStyle: 'reflective and introspective'
+      };
 
-    await memoirService.saveOutline(userId, outline);
-    results.memoirSections = sections.length;
+      await memoirService.saveOutline(userId, outline);
+      results.memoirSections = sections.length;
+    } catch (error) {
+      const errorMsg = `Failed to create memoir sections: ${error instanceof Error ? error.message : String(error)}`;
+      logger.error({ error }, errorMsg);
+      results.errors.push(errorMsg);
+    }
 
     // Create tasks
     logger.info({ userId }, 'Creating dummy tasks...');
     for (const taskData of dummyTasks) {
-      await taskEngineService.createTask(userId, {
-        title: taskData.title,
-        description: taskData.description,
-        dueDate: taskData.dueDate,
-        status: taskData.status,
-        metadata: {
-          tags: taskData.tags
-        }
-      });
-      results.tasks++;
+      try {
+        await taskEngineService.createTask(userId, {
+          title: taskData.title,
+          description: taskData.description,
+          dueDate: taskData.dueDate,
+          status: taskData.status,
+          metadata: {
+            tags: taskData.tags
+          }
+        });
+        results.tasks++;
+      } catch (error) {
+        const errorMsg = `Failed to create task "${taskData.title}": ${error instanceof Error ? error.message : String(error)}`;
+        logger.error({ error, taskData }, errorMsg);
+        results.errors.push(errorMsg);
+      }
     }
 
     logger.info({ userId, results }, 'Dummy data population complete');
 
-    res.json({
-      success: true,
-      message: `Successfully populated ${results.entries} entries, ${results.chapters} chapters, ${results.characters} characters, ${results.memoirSections} memoir sections, and ${results.tasks} tasks`,
-      results
+    const successMessage = `Successfully populated ${results.entries} entries, ${results.chapters} chapters, ${results.characters} characters, ${results.memoirSections} memoir sections, and ${results.tasks} tasks`;
+    const hasErrors = results.errors.length > 0;
+    
+    res.status(hasErrors ? 207 : 200).json({
+      success: !hasErrors,
+      message: hasErrors 
+        ? `${successMessage}. ${results.errors.length} error(s) occurred.`
+        : successMessage,
+      results,
+      errors: results.errors.length > 0 ? results.errors : undefined
     });
   } catch (error) {
     logger.error({ error }, 'Failed to populate dummy data');
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to populate dummy data'
+      error: error instanceof Error ? error.message : 'Failed to populate dummy data',
+      stack: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.stack : undefined) : undefined
     });
   }
 });

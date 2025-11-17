@@ -52,7 +52,8 @@ export const ChatComposer = ({
       characterIndexer.analyze('');
       setShowCommandSuggestions(false);
     }
-  }, [input, moodEngine, autoTagger, characterIndexer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input]); // Only depend on input, callbacks are stable
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,6 +73,14 @@ export const ChatComposer = ({
     // The backend or frontend can handle it
     onSubmit(input.trim());
   };
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  }, [input]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -147,12 +156,11 @@ export const ChatComposer = ({
           <div className="flex-1 relative">
             <Textarea
               ref={textareaRef}
-              placeholder="Type your message... (use / for commands)"
+              placeholder="Message Lore Keeper... (Press ⌘/ for commands, Shift+Enter for new line)"
               value={input}
               onChange={(e) => onInputChange(e.target.value)}
               disabled={loading || disabled}
-              rows={3}
-              className="pr-12 bg-black/40 border-border/50 text-white placeholder:text-white/40 resize-none"
+              className="pr-12 bg-black/40 border-border/50 text-white placeholder:text-white/40 resize-none min-h-[60px] max-h-[200px] overflow-y-auto"
               style={{
                 borderColor: showHints ? `${moodColor}66` : undefined,
                 boxShadow: showHints ? `0 0 10px ${moodColor}22` : undefined

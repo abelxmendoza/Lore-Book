@@ -12,6 +12,7 @@ import { parseSlashCommand, handleSlashCommand } from '../../utils/chatCommands'
 import { exportConversationAsMarkdown, exportConversationAsJSON, downloadFile } from '../../utils/exportConversation';
 import { fetchJson } from '../../lib/api';
 import { Button } from '../ui/button';
+import { diagnoseEndpoints, logDiagnostics } from '../../utils/errorDiagnostics';
 
 const CONVERSATION_STORAGE_KEY = 'lorekeeper_chat_conversation';
 
@@ -300,18 +301,88 @@ export const ChatFirstInterface = () => {
     }
   };
 
+  const handleFeedback = (messageId: string, feedback: 'positive' | 'negative') => {
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === messageId
+          ? { ...msg, feedback: msg.feedback === feedback ? null : feedback }
+          : msg
+      )
+    );
+    // Could send feedback to backend for learning
+    console.log('Feedback:', messageId, feedback);
+  };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+K or Ctrl+K for search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearch(!showSearch);
+      }
+      // Cmd+/ or Ctrl+/ for commands
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault();
+        // Focus on input and add /
+        const textarea = document.querySelector('textarea[placeholder*="Type your message"]') as HTMLTextAreaElement;
+        if (textarea) {
+          textarea.focus();
+          textarea.value = '/';
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+      // Cmd+Shift+D for diagnostics
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        diagnoseEndpoints('/api').then(logDiagnostics);
+      }
+      // Escape to close modals
+      if (e.key === 'Escape') {
+        if (showSearch) setShowSearch(false);
+        if (selectedSource) setSelectedSource(null);
+        if (showExportMenu) setShowExportMenu(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showSearch, selectedSource, showExportMenu]);
+
+  // Auto-diagnose on mount if there are errors
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const response = await fetch('/api/health');
+        if (!response.ok) {
+          console.warn('⚠️ Health check failed. Run diagnostics with Cmd+Shift+D');
+        }
+      } catch (error) {
+        console.warn('⚠️ Cannot reach server. Run diagnostics with Cmd+Shift+D');
+      }
+    };
+    checkHealth();
+  }, []);
+
   return (
     <div className="flex flex-col h-full relative">
       {/* Header with Actions */}
       <div className="border-b border-border/60 bg-black/20 px-4 py-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white/80">Chat</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold text-white/80">Chat</h2>
+          {messages.length > 0 && (
+            <span className="text-xs text-white/40">
+              {messages.length} message{messages.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setShowSearch(!showSearch)}
             className="text-white/60 hover:text-white"
-            title="Search conversation"
+            title="Search conversation (⌘K)"
           >
             <SearchIcon className="h-4 w-4" />
           </Button>
@@ -421,6 +492,7 @@ export const ChatFirstInterface = () => {
                   onEdit={message.role === 'user' ? () => handleEdit(message.id) : undefined}
                   onDelete={() => handleDelete(message.id)}
                   onSourceClick={handleSourceClick}
+                  onFeedback={handleFeedback}
                 />
               </div>
             ))}
@@ -463,9 +535,11 @@ export const ChatFirstInterface = () => {
           >
             Clear conversation
           </button>
-          <span className="text-xs text-white/30">
-            {messages.length} message{messages.length !== 1 ? 's' : ''}
-          </span>
+          <div className="flex items-center gap-3 text-xs text-white/30">
+            <span>Press ⌘K to search</span>
+            <span>•</span>
+            <span>Press ⌘/ for commands</span>
+          </div>
         </div>
       )}
     </div>

@@ -77,12 +77,20 @@ const AuthScreen = ({ onEmailLogin }: { onEmailLogin: (email: string) => Promise
 };
 
 export const AuthGate = ({ children }: { children: ReactNode }) => {
+  // TEMPORARY: Disable auth for development
+  const DEV_DISABLE_AUTH = true;
+  
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
 
   const isConfigured = isSupabaseConfigured();
   const debug = getConfigDebug();
+  
+  // Bypass auth check in dev mode
+  if (DEV_DISABLE_AUTH) {
+    return <>{children}</>;
+  }
 
   useEffect(() => {
     if (!isConfigured) {

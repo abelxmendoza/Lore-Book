@@ -61,6 +61,11 @@ class MemoryService {
 
     const { error } = await supabaseAdmin.from('journal_entries').insert(entry);
     if (error) {
+      // Check if table doesn't exist
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        logger.error({ error }, 'journal_entries table does not exist. Please run database migrations.');
+        throw new Error('Database table "journal_entries" does not exist. Please run migrations.');
+      }
       logger.error({ error }, 'Failed to save entry');
       throw error;
     }
@@ -91,35 +96,49 @@ class MemoryService {
   }
 
   async searchEntries(userId: string, query: JournalQuery = {}): Promise<MemoryEntry[]> {
-    if (query.semantic && query.search) {
-      return this.semanticSearchEntries(userId, query.search, query.limit, query.threshold);
-    }
+    try {
+      if (query.semantic && query.search) {
+        return this.semanticSearchEntries(userId, query.search, query.limit, query.threshold);
+      }
 
-    let builder = supabaseAdmin.from('journal_entries').select('*').eq('user_id', userId);
+      let builder = supabaseAdmin.from('journal_entries').select('*').eq('user_id', userId);
 
-    if (query.search) {
-      builder = builder.ilike('content', `%${query.search}%`);
-    }
-    if (query.tag) {
-      builder = builder.contains('tags', [query.tag]);
-    }
-    if (query.chapterId) {
-      builder = builder.eq('chapter_id', query.chapterId);
-    }
-    if (query.from) {
-      builder = builder.gte('date', query.from);
-    }
-    if (query.to) {
-      builder = builder.lte('date', query.to);
-    }
+      if (query.search) {
+        builder = builder.ilike('content', `%${query.search}%`);
+      }
+      if (query.tag) {
+        builder = builder.contains('tags', [query.tag]);
+      }
+      if (query.chapterId) {
+        builder = builder.eq('chapter_id', query.chapterId);
+      }
+      if (query.from) {
+        builder = builder.gte('date', query.from);
+      }
+      if (query.to) {
+        builder = builder.lte('date', query.to);
+      }
 
-    const { data, error } = await builder.order('date', { ascending: false }).limit(query.limit ?? 50);
-    if (error) {
-      logger.error({ error }, 'Failed to search entries');
+      const { data, error } = await builder.order('date', { ascending: false }).limit(query.limit ?? 50);
+      if (error) {
+        // Check if table doesn't exist
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          logger.warn('journal_entries table does not exist yet, returning empty array');
+          return [];
+        }
+        logger.error({ error }, 'Failed to search entries');
+        throw error;
+      }
+
+      return data ?? [];
+    } catch (error) {
+      // If it's a table doesn't exist error, return empty array
+      if (error instanceof Error && (error.message?.includes('does not exist') || (error as any).code === '42P01')) {
+        logger.warn('journal_entries table does not exist yet, returning empty array');
+        return [];
+      }
       throw error;
     }
-
-    return data ?? [];
   }
 
   async getEntry(userId: string, entryId: string): Promise<MemoryEntry | null> {
@@ -186,45 +205,59 @@ class MemoryService {
   }
 
   async getTimeline(userId: string): Promise<ChapterTimeline> {
-    const [entries, chapters] = await Promise.all([
-      this.searchEntries(userId, { limit: 365 }),
-      chapterService.listChapters(userId)
-    ]);
+    try {
+      const [entries, chapters] = await Promise.all([
+        this.searchEntries(userId, { limit: 365 }),
+        chapterService.listChapters(userId)
+      ]);
 
-    const chapterGroups = new Map<string, MemoryEntry[]>();
-    chapters.forEach((chapter) => {
-      chapterGroups.set(chapter.id, []);
-    });
-    const unassigned: MemoryEntry[] = [];
+      const chapterGroups = new Map<string, MemoryEntry[]>();
+      chapters.forEach((chapter) => {
+        chapterGroups.set(chapter.id, []);
+      });
+      const unassigned: MemoryEntry[] = [];
 
-    entries.forEach((entry) => {
-      if (entry.chapter_id && chapterGroups.has(entry.chapter_id)) {
-        chapterGroups.get(entry.chapter_id)!.push(entry);
-      } else {
-        unassigned.push(entry);
-      }
-    });
+      entries.forEach((entry) => {
+        if (entry.chapter_id && chapterGroups.has(entry.chapter_id)) {
+          chapterGroups.get(entry.chapter_id)!.push(entry);
+        } else {
+          unassigned.push(entry);
+        }
+      });
 
-    const chapterTimelines = chapters.map((chapter) => ({
-      ...chapter,
-      months: this.groupByMonth(chapterGroups.get(chapter.id) ?? [])
-    }));
+      const chapterTimelines = chapters.map((chapter) => ({
+        ...chapter,
+        months: this.groupByMonth(chapterGroups.get(chapter.id) ?? [])
+      }));
 
-    return {
-      chapters: chapterTimelines,
-      unassigned: this.groupByMonth(unassigned)
-    };
+      return {
+        chapters: chapterTimelines,
+        unassigned: this.groupByMonth(unassigned)
+      };
+    } catch (error) {
+      logger.error({ error }, 'Error building timeline');
+      // Return empty timeline on error
+      return {
+        chapters: [],
+        unassigned: []
+      };
+    }
   }
 
   async listTags(userId: string) {
-    const entries = await this.searchEntries(userId, { limit: 500 });
-    const tags = new Map<string, number>();
-    entries.forEach((entry) => {
-      entry.tags.forEach((tag) => {
-        tags.set(tag, (tags.get(tag) ?? 0) + 1);
+    try {
+      const entries = await this.searchEntries(userId, { limit: 500 });
+      const tags = new Map<string, number>();
+      entries.forEach((entry) => {
+        entry.tags.forEach((tag) => {
+          tags.set(tag, (tags.get(tag) ?? 0) + 1);
+        });
       });
-    });
-    return Array.from(tags.entries()).map(([name, count]) => ({ name, count }));
+      return Array.from(tags.entries()).map(([name, count]) => ({ name, count }));
+    } catch (error) {
+      logger.error({ error }, 'Error listing tags');
+      return [];
+    }
   }
 }
 

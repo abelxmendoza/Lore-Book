@@ -56,19 +56,34 @@ class OmegaChatService {
    * Build comprehensive RAG packet using orchestrator
    */
   private async buildRAGPacket(userId: string, message: string) {
-    // Get full orchestrator summary
-    const orchestratorSummary = await orchestratorService.getSummary(userId);
+    // Get full orchestrator summary with error handling
+    let orchestratorSummary: any = { timeline: { events: [], arcs: [] }, characters: [] };
+    try {
+      orchestratorSummary = await orchestratorService.getSummary(userId);
+    } catch (error) {
+      logger.warn({ error }, 'Failed to get orchestrator summary, using empty');
+    }
 
-    // Get HQI semantic search results
-    const hqiResults = hqiService.search(message, {}).slice(0, 5);
+    // Get HQI semantic search results with error handling
+    let hqiResults: any[] = [];
+    try {
+      hqiResults = hqiService.search(message, {}).slice(0, 5);
+    } catch (error) {
+      logger.warn({ error }, 'Failed to get HQI results, using empty');
+    }
 
-    // Get related entries for Memory Fabric
-    const relatedEntries = await memoryService.searchEntriesWithCorrections(userId, {
-      search: message,
-      limit: 20
-    });
+    // Get related entries for Memory Fabric with error handling
+    let relatedEntries: ResolvedMemoryEntry[] = [];
+    try {
+      relatedEntries = await memoryService.searchEntriesWithCorrections(userId, {
+        search: message,
+        limit: 20
+      });
+    } catch (error) {
+      logger.warn({ error }, 'Failed to get related entries, using empty');
+    }
 
-    // Build Memory Fabric neighbors from top entries
+    // Build Memory Fabric neighbors from top entries with error handling
     const fabricNeighbors: ChatSource[] = [];
     try {
       if (relatedEntries.length > 0) {
@@ -100,11 +115,16 @@ class OmegaChatService {
         });
       }
     } catch (error) {
-      logger.debug({ error }, 'Failed to build Memory Fabric neighbors');
+      logger.debug({ error }, 'Failed to build Memory Fabric neighbors, continuing without');
     }
 
-    // Extract dates
-    const extractedDates = await this.extractDatesAndTimes(message);
+    // Extract dates with error handling
+    let extractedDates: Array<{ date: string; context: string; precision: string; confidence: number }> = [];
+    try {
+      extractedDates = await this.extractDatesAndTimes(message);
+    } catch (error) {
+      logger.warn({ error }, 'Failed to extract dates, continuing without');
+    }
 
     // Build sources array
     const sources: ChatSource[] = [
@@ -199,13 +219,13 @@ class OmegaChatService {
   private async checkContinuity(
     userId: string,
     message: string,
-    extractedDates: Array<{ date: string; context: string }>,
+    extractedDates: Array<{ date: string; context: string; precision?: string; confidence?: number }>,
     orchestratorSummary: any
   ): Promise<string[]> {
     const warnings: string[] = [];
     
     try {
-      const continuity = orchestratorSummary.continuity;
+      const continuity = orchestratorSummary?.continuity;
       if (continuity?.conflicts && continuity.conflicts.length > 0) {
         continuity.conflicts.forEach((conflict: any) => {
           warnings.push(`Continuity issue: ${conflict.description || conflict.detail || 'Potential conflict detected'}`);
@@ -213,21 +233,32 @@ class OmegaChatService {
       }
 
       // Check for date conflicts
-      const recentEntries = orchestratorSummary.timeline.events.slice(0, 50);
+      const recentEntries = (orchestratorSummary?.timeline?.events || []).slice(0, 50);
       for (const dateInfo of extractedDates) {
-        const date = new Date(dateInfo.date);
-        const conflictingEntries = recentEntries.filter((entry: any) => {
-          const entryDate = new Date(entry.date);
-          const daysDiff = Math.abs((date.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
-          return daysDiff < 1 && entry.content?.toLowerCase().includes(dateInfo.context.toLowerCase());
-        });
+        try {
+          const date = new Date(dateInfo.date);
+          if (isNaN(date.getTime())) continue;
+          
+          const conflictingEntries = recentEntries.filter((entry: any) => {
+            try {
+              const entryDate = new Date(entry.date);
+              if (isNaN(entryDate.getTime())) return false;
+              const daysDiff = Math.abs((date.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
+              return daysDiff < 1 && entry.content?.toLowerCase().includes(dateInfo.context.toLowerCase());
+            } catch {
+              return false;
+            }
+          });
 
-        if (conflictingEntries.length > 0) {
-          warnings.push(`Potential conflict: ${dateInfo.context} on ${dateInfo.date} may overlap with existing entries`);
+          if (conflictingEntries.length > 0) {
+            warnings.push(`Potential conflict: ${dateInfo.context} on ${dateInfo.date} may overlap with existing entries`);
+          }
+        } catch (error) {
+          logger.debug({ error, dateInfo }, 'Failed to check date conflict');
         }
       }
     } catch (error) {
-      logger.error({ error }, 'Failed to check continuity');
+      logger.warn({ error }, 'Failed to check continuity, continuing without warnings');
     }
 
     return warnings;
@@ -372,18 +403,47 @@ ${sources.slice(0, 10).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
   ): Promise<StreamingChatResponse> {
-    // Build RAG packet
-    const ragPacket = await this.buildRAGPacket(userId, message);
+    // Build RAG packet with error handling
+    let ragPacket;
+    try {
+      ragPacket = await this.buildRAGPacket(userId, message);
+    } catch (error) {
+      logger.error({ error }, 'Failed to build RAG packet, using minimal context');
+      ragPacket = {
+        orchestratorSummary: { timeline: { events: [], arcs: [] }, characters: [] },
+        hqiResults: [],
+        sources: [],
+        extractedDates: [],
+        relatedEntries: [],
+        fabricNeighbors: []
+      };
+    }
+    
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
 
-    // Check continuity
-    const continuityWarnings = await this.checkContinuity(userId, message, extractedDates, orchestratorSummary);
+    // Check continuity with error handling
+    let continuityWarnings: string[] = [];
+    try {
+      continuityWarnings = await this.checkContinuity(userId, message, extractedDates, orchestratorSummary);
+    } catch (error) {
+      logger.warn({ error }, 'Failed to check continuity, continuing without warnings');
+    }
 
-    // Find connections
-    const connections = await this.findConnections(userId, message, orchestratorSummary, hqiResults, sources);
+    // Find connections with error handling
+    let connections: string[] = [];
+    try {
+      connections = await this.findConnections(userId, message, orchestratorSummary, hqiResults, sources);
+    } catch (error) {
+      logger.warn({ error }, 'Failed to find connections, continuing without');
+    }
 
-    // Get strategic guidance
-    const strategicGuidance = await this.getStrategicGuidance(userId, message);
+    // Get strategic guidance with error handling
+    let strategicGuidance: string | null = null;
+    try {
+      strategicGuidance = await this.getStrategicGuidance(userId, message);
+    } catch (error) {
+      logger.debug({ error }, 'Failed to get strategic guidance, continuing without');
+    }
 
     // Build system prompt
     const systemPrompt = this.buildSystemPrompt(

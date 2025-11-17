@@ -6,6 +6,7 @@ import { getTimeline } from '../controllers/timelineController';
 import { memoryService } from '../services/memoryService';
 import { taskTimelineService } from '../services/taskTimelineService';
 import { emitDelta } from '../realtime/orchestratorEmitter';
+import { logger } from '../logger';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/tags', requireAuth, async (req: AuthenticatedRequest, res) => {
     const tags = await memoryService.listTags(req.user!.id);
     res.json({ tags });
   } catch (error) {
-    console.error('Error fetching tags:', error);
+    logger.error({ error }, 'Error fetching tags');
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch tags' });
   }
 });

@@ -1,5 +1,5 @@
 import { parseISO, format, isBefore, isAfter, isEqual, differenceInDays, differenceInHours, differenceInMinutes, differenceInMonths, differenceInYears, addDays, addMonths, addYears, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
-import { zonedTimeToUtc, utcToZonedTime } from 'date-fns-tz';
+import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { logger } from '../logger';
 
 export type TimePrecision = 'year' | 'month' | 'day' | 'hour' | 'minute' | 'second';
@@ -298,7 +298,7 @@ class TimeEngine {
     let normalized = timestamp;
     if (tz !== 'UTC') {
       try {
-        normalized = zonedTimeToUtc(timestamp, tz);
+        normalized = fromZonedTime(timestamp, tz);
       } catch (error) {
         logger.debug({ error, tz }, 'Failed to convert timezone, using UTC');
       }
@@ -455,7 +455,7 @@ class TimeEngine {
     let date = ts;
     if (tz !== 'UTC') {
       try {
-        date = utcToZonedTime(ts, tz);
+        date = toZonedTime(ts, tz);
       } catch (error) {
         logger.debug({ error, tz }, 'Failed to convert to timezone');
       }

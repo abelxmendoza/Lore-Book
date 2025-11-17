@@ -24,45 +24,50 @@ const chapterSchema = z.object({
 }));
 
 export const createChapter = async (req: AuthenticatedRequest, res: Response) => {
-  const parsed = chapterSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json(parsed.error.flatten());
-  }
-
-  const chapter = await chapterService.createChapter(req.user!.id, parsed.data);
-  
-  // Auto-generate chapter name if title is generic
-  if (!parsed.data.title || parsed.data.title === 'Untitled Chapter' || parsed.data.title.length < 3) {
-    try {
-      const { data: entriesData } = await supabaseAdmin
-        .from('journal_entries')
-        .select('content, date')
-        .eq('user_id', req.user!.id)
-        .eq('chapter_id', chapter.id)
-        .order('date', { ascending: false })
-        .limit(50);
-
-      const entries = (entriesData || []).map((e: any) => ({
-        content: e.content,
-        date: e.date
-      }));
-
-      if (entries.length > 0) {
-        const generatedTitle = await namingService.generateChapterName(req.user!.id, chapter.id, entries);
-        await supabaseAdmin
-          .from('chapters')
-          .update({ title: generatedTitle })
-          .eq('id', chapter.id)
-          .eq('user_id', req.user!.id);
-        chapter.title = generatedTitle;
-      }
-    } catch (error) {
-      console.error('Failed to auto-generate chapter name:', error);
-      // Continue without failing the request
+  try {
+    const parsed = chapterSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error.flatten());
     }
-  }
 
-  return res.status(201).json({ chapter });
+    const chapter = await chapterService.createChapter(req.user!.id, parsed.data);
+    
+    // Auto-generate chapter name if title is generic
+    if (!parsed.data.title || parsed.data.title === 'Untitled Chapter' || parsed.data.title.length < 3) {
+      try {
+        const { data: entriesData } = await supabaseAdmin
+          .from('journal_entries')
+          .select('content, date')
+          .eq('user_id', req.user!.id)
+          .eq('chapter_id', chapter.id)
+          .order('date', { ascending: false })
+          .limit(50);
+
+        const entries = (entriesData || []).map((e: any) => ({
+          content: e.content,
+          date: e.date
+        }));
+
+        if (entries.length > 0) {
+          const generatedTitle = await namingService.generateChapterName(req.user!.id, chapter.id, entries);
+          await supabaseAdmin
+            .from('chapters')
+            .update({ title: generatedTitle })
+            .eq('id', chapter.id)
+            .eq('user_id', req.user!.id);
+          chapter.title = generatedTitle;
+        }
+      } catch (error) {
+        logger.warn({ error, chapterId: chapter.id }, 'Failed to auto-generate chapter name, continuing');
+        // Continue without failing the request
+      }
+    }
+
+    return res.status(201).json({ chapter });
+  } catch (error) {
+    logger.error({ error }, 'Error creating chapter');
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create chapter' });
+  }
 };
 
 export const listChapters = async (req: AuthenticatedRequest, res: Response) => {
@@ -74,7 +79,7 @@ export const listChapters = async (req: AuthenticatedRequest, res: Response) => 
 
     return res.json({ chapters, candidates });
   } catch (error) {
-    console.error('Error listing chapters:', error);
+    logger.error({ error }, 'Error listing chapters');
     return res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to list chapters' });
   }
 };

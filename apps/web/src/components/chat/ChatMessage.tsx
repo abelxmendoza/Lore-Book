@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, MoreVertical } from 'lucide-react';
+import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, MoreVertical, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 export type ChatSource = {
   type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
@@ -25,6 +26,7 @@ export type Message = {
   sources?: ChatSource[];
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   isStreaming?: boolean;
+  feedback?: 'positive' | 'negative' | null;
 };
 
 type ChatMessageProps = {
@@ -34,6 +36,7 @@ type ChatMessageProps = {
   onEdit?: () => void;
   onDelete?: () => void;
   onSourceClick?: (source: ChatSource) => void;
+  onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void;
 };
 
 export const ChatMessage = ({
@@ -42,7 +45,8 @@ export const ChatMessage = ({
   onRegenerate,
   onEdit,
   onDelete,
-  onSourceClick
+  onSourceClick,
+  onFeedback
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -52,6 +56,10 @@ export const ChatMessage = ({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     onCopy?.();
+  };
+
+  const handleFeedback = (feedback: 'positive' | 'negative') => {
+    onFeedback?.(message.id, feedback);
   };
 
   const isUser = message.role === 'user';
@@ -76,13 +84,13 @@ export const ChatMessage = ({
       >
         {/* Message Actions Menu */}
         {showActions && (
-          <div className={`absolute ${isUser ? 'left-0' : 'right-0'} -top-8 flex gap-1 bg-black/90 border border-border/60 rounded-lg p-1 z-10`}>
+          <div className={`absolute ${isUser ? 'left-0' : 'right-0'} -top-8 flex gap-1 bg-black/90 border border-border/60 rounded-lg p-1 z-10 shadow-lg`}>
             {!isUser && onRegenerate && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onRegenerate}
-                className="h-7 px-2 text-xs"
+                className="h-7 px-2 text-xs hover:bg-black/60"
                 title="Regenerate response"
               >
                 <RotateCw className="h-3 w-3" />
@@ -93,18 +101,40 @@ export const ChatMessage = ({
                 variant="ghost"
                 size="sm"
                 onClick={handleCopy}
-                className="h-7 px-2 text-xs"
+                className="h-7 px-2 text-xs hover:bg-black/60"
                 title={copied ? 'Copied!' : 'Copy message'}
               >
-                <Copy className="h-3 w-3" />
+                <Copy className={`h-3 w-3 ${copied ? 'text-green-400' : ''}`} />
               </Button>
+            )}
+            {!isUser && onFeedback && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleFeedback('positive')}
+                  className={`h-7 px-2 text-xs hover:bg-black/60 ${message.feedback === 'positive' ? 'text-green-400' : ''}`}
+                  title="Good response"
+                >
+                  <ThumbsUp className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleFeedback('negative')}
+                  className={`h-7 px-2 text-xs hover:bg-black/60 ${message.feedback === 'negative' ? 'text-red-400' : ''}`}
+                  title="Poor response"
+                >
+                  <ThumbsDown className="h-3 w-3" />
+                </Button>
+              </>
             )}
             {isUser && onEdit && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onEdit}
-                className="h-7 px-2 text-xs"
+                className="h-7 px-2 text-xs hover:bg-black/60"
                 title="Edit message"
               >
                 <Edit2 className="h-3 w-3" />
@@ -115,7 +145,7 @@ export const ChatMessage = ({
                 variant="ghost"
                 size="sm"
                 onClick={onDelete}
-                className="h-7 px-2 text-xs text-red-400 hover:text-red-300"
+                className="h-7 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
                 title="Delete message"
               >
                 <Trash2 className="h-3 w-3" />
@@ -134,12 +164,13 @@ export const ChatMessage = ({
 
           {/* Main Content */}
           <div className="relative">
-            <p className="text-sm text-white whitespace-pre-wrap">
-              {message.content}
-              {message.isStreaming && (
-                <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse" />
-              )}
-            </p>
+            {!isUser ? (
+              <MarkdownRenderer content={message.content} isStreaming={message.isStreaming} />
+            ) : (
+              <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">
+                {message.content}
+              </p>
+            )}
             
             {/* Inline Citations */}
             {message.citations && message.citations.length > 0 && (
@@ -148,7 +179,7 @@ export const ChatMessage = ({
                   <Badge
                     key={idx}
                     variant="outline"
-                    className="text-xs border-primary/30 text-primary/70 cursor-pointer hover:border-primary/50 hover:text-primary"
+                    className="text-xs border-primary/30 text-primary/70 cursor-pointer hover:border-primary/50 hover:text-primary transition-colors"
                     onClick={() => {
                       const source = message.sources?.find(s => s.id === citation.sourceId);
                       if (source && onSourceClick) {
