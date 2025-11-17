@@ -3,6 +3,7 @@ import { memoryService } from './memoryService';
 import { personaService } from './personaService';
 import { taskEngineService } from './taskEngineService';
 import { hqiService } from './hqiService';
+import { integrationAggregationService } from '../integrations/integration.service';
 
 type TimelineContext = {
   events: any[];
@@ -41,9 +42,12 @@ type OrchestratorSummary = {
   season: Record<string, unknown>;
   autopilot: AutopilotContext;
   saga: Record<string, unknown>;
+  integrations: Record<string, unknown>;
 };
 
 class OrchestratorService {
+  private integrations = integrationAggregationService;
+
   private async safeCall<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
     try {
       return await fn();
@@ -177,6 +181,7 @@ class OrchestratorService {
     const autopilot = this.buildAutopilot(tasks, timeline.events);
     const characters = this.buildCharacters(timeline.events);
     const saga = this.buildSaga(timeline);
+    const integrations = await this.integrations.getDistilled(userId);
 
     return {
       timeline,
@@ -188,6 +193,7 @@ class OrchestratorService {
       season: timeline.season,
       autopilot,
       saga,
+      integrations
     } satisfies OrchestratorSummary;
   }
 
