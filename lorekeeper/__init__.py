@@ -13,6 +13,15 @@ from .identity.identity_engine import IdentityEngine
 from .hqi_engine import HQIEngine, HQIResult, MemoryEdge, MemoryFabric, MemoryNode
 from .memory_fabric import MemoryFabric, FabricNode, FabricEdge
 from .agents import FabricAgent, BaseAgent
+from .autopilot_engine import AutopilotEngine
+from .autopilot_types import (
+    DailyRecommendation,
+    WeeklyStrategy,
+    MonthlyCorrection,
+    TransitionGuidance,
+    RiskAlert,
+    MomentumSignal,
+)
 from .insight_engine import InsightEngine
 from .insights_types import (
     PatternInsight,

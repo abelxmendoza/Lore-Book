@@ -16,13 +16,10 @@ from .autopilot_types import (
     WeeklyStrategy,
 )
 """AutopilotEngine: orchestrated guidance across insights, arcs, identity, and tasks."""
-from __future__ import annotations
-
-from collections import Counter, defaultdict
-from datetime import datetime, timedelta
-from typing import Any, Dict, Iterable, List, Optional
 
 from .event_schema import TimelineEvent
+
+__all__ = ["AutopilotEngine"]
 
 
 class AutopilotEngine:
@@ -416,17 +413,6 @@ class AutopilotEngine:
             else:
                 rendered.append(str(item))
         return ", ".join(rendered) if rendered else "none"
-
-
-__all__ = ["AutopilotEngine"]
-    """AI-driven guidance layer that blends insights, arcs, identity patterns, and tasks."""
-
-    def __init__(self, insight_engine, timeline, tasks, identity, arcs):
-        self.insight_engine = insight_engine
-        self.timeline = timeline
-        self.tasks = tasks or []
-        self.identity_engine = identity
-        self.arcs = arcs or {}
 
     # ------------------------------------------------------------------
     # Utilities
