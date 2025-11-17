@@ -16,9 +16,33 @@ export default {
           DEFAULT: '#ff1fae',
           foreground: '#0d0d0f'
         },
+        neon: {
+          purple: '#9B5CFF',
+          pink: '#FF3EB5',
+          blue: '#4DE2FF',
+          aqua: '#5CFFD0'
+        },
         cyan: '#17d4ff',
         accent: '#0f172a',
         border: '#1f0a2e'
+      },
+      keyframes: {
+        pulse: {
+          '0%, 100%': { opacity: '0.8', transform: 'scale(0.99)' },
+          '50%': { opacity: '1', transform: 'scale(1.02)' }
+        },
+        glitch: {
+          '0%': { transform: 'translate(0)', filter: 'hue-rotate(0deg)' },
+          '20%': { transform: 'translate(-1px, 1px) skewX(1deg)', filter: 'hue-rotate(10deg)' },
+          '40%': { transform: 'translate(-2px, -1px) skewX(-1deg)', filter: 'hue-rotate(-10deg)' },
+          '60%': { transform: 'translate(1px, 2px)', filter: 'hue-rotate(4deg)' },
+          '80%': { transform: 'translate(-1px, -2px) skewX(1deg)', filter: 'hue-rotate(-6deg)' },
+          '100%': { transform: 'translate(0)', filter: 'hue-rotate(0deg)' }
+        }
+      },
+      animation: {
+        pulse: 'pulse 1.6s ease-in-out infinite',
+        glitch: 'glitch 2s infinite'
       },
       boxShadow: {
         neon: '0 0 20px rgba(154,77,255,0.45)',

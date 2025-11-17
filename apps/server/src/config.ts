@@ -38,6 +38,7 @@ type EnvConfig = {
   microsoftTenantId?: string;
   microsoftRedirectUri?: string;
   encryptionSalt?: string;
+  githubToken?: string;
 };
 
 export const config: EnvConfig = {
@@ -53,7 +54,8 @@ export const config: EnvConfig = {
   microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET ?? '',
   microsoftTenantId: process.env.MICROSOFT_TENANT_ID ?? 'common',
   microsoftRedirectUri: process.env.MICROSOFT_REDIRECT_URI ?? '',
-  encryptionSalt: process.env.ENCRYPTION_SALT ?? ''
+  encryptionSalt: process.env.ENCRYPTION_SALT ?? '',
+  githubToken: process.env.GITHUB_TOKEN ?? process.env.GITHUB_API_TOKEN ?? ''
 };
 
 export const assertConfig = () => {

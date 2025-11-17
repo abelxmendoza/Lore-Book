@@ -1,0 +1,28 @@
+.neon-breath {
+  animation: neon-breath 6s ease-in-out infinite;
+}
+
+@keyframes neon-breath {
+  0% {
+    filter: drop-shadow(0 0 10px rgba(155, 92, 255, 0.4));
+  }
+  50% {
+    filter: drop-shadow(0 0 25px rgba(77, 226, 255, 0.55));
+  }
+  100% {
+    filter: drop-shadow(0 0 10px rgba(155, 92, 255, 0.4));
+  }
+}
+
+.cursor-pulse {
+  animation: cursor-pulse 1s steps(2) infinite;
+}
+
+@keyframes cursor-pulse {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.3;
+  }
+}

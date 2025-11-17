@@ -4,6 +4,7 @@ import { personaService } from './personaService';
 import { taskEngineService } from './taskEngineService';
 import { hqiService } from './hqiService';
 import { integrationAggregationService } from '../integrations/integration.service';
+import { githubSyncManager } from './github/githubSyncManager';
 
 type TimelineContext = {
   events: any[];
@@ -32,6 +33,13 @@ type AutopilotContext = {
   momentum: Record<string, unknown>;
 };
 
+type GithubContext = {
+  milestones: Awaited<ReturnType<typeof githubSyncManager.listSummaries>>;
+  monthlyArc: Record<string, unknown> | null;
+  activityScore: number;
+  identityShift: Record<string, unknown>;
+};
+
 type OrchestratorSummary = {
   timeline: TimelineContext;
   identity: IdentityContext;
@@ -43,6 +51,7 @@ type OrchestratorSummary = {
   autopilot: AutopilotContext;
   saga: Record<string, unknown>;
   integrations: Record<string, unknown>;
+  github: GithubContext;
 };
 
 class OrchestratorService {
@@ -148,6 +157,25 @@ class OrchestratorService {
     } satisfies AutopilotContext;
   }
 
+  private async buildGithubContext(userId: string): Promise<GithubContext> {
+    const milestones = await this.safeCall(() => githubSyncManager.listSummaries(userId), []);
+    const activityScore = milestones.reduce(
+      (score, repo) => score + repo.milestones.reduce((sum, milestone) => sum + (milestone.significance ?? 0), 0),
+      0
+    );
+
+    const monthlyArc = milestones.length
+      ? { title: 'Monthly GitHub arc', repos: milestones.length, highlights: milestones.flatMap((m) => m.milestones.slice(0, 1)) }
+      : null;
+
+    const identityShift = {
+      focus: milestones.map((item) => item.repo),
+      activityScore,
+    } satisfies Record<string, unknown>;
+
+    return { milestones, monthlyArc, activityScore, identityShift } satisfies GithubContext;
+  }
+
   private buildSaga(timeline: TimelineContext): Record<string, unknown> {
     return {
       title: 'Unified Lore Saga',
@@ -182,6 +210,7 @@ class OrchestratorService {
     const characters = this.buildCharacters(timeline.events);
     const saga = this.buildSaga(timeline);
     const integrations = await this.integrations.getDistilled(userId);
+    const github = await this.buildGithubContext(userId);
 
     return {
       timeline,
@@ -194,6 +223,7 @@ class OrchestratorService {
       autopilot,
       saga,
       integrations
+      github,
     } satisfies OrchestratorSummary;
   }
 

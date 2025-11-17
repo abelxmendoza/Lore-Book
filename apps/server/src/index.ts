@@ -37,6 +37,12 @@ import { personaRouter } from './routes/persona';
 import { orchestratorRouter } from './routes/orchestrator';
 import { continuityRouter } from './routes/continuity';
 import { integrationsRouter } from './routes/integrations';
+import { githubRouter } from './routes/github';
+import { journalRouter } from './routes/journal';
+import { charactersRouter } from './routes/characters';
+import { notebookRouter } from './routes/notebook';
+import { identityRouter } from './routes/identity';
+import orchestratorRouter from './routes/orchestrator';
 
 assertConfig();
 
@@ -78,12 +84,23 @@ apiRouter.use('/tasks', tasksRouter);
 apiRouter.use('/account', accountRouter);
 apiRouter.use('/onboarding', onboardingRouter);
 apiRouter.use('/agents', agentsRouter);
+  apiRouter.use('/autopilot', autopilotRouter);
+  apiRouter.use('/insights', insightsRouter);
+  apiRouter.use('/persona', personaRouter);
+  apiRouter.use('/orchestrator', orchestratorRouter);
+  apiRouter.use('/continuity', continuityRouter);
+  apiRouter.use('/github', githubRouter);
 apiRouter.use('/autopilot', autopilotRouter);
 apiRouter.use('/insights', insightsRouter);
 apiRouter.use('/persona', personaRouter);
 apiRouter.use('/orchestrator', orchestratorRouter);
 apiRouter.use('/continuity', continuityRouter);
 apiRouter.use('/integrations', integrationsRouter);
+apiRouter.use('/journal', journalRouter);
+apiRouter.use('/characters', charactersRouter);
+apiRouter.use('/', notebookRouter);
+apiRouter.use('/identity', identityRouter);
+apiRouter.use('/orchestrator', orchestratorRouter);
 
 app.use('/api', apiRouter);
 

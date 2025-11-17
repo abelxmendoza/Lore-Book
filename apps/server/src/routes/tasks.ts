@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { taskEngineService } from '../services/taskEngineService';
 import type { TaskStatus } from '../types';
+import { emitDelta } from '../realtime/orchestratorEmitter';
 
 const router = Router();
 
@@ -35,6 +36,14 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   const task = await taskEngineService.createTask(req.user!.id, parsed.data);
+  const timelineEvent = {
+    id: task.id,
+    title: task.title,
+    occurred_at: parsed.data.dueDate ?? new Date().toISOString(),
+    taskId: task.id,
+    tags: ['task', 'new']
+  };
+  void emitDelta('task.create', { task, event: timelineEvent }, req.user!.id);
   res.status(201).json({ task });
 });
 
@@ -130,6 +139,16 @@ router.patch('/:taskId', requireAuth, async (req: AuthenticatedRequest, res) => 
 router.post('/:taskId/complete', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const task = await taskEngineService.completeTask(req.user!.id, req.params.taskId);
+    if (task) {
+      const completionEvent = {
+        id: `${task.id}:completion`,
+        title: `Completed: ${task.title}`,
+        occurred_at: new Date().toISOString(),
+        taskId: task.id,
+        tags: ['task', 'completed']
+      };
+      void emitDelta('task.complete', { task, event: completionEvent }, req.user!.id);
+    }
     res.json({ task });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to complete task' });
