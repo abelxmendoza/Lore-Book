@@ -1,10 +1,14 @@
 import { spawn } from 'child_process';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 import { logger } from '../logger';
 import type { MemoryEntry, TaskRecord } from '../types';
 import { memoryService } from './memoryService';
 import { taskEngineService } from './taskEngineService';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export type AutopilotFormat = 'json' | 'markdown';
 

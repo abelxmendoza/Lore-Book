@@ -42,9 +42,15 @@ import { journalRouter } from './routes/journal';
 import { charactersRouter } from './routes/characters';
 import { notebookRouter } from './routes/notebook';
 import { identityRouter } from './routes/identity';
-import orchestratorRouter from './routes/orchestrator';
 import { externalHubRouter } from './external/external_hub.router';
 import { harmonizationRouter } from './harmonization/harmonization.router';
+import { chatRouter } from './routes/chat';
+import { namingRouter } from './routes/naming';
+import { memoirRouter } from './routes/memoir';
+import { documentsRouter } from './routes/documents';
+import { devRouter } from './routes/dev';
+import healthRouter from './routes/health';
+import { timeRouter } from './routes/time';
 
 assertConfig();
 
@@ -59,9 +65,8 @@ app.use(
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', name: 'Lore Keeper API' });
-});
+// Health check routes (no auth required)
+app.use(healthRouter);
 
 const apiRouter = express.Router();
 apiRouter.use(authMiddleware, rateLimitMiddleware, inputSanitizer, secureHeaders, auditLogger);
@@ -86,25 +91,25 @@ apiRouter.use('/tasks', tasksRouter);
 apiRouter.use('/account', accountRouter);
 apiRouter.use('/onboarding', onboardingRouter);
 apiRouter.use('/agents', agentsRouter);
-  apiRouter.use('/autopilot', autopilotRouter);
-  apiRouter.use('/insights', insightsRouter);
-  apiRouter.use('/persona', personaRouter);
-  apiRouter.use('/orchestrator', orchestratorRouter);
-  apiRouter.use('/continuity', continuityRouter);
-  apiRouter.use('/github', githubRouter);
-  apiRouter.use('/external-hub', externalHubRouter);
 apiRouter.use('/autopilot', autopilotRouter);
 apiRouter.use('/insights', insightsRouter);
 apiRouter.use('/persona', personaRouter);
 apiRouter.use('/orchestrator', orchestratorRouter);
 apiRouter.use('/continuity', continuityRouter);
+apiRouter.use('/github', githubRouter);
+apiRouter.use('/external-hub', externalHubRouter);
 apiRouter.use('/integrations', integrationsRouter);
 apiRouter.use('/journal', journalRouter);
 apiRouter.use('/characters', charactersRouter);
 apiRouter.use('/', notebookRouter);
 apiRouter.use('/identity', identityRouter);
-apiRouter.use('/orchestrator', orchestratorRouter);
 apiRouter.use('/harmonization', harmonizationRouter);
+apiRouter.use('/chat', chatRouter);
+apiRouter.use('/naming', namingRouter);
+apiRouter.use('/memoir', memoirRouter);
+apiRouter.use('/documents', documentsRouter);
+apiRouter.use('/time', timeRouter);
+apiRouter.use('/dev', devRouter);
 
 app.use('/api', apiRouter);
 

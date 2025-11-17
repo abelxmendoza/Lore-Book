@@ -214,6 +214,20 @@ The orchestrator service (`apps/server/src/services/orchestratorService.ts`) coo
 
 ---
 
+## Privacy & Security
+
+**🔒 Using Your Real Memoir?** See [`PRIVACY_GUIDE.md`](./PRIVACY_GUIDE.md) for:
+- How your data stays private (Row-Level Security, user isolation)
+- Options for local development (local Supabase recommended)
+- Why your memoir text won't interfere with builds
+- Best practices for keeping your data secure
+
+**Quick Summary:**
+- ✅ All data is isolated by `user_id` - only you can see your data
+- ✅ Use local Supabase for maximum privacy (data stays on your machine)
+- ✅ Your memoir text is just data - it won't break the build process
+- ✅ `.env` files are gitignored - your credentials stay private
+
 ## Getting Started
 
 ### Quick Start Guide

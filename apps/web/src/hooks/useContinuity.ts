@@ -1,15 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { fetchContinuity, fetchMergeSuggestions, type ContinuitySnapshot } from '../api/continuity';
-
-export const useContinuity = () => {
-  const [snapshot, setSnapshot] = useState<ContinuitySnapshot | null>(null);
-  const [mergeSuggestions, setMergeSuggestions] = useState<{ id: string; title: string; rationale: string }[]>([]);
-
-  const refresh = useCallback(async () => {
-    const [{ continuity }, { suggestions }] = await Promise.all([fetchContinuity(), fetchMergeSuggestions()]);
-    setSnapshot(continuity);
-    setMergeSuggestions(suggestions);
 import { fetchJson } from '../lib/api';
 
 export type CanonicalFact = {
@@ -48,6 +39,8 @@ export type ContinuityStatePayload = {
 };
 
 export const useContinuity = () => {
+  const [snapshot, setSnapshot] = useState<ContinuitySnapshot | null>(null);
+  const [mergeSuggestions, setMergeSuggestions] = useState<{ id: string; title: string; rationale: string }[]>([]);
   const [state, setState] = useState<ContinuityStatePayload | null>(null);
   const [conflicts, setConflicts] = useState<ContinuityConflict[]>([]);
   const [report, setReport] = useState('');
@@ -58,15 +51,25 @@ export const useContinuity = () => {
     setLoading(true);
     setError(null);
     try {
-      const [stateResponse, conflictResponse, reportResponse] = await Promise.all([
-        fetchJson<{ state: ContinuityStatePayload }>('/api/continuity/state'),
-        fetchJson<{ conflicts: ContinuityConflict[] }>('/api/continuity/conflicts'),
-        fetchJson<{ report: string }>('/api/continuity/report')
+      const [
+        { continuity },
+        { suggestions },
+        stateResponse,
+        conflictResponse,
+        reportResponse
+      ] = await Promise.all([
+        fetchContinuity(),
+        fetchMergeSuggestions(),
+        fetchJson<{ state: ContinuityStatePayload }>('/api/continuity/state').catch(() => ({ state: null })),
+        fetchJson<{ conflicts: ContinuityConflict[] }>('/api/continuity/conflicts').catch(() => ({ conflicts: [] })),
+        fetchJson<{ report: string }>('/api/continuity/report').catch(() => ({ report: '' }))
       ]);
 
-      setState(stateResponse.state);
-      setConflicts(conflictResponse.conflicts ?? stateResponse.state.conflicts ?? []);
-      setReport(reportResponse.report ?? '');
+      setSnapshot(continuity);
+      setMergeSuggestions(suggestions);
+      setState(stateResponse?.state ?? null);
+      setConflicts(conflictResponse?.conflicts ?? stateResponse?.state?.conflicts ?? []);
+      setReport(reportResponse?.report ?? '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load continuity data');
     } finally {
@@ -78,6 +81,5 @@ export const useContinuity = () => {
     void refresh();
   }, [refresh]);
 
-  return { snapshot, mergeSuggestions, refresh };
-  return { state, conflicts, report, loading, error, refresh };
+  return { snapshot, mergeSuggestions, state, conflicts, report, loading, error, refresh };
 };

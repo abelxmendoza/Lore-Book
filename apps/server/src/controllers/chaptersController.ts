@@ -7,6 +7,8 @@ import { chatService } from '../services/chatService';
 import { chapterInsightsService } from '../services/chapterInsightsService';
 import { correctionService } from '../services/correctionService';
 import { memoryService } from '../services/memoryService';
+import { namingService } from '../services/namingService';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 const chapterSchema = z.object({
   title: z.string().min(2),
@@ -28,6 +30,38 @@ export const createChapter = async (req: AuthenticatedRequest, res: Response) =>
   }
 
   const chapter = await chapterService.createChapter(req.user!.id, parsed.data);
+  
+  // Auto-generate chapter name if title is generic
+  if (!parsed.data.title || parsed.data.title === 'Untitled Chapter' || parsed.data.title.length < 3) {
+    try {
+      const { data: entriesData } = await supabaseAdmin
+        .from('journal_entries')
+        .select('content, date')
+        .eq('user_id', req.user!.id)
+        .eq('chapter_id', chapter.id)
+        .order('date', { ascending: false })
+        .limit(50);
+
+      const entries = (entriesData || []).map((e: any) => ({
+        content: e.content,
+        date: e.date
+      }));
+
+      if (entries.length > 0) {
+        const generatedTitle = await namingService.generateChapterName(req.user!.id, chapter.id, entries);
+        await supabaseAdmin
+          .from('chapters')
+          .update({ title: generatedTitle })
+          .eq('id', chapter.id)
+          .eq('user_id', req.user!.id);
+        chapter.title = generatedTitle;
+      }
+    } catch (error) {
+      console.error('Failed to auto-generate chapter name:', error);
+      // Continue without failing the request
+    }
+  }
+
   return res.status(201).json({ chapter });
 };
 

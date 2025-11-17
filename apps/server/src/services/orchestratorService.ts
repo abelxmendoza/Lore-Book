@@ -222,7 +222,7 @@ class OrchestratorService {
       season: timeline.season,
       autopilot,
       saga,
-      integrations
+      integrations,
       github,
     } satisfies OrchestratorSummary;
   }

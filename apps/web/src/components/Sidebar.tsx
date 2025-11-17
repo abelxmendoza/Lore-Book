@@ -1,13 +1,12 @@
-import { BookMarked, CalendarDays, Compass, MessageSquareText, Plus, Search, Sparkles } from 'lucide-react';
+import { BookMarked, CalendarDays, Compass, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen } from 'lucide-react';
 
 import { Logo } from './Logo';
 import { Button } from './ui/button';
 
 interface SidebarProps {
-  activeSurface?: 'notebook' | 'timeline' | 'search';
-  onSurfaceChange?: (surface: 'notebook' | 'timeline' | 'search') => void;
+  activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'memoir' | 'lorebook';
+  onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'memoir' | 'lorebook') => void;
   onCreateChapter?: () => void;
-  onScrollToComposer?: () => void;
   onScrollToDiscovery?: () => void;
   onToggleDevMode?: () => void;
   devModeEnabled?: boolean;
@@ -17,7 +16,6 @@ export const Sidebar = ({
   activeSurface,
   onSurfaceChange,
   onCreateChapter,
-  onScrollToComposer,
   onScrollToDiscovery,
   onToggleDevMode,
   devModeEnabled
@@ -29,18 +27,26 @@ export const Sidebar = ({
     </div>
     <div className="mt-8 space-y-2">
       <button
-        onClick={() => {
-          onSurfaceChange?.('notebook');
-          onScrollToComposer?.();
-        }}
+        onClick={() => onSurfaceChange?.('chat')}
         className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
-          activeSurface === 'notebook'
+          activeSurface === 'chat'
             ? 'border-primary bg-primary/10 text-white'
             : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
         }`}
       >
         <MessageSquareText className="h-4 w-4 text-primary" />
-        Neon Notebook
+        Chat
+      </button>
+      <button
+        onClick={() => onSurfaceChange?.('characters')}
+        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+          activeSurface === 'characters'
+            ? 'border-primary bg-primary/10 text-white'
+            : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+        }`}
+      >
+        <Users className="h-4 w-4 text-primary" />
+        Characters
       </button>
       <button
         onClick={() => {
@@ -64,13 +70,29 @@ export const Sidebar = ({
         }`}
       >
         <Search className="h-4 w-4 text-primary" />
-        HQI Explorer
+        Memory Explorer
       </button>
       <button
-        className="flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2 text-sm text-white/70 transition hover:border-primary hover:bg-primary/10"
+        onClick={() => onSurfaceChange?.('memoir')}
+        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+          activeSurface === 'memoir'
+            ? 'border-primary bg-primary/10 text-white'
+            : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+        }`}
       >
-        <BookMarked className="h-4 w-4 text-primary" />
-        Chapters
+        <BookOpen className="h-4 w-4 text-primary" />
+        My Memoir Editor
+      </button>
+      <button
+        onClick={() => onSurfaceChange?.('lorebook')}
+        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm font-bold transition ${
+          activeSurface === 'lorebook'
+            ? 'border-primary bg-primary/20 text-white shadow-lg shadow-primary/20'
+            : 'border-primary/50 bg-primary/5 text-white hover:border-primary hover:bg-primary/15 hover:shadow-md hover:shadow-primary/10'
+        }`}
+      >
+        <BookMarked className="h-5 w-5 text-primary" />
+        Lore Book
       </button>
       <button
         onClick={() => {
