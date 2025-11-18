@@ -190,9 +190,8 @@ export const CharacterBook = () => {
       const characterList = response?.characters || [];
       // If no characters loaded, use dummy data
       setCharacters(characterList.length > 0 ? characterList : dummyCharacters);
-    } catch (error) {
+    } catch {
       // Silently fail - use dummy data instead
-      console.error('Failed to load characters:', error);
       setCharacters(dummyCharacters);
     } finally {
       setLoading(false);
@@ -281,8 +280,7 @@ export const CharacterBook = () => {
                   }}
                 />
               );
-            } catch (cardError) {
-              console.error('Failed to render character:', character.name, cardError);
+            } catch {
               return null;
             }
           })}
@@ -301,34 +299,31 @@ export const CharacterBook = () => {
               : 'Your timeline will appear here as you create chapters and entries'}
           </p>
         </div>
-        <Card className="bg-black/40 border-border/60">
-          <CardContent className="p-0">
-            {(chapters.length > 0 || entries.length > 0) ? (
+        <Card className="bg-black/40 border-border/60 overflow-hidden">
+          <CardContent className="p-0 overflow-x-hidden">
+            <div className="overflow-x-auto overflow-y-hidden">
               <ColorCodedTimeline
-                chapters={chapters.map(ch => ({
+                chapters={chapters.length > 0 ? chapters.map(ch => ({
                   id: ch.id,
                   title: ch.title,
                   start_date: ch.start_date || ch.startDate || new Date().toISOString(),
                   end_date: ch.end_date || ch.endDate || null,
                   description: ch.description || null,
                   summary: ch.summary || null
-                }))}
-                entries={entries.map(entry => ({
+                })) : []}
+                entries={entries.length > 0 ? entries.map(entry => ({
                   id: entry.id,
                   content: entry.content,
                   date: entry.date,
                   chapter_id: entry.chapter_id || entry.chapterId || null
-                }))}
+                })) : []}
+                useDummyData={chapters.length === 0 && entries.length === 0}
                 showLabel={true}
                 onItemClick={(item) => {
                   // Could navigate to entry or chapter if needed
                 }}
               />
-            ) : (
-              <div className="p-8 text-center text-white/40">
-                <p className="text-sm">No timeline data yet. Create chapters and entries to see your story timeline.</p>
-              </div>
-            )}
+            </div>
           </CardContent>
         </Card>
       </div>

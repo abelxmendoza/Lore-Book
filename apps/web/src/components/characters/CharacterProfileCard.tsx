@@ -58,9 +58,9 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
       onClick={onClick}
     >
       {/* Header with Avatar Placeholder */}
-      <div className="relative h-24 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center">
+      <div className="relative h-16 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center">
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-        <UserCircle className="h-16 w-16 text-white/40 group-hover:text-primary/60 transition-colors relative z-10" />
+        <UserCircle className="h-10 w-10 text-white/40 group-hover:text-primary/60 transition-colors relative z-10" />
         {character.status && (
           <div className="absolute top-2 right-2 z-10">
             <Badge 
@@ -77,10 +77,10 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
         )}
       </div>
 
-      <CardHeader className="pb-2 pt-4">
+      <CardHeader className="pb-1.5 pt-2.5 px-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-white truncate group-hover:text-primary transition-colors">
+            <h3 className="text-base font-semibold text-white truncate group-hover:text-primary transition-colors">
               {character.name}
             </h3>
             {character.alias && character.alias.length > 0 && (
@@ -89,13 +89,13 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
               </p>
             )}
           </div>
-          <ChevronRight className="h-4 w-4 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0" />
+          <ChevronRight className="h-3.5 w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0" />
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-3 pt-0">
+      <CardContent className="space-y-2 pt-0 px-4 pb-3">
         {character.summary && (
-          <p className="text-sm text-white/70 line-clamp-2 leading-relaxed">{character.summary}</p>
+          <p className="text-xs text-white/70 line-clamp-2 leading-snug">{character.summary}</p>
         )}
         
         {/* Archetype Badge */}
@@ -110,29 +110,29 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
         )}
         
         {/* Metadata Row */}
-        <div className="flex flex-wrap gap-3 text-xs text-white/50">
+        <div className="flex flex-wrap gap-2 text-[10px] text-white/50">
           {character.pronouns && (
             <div className="flex items-center gap-1">
-              <Users className="h-3 w-3" />
+              <Users className="h-2.5 w-2.5" />
               <span>{character.pronouns}</span>
             </div>
           )}
           {character.role && (
             <div className="flex items-center gap-1">
-              <Tag className="h-3 w-3" />
-              <span className="truncate max-w-[100px]">{character.role}</span>
+              <Tag className="h-2.5 w-2.5" />
+              <span className="truncate max-w-[80px]">{character.role}</span>
             </div>
           )}
           {character.first_appearance && (
             <div className="flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
+              <Calendar className="h-2.5 w-2.5" />
               <span>{new Date(character.first_appearance).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
             </div>
           )}
         </div>
 
         {character.tags && character.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 pt-2 border-t border-border/30">
+          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/30">
             {character.tags.slice(0, 3).map((tag) => (
               <Badge
                 key={tag}
@@ -151,7 +151,7 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
         )}
 
         {character.social_media && Object.keys(character.social_media).length > 0 && (
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-border/30">
+          <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-border/30">
             {character.social_media.instagram && (
               <a
                 href={`https://instagram.com/${character.social_media.instagram.replace('@', '')}`}
@@ -236,16 +236,16 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
         )}
 
         {(character.memory_count !== undefined || character.relationship_count !== undefined) && (
-          <div className="flex items-center justify-between pt-2 border-t border-border/30 text-xs">
+          <div className="flex items-center justify-between pt-1.5 border-t border-border/30 text-[10px]">
             {character.memory_count !== undefined && (
               <div className="flex items-center gap-1 text-white/50">
-                <Sparkles className="h-3 w-3" />
+                <Sparkles className="h-2.5 w-2.5" />
                 <span>{character.memory_count} {character.memory_count === 1 ? 'memory' : 'memories'}</span>
               </div>
             )}
             {character.relationship_count !== undefined && (
               <div className="flex items-center gap-1 text-white/50">
-                <Users className="h-3 w-3" />
+                <Users className="h-2.5 w-2.5" />
                 <span>{character.relationship_count} {character.relationship_count === 1 ? 'connection' : 'connections'}</span>
               </div>
             )}

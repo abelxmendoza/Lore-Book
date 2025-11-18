@@ -32,6 +32,7 @@ import { MemoirEditor } from '../components/memoir/MemoirEditor';
 import { LoreBook } from '../components/lorebook/LoreBook';
 import { PopulateDummyData } from '../components/dev/PopulateDummyData';
 import { ChapterCreationChatbot } from '../components/chapters/ChapterCreationChatbot';
+import { TimelineHierarchyPanel } from '../components/timeline-hierarchy/TimelineHierarchyPanel';
 
 const formatRange = (days = 7) => {
   const end = new Date();
@@ -199,7 +200,7 @@ const AppContent = () => {
         onToggleDevMode={() => setDevMode((prev) => !prev)}
         devModeEnabled={devMode}
       />
-      <main className="flex-1 space-y-6 p-6 text-white">
+      <main className="flex-1 space-y-6 p-6 text-white overflow-x-hidden">
         <header className="flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
           <div>
             <h1 className="text-2xl font-semibold">Welcome back</h1>
@@ -226,16 +227,20 @@ const AppContent = () => {
             <ChatFirstInterface />
           </div>
         )}
-        {activeSurface === 'timeline' && renderTimelineSurface()}
+        {activeSurface === 'timeline' && (
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-12rem)] overflow-hidden">
+            <TimelineHierarchyPanel />
+          </div>
+        )}
         {activeSurface === 'search' && renderSearchSurface()}
         {activeSurface === 'characters' && <CharacterBook />}
         {activeSurface === 'memoir' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-12rem)] overflow-hidden">
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-12rem)] overflow-y-auto">
             <MemoirEditor />
           </div>
         )}
         {activeSurface === 'lorebook' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-12rem)] overflow-hidden">
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)]">
             <LoreBook />
           </div>
         )}

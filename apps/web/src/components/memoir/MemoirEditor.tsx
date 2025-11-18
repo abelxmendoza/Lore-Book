@@ -48,6 +48,135 @@ type ChatMessage = {
   timestamp: Date;
 };
 
+// Dummy memoir data for demonstration
+const dummyMemoir: MemoirOutline = {
+  id: 'dummy-memoir-1',
+  title: 'The Chronicles of Aetheria',
+  lastUpdated: new Date().toISOString(),
+  autoUpdate: false,
+  sections: [
+    {
+      id: 'section-1',
+      title: 'The Awakening',
+      content: `The first light of dawn crept over the horizon, painting the sky in hues of orange and violet. Elara stood at the edge of the ancient forest, her hand resting on the gnarled bark of the World Tree. The air hummed with an energy she had never felt before—a resonance that seemed to call to something deep within her soul.
+
+She had been drawn here by dreams, visions that had plagued her sleep for weeks. In them, she saw a realm beyond the veil, a place where magic flowed like water and time moved in strange currents. The elders had warned her against seeking answers in the old places, but Elara had always been one to follow her instincts.
+
+As her fingers traced the intricate patterns carved into the tree's surface, she felt a warmth spread through her palm. The symbols began to glow, faintly at first, then brighter, until the entire clearing was bathed in an ethereal light. The ground beneath her feet trembled, and she heard a voice—ancient, wise, and filled with sorrow.
+
+"Child of the lost bloodline," it whispered, "you have come at last. The balance has shifted, and the old magic stirs once more. You must choose: embrace the power that flows in your veins, or turn away and let darkness consume all that remains."
+
+Elara's heart raced. This was it—the moment that would define everything. She took a deep breath and pressed her hand fully against the tree. "I choose to embrace it," she said, her voice steady despite the fear that clawed at her chest.
+
+The light exploded outward, and Elara felt herself being pulled into something vast and infinite. When her vision cleared, she was no longer in the forest. She stood in a realm of swirling colors and impossible geometries, where the very fabric of reality seemed to bend and fold around her.
+
+This was the beginning of everything.`,
+      order: 1,
+      period: { from: '2024-01-01', to: '2024-01-15' },
+      focus: 'Character introduction and world-building',
+      lastUpdated: new Date().toISOString(),
+      originalContent: `The first light of dawn crept over the horizon, painting the sky in hues of orange and violet. Elara stood at the edge of the ancient forest, her hand resting on the gnarled bark of the World Tree.`,
+      isEdited: false
+    },
+    {
+      id: 'section-2',
+      title: 'The Academy of Shadows',
+      content: `The Academy of Shadows was not a place one found—it found you. Elara had been wandering the strange realm for what felt like days when the structure materialized before her. It was a building that defied logic: walls that curved inward, staircases that led to nowhere, and windows that showed different times of day depending on which angle you viewed them from.
+
+A figure emerged from the shadows—tall, cloaked, with eyes that seemed to see through everything. "Welcome, Initiate," the figure said, their voice echoing strangely. "I am Master Thorne. You have been expected."
+
+Elara followed Master Thorne through corridors that shifted and changed as they walked. Doors appeared where none had been before, and she caught glimpses of other students practicing spells that made the air shimmer. In one room, a young man was attempting to weave light into solid form. In another, a girl was learning to read the threads of fate itself.
+
+"You will learn many things here," Master Thorne explained as they walked. "But the most important lesson is this: magic is not a tool to be wielded. It is a relationship. You must understand it, respect it, and above all, you must never try to control it completely. The moment you do, it will turn on you."
+
+They stopped before a massive door covered in runes that seemed to writhe and shift. "This is the Library of Infinite Knowledge," Master Thorne said. "Within these walls, you will find answers to questions you haven't even thought to ask yet. But beware—knowledge comes with a price. The deeper you go, the more it will change you."
+
+Elara pushed open the door and stepped inside. The library stretched into infinity, shelves upon shelves of books that seemed to rearrange themselves when she wasn't looking. She reached for a volume bound in what looked like dragon scales, and as her fingers touched it, she felt a jolt of understanding flood through her mind.
+
+She was home.`,
+      order: 2,
+      period: { from: '2024-01-16', to: '2024-02-28' },
+      focus: 'World expansion and magical system introduction',
+      lastUpdated: new Date().toISOString(),
+      originalContent: `The Academy of Shadows was not a place one found—it found you.`,
+      isEdited: false
+    },
+    {
+      id: 'section-3',
+      title: 'The First Trial',
+      content: `The Trial of Elements came without warning. One moment, Elara was studying ancient texts in the library. The next, she found herself standing in a circular chamber with four archways, each leading to a different realm of elemental power.
+
+Fire. Water. Earth. Air.
+
+She had to master each one, or fail and be cast out of the Academy forever. The pressure was immense, but Elara had never been one to back down from a challenge.
+
+She chose Fire first, stepping through the archway into a realm of endless flame. The heat was intense, but she focused on the energy within herself, finding the spark that resonated with the fire around her. Slowly, she learned to dance with the flames rather than fight them, to become one with the element rather than dominate it.
+
+Water came next—a realm of endless ocean where she had to learn to breathe beneath the waves and command the currents. Earth taught her patience and strength, showing her how to feel the heartbeat of the world itself. Air was the most difficult, requiring her to let go of all control and trust in the wind to carry her.
+
+When she emerged from the final archway, Master Thorne was waiting. "You have passed," they said, a rare smile touching their lips. "But remember, this was only the beginning. The real trials lie ahead, and they will test not just your power, but your heart."
+
+Elara nodded, feeling changed in ways she couldn't yet understand. She had touched the elements, and they had touched her in return. Something fundamental had shifted within her, and she knew that nothing would ever be the same.`,
+      order: 3,
+      period: { from: '2024-03-01', to: '2024-03-20' },
+      focus: 'Character growth and magical mastery',
+      lastUpdated: new Date().toISOString(),
+      originalContent: `The Trial of Elements came without warning.`,
+      isEdited: false
+    },
+    {
+      id: 'section-4',
+      title: 'The Shadow Council',
+      content: `Not all who studied at the Academy were allies. Elara learned this the hard way when she discovered the existence of the Shadow Council—a secret organization of mages who believed that magic should be hoarded and controlled, not shared freely with the world.
+
+The Council had been watching her since her arrival, drawn by the power they sensed within her. They approached her one evening as she walked through the gardens, their leader—a mage named Valdris—stepping out from behind a statue.
+
+"You have potential," Valdris said, his voice smooth as silk and twice as dangerous. "But you waste it on these... common teachings. Join us, and we will show you what true power looks like. We will teach you to bend reality itself to your will."
+
+Elara felt the pull of his words, the temptation to take the easy path to power. But something in his eyes made her hesitate. There was a hunger there, a darkness that spoke of corruption and loss of self.
+
+"I'm not interested," she said, turning to leave.
+
+Valdris's hand shot out, grabbing her arm. "You will be," he hissed. "One way or another, you will be. The old ways are dying, Elara. Those who cling to them will die with them. Choose wisely."
+
+As he disappeared into the shadows, Elara felt a chill run down her spine. The Academy was not the safe haven she had thought it was. There were forces at play here, forces that wanted to use her for their own ends.
+
+She would need to be careful. And she would need to be strong.`,
+      order: 4,
+      period: { from: '2024-03-21', to: '2024-04-10' },
+      focus: 'Introduction of conflict and antagonists',
+      lastUpdated: new Date().toISOString(),
+      originalContent: `Not all who studied at the Academy were allies.`,
+      isEdited: false
+    },
+    {
+      id: 'section-5',
+      title: 'The Prophecy Revealed',
+      content: `The truth came to her in a dream, or perhaps it was a vision—the distinction had become blurred. She stood in a place that was neither here nor there, before a figure that was both ancient and ageless.
+
+"You are the Last Keeper," the figure said, their voice resonating with the weight of eons. "The one who will either restore the balance or watch as everything falls into darkness. The choice has always been yours, but now you must make it with full knowledge of what it means."
+
+Images flooded her mind: a world where magic had been stripped away, leaving only emptiness and despair. A world where the Shadow Council ruled with an iron fist, using their power to subjugate all who opposed them. And then, another vision—a world where magic flowed freely, where the barriers between realms had been healed, where balance had been restored.
+
+"The path will not be easy," the figure continued. "You will face trials that will break you, choices that will tear you apart. You will lose friends, make enemies, and question everything you believe in. But if you stay true to yourself, if you remember why you chose this path in the first place, you can succeed."
+
+When Elara awoke, she found a book on her nightstand that hadn't been there before. It was bound in silver and gold, and when she opened it, the pages were blank—until she touched them. Then, words began to appear, written in a language she somehow understood.
+
+It was the Prophecy of the Last Keeper. And it was about her.
+
+She read through the night, learning of the ancient conflict that had torn the realms apart, of the Keepers who had maintained the balance for millennia, and of the dark force that had destroyed them all—except for one. Her.
+
+The weight of destiny settled on her shoulders, heavy but not crushing. She had been chosen, yes, but she would make her own choices. She would write her own story, prophecy be damned.`,
+      order: 5,
+      period: { from: '2024-04-11', to: '2024-05-01' },
+      focus: 'Revelation of destiny and greater purpose',
+      lastUpdated: new Date().toISOString(),
+      originalContent: `The truth came to her in a dream, or perhaps it was a vision.`,
+      isEdited: false
+    }
+  ]
+};
+
 export const MemoirEditor = () => {
   const [outline, setOutline] = useState<MemoirOutline | null>(null);
   const [loading, setLoading] = useState(false);
@@ -249,7 +378,8 @@ export const MemoirEditor = () => {
   const loadMemoir = async () => {
     setLoading(true);
     try {
-      const memoir = await fetchJson<MemoirOutline>('/api/memoir/outline');
+      // Use dummy data for demonstration
+      const memoir = dummyMemoir;
       setOutline(memoir);
       // Expand all sections by default
       const allIds = new Set<string>();
@@ -827,7 +957,7 @@ export const MemoirEditor = () => {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between p-6 border-b border-border/50">
         <div>
@@ -995,7 +1125,7 @@ export const MemoirEditor = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-y-auto">
         {/* Outline Editor */}
         {showOutline && (
           <div className="w-80 border-r border-border/50 flex-shrink-0 overflow-y-auto">
@@ -1018,7 +1148,7 @@ export const MemoirEditor = () => {
         )}
 
         {/* Editor Content */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-y-auto">
           <div className="flex-1 overflow-y-auto p-6">
 
           {/* Memoir Sections */}
