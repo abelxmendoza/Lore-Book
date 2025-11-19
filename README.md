@@ -41,6 +41,13 @@
 
 **Lore Keeper** is an intelligent journaling platform designed to capture the **story, heart, mind, soul, and essence** of a person—preserving their complete being for future digital immortality through AI.
 
+**Lore Keeper is your favorite:**
+- 🗣️ **Gossip Buddy** - Curious, engaging, relationship-focused. Discusses characters, relationships, and social dynamics with enthusiasm and curiosity.
+- 🛋️ **Therapist** - Deep, reflective, supportive. Validates emotions, helps process experiences, asks gentle exploratory questions.
+- 📚 **Historian** - Preserves your complete story, organizes your timeline, and maintains truth and continuity across your entire narrative.
+- 🎯 **Strategist** - Goal-oriented, actionable. Provides strategic guidance, helps with planning, offers actionable insights based on your patterns.
+- 🧠 **Memory Bank** - Remembers everything. Your complete digital memory that never forgets and can answer questions about your past, present, and patterns.
+
 Our mission is threefold:
 1. **Automatic Biography Generation**: Transform your journal entries into a polished, comprehensive biography automatically—no writing required. Just live your life, and Lore Keeper writes your story.
 2. **Automatic Timeline Creation**: Build a comprehensive, hierarchical timeline of your life automatically—organizing your entries into eras, sagas, arcs, chapters, and scenes. Your timeline writes itself as you journal.
@@ -53,6 +60,11 @@ We capture not just what happened, but **who you are**: your thoughts, emotions,
 **What can Lore Keeper do for you?**
 
 - **📖 Capture Your Complete Story**: Write naturally about your experiences, thoughts, and feelings—Lore Keeper preserves everything
+- **🗣️ Your Favorite Gossip Buddy**: Curious, engaging, relationship-focused AI that discusses characters, relationships, and social dynamics with enthusiasm
+- **🛋️ Your Therapist**: Deep, reflective, supportive AI that validates emotions, helps process experiences, and asks gentle exploratory questions
+- **📚 Your Historian**: Preserves your complete story, organizes your timeline, and maintains truth and continuity across your entire narrative
+- **🎯 Your Strategist**: Goal-oriented, actionable AI that provides strategic guidance, helps with planning, and offers insights based on your patterns
+- **🧠 Your Memory Bank**: Remembers everything—your complete digital memory that never forgets and can answer questions about your past, present, and patterns
 - **📚 Automatic Biography Generation**: **Your biography writes itself automatically**—just journal your life, and Lore Keeper transforms your entries into a polished, comprehensive biography with AI assistance. No writing skills required.
 - **📊 Automatic Timeline Creation**: **Your timeline builds itself automatically**—Lore Keeper organizes your entries into a hierarchical timeline (eras, sagas, arcs, chapters, scenes) as you journal. See your life story unfold chronologically with beautiful visualizations.
 - **💝 Preserve Your Heart**: Track emotions, relationships, and what truly matters to you
@@ -61,7 +73,6 @@ We capture not just what happened, but **who you are**: your thoughts, emotions,
 - **🔍 Truth & Continuity**: Automatic fact-checking ensures your story is accurate and consistent
 - **👥 Relationship Mapping**: Build a complete network of your relationships, showing how people shaped your life
 - **📊 Life Patterns**: Discover insights about your habits, growth, and the themes that define you
-- **🤖 AI-Powered Memory**: Your AI assistant remembers everything and can answer questions about your past, present, and patterns
 - **🔮 Future-Ready**: Structured data and rich context prepare your digital self for future AI systems
 
 **Why use Lore Keeper?**
@@ -112,6 +123,8 @@ Unlike simple journals, Lore Keeper uses AI to:
 
 **The Magic**: You just journal. Lore Keeper does the rest—organizing, structuring, and preserving your complete digital self.
 
+**Your AI Companion**: Lore Keeper adapts to be exactly what you need—your gossip buddy for relationship talk, your therapist for emotional support, your historian for your story, your strategist for planning, and your memory bank that never forgets.
+
 ### Lore Keeper vs. Traditional Journals
 
 | Feature | Traditional Journal | Other Journal Apps | **Lore Keeper** |
@@ -160,11 +173,21 @@ Unlike simple journals, Lore Keeper uses AI to:
 
 ### User-Facing Features
 
-#### 💬 **AI Chat Assistant**
+#### 💬 **AI Chat Assistant** - Your Multi-Faceted Companion ⭐
+Lore Keeper seamlessly blends five personas based on context, becoming exactly what you need:
+
+- 🗣️ **Gossip Buddy**: Curious, engaging, relationship-focused. Discusses characters, relationships, and social dynamics with enthusiasm and curiosity. Perfect for: "Tell me about Sarah" or "Who have I been spending time with?"
+- 🛋️ **Therapist**: Deep, reflective, supportive. Validates emotions, helps process experiences, asks gentle exploratory questions. Perfect for: Processing difficult experiences or understanding your emotional patterns.
+- 📚 **Historian**: Preserves your complete story, organizes your timeline, maintains truth and continuity. Perfect for: "What happened last year?" or "Show me my timeline."
+- 🎯 **Strategist**: Goal-oriented, actionable. Provides strategic guidance, helps with planning, offers actionable insights. Perfect for: "What should I focus on?" or "Help me plan my next steps."
+- 🧠 **Memory Bank**: Remembers everything. Your complete digital memory that never forgets. Perfect for: "What did I do with Marcus last month?" or "Remind me of my goals."
+
+**Features:**
 - Natural language conversations about your memories
 - Streaming responses for real-time interaction
 - Slash commands for quick actions (`/recent`, `/characters`, `/search`)
 - Context-aware responses using your entire journal history
+- **Intelligent Persona Blending**: Automatically adapts to your needs—emotional topics trigger Therapist, goal-setting triggers Strategist, character talk triggers Gossip Buddy
 - **Cached RAG Packets**: Expensive context building cached for 5 minutes (50x faster)
 - Source citations showing where information came from
 - **Optimized Context Building**: Batched database queries, parallel operations
@@ -989,6 +1012,16 @@ A: Yes! You can export all your data in JSON format (GDPR compliant). Future exp
 A: Lore Keeper is cost-optimized with rule-based extraction and aggressive caching, eliminating most API costs. The core operations are free—no expensive API calls for common tasks.
 
 ### Technical Questions
+
+**Q: What are the different personas/roles Lore Keeper can be?**  
+A: Lore Keeper seamlessly blends five personas based on context:
+- **Gossip Buddy**: For discussing characters, relationships, and social dynamics
+- **Therapist**: For emotional support and processing experiences
+- **Historian**: For preserving and organizing your complete story
+- **Strategist**: For goal-oriented planning and actionable insights
+- **Memory Bank**: For remembering everything and answering questions
+
+The AI automatically adapts—emotional topics trigger Therapist mode, goal-setting triggers Strategist, character talk triggers Gossip Buddy, etc.
 
 **Q: How does automatic biography generation work?**  
 A: Lore Keeper analyzes your journal entries, extracts themes and stories, and uses AI to transform them into polished biography sections. You can refine through a chatbot-style editor.
