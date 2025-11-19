@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
-import { BookOpen, Bot, Send, Loader2, Sparkles } from 'lucide-react';
+import { BookOpen, Bot, Send, Loader2 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { fetchJson } from '../../lib/api';
 import { useChatStream } from '../../hooks/useChatStream';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
-import { useLoreKeeper } from '../../hooks/useLoreKeeper';
+import { useLoreNavigatorData } from '../../hooks/useLoreNavigatorData';
+import { LoreNavigator, type SelectedItem } from './LoreNavigator';
+import { LoreContentViewer } from './LoreContentViewer';
 
 type BiographyMessage = {
   id: string;
@@ -15,33 +17,23 @@ type BiographyMessage = {
   timestamp: Date;
 };
 
-type BiographySection = {
-  id: string;
-  title: string;
-  content: string;
-  order: number;
-  period?: { from: string; to: string };
-  lastUpdated?: string;
-};
-
 export const BiographyEditor = () => {
   const [messages, setMessages] = useState<BiographyMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sections, setSections] = useState<BiographySection[]>([]);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { streamChat, isStreaming, cancel } = useChatStream();
-  const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
+  const { data, loading: dataLoading, refresh: refreshData } = useLoreNavigatorData();
 
   useEffect(() => {
-    loadBiography();
     // Start with a welcome message
     const welcomeMessage: BiographyMessage = {
       id: 'welcome',
       role: 'assistant',
-      content: "Hi! I'm here to help you write your biography. You can ask me to:\n\n- Create new sections about your life\n- Edit existing sections\n- Add details to specific periods\n- Organize your biography\n- Generate content from your journal entries\n\nWhat would you like to work on?",
+      content: "Hi! I'm your Lore Book Assistant. I can help you:\n\n- Navigate and edit your biography sections\n- Update character profiles\n- Enhance location descriptions\n- Refine chapter summaries\n- Create new content across all your lore\n\nSelect an item from the sidebar to view and edit it, or just ask me anything!",
       timestamp: new Date()
     };
     setMessages([welcomeMessage]);
@@ -51,24 +43,36 @@ export const BiographyEditor = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingMessageId]);
 
-  const loadBiography = async () => {
-    try {
-      const data = await fetchJson<{ sections: BiographySection[] }>('/api/biography/sections');
-      setSections(data.sections || []);
-    } catch (error) {
-      console.error('Failed to load biography:', error);
-      // If endpoint doesn't exist yet, start with empty sections
-      setSections([]);
-      // Show a helpful message in the chat
-      if (messages.length === 1) {
-        const errorMessage: BiographyMessage = {
-          id: 'load-error',
-          role: 'assistant',
-          content: "I'm ready to help you write your biography! The sections list will appear here once we start creating content.\n\nYou can ask me to:\n- Create a new section about a specific period of your life\n- Write about a particular topic or theme\n- Organize your biography into chapters\n- Edit or expand existing sections\n\nWhat would you like to start with?",
-          timestamp: new Date()
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+  const handleEdit = (item: SelectedItem) => {
+    if (!item) return;
+    
+    let editPrompt = '';
+    switch (item.type) {
+      case 'biography': {
+        const section = data.biography.find(s => s.id === item.id);
+        editPrompt = section ? `Edit the biography section "${section.title}"` : '';
+        break;
       }
+      case 'character': {
+        const character = data.characters.find(c => c.id === item.id);
+        editPrompt = character ? `Edit the character "${character.name}"` : '';
+        break;
+      }
+      case 'location': {
+        const location = data.locations.find(l => l.id === item.id);
+        editPrompt = location ? `Edit the location "${location.name}"` : '';
+        break;
+      }
+      case 'chapter': {
+        const chapter = data.chapters.find(c => c.id === item.id);
+        editPrompt = chapter ? `Edit the chapter "${chapter.title}"` : '';
+        break;
+      }
+    }
+    
+    if (editPrompt) {
+      setInput(editPrompt);
+      inputRef.current?.focus();
     }
   };
 
@@ -109,7 +113,7 @@ export const BiographyEditor = () => {
 
       let accumulatedContent = '';
 
-      // Stream the response
+      // Stream the response with context awareness
       await streamChat(
         textToSend,
         conversationHistory.slice(0, -1), // Exclude current message
@@ -128,26 +132,8 @@ export const BiographyEditor = () => {
           // Complete callback
           setStreamingMessageId(null);
           
-          // Check if the response includes section updates
-          try {
-            const response = await fetchJson<{
-              sections?: BiographySection[];
-              sectionId?: string;
-              action?: 'created' | 'updated' | 'deleted';
-            }>('/api/biography/chat', {
-              method: 'POST',
-              body: JSON.stringify({
-                message: textToSend,
-                conversationHistory: conversationHistory.slice(0, -1)
-              })
-            });
-
-            if (response.sections) {
-              setSections(response.sections);
-            }
-          } catch (error) {
-            console.error('Failed to process biography update:', error);
-          }
+          // Refresh data after AI interaction
+          await refreshData();
         },
         (error: string) => {
           setStreamingMessageId(null);
@@ -183,6 +169,52 @@ export const BiographyEditor = () => {
     }
   };
 
+  // Keyboard shortcuts for navigation
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Only handle if not typing in input
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
+        return;
+      }
+
+      // Arrow keys to navigate through items
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const allItems: Array<{ type: SelectedItem['type']; id: string }> = [
+          ...data.biography.map(s => ({ type: 'biography' as const, id: s.id })),
+          ...data.characters.map(c => ({ type: 'character' as const, id: c.id })),
+          ...data.locations.map(l => ({ type: 'location' as const, id: l.id })),
+          ...data.chapters.map(c => ({ type: 'chapter' as const, id: c.id }))
+        ];
+
+        if (allItems.length === 0) return;
+
+        const currentIndex = selectedItem
+          ? allItems.findIndex(item => item.type === selectedItem.type && item.id === selectedItem.id)
+          : -1;
+
+        let nextIndex: number;
+        if (e.key === 'ArrowDown') {
+          nextIndex = currentIndex < allItems.length - 1 ? currentIndex + 1 : 0;
+        } else {
+          nextIndex = currentIndex > 0 ? currentIndex - 1 : allItems.length - 1;
+        }
+
+        setSelectedItem(allItems[nextIndex]);
+      }
+
+      // 'E' key to focus edit input
+      if (e.key === 'e' && selectedItem) {
+        e.preventDefault();
+        handleEdit(selectedItem);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedItem, data.biography, data.characters, data.locations, data.chapters]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -190,15 +222,61 @@ export const BiographyEditor = () => {
         <div className="flex items-center gap-3">
           <BookOpen className="h-6 w-6 text-primary" />
           <div>
-            <h1 className="text-2xl font-semibold text-white">My Biography</h1>
-            <p className="text-sm text-white/60">Chat with AI to write and edit your biography</p>
+            <h1 className="text-2xl font-semibold text-white">Lore Book Navigator</h1>
+            <p className="text-sm text-white/60">Navigate and edit your biography, characters, locations, and chapters</p>
           </div>
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Chat Interface */}
-        <div className="flex-1 flex flex-col border-r border-border/50">
+        {/* Left Sidebar - Navigator */}
+        <div className="w-64 flex-shrink-0">
+          {dataLoading ? (
+            <div className="h-full flex items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            <LoreNavigator
+              data={data}
+              selectedItem={selectedItem}
+              onSelectItem={setSelectedItem}
+            />
+          )}
+        </div>
+
+        {/* Center - Content Viewer */}
+        <div className="flex-1 border-r border-border/50">
+          {dataLoading ? (
+            <div className="h-full flex items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            <LoreContentViewer
+              data={data}
+              selectedItem={selectedItem}
+              onEdit={handleEdit}
+            />
+          )}
+        </div>
+
+        {/* Right Sidebar - Chat Interface */}
+        <div className="w-96 flex flex-col border-l border-border/50 bg-black/20">
+          {/* Chat Header */}
+          <div className="border-b border-border/50 p-4 bg-black/40">
+            <div className="flex items-center gap-2">
+              <Bot className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold text-white">AI Assistant</h3>
+            </div>
+            <p className="text-xs text-white/60 mt-1">
+              {selectedItem 
+                ? `Editing: ${selectedItem.type === 'biography' ? data.biography.find(s => s.id === selectedItem.id)?.title : 
+                           selectedItem.type === 'character' ? data.characters.find(c => c.id === selectedItem.id)?.name :
+                           selectedItem.type === 'location' ? data.locations.find(l => l.id === selectedItem.id)?.name :
+                           data.chapters.find(c => c.id === selectedItem.id)?.title}`
+                : 'Chat to create, edit, or organize your lore'}
+            </p>
+          </div>
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((message) => (
@@ -256,7 +334,9 @@ export const BiographyEditor = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask me to create a section, edit content, or organize your biography..."
+                placeholder={selectedItem 
+                  ? `Edit ${selectedItem.type}...`
+                  : "Ask me to create, edit, or organize your lore..."}
                 className="flex-1 bg-black/60 border-border/50 text-white resize-none"
                 rows={3}
                 disabled={loading || isStreaming}
@@ -277,64 +357,6 @@ export const BiographyEditor = () => {
               Press Enter to send, Shift+Enter for new line
             </p>
           </div>
-        </div>
-
-        {/* Biography Preview */}
-        <div className="w-96 overflow-y-auto bg-black/20 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              Biography Sections
-            </h2>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={loadBiography}
-              disabled={loading}
-            >
-              Refresh
-            </Button>
-          </div>
-
-          {sections.length === 0 ? (
-            <div className="text-center py-12 text-white/60">
-              <BookOpen className="h-12 w-12 mx-auto mb-4 text-white/20" />
-              <p className="text-sm">No sections yet</p>
-              <p className="text-xs text-white/40 mt-2">
-                Start chatting to create your biography sections
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {sections
-                .sort((a, b) => a.order - b.order)
-                .map((section) => (
-                  <Card key={section.id} className="bg-black/40 border-border/50">
-                    <CardContent className="p-4">
-                      <h3 className="font-semibold text-white mb-2">{section.title}</h3>
-                      {section.period && (
-                        <p className="text-xs text-white/50 mb-2">
-                          {new Date(section.period.from).toLocaleDateString()} -{' '}
-                          {new Date(section.period.to).toLocaleDateString()}
-                        </p>
-                      )}
-                      <div className="prose prose-invert prose-sm max-w-none">
-                        <MarkdownRenderer
-                          content={
-                            section.content || '*No content yet. Ask me to write this section.*'
-                          }
-                        />
-                      </div>
-                      {section.lastUpdated && (
-                        <p className="text-xs text-white/40 mt-2">
-                          Updated: {new Date(section.lastUpdated).toLocaleString()}
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
