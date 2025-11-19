@@ -321,5 +321,59 @@ router.post(
   }
 );
 
+/**
+ * Auto-generate title
+ * POST /timeline/:layer/:id/auto-title
+ */
+router.post(
+  '/:layer/:id/auto-title',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { layer, id } = req.params;
+      if (!validateLayer(layer)) {
+        return res.status(400).json({ error: `Invalid layer: ${layer}` });
+      }
+
+      const title = await timelineManager.autoGenerateTitle(req.user!.id, layer, id);
+      // Optionally update the node with the new title
+      if (req.body.update === true) {
+        await timelineManager.updateNode(req.user!.id, layer, id, { title });
+      }
+      res.json({ title });
+    } catch (error: any) {
+      logger.error({ error, userId: req.user?.id }, 'Failed to auto-generate title');
+      res.status(500).json({ error: error.message || 'Failed to auto-generate title' });
+    }
+  }
+);
+
+/**
+ * Auto-generate summary
+ * POST /timeline/:layer/:id/auto-summary
+ */
+router.post(
+  '/:layer/:id/auto-summary',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { layer, id } = req.params;
+      if (!validateLayer(layer)) {
+        return res.status(400).json({ error: `Invalid layer: ${layer}` });
+      }
+
+      const summary = await timelineManager.autoGenerateSummary(req.user!.id, layer, id);
+      // Optionally update the node with the new summary
+      if (req.body.update === true) {
+        await timelineManager.updateNode(req.user!.id, layer, id, { description: summary });
+      }
+      res.json({ summary });
+    } catch (error: any) {
+      logger.error({ error, userId: req.user?.id }, 'Failed to auto-generate summary');
+      res.status(500).json({ error: error.message || 'Failed to auto-generate summary' });
+    }
+  }
+);
+
 export const timelineHierarchyRouter = router;
 

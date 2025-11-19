@@ -48,10 +48,42 @@ class TimelineManager {
       }
     }
 
+    // Auto-generate title if not provided or is generic
+    let finalTitle = payload.title;
+    if (!finalTitle || finalTitle.trim() === '' || finalTitle.toLowerCase().includes('untitled') || finalTitle.toLowerCase().includes('new ')) {
+      try {
+        // Create a temporary node object for title generation
+        const tempNode: TimelineNode = {
+          id: uuid(),
+          user_id: userId,
+          title: payload.title || `Untitled ${layer}`,
+          description: payload.description || null,
+          start_date: payload.start_date,
+          end_date: payload.end_date || null,
+          tags: payload.tags || [],
+          source_type: payload.source_type || 'manual',
+          metadata: payload.metadata || {},
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          ...(payload.parent_id ? { parent_id: payload.parent_id } : {})
+        } as TimelineNode;
+        
+        // Generate title based on context
+        finalTitle = await this.autoGenerateTitle(userId, layer, tempNode);
+        // If generation fails, use fallback
+        if (!finalTitle || finalTitle.includes('Untitled')) {
+          finalTitle = payload.title || `Untitled ${layer}`;
+        }
+      } catch (error) {
+        logger.warn({ error }, 'Title auto-generation failed during creation, using provided title');
+        finalTitle = payload.title || `Untitled ${layer}`;
+      }
+    }
+
     const node = {
       id: uuid(),
       user_id: userId,
-      title: payload.title,
+      title: finalTitle,
       description: payload.description || null,
       start_date: payload.start_date,
       end_date: payload.end_date || null,
@@ -75,7 +107,7 @@ class TimelineManager {
     }
 
     // Update search index
-    await this.updateSearchIndex(userId, layer, data.id, payload.title, payload.description || '', payload.tags || []);
+    await this.updateSearchIndex(userId, layer, data.id, finalTitle, payload.description || '', payload.tags || []);
 
     return data as T;
   }
@@ -500,6 +532,171 @@ ${context || 'No recent context'}`
     }
 
     return node.tags;
+  }
+
+  /**
+   * Auto-generate title for a timeline node based on its children and context
+   * Can be called with a temporary node object for creation-time generation
+   */
+  async autoGenerateTitle(
+    userId: string,
+    layer: TimelineLayer,
+    nodeIdOrNode: string | TimelineNode
+  ): Promise<string> {
+    const node = typeof nodeIdOrNode === 'string' 
+      ? await this.getNode(userId, layer, nodeIdOrNode)
+      : nodeIdOrNode;
+    const childLayer = this.getChildLayer(layer);
+    
+    try {
+      // Get children for context (only if node exists in DB)
+      const children = (childLayer && typeof nodeIdOrNode === 'string') 
+        ? await this.getChildren(userId, layer, nodeIdOrNode) 
+        : [];
+      
+      // Get related entries/memories within date range
+      const entriesQuery = supabaseAdmin
+        .from('journal_entries')
+        .select('content, summary, date')
+        .eq('user_id', userId)
+        .gte('date', node.start_date)
+        .order('date', { ascending: true })
+        .limit(20);
+      
+      if (node.end_date) {
+        entriesQuery.lte('date', node.end_date);
+      }
+      
+      const { data: entries } = await entriesQuery;
+
+      const layerDescriptions: Record<TimelineLayer, string> = {
+        mythos: 'life-defining overarching narrative spanning years to decades',
+        epoch: 'major life phase spanning years',
+        era: 'significant period spanning months to years',
+        saga: 'long narrative arc spanning months to years',
+        arc: 'story arc within a saga spanning weeks to months',
+        chapter: 'discrete chapter spanning days to weeks',
+        scene: 'specific scene or event spanning hours to days',
+        action: 'single action or decision spanning minutes to hours',
+        microaction: 'very small action spanning seconds to minutes'
+      };
+
+      const layerExamples: Record<TimelineLayer, string[]> = {
+        mythos: ['The Awakening', 'The Journey', 'Transformation', 'The Quest'],
+        epoch: ['College Years', 'Career Beginnings', 'Family Life', 'Exploration'],
+        era: ['The Startup Phase', 'The Learning Period', 'Creative Surge', 'Reflection Time'],
+        saga: ['Building the Business', 'Finding My Voice', 'The Adventure', 'New Horizons'],
+        arc: ['First Steps', 'Breaking Through', 'The Challenge', 'Turning Point'],
+        chapter: ['Monday Morning', 'The Meeting', 'Discovery', 'Revelation'],
+        scene: ['Coffee Shop Encounter', 'Sunset Walk', 'The Conversation'],
+        action: ['Made Decision', 'Sent Email', 'Started Project'],
+        microaction: ['Opened Door', 'Clicked Button', 'Took Step']
+      };
+
+      const contextParts: string[] = [];
+      
+      if (children.length > 0) {
+        const childTitles = children.slice(0, 5).map(c => c.title).join(', ');
+        contextParts.push(`Contains: ${childTitles}`);
+      }
+      
+      if (entries && entries.length > 0) {
+        const entryContent = entries
+          .slice(0, 5)
+          .map(e => e.summary || e.content.substring(0, 100))
+          .join('\n');
+        contextParts.push(`Related memories:\n${entryContent}`);
+      }
+
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel,
+        temperature: 0.7,
+        messages: [
+          {
+            role: 'system',
+            content: `Generate a compelling, concise title (2-6 words) for a ${layer} - ${layerDescriptions[layer]}. 
+Examples: ${layerExamples[layer].join(', ')}. 
+Return only the title, no quotes or extra text.`
+          },
+          {
+            role: 'user',
+            content: `Generate a title for this ${layer}:\nDate: ${node.start_date}${node.end_date ? ` to ${node.end_date}` : ''}\nDescription: ${node.description || 'No description'}\nTags: ${node.tags.join(', ') || 'None'}\n${contextParts.length > 0 ? contextParts.join('\n\n') : 'No additional context'}`
+          }
+        ]
+      });
+
+      const title = completion.choices[0]?.message?.content?.trim() || `Untitled ${layer}`;
+      return title.replace(/^["']|["']$/g, '').replace(/^#+\s*/, '');
+    } catch (error) {
+      logger.error({ error, layer, nodeId: typeof nodeIdOrNode === 'string' ? nodeIdOrNode : 'temp' }, 'Auto-title generation failed');
+      return `Untitled ${layer}`;
+    }
+  }
+
+  /**
+   * Auto-generate summary for a timeline node based on its children and related entries
+   */
+  async autoGenerateSummary(
+    userId: string,
+    layer: TimelineLayer,
+    nodeId: string
+  ): Promise<string> {
+    const node = await this.getNode(userId, layer, nodeId);
+    const childLayer = this.getChildLayer(layer);
+    
+    try {
+      // Get children for context
+      const children = childLayer ? await this.getChildren(userId, layer, nodeId) : [];
+      
+      // Get related entries/memories within date range
+      const { data: entries } = await supabaseAdmin
+        .from('journal_entries')
+        .select('content, summary, date')
+        .eq('user_id', userId)
+        .gte('date', node.start_date)
+        .lte('date', node.end_date || new Date().toISOString())
+        .order('date', { ascending: true })
+        .limit(30);
+
+      const contextParts: string[] = [];
+      
+      if (children.length > 0) {
+        const childInfo = children
+          .slice(0, 10)
+          .map(c => `- ${c.title}${c.description ? `: ${c.description}` : ''}`)
+          .join('\n');
+        contextParts.push(`Contains ${children.length} ${childLayer}${children.length !== 1 ? 's' : ''}:\n${childInfo}`);
+      }
+      
+      if (entries && entries.length > 0) {
+        const entryContent = entries
+          .map(e => `[${e.date}] ${e.summary || e.content.substring(0, 150)}`)
+          .join('\n\n');
+        contextParts.push(`Related memories (${entries.length}):\n${entryContent}`);
+      }
+
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel,
+        temperature: 0.7,
+        messages: [
+          {
+            role: 'system',
+            content: `Generate a concise, meaningful summary (2-4 sentences) for this ${layer} timeline node. 
+Capture the essence, key themes, and significance. Write in third person or neutral voice.`
+          },
+          {
+            role: 'user',
+            content: `Generate a summary for this ${layer}:\nTitle: ${node.title}\nDate: ${node.start_date}${node.end_date ? ` to ${node.end_date}` : ''}\nTags: ${node.tags.join(', ') || 'None'}\n${contextParts.length > 0 ? '\n' + contextParts.join('\n\n') : '\nNo additional context available.'}`
+          }
+        ]
+      });
+
+      const summary = completion.choices[0]?.message?.content?.trim() || '';
+      return summary;
+    } catch (error) {
+      logger.error({ error, layer, nodeId }, 'Auto-summary generation failed');
+      return '';
+    }
   }
 
   // Helper methods

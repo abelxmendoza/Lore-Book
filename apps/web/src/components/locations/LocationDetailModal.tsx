@@ -1,24 +1,58 @@
-import { useState, useEffect } from 'react';
-import { X, Calendar, MapPin, Users, Tag, Sparkles } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, Link2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
-import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
+import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
+import { LocationTimeline } from './LocationTimeline';
+import { ChatComposer } from '../chat/ChatComposer';
 import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { LocationProfile } from './LocationProfileCard';
+import type { TimelineEntry } from '../../hooks/useTimelineData';
 
 type LocationDetailModalProps = {
   location: LocationProfile;
   onClose: () => void;
 };
 
+type TabKey = 'overview' | 'visits' | 'people' | 'context' | 'timeline' | 'chat' | 'insights' | 'metadata';
+
+const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
+  { key: 'overview', label: 'Overview', icon: FileText },
+  { key: 'visits', label: 'Visits', icon: Calendar },
+  { key: 'people', label: 'People', icon: Users },
+  { key: 'context', label: 'Context', icon: Layers },
+  { key: 'timeline', label: 'Timeline', icon: Clock },
+  { key: 'chat', label: 'Chat', icon: MessageSquare },
+  { key: 'insights', label: 'Insights', icon: Brain },
+  { key: 'metadata', label: 'Metadata', icon: Database }
+];
+
 export const LocationDetailModal = ({ location, onClose }: LocationDetailModalProps) => {
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
+  const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([]);
+  const [eras, setEras] = useState<Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string; type: 'era' | 'saga' | 'arc' }>>([]);
+  const [sagas, setSagas] = useState<Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string; type: 'era' | 'saga' | 'arc' }>>([]);
+  const [arcs, setArcs] = useState<Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string; type: 'era' | 'saga' | 'arc' }>>([]);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'visits' | 'people' | 'history'>('overview');
+  const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [insights, setInsights] = useState<any>(null);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Reset scroll position when tab changes
+    if (contentRef.current) {
+      contentRef.current.scrollTop = 0;
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const loadLocationMemories = async () => {
@@ -49,6 +83,24 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
 
         const cards = (await Promise.all(entryPromises)).filter((card): card is MemoryCard => card !== null);
         setMemoryCards(cards);
+
+        // Convert memory cards to timeline entries
+        const entries: TimelineEntry[] = cards.map(card => ({
+          id: card.id,
+          timestamp: card.date,
+          title: card.content.substring(0, 100) || 'Untitled',
+          summary: card.summary || card.content.substring(0, 200),
+          full_text: card.content,
+          mood: card.mood || null,
+          arc: null,
+          saga: null,
+          era: null,
+          lane: 'life', // Default lane, could be enhanced to detect from tags/content
+          tags: card.tags || [],
+          character_ids: [],
+          related_entry_ids: []
+        }));
+        setTimelineEntries(entries);
       } catch (error) {
         console.error('Failed to load location memories:', error);
       } finally {
@@ -57,6 +109,125 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
     };
     void loadLocationMemories();
   }, [location.entries]);
+
+  // Load timeline bands (eras, sagas, arcs) when timeline tab is active
+  useEffect(() => {
+    if (activeTab === 'timeline') {
+      const loadTimelineBands = async () => {
+        try {
+          const [erasRes, sagasRes, arcsRes] = await Promise.allSettled([
+            fetchJson<{ eras: Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string }> }>('/api/timeline/eras'),
+            fetchJson<{ sagas: Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string }> }>('/api/timeline/sagas'),
+            fetchJson<{ arcs: Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string }> }>('/api/timeline/arcs')
+          ]);
+
+          if (erasRes.status === 'fulfilled') {
+            setEras(erasRes.value.eras || []);
+          }
+          if (sagasRes.status === 'fulfilled') {
+            setSagas(sagasRes.value.sagas || []);
+          }
+          if (arcsRes.status === 'fulfilled') {
+            setArcs(arcsRes.value.arcs || []);
+          }
+        } catch (error) {
+          console.error('Failed to load timeline bands:', error);
+        }
+      };
+      void loadTimelineBands();
+    }
+  }, [activeTab]);
+
+  // Load insights when Insights tab is active
+  useEffect(() => {
+    if (activeTab === 'insights' && !insights && !loadingInsights) {
+      setLoadingInsights(true);
+      setTimeout(() => {
+        setInsights({
+          totalVisits: location.visitCount,
+          uniquePeople: location.relatedPeople.length,
+          topTags: location.tagCounts.slice(0, 5),
+          topMoods: location.moods.slice(0, 3),
+          chapters: location.chapters.length,
+          visitFrequency: location.firstVisited && location.lastVisited ? {
+            daysBetween: Math.round((new Date(location.lastVisited).getTime() - new Date(location.firstVisited).getTime()) / (1000 * 60 * 60 * 24)),
+            avgDaysBetween: location.visitCount > 1 ? Math.round((new Date(location.lastVisited).getTime() - new Date(location.firstVisited).getTime()) / (1000 * 60 * 60 * 24) / (location.visitCount - 1)) : 0
+          } : null
+        });
+        setLoadingInsights(false);
+      }, 500);
+    }
+  }, [activeTab, insights, loadingInsights, location]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '8') {
+        e.preventDefault();
+        const tabIndex = parseInt(e.key) - 1;
+        if (tabs[tabIndex]) {
+          setActiveTab(tabs[tabIndex].key);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const handleChatSubmit = async (message: string) => {
+    if (!message.trim() || chatLoading) return;
+
+    const userMessage = { role: 'user' as const, content: message, timestamp: new Date() };
+    setChatMessages(prev => [...prev, userMessage]);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const locationContext = `You are helping the user with a specific location. Here's the context:
+
+Location: ${location.name}
+Coordinates: ${location.coordinates ? `${location.coordinates.lat}, ${location.coordinates.lng}` : 'Not available'}
+Total Visits: ${location.visitCount}
+First Visited: ${location.firstVisited || 'Unknown'}
+Last Visited: ${location.lastVisited || 'Unknown'}
+People Who Visited: ${location.relatedPeople.map(p => p.name).join(', ')}
+Top Tags: ${location.tagCounts.map(t => t.tag).join(', ')}
+Chapters: ${location.chapters.map(c => c.title).join(', ')}`;
+
+      const conversationHistory = [
+        { role: 'assistant' as const, content: locationContext },
+        ...chatMessages.map(msg => ({ role: msg.role, content: msg.content }))
+      ];
+
+      const response = await fetchJson<{ answer: string }>('/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: `[Location Context: ${location.name}] ${message}`,
+          conversationHistory
+        })
+      });
+
+      const assistantMessage = { 
+        role: 'assistant' as const, 
+        content: response.answer || 'I understand. How can I help you with this location?', 
+        timestamp: new Date() 
+      };
+      setChatMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      const errorMessage = { 
+        role: 'assistant' as const, 
+        content: 'Sorry, I encountered an error. Please try again.', 
+        timestamp: new Date() 
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
@@ -78,28 +249,28 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="flex border-b border-border/60">
-            {[
-              { key: 'overview', label: 'Overview' },
-              { key: 'visits', label: 'Visits' },
-              { key: 'people', label: 'People' },
-              { key: 'history', label: 'History' }
-            ].map((tab) => (
+        {/* Tab Navigation */}
+        <div className="flex border-b border-border/60 overflow-x-auto">
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key as any)}
-                className={`px-6 py-3 text-sm font-medium transition ${
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition whitespace-nowrap ${
                   activeTab === tab.key
                     ? 'border-b-2 border-primary text-white'
                     : 'text-white/60 hover:text-white'
                 }`}
               >
-                {tab.label}
+                <Icon className="h-4 w-4" />
+                <span>{tab.label}</span>
               </button>
-            ))}
-          </div>
+            );
+          })}
+        </div>
 
+        <div ref={contentRef} className="flex-1 overflow-y-auto">
           <div className="p-6 space-y-6">
             {activeTab === 'overview' && (
               <div className="space-y-6">
@@ -321,6 +492,309 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
               </div>
             )}
 
+            {activeTab === 'context' && (
+              <div className="space-y-6">
+                {/* Location Details */}
+                {location.coordinates && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                      <MapPin className="h-5 w-5 text-primary" />
+                      Location Details
+                    </h3>
+                    <Card className="bg-black/40 border-border/50">
+                      <CardContent className="p-4">
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-white/60">Latitude:</span>
+                            <span className="text-white">{location.coordinates.lat.toFixed(6)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-white/60">Longitude:</span>
+                            <span className="text-white">{location.coordinates.lng.toFixed(6)}</span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Visit Timeline */}
+                {location.firstVisited && location.lastVisited && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-primary" />
+                      Visit Timeline
+                    </h3>
+                    <Card className="bg-black/40 border-border/50">
+                      <CardContent className="p-4">
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-white/60">First Visit:</span>
+                            <span className="text-white">{new Date(location.firstVisited).toLocaleDateString('en-US', { 
+                              month: 'long', 
+                              day: 'numeric', 
+                              year: 'numeric' 
+                            })}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-white/60">Last Visit:</span>
+                            <span className="text-white">{new Date(location.lastVisited).toLocaleDateString('en-US', { 
+                              month: 'long', 
+                              day: 'numeric', 
+                              year: 'numeric' 
+                            })}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-white/60">Time Span:</span>
+                            <span className="text-white">
+                              {Math.round((new Date(location.lastVisited).getTime() - new Date(location.firstVisited).getTime()) / (1000 * 60 * 60 * 24))} days
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Sources */}
+                {location.sources.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                      <Tag className="h-5 w-5 text-primary" />
+                      Sources
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {location.sources.map((source) => (
+                        <Badge key={source} variant="outline" className="px-3 py-1 text-sm">
+                          {source}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'timeline' && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Timeline View</h3>
+                  <p className="text-sm text-white/60 mb-4">
+                    Visual timeline of visits to {location.name}
+                  </p>
+                </div>
+                {loadingMemories ? (
+                  <div className="flex items-center justify-center h-[500px]">
+                    <div className="text-center text-white/60">
+                      <Clock className="h-12 w-12 mx-auto mb-3 animate-pulse opacity-50" />
+                      <p>Loading timeline...</p>
+                    </div>
+                  </div>
+                ) : (
+                  <LocationTimeline
+                    entries={timelineEntries}
+                    locationName={location.name}
+                    eras={eras}
+                    sagas={sagas}
+                    arcs={arcs}
+                    onMemoryClick={(entry) => {
+                      const clickedMemory = memoryCards.find(m => m.id === entry.id);
+                      if (clickedMemory) {
+                        setSelectedMemory(clickedMemory);
+                      }
+                    }}
+                    compact={true}
+                  />
+                )}
+              </div>
+            )}
+
+            {activeTab === 'chat' && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Chat about this Location</h3>
+                  <p className="text-sm text-white/60 mb-4">
+                    Ask questions or add information about {location.name} through conversation.
+                  </p>
+                </div>
+                <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                  {chatMessages.length === 0 ? (
+                    <div className="text-center py-8 text-white/60">
+                      <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p>Start a conversation about this location</p>
+                      <p className="text-xs mt-2">Try: "Tell me more about this place" or "What memories are associated here?"</p>
+                    </div>
+                  ) : (
+                    chatMessages.map((msg, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-[80%] rounded-lg p-3 ${
+                            msg.role === 'user'
+                              ? 'bg-primary/20 text-white'
+                              : 'bg-black/40 border border-border/50 text-white'
+                          }`}
+                        >
+                          <p className="text-sm">{msg.content}</p>
+                          <p className="text-xs text-white/40 mt-1">
+                            {msg.timestamp.toLocaleTimeString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="border-t border-border/60 pt-4">
+                  <ChatComposer
+                    input={chatInput}
+                    onInputChange={setChatInput}
+                    onSubmit={handleChatSubmit}
+                    loading={chatLoading}
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'insights' && (
+              <div className="space-y-6">
+                {loadingInsights ? (
+                  <div className="text-center py-12 text-white/60">
+                    <Brain className="h-12 w-12 mx-auto mb-3 animate-pulse opacity-50" />
+                    <p>Analyzing location...</p>
+                  </div>
+                ) : insights ? (
+                  <>
+                    <div>
+                      <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                        <Brain className="h-5 w-5 text-primary" />
+                        Visit Patterns
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <Card className="bg-black/40 border-border/50">
+                          <CardContent className="p-4">
+                            <div className="text-sm text-white/60 mb-1">Total Visits</div>
+                            <div className="text-2xl font-bold text-white">{insights.totalVisits}</div>
+                          </CardContent>
+                        </Card>
+                        <Card className="bg-black/40 border-border/50">
+                          <CardContent className="p-4">
+                            <div className="text-sm text-white/60 mb-1">Unique People</div>
+                            <div className="text-2xl font-bold text-white">{insights.uniquePeople}</div>
+                          </CardContent>
+                        </Card>
+                        {insights.visitFrequency && (
+                          <>
+                            <Card className="bg-black/40 border-border/50">
+                              <CardContent className="p-4">
+                                <div className="text-sm text-white/60 mb-1">Days Between First & Last</div>
+                                <div className="text-2xl font-bold text-white">{insights.visitFrequency.daysBetween}</div>
+                              </CardContent>
+                            </Card>
+                            <Card className="bg-black/40 border-border/50">
+                              <CardContent className="p-4">
+                                <div className="text-sm text-white/60 mb-1">Avg Days Between Visits</div>
+                                <div className="text-2xl font-bold text-white">{insights.visitFrequency.avgDaysBetween}</div>
+                              </CardContent>
+                            </Card>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {insights.topTags && insights.topTags.length > 0 && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                          <Tag className="h-5 w-5 text-primary" />
+                          Top Tags
+                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                          {insights.topTags.map((tagCount: { tag: string; count: number }) => (
+                            <Badge key={tagCount.tag} variant="outline" className="px-3 py-1 text-sm">
+                              {tagCount.tag} ({tagCount.count})
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-12 text-white/60">
+                    <Brain className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No insights available</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'metadata' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-3">Location Details</h3>
+                  <Card className="bg-black/40 border-border/50">
+                    <CardContent className="p-4">
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Name:</span>
+                          <span className="text-white">{location.name}</span>
+                        </div>
+                        {location.coordinates && (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-white/60">Latitude:</span>
+                              <span className="text-white">{location.coordinates.lat}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-white/60">Longitude:</span>
+                              <span className="text-white">{location.coordinates.lng}</span>
+                            </div>
+                          </>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Visit Count:</span>
+                          <span className="text-white">{location.visitCount}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Related People:</span>
+                          <span className="text-white">{location.relatedPeople.length}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Chapters:</span>
+                          <span className="text-white">{location.chapters.length}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Sources:</span>
+                          <span className="text-white">{location.sources.length}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {location.firstVisited && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3">Timestamps</h3>
+                    <Card className="bg-black/40 border-border/50">
+                      <CardContent className="p-4">
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-white/60">First Visited:</span>
+                            <span className="text-white">{location.firstVisited}</span>
+                          </div>
+                          {location.lastVisited && (
+                            <div className="flex justify-between">
+                              <span className="text-white/60">Last Visited:</span>
+                              <span className="text-white">{location.lastVisited}</span>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </div>
+            )}
+
             {activeTab === 'history' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between mb-4">
@@ -359,12 +833,7 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
                         onItemClick={(item) => {
                           const clickedMemory = memoryCards.find(m => m.id === item.id);
                           if (clickedMemory) {
-                            setExpandedCardId(expandedCardId === clickedMemory.id ? null : clickedMemory.id);
-                            // Scroll to the card
-                            setTimeout(() => {
-                              const element = document.querySelector(`[data-memory-id="${clickedMemory.id}"]`);
-                              element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            }, 100);
+                            setSelectedMemory(clickedMemory);
                           }
                         }}
                       />
@@ -413,7 +882,21 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
           </div>
         </div>
       </div>
+
+      {/* Memory Detail Modal */}
+      {selectedMemory && (
+        <MemoryDetailModal
+          memory={selectedMemory}
+          onClose={() => setSelectedMemory(null)}
+          onNavigate={(memoryId) => {
+            const memory = memoryCards.find(m => m.id === memoryId);
+            if (memory) {
+              setSelectedMemory(memory);
+            }
+          }}
+          allMemories={memoryCards}
+        />
+      )}
     </div>
   );
 };
-

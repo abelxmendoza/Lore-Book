@@ -4,6 +4,7 @@ import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { MemoryCardComponent } from './MemoryCard';
+import { MemoryDetailModal } from './MemoryDetailModal';
 import { MemoryFiltersSidebar } from './MemoryFiltersSidebar';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { fetchJson } from '../../lib/api';
@@ -273,6 +274,7 @@ export const MemoryExplorer = () => {
   const [searchResults, setSearchResults] = useState<MemorySearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+  const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
 
   // Load recent memories on mount and when filters change
   useEffect(() => {
@@ -452,6 +454,21 @@ export const MemoryExplorer = () => {
 
   const isSearchMode = query.trim().length > 0;
 
+  // Get all memories for navigation (from search results or recent memories)
+  const allMemories = useMemo(() => {
+    if (isSearchMode) {
+      return searchResults.flatMap(result => result.memories);
+    }
+    return recentMemories;
+  }, [isSearchMode, searchResults, recentMemories]);
+
+  const handleNavigateMemory = (memoryId: string) => {
+    const memory = allMemories.find(m => m.id === memoryId);
+    if (memory) {
+      setSelectedMemory(memory);
+    }
+  };
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Filters Sidebar */}
@@ -498,7 +515,7 @@ export const MemoryExplorer = () => {
                 onItemClick={(item) => {
                   const clickedMemory = recentMemories.find(m => m.id === item.id);
                   if (clickedMemory) {
-                    setExpandedCardId(expandedCardId === clickedMemory.id ? null : clickedMemory.id);
+                    setSelectedMemory(clickedMemory);
                   }
                 }}
               />
@@ -559,6 +576,7 @@ export const MemoryExplorer = () => {
                         showLinked={true}
                         expanded={expandedCardId === memory.id}
                         onToggleExpand={() => setExpandedCardId(expandedCardId === memory.id ? null : memory.id)}
+                        onSelect={() => setSelectedMemory(memory)}
                       />
                     ))}
                   </div>
@@ -594,6 +612,7 @@ export const MemoryExplorer = () => {
                       showLinked={true}
                       expanded={expandedCardId === memory.id}
                       onToggleExpand={() => setExpandedCardId(expandedCardId === memory.id ? null : memory.id)}
+                      onSelect={() => setSelectedMemory(memory)}
                     />
                   ))}
                 </div>
@@ -602,6 +621,16 @@ export const MemoryExplorer = () => {
           )}
         </div>
       </div>
+
+      {/* Memory Detail Modal */}
+      {selectedMemory && (
+        <MemoryDetailModal
+          memory={selectedMemory}
+          onClose={() => setSelectedMemory(null)}
+          onNavigate={handleNavigateMemory}
+          allMemories={allMemories}
+        />
+      )}
     </div>
   );
 };

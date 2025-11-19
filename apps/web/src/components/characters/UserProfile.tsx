@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { User, Calendar, BookOpen, Users, Tag, TrendingUp, Sparkles, Clock, FileText, Heart, MapPin, Award, BarChart3, AlertCircle, Bug, Activity, Brain } from 'lucide-react';
+import { User, Calendar, BookOpen, Users, Tag, TrendingUp, Sparkles, Clock, FileText, Heart, MapPin, Award, BarChart3, Activity, Brain } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { fetchJson } from '../../lib/api';
@@ -304,40 +304,12 @@ export const UserProfile = () => {
     }
   };
 
-  // Debug info display
-  const hasErrors = Object.values(errors).some(e => e);
-  
   if (loading || !stats) {
     return (
       <Card className="bg-black/40 border-border/60">
         <CardContent className="p-6">
-          <div className="space-y-4">
-            {DEBUG && (
-              <div className="flex items-center gap-2 text-xs text-yellow-300/80 mb-2">
-                <Bug className="h-3 w-3" />
-                <span>DEBUG: Loading stats...</span>
-                <span className="text-yellow-300/60">·</span>
-                <span>Characters loaded: {charactersLoaded ? 'Yes' : 'No'}</span>
-                {hasErrors && (
-                  <>
-                    <span className="text-yellow-300/60">·</span>
-                    <span className="text-red-400">Errors: {Object.keys(errors).filter(k => errors[k]).length}</span>
-                  </>
-                )}
-              </div>
-            )}
-            {hasErrors && DEBUG && (
-              <div className="bg-red-950/20 border border-red-500/30 rounded p-2 text-xs">
-                {Object.entries(errors).filter(([_, msg]) => msg).map(([key, msg]) => (
-                  <div key={key} className="text-red-400">
-                    {key}: {msg}
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         </CardContent>
       </Card>
@@ -346,52 +318,6 @@ export const UserProfile = () => {
 
   return (
     <div className="space-y-6">
-      {/* Debug Info */}
-      {DEBUG && (
-        <Card className="bg-yellow-950/20 border-yellow-500/30">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-xs text-yellow-300/80 flex-wrap">
-              <Bug className="h-3 w-3" />
-              <span>DEBUG MODE</span>
-              <span className="text-yellow-300/60">·</span>
-              <span>Stats loaded: {stats ? 'Yes' : 'No'}</span>
-              <span className="text-yellow-300/60">·</span>
-              <span>Entries: {entries?.length || 0}</span>
-              <span className="text-yellow-300/60">·</span>
-              <span>Characters: {characters?.length || 0}</span>
-              <span className="text-yellow-300/60">·</span>
-              <span>Chapters: {chapters?.length || 0}</span>
-              {hasErrors && (
-                <>
-                  <span className="text-yellow-300/60">·</span>
-                  <span className="text-red-400">Errors: {Object.keys(errors).filter(k => errors[k]).length}</span>
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Error Display */}
-      {hasErrors && (
-        <Card className="bg-red-950/20 border-red-500/30">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="text-sm font-semibold text-red-400 mb-2">Some data failed to load</h3>
-                <div className="space-y-1 text-xs text-white/80">
-                  {Object.entries(errors).filter(([_, msg]) => msg).map(([key, msg]) => (
-                    <div key={key}>
-                      <span className="font-semibold">{key}:</span> {msg}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
       {/* Main Profile Card */}
       <Card className="bg-gradient-to-br from-primary/10 to-purple-900/20 border-primary/30">
         <CardHeader>
@@ -400,7 +326,7 @@ export const UserProfile = () => {
               <User className="h-8 w-8 text-primary" />
             </div>
             <div className="flex-1">
-              <CardTitle className="text-2xl">Your Profile</CardTitle>
+              <CardTitle className="text-2xl">Main Character</CardTitle>
               <p className="text-sm text-white/60 mt-1">Your lore-building journey</p>
             </div>
           </div>
@@ -464,21 +390,21 @@ export const UserProfile = () => {
 
           {/* Writing Stats */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-2">
+            <div className="bg-black/40 rounded-lg p-3 border border-border/50">
+              <div className="flex items-center gap-2 text-white/60 mb-1">
                 <TrendingUp className="h-4 w-4" />
-                <span className="text-sm font-semibold">Writing Streak</span>
+                <span className="text-xs">Writing Streak</span>
               </div>
-              <div className="text-2xl font-bold text-primary">{stats.writingStreak}</div>
-              <div className="text-xs text-white/50 mt-1">consecutive days</div>
+              <div className="text-lg font-bold text-primary">{stats.writingStreak}</div>
+              <div className="text-xs text-white/50 mt-0.5">consecutive days</div>
             </div>
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-2">
+            <div className="bg-black/40 rounded-lg p-3 border border-border/50">
+              <div className="flex items-center gap-2 text-white/60 mb-1">
                 <BarChart3 className="h-4 w-4" />
-                <span className="text-sm font-semibold">Avg per Week</span>
+                <span className="text-xs">Avg per Week</span>
               </div>
-              <div className="text-2xl font-bold text-primary">{stats.averageEntriesPerWeek}</div>
-              <div className="text-xs text-white/50 mt-1">entries</div>
+              <div className="text-lg font-bold text-primary">{stats.averageEntriesPerWeek}</div>
+              <div className="text-xs text-white/50 mt-0.5">entries</div>
             </div>
           </div>
 

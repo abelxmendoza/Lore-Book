@@ -29,6 +29,8 @@ import { rateLimitMiddleware } from './middleware/rateLimit';
 import { inputSanitizer } from './middleware/sanitize';
 import { secureHeaders } from './middleware/secureHeaders';
 import { auditLogger } from './middleware/auditLogger';
+import { csrfTokenMiddleware, csrfProtection } from './middleware/csrf';
+import { validateRequestSize, validateCommonPatterns } from './middleware/requestValidation';
 import { accountRouter } from './routes/account';
 import { onboardingRouter } from './routes/onboarding';
 import { agentsRouter } from './routes/agents';
@@ -51,6 +53,7 @@ import { documentsRouter } from './routes/documents';
 import { devRouter } from './routes/dev';
 import healthRouter from './routes/health';
 import { timeRouter } from './routes/time';
+import { privacyRouter } from './routes/privacy';
 import { errorHandler } from './middleware/errorHandler';
 import { asyncHandler } from './middleware/errorHandler';
 import { requestIdMiddleware } from './utils/requestId';
@@ -60,15 +63,26 @@ import { swaggerSpec } from './config/swagger';
 assertConfig();
 
 const app = express();
+const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production';
+
 // Configure Helmet with relaxed CSP for development
 app.use(
   helmet({
-    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false, // Disable CSP in development
-    crossOriginEmbedderPolicy: false // Allow Vite HMR to work
+    contentSecurityPolicy: isDevelopment ? false : undefined, // Disable CSP in development
+    crossOriginEmbedderPolicy: false, // Allow Vite HMR to work
+    hsts: !isDevelopment // Only enforce HSTS in production
   })
 );
-app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+
+// CORS - more permissive in development
+app.use(cors({
+  origin: isDevelopment ? true : process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
+
+// Request size limits - larger in development
+app.use(express.json({ limit: isDevelopment ? '50mb' : '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: isDevelopment ? '50mb' : '1mb' }));
 
 // Request ID middleware (must be early in the chain)
 app.use(requestIdMiddleware);
@@ -83,7 +97,19 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 app.use('/', healthRouter);
 
 const apiRouter = express.Router();
-apiRouter.use(authMiddleware, rateLimitMiddleware, inputSanitizer, secureHeaders, auditLogger);
+
+// Security middleware stack (with dev-friendly settings)
+apiRouter.use(authMiddleware);
+apiRouter.use(csrfTokenMiddleware); // Generate CSRF tokens (skipped in dev)
+apiRouter.use(validateRequestSize); // Validate request sizes (relaxed in dev)
+if (!isDevelopment) {
+  apiRouter.use(csrfProtection); // CSRF protection (skipped in dev)
+  apiRouter.use(validateCommonPatterns); // Pattern validation (skipped in dev)
+}
+apiRouter.use(rateLimitMiddleware);
+apiRouter.use(inputSanitizer);
+apiRouter.use(secureHeaders);
+apiRouter.use(auditLogger);
 apiRouter.use('/entries', entriesRouter);
 apiRouter.use('/photos', photosRouter);
 apiRouter.use('/calendar', calendarRouter);
@@ -124,6 +150,7 @@ apiRouter.use('/naming', namingRouter);
 apiRouter.use('/memoir', memoirRouter);
 apiRouter.use('/documents', documentsRouter);
 apiRouter.use('/time', timeRouter);
+apiRouter.use('/privacy', privacyRouter);
 apiRouter.use('/dev', devRouter);
 
 app.use('/api', apiRouter);

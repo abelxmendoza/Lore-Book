@@ -34,6 +34,7 @@ import { LoreBook } from '../components/lorebook/LoreBook';
 import { PopulateDummyData } from '../components/dev/PopulateDummyData';
 import { ChapterCreationChatbot } from '../components/chapters/ChapterCreationChatbot';
 import { TimelineHierarchyPanel } from '../components/timeline-hierarchy/TimelineHierarchyPanel';
+import { TimelinePage } from '../components/timeline/TimelinePage';
 
 const formatRange = (days = 7) => {
   const end = new Date();
@@ -230,7 +231,7 @@ const AppContent = () => {
         )}
         {activeSurface === 'timeline' && (
           <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-12rem)] overflow-hidden">
-            <TimelineHierarchyPanel />
+            <TimelinePage />
           </div>
         )}
         {activeSurface === 'search' && renderSearchSurface()}

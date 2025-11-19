@@ -14,9 +14,12 @@ import { CreateNodeModal } from './CreateNodeModal';
 import { TimelineNodeEditor } from './TimelineNodeEditor';
 import { TimelineMemoryTree } from './TimelineMemoryTree';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
+import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
+import { TimelineNodeDetailModal } from './TimelineNodeDetailModal';
 import { useTimelineHierarchy } from '../../hooks/useTimelineHierarchy';
 import { TimelineLayer, LAYER_COLORS, TimelineNode } from '../../types/timeline';
 import { fetchJson } from '../../lib/api';
+import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 
 export const TimelineHierarchyPanel = () => {
   const {
@@ -24,7 +27,8 @@ export const TimelineHierarchyPanel = () => {
     loading,
     search,
     refresh,
-    recommendations
+    recommendations,
+    getChildren
   } = useTimelineHierarchy();
 
   // Flatten all nodes for memory tree
@@ -49,6 +53,9 @@ export const TimelineHierarchyPanel = () => {
   // Load full hierarchy for nested timeline
   const [hierarchyNodes, setHierarchyNodes] = useState<TimelineNode[]>([]);
   const [currentTimelineItem, setCurrentTimelineItem] = useState<string | undefined>();
+  const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
+  const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
+  const [selectedNode, setSelectedNode] = useState<{ node: TimelineNode; layer: TimelineLayer } | null>(null);
 
   // Recursively load all children for a node, adding layer info to metadata
   const loadNodeWithChildren = async (node: TimelineNode, layer: TimelineLayer): Promise<TimelineNode[]> => {
@@ -111,10 +118,72 @@ export const TimelineHierarchyPanel = () => {
     }
   }, [mythos]);
 
-  const handleTimelineItemClick = (item: any) => {
+  const handleTimelineItemClick = async (item: any) => {
     setCurrentTimelineItem(item.id);
-    // Could navigate to the item or open a detail view
-    console.log('Timeline item clicked:', item);
+    
+    // Check if it's a hierarchy node (era, saga, arc, etc.)
+    const hierarchyLayerTypes: TimelineLayer[] = ['mythos', 'epoch', 'era', 'saga', 'arc', 'chapter', 'scene', 'action', 'microaction'];
+    const isHierarchyNode = hierarchyLayerTypes.includes(item.type as TimelineLayer);
+    
+    if (isHierarchyNode) {
+      // Find the node in hierarchyNodes
+      const node = hierarchyNodes.find(n => n.id === item.id);
+      if (node) {
+        // Get layer from metadata or infer from type
+        const layer = (node.metadata?.layer as TimelineLayer) || (item.type as TimelineLayer);
+        setSelectedNode({ node, layer });
+        return;
+      }
+      
+      // If not found locally, fetch it
+      try {
+        const layer = item.type as TimelineLayer;
+        const fetchedNode = await fetchJson<{ node: TimelineNode }>(
+          `/api/timeline/${layer}/${item.id}`
+        );
+        setSelectedNode({ node: fetchedNode.node, layer });
+      } catch (error) {
+        console.error('Failed to load hierarchy node:', error);
+      }
+      return;
+    }
+    
+    // If it's an entry/memory, open MemoryDetailModal
+    if (item.type === 'entry' || item.entryId || (item.type === 'memory')) {
+      const entryId = item.entryId || item.id;
+      try {
+        const entry = await fetchJson<{
+          id: string;
+          date: string;
+          content: string;
+          summary?: string | null;
+          tags: string[];
+          mood?: string | null;
+          chapter_id?: string | null;
+          source: string;
+          metadata?: Record<string, unknown>;
+        }>(`/api/entries/${entryId}`);
+        const memoryCard = memoryEntryToCard(entry);
+        setSelectedMemory(memoryCard);
+        
+        // Load all entries for navigation
+        const allEntries = await fetchJson<Array<{
+          id: string;
+          date: string;
+          content: string;
+          summary?: string | null;
+          tags: string[];
+          mood?: string | null;
+          chapter_id?: string | null;
+          source: string;
+          metadata?: Record<string, unknown>;
+        }>>('/api/entries/recent?limit=100');
+        const memoryCards = allEntries.map(e => memoryEntryToCard(e));
+        setAllMemories(memoryCards);
+      } catch (error) {
+        console.error('Failed to load entry:', error);
+      }
+    }
   };
 
   const handleSearch = async () => {
@@ -289,6 +358,34 @@ export const TimelineHierarchyPanel = () => {
             setSelectedLayer(null);
           }}
           onUpdated={refresh}
+        />
+      )}
+
+      {/* Memory Detail Modal */}
+      {selectedMemory && (
+        <MemoryDetailModal
+          memory={selectedMemory}
+          onClose={() => setSelectedMemory(null)}
+          onNavigate={(memoryId) => {
+            const memory = allMemories.find(m => m.id === memoryId);
+            if (memory) {
+              setSelectedMemory(memory);
+            }
+          }}
+          allMemories={allMemories}
+        />
+      )}
+
+      {/* Timeline Node Detail Modal */}
+      {selectedNode && (
+        <TimelineNodeDetailModal
+          node={selectedNode.node}
+          layer={selectedNode.layer}
+          onClose={() => setSelectedNode(null)}
+          onUpdate={() => {
+            setSelectedNode(null);
+            refresh();
+          }}
         />
       )}
     </div>

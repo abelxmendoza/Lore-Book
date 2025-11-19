@@ -216,7 +216,7 @@ export const MemoryCardComponent = ({
                     key={linked.id}
                     onClick={(e) => {
                       e.stopPropagation();
-                      // Navigate to linked memory
+                      // Navigate to linked memory - will be handled by parent via onSelect
                     }}
                     className="p-2 rounded bg-black/40 border border-border/30 hover:border-primary/50 transition-colors cursor-pointer"
                   >

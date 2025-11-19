@@ -1,14 +1,16 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { CharacterDetailModal } from './CharacterDetailModal';
 import { UserProfile } from './UserProfile';
+import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent } from '../ui/card';
 import { fetchJson } from '../../lib/api';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
+import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 
 // Dummy character data for display
 const dummyCharacters: Character[] = [
@@ -175,11 +177,16 @@ const dummyCharacters: Character[] = [
   }
 ];
 
+const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows
+
 export const CharacterBook = () => {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
+  const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
+  const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const { entries = [], chapters = [], timeline, refreshEntries, refreshTimeline } = useLoreKeeper();
 
   const loadCharacters = async () => {
@@ -202,6 +209,22 @@ export const CharacterBook = () => {
     void loadCharacters();
   }, []);
 
+  // Convert entries to MemoryCard format for modal
+  useEffect(() => {
+    const memoryCards = entries.map(entry => memoryEntryToCard({
+      id: entry.id,
+      date: entry.date,
+      content: entry.content,
+      summary: entry.summary || null,
+      tags: entry.tags || [],
+      mood: entry.mood || null,
+      chapter_id: entry.chapter_id || null,
+      source: entry.source || 'manual',
+      metadata: entry.metadata || {}
+    }));
+    setAllMemories(memoryCards);
+  }, [entries]);
+
   const filteredCharacters = useMemo(() => {
     if (!searchTerm.trim()) return characters;
     const term = searchTerm.toLowerCase();
@@ -215,6 +238,56 @@ export const CharacterBook = () => {
         char.role?.toLowerCase().includes(term)
     );
   }, [characters, searchTerm]);
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredCharacters.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedCharacters = filteredCharacters.slice(startIndex, endIndex);
+
+  // Arrow key navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle arrow keys if not typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (e.key === 'ArrowLeft' && currentPage > 1) {
+        e.preventDefault();
+        setCurrentPage(prev => prev - 1);
+      } else if (e.key === 'ArrowRight' && currentPage < totalPages) {
+        e.preventDefault();
+        setCurrentPage(prev => prev + 1);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentPage, totalPages]);
+
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  const goToPrevious = () => {
+    if (currentPage > 1) {
+      setCurrentPage(prev => prev - 1);
+    }
+  };
+
+  const goToNext = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(prev => prev + 1);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -243,6 +316,7 @@ export const CharacterBook = () => {
             <h2 className="text-xl font-semibold text-white">Character Book</h2>
             <p className="text-sm text-white/60 mt-1">
               {characters.length} characters · {filteredCharacters.length} shown
+              {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
               {loading && ' · Loading...'}
             </p>
           </div>
@@ -268,23 +342,85 @@ export const CharacterBook = () => {
           <p className="text-sm">Try a different search term</p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredCharacters.map((character, index) => {
-            try {
-              return (
-                <CharacterProfileCard
-                  key={character.id || `char-${index}`}
-                  character={character}
-                  onClick={() => {
-                    setSelectedCharacter(character);
-                  }}
-                />
-              );
-            } catch {
-              return null;
-            }
-          })}
-        </div>
+        <>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {paginatedCharacters.map((character, index) => {
+              try {
+                return (
+                  <CharacterProfileCard
+                    key={character.id || `char-${index}`}
+                    character={character}
+                    onClick={() => {
+                      setSelectedCharacter(character);
+                    }}
+                  />
+                );
+              } catch {
+                return null;
+              }
+            })}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-6 border-t border-border/50">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goToPrevious}
+                disabled={currentPage === 1}
+                leftIcon={<ChevronLeft className="h-4 w-4" />}
+              >
+                Previous
+              </Button>
+
+              <div className="flex items-center gap-2">
+                {/* Page indicators */}
+                <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-border/50">
+                  {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                    let pageNum: number;
+                    if (totalPages <= 7) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 4) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 3) {
+                      pageNum = totalPages - 6 + i;
+                    } else {
+                      pageNum = currentPage - 3 + i;
+                    }
+
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => goToPage(pageNum)}
+                        className={`px-2 py-1 rounded text-sm transition ${
+                          currentPage === pageNum
+                            ? 'bg-primary text-white'
+                            : 'text-white/60 hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                <span className="text-sm text-white/60">
+                  {startIndex + 1}-{Math.min(endIndex, filteredCharacters.length)} of {filteredCharacters.length}
+                </span>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goToNext}
+                disabled={currentPage === totalPages}
+                rightIcon={<ChevronRight className="h-4 w-4" />}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Horizontal Timeline Component - Always at bottom */}
@@ -319,8 +455,45 @@ export const CharacterBook = () => {
                 })) : []}
                 useDummyData={chapters.length === 0 && entries.length === 0}
                 showLabel={true}
-                onItemClick={(item) => {
-                  // Could navigate to entry or chapter if needed
+                onItemClick={async (item) => {
+                  if (item.type === 'entry' || item.entryId || (item.id && entries.some(e => e.id === item.id))) {
+                    // Find the entry and convert to MemoryCard
+                    const entryId = item.entryId || item.id;
+                    const entry = entries.find(e => e.id === entryId);
+                    if (entry) {
+                      const memoryCard = memoryEntryToCard({
+                        id: entry.id,
+                        date: entry.date,
+                        content: entry.content,
+                        summary: entry.summary || null,
+                        tags: entry.tags || [],
+                        mood: entry.mood || null,
+                        chapter_id: entry.chapter_id || null,
+                        source: entry.source || 'manual',
+                        metadata: entry.metadata || {}
+                      });
+                      setSelectedMemory(memoryCard);
+                    } else {
+                      // Try to fetch the entry if not in local state
+                      try {
+                        const fetchedEntry = await fetchJson<{
+                          id: string;
+                          date: string;
+                          content: string;
+                          summary?: string | null;
+                          tags: string[];
+                          mood?: string | null;
+                          chapter_id?: string | null;
+                          source: string;
+                          metadata?: Record<string, unknown>;
+                        }>(`/api/entries/${entryId}`);
+                        const memoryCard = memoryEntryToCard(fetchedEntry);
+                        setSelectedMemory(memoryCard);
+                      } catch (error) {
+                        console.error('Failed to load entry:', error);
+                      }
+                    }
+                  }
                 }}
               />
             </div>
@@ -338,6 +511,20 @@ export const CharacterBook = () => {
             void loadCharacters();
             setSelectedCharacter(null);
           }}
+        />
+      )}
+
+      {selectedMemory && (
+        <MemoryDetailModal
+          memory={selectedMemory}
+          onClose={() => setSelectedMemory(null)}
+          onNavigate={(memoryId) => {
+            const memory = allMemories.find(m => m.id === memoryId);
+            if (memory) {
+              setSelectedMemory(memory);
+            }
+          }}
+          allMemories={allMemories}
         />
       )}
     </div>

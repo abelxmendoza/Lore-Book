@@ -10,8 +10,11 @@ interface RateLimitStore {
 
 const store: RateLimitStore = {};
 
+const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production';
+
+// More lenient rate limits in development
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const MAX_REQUESTS_PER_WINDOW = 100;
+const MAX_REQUESTS_PER_WINDOW = isDevelopment ? 10000 : 100; // Much higher limit in dev
 
 const getClientId = (req: Request): string => {
   return (req as any).user?.id || req.ip || 'anonymous';

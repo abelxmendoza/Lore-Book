@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
+import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
+import { ChatComposer } from '../chat/ChatComposer';
 import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { Character } from './CharacterProfileCard';
@@ -48,6 +50,20 @@ type CharacterDetailModalProps = {
   onUpdate: () => void;
 };
 
+type TabKey = 'info' | 'social' | 'relationships' | 'history' | 'context' | 'timeline' | 'chat' | 'insights' | 'metadata';
+
+const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
+  { key: 'info', label: 'Info', icon: FileText },
+  { key: 'social', label: 'Social Media', icon: Globe },
+  { key: 'relationships', label: 'Connections', icon: Network },
+  { key: 'history', label: 'History', icon: Calendar },
+  { key: 'context', label: 'Context', icon: Layers },
+  { key: 'timeline', label: 'Timeline', icon: Clock },
+  { key: 'chat', label: 'Chat', icon: MessageSquare },
+  { key: 'insights', label: 'Insights', icon: Brain },
+  { key: 'metadata', label: 'Metadata', icon: Database }
+];
+
 export const CharacterDetailModal = ({ character, onClose, onUpdate }: CharacterDetailModalProps) => {
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
   const [loading, setLoading] = useState(false);
@@ -55,7 +71,21 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [sharedMemoryCards, setSharedMemoryCards] = useState<MemoryCard[]>([]);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'social' | 'relationships' | 'history'>('info');
+  const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>('info');
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [insights, setInsights] = useState<any>(null);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Reset scroll position when tab changes
+    if (contentRef.current) {
+      contentRef.current.scrollTop = 0;
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const loadFullDetails = async () => {
@@ -76,6 +106,135 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
     };
     void loadFullDetails();
   }, [character.id]);
+
+  // Load insights when Insights tab is active
+  useEffect(() => {
+    if (activeTab === 'insights' && !insights && !loadingInsights) {
+      setLoadingInsights(true);
+      setTimeout(() => {
+        setInsights({
+          totalMemories: editedCharacter.shared_memories?.length || 0,
+          relationships: editedCharacter.relationships?.length || 0,
+          tags: editedCharacter.tags?.length || 0,
+          firstAppearance: editedCharacter.first_appearance,
+          status: editedCharacter.status
+        });
+        setLoadingInsights(false);
+      }, 500);
+    }
+  }, [activeTab, insights, loadingInsights, editedCharacter]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const tabIndex = parseInt(e.key) - 1;
+        if (tabs[tabIndex]) {
+          setActiveTab(tabs[tabIndex].key);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const handleChatSubmit = async (message: string) => {
+    if (!message.trim() || chatLoading) return;
+
+    const userMessage = { role: 'user' as const, content: message, timestamp: new Date() };
+    setChatMessages(prev => [...prev, userMessage]);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const characterContext = `You are helping the user with a specific character. Here's the context:
+
+Character: ${editedCharacter.name}
+Aliases: ${editedCharacter.alias?.join(', ') || 'None'}
+Pronouns: ${editedCharacter.pronouns || 'Not specified'}
+Role: ${editedCharacter.role || 'Not specified'}
+Archetype: ${editedCharacter.archetype || 'Not specified'}
+Summary: ${editedCharacter.summary || 'No summary'}
+Tags: ${editedCharacter.tags?.join(', ') || 'None'}
+Status: ${editedCharacter.status || 'Unknown'}
+Shared Memories: ${editedCharacter.shared_memories?.length || 0}
+Relationships: ${editedCharacter.relationships?.length || 0}`;
+
+      const conversationHistory = [
+        { role: 'assistant' as const, content: characterContext },
+        ...chatMessages.map(msg => ({ role: msg.role, content: msg.content }))
+      ];
+
+      const response = await fetchJson<{ answer: string }>('/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: `[Character Context: ${editedCharacter.name}] ${message}`,
+          conversationHistory
+        })
+      });
+
+      let assistantContent = response.answer || 'I understand. How can I help you with this character?';
+      
+      // Try to parse updates from response
+      let updates = null;
+      try {
+        const jsonMatch = assistantContent.match(/\{[\s\S]*"updates"[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          updates = parsed.updates;
+          assistantContent = assistantContent.replace(jsonMatch[0], '').trim();
+        }
+      } catch (e) {
+        // Ignore JSON parsing errors
+      }
+
+      const assistantMessage = { 
+        role: 'assistant' as const, 
+        content: assistantContent, 
+        timestamp: new Date() 
+      };
+      setChatMessages(prev => [...prev, assistantMessage]);
+
+      // If updates are provided, apply them
+      if (updates) {
+        try {
+          await fetchJson(`/api/characters/${character.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updates)
+          });
+          const successMessage = { 
+            role: 'assistant' as const, 
+            content: '✓ Character updated successfully!', 
+            timestamp: new Date() 
+          };
+          setChatMessages(prev => [...prev, successMessage]);
+          setTimeout(() => window.location.reload(), 1000);
+        } catch (updateError) {
+          console.error('Update error:', updateError);
+          const errorMsg = { 
+            role: 'assistant' as const, 
+            content: 'Failed to update character. Please try again.', 
+            timestamp: new Date() 
+          };
+          setChatMessages(prev => [...prev, errorMsg]);
+        }
+      }
+    } catch (error) {
+      console.error('Chat error:', error);
+      const errorMessage = { 
+        role: 'assistant' as const, 
+        content: 'Sorry, I encountered an error. Please try again.', 
+        timestamp: new Date() 
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   const loadSharedMemories = async (sharedMemories: Array<{ id: string; entry_id: string; date: string; summary?: string }>) => {
     setLoadingMemories(true);
@@ -184,28 +343,28 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          <div className="flex border-b border-border/60">
-            {[
-              { key: 'info', label: 'Info' },
-              { key: 'social', label: 'Social Media' },
-              { key: 'relationships', label: 'Connections' },
-              { key: 'history', label: 'History' }
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key as any)}
-                className={`px-6 py-3 text-sm font-medium transition ${
-                  activeTab === tab.key
-                    ? 'border-b-2 border-primary text-white'
-                    : 'text-white/60 hover:text-white'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          {/* Tab Navigation */}
+          <div className="flex border-b border-border/60 overflow-x-auto">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition whitespace-nowrap ${
+                    activeTab === tab.key
+                      ? 'border-b-2 border-primary text-white'
+                      : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
 
-          <div className="p-6 space-y-6">
+          <div ref={contentRef} className="p-6 space-y-6">
             {loadingDetails && (
               <div className="text-center py-8 text-white/60">Loading character details...</div>
             )}
@@ -524,7 +683,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
                   <div>
                     <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                       <Calendar className="h-5 w-5 text-primary" />
-                      Shared Timeline & Memories
+                      Shared Memories
                     </h3>
                     <p className="text-sm text-white/60 mt-1">
                       Stories and moments you've shared with {editedCharacter.name}
@@ -537,38 +696,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
                   )}
                 </div>
 
-                {/* Timeline */}
-                {sharedMemoryCards.length > 0 && (
-                  <div className="border-b border-border/60 pb-6">
-                    <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-primary" />
-                      Timeline
-                    </h4>
-                    <div className="overflow-x-auto overflow-y-hidden">
-                      <ColorCodedTimeline
-                        entries={sharedMemoryCards.map(memory => ({
-                          id: memory.id,
-                          content: memory.content,
-                          date: memory.date,
-                          chapter_id: memory.chapterId || null
-                        }))}
-                        showLabel={true}
-                        onItemClick={(item) => {
-                          const clickedMemory = sharedMemoryCards.find(m => m.id === item.id);
-                          if (clickedMemory) {
-                            setExpandedCardId(expandedCardId === clickedMemory.id ? null : clickedMemory.id);
-                            // Scroll to the card
-                            setTimeout(() => {
-                              const element = document.querySelector(`[data-memory-id="${clickedMemory.id}"]`);
-                              element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            }, 100);
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
                 {/* Memory Cards */}
                 {loadingMemories ? (
                   <div className="text-center py-12 text-white/60">
@@ -576,10 +703,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
                   </div>
                 ) : sharedMemoryCards.length > 0 ? (
                   <div>
-                    <h4 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-primary" />
-                      Memory Cards
-                    </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {sharedMemoryCards.map((memory) => (
                         <div key={memory.id} data-memory-id={memory.id}>
@@ -607,6 +730,317 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
                 )}
               </div>
             )}
+
+            {/* Context Tab */}
+            {!loadingDetails && activeTab === 'context' && (
+              <div className="space-y-6">
+                {/* Character Overview */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                    <Layers className="h-5 w-5 text-primary" />
+                    Character Overview
+                  </h3>
+                  <Card className="bg-black/40 border-border/50">
+                    <CardContent className="p-4">
+                      <div className="space-y-3">
+                        {editedCharacter.role && (
+                          <div className="flex justify-between">
+                            <span className="text-white/60">Role:</span>
+                            <span className="text-white">{editedCharacter.role}</span>
+                          </div>
+                        )}
+                        {editedCharacter.archetype && (
+                          <div className="flex justify-between">
+                            <span className="text-white/60">Archetype:</span>
+                            <span className="text-white">{editedCharacter.archetype}</span>
+                          </div>
+                        )}
+                        {editedCharacter.status && (
+                          <div className="flex justify-between">
+                            <span className="text-white/60">Status:</span>
+                            <span className="text-white capitalize">{editedCharacter.status}</span>
+                          </div>
+                        )}
+                        {editedCharacter.first_appearance && (
+                          <div className="flex justify-between">
+                            <span className="text-white/60">First Appearance:</span>
+                            <span className="text-white">{new Date(editedCharacter.first_appearance).toLocaleDateString('en-US', {
+                              month: 'long',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}</span>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Summary */}
+                {editedCharacter.summary && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                      <FileText className="h-5 w-5 text-primary" />
+                      Summary
+                    </h3>
+                    <Card className="bg-black/40 border-border/50">
+                      <CardContent className="p-4">
+                        <p className="text-white/90 whitespace-pre-wrap">{editedCharacter.summary}</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Tags */}
+                {editedCharacter.tags && editedCharacter.tags.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                      <Tag className="h-5 w-5 text-primary" />
+                      Tags
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {editedCharacter.tags.map((tag) => (
+                        <Badge key={tag} variant="outline" className="px-3 py-1 text-sm">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Timeline Tab */}
+            {!loadingDetails && activeTab === 'timeline' && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Timeline View</h3>
+                  <p className="text-sm text-white/60 mb-4">
+                    Visual timeline of memories with {editedCharacter.name}
+                  </p>
+                </div>
+                {sharedMemoryCards.length > 0 ? (
+                  <div className="border border-border/50 rounded-lg p-4 bg-black/20">
+                    <ColorCodedTimeline
+                      entries={sharedMemoryCards.map(memory => ({
+                        id: memory.id,
+                        content: memory.content,
+                        date: memory.date,
+                        chapter_id: memory.chapterId || null
+                      }))}
+                      showLabel={true}
+                      onItemClick={(item) => {
+                        const clickedMemory = sharedMemoryCards.find(m => m.id === item.id);
+                        if (clickedMemory) {
+                          setSelectedMemory(clickedMemory);
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-white/60">
+                    <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No timeline data available</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Chat Tab */}
+            {!loadingDetails && activeTab === 'chat' && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Chat about this Character</h3>
+                  <p className="text-sm text-white/60 mb-4">
+                    Ask questions or add information about {editedCharacter.name} through conversation.
+                  </p>
+                </div>
+                <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                  {chatMessages.length === 0 ? (
+                    <div className="text-center py-8 text-white/60">
+                      <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p>Start a conversation about this character</p>
+                      <p className="text-xs mt-2">Try: "Tell me more about {editedCharacter.name}" or "Update their role to..."</p>
+                    </div>
+                  ) : (
+                    chatMessages.map((msg, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-[80%] rounded-lg p-3 ${
+                            msg.role === 'user'
+                              ? 'bg-primary/20 text-white'
+                              : 'bg-black/40 border border-border/50 text-white'
+                          }`}
+                        >
+                          <p className="text-sm">{msg.content}</p>
+                          <p className="text-xs text-white/40 mt-1">
+                            {msg.timestamp.toLocaleTimeString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="border-t border-border/60 pt-4">
+                  <ChatComposer
+                    input={chatInput}
+                    onInputChange={setChatInput}
+                    onSubmit={handleChatSubmit}
+                    loading={chatLoading}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Insights Tab */}
+            {!loadingDetails && activeTab === 'insights' && (
+              <div className="space-y-6">
+                {loadingInsights ? (
+                  <div className="text-center py-12 text-white/60">
+                    <Brain className="h-12 w-12 mx-auto mb-3 animate-pulse opacity-50" />
+                    <p>Analyzing character...</p>
+                  </div>
+                ) : insights ? (
+                  <>
+                    <div>
+                      <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                        <Brain className="h-5 w-5 text-primary" />
+                        Character Stats
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <Card className="bg-black/40 border-border/50">
+                          <CardContent className="p-4">
+                            <div className="text-sm text-white/60 mb-1">Total Memories</div>
+                            <div className="text-2xl font-bold text-white">{insights.totalMemories}</div>
+                          </CardContent>
+                        </Card>
+                        <Card className="bg-black/40 border-border/50">
+                          <CardContent className="p-4">
+                            <div className="text-sm text-white/60 mb-1">Relationships</div>
+                            <div className="text-2xl font-bold text-white">{insights.relationships}</div>
+                          </CardContent>
+                        </Card>
+                        <Card className="bg-black/40 border-border/50">
+                          <CardContent className="p-4">
+                            <div className="text-sm text-white/60 mb-1">Tags</div>
+                            <div className="text-2xl font-bold text-white">{insights.tags}</div>
+                          </CardContent>
+                        </Card>
+                        <Card className="bg-black/40 border-border/50">
+                          <CardContent className="p-4">
+                            <div className="text-sm text-white/60 mb-1">Status</div>
+                            <div className="text-xl font-bold text-white capitalize">{insights.status || 'Unknown'}</div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </div>
+                    {insights.firstAppearance && (
+                      <div>
+                        <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                          <Calendar className="h-5 w-5 text-primary" />
+                          First Appearance
+                        </h3>
+                        <Card className="bg-black/40 border-border/50">
+                          <CardContent className="p-4">
+                            <p className="text-white">
+                              {new Date(insights.firstAppearance).toLocaleDateString('en-US', {
+                                month: 'long',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </p>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-12 text-white/60">
+                    <Brain className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No insights available</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Metadata Tab */}
+            {!loadingDetails && activeTab === 'metadata' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-3">Character Details</h3>
+                  <Card className="bg-black/40 border-border/50">
+                    <CardContent className="p-4">
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Character ID:</span>
+                          <span className="text-white font-mono text-xs">{editedCharacter.id}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Name:</span>
+                          <span className="text-white">{editedCharacter.name}</span>
+                        </div>
+                        {editedCharacter.alias && editedCharacter.alias.length > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-white/60">Aliases:</span>
+                            <span className="text-white">{editedCharacter.alias.join(', ')}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Pronouns:</span>
+                          <span className="text-white">{editedCharacter.pronouns || 'Not specified'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Role:</span>
+                          <span className="text-white">{editedCharacter.role || 'Not specified'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Archetype:</span>
+                          <span className="text-white">{editedCharacter.archetype || 'Not specified'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Status:</span>
+                          <span className="text-white capitalize">{editedCharacter.status || 'Unknown'}</span>
+                        </div>
+                        {editedCharacter.first_appearance && (
+                          <div className="flex justify-between">
+                            <span className="text-white/60">First Appearance:</span>
+                            <span className="text-white">{editedCharacter.first_appearance}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Tags Count:</span>
+                          <span className="text-white">{editedCharacter.tags?.length || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Shared Memories:</span>
+                          <span className="text-white">{editedCharacter.shared_memories?.length || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-white/60">Relationships:</span>
+                          <span className="text-white">{editedCharacter.relationships?.length || 0}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {editedCharacter.metadata && Object.keys(editedCharacter.metadata).length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3">Raw Metadata</h3>
+                    <Card className="bg-black/40 border-border/50">
+                      <CardContent className="p-4">
+                        <pre className="text-xs text-white/80 overflow-x-auto">
+                          {JSON.stringify(editedCharacter.metadata, null, 2)}
+                        </pre>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -619,6 +1053,21 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
           </Button>
         </div>
       </div>
+
+      {/* Memory Detail Modal */}
+      {selectedMemory && (
+        <MemoryDetailModal
+          memory={selectedMemory}
+          onClose={() => setSelectedMemory(null)}
+          onNavigate={(memoryId) => {
+            const memory = sharedMemoryCards.find(m => m.id === memoryId);
+            if (memory) {
+              setSelectedMemory(memory);
+            }
+          }}
+          allMemories={sharedMemoryCards}
+        />
+      )}
     </div>
   );
 };

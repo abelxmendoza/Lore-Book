@@ -1,16 +1,20 @@
 import { supabase } from './supabase';
+import { addCsrfHeaders } from './security';
 
 export const fetchJson = async <T>(input: RequestInfo, init?: RequestInit): Promise<T> => {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   
   try {
+    // Add CSRF token and auth headers
+    const headers = addCsrfHeaders({
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    });
+    
     const res = await fetch(input, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(init?.headers ?? {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
+      headers,
       ...init
     });
 
