@@ -216,7 +216,9 @@ Lore Keeper seamlessly blends five personas based on context, becoming exactly w
 - Organize entries into meaningful chapters
 - Automatic chapter suggestions based on themes
 - Timeline visualization of your story arcs
-- Chapter summaries and insights
+- Chapter summaries and insights (AI-generated)
+- Chapter creation chatbot interface (ChapterCreationChatbot)
+- Chapter viewer with entry organization
 
 #### 👥 **Character & Relationship Tracking**
 - **Rule-Based Character Detection**: Pattern matching for names and places (cost-optimized)
@@ -318,19 +320,22 @@ Lore Keeper seamlessly blends five personas based on context, becoming exactly w
 
 #### ✅ **Task Engine**
 - Goal and milestone tracking
-- Task creation from chat commands
-- Microsoft To-Do integration
+- Task creation from chat commands (`/task` or natural language)
+- Microsoft To-Do integration (sync tasks)
 - Task timeline links
+- Task briefing and event tracking
+- Task completion and management
 
 #### 🧠 **Discovery Hub**
 - **Analytical Panels** - Toggle panels to explore different aspects of your data
-  - **Identity Pulse**: Your persona signature and emotional trajectory—capture your essence
-  - **Characters**: Relationship graphs and closeness trends—who shaped you and how
-  - **Saga**: Narrative arcs and story structure—the themes of your life
-  - **Memory Fabric**: Connections between memories—how experiences weave together
-  - **Insights**: Patterns, correlations, and predictions—understand yourself deeply
-  - **Autopilot**: AI life guidance and recommendations based on your patterns
-  - **Truth Seeker**: Fact checking and contradiction detection—ensure accuracy for immortality
+  - **Identity Pulse**: Your persona signature and emotional trajectory—capture your essence (IdentityPulsePanel)
+  - **Characters**: Relationship graphs and closeness trends—who shaped you and how (CharacterRelationshipGraph)
+  - **Saga**: Narrative arcs and story structure—the themes of your life (SagaPanel)
+  - **Memory Fabric**: 3D graph visualization of connections between memories—how experiences weave together (MemoryFabricPanel)
+  - **Insights**: Patterns, correlations, and predictions—understand yourself deeply (InsightsPanel)
+  - **Autopilot**: AI life guidance and recommendations—daily plans, weekly strategies, monthly corrections (AutopilotPanel)
+  - **Soul Profile**: Your essence profile and evolution tracking (SoulProfilePanel)
+  - **Truth Seeker**: Fact checking and contradiction detection—ensure accuracy for immortality (TruthSeekerPanel)
 - Clean, organized interface with visual feedback
 - Easy panel toggling system
 - **Purpose**: These panels help you understand and preserve your complete digital self
@@ -575,14 +580,18 @@ lorekeeper/
 - **Zustand** for state management (where needed)
 
 **Key Components:**
-- **Chat Interface**: Streaming AI responses with source citations
-- **Timeline Views**: Multiple visualization modes (graph, cards, hierarchy)
-- **Character System**: Relationship tracking and knowledge base with auto-generated avatars
-- **Automatic Biography Generation**: AI-powered biography writing from journal entries with chatbot-style editor
-- **Discovery Hub**: Analytical panels for exploring insights and patterns
-- **Truth Seeker**: Automatic fact checking and contradiction detection
-- **Lore Book**: Reading-optimized interface
-- **Entry Composer**: Rich text editor with AI tag suggestions and voice memo recording
+- **Chat Interface**: Streaming AI responses with source citations, slash commands, message actions (ChatFirstInterface)
+- **Timeline Views**: Multiple visualization modes (graph, cards, chapters, overview) with color-coding (TimelinePage, ImprovedTimelineView)
+- **Character System**: Relationship tracking, knowledge base, auto-generated avatars, relationship graphs (CharacterBook, CharacterDetailModal)
+- **Automatic Biography Generation**: AI-powered biography writing from journal entries with chatbot-style editor (BiographyEditor)
+- **Discovery Hub**: Analytical panels for exploring insights and patterns (DiscoveryHub with 8 panels)
+- **Memory Explorer**: Semantic search interface with HQI integration (MemoryExplorer, HQIPanel)
+- **Truth Seeker**: Automatic fact checking and contradiction detection (TruthSeekerPanel)
+- **Lore Book**: Reading-optimized interface for memoirs (LoreBook)
+- **Entry Composer**: Rich text editor with AI tag suggestions and voice memo recording (NeonComposer)
+- **Task Engine**: Task management with Microsoft To-Do integration (TaskEnginePanel)
+- **Autopilot**: Strategic guidance panels (AutopilotPanel)
+- **Location Tracking**: Location profiles and visit timelines (Locations, LocationDetailModal)
 - **Skeleton Loaders**: Beautiful loading states for better UX
 
 ### Backend Architecture
