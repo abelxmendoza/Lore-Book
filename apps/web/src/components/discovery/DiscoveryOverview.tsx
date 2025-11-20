@@ -9,13 +9,22 @@ import {
   Heart, 
   AlertCircle,
   Compass,
-  X
+  X,
+  TrendingUp,
+  Map,
+  Search
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { CharactersAnalyticsPanel } from './CharactersAnalyticsPanel';
+import { RelationshipsAnalyticsPanel } from './RelationshipsAnalyticsPanel';
 import { SagaScreen } from '../saga/SagaScreen';
 import { MemoryFabricPanel } from '../fabric/MemoryFabricPanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
+import { PredictionsAnalyticsPanel } from './PredictionsAnalyticsPanel';
+import { SearchAnalyticsPanel } from './SearchAnalyticsPanel';
+import { ShadowAnalyticsPanel } from './ShadowAnalyticsPanel';
+import { XpAnalyticsPanel } from './XpAnalyticsPanel';
+import { LifeMapPanel } from './LifeMapPanel';
 import { AutopilotPanel } from '../AutopilotPanel';
 import { SoulProfilePanel } from './SoulProfilePanel';
 import { TruthSeekerPanel } from './TruthSeekerPanel';
@@ -55,12 +64,20 @@ interface PanelConfig {
 }
 
 const PANEL_CONFIGS: PanelConfig[] = [
+  // Core 10 Analytics Panels
   {
     id: 'identity',
     title: 'Identity Pulse',
     description: 'Your persona signature and emotional trajectory.',
     icon: Brain,
     component: IdentityPulsePanel
+  },
+  {
+    id: 'relationships',
+    title: 'Relationships',
+    description: 'See who shapes your emotional landscape.',
+    icon: Users,
+    component: RelationshipsAnalyticsPanel
   },
   {
     id: 'characters',
@@ -71,25 +88,61 @@ const PANEL_CONFIGS: PanelConfig[] = [
   },
   {
     id: 'saga',
-    title: 'Saga',
-    description: 'Narrative arcs and story structure.',
+    title: 'Sagas',
+    description: 'Your life\'s arcs, eras, and narrative beats.',
     icon: BookOpen,
     component: SagaScreen
   },
   {
     id: 'memory-fabric',
     title: 'Memory Fabric',
-    description: 'Connections between memories.',
+    description: 'Clusters, bridges, and outliers in your memories.',
     icon: Network,
     component: MemoryFabricPanel
   },
   {
     id: 'insights',
     title: 'Insights',
-    description: 'Patterns, correlations, and predictions.',
+    description: 'Correlations, loops, and recurring patterns.',
     icon: Sparkles,
     component: InsightsPanelWrapper
   },
+  {
+    id: 'predictions',
+    title: 'Predictions',
+    description: 'Forecast where your story is heading.',
+    icon: TrendingUp,
+    component: PredictionsAnalyticsPanel
+  },
+  {
+    id: 'search',
+    title: 'Search Analytics',
+    description: 'Search behavior and retrieval patterns.',
+    icon: Search,
+    component: SearchAnalyticsPanel
+  },
+  {
+    id: 'shadow',
+    title: 'Shadow',
+    description: 'Suppressed topics, negative loops, and inner archetypes.',
+    icon: AlertCircle,
+    component: ShadowAnalyticsPanel
+  },
+  {
+    id: 'xp',
+    title: 'XP Dashboard',
+    description: 'Your life XP, levels, and streaks.',
+    icon: Zap,
+    component: XpAnalyticsPanel
+  },
+  {
+    id: 'map',
+    title: 'Life Map',
+    description: 'The global graph of your life: eras and turning points.',
+    icon: Map,
+    component: LifeMapPanel
+  },
+  // Additional panels (kept for now)
   {
     id: 'autopilot',
     title: 'Autopilot',

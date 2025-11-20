@@ -7,7 +7,8 @@ import {
   TrendingUp, 
   AlertCircle, 
   Zap, 
-  Map 
+  Map,
+  Search
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -135,6 +136,17 @@ export const ANALYTICS_MODULES: AnalyticsModule[] = [
     metrics: ['turningPointCount', 'eraCount', 'momentumScore'],
     defaultCharts: ['lifeGraph', 'storyArcSpline'],
     apiEndpoint: '/api/analytics/map'
+  },
+  {
+    key: 'search',
+    title: 'Search Analytics',
+    description: 'Search behavior and retrieval patterns.',
+    tier: 'advanced',
+    route: '/discovery/search',
+    icon: Search,
+    metrics: ['searchCount', 'topicCoverage', 'retrievalQuality'],
+    defaultCharts: ['searchTimeline', 'topicDistribution'],
+    apiEndpoint: '/api/analytics/search'
   }
 ];
 
