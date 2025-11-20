@@ -1,6 +1,6 @@
 {
-  "installCommand": "pnpm --filter='web' install --workspace-root",
-  "buildCommand": "pnpm --filter='web' build",
+  "installCommand": "corepack enable && corepack prepare pnpm@8.15.4 --activate && pnpm --filter=web --workspace-root install",
+  "buildCommand": "pnpm --filter=web build",
   "outputDirectory": "apps/web/dist"
 }
 
