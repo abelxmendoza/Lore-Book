@@ -1,6 +1,6 @@
 {
-  "installCommand": "pnpm --filter='apps/web' install",
-  "buildCommand": "pnpm --filter='apps/web' build",
+  "installCommand": "pnpm --filter='web' install --workspace-root",
+  "buildCommand": "pnpm --filter='web' build",
   "outputDirectory": "apps/web/dist"
 }
 
