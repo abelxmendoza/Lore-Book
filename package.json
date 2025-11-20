@@ -10,6 +10,7 @@
     "lint:fix": "cd apps/server && npm run lint -- --fix && cd ../web && npm run lint -- --fix"
   },
   "engines": {
-    "node": "20.x"
+    "node": "20.x",
+    "pnpm": "8"
   }
 }
