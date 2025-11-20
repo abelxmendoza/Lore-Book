@@ -47,11 +47,47 @@ export const GraphVis = ({ nodes, edges, title, height = 400 }: GraphVisProps) =
           };
           return colorMap[node.type] || colorMap.default;
         })
-        .nodeLabel((node: GraphNode) => node.label || node.id)
-        .linkColor(() => 'rgba(168, 85, 247, 0.3)')
-        .linkWidth((link: GraphEdge) => Math.sqrt(link.weight) || 1)
+        .nodeLabel((node: GraphNode) => {
+          const label = node.label || node.id;
+          const metadata = node.metadata || {};
+          const parts = [label];
+          if (metadata.centrality !== undefined) {
+            parts.push(`Centrality: ${metadata.centrality.toFixed(2)}`);
+          }
+          if (metadata.sentimentScore !== undefined) {
+            parts.push(`Sentiment: ${metadata.sentimentScore.toFixed(2)}`);
+          }
+          return parts.join('\n');
+        })
+        .linkColor((link: GraphEdge) => {
+          // Color edges based on sentiment if available
+          const sentiment = link.metadata?.sentiment;
+          if (sentiment !== undefined) {
+            if (sentiment < -0.3) {
+              return 'rgba(239, 68, 68, 0.6)'; // red for conflict
+            } else if (sentiment > 0.3) {
+              return 'rgba(245, 158, 11, 0.6)'; // gold for intense positive
+            } else {
+              return 'rgba(59, 130, 246, 0.6)'; // blue for calm
+            }
+          }
+          return 'rgba(168, 85, 247, 0.3)'; // default purple
+        })
+        .linkWidth((link: GraphEdge) => Math.sqrt(link.weight || 1) * 2)
         .linkDirectionalArrowLength(6)
-        .linkDirectionalArrowColor(() => 'rgba(168, 85, 247, 0.6)');
+        .linkDirectionalArrowColor((link: GraphEdge) => {
+          const sentiment = link.metadata?.sentiment;
+          if (sentiment !== undefined) {
+            if (sentiment < -0.3) {
+              return 'rgba(239, 68, 68, 0.8)';
+            } else if (sentiment > 0.3) {
+              return 'rgba(245, 158, 11, 0.8)';
+            } else {
+              return 'rgba(59, 130, 246, 0.8)';
+            }
+          }
+          return 'rgba(168, 85, 247, 0.6)';
+        });
     }
   }, [nodes, edges]);
 
@@ -98,7 +134,12 @@ export const GraphVis = ({ nodes, edges, title, height = 400 }: GraphVisProps) =
             backgroundColor="#00000000"
             nodeRelSize={6}
             nodeVal={(node: GraphNode) => {
-              // Size nodes based on connections
+              // Size nodes based on centrality if available, otherwise use connections
+              const metadata = node.metadata || {};
+              if (metadata.centrality !== undefined) {
+                return 4 + metadata.centrality * 8;
+              }
+              // Fallback to edge count
               const nodeEdges = edges.filter(
                 e => (typeof e.source === 'string' ? e.source : e.source.id) === node.id ||
                      (typeof e.target === 'string' ? e.target : e.target.id) === node.id

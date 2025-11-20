@@ -62,6 +62,31 @@ export class RelationshipAnalyticsModule extends BaseAnalyticsModule {
     // Compute emotional impact ranking
     const emotionalImpact = this.computeEmotionalImpact(memories, characters);
 
+    // NEW: Compute sentiment timeline
+    const sentimentTimeline = this.computeSentimentTimeline(memories, characters);
+    
+    // NEW: Classify archetypes
+    const archetypes = await this.classifyArchetypes(characters, centralityScores, emotionalImpact, userId);
+    
+    // NEW: Compute attachment gravity
+    const attachmentGravity = this.computeAttachmentGravity(memories, characters, centralityScores, userId);
+    
+    // NEW: Compute forecast
+    const forecast = this.computeRelationshipForecast(sentimentTimeline);
+    
+    // NEW: Compute arc appearances
+    const arcAppearances = await this.computeArcAppearances(characters, userId);
+    
+    // NEW: Compute heatmap
+    const heatmap = this.computeHeatmapMatrix(memories, characters);
+
+    // Build enhanced graph with additional metadata
+    const characterMap = new Map(characters.map(c => [c.id, c]));
+    const centralityMap = new Map(centralityScores.map(c => [c.name, c.centrality]));
+    const arcFrequencyMap = new Map(
+      arcAppearances.map(a => [a.character, a.arcs.reduce((sum, arc) => sum + arc.count, 0)])
+    );
+
     const payload: AnalyticsPayload = {
       metrics: {
         totalCharacters: characters.length,
@@ -89,18 +114,36 @@ export class RelationshipAnalyticsModule extends BaseAnalyticsModule {
         },
       ],
       graph: {
-        nodes: nodes.map(n => ({
-          id: n.id,
-          label: n.name,
-          type: 'character',
-          metadata: { degree: n.degree, centrality: n.centrality },
-        })),
-        edges: edges.map(e => ({
-          source: e.source,
-          target: e.target,
-          weight: e.weight,
-          type: e.type,
-        })),
+        nodes: nodes.map(n => {
+          const char = characterMap.get(n.id);
+          const avgSentiment = this.getAverageSentimentForCharacter(char?.name || '', memories);
+          return {
+            id: n.id,
+            label: n.name,
+            type: 'character',
+            metadata: {
+              degree: n.degree,
+              centrality: n.centrality,
+              sentimentScore: avgSentiment,
+              arcFrequency: arcFrequencyMap.get(n.name) || 0,
+            },
+          };
+        }),
+        edges: edges.map(e => {
+          const sourceChar = characterMap.get(e.source);
+          const targetChar = characterMap.get(e.target);
+          const edgeSentiment = this.getEdgeSentiment(sourceChar?.name || '', targetChar?.name || '', memories);
+          return {
+            source: e.source,
+            target: e.target,
+            weight: e.weight,
+            type: e.type,
+            metadata: {
+              sentiment: edgeSentiment,
+              recentScore: e.weight,
+            },
+          };
+        }),
       },
       insights: [
         ...this.generateCentralityInsights(centralityScores),
@@ -108,6 +151,14 @@ export class RelationshipAnalyticsModule extends BaseAnalyticsModule {
         ...this.generateEmotionalImpactInsights(emotionalImpact),
       ],
       summary: this.generateSummary(characters, edges, lifecycle, emotionalImpact),
+      metadata: {
+        sentimentTimeline,
+        archetypes,
+        attachmentGravity,
+        forecast,
+        arcAppearances,
+        heatmap,
+      },
     };
 
     await this.cacheResult(userId, payload);
@@ -566,6 +617,444 @@ export class RelationshipAnalyticsModule extends BaseAnalyticsModule {
     return summary;
   }
 
+  /**
+   * Compute sentiment timeline per character
+   */
+  private computeSentimentTimeline(
+    memories: MemoryData[],
+    characters: CharacterData[]
+  ): Array<{ character: string; timeline: Array<{ date: string; sentiment: number; emotion: string }> }> {
+    const characterNameMap = new Map(characters.map(c => [c.name.toLowerCase(), c.name]));
+    const timelineMap = new Map<string, Array<{ date: string; sentiment: number; emotion: string }>>();
+
+    for (const memory of memories) {
+      const people = (memory.people || []).map(p => p.toLowerCase());
+      const textLower = memory.text.toLowerCase();
+      const sentiment = memory.sentiment ?? 0;
+      const emotion = this.sentimentToEmotion(sentiment);
+
+      for (const [nameLower, name] of characterNameMap.entries()) {
+        if (people.includes(nameLower) || textLower.includes(nameLower)) {
+          if (!timelineMap.has(name)) {
+            timelineMap.set(name, []);
+          }
+          timelineMap.get(name)!.push({
+            date: memory.created_at,
+            sentiment,
+            emotion,
+          });
+        }
+      }
+    }
+
+    // Sort timelines by date and aggregate by week
+    const result: Array<{ character: string; timeline: Array<{ date: string; sentiment: number; emotion: string }> }> = [];
+    for (const [character, timeline] of timelineMap.entries()) {
+      timeline.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      // Aggregate weekly averages
+      const weeklyMap = new Map<string, { sum: number; count: number; emotion: string }>();
+      for (const point of timeline) {
+        const week = this.getWeekKey(point.date);
+        const existing = weeklyMap.get(week) || { sum: 0, count: 0, emotion: point.emotion };
+        existing.sum += point.sentiment;
+        existing.count += 1;
+        weeklyMap.set(week, existing);
+      }
+      const aggregated = Array.from(weeklyMap.entries()).map(([date, data]) => ({
+        date,
+        sentiment: data.sum / data.count,
+        emotion: data.emotion,
+      }));
+      result.push({ character, timeline: aggregated });
+    }
+
+    return result;
+  }
+
+  /**
+   * Convert sentiment to emotion label
+   */
+  private sentimentToEmotion(sentiment: number): string {
+    if (sentiment > 0.5) return 'positive';
+    if (sentiment > 0.1) return 'neutral-positive';
+    if (sentiment > -0.1) return 'neutral';
+    if (sentiment > -0.5) return 'neutral-negative';
+    return 'negative';
+  }
+
+  /**
+   * Get week key from date string
+   */
+  private getWeekKey(dateStr: string): string {
+    const date = new Date(dateStr);
+    const year = date.getFullYear();
+    const week = Math.ceil((date.getTime() - new Date(year, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+    return `${year}-W${week}`;
+  }
+
+  /**
+   * Classify relationship archetypes
+   */
+  private async classifyArchetypes(
+    characters: CharacterData[],
+    centralityScores: Array<{ name: string; centrality: number }>,
+    emotionalImpact: Array<{ characterName: string; impact: number; sentiment: number }>,
+    userId: string
+  ): Promise<Array<{ character: string; archetype: string; reasoning: string }>> {
+    const centralityMap = new Map(centralityScores.map(c => [c.name, c.centrality]));
+    const impactMap = new Map(emotionalImpact.map(e => [e.characterName, e]));
+
+    // Fetch relationship conflicts
+    const { data: relationships } = await supabaseAdmin
+      .from('character_relationships')
+      .select('target_character_id, closeness_score')
+      .eq('user_id', userId);
+
+    const conflictMap = new Map<string, number>();
+    if (relationships) {
+      for (const rel of relationships) {
+        const char = characters.find(c => c.id === rel.target_character_id);
+        if (char && (rel.closeness_score || 0) < 0) {
+          conflictMap.set(char.name, (conflictMap.get(char.name) || 0) + Math.abs(rel.closeness_score || 0));
+        }
+      }
+    }
+
+    const result: Array<{ character: string; archetype: string; reasoning: string }> = [];
+
+    for (const character of characters) {
+      const centrality = centralityMap.get(character.name) || 0;
+      const impact = impactMap.get(character.name);
+      const conflict = conflictMap.get(character.name) || 0;
+      const sentiment = impact?.sentiment || 0;
+      const impactScore = impact?.impact || 0;
+
+      let archetype: string;
+      let reasoning: string;
+
+      if (centrality > 0.7 && sentiment > 0.3) {
+        archetype = 'Protector';
+        reasoning = 'High centrality + positive sentiment';
+      } else if (conflict > 5 || (sentiment < -0.3 && impactScore > 10)) {
+        archetype = 'Antagonist';
+        reasoning = 'High conflict or negative impact';
+      } else if (centrality > 0.5 && Math.abs(sentiment) > 0.4) {
+        archetype = 'Chaotic';
+        reasoning = 'High centrality with volatile sentiment';
+      } else if (impactScore > 15 && sentiment > 0.2) {
+        archetype = 'Important';
+        reasoning = 'High frequency + high emotional intensity';
+      } else if (impactScore < 5 && Math.abs(sentiment) < 0.2) {
+        archetype = 'Peripheral';
+        reasoning = 'Low frequency + neutral sentiment';
+      } else {
+        archetype = 'Supporting';
+        reasoning = 'Moderate presence in your life';
+      }
+
+      result.push({ character: character.name, archetype, reasoning });
+    }
+
+    return result;
+  }
+
+  /**
+   * Compute attachment gravity score (0-100)
+   */
+  private computeAttachmentGravity(
+    memories: MemoryData[],
+    characters: CharacterData[],
+    centralityScores: Array<{ name: string; centrality: number }>,
+    userId: string
+  ): Array<{ character: string; score: number }> {
+    const centralityMap = new Map(centralityScores.map(c => [c.name, c.centrality]));
+    const characterNameMap = new Map(characters.map(c => [c.name.toLowerCase(), c.name]));
+
+    // Compute sentiment intensity and volatility per character
+    const sentimentData = new Map<string, number[]>();
+    const mentionCounts = new Map<string, number>();
+    const recencyScores = new Map<string, number>();
+
+    const now = Date.now();
+    for (const memory of memories) {
+      const people = (memory.people || []).map(p => p.toLowerCase());
+      const textLower = memory.text.toLowerCase();
+      const sentiment = memory.sentiment ?? 0;
+      const memoryDate = new Date(memory.created_at).getTime();
+      const daysAgo = (now - memoryDate) / (1000 * 60 * 60 * 24);
+
+      for (const [nameLower, name] of characterNameMap.entries()) {
+        if (people.includes(nameLower) || textLower.includes(nameLower)) {
+          if (!sentimentData.has(name)) {
+            sentimentData.set(name, []);
+            mentionCounts.set(name, 0);
+          }
+          sentimentData.get(name)!.push(Math.abs(sentiment));
+          mentionCounts.set(name, mentionCounts.get(name)! + 1);
+          // Recency score: more recent = higher score
+          const recency = Math.max(0, 1 - daysAgo / 365); // Decay over 1 year
+          recencyScores.set(name, (recencyScores.get(name) || 0) + recency);
+        }
+      }
+    }
+
+    // Fetch arc frequency
+    const arcFrequencyMap = new Map<string, number>();
+    try {
+      const { data: arcs } = await supabaseAdmin
+        .from('arcs')
+        .select('id, label')
+        .eq('user_id', userId);
+
+      if (arcs) {
+        for (const character of characters) {
+          const characterMemories = memories.filter(m => {
+            const people = (m.people || []).map(p => p.toLowerCase());
+            const textLower = m.text.toLowerCase();
+            return people.includes(character.name.toLowerCase()) ||
+                   textLower.includes(character.name.toLowerCase());
+          });
+          arcFrequencyMap.set(character.name, characterMemories.length);
+        }
+      }
+    } catch (error) {
+      logger.debug({ error }, 'Error fetching arcs for attachment gravity');
+    }
+
+    const result: Array<{ character: string; score: number }> = [];
+
+    for (const character of characters) {
+      const sentiments = sentimentData.get(character.name) || [];
+      const sentimentIntensity = sentiments.length > 0
+        ? sentiments.reduce((sum, s) => sum + s, 0) / sentiments.length
+        : 0;
+      const volatility = sentiments.length > 1
+        ? this.standardDeviation(sentiments)
+        : 0;
+      const arcFrequency = (arcFrequencyMap.get(character.name) || 0) / 10; // Normalize
+      const recency = (recencyScores.get(character.name) || 0) / Math.max(1, mentionCounts.get(character.name) || 1);
+      const centrality = centralityMap.get(character.name) || 0;
+
+      // Normalize components (0-1 scale)
+      const normalizedIntensity = Math.min(1, sentimentIntensity);
+      const normalizedVolatility = Math.min(1, volatility);
+      const normalizedArcFreq = Math.min(1, arcFrequency);
+      const normalizedRecency = Math.min(1, recency);
+      const normalizedCentrality = centrality;
+
+      // Weighted combination
+      const gravity = (
+        normalizedIntensity * 0.25 +
+        normalizedVolatility * 0.15 +
+        normalizedArcFreq * 0.25 +
+        normalizedRecency * 0.15 +
+        normalizedCentrality * 0.20
+      ) * 100;
+
+      result.push({ character: character.name, score: Math.round(gravity) });
+    }
+
+    return result.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Compute relationship forecast
+   */
+  private computeRelationshipForecast(
+    sentimentTimeline: Array<{ character: string; timeline: Array<{ date: string; sentiment: number; emotion: string }> }>
+  ): Array<{ character: string; trend: 'warming' | 'cooling' | 'stable' | 'volatile'; confidence: number }> {
+    const result: Array<{ character: string; trend: 'warming' | 'cooling' | 'stable' | 'volatile'; confidence: number }> = [];
+
+    for (const { character, timeline } of sentimentTimeline) {
+      if (timeline.length < 3) {
+        result.push({ character, trend: 'stable', confidence: 50 });
+        continue;
+      }
+
+      const sentiments = timeline.map(t => t.sentiment);
+      const firstHalf = sentiments.slice(0, Math.floor(sentiments.length / 2));
+      const secondHalf = sentiments.slice(Math.floor(sentiments.length / 2));
+
+      const firstAvg = firstHalf.reduce((sum, s) => sum + s, 0) / firstHalf.length;
+      const secondAvg = secondHalf.reduce((sum, s) => sum + s, 0) / secondHalf.length;
+      const slope = secondAvg - firstAvg;
+      const volatility = this.standardDeviation(sentiments);
+
+      let trend: 'warming' | 'cooling' | 'stable' | 'volatile';
+      let confidence: number;
+
+      if (volatility > 0.4) {
+        trend = 'volatile';
+        confidence = Math.min(95, Math.round(volatility * 100));
+      } else if (slope > 0.15) {
+        trend = 'warming';
+        confidence = Math.min(95, Math.round(Math.abs(slope) * 200));
+      } else if (slope < -0.15) {
+        trend = 'cooling';
+        confidence = Math.min(95, Math.round(Math.abs(slope) * 200));
+      } else {
+        trend = 'stable';
+        confidence = Math.max(50, Math.round(100 - Math.abs(slope) * 200));
+      }
+
+      result.push({ character, trend, confidence });
+    }
+
+    return result;
+  }
+
+  /**
+   * Compute arc appearances
+   */
+  private async computeArcAppearances(
+    characters: CharacterData[],
+    userId: string
+  ): Promise<Array<{ character: string; arcs: Array<{ arcName: string; count: number }> }>> {
+    const result: Array<{ character: string; arcs: Array<{ arcName: string; count: number }> }> = [];
+
+    try {
+      // Fetch arcs
+      const { data: arcs } = await supabaseAdmin
+        .from('arcs')
+        .select('id, label')
+        .eq('user_id', userId);
+
+      // Fetch entries with arc associations
+      const { data: entries } = await supabaseAdmin
+        .from('journal_entries')
+        .select('id, people, content, metadata')
+        .eq('user_id', userId);
+
+      if (!arcs || !entries) {
+        return characters.map(c => ({ character: c.name, arcs: [] }));
+      }
+
+      // Build character-arc associations
+      const characterArcMap = new Map<string, Map<string, number>>();
+
+      for (const entry of entries) {
+        const people = (entry.people || []).map((p: string) => p.toLowerCase());
+        const textLower = (entry.content || '').toLowerCase();
+        const arcId = entry.metadata?.arc_id || entry.metadata?.arcId;
+
+        if (!arcId) continue;
+
+        const arc = arcs.find(a => a.id === arcId);
+        if (!arc) continue;
+
+        for (const character of characters) {
+          const nameLower = character.name.toLowerCase();
+          if (people.includes(nameLower) || textLower.includes(nameLower)) {
+            if (!characterArcMap.has(character.name)) {
+              characterArcMap.set(character.name, new Map());
+            }
+            const arcMap = characterArcMap.get(character.name)!;
+            arcMap.set(arc.label, (arcMap.get(arc.label) || 0) + 1);
+          }
+        }
+      }
+
+      for (const character of characters) {
+        const arcMap = characterArcMap.get(character.name) || new Map();
+        const arcs = Array.from(arcMap.entries()).map(([arcName, count]) => ({ arcName, count }));
+        result.push({ character: character.name, arcs });
+      }
+    } catch (error) {
+      logger.error({ error }, 'Error computing arc appearances');
+      return characters.map(c => ({ character: c.name, arcs: [] }));
+    }
+
+    return result;
+  }
+
+  /**
+   * Compute heatmap matrix (weekly mention frequency)
+   */
+  private computeHeatmapMatrix(
+    memories: MemoryData[],
+    characters: CharacterData[]
+  ): Array<{ character: string; values: number[] }> {
+    const characterNameMap = new Map(characters.map(c => [c.name.toLowerCase(), c.name]));
+    const result: Array<{ character: string; values: number[] }> = [];
+
+    // Get date range
+    if (memories.length === 0) {
+      return characters.map(c => ({ character: c.name, values: [] }));
+    }
+
+    const dates = memories.map(m => new Date(m.created_at)).sort((a, b) => a.getTime() - b.getTime());
+    const startDate = dates[0];
+    const endDate = dates[dates.length - 1];
+    const weeks = Math.ceil((endDate.getTime() - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
+
+    for (const character of characters) {
+      const nameLower = character.name.toLowerCase();
+      const weeklyCounts = new Array(weeks).fill(0);
+
+      for (const memory of memories) {
+        const people = (memory.people || []).map(p => p.toLowerCase());
+        const textLower = memory.text.toLowerCase();
+        if (people.includes(nameLower) || textLower.includes(nameLower)) {
+          const memoryDate = new Date(memory.created_at);
+          const weekIndex = Math.floor((memoryDate.getTime() - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+          if (weekIndex >= 0 && weekIndex < weeks) {
+            weeklyCounts[weekIndex]++;
+          }
+        }
+      }
+
+      result.push({ character: character.name, values: weeklyCounts });
+    }
+
+    return result;
+  }
+
+  /**
+   * Get average sentiment for a character
+   */
+  private getAverageSentimentForCharacter(characterName: string, memories: MemoryData[]): number {
+    const nameLower = characterName.toLowerCase();
+    const sentiments: number[] = [];
+
+    for (const memory of memories) {
+      const people = (memory.people || []).map(p => p.toLowerCase());
+      const textLower = memory.text.toLowerCase();
+      if (people.includes(nameLower) || textLower.includes(nameLower)) {
+        if (memory.sentiment !== null) {
+          sentiments.push(memory.sentiment);
+        }
+      }
+    }
+
+    return sentiments.length > 0
+      ? sentiments.reduce((sum, s) => sum + s, 0) / sentiments.length
+      : 0;
+  }
+
+  /**
+   * Get edge sentiment between two characters
+   */
+  private getEdgeSentiment(sourceName: string, targetName: string, memories: MemoryData[]): number {
+    const sourceLower = sourceName.toLowerCase();
+    const targetLower = targetName.toLowerCase();
+    const sentiments: number[] = [];
+
+    for (const memory of memories) {
+      const people = (memory.people || []).map(p => p.toLowerCase());
+      const textLower = memory.text.toLowerCase();
+      const hasSource = people.includes(sourceLower) || textLower.includes(sourceLower);
+      const hasTarget = people.includes(targetLower) || textLower.includes(targetLower);
+
+      if (hasSource && hasTarget && memory.sentiment !== null) {
+        sentiments.push(memory.sentiment);
+      }
+    }
+
+    return sentiments.length > 0
+      ? sentiments.reduce((sum, s) => sum + s, 0) / sentiments.length
+      : 0;
+  }
+
   private emptyPayload(): AnalyticsPayload {
     return {
       metrics: {},
@@ -573,6 +1062,14 @@ export class RelationshipAnalyticsModule extends BaseAnalyticsModule {
       graph: { nodes: [], edges: [] },
       insights: [],
       summary: 'Not enough data to generate relationship analytics.',
+      metadata: {
+        sentimentTimeline: [],
+        archetypes: [],
+        attachmentGravity: [],
+        forecast: [],
+        arcAppearances: [],
+        heatmap: [],
+      },
     };
   }
 }
