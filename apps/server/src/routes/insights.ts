@@ -64,8 +64,8 @@ router.get('/recent', requireAuth, async (req: AuthenticatedRequest, res) => {
     const storedInsights = await insightStorageService.getRecentInsights(req.user!.id, 20);
 
     // Also run Python insight engine for fresh insights
-    try {
-      const payload = await buildPayload(req.user!.id);
+  try {
+    const payload = await buildPayload(req.user!.id);
       const pythonInsights = await runInsightEngine(payload);
       
       res.json({

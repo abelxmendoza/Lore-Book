@@ -34,12 +34,12 @@ export function useLoreOrchestrator() {
   }, [lastDelta, applyDeltaToState]);
 
   return {
-    summary: orchestratorState.summary,
-    timeline: orchestratorState.timeline,
-    identity: orchestratorState.identity,
-    continuity: orchestratorState.continuity,
-    saga: orchestratorState.saga,
-    orchestratorState,
-    lastDelta,
+      summary: orchestratorState.summary,
+      timeline: orchestratorState.timeline,
+      identity: orchestratorState.identity,
+      continuity: orchestratorState.continuity,
+      saga: orchestratorState.saga,
+      orchestratorState,
+      lastDelta,
   };
 }
