@@ -1,7 +1,7 @@
 {
-  "buildCommand": "cd apps/web && pnpm install --workspace-root && pnpm run build",
+  "buildCommand": "cd apps/web && pnpm install && pnpm run build",
   "outputDirectory": "apps/web/dist",
-  "installCommand": "pnpm install --workspace-root",
+  "installCommand": "pnpm install",
   "framework": "vite"
 }
 
