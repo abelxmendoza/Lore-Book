@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Advanced Analytics System provides 10 comprehensive analytics modules for analyzing journal entries, relationships, patterns, and life insights. All modules are fully implemented and ready for use.
+The Analytics System is Lore Keeper's **life intelligence engine**—providing deep insights into your patterns, relationships, emotional trajectory, and predictive modeling. These 10 comprehensive analytics modules transform your journal entries into actionable intelligence about your past, present, and future. All modules are fully implemented and ready for use.
 
 ## Modules
 

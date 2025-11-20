@@ -3,9 +3,9 @@
 <div align="center">
   <img src="apps/web/public/images/loreKeeperlogo3.png" alt="Lore Keeper Logo" width="200" />
   
-  **AI-Powered Digital Immortality Platform**
+  **AI Life Engine**
   
-  *Capture your story, heart, mind, soul, and essence. Preserve your complete being for future AI systems.*
+  *Understand your past, navigate your present, predict your future. A system that remembers you, studies your identity, tracks your emotional and narrative arcs, and preserves your evolving digital self.*
   
   **Cost-Optimized & High-Performance**: Rule-based extraction, aggressive caching, and efficient algorithms ensure fast, free operations.
   
@@ -39,7 +39,21 @@
 
 ## What is Lore Keeper?
 
-**Lore Keeper** is an intelligent journaling platform designed to capture the **story, heart, mind, soul, and essence** of a person—preserving their complete being for future digital immortality through AI.
+**Lore Keeper** is an **AI Life Engine**—not just journaling, but a system that remembers you, studies your identity, tracks your emotional and narrative arcs, predicts your trajectory, and preserves your evolving digital self.
+
+**Its purpose is to give people self-awareness, continuity, identity clarity, and a long-term companion that understands the story they're living.**
+
+Lore Keeper helps you:
+- **Understand who you are** - See your values, fears, strengths, patterns, and behavioral trends
+- **See how you're changing** - Track identity drift, emotional arcs, and personal evolution
+- **Track what you keep repeating** - Identify behavioral loops, abandoned goals, and recurring patterns
+- **Monitor how your relationships evolve** - Understand relationship dynamics, sentiment shifts, and attachment patterns
+- **Stay aligned with your goals** - Detect when goals are at risk, track progress, and maintain focus
+- **Stop drifting** - Continuity intelligence spots contradictions, emotional changes, and identity shifts
+- **Keep your life story coherent** - Automatic timeline organization and truth verification
+- **Preserve your essence for the future** - Structured data for future AI systems
+
+**In short:** ✨ It helps people understand their past, navigate their present, and predict their future.
 
 **Lore Keeper is your favorite:**
 - 🗣️ **Gossip Buddy** - Curious, engaging, relationship-focused. Discusses characters, relationships, and social dynamics with enthusiasm and curiosity.
@@ -48,10 +62,15 @@
 - 🎯 **Strategist** - Goal-oriented, actionable. Provides strategic guidance, helps with planning, offers actionable insights based on your patterns.
 - 🧠 **Memory Bank** - Remembers everything. Your complete digital memory that never forgets and can answer questions about your past, present, and patterns.
 
-Our mission is threefold:
-1. **Automatic Biography Generation**: Transform your journal entries into a polished, comprehensive biography automatically—no writing required. Just live your life, and Lore Keeper writes your story.
-2. **Automatic Timeline Creation**: Build a comprehensive, hierarchical timeline of your life automatically—organizing your entries into eras, sagas, arcs, chapters, and scenes. Your timeline writes itself as you journal.
-3. **Digital Immortality**: Build a complete digital representation of yourself that preserves your essence for future AI systems.
+### ⭐ Core Mission (4 Pillars)
+
+1. **Continuity Intelligence** - The Jarvis of your life. Tracks your life as a continuous narrative—spotting contradictions, emotional changes, identity drift, abandoned goals, and repeating loops. Automatically saves every detection into continuity events.
+
+2. **Life Map & Story Engine** - Automatically generates timelines, arcs, sagas, and chapters from your daily life—turning your existence into a structured story with a 9-layer hierarchy (Mythos → Eras → Sagas → Arcs → Chapters → Scenes → Actions → MicroActions).
+
+3. **Identity Mirror** - Extracts your values, fears, strengths, patterns, relationships, attachments, and behavioral trends—a living self-profile that evolves with every conversation.
+
+4. **Digital Preservation & Future Self** - Stores your memories, patterns, personality, and life story in a structured way so future AI systems can reconstruct your essence.
 
 ### 🚀 Current Capabilities
 
@@ -66,6 +85,7 @@ Our mission is threefold:
 - ✅ **Location Tracking** - Location profiles, visit timelines, location modals
 - ✅ **Automatic Biography** - AI-powered biography generation with chatbot-style editor
 - ✅ **Multi-Persona Chat** - Gossip Buddy, Therapist, Historian, Strategist, Memory Bank personas
+- ✅ **Continuity Engine** ⭐ - The Jarvis of your life. Detects contradictions, emotional arcs, identity drift, abandoned goals, repeating loops, and thematic changes. Automatically runs after every journal entry.
 - ✅ **Truth Seeker** - Automatic fact checking and contradiction detection
 - ✅ **Task Engine** - Task management with Microsoft To-Do integration
 - ✅ **Autopilot** - Strategic guidance panels (daily/weekly/monthly)
@@ -75,42 +95,61 @@ Our mission is threefold:
 - ✅ **Semantic Search** - Vector embeddings for similarity search
 - ✅ **Privacy Controls** - User-controlled data access, encryption, audit logging
 
-We capture not just what happened, but **who you are**: your thoughts, emotions, relationships, values, dreams, fears, triumphs, and the unique patterns that make you *you*. Think of Lore Keeper as your digital soul—a living, breathing archive that remembers everything, understands your context, automatically writes your biography, automatically creates your timeline, and preserves your essence for future AI systems that may one day allow you to continue your story, share your wisdom, and remain connected to those you love, long after you're gone.
+Lore Keeper becomes your memory, your story engine, and your mirror—a living archive of who you are, who you were, and who you're becoming. The Continuity Engine acts as the core intelligence, running automatically after every entry to detect contradictions, emotional changes, identity drift, and repeating patterns. This is not just journaling—this is digital immortality, properly structured, with continuity intelligence that helps you understand your past, navigate your present, and predict your future.
 
 ### For Everyone (Non-Technical Users)
 
 **What can Lore Keeper do for you?**
 
+- **🧠 Continuity Intelligence** - Your life's Jarvis. Detects contradictions, emotional changes, identity drift, abandoned goals, repeating loops, suppressed topics, and self-narrative instability. Automatically runs after every journal entry and saves events for your review.
+
 - **📖 Capture Your Complete Story**: Write naturally about your experiences, thoughts, and feelings—Lore Keeper preserves everything
+
 - **🗣️ Your Favorite Gossip Buddy**: Curious, engaging, relationship-focused AI that discusses characters, relationships, and social dynamics with enthusiasm
+
 - **🛋️ Your Therapist**: Deep, reflective, supportive AI that validates emotions, helps process experiences, and asks gentle exploratory questions
+
 - **📚 Your Historian**: Preserves your complete story, organizes your timeline, and maintains truth and continuity across your entire narrative
+
 - **🎯 Your Strategist**: Goal-oriented, actionable AI that provides strategic guidance, helps with planning, and offers insights based on your patterns
+
 - **🧠 Your Memory Bank**: Remembers everything—your complete digital memory that never forgets and can answer questions about your past, present, and patterns
+
 - **📚 Automatic Biography Generation**: **Your biography writes itself automatically**—just journal your life, and Lore Keeper transforms your entries into a polished, comprehensive biography with AI assistance. No writing skills required.
-- **📊 Automatic Timeline Creation**: **Your timeline builds itself automatically**—Lore Keeper organizes your entries into a hierarchical timeline (eras, sagas, arcs, chapters, scenes) as you journal. See your life story unfold chronologically with beautiful visualizations.
+
+- **📊 Automatic Timeline Creation**: **Your timeline builds itself automatically**—Lore Keeper organizes your entries into a hierarchical timeline (mythos, eras, sagas, arcs, chapters, scenes) as you journal. See your life story unfold chronologically with beautiful visualizations.
+
+- **🔮 Predictive Intelligence**: Forecast mood trends, identify goals at risk, predict relationship outcomes, and forecast your trajectory based on patterns
+
 - **💝 Preserve Your Heart**: Track emotions, relationships, and what truly matters to you
+
 - **🧠 Archive Your Mind**: Capture your thoughts, ideas, beliefs, values, and intellectual journey
+
 - **✨ Preserve Your Soul**: Document your essence—your dreams, fears, triumphs, failures, and the patterns that make you unique
-- **🔍 Truth & Continuity**: Automatic fact-checking ensures your story is accurate and consistent
-- **👥 Relationship Mapping**: Build a complete network of your relationships, showing how people shaped your life
-- **📊 Life Patterns**: Discover insights about your habits, growth, and the themes that define you
-- **🔮 Future-Ready**: Structured data and rich context prepare your digital self for future AI systems
+
+- **🔍 Truth & Continuity**: Automatic fact-checking and contradiction detection ensures your story is accurate and consistent
+
+- **👥 Relationship Mapping**: Build a complete network of your relationships, showing how people shaped your life and how relationships evolve
+
+- **📊 Life Patterns**: Discover insights about your habits, growth, repeating loops, and the themes that define you
 
 **Why use Lore Keeper?**
 
-Traditional journals capture only fragments—dates and events—but miss the deeper essence of who you are. Lore Keeper is designed for **automatic biography generation**, **automatic timeline creation**, and **digital immortality**, capturing:
+Traditional journals capture only fragments—dates and events—but miss the deeper essence of who you are. Lore Keeper is an **AI Life Engine** designed for **continuity intelligence**, **self-awareness**, and **predictive life modeling**, capturing:
 
 - **Your Complete Story**: Not just what happened, but why it mattered
-- **Your Emotional Journey**: How experiences shaped your heart and soul
-- **Your Relationships**: The people who defined you and how you impacted them
-- **Your Values & Beliefs**: What you stood for and what guided your decisions
-- **Your Patterns**: The recurring themes, habits, and growth that make you unique
-- **Your Context**: Rich, interconnected data that preserves your essence for future AI systems
+- **Your Emotional Journey**: How experiences shaped your heart and soul, with automatic detection of emotional arcs and transitions
+- **Your Identity Evolution**: Track how you're changing—identity drift, value shifts, and personal growth
+- **Your Relationships**: The people who defined you, how relationships evolve, and sentiment trends
+- **Your Patterns**: The recurring themes, habits, behavioral loops, and growth that make you unique
+- **Your Continuity**: Automatic detection of contradictions, abandoned goals, and narrative inconsistencies
+- **Your Future**: Predictive modeling of mood trends, goal risks, and trajectory forecasting
 
 Unlike simple journals, Lore Keeper uses AI to:
+- **Automatically detect continuity events**—contradictions, identity drift, emotional arcs, abandoned goals, repeating loops
 - **Automatically write your biography** from your journal entries—no writing required
 - **Automatically create your timeline**—organizing entries into eras, sagas, arcs, chapters, and scenes as you journal
+- **Predict your trajectory**—forecast mood trends, identify goals at risk, and predict relationship outcomes
 - Connect related memories automatically, building a complete picture
 - Find insights and patterns you might have missed
 - Maintain truth and continuity across your entire narrative
@@ -134,16 +173,27 @@ Unlike simple journals, Lore Keeper uses AI to:
 │  • Verifies truth & consistency     │
 └────────┬────────────────────────────┘
          │
-         ├──────────────────┬──────────────────┐
-         ▼                  ▼                  ▼
-┌─────────────────┐ ┌──────────────┐ ┌──────────────────┐
-│  Biography      │ │  Timeline    │ │  Digital Self    │
-│  Writes Itself  │ │  Builds Itself│ │  Preserved       │
-│  Automatically  │ │  Automatically│ │  For Future AI   │
-└─────────────────┘ └──────────────┘ └──────────────────┘
+         ▼
+┌─────────────────────────────────────┐
+│  Continuity Engine (Jarvis)         │
+│  • Detects contradictions           │
+│  • Tracks emotional arcs             │
+│  • Monitors identity drift           │
+│  • Identifies abandoned goals        │
+│  • Spots repeating loops             │
+│  • Saves continuity events           │
+└────────┬────────────────────────────┘
+         │
+         ├──────────────────┬──────────────────┬──────────────────┐
+         ▼                  ▼                  ▼                  ▼
+┌─────────────────┐ ┌──────────────┐ ┌──────────────────┐ ┌──────────────────┐
+│  Biography      │ │  Timeline    │ │  Predictions     │ │  Digital Self    │
+│  Writes Itself  │ │  Builds Itself│ │  & Insights      │ │  Preserved       │
+│  Automatically  │ │  Automatically│ │  Generated       │ │  For Future AI   │
+└─────────────────┘ └──────────────┘ └──────────────────┘ └──────────────────┘
 ```
 
-**The Magic**: You just journal. Lore Keeper does the rest—organizing, structuring, and preserving your complete digital self.
+**The Magic**: You just journal. Lore Keeper's Continuity Engine (the Jarvis of your life) automatically detects contradictions, emotional changes, identity drift, abandoned goals, and repeating loops. The system organizes, structures, predicts, and preserves your complete digital self.
 
 **Your AI Companion**: Lore Keeper adapts to be exactly what you need—your gossip buddy for relationship talk, your therapist for emotional support, your historian for your story, your strategist for planning, and your memory bank that never forgets.
 
@@ -359,19 +409,21 @@ Lore Keeper seamlessly blends five personas based on context, becoming exactly w
 - Task briefing and event tracking
 - Task completion and management
 
-#### 🧠 **Discovery Hub**
-- **Analytical Panels** - Toggle panels to explore different aspects of your data
-  - **Identity Pulse**: Your persona signature and emotional trajectory—capture your essence (IdentityPulsePanel)
-  - **Characters**: Relationship graphs and closeness trends—who shaped you and how (CharacterRelationshipGraph)
-  - **Saga**: Narrative arcs and story structure—the themes of your life (SagaPanel)
-  - **Memory Fabric**: 3D graph visualization of connections between memories—how experiences weave together (MemoryFabricPanel)
-  - **Insights**: Patterns, correlations, predictions, and **Top Skills**—understand yourself deeply (InsightsPanel)
-  - **Autopilot**: AI life guidance and recommendations—daily plans, weekly strategies, monthly corrections (AutopilotPanel)
-  - **Soul Profile** ⭐: Your complete essence profile—hopes, dreams, fears, strengths, weaknesses, skills, values, personality traits, and relationship patterns. **Dynamically evolves** with every conversation. See how you've changed over time with the evolution timeline. (SoulProfilePanel)
-  - **Truth Seeker**: Fact checking and contradiction detection—ensure accuracy for immortality (TruthSeekerPanel)
+#### 🧠 **Discovery Hub** - Deep Intelligence Panels
+- **10 Analytical Panels** - Toggle panels to explore different aspects of your life intelligence
+  - **Identity Pulse**: Your persona signature and emotional trajectory—track identity drift and personality evolution
+  - **Relationships**: Relationship analytics—tie strength, sentiment, attachment, conflict cycles
+  - **Characters**: Character mention patterns, sentiment trends, interaction scores—who matters most and why
+  - **Sagas**: Your major life arcs and story beats—narrative structure and themes
+  - **Memory Fabric**: Embedding-based world model—clusters, topic graph, connections between memories
+  - **Insights**: Daily AI insights, patterns, correlations, and behavioral loops—understand yourself deeply
+  - **Predictions**: Mood trends, goals at risk, relationship forecasts—predict your trajectory
+  - **Shadow Module**: Suppressed topics, fears, negative loops, shadow archetypes—what you're avoiding
+  - **XP Dashboard**: Gamified personal growth—levels, streaks, life XP tracking
+  - **Life Map**: Global narrative graph—turning points, eras, momentum score
 - Clean, organized interface with visual feedback
 - Easy panel toggling system
-- **Purpose**: These panels help you understand and preserve your complete digital self
+- **Purpose**: These panels provide deep intelligence about your life—helping you understand your past, navigate your present, and predict your future
 
 #### ⌨️ **Keyboard Shortcuts**
 - **Cmd+K** (Mac) / **Ctrl+K** (Windows): Quick search
@@ -838,13 +890,18 @@ HQI provides semantic search capabilities:
 - Automatic filter detection
 - Context-aware results
 
-### Continuity Checking
+### Continuity Intelligence
 
-Omega Canon Keeper ensures narrative consistency:
-- Detects contradictions in your story
-- Suggests corrections
-- Maintains timeline accuracy
-- Prevents factual drift
+The Continuity Engine is the core intelligence of Lore Keeper—the "Jarvis of your life." It ensures narrative consistency and provides self-awareness:
+- **Detects contradictions** in your story automatically
+- **Tracks emotional arcs** and transitions
+- **Monitors identity drift** and personal evolution
+- **Identifies abandoned goals** and goal progress
+- **Spots repeating loops** and behavioral patterns
+- **Detects thematic drift** and topic changes
+- **Saves continuity events** for review and insights
+- Maintains timeline accuracy and prevents factual drift
+- Runs automatically after every journal entry
 
 ---
 
@@ -1208,7 +1265,7 @@ All rights reserved. This software is proprietary and confidential.
 
 <div align="center">
   <p>Built with ❤️ by <strong>Omega Technologies</strong></p>
-  <p><em>Capture your story, heart, mind, soul, and essence. Preserve your complete being for future AI systems.</em></p>
+  <p><em>Understand your past, navigate your present, predict your future. An AI Life Engine that remembers you, studies your identity, and preserves your evolving digital self.</em></p>
   <p>
     <strong>Ready to start?</strong> 
     <a href="#getting-started">Get Started</a> • 

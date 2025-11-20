@@ -12,7 +12,8 @@ import {
   X,
   TrendingUp,
   Map,
-  Search
+  Search,
+  Activity
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { CharactersAnalyticsPanel } from './CharactersAnalyticsPanel';
@@ -28,6 +29,7 @@ import { LifeMapPanel } from './LifeMapPanel';
 import { AutopilotPanel } from '../AutopilotPanel';
 import { SoulProfilePanel } from './SoulProfilePanel';
 import { TruthSeekerPanel } from './TruthSeekerPanel';
+import { ContinuityDashboard } from '../continuity/ContinuityDashboard';
 import { fetchJson } from '../../lib/api';
 
 // Wrapper component for InsightsPanel that fetches data
@@ -64,7 +66,14 @@ interface PanelConfig {
 }
 
 const PANEL_CONFIGS: PanelConfig[] = [
-  // Core 10 Analytics Panels
+  // Core Analytics Panels
+  {
+    id: 'continuity',
+    title: 'Continuity Intelligence',
+    description: 'The Jarvis of your life. Detects contradictions, emotional arcs, identity drift, and repeating loops.',
+    icon: Activity,
+    component: ContinuityDashboard
+  },
   {
     id: 'identity',
     title: 'Identity Pulse',

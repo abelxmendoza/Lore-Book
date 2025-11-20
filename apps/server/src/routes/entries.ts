@@ -6,11 +6,13 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { checkEntryLimit } from '../middleware/subscription';
 import { incrementEntryCount } from '../services/usageTracking';
 import { validateQuery, validateBody } from '../middleware/validateRequest';
+import { logger } from '../logger';
 import { chapterService } from '../services/chapterService';
 import { memoryService } from '../services/memoryService';
 import { tagService } from '../services/tagService';
 import { voiceService } from '../services/voiceService';
 import { truthVerificationService } from '../services/truthVerificationService';
+import { continuityService } from '../services/continuity/continuityService';
 import { extractTags, shouldPersistMessage } from '../utils/keywordDetector';
 import { emitDelta } from '../realtime/orchestratorEmitter';
 
@@ -254,6 +256,13 @@ router.post('/', requireAuth, checkEntryLimit, validateBody(entrySchema), async 
     truthVerificationService.verifyEntry(req.user!.id, entry.id, entry)
       .then(result => truthVerificationService.storeVerification(req.user!.id, entry.id, result))
       .catch(err => logger.warn({ error: err, entryId: entry.id }, 'Failed to auto-verify entry'));
+
+    // Run continuity analysis (fire and forget) - The Jarvis of your life
+    continuityService.runContinuityAnalysis(req.user!.id)
+      .then(result => {
+        logger.info({ userId: req.user!.id, eventCount: result.events.length }, 'Continuity analysis completed after entry creation');
+      })
+      .catch(err => logger.warn({ error: err, userId: req.user!.id }, 'Failed to run continuity analysis after entry creation'));
 
     void emitDelta('timeline.add', { entry }, req.user!.id);
 

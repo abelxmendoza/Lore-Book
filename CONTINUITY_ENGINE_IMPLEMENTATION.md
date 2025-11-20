@@ -1,5 +1,8 @@
 # Continuity Engine Implementation Summary
 
+> **The Continuity Engine is the core intelligence of Lore Keeper—the "Jarvis of your life."**  
+> It tracks your life as a continuous narrative, spotting contradictions, emotional changes, identity drift, abandoned goals, and repeating loops. This is the system that provides self-awareness, continuity, and identity clarity—helping you understand your past, navigate your present, and predict your future.
+
 ## ✅ Implementation Complete
 
 ### Database Schema
