@@ -1,0 +1,10 @@
+# Ignore root monorepo files that might confuse Vercel
+../../pnpm-workspace.yaml
+../../pnpm-lock.yaml
+../../package.json
+../../node_modules
+
+# Ignore other workspace apps
+../../apps/server
+../../apps/mobile
+
