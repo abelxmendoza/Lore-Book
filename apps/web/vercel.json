@@ -1,6 +1,6 @@
 {
-  "installCommand": "npm ci --legacy-peer-deps || npm install --legacy-peer-deps",
-  "buildCommand": "npm run build",
+  "installCommand": "echo '📦 Starting npm install...' && npm ci --legacy-peer-deps || (echo '⚠️  npm ci failed, falling back to npm install...' && npm install --legacy-peer-deps) && echo '✅ Install complete' && npm list --depth=0 2>&1 | head -20",
+  "buildCommand": "echo '🔨 Starting build...' && npm run build 2>&1",
   "outputDirectory": "dist",
   "framework": "vite",
   "env": {
