@@ -1,6 +1,0 @@
-{
-  "installCommand": "cd apps/web && npm install --legacy-peer-deps",
-  "buildCommand": "cd apps/web && npm run build",
-  "outputDirectory": "apps/web/dist"
-}
-
