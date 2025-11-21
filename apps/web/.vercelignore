@@ -1,9 +1,0 @@
-# Ignore root-level pnpm files that confuse Vercel
-../../pnpm-workspace.yaml
-../../pnpm-lock.yaml
-../../package.json
-
-# Ignore other workspace apps
-../../apps/server
-../../apps/mobile
-

@@ -1,0 +1,8 @@
+# Ignore pnpm workspace files that confuse npm install
+pnpm-workspace.yaml
+pnpm-lock.yaml
+
+# Ignore other workspace apps (only build web)
+apps/server
+apps/mobile
+
