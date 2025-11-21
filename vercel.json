@@ -1,17 +1,8 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "apps/web/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "apps/web/dist"
-      }
-    }
-  ],
-  "installCommand": "cd apps/web && npm install",
-  "buildCommand": "cd apps/web && npm run build",
+  "installCommand": "echo '========================================' && echo '🔍 STEP 1: VERIFYING INSTALL LOCATION' && echo '========================================' && echo 'Current directory:' && pwd && echo '' && echo '📦 STEP 2: CHANGING TO apps/web' && cd apps/web && echo 'New directory:' && pwd && echo '' && echo '📋 STEP 3: VERIFYING package.json' && if [ ! -f package.json ]; then echo '❌ ERROR: package.json not found!' && exit 1; fi && echo '✅ package.json found' && echo 'Package name:' && node -p \"require('./package.json').name\" && echo '' && echo '📦 STEP 4: CLEANING ANY EXISTING INSTALL' && rm -rf node_modules package-lock.json 2>/dev/null || true && echo '✅ Clean complete' && echo '' && echo '📦 STEP 5: INSTALLING DEPENDENCIES' && echo 'Running: npm install --legacy-peer-deps' && npm install --legacy-peer-deps 2>&1 && echo '' && echo '✅ INSTALL COMPLETE' && echo '' && echo '🔍 STEP 6: VERIFYING INSTALLATION' && echo 'Checking for vite binary...' && if [ ! -f node_modules/.bin/vite ]; then echo '❌ ERROR: vite binary not found!' && echo '' && echo '📊 Installed packages count:' && npm list --depth=0 2>&1 | grep -E '^[├└]' | wc -l && echo '' && echo '📊 First 30 installed packages:' && npm list --depth=0 2>&1 | head -30 && echo '' && echo '❌ BUILD WILL FAIL - vite is missing!' && exit 1; fi && echo '✅ vite binary found at: node_modules/.bin/vite' && echo 'Vite version:' && node_modules/.bin/vite --version && echo '' && echo '📊 STEP 7: INSTALLATION SUMMARY' && echo 'Total packages installed:' && npm list --depth=0 2>&1 | grep -E '^[├└]' | wc -l && echo '========================================'",
+  "buildCommand": "echo '========================================' && echo '🔨 STARTING BUILD PROCESS' && echo '========================================' && cd apps/web && echo 'Build directory:' && pwd && echo '' && echo '🔍 VERIFYING BUILD ENVIRONMENT' && if [ ! -f node_modules/.bin/vite ]; then echo '❌ ERROR: vite not found! Build cannot proceed.' && echo 'This means dependencies were not installed correctly.' && exit 1; fi && echo '✅ vite available' && echo 'Vite version:' && node_modules/.bin/vite --version && echo '' && echo '🚀 RUNNING BUILD' && npm run build 2>&1",
   "outputDirectory": "apps/web/dist",
+  "framework": "vite",
   "env": {
     "NODE_VERSION": "20"
   }
