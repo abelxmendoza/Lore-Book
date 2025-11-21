@@ -2,6 +2,7 @@
   "name": "lorekeeper",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@8.15.4",
   "scripts": {
     "test:security": "cd apps/server && npm test middleware/ integration/privacy.test.ts",
     "test:e2e:security": "cd apps/web && npm run test:e2e security.spec.ts",
