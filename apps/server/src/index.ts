@@ -72,6 +72,7 @@ import contextRouter from './routes/context';
 import consolidationRouter from './routes/consolidation';
 import predictionRouter from './routes/prediction';
 import narrativeRouter from './routes/narrative';
+import relationshipDynamicsRouter from './routes/relationshipDynamics';
 import { errorHandler } from './middleware/errorHandler';
 import { asyncHandler } from './middleware/errorHandler';
 import { requestIdMiddleware } from './utils/requestId';
@@ -190,6 +191,7 @@ apiRouter.use('/context', contextRouter);
 apiRouter.use('/consolidation', consolidationRouter);
 apiRouter.use('/prediction', predictionRouter);
 apiRouter.use('/narrative', narrativeRouter);
+apiRouter.use('/relationship-dynamics', relationshipDynamicsRouter);
 
 app.use('/api', apiRouter);
 
