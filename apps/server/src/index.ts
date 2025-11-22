@@ -68,6 +68,7 @@ import { chronologyRouter } from './routes/chronology';
 import recommendationsRouter from './routes/recommendations';
 import wisdomRouter from './routes/wisdom';
 import learningRouter from './routes/learning';
+import contextRouter from './routes/context';
 import { errorHandler } from './middleware/errorHandler';
 import { asyncHandler } from './middleware/errorHandler';
 import { requestIdMiddleware } from './utils/requestId';
@@ -182,6 +183,7 @@ apiRouter.use('/chronology', chronologyRouter);
 apiRouter.use('/recommendations', recommendationsRouter);
 apiRouter.use('/wisdom', wisdomRouter);
 apiRouter.use('/learning', learningRouter);
+apiRouter.use('/context', contextRouter);
 apiRouter.use('/learning', learningRouter);
 
 app.use('/api', apiRouter);

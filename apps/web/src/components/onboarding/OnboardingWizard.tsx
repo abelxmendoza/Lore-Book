@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
-import { ChevronRight, ChevronLeft, CheckCircle2, Sparkles, BookOpen, MessageSquare, Calendar, Search, Users, Zap } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CheckCircle2, Sparkles, BookOpen, MessageSquare, Calendar, Search, Users, Zap, Loader2, Tag, MapPin, UserPlus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
+import { useLoreKeeper } from '../../hooks/useLoreKeeper';
+import { updateUserProfile } from '../../api/user';
+import { fetchJson } from '../../lib/api';
+import { useAuth } from '../../lib/supabase';
+import { config } from '../../config/env';
 
 type Step = {
   id: string;
@@ -15,10 +20,21 @@ interface OnboardingWizardProps {
   onComplete?: () => void;
 }
 
+type PersonaType = 'journaler' | 'developer' | 'writer' | 'explorer' | null;
+
 export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [selectedPersona, setSelectedPersona] = useState<PersonaType>(null);
+  const [firstMemory, setFirstMemory] = useState('');
+  const [firstMemoryTags, setFirstMemoryTags] = useState<string[]>([]);
+  const [firstMemoryLocation, setFirstMemoryLocation] = useState<string>('');
+  const [firstMemoryPeople, setFirstMemoryPeople] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { createEntry } = useLoreKeeper();
+  const { user } = useAuth();
 
   const steps: Step[] = [
     {
@@ -91,18 +107,28 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
                 icon: Search,
                 color: 'from-green-500 to-emerald-500',
               },
-            ].map((persona, idx) => (
-              <button
-                key={idx}
-                className="rounded-xl border-2 border-border/60 bg-white/5 p-6 text-left hover:border-primary/50 hover:bg-primary/10 transition-all group"
-              >
-                <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${persona.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                  <persona.icon className="h-6 w-6 text-white" />
-                </div>
-                <h3 className="font-semibold text-white mb-2">{persona.title}</h3>
-                <p className="text-sm text-white/60">{persona.desc}</p>
-              </button>
-            ))}
+            ].map((persona, idx) => {
+              const personaKey: PersonaType = idx === 0 ? 'journaler' : idx === 1 ? 'developer' : idx === 2 ? 'writer' : 'explorer';
+              const isSelected = selectedPersona === personaKey;
+              
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedPersona(personaKey)}
+                  className={`rounded-xl border-2 p-6 text-left transition-all group ${
+                    isSelected
+                      ? 'border-primary bg-primary/20 shadow-lg shadow-primary/20'
+                      : 'border-border/60 bg-white/5 hover:border-primary/50 hover:bg-primary/10'
+                  }`}
+                >
+                  <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${persona.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                    <persona.icon className="h-6 w-6 text-white" />
+                  </div>
+                  <h3 className="font-semibold text-white mb-2">{persona.title}</h3>
+                  <p className="text-sm text-white/60">{persona.desc}</p>
+                </button>
+              );
+            })}
           </div>
         </div>
       ),
@@ -168,25 +194,16 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
       description: 'Let\'s start building your memory graph',
       icon: BookOpen,
       content: (
-        <div className="space-y-6">
-          <div className="rounded-xl border border-border/60 bg-white/5 p-6">
-            <h3 className="font-semibold text-white mb-4">What would you like to remember?</h3>
-            <textarea
-              placeholder="Write about something that happened today, a thought you had, or a memory you want to capture..."
-              className="w-full h-32 rounded-lg bg-black/40 border border-border/60 text-white p-4 placeholder:text-white/40 focus:outline-none focus:border-primary/50 resize-none"
-            />
-            <div className="mt-4 flex gap-2">
-              <Button variant="outline" className="flex-1">Add Tags</Button>
-              <Button variant="outline" className="flex-1">Add Location</Button>
-              <Button variant="outline" className="flex-1">Add People</Button>
-            </div>
-          </div>
-          <div className="rounded-xl border border-primary/30 bg-primary/10 p-4">
-            <p className="text-sm text-white/80">
-              💡 <strong>Tip:</strong> The more details you add, the better LoreKeeper can help you discover patterns and connections later.
-            </p>
-          </div>
-        </div>
+        <FirstMemoryStep
+          memory={firstMemory}
+          setMemory={setFirstMemory}
+          tags={firstMemoryTags}
+          setTags={setFirstMemoryTags}
+          location={firstMemoryLocation}
+          setLocation={setFirstMemoryLocation}
+          people={firstMemoryPeople}
+          setPeople={setFirstMemoryPeople}
+        />
       ),
     },
     {
@@ -236,12 +253,51 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
     },
   ];
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    // Handle persona selection step
+    if (currentStep === 1 && selectedPersona) {
+      try {
+        setSaving(true);
+        setError(null);
+        // Save persona to user profile
+        await updateUserProfile({ persona: selectedPersona });
+        if (config.isDevelopment) {
+          console.log('Persona saved:', selectedPersona);
+        }
+      } catch (err: any) {
+        console.error('Failed to save persona:', err);
+        setError('Failed to save persona selection. You can continue anyway.');
+      } finally {
+        setSaving(false);
+      }
+    }
+
+    // Handle first memory step
+    if (currentStep === 3 && firstMemory.trim()) {
+      try {
+        setSaving(true);
+        setError(null);
+        // Create the first memory entry
+        await createEntry(firstMemory.trim(), {
+          tags: firstMemoryTags,
+          // Note: location and people would need to be handled via the entry creation API
+        });
+        if (config.isDevelopment) {
+          console.log('First memory created');
+        }
+      } catch (err: any) {
+        console.error('Failed to create first memory:', err);
+        setError('Failed to save your first memory. You can continue anyway.');
+      } finally {
+        setSaving(false);
+      }
+    }
+
     if (currentStep < steps.length - 1) {
       setCompletedSteps(new Set([...completedSteps, currentStep]));
       setCurrentStep(currentStep + 1);
     } else {
-      handleComplete();
+      await handleComplete();
     }
   };
 
@@ -251,12 +307,45 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
     }
   };
 
-  const handleComplete = () => {
-    setCompletedSteps(new Set([...Array(steps.length).keys()]));
-    onComplete?.();
-    // Mark onboarding as complete in localStorage
-    localStorage.setItem('onboarding_completed', 'true');
-    navigate('/chat');
+  const handleComplete = async () => {
+    try {
+      setSaving(true);
+      setError(null);
+      
+      // Mark onboarding as complete in backend
+      try {
+        await fetchJson('/api/onboarding/complete', {
+          method: 'POST',
+          body: JSON.stringify({
+            persona: selectedPersona,
+            completedAt: new Date().toISOString(),
+          }),
+        });
+      } catch (err) {
+        // If backend fails, still mark in localStorage
+        console.warn('Failed to mark onboarding complete in backend:', err);
+      }
+      
+      // Mark onboarding as complete in localStorage
+      localStorage.setItem('onboarding_completed', 'true');
+      localStorage.setItem('onboardingComplete', 'true');
+      
+      setCompletedSteps(new Set([...Array(steps.length).keys()]));
+      onComplete?.();
+      
+      // Navigate to chat
+      navigate('/chat');
+    } catch (err: any) {
+      console.error('Failed to complete onboarding:', err);
+      setError('Failed to complete onboarding. Redirecting anyway...');
+      // Still navigate even if there's an error
+      setTimeout(() => {
+        localStorage.setItem('onboarding_completed', 'true');
+        navigate('/chat');
+      }, 2000);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const progress = ((currentStep + 1) / steps.length) * 100;
@@ -332,10 +421,20 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
 
             <Button
               onClick={handleNext}
-              className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+              disabled={saving || (currentStep === 1 && !selectedPersona) || (currentStep === 3 && !firstMemory.trim())}
+              className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {currentStep === steps.length - 1 ? 'Get Started' : 'Next'}
-              <ChevronRight className="h-4 w-4" />
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  {currentStep === steps.length - 1 ? 'Get Started' : 'Next'}
+                  <ChevronRight className="h-4 w-4" />
+                </>
+              )}
             </Button>
           </div>
         </div>
