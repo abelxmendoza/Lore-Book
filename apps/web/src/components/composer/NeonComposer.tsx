@@ -7,6 +7,7 @@ import { CharacterSuggestionBar } from './CharacterSuggestionBar';
 import { EmotionalSlider } from './EmotionalSlider';
 import { TagSuggestionBar } from './TagSuggestionBar';
 import { VoiceMemoButton } from './VoiceMemoButton';
+import { MarkdownEditor } from './MarkdownEditor';
 
 export const NeonComposer = () => {
   const [draft, setDraft] = useState('');
@@ -49,11 +50,12 @@ export const NeonComposer = () => {
           onTranscriptionComplete={handleTranscriptionComplete}
           onError={handleVoiceError}
         />
-        <textarea
+        <MarkdownEditor
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Stream your memory..."
-          className="h-40 w-full rounded-lg border border-border/40 bg-black/50 p-3 text-white focus:outline-none"
+          onChange={setDraft}
+          placeholder="Stream your memory... Use markdown for formatting!"
+          className="w-full"
+          minHeight="200px"
         />
         <TagSuggestionBar content={draft} selectedTags={selectedTags} onTagSelect={handleTagSelect} />
         <CharacterSuggestionBar />

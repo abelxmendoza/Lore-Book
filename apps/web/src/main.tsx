@@ -9,9 +9,13 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { DevBanner } from './components/DevBanner';
 import { DevelopmentNotice } from './components/DevelopmentNotice';
 import { config, log } from './config/env';
+import { initMonitoring } from './lib/monitoring';
+
+// Initialize monitoring (error tracking, analytics, performance)
+initMonitoring();
 
 // Log environment info in development
-if (config.isDevelopment) {
+if (config.env.isDevelopment) {
   log.info('Application starting in development mode');
   log.debug('Environment configuration:', {
     mode: config.env.mode,

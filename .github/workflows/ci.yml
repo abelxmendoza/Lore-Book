@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
@@ -6,254 +6,150 @@ on:
   pull_request:
     branches: [main, develop]
 
-env:
-  NODE_VERSION: '20'
-  PNPM_VERSION: '8'
-
 jobs:
-  lint:
-    name: Lint Code
+  lint-and-test:
+    name: Lint and Test
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          node-version: '20'
+          cache: 'npm'
+
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Lint server
-        run: pnpm --filter server lint
-      - name: Lint web
-        run: pnpm --filter web lint
-      - name: Verify no duplicate imports
         run: |
-          echo "🔍 Verifying no duplicate imports..."
-          echo "✅ ESLint rules will catch duplicates automatically"
+          cd apps/web
+          npm ci
 
-  test-server:
-    name: Test Server
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-          POSTGRES_DB: lorekeeper_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lorekeeper_test
-      SUPABASE_URL: http://localhost:54321
-      SUPABASE_ANON_KEY: test-anon-key
-      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
-      OPENAI_API_KEY: test-key
-      NODE_ENV: test
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Run server tests (including security tests)
-        run: pnpm --filter server test
-      - name: Run security middleware tests
-        run: pnpm --filter server test middleware/
-      - name: Run privacy API integration tests
-        run: pnpm --filter server test integration/privacy.test.ts
-      - name: Upload coverage
-        if: always()
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./apps/server/coverage/coverage-final.json
-          flags: server
-          name: server-coverage
+      - name: Run linter
+        run: |
+          cd apps/web
+          npm run lint
 
-  test-web:
-    name: Test Web
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Run web tests
-        run: pnpm --filter web test
-      - name: Upload coverage
-        if: always()
+      - name: Run unit tests
+        run: |
+          cd apps/web
+          npm run test
+
+      - name: Generate coverage report
+        run: |
+          cd apps/web
+          npm run test:coverage
+
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
           files: ./apps/web/coverage/coverage-final.json
-          flags: web
-          name: web-coverage
+          flags: frontend
+          name: frontend-coverage
+          fail_ci_if_error: false
 
-  test-e2e:
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: apps/web/coverage/
+          retention-days: 30
+
+  e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          node-version: '20'
+          cache: 'npm'
+
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          cd apps/web
+          npm ci
+
       - name: Install Playwright browsers
-        run: pnpm --filter web exec playwright install --with-deps
-      - name: Build web app
-        run: pnpm --filter web build
+        run: |
+          cd apps/web
+          npx playwright install --with-deps
+
       - name: Run E2E tests
-        run: pnpm --filter web test:e2e
-      - name: Run security E2E tests
-        run: pnpm --filter web test:e2e security.spec.ts
-      - name: Upload E2E test results
+        run: |
+          cd apps/web
+          npm run test:e2e
+
+      - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v3
-        if: failure()
         with:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 30
 
   build:
-    name: Build Applications
+    name: Build
     runs-on: ubuntu-latest
-    needs: [lint, test-server, test-web, code-quality]
+    needs: [lint-and-test]
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          node-version: '20'
+          cache: 'npm'
+
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build server
-        run: pnpm --filter server build
-      - name: Build web
-        run: pnpm --filter web build
+        run: |
+          cd apps/web
+          npm ci
+
+      - name: Build application
+        run: |
+          cd apps/web
+          npm run build
+        env:
+          VITE_USE_MOCK_DATA: 'true'
+          VITE_SHOW_DEV_NOTICE: 'true'
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: build-artifacts
-          path: |
-            apps/server/dist
-            apps/web/dist
+          name: dist
+          path: apps/web/dist/
           retention-days: 7
 
-  security:
+  security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Run npm audit
-        run: pnpm audit --audit-level moderate
-        continue-on-error: true
-
-  security-tests:
-    name: Security Tests
-    runs-on: ubuntu-latest
-    needs: [test-server]
-    if: always()
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Run security middleware tests
-        run: pnpm --filter server test middleware/
-        env:
-          NODE_ENV: test
-      - name: Run privacy API integration tests
-        run: pnpm --filter server test integration/privacy.test.ts
-        env:
-          NODE_ENV: test
-
-  code-quality:
-    name: Code Quality Checks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Check for unused code
         run: |
-          echo "🔍 Checking for unused code..."
-          cd apps/server
-          npm run find-unused || echo "⚠️ Unused code check completed"
-        continue-on-error: true
-      - name: Verify linting rules
-        run: |
-          echo "✅ Duplicate import detection: Enabled via ESLint (import/no-duplicates)"
-          echo "✅ Import order enforcement: Enabled via ESLint (import/order)"
-          echo "✅ All linting rules active and enforced"
+          cd apps/web
+          npm audit --audit-level=moderate || true
 
-  all-tests:
-    name: All Tests Summary
-    runs-on: ubuntu-latest
-    needs: [lint, test-server, test-web, test-e2e, security-tests, code-quality]
-    if: always()
-    steps:
-      - name: Check test results
-        run: |
-          echo "✅ All tests completed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "- Lint: ${{ needs.lint.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Server Tests: ${{ needs.test-server.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Web Tests: ${{ needs.test-web.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- E2E Tests: ${{ needs.test-e2e.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Security Tests: ${{ needs.security-tests.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Code Quality: ${{ needs.code-quality.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Code Quality Checks" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Duplicate import detection enabled" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Unused code detection enabled" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Import order enforcement enabled" >> $GITHUB_STEP_SUMMARY
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'

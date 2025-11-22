@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bot, Download, Search as SearchIcon, X } from 'lucide-react';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { useChatStream } from '../../hooks/useChatStream';
@@ -13,14 +14,17 @@ import { exportConversationAsMarkdown, exportConversationAsJSON, downloadFile } 
 import { fetchJson } from '../../lib/api';
 import { Button } from '../ui/button';
 import { diagnoseEndpoints, logDiagnostics } from '../../utils/errorDiagnostics';
+import { analytics } from '../../lib/monitoring';
 
 const CONVERSATION_STORAGE_KEY = 'lorekeeper_chat_conversation';
 
 export const ChatFirstInterface = () => {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState<'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'generating'>('analyzing');
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<ChatSource | null>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -102,6 +106,13 @@ export const ChatFirstInterface = () => {
     setInput('');
     setLoading(true);
     setLoadingStage('analyzing');
+    setLoadingProgress(0);
+    
+    // Track message sent
+    analytics.track('chat_message_sent', { 
+      messageLength: messageText.trim().length,
+      hasSlashCommand: messageText.trim().startsWith('/')
+    });
 
     // Build conversation history
     const conversationHistory = [...messages, userMessage]
@@ -123,6 +134,7 @@ export const ChatFirstInterface = () => {
 
     setMessages((prev) => [...prev, assistantMessage]);
     setStreamingMessageId(assistantMessageId);
+    setLoadingProgress(10);
 
     let accumulatedContent = '';
     let metadata: any = null;
@@ -142,16 +154,21 @@ export const ChatFirstInterface = () => {
             )
           );
           setLoadingStage('generating');
+          // Update progress as content streams
+          const progress = Math.min(90, 60 + (accumulatedContent.length / 500) * 30);
+          setLoadingProgress(progress);
         },
         (meta) => {
           metadata = meta;
           setLoadingStage('connecting');
+          setLoadingProgress(50);
         },
         () => {
           // Complete
           setLoading(false);
           setStreamingMessageId(null);
           setLoadingStage('analyzing');
+          setLoadingProgress(100);
           
           // Update message with final metadata
           setMessages((prev) =>
@@ -177,6 +194,9 @@ export const ChatFirstInterface = () => {
             refreshTimeline(),
             refreshChapters()
           ]).catch(console.error);
+          
+          // Reset progress after a delay
+          setTimeout(() => setLoadingProgress(0), 500);
         },
         (error) => {
           setLoading(false);
@@ -215,6 +235,7 @@ export const ChatFirstInterface = () => {
     const message = messages.find(m => m.id === messageId);
     if (message) {
       navigator.clipboard.writeText(message.content);
+      analytics.track('chat_message_copied', { messageId, role: message.role });
     }
   };
 
@@ -224,6 +245,8 @@ export const ChatFirstInterface = () => {
 
     const userMessage = messages[messageIndex - 1];
     if (!userMessage || userMessage.role !== 'user') return;
+
+    analytics.track('chat_message_regenerated', { messageId });
 
     // Remove the old assistant message
     setMessages((prev) => prev.filter(m => m.id !== messageId));
@@ -235,6 +258,7 @@ export const ChatFirstInterface = () => {
   const handleEdit = (messageId: string) => {
     const message = messages.find(m => m.id === messageId);
     if (message && message.role === 'user') {
+      analytics.track('chat_message_edited', { messageId });
       setInput(message.content);
       // Remove the message and any following assistant messages
       const messageIndex = messages.findIndex(m => m.id === messageId);
@@ -243,17 +267,43 @@ export const ChatFirstInterface = () => {
   };
 
   const handleDelete = (messageId: string) => {
+    analytics.track('chat_message_deleted', { messageId });
     setMessages((prev) => prev.filter(m => m.id !== messageId));
   };
 
   const handleSourceClick = (source: ChatSource) => {
     setSelectedSource(source);
+    analytics.track('chat_source_clicked', { sourceType: source.type, sourceId: source.id });
   };
 
-  const handleNavigateToSource = (surface: 'timeline' | 'characters' | 'memoir', id?: string) => {
+  const handleNavigateToSource = (surface: 'timeline' | 'characters' | 'memoir' | 'lorebook', id?: string) => {
     setSelectedSource(null);
-    // This would need to be passed as a prop from App.tsx to actually navigate
-    console.log('Navigate to:', surface, id);
+    
+    // Map source types to routes
+    const routeMap: Record<string, string> = {
+      entry: '/timeline',
+      chapter: '/timeline',
+      character: '/characters',
+      location: '/locations',
+      task: '/timeline',
+      hqi: '/search',
+      fabric: '/discovery',
+    };
+
+    const route = routeMap[surface] || '/timeline';
+    
+    // Navigate to the route
+    navigate(route);
+    
+    // Track navigation
+    analytics.track('chat_source_navigated', { surface, id, route });
+    
+    // If we have an ID, we could scroll to it or highlight it
+    // This would require state management or URL params
+    if (id) {
+      // Store the ID to highlight when the page loads
+      sessionStorage.setItem('highlightItem', id);
+    }
   };
 
   const handleExportMarkdown = () => {
@@ -309,8 +359,12 @@ export const ChatFirstInterface = () => {
           : msg
       )
     );
+    
+    // Track feedback for analytics
+    analytics.track('chat_message_feedback', { messageId, feedback });
+    
     // Could send feedback to backend for learning
-    console.log('Feedback:', messageId, feedback);
+    // TODO: Send to backend API for model improvement
   };
 
   // Keyboard shortcuts
@@ -501,7 +555,7 @@ export const ChatFirstInterface = () => {
 
         {/* Loading Indicator */}
         {loading && !streamingMessageId && (
-          <ChatLoadingPulse stage={loadingStage} />
+          <ChatLoadingPulse stage={loadingStage} progress={loadingProgress} />
         )}
 
         <div ref={messagesEndRef} />

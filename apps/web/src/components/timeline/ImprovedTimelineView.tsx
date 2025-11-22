@@ -59,7 +59,11 @@ export const ImprovedTimelineView = ({
   const [viewMode, setViewMode] = useState<ViewMode>('overview'); // Default to overview dashboard
   const [density, setDensity] = useState<DensityMode>('detailed');
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState<'all' | 'week' | 'month' | 'year'>('all');
+  const [dateFilter, setDateFilter] = useState<'all' | 'week' | 'month' | 'year' | 'custom'>('all');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
+  const [customDateRange, setCustomDateRange] = useState<{ from: string; to: string } | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
   const [memoirSections, setMemoirSections] = useState<Array<{ id: string; title: string; period?: { from: string; to: string } }>>([]);
   const [currentTimelineItem, setCurrentTimelineItem] = useState<string | undefined>();
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
@@ -80,28 +84,53 @@ export const ImprovedTimelineView = ({
   }, []);
 
   const filteredTimeline = useMemo(() => {
-    if (!searchTerm && dateFilter === 'all') return timeline;
+    const hasFilters = searchTerm || dateFilter !== 'all' || selectedTags.length > 0 || selectedCharacters.length > 0;
+    if (!hasFilters) return timeline;
 
     const now = new Date();
-    const filterDate = (() => {
+    let filterDateFrom: Date | null = null;
+    let filterDateTo: Date | null = null;
+
+    if (dateFilter === 'custom' && customDateRange) {
+      filterDateFrom = new Date(customDateRange.from);
+      filterDateTo = new Date(customDateRange.to);
+    } else {
       switch (dateFilter) {
         case 'week':
-          return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          filterDateFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
         case 'month':
-          return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          filterDateFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
         case 'year':
-          return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-        default:
-          return null;
+          filterDateFrom = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+          break;
       }
-    })();
+    }
 
     const filterEntry = (entry: any) => {
+      // Search filter
       const matchesSearch = !searchTerm || 
         entry.content?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         entry.summary?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesDate = !filterDate || new Date(entry.date) >= filterDate;
-      return matchesSearch && matchesDate;
+      
+      // Date filter
+      const entryDate = new Date(entry.date);
+      const matchesDate = (!filterDateFrom || entryDate >= filterDateFrom) &&
+                         (!filterDateTo || entryDate <= filterDateTo);
+      
+      // Tag filter
+      const matchesTags = selectedTags.length === 0 || 
+        selectedTags.every(tag => entry.tags?.includes(tag));
+      
+      // Character filter (check if entry mentions selected characters)
+      const matchesCharacters = selectedCharacters.length === 0 ||
+        selectedCharacters.some(char => 
+          entry.content?.toLowerCase().includes(char.toLowerCase()) ||
+          entry.characters?.includes(char)
+        );
+      
+      return matchesSearch && matchesDate && matchesTags && matchesCharacters;
     };
 
     return {
@@ -118,7 +147,7 @@ export const ImprovedTimelineView = ({
         entries: group.entries.filter(filterEntry)
       })).filter(group => group.entries.length > 0)
     };
-  }, [timeline, searchTerm, dateFilter]);
+  }, [timeline, searchTerm, dateFilter, selectedTags, selectedCharacters, customDateRange]);
 
   const handleEditChapter = async (chapterId: string, newTitle: string) => {
     try {
@@ -273,32 +302,166 @@ export const ImprovedTimelineView = ({
           })}
         </div>
 
-        {/* Search and Filters */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex-1 flex items-center gap-2 min-w-[200px]">
-            <Search className="h-4 w-4 text-white/40" />
-            <Input
-              type="text"
-              placeholder="Search timeline entries..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 bg-black/60 border-border/50 text-white placeholder:text-white/40"
-            />
-          </div>
+        {/* Search and Filters - Enhanced */}
+        <div className="mb-4 space-y-3">
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-white/40" />
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value as any)}
-              className="rounded-lg border border-border/50 bg-black/60 px-3 py-2 text-sm text-white"
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/40" />
+              <Input
+                type="text"
+                placeholder="Search timeline..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 bg-black/40 border-border/60 text-white"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+              className="border-border/60"
             >
-              <option value="all">All Time</option>
-              <option value="week">Last Week</option>
-              <option value="month">Last Month</option>
-              <option value="year">Last Year</option>
-            </select>
+              <Filter className="h-4 w-4 mr-2" />
+              Filters
+              {(selectedTags.length > 0 || selectedCharacters.length > 0 || dateFilter !== 'all') && (
+                <span className="ml-2 px-1.5 py-0.5 bg-primary/20 text-primary text-xs rounded">
+                  {[selectedTags.length, selectedCharacters.length, dateFilter !== 'all' ? 1 : 0].reduce((a, b) => a + b, 0)}
+                </span>
+              )}
+            </Button>
           </div>
-          {viewMode === 'overview' && (
+
+          {/* Advanced Filters Panel */}
+          {showFilters && (
+            <Card className="bg-black/40 border-border/60 p-4">
+              <div className="space-y-4">
+                {/* Date Range Filter */}
+                <div>
+                  <label className="text-sm font-medium text-white/80 mb-2 block">Date Range</label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={dateFilter}
+                      onChange={(e) => {
+                        setDateFilter(e.target.value as any);
+                        if (e.target.value !== 'custom') {
+                          setCustomDateRange(null);
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 bg-black/60 border border-border/60 rounded-lg text-white text-sm focus:outline-none focus:border-primary/50"
+                    >
+                      <option value="all">All Time</option>
+                      <option value="week">Last Week</option>
+                      <option value="month">Last Month</option>
+                      <option value="year">Last Year</option>
+                      <option value="custom">Custom Range</option>
+                    </select>
+                  </div>
+                  {dateFilter === 'custom' && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Input
+                        type="date"
+                        value={customDateRange?.from || ''}
+                        onChange={(e) => setCustomDateRange(prev => ({ ...prev, from: e.target.value, to: prev?.to || '' }))}
+                        className="flex-1 bg-black/60 border-border/60 text-white"
+                      />
+                      <span className="text-white/60">to</span>
+                      <Input
+                        type="date"
+                        value={customDateRange?.to || ''}
+                        onChange={(e) => setCustomDateRange(prev => ({ ...prev, to: e.target.value, from: prev?.from || '' }))}
+                        className="flex-1 bg-black/60 border-border/60 text-white"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Tag Filter */}
+                {tags.length > 0 && (
+                  <div>
+                    <label className="text-sm font-medium text-white/80 mb-2 block">Tags</label>
+                    <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                      {tags.map((tag) => {
+                        const isSelected = selectedTags.includes(tag.tag);
+                        return (
+                          <Badge
+                            key={tag.tag}
+                            variant={isSelected ? 'default' : 'outline'}
+                            className={`cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-primary/20 text-primary border-primary/40'
+                                : 'border-border/60 text-white/70 hover:bg-primary/10'
+                            }`}
+                            onClick={() => {
+                              setSelectedTags(prev =>
+                                isSelected
+                                  ? prev.filter(t => t !== tag.tag)
+                                  : [...prev, tag.tag]
+                              );
+                            }}
+                          >
+                            #{tag.tag} ({tag.count})
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Character Filter */}
+                <div>
+                  <label className="text-sm font-medium text-white/80 mb-2 block">Characters</label>
+                  <Input
+                    type="text"
+                    placeholder="Type character names..."
+                    className="bg-black/60 border-border/60 text-white"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                        const char = e.currentTarget.value.trim();
+                        if (!selectedCharacters.includes(char)) {
+                          setSelectedCharacters(prev => [...prev, char]);
+                        }
+                        e.currentTarget.value = '';
+                      }
+                    }}
+                  />
+                  {selectedCharacters.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedCharacters.map((char) => (
+                        <Badge
+                          key={char}
+                          variant="default"
+                          className="bg-primary/20 text-primary border-primary/40 cursor-pointer"
+                          onClick={() => setSelectedCharacters(prev => prev.filter(c => c !== char))}
+                        >
+                          {char} ×
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Clear Filters */}
+                {(selectedTags.length > 0 || selectedCharacters.length > 0 || dateFilter !== 'all') && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedTags([]);
+                      setSelectedCharacters([]);
+                      setDateFilter('all');
+                      setCustomDateRange(null);
+                    }}
+                    className="w-full text-white/60 hover:text-white"
+                  >
+                    Clear All Filters
+                  </Button>
+                )}
+              </div>
+            </Card>
+          )}
+        </div>
+
+        {viewMode === 'overview' && (
             <div className="flex items-center gap-2">
               <Layers className="h-4 w-4 text-white/40" />
               <div className="flex rounded-lg border border-border/50 bg-black/60 overflow-hidden">

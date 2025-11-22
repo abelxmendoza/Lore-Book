@@ -1,8 +1,11 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Camera, Upload, Image as ImageIcon } from 'lucide-react';
 
 import { Button } from './ui/button';
 import { Card } from './ui/card';
+import { LazyImage } from './ui/LazyImage';
+import { config } from '../config/env';
+import { supabase } from '../lib/supabase';
 
 interface PhotoMetadata {
   photoId: string;
@@ -34,10 +37,53 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
   const fetchPhotos = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: { session } } = await import('../lib/supabase').then(m => m.supabase).then(s => s.auth.getSession());
+      // If mock data is enabled, return mock photos
+      if (config.dev.allowMockData) {
+        if (config.dev.enableConsoleLogs) {
+          console.log('[MOCK API] Fetching photos - Using mock data');
+        }
+        
+        const mockPhotos: PhotoMetadata[] = [
+          {
+            photoId: 'mock-photo-1',
+            url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400',
+            metadata: {
+              locationName: 'Mountain View',
+              dateTime: new Date().toISOString(),
+              latitude: 37.4219,
+              longitude: -122.0840
+            },
+            autoEntry: {
+              id: 'mock-entry-1',
+              content: 'Beautiful mountain landscape captured during a hike. The view was breathtaking.',
+              tags: ['nature', 'hiking', 'mountains']
+            }
+          },
+          {
+            photoId: 'mock-photo-2',
+            url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=400',
+            metadata: {
+              locationName: 'Beach Sunset',
+              dateTime: new Date(Date.now() - 86400000).toISOString(),
+            },
+            autoEntry: {
+              id: 'mock-entry-2',
+              content: 'Stunning sunset at the beach. Perfect end to a wonderful day.',
+              tags: ['beach', 'sunset', 'vacation']
+            }
+          }
+        ];
+        
+        setPhotos(mockPhotos);
+        setLoading(false);
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const response = await fetch('/api/photos', {
+      const apiBaseUrl = config.api.url;
+      const response = await fetch(`${apiBaseUrl}/api/photos`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`
         }
@@ -45,14 +91,21 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
 
       if (response.ok) {
         const data = await response.json();
+        // Backend returns empty array with message, but we handle it gracefully
         setPhotos(data.photos || []);
       }
     } catch (error) {
-      console.error('Failed to fetch photos:', error);
+      if (config.dev.enableConsoleLogs) {
+        console.error('Failed to fetch photos:', error);
+      }
     } finally {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    fetchPhotos();
+  }, [fetchPhotos]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -60,7 +113,42 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
 
     setUploading(true);
     try {
-      const { data: { session } } = await import('../lib/supabase').then(m => m.supabase).then(s => s.auth.getSession());
+      // If mock data is enabled, simulate upload
+      if (config.dev.allowMockData) {
+        if (config.dev.enableConsoleLogs) {
+          console.log('[MOCK API] Photo upload - Using mock data');
+        }
+        
+        // Simulate processing delay
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        const mockPhotos: PhotoMetadata[] = Array.from(files).map((file, index) => ({
+          photoId: `mock-photo-${Date.now()}-${index}`,
+          url: URL.createObjectURL(file), // Use local object URL for preview
+          metadata: {
+            locationName: 'Mock Location',
+            dateTime: new Date().toISOString(),
+          },
+          autoEntry: {
+            id: `mock-entry-${Date.now()}-${index}`,
+            content: `Auto-generated entry from photo: ${file.name}. This would be created from photo metadata in production.`,
+            tags: ['photo', 'mock']
+          }
+        }));
+        
+        setPhotos((prev) => [...mockPhotos, ...prev]);
+        mockPhotos.forEach((photo) => {
+          if (onPhotoUploaded) onPhotoUploaded(photo);
+        });
+        
+        setUploading(false);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         alert('Please sign in to upload photos');
         return;
@@ -71,7 +159,8 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
         formData.append('photos', file);
       });
 
-      const response = await fetch('/api/photos/upload/batch', {
+      const apiBaseUrl = config.api.url;
+      const response = await fetch(`${apiBaseUrl}/api/photos/upload/batch`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`
@@ -81,17 +170,23 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
 
       if (response.ok) {
         const data = await response.json();
-        setPhotos((prev) => [...data.photos, ...prev]);
-        data.photos.forEach((photo: PhotoMetadata) => {
-          if (onPhotoUploaded) onPhotoUploaded(photo);
-        });
-        alert(`Uploaded ${data.photos.length} photo(s)!`);
+        // Backend returns entries, not photos (photos aren't stored)
+        // We'll show a success message and refresh
+        if (data.entriesCreated > 0) {
+          alert(`Successfully processed ${data.entriesCreated} photo(s)! Journal entries have been created.`);
+          // Refresh to show any new entries
+          await fetchPhotos();
+        } else {
+          alert('Photos processed but no entries were created (may have been filtered out).');
+        }
       } else {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
         alert(`Upload failed: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Upload error:', error);
+      if (config.dev.enableConsoleLogs) {
+        console.error('Upload error:', error);
+      }
       alert('Failed to upload photos');
     } finally {
       setUploading(false);
@@ -171,10 +266,11 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
         <div className="grid grid-cols-3 gap-4">
           {photos.map((photo) => (
             <div key={photo.photoId} className="relative group">
-              <img
+              <LazyImage
                 src={photo.url}
                 alt="Photo"
                 className="w-full aspect-square object-cover rounded-lg border border-border/60"
+                loading="lazy"
               />
               {photo.metadata.locationName && (
                 <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 rounded-b-lg">

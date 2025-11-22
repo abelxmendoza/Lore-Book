@@ -32,7 +32,7 @@ import { BiographyEditor } from '../components/biography/BiographyEditor';
 import { LoreBook } from '../components/lorebook/LoreBook';
 import { ChapterCreationChatbot } from '../components/chapters/ChapterCreationChatbot';
 import { TimelineHierarchyPanel } from '../components/timeline-hierarchy/TimelineHierarchyPanel';
-import { TimelinePage } from '../components/timeline/TimelinePage';
+mport { TimelinePage } from '../components/timeline/TimelinePage';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
 import { TrialBanner } from '../components/subscription/TrialBanner';
 import { PricingPage } from '../components/subscription/PricingPage';

@@ -4,6 +4,7 @@ import helmet from 'helmet';
 
 import { assertConfig, config } from './config';
 import { logger } from './logger';
+import { setupSwagger } from './swagger';
 import { calendarRouter } from './routes/calendar';
 import { registerSyncJob } from './jobs/syncJob';
 import { memoryExtractionWorker } from './jobs/memoryExtractionWorker';
@@ -73,6 +74,14 @@ import consolidationRouter from './routes/consolidation';
 import predictionRouter from './routes/prediction';
 import narrativeRouter from './routes/narrative';
 import relationshipDynamicsRouter from './routes/relationshipDynamics';
+import interventionRouter from './routes/intervention';
+import goalsRouter from './routes/goals';
+import habitsRouter from './routes/habits';
+import decisionsRouter from './routes/decisions';
+import resilienceRouter from './routes/resilience';
+import influenceRouter from './routes/influence';
+import growthRouter from './routes/growth';
+import legacyRouter from './routes/legacy';
 import { errorHandler } from './middleware/errorHandler';
 import { asyncHandler } from './middleware/errorHandler';
 import { requestIdMiddleware } from './utils/requestId';
@@ -192,8 +201,22 @@ apiRouter.use('/consolidation', consolidationRouter);
 apiRouter.use('/prediction', predictionRouter);
 apiRouter.use('/narrative', narrativeRouter);
 apiRouter.use('/relationship-dynamics', relationshipDynamicsRouter);
+apiRouter.use('/intervention', interventionRouter);
+apiRouter.use('/goals', goalsRouter);
+apiRouter.use('/habits', habitsRouter);
+apiRouter.use('/decisions', decisionsRouter);
+apiRouter.use('/resilience', resilienceRouter);
+apiRouter.use('/influence', influenceRouter);
+apiRouter.use('/growth', growthRouter);
+apiRouter.use('/legacy', legacyRouter);
 
 app.use('/api', apiRouter);
+
+// API Documentation (only in development or when enabled)
+if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true') {
+  setupSwagger(app);
+  logger.info('API documentation available at /api-docs');
+}
 
 // 404 handler
 app.use((req: express.Request, res: express.Response) => {

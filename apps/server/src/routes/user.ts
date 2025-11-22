@@ -7,6 +7,431 @@ import { logger } from '../logger';
 
 const router = Router();
 
+// User profile schema
+const profileUpdateSchema = z.object({
+  name: z.string().optional(),
+  bio: z.string().optional(),
+  avatar_url: z.string().url().optional(),
+  persona: z.string().optional(),
+});
+
+// Privacy settings schema
+const privacySettingsSchema = z.object({
+  profileVisibility: z.enum(['private', 'public', 'friends']).optional(),
+  showEmail: z.boolean().optional(),
+  allowDataSharing: z.boolean().optional(),
+  twoFactorEnabled: z.boolean().optional(),
+});
+
+/**
+ * GET /api/user/profile
+ * Get user profile
+ */
+router.get('/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const user = req.user!;
+
+    const profile = {
+      id: user.id,
+      email: user.email || '',
+      name: user.user_metadata?.full_name || user.user_metadata?.name || '',
+      bio: user.user_metadata?.bio || '',
+      avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
+      persona: user.user_metadata?.persona || user.user_metadata?.personas?.[0] || '',
+      created_at: user.created_at,
+      updated_at: user.updated_at || user.created_at,
+    };
+
+    res.json({ profile });
+  } catch (error) {
+    logger.error({ error }, 'Failed to fetch user profile');
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+/**
+ * PUT /api/user/profile
+ * Update user profile
+ */
+router.put('/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = profileUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+
+    const userId = req.user!.id;
+    const updates = parsed.data;
+
+    // Update user metadata via Supabase Admin
+    const { data: { user: currentUser }, error: fetchError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    const { data: { user }, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      userId,
+      {
+        user_metadata: {
+          ...(currentUser?.user_metadata || {}),
+          ...(updates.name && { full_name: updates.name, name: updates.name }),
+          ...(updates.bio && { bio: updates.bio }),
+          ...(updates.avatar_url && { avatar_url: updates.avatar_url, picture: updates.avatar_url }),
+          ...(updates.persona && { persona: updates.persona }),
+        },
+      }
+    );
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    const profile = {
+      id: user.id,
+      email: user.email || '',
+      name: user.user_metadata?.full_name || user.user_metadata?.name || '',
+      bio: user.user_metadata?.bio || '',
+      avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || '',
+      persona: user.user_metadata?.persona || '',
+      created_at: user.created_at,
+      updated_at: new Date().toISOString(),
+    };
+
+    res.json({ profile });
+  } catch (error) {
+    logger.error({ error }, 'Failed to update user profile');
+    res.status(500).json({ error: 'Failed to update user profile' });
+  }
+});
+
+/**
+ * GET /api/user/privacy-settings
+ * Get user privacy settings
+ */
+router.get('/privacy-settings', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+
+    // Try to get from database first
+    const { data, error } = await supabaseAdmin
+      .from('user_privacy_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    if (data) {
+      return res.json({
+        settings: {
+          profileVisibility: data.profile_visibility || 'private',
+          showEmail: data.show_email || false,
+          allowDataSharing: data.allow_data_sharing || false,
+          twoFactorEnabled: data.two_factor_enabled || false,
+        },
+      });
+    }
+
+    // Return defaults if not found
+    res.json({
+      settings: {
+        profileVisibility: 'private',
+        showEmail: false,
+        allowDataSharing: false,
+        twoFactorEnabled: false,
+      },
+    });
+  } catch (error) {
+    logger.error({ error }, 'Failed to fetch privacy settings');
+    // Return defaults on error
+    res.json({
+      settings: {
+        profileVisibility: 'private',
+        showEmail: false,
+        allowDataSharing: false,
+        twoFactorEnabled: false,
+      },
+    });
+  }
+});
+
+/**
+ * PUT /api/user/privacy-settings
+ * Update user privacy settings
+ */
+router.put('/privacy-settings', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = privacySettingsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+
+    const userId = req.user!.id;
+    const settings = parsed.data;
+
+    const settingsData = {
+      user_id: userId,
+      profile_visibility: settings.profileVisibility || 'private',
+      show_email: settings.showEmail ?? false,
+      allow_data_sharing: settings.allowDataSharing ?? false,
+      two_factor_enabled: settings.twoFactorEnabled ?? false,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Try to update existing
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from('user_privacy_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError && fetchError.code === 'PGRST116') {
+      // Create new
+      const { data, error: insertError } = await supabaseAdmin
+        .from('user_privacy_settings')
+        .insert(settingsData)
+        .select()
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      return res.json({
+        settings: {
+          profileVisibility: data.profile_visibility,
+          showEmail: data.show_email,
+          allowDataSharing: data.allow_data_sharing,
+          twoFactorEnabled: data.two_factor_enabled,
+        },
+      });
+    }
+
+    // Update existing
+    const { data, error: updateError } = await supabaseAdmin
+      .from('user_privacy_settings')
+      .update(settingsData)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    res.json({
+      settings: {
+        profileVisibility: data.profile_visibility,
+        showEmail: data.show_email,
+        allowDataSharing: data.allow_data_sharing,
+        twoFactorEnabled: data.two_factor_enabled,
+      },
+    });
+  } catch (error) {
+    logger.error({ error }, 'Failed to update privacy settings');
+    res.status(500).json({ error: 'Failed to update privacy settings' });
+  }
+});
+
+/**
+ * GET /api/user/activity
+ * Get user activity logs
+ */
+router.get('/activity', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const limit = parseInt(req.query.limit as string) || 50;
+
+    // Try to get from database
+    const { data, error } = await supabaseAdmin
+      .from('user_activity_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('timestamp', { ascending: false })
+      .limit(limit);
+
+    if (error && error.code !== '42P01') {
+      // If table doesn't exist, return empty array
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return res.json({ logs: [] });
+      }
+      throw error;
+    }
+
+    const logs = (data || []).map((log) => ({
+      id: log.id,
+      action: log.action || 'Unknown',
+      location: log.location || log.ip_address || 'Unknown',
+      device: log.device || log.user_agent || 'Unknown',
+      timestamp: log.timestamp || log.created_at,
+      ip_address: log.ip_address,
+    }));
+
+    res.json({ logs });
+  } catch (error) {
+    logger.error({ error }, 'Failed to fetch activity logs');
+    // Return empty array on error
+    res.json({ logs: [] });
+  }
+});
+
+/**
+ * GET /api/user/storage
+ * Get user storage usage
+ */
+router.get('/storage', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+
+    // Calculate storage from entries and attachments
+    const [entriesResult, attachmentsResult] = await Promise.all([
+      supabaseAdmin
+        .from('journal_entries')
+        .select('id, content, metadata')
+        .eq('user_id', userId)
+        .catch(() => ({ data: [] })),
+      supabaseAdmin
+        .storage
+        .from('attachments')
+        .list(userId, { limit: 1000 })
+        .catch(() => ({ data: [] })),
+    ]);
+
+    // Calculate sizes (rough estimates)
+    const entriesSize = ((entriesResult.data || []) as any[]).reduce((acc, entry) => {
+      const contentSize = (entry.content || '').length;
+      const metadataSize = JSON.stringify(entry.metadata || {}).length;
+      return acc + contentSize + metadataSize;
+    }, 0);
+
+    const attachmentsSize = ((attachmentsResult.data || []) as any[]).reduce((acc, file) => {
+      return acc + ((file as any).metadata?.size || 0);
+    }, 0);
+
+    // Default to 10GB total
+    const total = 10 * 1024 * 1024 * 1024; // 10 GB
+    const used = entriesSize + attachmentsSize;
+    const memories = entriesSize;
+    const attachments = attachmentsSize;
+
+    res.json({
+      usage: {
+        total,
+        used,
+        memories,
+        attachments,
+      },
+    });
+  } catch (error) {
+    logger.error({ error }, 'Failed to fetch storage usage');
+    // Return default usage on error
+    res.json({
+      usage: {
+        total: 10 * 1024 * 1024 * 1024, // 10 GB
+        used: 0,
+        memories: 0,
+        attachments: 0,
+      },
+    });
+  }
+});
+
+/**
+ * GET /api/user/export
+ * Export user data
+ */
+router.get('/export', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const format = (req.query.format as string) || 'json';
+
+    // Use the account export endpoint logic
+    const exportTables = [
+      'journal_entries',
+      'timeline_events',
+      'tasks',
+      'characters',
+      'relationships',
+      'task_memory_bridges',
+      'voice_memos'
+    ];
+
+    const payload: Record<string, unknown> = {};
+    for (const table of exportTables) {
+      const { data, error } = await supabaseAdmin.from(table).select('*').eq('user_id', userId);
+      if (error) {
+        logger.warn({ error, table }, 'Failed to export table');
+        payload[table] = [];
+      } else {
+        payload[table] = data ?? [];
+      }
+    }
+
+    const exportData = {
+      userId,
+      exportedAt: new Date().toISOString(),
+      data: payload,
+    };
+
+    if (format === 'csv') {
+      // Convert to CSV (simplified - just return JSON as CSV for now)
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="lorekeeper-export-${new Date().toISOString().split('T')[0]}.csv"`);
+      return res.send(JSON.stringify(exportData, null, 2));
+    }
+
+    // Return as JSON blob
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="lorekeeper-export-${new Date().toISOString().split('T')[0]}.json"`);
+    res.send(JSON.stringify(exportData, null, 2));
+  } catch (error) {
+    logger.error({ error }, 'Failed to export user data');
+    res.status(500).json({ error: 'Failed to export user data' });
+  }
+});
+
+/**
+ * DELETE /api/user/delete
+ * Delete user account
+ */
+router.delete('/delete', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+
+    // Delete all user data
+    const exportTables = [
+      'journal_entries',
+      'timeline_events',
+      'tasks',
+      'characters',
+      'relationships',
+      'task_memory_bridges',
+      'voice_memos'
+    ];
+
+    for (const table of exportTables) {
+      const { error } = await supabaseAdmin.from(table).delete().eq('user_id', userId);
+      if (error) {
+        logger.warn({ error, table }, 'Failed to delete table data');
+      }
+    }
+
+    // Delete user from auth (this will cascade delete related data)
+    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (deleteError) {
+      logger.warn({ error: deleteError }, 'Failed to delete user from auth');
+    }
+
+    res.json({ success: true, message: 'Account deleted successfully' });
+  } catch (error) {
+    logger.error({ error }, 'Failed to delete user account');
+    res.status(500).json({ error: 'Failed to delete user account' });
+  }
+});
+
 const acceptTermsSchema = z.object({
   acceptedAt: z.string().datetime(),
   version: z.string().default('1.0')

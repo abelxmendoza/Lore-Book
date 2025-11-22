@@ -194,4 +194,110 @@ router.post('/contradiction/:eventId/suggest', requireAuth, async (req: Authenti
   }
 });
 
+/**
+ * GET /api/continuity/state
+ * Get continuity state (for ContinuityPanel)
+ */
+router.get('/state', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    
+    // Get continuity data
+    const [contradictions, goals] = await Promise.all([
+      continuityService.getContradictions(userId).catch(() => []),
+      continuityService.getGoals(userId).catch(() => ({ active: [], abandoned: [] })),
+    ]);
+
+    // Build state payload
+    const state = {
+      registry: {
+        facts: [] as Array<{ subject: string; attribute: string; value: string | number | string[]; confidence: number; scope: string; permanent?: boolean }>,
+      },
+      driftSummary: {} as Record<string, number>,
+      driftSignals: [] as Array<{ subject: string; attribute: string; drift_score: number; segments: string[]; notes: string }>,
+      score: 85, // Default stability score
+      conflicts: (contradictions || []).map((c: any) => ({
+        conflict_type: c.type || 'contradiction',
+        description: c.description || c.title || 'Contradiction detected',
+        severity: c.severity || 'medium',
+        subjects: c.subjects || [],
+        attributes: c.attributes || [],
+        evidence: c.evidence || [],
+      })),
+    };
+
+    res.json({ state });
+  } catch (error) {
+    logger.error({ error }, 'Failed to get continuity state');
+    // Return default state on error
+    res.json({
+      state: {
+        registry: { facts: [] },
+        driftSummary: {},
+        driftSignals: [],
+        score: 85,
+        conflicts: [],
+      },
+    });
+  }
+});
+
+/**
+ * GET /api/continuity/conflicts
+ * Get conflicts (alias for contradictions)
+ */
+router.get('/conflicts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const contradictions = await continuityService.getContradictions(req.user!.id);
+    res.json({ conflicts: contradictions || [] });
+  } catch (error) {
+    logger.error({ error }, 'Failed to get conflicts');
+    res.json({ conflicts: [] });
+  }
+});
+
+/**
+ * GET /api/continuity/report
+ * Get continuity report
+ */
+router.get('/report', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const [contradictions, goals] = await Promise.all([
+      continuityService.getContradictions(userId).catch(() => []),
+      continuityService.getGoals(userId).catch(() => ({ active: [], abandoned: [] })),
+    ]);
+
+    const report = `Continuity Report
+================
+
+Active Goals: ${goals.active?.length || 0}
+Abandoned Goals: ${goals.abandoned?.length || 0}
+Contradictions: ${contradictions?.length || 0}
+
+${contradictions?.length > 0 ? 'Issues detected that may need resolution.' : 'No major continuity issues detected.'}
+`;
+
+    res.json({ report });
+  } catch (error) {
+    logger.error({ error }, 'Failed to get continuity report');
+    res.json({ report: 'Unable to generate continuity report.' });
+  }
+});
+
+/**
+ * GET /api/continuity/merge
+ * Get merge suggestions
+ */
+router.get('/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    // For now, return empty suggestions
+    // This can be enhanced later with actual merge detection logic
+    res.json({ suggestions: [] });
+  } catch (error) {
+    logger.error({ error }, 'Failed to get merge suggestions');
+    res.json({ suggestions: [] });
+  }
+});
+
 export const continuityRouter = router;

@@ -1,6 +1,9 @@
 import { supabase } from './supabase';
 import { addCsrfHeaders } from './security';
 import { config, log } from '../config/env';
+import { performance as perfMonitoring, errorTracking } from './monitoring';
+import { apiCache, generateCacheKey } from './cache';
+import { handleError, createAppError, retryWithBackoff, type AppError } from './errorHandler';
 
 export const fetchJson = async <T>(
   input: RequestInfo, 
@@ -29,6 +32,22 @@ export const fetchJson = async <T>(
   
   const startTime = performance.now();
   
+  // Check cache for GET requests
+  const isGetRequest = !init?.method || init.method === 'GET';
+  const useCache = options?.useMockData !== true && isGetRequest;
+  
+  if (useCache) {
+    const cacheKey = generateCacheKey(url, init);
+    const cached = apiCache.get<T>(cacheKey);
+    
+    if (cached !== null) {
+      if (config.logging.logApiCalls) {
+        log.debug(`API Cache Hit: ${typeof input === 'string' ? input : 'Request'}`);
+      }
+      return cached;
+    }
+  }
+  
   try {
     // Add CSRF token and auth headers
     const headers = addCsrfHeaders({
@@ -49,9 +68,12 @@ export const fetchJson = async <T>(
     
     clearTimeout(timeoutId);
     
+    // Track performance
+    const duration = performance.now() - startTime;
+    perfMonitoring.trackApiCall(typeof input === 'string' ? input : 'Request', duration, true);
+    
     // Log performance in development
     if (config.logging.logPerformance) {
-      const duration = performance.now() - startTime;
       log.debug(`API Response: ${duration.toFixed(2)}ms`, { url: typeof input === 'string' ? input : 'Request' });
     }
 
@@ -84,7 +106,24 @@ export const fetchJson = async <T>(
       throw apiError;
     }
     
-    return res.json();
+    const data = await res.json();
+    
+    // Cache successful GET responses
+    if (useCache && res.ok) {
+      const cacheKey = generateCacheKey(url, init);
+      // Cache for 5 minutes by default, or use custom TTL
+      const ttl = options?.mockData ? undefined : 5 * 60 * 1000;
+      apiCache.set(cacheKey, data, ttl);
+    }
+    
+    // Invalidate related cache on mutations
+    if (init?.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(init.method)) {
+      const urlPattern = url.split('?')[0]; // Remove query params
+      const pattern = new RegExp(urlPattern.replace(/\/[^/]+$/, '/.*'));
+      apiCache.deletePattern(pattern);
+    }
+    
+    return data;
   } catch (error) {
     clearTimeout(timeoutId);
     
@@ -114,9 +153,25 @@ export const fetchJson = async <T>(
       throw timeoutError;
     }
     
-    if (options?.onError && error instanceof Error) {
-      options.onError(error);
+    // Track failed API calls
+    const duration = performance.now() - startTime;
+    perfMonitoring.trackApiCall(typeof input === 'string' ? input : 'Request', duration, false);
+    
+    // Handle and report error
+    const appError = handleError(error, {
+      component: 'api',
+      action: typeof input === 'string' ? input : 'Request',
+      metadata: {
+        url: typeof input === 'string' ? input : 'Request',
+        method: init?.method || 'GET',
+        duration: duration,
+      },
+    });
+    
+    if (options?.onError) {
+      options.onError(appError);
     }
-    throw error;
+    
+    throw appError;
   }
 };

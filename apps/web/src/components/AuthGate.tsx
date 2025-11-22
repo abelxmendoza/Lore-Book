@@ -144,6 +144,21 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
         } else {
           console.log('[AuthGate] Session loaded:', data.session ? 'Authenticated' : 'Not authenticated');
           setSession(data.session);
+          
+          // Identify user for analytics and error tracking on initial load
+          if (data.session?.user) {
+            import('../lib/monitoring').then(({ analytics, errorTracking }) => {
+              analytics.identify(data.session.user.id, {
+                email: data.session.user.email,
+                name: data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name,
+              });
+              errorTracking.setUser({
+                id: data.session.user.id,
+                email: data.session.user.email || undefined,
+                username: data.session.user.user_metadata?.name || undefined,
+              });
+            });
+          }
         }
         setLoading(false);
       })
@@ -156,6 +171,27 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       console.log('[AuthGate] Auth state changed:', event, newSession ? 'Authenticated' : 'Not authenticated');
       setSession(newSession);
+      
+      // Identify user for analytics and error tracking
+      if (newSession?.user) {
+        import('../lib/monitoring').then(({ analytics, errorTracking }) => {
+          analytics.identify(newSession.user.id, {
+            email: newSession.user.email,
+            name: newSession.user.user_metadata?.full_name || newSession.user.user_metadata?.name,
+          });
+          errorTracking.setUser({
+            id: newSession.user.id,
+            email: newSession.user.email || undefined,
+            username: newSession.user.user_metadata?.name || undefined,
+          });
+        });
+      } else {
+        // Clear user identification on logout
+        import('../lib/monitoring').then(({ analytics, errorTracking }) => {
+          analytics.reset();
+          errorTracking.clearUser();
+        });
+      }
     });
 
     return () => {

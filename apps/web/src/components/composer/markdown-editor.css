@@ -1,0 +1,151 @@
+/* Markdown Editor Styles */
+.markdown-editor pre {
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.375rem;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.markdown-editor code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.875rem;
+}
+
+.markdown-editor pre code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.markdown-editor code:not(pre code) {
+  background: rgba(0, 0, 0, 0.6);
+  color: rgba(139, 92, 246, 1);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.markdown-editor blockquote {
+  border-left: 4px solid rgba(139, 92, 246, 0.5);
+  padding-left: 1rem;
+  margin: 1rem 0;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.markdown-editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.markdown-editor table th,
+.markdown-editor table td {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.markdown-editor table th {
+  background: rgba(139, 92, 246, 0.2);
+  font-weight: 600;
+}
+
+.markdown-editor hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 1.5rem 0;
+}
+
+.markdown-editor a {
+  color: rgba(139, 92, 246, 1);
+  text-decoration: underline;
+  transition: color 0.2s;
+}
+
+.markdown-editor a:hover {
+  color: rgba(139, 92, 246, 0.8);
+}
+
+.markdown-editor h1,
+.markdown-editor h2,
+.markdown-editor h3,
+.markdown-editor h4,
+.markdown-editor h5,
+.markdown-editor h6 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-editor h1 {
+  font-size: 2rem;
+}
+
+.markdown-editor h2 {
+  font-size: 1.5rem;
+}
+
+.markdown-editor h3 {
+  font-size: 1.25rem;
+}
+
+.markdown-editor ul,
+.markdown-editor ol {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+}
+
+.markdown-editor li {
+  margin: 0.25rem 0;
+}
+
+.markdown-editor p {
+  margin: 0.75rem 0;
+  line-height: 1.6;
+}
+
+.markdown-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  margin: 1rem 0;
+}
+
+/* Syntax highlighting for code blocks */
+.markdown-editor pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.6);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.markdown-editor pre code.hljs .hljs-keyword {
+  color: #c792ea;
+}
+
+.markdown-editor pre code.hljs .hljs-string {
+  color: #c3e88d;
+}
+
+.markdown-editor pre code.hljs .hljs-comment {
+  color: #546e7a;
+  font-style: italic;
+}
+
+.markdown-editor pre code.hljs .hljs-number {
+  color: #f78c6c;
+}
+
+.markdown-editor pre code.hljs .hljs-function {
+  color: #82aaff;
+}
+
+.markdown-editor pre code.hljs .hljs-variable {
+  color: #ffcb6b;
+}

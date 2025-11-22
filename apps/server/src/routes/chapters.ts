@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { chapterService } from '../services/chapterService';
+import { chapterInsightsService } from '../services/chapterInsightsService';
 import { openai } from '../lib/openai.js';
 import { config } from '../config';
 
@@ -32,7 +33,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const chapters = await chapterService.listChapters(req.user!.id);
-  res.json({ chapters });
+  const candidates = await chapterInsightsService.detectCandidates(req.user!.id);
+  res.json({ chapters, candidates });
 });
 
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
