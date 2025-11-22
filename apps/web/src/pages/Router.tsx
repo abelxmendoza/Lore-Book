@@ -40,9 +40,26 @@ export const Router = () => {
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/account" element={<AuthGate><AccountCenter /></AuthGate>} />
 
-      {/* Existing Admin Routes */}
-      <Route path="/admin" element={<AuthGate><AdminPage /></AuthGate>} />
-      <Route path="/dev-console" element={<AuthGate><DevConsolePage /></AuthGate>} />
+      {/* Admin Routes - Protected in production */}
+      <Route 
+        path="/admin" 
+        element={
+          <AuthGate>
+            <AdminPage />
+          </AuthGate>
+        } 
+      />
+      {/* Dev Console - Only available in development */}
+      {!import.meta.env.PROD && (
+        <Route 
+          path="/dev-console" 
+          element={
+            <AuthGate>
+              <DevConsolePage />
+            </AuthGate>
+          } 
+        />
+      )}
 
       {/* 404 - Must be last */}
       <Route path="/404" element={<NotFound />} />

@@ -6,6 +6,8 @@ import { AdminCard } from '../../components/admin/AdminCard';
 import { AdminTable } from '../../components/admin/AdminTable';
 import { AdminHeader } from '../../components/admin/AdminHeader';
 import { canAccessAdmin } from '../../middleware/roleGuard';
+import { config } from '../../config/env';
+import { NotFound } from '../../routes/NotFound';
 
 type AdminView = 'dashboard' | 'users' | 'logs' | 'ai-events' | 'tools' | 'feature-flags';
 
@@ -52,7 +54,13 @@ export const AdminPage = () => {
   const isAdmin = canAccessAdmin(user || null);
 
   useEffect(() => {
-    // Redirect if not admin
+    // In production, strictly require admin access
+    if (config.env.isProduction && !isAdmin) {
+      window.location.href = '/';
+      return;
+    }
+
+    // In development, allow access for testing but still check
     if (!isAdmin) {
       window.location.href = '/';
       return;
@@ -101,7 +109,11 @@ export const AdminPage = () => {
     }
   };
 
+  // In production, show 404 instead of null to prevent route discovery
   if (!isAdmin) {
+    if (config.env.isProduction) {
+      return <NotFound />;
+    }
     return null;
   }
 

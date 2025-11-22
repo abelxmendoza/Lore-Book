@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { Logo } from './Logo';
 import { Button } from './ui/button';
+import { config } from '../config/env';
 
 interface SidebarProps {
   activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity';
@@ -191,14 +192,17 @@ export const Sidebar = ({
         <Button className="w-full" leftIcon={<Plus className="h-4 w-4" />} onClick={onCreateChapter}>
           New Chapter
         </Button>
-        <Button
-          variant={devModeEnabled ? 'secondary' : 'outline'}
-          className="w-full"
-          onClick={onToggleDevMode}
-          leftIcon={<Sparkles className="h-4 w-4" />}
-        >
-          {devModeEnabled ? 'Hide Dev Mode' : 'Dev Mode'}
-        </Button>
+        {/* Hide Dev Mode button in production */}
+        {!config.env.isProduction && onToggleDevMode && (
+          <Button
+            variant={devModeEnabled ? 'secondary' : 'outline'}
+            className="w-full"
+            onClick={onToggleDevMode}
+            leftIcon={<Sparkles className="h-4 w-4" />}
+          >
+            {devModeEnabled ? 'Hide Dev Mode' : 'Dev Mode'}
+          </Button>
+        )}
       </div>
     </div>
   </aside>

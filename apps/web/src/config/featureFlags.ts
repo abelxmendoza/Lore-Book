@@ -3,6 +3,8 @@
  * Controls experimental and optional features
  */
 
+import { config } from './env';
+
 export type FeatureFlag = 
   | 'timelinePlayback'
   | 'memoryClusters'
@@ -14,8 +16,10 @@ export const featureFlags: Record<FeatureFlag, boolean> = {
   timelinePlayback: false,
   memoryClusters: false,
   characterGraph: false,
-  adminConsole: true,
-  devDiagnostics: true,
+  // Admin console only enabled in development or for admins
+  adminConsole: !config.isProduction,
+  // Dev diagnostics completely disabled in production
+  devDiagnostics: !config.isProduction,
 };
 
 /**

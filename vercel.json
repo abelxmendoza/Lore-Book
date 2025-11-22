@@ -4,6 +4,8 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "env": {
-    "NODE_VERSION": "20"
+    "NODE_VERSION": "20",
+    "VITE_USE_MOCK_DATA": "true",
+    "VITE_SHOW_DEV_NOTICE": "true"
   }
 }

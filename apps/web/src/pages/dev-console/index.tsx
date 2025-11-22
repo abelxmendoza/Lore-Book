@@ -6,6 +6,8 @@ import { APITester } from '../../components/dev/APITester';
 import { FlagTogglePanel } from '../../components/dev/FlagTogglePanel';
 import { DBTools } from '../../components/dev/DBTools';
 import { canAccessDevConsole } from '../../middleware/roleGuard';
+import { config } from '../../config/env';
+import { NotFound } from '../../routes/NotFound';
 
 type DevView = 'logs' | 'components' | 'preview' | 'api' | 'flags' | 'db';
 
@@ -16,6 +18,7 @@ export const DevConsolePage = () => {
   const apiEnv = import.meta.env.VITE_API_ENV || import.meta.env.MODE || 'dev';
   
   // Check access: API_ENV === "dev" OR user.id == ADMIN_ID
+  // In production, dev console is COMPLETELY DISABLED
   const hasAccess = canAccessDevConsole(user || null);
 
   useEffect(() => {
@@ -25,7 +28,11 @@ export const DevConsolePage = () => {
     }
   }, [hasAccess]);
 
+  // In production, show 404 instead of null to prevent route discovery
   if (!hasAccess) {
+    if (config.env.isProduction) {
+      return <NotFound />;
+    }
     return null;
   }
 

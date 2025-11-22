@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { CalendarRange, PenLine, PlusCircle, Search as SearchIcon, Wand2 } from 'lucide-react';
+import { config } from '../config/env';
 
 import { AuthGate } from '../components/AuthGate';
 import { SkipLink } from '../components/SkipLink';
@@ -298,7 +299,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
 
-        {devMode && (
+        {/* Hide dev mode panel in production */}
+        {!config.env.isProduction && devMode && (
           <div className="space-y-4 rounded-2xl border border-primary/40 bg-black/40 p-4 shadow-panel">
             <div className="flex items-center justify-between">
               <div>
