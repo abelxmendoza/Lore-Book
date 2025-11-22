@@ -2,20 +2,23 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-// Validate environment variables at build time
-const requiredEnvVars = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
-const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+// Validate environment variables at build time (production only)
+if (process.env.NODE_ENV === 'production') {
+  const requiredEnvVars = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
+  const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
-if (missingEnvVars.length > 0) {
-  console.error('❌ BUILD ERROR: Missing required environment variables:');
-  missingEnvVars.forEach(envVar => {
-    console.error(`   - ${envVar}`);
-  });
-  console.error('   Set these in Vercel Dashboard → Settings → Environment Variables');
-  process.exit(1);
+  if (missingEnvVars.length > 0) {
+    console.error('❌ BUILD ERROR: Missing required environment variables:');
+    missingEnvVars.forEach(envVar => {
+      console.error(`   - ${envVar}`);
+    });
+    console.error('   Set these in Vercel Dashboard → Settings → Environment Variables');
+    process.exit(1);
+  }
+  console.log('✅ Environment variables validated');
+} else {
+  console.log('⚠️  Development mode: Environment variables not validated');
 }
-
-console.log('✅ Environment variables validated');
 console.log(`📦 Node version: ${process.version}`);
 console.log(`📁 Working directory: ${process.cwd()}`);
 
@@ -42,7 +45,7 @@ export default defineConfig({
   build: {
     // Optimize for development builds
     minify: process.env.NODE_ENV === 'production',
-    sourcemap: true, // Always include source maps for debugging
+    sourcemap: process.env.NODE_ENV === 'development', // Only in dev - protect source code in production
     rollupOptions: {
       output: {
         manualChunks: {

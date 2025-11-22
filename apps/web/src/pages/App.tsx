@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { CalendarRange, PenLine, PlusCircle, Search as SearchIcon, Wand2 } from 'lucide-react';
 
@@ -53,9 +54,11 @@ const formatRange = (days = 7) => {
 
 type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity';
 
+interface AppContentProps {
+  defaultSurface?: SurfaceKey;
+}
 
-
-const AppContent = () => {
+const AppContent = ({ defaultSurface }: AppContentProps) => {
   const {
     entries,
     timeline,
@@ -97,8 +100,16 @@ const AppContent = () => {
   const [semantic, setSemantic] = useState(true);
   const [persona, setPersona] = useState('The Archivist');
   const [generatingSummary, setGeneratingSummary] = useState(false);
-  const [activeSurface, setActiveSurface] = useState<SurfaceKey>('chat');
+  const navigate = useNavigate();
+  const [activeSurface, setActiveSurface] = useState<SurfaceKey>(defaultSurface || 'chat');
   const [insights, setInsights] = useState<any>(null);
+
+  // Sync route → surface
+  useEffect(() => {
+    if (defaultSurface) {
+      setActiveSurface(defaultSurface);
+    }
+  }, [defaultSurface]);
 
   // Listen for navigation events from subscription components
   useEffect(() => {
@@ -119,6 +130,7 @@ const AppContent = () => {
       key: 'k',
       meta: true,
       handler: () => {
+        navigate('/search');
         setActiveSurface('search');
         // Focus search input if it exists
         setTimeout(() => {
@@ -133,6 +145,7 @@ const AppContent = () => {
       meta: true,
       handler: () => {
         // Switch to timeline and focus on entry creation
+        navigate('/timeline');
         setActiveSurface('timeline');
         // Try to focus on entry composer if it exists
         setTimeout(() => {
@@ -317,10 +330,12 @@ const AppContent = () => {
   );
 };
 
-const App = () => (
-  <AuthGate>
-    <AppContent />
-  </AuthGate>
+interface AppProps {
+  defaultSurface?: SurfaceKey;
+}
+
+const App = ({ defaultSurface }: AppProps) => (
+  <AppContent defaultSurface={defaultSurface} />
 );
 
 export default App;

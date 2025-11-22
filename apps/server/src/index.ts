@@ -64,6 +64,9 @@ import { timelineV2Router } from './routes/timelineV2';
 import { memoryEngineRouter } from './routes/memoryEngine';
 import { knowledgeGraphRouter } from './routes/knowledgeGraph';
 import { analyticsRouter } from './routes/analytics';
+import { chronologyRouter } from './routes/chronology';
+import recommendationsRouter from './routes/recommendations';
+import wisdomRouter from './routes/wisdom';
 import { errorHandler } from './middleware/errorHandler';
 import { asyncHandler } from './middleware/errorHandler';
 import { requestIdMiddleware } from './utils/requestId';
@@ -174,6 +177,9 @@ apiRouter.use('/timeline-v2', timelineV2Router);
 apiRouter.use('/memory-engine', memoryEngineRouter);
 apiRouter.use('/graph', knowledgeGraphRouter);
 apiRouter.use('/analytics', analyticsRouter);
+apiRouter.use('/chronology', chronologyRouter);
+apiRouter.use('/recommendations', recommendationsRouter);
+apiRouter.use('/wisdom', wisdomRouter);
 
 app.use('/api', apiRouter);
 

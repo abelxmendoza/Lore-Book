@@ -1,4 +1,5 @@
 import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 import { Logo } from './Logo';
 import { Button } from './ui/button';
@@ -11,6 +12,23 @@ interface SidebarProps {
   devModeEnabled?: boolean;
 }
 
+const surfaceToRoute: Record<string, string> = {
+  'chat': '/chat',
+  'timeline': '/timeline',
+  'search': '/search',
+  'characters': '/characters',
+  'locations': '/locations',
+  'memoir': '/memoir',
+  'lorebook': '/lorebook',
+  'discovery': '/discovery',
+  'continuity': '/continuity',
+  'subscription': '/subscription',
+  'pricing': '/pricing',
+  'security': '/security',
+  'privacy-settings': '/privacy',
+  'privacy-policy': '/privacy',
+};
+
 export const Sidebar = ({
   activeSurface,
   onSurfaceChange,
@@ -18,6 +36,17 @@ export const Sidebar = ({
   onToggleDevMode,
   devModeEnabled
 }: SidebarProps) => {
+  const navigate = useNavigate();
+
+  const handleSurfaceChange = (surface: string) => {
+    // Navigate to route
+    const route = surfaceToRoute[surface];
+    if (route) {
+      navigate(route);
+    }
+    // Also call the callback for backward compatibility
+    onSurfaceChange?.(surface as any);
+  };
 
   return (
   <aside className="hidden w-64 flex-col border-r border-border/60 bg-black/20 p-6 text-white lg:flex">
@@ -27,7 +56,7 @@ export const Sidebar = ({
     </div>
     <div className="mt-8 space-y-2">
       <button
-        onClick={() => onSurfaceChange?.('chat')}
+        onClick={() => handleSurfaceChange('chat')}
         aria-label="Open chat interface"
         aria-current={activeSurface === 'chat' ? 'page' : undefined}
         className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
@@ -40,7 +69,7 @@ export const Sidebar = ({
         Chat
       </button>
       <button
-        onClick={() => onSurfaceChange?.('characters')}
+        onClick={() => handleSurfaceChange('characters')}
         aria-label="Open characters view"
         aria-current={activeSurface === 'characters' ? 'page' : undefined}
         className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
@@ -66,9 +95,7 @@ export const Sidebar = ({
         Locations
       </button>
       <button
-        onClick={() => {
-          onSurfaceChange?.('timeline');
-        }}
+        onClick={() => handleSurfaceChange('timeline')}
         aria-label="Open timeline view"
         aria-current={activeSurface === 'timeline' ? 'page' : undefined}
         className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
@@ -81,7 +108,7 @@ export const Sidebar = ({
         Omni Timeline
       </button>
       <button
-        onClick={() => onSurfaceChange?.('search')}
+        onClick={() => handleSurfaceChange('search')}
         aria-label="Open memory explorer"
         aria-current={activeSurface === 'search' ? 'page' : undefined}
         className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
@@ -94,7 +121,7 @@ export const Sidebar = ({
         Memory Explorer
       </button>
       <button
-        onClick={() => onSurfaceChange?.('memoir')}
+        onClick={() => handleSurfaceChange('memoir')}
         aria-label="Open biography editor"
         aria-current={activeSurface === 'memoir' ? 'page' : undefined}
         className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
@@ -107,7 +134,7 @@ export const Sidebar = ({
         My Biography Editor
       </button>
       <button
-        onClick={() => onSurfaceChange?.('lorebook')}
+        onClick={() => handleSurfaceChange('lorebook')}
         aria-label="Open lore book"
         aria-current={activeSurface === 'lorebook' ? 'page' : undefined}
         className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm font-bold transition ${
@@ -120,7 +147,7 @@ export const Sidebar = ({
         Lore Book
       </button>
       <button
-        onClick={() => onSurfaceChange?.('discovery')}
+        onClick={() => handleSurfaceChange('discovery')}
         aria-label="Open discovery hub"
         aria-current={activeSurface === 'discovery' ? 'page' : undefined}
         className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
@@ -133,7 +160,7 @@ export const Sidebar = ({
         Discovery Hub
       </button>
       <button
-        onClick={() => onSurfaceChange?.('subscription')}
+        onClick={() => handleSurfaceChange('subscription')}
         aria-label="Open subscription management"
         aria-current={activeSurface === 'subscription' ? 'page' : undefined}
         className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
@@ -146,7 +173,7 @@ export const Sidebar = ({
         Subscription
       </button>
       <button
-        onClick={() => onSurfaceChange?.('security')}
+        onClick={() => handleSurfaceChange('security')}
         aria-label="Open privacy and security settings"
         aria-current={activeSurface === 'security' ? 'page' : undefined}
         className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
