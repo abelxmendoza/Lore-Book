@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { ChevronRight, ChevronLeft, CheckCircle2, Sparkles, BookOpen, MessageSquare, Calendar, Search, Users, Zap, Loader2, Tag, MapPin, UserPlus } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CheckCircle2, Sparkles, BookOpen, MessageSquare, Calendar, Search, Users, Zap, Loader2, Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
+import { Textarea } from '../ui/textarea';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
-import { updateUserProfile } from '../../api/user';
 import { fetchJson } from '../../lib/api';
 import { useAuth } from '../../lib/supabase';
 import { config } from '../../config/env';
+import { FirstMemoryStep } from './FirstMemoryStep';
 
 type Step = {
   id: string;
@@ -20,12 +21,15 @@ interface OnboardingWizardProps {
   onComplete?: () => void;
 }
 
-type PersonaType = 'journaler' | 'developer' | 'writer' | 'explorer' | null;
+type PersonaType = 'journaler' | 'developer' | 'writer' | 'explorer';
 
 export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
-  const [selectedPersona, setSelectedPersona] = useState<PersonaType>(null);
+  const [userDescription, setUserDescription] = useState('');
+  const [personalizedResponse, setPersonalizedResponse] = useState<string | null>(null);
+  const [detectedPersonas, setDetectedPersonas] = useState<PersonaType[]>([]);
+  const [detectingPersonas, setDetectingPersonas] = useState(false);
   const [firstMemory, setFirstMemory] = useState('');
   const [firstMemoryTags, setFirstMemoryTags] = useState<string[]>([]);
   const [firstMemoryLocation, setFirstMemoryLocation] = useState<string>('');
@@ -72,64 +76,33 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
       ),
     },
     {
-      id: 'persona',
-      title: 'Choose Your Journey',
-      description: 'Tell us about yourself to personalize your experience',
-      icon: Users,
+      id: 'why-here',
+      title: 'Why LoreKeeper?',
+      description: 'Tell us what brings you here',
+      icon: Heart,
       content: (
         <div className="space-y-6">
-          <p className="text-center text-white/70 mb-6">
-            What best describes you? (You can change this later)
-          </p>
-          <div className="grid md:grid-cols-2 gap-4">
-            {[
-              {
-                title: 'The Journaler',
-                desc: 'I want to capture daily thoughts and memories',
-                icon: BookOpen,
-                color: 'from-blue-500 to-cyan-500',
-              },
-              {
-                title: 'The Developer',
-                desc: 'I build things and want to track my projects',
-                icon: Zap,
-                color: 'from-purple-500 to-pink-500',
-              },
-              {
-                title: 'The Writer',
-                desc: 'I create stories and need inspiration',
-                icon: MessageSquare,
-                color: 'from-orange-500 to-red-500',
-              },
-              {
-                title: 'The Explorer',
-                desc: 'I want to discover patterns in my life',
-                icon: Search,
-                color: 'from-green-500 to-emerald-500',
-              },
-            ].map((persona, idx) => {
-              const personaKey: PersonaType = idx === 0 ? 'journaler' : idx === 1 ? 'developer' : idx === 2 ? 'writer' : 'explorer';
-              const isSelected = selectedPersona === personaKey;
-              
-              return (
-                <button
-                  key={idx}
-                  onClick={() => setSelectedPersona(personaKey)}
-                  className={`rounded-xl border-2 p-6 text-left transition-all group ${
-                    isSelected
-                      ? 'border-primary bg-primary/20 shadow-lg shadow-primary/20'
-                      : 'border-border/60 bg-white/5 hover:border-primary/50 hover:bg-primary/10'
-                  }`}
-                >
-                  <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${persona.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                    <persona.icon className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-semibold text-white mb-2">{persona.title}</h3>
-                  <p className="text-sm text-white/60">{persona.desc}</p>
-                </button>
-              );
-            })}
+          <div className="text-center space-y-4">
+            <p className="text-white/70 text-lg">
+              What brings you to LoreKeeper? What are you hoping to capture, discover, or create?
+            </p>
+            <p className="text-white/50 text-sm">
+              Share your story, goals, or what you're looking for. We'll personalize your experience.
+            </p>
           </div>
+          <Textarea
+            value={userDescription}
+            onChange={(e) => setUserDescription(e.target.value)}
+            placeholder="I'm here because... I want to track my journey as a developer, capture memories with my family, explore patterns in my life, write my story..."
+            className="min-h-[200px] bg-black/40 border-border/60 text-white placeholder:text-white/40 resize-none"
+            disabled={detectingPersonas}
+          />
+          {detectingPersonas && (
+            <div className="flex items-center justify-center gap-2 text-primary/70">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-sm">Creating your personalized experience...</span>
+            </div>
+          )}
         </div>
       ),
     },
@@ -207,6 +180,91 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
       ),
     },
     {
+      id: 'personas-detected',
+      title: 'Your Journey Awaits',
+      description: 'We\'ve personalized your LoreKeeper experience',
+      icon: Sparkles,
+      content: (
+        <div className="space-y-6">
+          {personalizedResponse && (
+            <div className="rounded-xl border border-primary/40 bg-gradient-to-br from-primary/20 to-purple-900/20 p-6 space-y-3 mb-6">
+              <div className="flex items-center gap-2 text-primary mb-2">
+                <Sparkles className="h-5 w-5" />
+                <h3 className="font-semibold text-white">Your LoreKeeper Journey</h3>
+              </div>
+              <p className="text-white/90 leading-relaxed whitespace-pre-wrap text-lg">{personalizedResponse}</p>
+            </div>
+          )}
+          <div className="text-center space-y-2 mb-6">
+            <p className="text-white/70">
+              Based on what you shared, we've identified these journey types that match your style:
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            {[
+              {
+                id: 'journaler' as PersonaType,
+                title: 'The Journaler',
+                desc: 'Capture daily thoughts and memories',
+                icon: BookOpen,
+                color: 'from-blue-500 to-cyan-500',
+              },
+              {
+                id: 'developer' as PersonaType,
+                title: 'The Developer',
+                desc: 'Build things and track projects',
+                icon: Zap,
+                color: 'from-purple-500 to-pink-500',
+              },
+              {
+                id: 'writer' as PersonaType,
+                title: 'The Writer',
+                desc: 'Create stories and find inspiration',
+                icon: MessageSquare,
+                color: 'from-orange-500 to-red-500',
+              },
+              {
+                id: 'explorer' as PersonaType,
+                title: 'The Explorer',
+                desc: 'Discover patterns in your life',
+                icon: Search,
+                color: 'from-green-500 to-emerald-500',
+              },
+            ].map((persona) => {
+              const isDetected = detectedPersonas.includes(persona.id);
+              
+              return (
+                <div
+                  key={persona.id}
+                  className={`rounded-xl border-2 p-6 transition-all ${
+                    isDetected
+                      ? 'border-primary bg-primary/20 shadow-lg shadow-primary/20'
+                      : 'border-border/30 bg-white/5 opacity-40'
+                  }`}
+                >
+                  <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${persona.color} flex items-center justify-center mb-4`}>
+                    <persona.icon className="h-6 w-6 text-white" />
+                  </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-white">{persona.title}</h3>
+                    {isDetected && (
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                    )}
+                  </div>
+                  <p className="text-sm text-white/60">{persona.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+          {detectedPersonas.length > 0 && (
+            <p className="text-center text-sm text-white/50 mt-4">
+              All detected personas will be active in your LoreKeeper experience
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
       id: 'complete',
       title: 'You\'re All Set!',
       description: 'Welcome to your LoreKeeper',
@@ -254,35 +312,85 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
   ];
 
   const handleNext = async () => {
-    // Handle persona selection step
-    if (currentStep === 1 && selectedPersona) {
+    // Handle user description step - generate personalized response and detect personas
+    // Step 1 is "why-here" (index 1)
+    if (currentStep === 1 && userDescription.trim()) {
       try {
         setSaving(true);
+        setDetectingPersonas(true);
         setError(null);
-        // Save persona to user profile
-        await updateUserProfile({ persona: selectedPersona });
-        if (config.isDevelopment) {
-          console.log('Persona saved:', selectedPersona);
+        
+        // Generate personalized response and detect personas
+        try {
+          const result = await fetchJson<{
+            personalizedResponse: string;
+            personas: PersonaType[];
+            confidence: Record<string, number>;
+            reasoning: string;
+          }>('/api/onboarding/analyze-user', {
+            method: 'POST',
+            body: JSON.stringify({ description: userDescription.trim() }),
+          });
+          
+          setPersonalizedResponse(result.personalizedResponse || '');
+          setDetectedPersonas(result.personas || ['journaler']);
+          
+          if (config.env.isDevelopment) {
+            console.log('User analyzed:', result);
+          }
+        } catch (err: any) {
+          console.warn('Failed to analyze user, using defaults:', err);
+          setPersonalizedResponse('Welcome to LoreKeeper! We\'re excited to help you on your journey.');
+          setDetectedPersonas(['journaler']); // Default fallback
+        } finally {
+          setDetectingPersonas(false);
         }
       } catch (err: any) {
-        console.error('Failed to save persona:', err);
-        setError('Failed to save persona selection. You can continue anyway.');
+        console.error('Failed to analyze user:', err);
+        setError('Failed to generate personalized response. You can continue anyway.');
       } finally {
         setSaving(false);
       }
     }
 
-    // Handle first memory step
+    // Handle first memory step - create entry
+    // Step 3 is "first-memory" (index 3)
     if (currentStep === 3 && firstMemory.trim()) {
       try {
         setSaving(true);
+        setDetectingPersonas(true);
         setError(null);
+        
+        // First, detect personas from the memory content
+        try {
+          const detectionResult = await fetchJson<{
+            personas: PersonaType[];
+            confidence: Record<string, number>;
+            reasoning: string;
+          }>('/api/onboarding/detect-personas', {
+            method: 'POST',
+            body: JSON.stringify({ content: firstMemory.trim() }),
+          });
+          
+          setDetectedPersonas(detectionResult.personas || ['journaler']);
+          
+          if (config.env.isDevelopment) {
+            console.log('Detected personas:', detectionResult);
+          }
+        } catch (err: any) {
+          console.warn('Failed to detect personas, using default:', err);
+          setDetectedPersonas(['journaler']); // Default fallback
+        } finally {
+          setDetectingPersonas(false);
+        }
+        
         // Create the first memory entry
         await createEntry(firstMemory.trim(), {
           tags: firstMemoryTags,
           // Note: location and people would need to be handled via the entry creation API
         });
-        if (config.isDevelopment) {
+        
+        if (config.env.isDevelopment) {
           console.log('First memory created');
         }
       } catch (err: any) {
@@ -293,6 +401,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
       }
     }
 
+    // Move to next step (personas will be shown on step 3 if detected)
     if (currentStep < steps.length - 1) {
       setCompletedSteps(new Set([...completedSteps, currentStep]));
       setCurrentStep(currentStep + 1);
@@ -312,12 +421,12 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
       setSaving(true);
       setError(null);
       
-      // Mark onboarding as complete in backend
+      // Mark onboarding as complete in backend with all detected personas
       try {
         await fetchJson('/api/onboarding/complete', {
           method: 'POST',
           body: JSON.stringify({
-            persona: selectedPersona,
+            personas: detectedPersonas.length > 0 ? detectedPersonas : ['journaler'],
             completedAt: new Date().toISOString(),
           }),
         });
@@ -388,6 +497,11 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
           {/* Content */}
           <div className="p-8 min-h-[400px] flex items-center">
             <div className="w-full transition-all duration-500 ease-in-out">
+              {error && (
+                <div className="mb-4 rounded-lg bg-red-500/20 border border-red-500/50 p-4 text-red-200 text-sm">
+                  {error}
+                </div>
+              )}
               {steps[currentStep].content}
             </div>
           </div>
@@ -421,13 +535,18 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
 
             <Button
               onClick={handleNext}
-              disabled={saving || (currentStep === 1 && !selectedPersona) || (currentStep === 3 && !firstMemory.trim())}
+              disabled={
+                saving || 
+                detectingPersonas || 
+                (currentStep === 1 && !userDescription.trim()) || 
+                (currentStep === 3 && !firstMemory.trim())
+              }
               className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {saving ? (
+              {saving || detectingPersonas ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Saving...
+                  {detectingPersonas ? 'Creating your personalized experience...' : 'Saving...'}
                 </>
               ) : (
                 <>
