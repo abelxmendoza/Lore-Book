@@ -71,6 +71,7 @@ import learningRouter from './routes/learning';
 import contextRouter from './routes/context';
 import consolidationRouter from './routes/consolidation';
 import predictionRouter from './routes/prediction';
+import narrativeRouter from './routes/narrative';
 import { errorHandler } from './middleware/errorHandler';
 import { asyncHandler } from './middleware/errorHandler';
 import { requestIdMiddleware } from './utils/requestId';
@@ -188,6 +189,7 @@ apiRouter.use('/learning', learningRouter);
 apiRouter.use('/context', contextRouter);
 apiRouter.use('/consolidation', consolidationRouter);
 apiRouter.use('/prediction', predictionRouter);
+apiRouter.use('/narrative', narrativeRouter);
 
 app.use('/api', apiRouter);
 
