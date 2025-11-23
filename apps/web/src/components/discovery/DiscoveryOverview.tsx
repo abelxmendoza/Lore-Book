@@ -21,6 +21,7 @@ import { RelationshipsAnalyticsPanel } from './RelationshipsAnalyticsPanel';
 import { SagaScreen } from '../saga/SagaScreen';
 import { MemoryFabricPanel } from '../fabric/MemoryFabricPanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
+import { MonthlyYearlyInsights } from '../insights/MonthlyYearlyInsights';
 import { PredictionsAnalyticsPanel } from './PredictionsAnalyticsPanel';
 import { SearchAnalyticsPanel } from './SearchAnalyticsPanel';
 import { ShadowAnalyticsPanel } from './ShadowAnalyticsPanel';
@@ -115,6 +116,13 @@ const PANEL_CONFIGS: PanelConfig[] = [
     description: 'Correlations, loops, and recurring patterns.',
     icon: Sparkles,
     component: InsightsPanelWrapper
+  },
+  {
+    id: 'time-insights',
+    title: 'Time-based Insights',
+    description: 'Monthly and yearly insights across different time periods.',
+    icon: Calendar,
+    component: MonthlyYearlyInsights
   },
   {
     id: 'predictions',

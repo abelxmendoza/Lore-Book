@@ -31,9 +31,18 @@ export const ContinuityDashboard = () => {
     setLoading(true);
     try {
       const [eventsData, goalsData, contradictionsData] = await Promise.all([
-        fetchJson<{ events: ContinuityEvent[] }>('/api/continuity/events?limit=50'),
-        fetchJson<{ active: ContinuityEvent[]; abandoned: ContinuityEvent[] }>('/api/continuity/goals'),
-        fetchJson<{ contradictions: ContinuityEvent[] }>('/api/continuity/contradictions'),
+        fetchJson<{ events: ContinuityEvent[] }>('/api/continuity/events?limit=50', undefined, {
+          useMockData: true,
+          mockData: { events: [] },
+        }).catch(() => ({ events: [] })),
+        fetchJson<{ active: ContinuityEvent[]; abandoned: ContinuityEvent[] }>('/api/continuity/goals', undefined, {
+          useMockData: true,
+          mockData: { active: [], abandoned: [] },
+        }).catch(() => ({ active: [], abandoned: [] })),
+        fetchJson<{ contradictions: ContinuityEvent[] }>('/api/continuity/contradictions', undefined, {
+          useMockData: true,
+          mockData: { contradictions: [] },
+        }).catch(() => ({ contradictions: [] })),
       ]);
 
       setEvents(eventsData.events || []);
@@ -41,6 +50,10 @@ export const ContinuityDashboard = () => {
       setContradictions(contradictionsData.contradictions || []);
     } catch (error) {
       console.error('Failed to load continuity data:', error);
+      // Set empty data on error
+      setEvents([]);
+      setGoals({ active: [], abandoned: [] });
+      setContradictions([]);
     } finally {
       setLoading(false);
     }

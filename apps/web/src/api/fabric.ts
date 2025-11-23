@@ -32,14 +32,27 @@ export type MemoryGraph = {
 
 // Fetch from memory-graph endpoint
 export const fetchFabric = async () => {
-  const response = await fetchJson<{ graph: MemoryGraph }>('/api/memory-graph');
-  // Transform backend format to frontend format
-  return {
-    fabric: {
-      nodes: response.graph.nodes,
-      links: response.graph.edges
-    }
-  };
+  try {
+    const response = await fetchJson<{ graph: MemoryGraph }>('/api/memory-graph', undefined, {
+      useMockData: true,
+      mockData: { graph: { nodes: [], edges: [] } },
+    });
+    // Transform backend format to frontend format
+    return {
+      fabric: {
+        nodes: response.graph.nodes,
+        links: response.graph.edges
+      }
+    };
+  } catch (error) {
+    // Return empty fabric on error
+    return {
+      fabric: {
+        nodes: [],
+        links: []
+      }
+    };
+  }
 };
 
 // Create a link between nodes

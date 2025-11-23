@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { fetchJson } from '../../lib/api';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
+import { TagSuggestionBar } from '../composer/TagSuggestionBar';
 
 type EntryDetail = {
   id: string;
@@ -344,13 +345,24 @@ export const TimelineEntryModal = ({ entryId, isOpen, onClose, onNavigate }: Pro
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-white/60 mb-1 block">Tags (comma-separated)</label>
+                            <label className="text-xs text-white/60 mb-1 block">Tags</label>
                             <Textarea
                               value={editTags.join(', ')}
                               onChange={(e) => setEditTags(e.target.value.split(',').map(t => t.trim()).filter(Boolean))}
                               className="bg-black/60 border-border/50 text-white min-h-[60px]"
                               placeholder="tag1, tag2, tag3..."
                             />
+                            <div className="mt-2">
+                              <TagSuggestionBar
+                                content={editContent}
+                                selectedTags={editTags}
+                                onTagSelect={(tag) => {
+                                  if (!editTags.includes(tag)) {
+                                    setEditTags([...editTags, tag]);
+                                  }
+                                }}
+                              />
+                            </div>
                           </div>
                           <div className="flex gap-2 justify-end">
                             <Button

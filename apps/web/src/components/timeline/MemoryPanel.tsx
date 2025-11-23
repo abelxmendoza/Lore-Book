@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { X, Calendar, Tag, Users, Link2, Sparkles, Loader2, Wand2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, Calendar, Tag, Users, Link2, Sparkles, Loader2, Wand2, CheckCircle2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { fetchJson } from '../../lib/api';
+import { useToast } from '../ui/toast';
 import type { TimelineEntry, TimelineBand } from '../../hooks/useTimelineData';
 
 type MemoryPanelProps = {
@@ -13,6 +14,7 @@ type MemoryPanelProps = {
   arcs: TimelineBand[];
   onClose: () => void;
   onRelatedClick?: (entryId: string) => void;
+  onEntryUpdate?: (updatedEntry: TimelineEntry) => void;
 };
 
 const moodColors: Record<string, string> = {
@@ -31,8 +33,10 @@ export const MemoryPanel = ({
   sagas,
   arcs,
   onClose,
-  onRelatedClick
+  onRelatedClick,
+  onEntryUpdate
 }: MemoryPanelProps) => {
+  const [currentEntry, setCurrentEntry] = useState<TimelineEntry | null>(entry);
   const [evaluatingHighlights, setEvaluatingHighlights] = useState(false);
   const [autoTagging, setAutoTagging] = useState(false);
   const [autoTagResult, setAutoTagResult] = useState<{
@@ -40,40 +44,108 @@ export const MemoryPanel = ({
     lane: string;
     confidence_scores: { tags: number; lane: number; overall: number };
   } | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const toast = useToast();
 
-  if (!entry) return null;
+  const refreshEntry = useCallback(async (silent = false) => {
+    const entryToRefresh = currentEntry;
+    if (!entryToRefresh) return;
+    
+    if (!silent) {
+      setIsRefreshing(true);
+    }
+    
+    try {
+      // Fetch updated entry from API
+      const updated = await fetchJson<{
+        id: string;
+        date: string;
+        content: string;
+        summary?: string | null;
+        tags: string[];
+        mood?: string | null;
+        chapter_id?: string | null;
+        metadata?: Record<string, unknown>;
+      }>(`/api/entries/${entryToRefresh.id}`);
+      
+      // Convert to TimelineEntry format
+      const updatedEntry: TimelineEntry = {
+        ...entryToRefresh,
+        title: updated.summary || updated.content.substring(0, 100) || 'Untitled',
+        summary: updated.summary || updated.content.substring(0, 200),
+        full_text: updated.content,
+        tags: updated.tags || [],
+        mood: updated.mood || null,
+        metadata: updated.metadata || {}
+      };
+      
+      setCurrentEntry(updatedEntry);
+      if (onEntryUpdate) {
+        onEntryUpdate(updatedEntry);
+      }
+    } catch (error) {
+      console.error('Failed to refresh entry:', error);
+      if (!silent) {
+        toast.error('Failed to refresh entry data');
+      }
+    } finally {
+      if (!silent) {
+        setIsRefreshing(false);
+      }
+    }
+  }, [currentEntry, onEntryUpdate, toast]);
+
+  // Update local entry state when prop changes
+  useEffect(() => {
+    setCurrentEntry(entry);
+    // Auto-refresh entry when panel opens to get latest data
+    if (entry) {
+      refreshEntry(true); // Silent refresh on open
+    }
+  }, [entry, refreshEntry]);
+
+  if (!currentEntry) return null;
 
   const handleReevaluateHighlights = async () => {
+    if (!currentEntry) return;
+    
     setEvaluatingHighlights(true);
     try {
       const response = await fetchJson<{ scores: Record<string, number> }>(
         '/api/timeline/score-highlights',
         {
           method: 'POST',
-          body: JSON.stringify({ entryIds: [entry.id], useAI: true })
+          body: JSON.stringify({ entryIds: [currentEntry.id], useAI: true })
         }
       );
       
       // Update entry metadata with highlight_score
-      if (response.scores[entry.id] !== undefined) {
-        await fetchJson(`/api/entries/${entry.id}`, {
+      if (response.scores[currentEntry.id] !== undefined) {
+        await fetchJson(`/api/entries/${currentEntry.id}`, {
           method: 'PATCH',
           body: JSON.stringify({
             metadata: {
-              ...entry.metadata,
-              highlight_score: response.scores[entry.id]
+              ...currentEntry.metadata,
+              highlight_score: response.scores[currentEntry.id]
             }
           })
         });
+        
+        // Refresh entry to show updated metadata
+        await refreshEntry();
+        toast.success('Highlight score updated successfully');
       }
     } catch (error) {
       console.error('Failed to re-evaluate highlights:', error);
+      toast.error('Failed to re-evaluate highlights');
     } finally {
       setEvaluatingHighlights(false);
     }
   };
 
   const handleAutoTag = async () => {
+    if (!currentEntry) return;
+    
     setAutoTagging(true);
     setAutoTagResult(null);
     try {
@@ -82,7 +154,7 @@ export const MemoryPanel = ({
         lane: string;
         confidence_scores: { tags: number; lane: number; overall: number };
       } }>(
-        `/api/timeline/entries/${entry.id}/auto-tag`,
+        `/api/timeline/entries/${currentEntry.id}/auto-tag`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -98,21 +170,33 @@ export const MemoryPanel = ({
   };
 
   const handleApplyAutoTags = async () => {
-    if (!autoTagResult) return;
+    if (!autoTagResult || !currentEntry) return;
+    
     setAutoTagging(true);
     try {
       await fetchJson(
-        `/api/timeline/entries/${entry.id}/auto-tag`,
+        `/api/timeline/entries/${currentEntry.id}/auto-tag`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ apply: true })
         }
       );
+      
+      // Show success notification
+      const tagCount = autoTagResult.tags.length;
+      toast.success(
+        `Successfully applied ${tagCount} tag${tagCount !== 1 ? 's' : ''} and updated lane to "${autoTagResult.lane}"`,
+        4000
+      );
+      
       setAutoTagResult(null);
-      // TODO: Refresh entry data
+      
+      // Automatically refresh entry data to show updated tags
+      await refreshEntry();
     } catch (error) {
       console.error('Failed to apply auto-tags:', error);
+      toast.error('Failed to apply tags. Please try again.');
     } finally {
       setAutoTagging(false);
     }
@@ -130,30 +214,39 @@ export const MemoryPanel = ({
     });
   };
 
-  const era = entry.era ? eras.find(e => e.id === entry.era) : null;
-  const saga = entry.saga ? sagas.find(s => s.id === entry.saga) : null;
-  const arc = entry.arc ? arcs.find(a => a.id === entry.arc) : null;
+  const era = currentEntry.era ? eras.find(e => e.id === currentEntry.era) : null;
+  const saga = currentEntry.saga ? sagas.find(s => s.id === currentEntry.saga) : null;
+  const arc = currentEntry.arc ? arcs.find(a => a.id === currentEntry.arc) : null;
 
-  const moodColor = entry.mood 
-    ? moodColors[entry.mood.toLowerCase()] || moodColors.default 
+  const moodColor = currentEntry.mood 
+    ? moodColors[currentEntry.mood.toLowerCase()] || moodColors.default 
     : moodColors.default;
 
   return (
-    <div
-      className={`fixed right-0 top-0 h-full w-[500px] bg-gradient-to-br from-black via-purple-950/20 to-black border-l border-primary/30 shadow-2xl z-50 transition-transform duration-300 ${
-        entry ? 'translate-x-0' : 'translate-x-full'
-      }`}
-    >
+    <>
+      {/* Toast Notifications */}
+      <toast.ToastContainer />
+      
+      <div
+        className={`fixed right-0 top-0 h-full w-[500px] bg-gradient-to-br from-black via-purple-950/20 to-black border-l border-primary/30 shadow-2xl z-50 transition-transform duration-300 ${
+          currentEntry ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
       <div className="h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between p-6 border-b border-border/60 bg-black/40">
-          <h2 className="text-xl font-bold text-white">Memory Details</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-white">Memory Details</h2>
+            {isRefreshing && (
+              <Loader2 className="h-4 w-4 animate-spin text-primary" aria-label="Refreshing" />
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={handleAutoTag}
-              disabled={autoTagging}
+              disabled={autoTagging || isRefreshing}
               className="text-xs"
             >
               {autoTagging ? (
@@ -167,7 +260,7 @@ export const MemoryPanel = ({
               variant="outline"
               size="sm"
               onClick={handleReevaluateHighlights}
-              disabled={evaluatingHighlights}
+              disabled={evaluatingHighlights || isRefreshing}
               className="text-xs"
             >
               {evaluatingHighlights ? (
@@ -192,17 +285,17 @@ export const MemoryPanel = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Title */}
           <div>
-            <h3 className="text-2xl font-bold text-white mb-2">{entry.title}</h3>
+            <h3 className="text-2xl font-bold text-white mb-2">{currentEntry.title}</h3>
             <div className="flex items-center gap-2 text-white/60 text-sm">
               <Calendar className="h-4 w-4" />
-              <span>{formatDate(entry.timestamp)}</span>
+              <span>{formatDate(currentEntry.timestamp)}</span>
             </div>
           </div>
 
           {/* Mood & Hierarchy Badges */}
           <div className="flex flex-wrap gap-2">
-            {entry.mood && (
-              <Badge className={moodColor}>{entry.mood}</Badge>
+            {currentEntry.mood && (
+              <Badge className={moodColor}>{currentEntry.mood}</Badge>
             )}
             {era && (
               <Badge variant="outline" style={{ borderColor: era.color, color: era.color }}>
@@ -219,7 +312,7 @@ export const MemoryPanel = ({
                 Arc: {arc.name}
               </Badge>
             )}
-            <Badge variant="outline">Lane: {entry.lane}</Badge>
+            <Badge variant="outline">Lane: {currentEntry.lane}</Badge>
           </div>
 
           {/* Auto-Tagging Results */}
@@ -227,15 +320,21 @@ export const MemoryPanel = ({
             <Card className="bg-purple-950/30 border-purple-500/30">
               <CardContent className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-white">AI Tagging Suggestions</h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-semibold text-white">AI Tagging Suggestions</h4>
+                    <Badge variant="outline" className="text-xs">
+                      {Math.round(autoTagResult.confidence_scores.overall * 100)}% confidence
+                    </Badge>
+                  </div>
                   <Button
                     size="sm"
                     variant="default"
                     onClick={handleApplyAutoTags}
-                    disabled={autoTagging}
+                    disabled={autoTagging || isRefreshing}
                     className="text-xs"
+                    leftIcon={autoTagging ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                   >
-                    Apply
+                    {autoTagging ? 'Applying...' : 'Apply Tags'}
                   </Button>
                 </div>
                 
@@ -269,11 +368,11 @@ export const MemoryPanel = ({
           )}
 
           {/* Summary */}
-          {entry.summary && (
+          {currentEntry.summary && (
             <Card className="bg-black/40 border-border/60">
               <CardContent className="p-4">
                 <h4 className="text-sm font-semibold text-white/80 mb-2">Summary</h4>
-                <p className="text-white/70 text-sm leading-relaxed">{entry.summary}</p>
+                <p className="text-white/70 text-sm leading-relaxed">{currentEntry.summary}</p>
               </CardContent>
             </Card>
           )}
@@ -282,12 +381,12 @@ export const MemoryPanel = ({
           <Card className="bg-black/40 border-border/60">
             <CardContent className="p-4">
               <h4 className="text-sm font-semibold text-white/80 mb-2">Full Content</h4>
-              <p className="text-white/70 text-sm leading-relaxed whitespace-pre-wrap">{entry.full_text}</p>
+              <p className="text-white/70 text-sm leading-relaxed whitespace-pre-wrap">{currentEntry.full_text}</p>
             </CardContent>
           </Card>
 
           {/* Tags */}
-          {entry.tags.length > 0 && (
+          {currentEntry.tags.length > 0 && (
             <Card className="bg-black/40 border-border/60">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -295,7 +394,7 @@ export const MemoryPanel = ({
                   <h4 className="text-sm font-semibold text-white/80">Tags</h4>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {entry.tags.map((tag, idx) => (
+                  {currentEntry.tags.map((tag, idx) => (
                     <Badge key={idx} variant="outline" className="text-xs">
                       {tag}
                     </Badge>
@@ -306,7 +405,7 @@ export const MemoryPanel = ({
           )}
 
           {/* Characters */}
-          {entry.character_ids.length > 0 && (
+          {currentEntry.character_ids.length > 0 && (
             <Card className="bg-black/40 border-border/60">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -314,14 +413,14 @@ export const MemoryPanel = ({
                   <h4 className="text-sm font-semibold text-white/80">Characters</h4>
                 </div>
                 <div className="text-white/70 text-sm">
-                  {entry.character_ids.length} character{entry.character_ids.length !== 1 ? 's' : ''} involved
+                  {currentEntry.character_ids.length} character{currentEntry.character_ids.length !== 1 ? 's' : ''} involved
                 </div>
               </CardContent>
             </Card>
           )}
 
           {/* Related Entries */}
-          {entry.related_entry_ids.length > 0 && (
+          {currentEntry.related_entry_ids.length > 0 && (
             <Card className="bg-black/40 border-border/60">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -329,7 +428,7 @@ export const MemoryPanel = ({
                   <h4 className="text-sm font-semibold text-white/80">Related Memories</h4>
                 </div>
                 <div className="space-y-2">
-                  {entry.related_entry_ids.slice(0, 5).map((relatedId) => (
+                  {currentEntry.related_entry_ids.slice(0, 5).map((relatedId) => (
                     <button
                       key={relatedId}
                       onClick={() => onRelatedClick?.(relatedId)}
@@ -338,9 +437,9 @@ export const MemoryPanel = ({
                       Memory {relatedId.substring(0, 8)}...
                     </button>
                   ))}
-                  {entry.related_entry_ids.length > 5 && (
+                  {currentEntry.related_entry_ids.length > 5 && (
                     <p className="text-xs text-white/50 text-center">
-                      ...and {entry.related_entry_ids.length - 5} more
+                      ...and {currentEntry.related_entry_ids.length - 5} more
                     </p>
                   )}
                 </div>
@@ -349,7 +448,7 @@ export const MemoryPanel = ({
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

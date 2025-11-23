@@ -6,6 +6,7 @@ import { Card } from './ui/card';
 import { LazyImage } from './ui/LazyImage';
 import { config } from '../config/env';
 import { supabase } from '../lib/supabase';
+import { fetchJson } from '../lib/api';
 
 interface PhotoMetadata {
   photoId: string;
@@ -28,6 +29,42 @@ interface PhotoGalleryProps {
   onPhotoUploaded?: (photo: PhotoMetadata) => void;
 }
 
+// Convert journal entry to photo metadata format
+const entryToPhotoMetadata = (entry: {
+  id: string;
+  date: string;
+  content: string;
+  summary?: string | null;
+  tags: string[];
+  metadata?: Record<string, unknown>;
+}): PhotoMetadata => {
+  const metadata = (entry.metadata || {}) as {
+    latitude?: number;
+    longitude?: number;
+    locationName?: string;
+    dateTime?: string;
+    people?: string[];
+    photoUrl?: string;
+  };
+
+  return {
+    photoId: entry.id,
+    url: metadata.photoUrl || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400',
+    metadata: {
+      latitude: metadata.latitude,
+      longitude: metadata.longitude,
+      locationName: metadata.locationName,
+      dateTime: metadata.dateTime || entry.date,
+      people: metadata.people
+    },
+    autoEntry: {
+      id: entry.id,
+      content: entry.content,
+      tags: entry.tags
+    }
+  };
+};
+
 export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
   const [photos, setPhotos] = useState<PhotoMetadata[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -36,67 +73,62 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
 
   const fetchPhotos = useCallback(async () => {
     setLoading(true);
-    try {
-      // If mock data is enabled, return mock photos
-      if (config.dev.allowMockData) {
-        if (config.dev.enableConsoleLogs) {
-          console.log('[MOCK API] Fetching photos - Using mock data');
+    
+    // Mock entries for fallback
+    const mockEntries = [
+      {
+        id: 'mock-entry-1',
+        date: new Date().toISOString(),
+        content: 'Beautiful mountain landscape captured during a hike. The view was breathtaking.',
+        summary: 'Mountain hike',
+        tags: ['nature', 'hiking', 'mountains'],
+        metadata: {
+          locationName: 'Mountain View',
+          dateTime: new Date().toISOString(),
+          latitude: 37.4219,
+          longitude: -122.0840,
+          photoUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400'
         }
-        
-        const mockPhotos: PhotoMetadata[] = [
-          {
-            photoId: 'mock-photo-1',
-            url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400',
-            metadata: {
-              locationName: 'Mountain View',
-              dateTime: new Date().toISOString(),
-              latitude: 37.4219,
-              longitude: -122.0840
-            },
-            autoEntry: {
-              id: 'mock-entry-1',
-              content: 'Beautiful mountain landscape captured during a hike. The view was breathtaking.',
-              tags: ['nature', 'hiking', 'mountains']
-            }
-          },
-          {
-            photoId: 'mock-photo-2',
-            url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=400',
-            metadata: {
-              locationName: 'Beach Sunset',
-              dateTime: new Date(Date.now() - 86400000).toISOString(),
-            },
-            autoEntry: {
-              id: 'mock-entry-2',
-              content: 'Stunning sunset at the beach. Perfect end to a wonderful day.',
-              tags: ['beach', 'sunset', 'vacation']
-            }
-          }
-        ];
-        
-        setPhotos(mockPhotos);
-        setLoading(false);
-        return;
+      },
+      {
+        id: 'mock-entry-2',
+        date: new Date(Date.now() - 86400000).toISOString(),
+        content: 'Stunning sunset at the beach. Perfect end to a wonderful day.',
+        summary: 'Beach sunset',
+        tags: ['beach', 'sunset', 'vacation'],
+        metadata: {
+          locationName: 'Beach Sunset',
+          dateTime: new Date(Date.now() - 86400000).toISOString(),
+          photoUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=400'
+        }
       }
+    ];
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const apiBaseUrl = config.api.url;
-      const response = await fetch(`${apiBaseUrl}/api/photos`, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
+    try {
+      // Fetch entries with source=photo
+      const data = await fetchJson<{ entries: Array<{
+        id: string;
+        date: string;
+        content: string;
+        summary?: string | null;
+        tags: string[];
+        metadata?: Record<string, unknown>;
+      }> }>('/api/entries/recent?sources=photo&limit=50', undefined, {
+        useMockData: true,
+        mockData: { entries: mockEntries }
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        // Backend returns empty array with message, but we handle it gracefully
-        setPhotos(data.photos || []);
-      }
+      const photoEntries = data.entries.map(entryToPhotoMetadata);
+      setPhotos(photoEntries);
     } catch (error) {
       if (config.dev.enableConsoleLogs) {
-        console.error('Failed to fetch photos:', error);
+        console.error('Failed to fetch photo entries:', error);
+      }
+      // On error, use empty array or mock data if enabled
+      if (config.dev.allowMockData) {
+        setPhotos(mockEntries.map(entryToPhotoMetadata));
+      } else {
+        setPhotos([]);
       }
     } finally {
       setLoading(false);
@@ -122,19 +154,23 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
         // Simulate processing delay
         await new Promise(resolve => setTimeout(resolve, 1500));
         
-        const mockPhotos: PhotoMetadata[] = Array.from(files).map((file, index) => ({
-          photoId: `mock-photo-${Date.now()}-${index}`,
-          url: URL.createObjectURL(file), // Use local object URL for preview
-          metadata: {
-            locationName: 'Mock Location',
-            dateTime: new Date().toISOString(),
-          },
-          autoEntry: {
-            id: `mock-entry-${Date.now()}-${index}`,
-            content: `Auto-generated entry from photo: ${file.name}. This would be created from photo metadata in production.`,
-            tags: ['photo', 'mock']
-          }
-        }));
+        const mockPhotos: PhotoMetadata[] = Array.from(files).map((file, index) => {
+          const entryId = `mock-entry-${Date.now()}-${index}`;
+          const photoUrl = URL.createObjectURL(file);
+          return {
+            photoId: entryId,
+            url: photoUrl,
+            metadata: {
+              locationName: 'Mock Location',
+              dateTime: new Date().toISOString(),
+            },
+            autoEntry: {
+              id: entryId,
+              content: `Auto-generated entry from photo: ${file.name}. This would be created from photo metadata in production.`,
+              tags: ['photo', 'mock']
+            }
+          };
+        });
         
         setPhotos((prev) => [...mockPhotos, ...prev]);
         mockPhotos.forEach((photo) => {
@@ -151,6 +187,7 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         alert('Please sign in to upload photos');
+        setUploading(false);
         return;
       }
 
@@ -170,24 +207,45 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
 
       if (response.ok) {
         const data = await response.json();
-        // Backend returns entries, not photos (photos aren't stored)
-        // We'll show a success message and refresh
-        if (data.entriesCreated > 0) {
-          alert(`Successfully processed ${data.entriesCreated} photo(s)! Journal entries have been created.`);
-          // Refresh to show any new entries
-          await fetchPhotos();
+        // Backend returns entries created from photos
+        if (data.entriesCreated > 0 && data.entries) {
+          // Convert entries to photo metadata format
+          const newPhotos = data.entries.map((entry: any) => entryToPhotoMetadata({
+            id: entry.id,
+            date: entry.date || new Date().toISOString(),
+            content: entry.content,
+            summary: entry.summary,
+            tags: entry.tags || [],
+            metadata: entry.metadata || {}
+          }));
+          
+          setPhotos((prev) => [...newPhotos, ...prev]);
+          newPhotos.forEach((photo) => {
+            if (onPhotoUploaded) onPhotoUploaded(photo);
+          });
+          
+          // Show success message
+          if (data.entriesCreated === 1) {
+            console.log('Successfully processed 1 photo! Journal entry created.');
+          } else {
+            console.log(`Successfully processed ${data.entriesCreated} photos! Journal entries created.`);
+          }
         } else {
-          alert('Photos processed but no entries were created (may have been filtered out).');
+          console.log('Photos processed but no entries were created (may have been filtered out).');
         }
+        
+        // Refresh to get latest entries
+        await fetchPhotos();
       } else {
         const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Upload failed:', error.error || 'Unknown error');
         alert(`Upload failed: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       if (config.dev.enableConsoleLogs) {
         console.error('Upload error:', error);
       }
-      alert('Failed to upload photos');
+      alert('Failed to upload photos. Please try again.');
     } finally {
       setUploading(false);
       if (fileInputRef.current) {

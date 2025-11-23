@@ -5,9 +5,10 @@ import type { Chapter } from '../hooks/useLoreKeeper';
 
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
+import { TagSuggestionBar } from './composer/TagSuggestionBar';
 
 export type JournalComposerProps = {
-  onSave: (content: string, options?: { chapterId?: string | null; metadata?: Record<string, unknown> }) => Promise<void>;
+  onSave: (content: string, options?: { chapterId?: string | null; metadata?: Record<string, unknown>; tags?: string[] }) => Promise<void>;
   onAsk: (content: string) => Promise<void>;
   onVoiceUpload?: (file: File) => Promise<void>;
   loading?: boolean;
@@ -31,6 +32,7 @@ export const JournalComposer = ({ onSave, onAsk, onVoiceUpload, loading, chapter
   const [chapterId, setChapterId] = useState<string | null>(null);
   const [encrypt, setEncrypt] = useState(false);
   const [passphrase, setPassphrase] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const handleSave = async () => {
     if (!value.trim()) return;
@@ -44,11 +46,12 @@ export const JournalComposer = ({ onSave, onAsk, onVoiceUpload, loading, chapter
     }
 
     try {
-      await onSave(content, { chapterId, metadata });
+      await onSave(content, { chapterId, metadata, tags: selectedTags });
       setValue('');
       setChapterId(null);
       setEncrypt(false);
       setPassphrase('');
+      setSelectedTags([]);
     } catch (error) {
       console.error('Failed to save entry:', error);
       alert(error instanceof Error ? error.message : 'Failed to save entry. Check console for details.');
@@ -84,6 +87,19 @@ export const JournalComposer = ({ onSave, onAsk, onVoiceUpload, loading, chapter
         value={value}
         onChange={(event) => setValue(event.target.value)}
       />
+      <div className="mt-2">
+        <TagSuggestionBar
+          content={value}
+          selectedTags={selectedTags}
+          onTagSelect={(tag) => {
+            if (selectedTags.includes(tag)) {
+              setSelectedTags(selectedTags.filter(t => t !== tag));
+            } else {
+              setSelectedTags([...selectedTags, tag]);
+            }
+          }}
+        />
+      </div>
       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-white/60">
         <label className="font-semibold uppercase tracking-[0.3em] text-white/40">Chapter</label>
         <select

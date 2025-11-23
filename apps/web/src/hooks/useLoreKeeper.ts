@@ -149,13 +149,24 @@ export const useLoreKeeper = () => {
     setEvolution(data.insights);
   }, []);
 
-  const createEntry = useCallback(async (content: string, overrides?: Partial<JournalEntry>) => {
+  const createEntry = useCallback(async (content: string, overrides?: Partial<JournalEntry> & { tags?: string[]; chapterId?: string | null; metadata?: Record<string, unknown> }) => {
     const payload: Record<string, unknown> = { content };
     if (overrides) {
-      Object.assign(payload, overrides);
+      // Handle tags separately
+      if (overrides.tags) {
+        payload.tags = overrides.tags;
+      }
+      // Handle chapterId
       if ('chapter_id' in overrides || 'chapterId' in overrides) {
         payload.chapterId = (overrides as Record<string, unknown>).chapterId ?? overrides.chapter_id ?? null;
       }
+      // Handle metadata
+      if (overrides.metadata) {
+        payload.metadata = overrides.metadata;
+      }
+      // Handle other JournalEntry fields
+      const { tags, chapterId, metadata, ...rest } = overrides;
+      Object.assign(payload, rest);
     }
     const data = await fetchJson<{ entry: JournalEntry }>('/api/entries', {
       method: 'POST',

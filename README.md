@@ -95,6 +95,47 @@ Lore Keeper helps you:
 - ✅ **Semantic Search** - Vector embeddings for similarity search
 - ✅ **Privacy Controls** - User-controlled data access, encryption, audit logging
 
+**Analytics & Intelligence Engines:**
+- ✅ **Creative Output Engine** - Tracks creative activities, flow states, creative blocks, inspiration sources, project lifecycles, and creative scores
+- ✅ **Time Management Engine** - Analyzes time allocation, activity patterns, procrastination signals, energy curves, time cycles, and time efficiency scores
+- ✅ **Social Network Engine** - Maps social relationships, detects communities, calculates influence scores, tracks toxicity signals, detects relationship drift, and computes network cohesion
+- ✅ **Reflection Engine** - Extracts reflection signals (insights, realizations, lessons, questions, gratitude, growth) and builds reflection profiles
+- ✅ **Personality Engine** - Tracks personality traits over time, builds personality profiles, and detects trait evolution
+- ✅ **Archetype Engine** - Detects 11 archetypes (Warrior, Rebel, Hermit, Creator, Lover, Seeker, Protector, Leader, Outlaw, Sage, Shadow Self), tracks archetype transitions and distortions
+- ✅ **Behavior Loop Resolution Engine** - Identifies recurring behavior patterns, detects behavior loops, normalizes behaviors, and tracks behavior statistics
+- ✅ **Scene Generator Engine** - Extracts narrative scenes from entries, structures scenes with characters, beats, emotional arcs, and outcomes
+- ✅ **Conflict Detection Engine** - Detects conflicts (physical, verbal, social, emotional, internal), tracks escalation patterns, emotional impact, and conflict outcomes
+- ✅ **Toxicity & Red Flag Engine** - Identifies toxic dynamics, red flags, dangerous patterns, tracks toxicity by entity (person/place/situation), and predicts outcomes
+- ✅ **Social Projection Engine** - Separates hypothetical people, imagined groups, influencer references, and mental simulations from real people in the social graph
+- ✅ **Emotion Resolution Engine** - Extracts and clusters emotions, classifies emotion types, computes intensity, detects triggers, and resolves emotion events
+- ✅ **Entity Resolution Engine** - Resolves mentions of people, places, organizations to canonical records using fuzzy matching and semantic similarity
+- ✅ **Event Resolution Engine** - Groups temporal signals into resolved events, detects duplicate events, and tracks event patterns
+- ✅ **Location Resolution Engine** - Resolves location mentions to canonical locations using vector similarity and fuzzy matching
+- ✅ **Activity Resolution Engine** - Resolves activity mentions to canonical activities, tracks categories and intensity
+- ✅ **Engine Manifest System** - Registers, describes, and semantically searches for available engines
+- ✅ **Engine Registry & Health System** - Manages engine dependencies, execution order, health monitoring, and dynamic engine loading
+- ✅ **Chronology Engine** - Builds temporal graphs, detects gaps, resolves ambiguities, infers causality, and constructs narrative sequences
+- ✅ **Analytics Modules** - Identity Pulse, Relationship Analytics, Character Analytics, Saga Engine, Memory Fabric, Insight Engine, Prediction Engine, Shadow Engine, XP Engine, Life Map
+- ✅ **Recommendation Engine** - Generates personalized recommendations (journal prompts, reflection questions, action items, relationship check-ins, goal reminders, pattern exploration)
+- ✅ **Wisdom Engine** - Extracts and preserves wisdom, lessons learned, and life insights
+- ✅ **Learning Engine** - Tracks learning activities, skill development, and knowledge acquisition
+- ✅ **Context Engine** - Provides contextual understanding and relationship mapping
+- ✅ **Consolidation Engine** - Consolidates similar memories and reduces redundancy
+- ✅ **Narrative Engine** - Constructs narrative structures and story arcs
+- ✅ **Relationship Dynamics Engine** - Analyzes relationship patterns, attachment styles, and relationship evolution
+- ✅ **Intervention Engine** - Detects when intervention is needed and suggests actions
+- ✅ **Goals Engine** - Tracks goals, milestones, progress, and goal achievement
+- ✅ **Habits Engine** - Monitors habits, streaks, and habit formation patterns
+- ✅ **Decisions Engine** - Tracks decision-making patterns and outcomes
+- ✅ **Resilience Engine** - Measures resilience, tracks recovery patterns, and identifies resilience factors
+- ✅ **Influence Engine** - Tracks influence patterns and social impact
+- ✅ **Growth Engine** - Measures personal growth, tracks development areas, and identifies growth opportunities
+- ✅ **Legacy Engine** - Preserves legacy content, wisdom, and messages for future generations
+- ✅ **Values Engine** - Tracks core values, value evolution, and value alignment
+- ✅ **Dreams Engine** - Tracks dreams, aspirations, and life goals
+- ✅ **Financial Engine** - Tracks financial patterns, spending habits, and financial goals
+- ✅ **Health Engine** - Monitors health patterns, symptoms, and wellness trends
+
 Lore Keeper becomes your memory, your story engine, and your mirror—a living archive of who you are, who you were, and who you're becoming. The Continuity Engine acts as the core intelligence, running automatically after every entry to detect contradictions, emotional changes, identity drift, and repeating patterns. This is not just journaling—this is digital immortality, properly structured, with continuity intelligence that helps you understand your past, navigate your present, and predict your future.
 
 ### For Everyone (Non-Technical Users)
@@ -441,6 +482,82 @@ Lore Keeper seamlessly blends five personas based on context, becoming exactly w
 - End-to-end encryption (TLS 1.3 in transit, AES-256 at rest)
 - Row-level security ensuring complete data isolation
 - No data selling or third-party sharing
+
+#### 🧠 **Analytics & Intelligence Engines**
+
+Lore Keeper includes a comprehensive suite of analytics engines that automatically extract insights from your journal entries:
+
+**Creative & Productivity Engines:**
+- **Creative Output Engine**: Tracks creative activities (coding, art, music, writing, video, robotics, design, performance), detects flow states, identifies creative blocks, tracks inspiration sources, monitors project lifecycles, and computes creative scores
+- **Time Management Engine**: Analyzes time allocation across activities (coding, robotics, gym, BJJ, Muay Thai, family, social, travel, learning, sleep, eating, work), detects procrastination signals, estimates energy curves, identifies time cycles, and computes time efficiency scores
+
+**Social & Relationship Engines:**
+- **Social Network Engine**: Maps your social graph, detects communities, calculates influence scores, tracks relationship health, identifies toxicity signals, detects relationship drift, and computes network cohesion scores
+- **Social Projection Engine**: Separates hypothetical people, imagined groups, influencer references, and mental simulations from real people in your social graph. Tracks anticipated connections, archetypes, and imagined groups
+- **Relationship Dynamics Engine**: Analyzes relationship patterns, attachment styles, relationship evolution, and sentiment trends
+
+**Identity & Personality Engines:**
+- **Personality Engine**: Tracks personality traits over time (introverted/extroverted, analytical/creative, empathetic, etc.), builds personality profiles, and detects trait evolution
+- **Archetype Engine**: Detects 11 archetypes (Warrior, Rebel, Hermit, Creator, Lover, Seeker, Protector, Leader, Outlaw, Sage, Shadow Self), tracks archetype transitions, identifies archetype distortions (Overdrive, Identity Split), and computes archetype profiles
+- **Reflection Engine**: Extracts reflection signals (insights, realizations, lessons, questions, gratitude, growth) and builds reflection profiles
+
+**Behavior & Pattern Engines:**
+- **Behavior Loop Resolution Engine**: Identifies recurring behavior patterns (drinking, flirting, sparring, avoidance, overthinking, impulse, grinding, self-criticism), detects behavior loops, normalizes behaviors, and tracks behavior statistics
+- **Habits Engine**: Monitors habits, tracks streaks, identifies habit formation patterns, and measures habit consistency
+- **Decisions Engine**: Tracks decision-making patterns, decision outcomes, and decision quality over time
+
+**Emotional & Mental Health Engines:**
+- **Emotion Resolution Engine**: Extracts and clusters emotions (anger, sadness, fear, joy, disgust, surprise, desire, confidence, love, shame, envy, relief), classifies emotion types and subtypes, computes intensity, detects triggers, and resolves emotion events into temporal clusters
+- **Conflict Detection Engine**: Detects conflicts (physical, verbal, social, emotional, internal), tracks escalation patterns, emotional impact (before/during/after), conflict beats, and conflict outcomes
+- **Toxicity & Red Flag Engine**: Identifies toxic dynamics, red flags, dangerous patterns, tracks toxicity by entity (person/place/situation), categorizes toxicity types (jealousy, manipulation, aggression, chaos, betrayal), and predicts outcomes
+
+**Narrative & Story Engines:**
+- **Scene Generator Engine**: Extracts narrative scenes from entries, structures scenes with characters, beats, emotional arcs, interactions, and outcomes. Segments long entries into multiple scenes
+- **Chronology Engine**: Builds temporal graphs, detects gaps in your timeline, resolves temporal ambiguities, infers causality, and constructs narrative sequences
+- **Narrative Engine**: Constructs narrative structures, identifies story arcs, and organizes your life story
+
+**Entity Resolution Engines:**
+- **Entity Resolution Engine**: Resolves mentions of people, places, organizations to canonical records using fuzzy matching (Jaro-Winkler Distance) and semantic similarity (vector embeddings)
+- **Event Resolution Engine**: Groups temporal signals into resolved events, detects duplicate events using time overlap, people overlap, activity overlap, and vector similarity
+- **Location Resolution Engine**: Resolves location mentions to canonical locations using vector similarity, text similarity, and type matching
+- **Activity Resolution Engine**: Resolves activity mentions to canonical activities, tracks categories and intensity
+
+**Life Management Engines:**
+- **Goals Engine**: Tracks goals, milestones, progress, goal achievement, and identifies goals at risk
+- **Task Engine**: Task management with Microsoft To-Do integration, task creation from chat, task timeline links
+- **Financial Engine**: Tracks financial patterns, spending habits, financial goals, and financial health
+- **Health Engine**: Monitors health patterns, symptoms, wellness trends, and health metrics
+
+**Growth & Development Engines:**
+- **Growth Engine**: Measures personal growth, tracks development areas, identifies growth opportunities, and monitors growth patterns
+- **Learning Engine**: Tracks learning activities, skill development, knowledge acquisition, and learning patterns
+- **Resilience Engine**: Measures resilience, tracks recovery patterns, identifies resilience factors, and monitors resilience over time
+- **Influence Engine**: Tracks influence patterns, social impact, and influence networks
+
+**Wisdom & Legacy Engines:**
+- **Wisdom Engine**: Extracts and preserves wisdom, lessons learned, and life insights
+- **Legacy Engine**: Preserves legacy content, wisdom, and messages for future generations
+- **Values Engine**: Tracks core values, value evolution, and value alignment
+- **Dreams Engine**: Tracks dreams, aspirations, and life goals
+
+**System & Infrastructure:**
+- **Engine Manifest System**: Registers, describes, and semantically searches for available engines. Manages engine blueprints and embeddings
+- **Engine Registry & Health System**: Manages engine dependencies, execution order (topological sorting), health monitoring (success/error rates, duration, error counts), and dynamic engine loading
+- **Recommendation Engine**: Generates personalized recommendations (journal prompts, reflection questions, action items, relationship check-ins, goal reminders, pattern exploration, gap fillers, continuity follow-ups, growth opportunities, legacy building)
+- **Consolidation Engine**: Consolidates similar memories and reduces redundancy
+- **Context Engine**: Provides contextual understanding and relationship mapping
+
+**Analytics Modules:**
+- **Identity Pulse**: Tracks your persona signature and emotional trajectory, monitors identity drift and personality evolution
+- **Relationship Analytics**: Analyzes tie strength, sentiment, attachment, conflict cycles, and relationship health
+- **Character Analytics**: Character mention patterns, sentiment trends, interaction scores—who matters most and why
+- **Saga Engine**: Identifies major life arcs and story beats, narrative structure and themes
+- **Memory Fabric**: Embedding-based world model—clusters, topic graph, connections between memories
+- **Insight Engine**: Daily AI insights, patterns, correlations, and behavioral loops
+- **Prediction Engine**: Mood trends, goals at risk, relationship forecasts—predicts your trajectory
+- **Shadow Engine**: Suppressed topics, fears, negative loops, shadow archetypes—what you're avoiding
+- **XP Engine**: Gamified personal growth—levels, streaks, life XP tracking
+- **Life Map**: Global narrative graph—turning points, eras, momentum score
 
 ### Technical Features
 
@@ -807,6 +924,8 @@ psql "your-db-url" -f migrations/your_migration.sql
 ### API Development
 
 **API Routes Structure:**
+
+**Core Features:**
 - `/api/entries` - Journal entry CRUD, tag suggestions, voice transcription
 - `/api/chapters` - Chapter management and summaries
 - `/api/characters` - Character management (optimized batch queries)
@@ -835,6 +954,48 @@ psql "your-db-url" -f migrations/your_migration.sql
 - `/api/privacy` - Privacy settings and data export
 - `/api/subscription` - Subscription management
 - `/api/dev` - Development utilities (dummy data population)
+
+**Analytics & Intelligence Engines:**
+- `/api/creative/*` - Creative Output Engine (analyze, events, flow, blocks, score, stats)
+- `/api/time/*` - Time Management Engine (analyze, events, blocks, procrastination, energy, cycles, score)
+- `/api/social/*` - Social Network Engine (analyze, graph, communities, influence, toxicity, drift, network score)
+- `/api/reflection/*` - Reflection Engine (analyze, reflections, profile)
+- `/api/personality/*` - Personality Engine (analyze, profile, traits)
+- `/api/archetype/*` - Archetype Engine (analyze, profile, transitions, distortions)
+- `/api/behavior/*` - Behavior Loop Resolution Engine (resolve, events, loops)
+- `/api/scenes/*` - Scene Generator Engine (resolve, scenes, scene by ID)
+- `/api/conflicts/*` - Conflict Detection Engine (resolve, conflicts, conflict by ID)
+- `/api/toxicity/*` - Toxicity & Red Flag Engine (resolve, events, events by entity, event by ID)
+- `/api/social-projection/*` - Social Projection Engine (analyze, projections, links)
+- `/api/emotion/*` - Emotion Resolution Engine (resolve, events, event by ID)
+- `/api/entities/*` - Entity Resolution Engine (resolve, entities, entity by ID)
+- `/api/events/*` - Event Resolution Engine (resolve, events, event by ID)
+- `/api/locations/*` - Location Resolution Engine (resolve, locations, location by ID)
+- `/api/activities/*` - Activity Resolution Engine (resolve, activities, activity by ID)
+- `/api/temporal-events/*` - Temporal Event Resolution Engine (resolve, events, event by ID)
+- `/api/engines/*` - Engine Manifest System (list, search, get-blueprint, sync)
+- `/api/engine-registry/*` - Engine Registry & Health System (list, health, run, run-all)
+- `/api/chronology/*` - Chronology Engine (analyze, gaps, causality, narrative)
+- `/api/analytics/*` - Analytics modules (identity, relationships, characters, sagas, fabric, insights, predictions, shadow, xp, life-map)
+- `/api/recommendations/*` - Recommendation Engine (get, history, show, dismiss, act, refresh, stats)
+- `/api/wisdom/*` - Wisdom Engine (extract, wisdom, insights)
+- `/api/learning/*` - Learning Engine (track, activities, skills)
+- `/api/context/*` - Context Engine (analyze, relationships)
+- `/api/consolidation/*` - Consolidation Engine (consolidate, similar, reduce)
+- `/api/narrative/*` - Narrative Engine (construct, arcs, structure)
+- `/api/relationship-dynamics/*` - Relationship Dynamics Engine (analyze, patterns, evolution)
+- `/api/intervention/*` - Intervention Engine (detect, suggest, actions)
+- `/api/goals/*` - Goals Engine (track, progress, at-risk)
+- `/api/habits/*` - Habits Engine (track, streaks, patterns)
+- `/api/decisions/*` - Decisions Engine (track, patterns, outcomes)
+- `/api/resilience/*` - Resilience Engine (measure, recovery, factors)
+- `/api/influence/*` - Influence Engine (track, patterns, networks)
+- `/api/growth/*` - Growth Engine (measure, opportunities, patterns)
+- `/api/legacy/*` - Legacy Engine (preserve, wisdom, messages)
+- `/api/values/*` - Values Engine (track, evolution, alignment)
+- `/api/dreams/*` - Dreams Engine (track, aspirations, goals)
+- `/api/financial/*` - Financial Engine (track, patterns, goals)
+- `/api/health/*` - Health Engine (monitor, patterns, metrics)
 
 **See `BACKEND_FRONTEND_MAPPING.md`** for complete API documentation.
 
