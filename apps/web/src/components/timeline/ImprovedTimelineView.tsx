@@ -504,7 +504,6 @@ export const ImprovedTimelineView = ({
               </div>
             </div>
           )}
-        </div>
       </div>
 
       {/* Content based on view mode */}
