@@ -50,12 +50,22 @@ export const MemoryPanel = ({
         '/api/timeline/score-highlights',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ entryIds: [entry.id], useAI: true })
         }
       );
-      // TODO: Update entry metadata with highlight_score
-      console.log('Highlight score:', response.scores[entry.id]);
+      
+      // Update entry metadata with highlight_score
+      if (response.scores[entry.id] !== undefined) {
+        await fetchJson(`/api/entries/${entry.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            metadata: {
+              ...entry.metadata,
+              highlight_score: response.scores[entry.id]
+            }
+          })
+        });
+      }
     } catch (error) {
       console.error('Failed to re-evaluate highlights:', error);
     } finally {

@@ -24,6 +24,12 @@ async function getUserRole(userId: string): Promise<UserRole> {
       return 'standard_user';
     }
 
+    // Check by email (Abel Mendoza - abelxmendoza@gmail.com)
+    const adminEmail = process.env.ADMIN_EMAIL || 'abelxmendoza@gmail.com';
+    if (userData.user.email === adminEmail) {
+      return 'admin';
+    }
+
     const role = (userData.user.user_metadata?.role as UserRole) || 
                  (userData.user.app_metadata?.role as UserRole) ||
                  'standard_user';

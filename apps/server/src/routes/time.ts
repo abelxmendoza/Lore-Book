@@ -1,145 +1,149 @@
 import { Router } from 'express';
-import { z } from 'zod';
+
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { timeEngine } from '../services/timeEngine';
+import { asyncHandler } from '../middleware/errorHandler';
 import { logger } from '../logger';
+import { TimeEngine } from '../services/time/timeEngine';
+import { TimeStorage } from '../services/time/timeStorage';
 
 const router = Router();
+const timeEngine = new TimeEngine();
+const timeStorage = new TimeStorage();
 
-const parseTimestampSchema = z.object({
-  input: z.string(),
-  precision: z.enum(['year', 'month', 'day', 'hour', 'minute', 'second']).optional(),
-  timezone: z.string().optional()
-});
+/**
+ * POST /api/time/analyze
+ * Process and analyze time management
+ */
+router.post(
+  '/analyze',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const save = req.body.save !== false;
 
-const timeRangeSchema = z.object({
-  start: z.string(),
-  end: z.string(),
-  precision: z.enum(['year', 'month', 'day', 'hour', 'minute', 'second']).optional()
-});
+    logger.info({ userId, save }, 'Analyzing time management');
 
-const sortChronologicallySchema = z.object({
-  items: z.array(z.object({
-    timestamp: z.union([z.string(), z.string().datetime()]),
-    [z.string()]: z.any()
-  }))
-});
+    const result = await timeEngine.process(userId);
 
-router.post('/parse', requireAuth, (req: AuthenticatedRequest, res) => {
-  try {
-    const parsed = parseTimestampSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid input' });
+    // Save if requested
+    if (save) {
+      const savedEvents = await timeStorage.saveTimeEvents(result.events);
+      const savedBlocks = await timeStorage.saveTimeBlocks(result.blocks);
+      const savedProcrastination = await timeStorage.saveProcrastinationSignals(result.procrastination);
+      await timeStorage.saveEnergyCurve(userId, result.energy);
+      const savedScore = await timeStorage.saveTimeScore(userId, result.score);
+      const savedInsights = await timeStorage.saveInsights(result.insights || []);
+      
+      result.events = savedEvents;
+      result.blocks = savedBlocks;
+      result.procrastination = savedProcrastination;
+      if (savedScore) {
+        result.score = savedScore;
+      }
+      result.insights = savedInsights;
     }
 
-    const { input, precision, timezone } = parsed.data;
-    const result = timeEngine.parseTimestamp(input, precision);
-    
-    if (timezone) {
-      result.timestamp = timeEngine.normalizeTimestamp(result.timestamp, result.precision, timezone);
-    }
+    res.json(result);
+  })
+);
 
-    res.json({
-      timestamp: result.timestamp.toISOString(),
-      precision: result.precision,
-      type: result.type,
-      confidence: result.confidence,
-      formatted: timeEngine.formatTimestamp(result.timestamp, result.precision, timezone)
-    });
-  } catch (error) {
-    logger.error({ error }, 'Failed to parse timestamp');
-    res.status(500).json({ error: 'Failed to parse timestamp' });
-  }
-});
+/**
+ * GET /api/time/events
+ * Get time events
+ */
+router.get(
+  '/events',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const category = req.query.category as string | undefined;
 
-router.post('/range', requireAuth, (req: AuthenticatedRequest, res) => {
-  try {
-    const parsed = timeRangeSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid input' });
-    }
+    const events = await timeStorage.getTimeEvents(userId, category as any);
 
-    const { start, end, precision } = parsed.data;
-    const range = timeEngine.createTimeRange(start, end, precision);
+    res.json({ events });
+  })
+);
 
-    res.json({
-      start: range.start.toISOString(),
-      end: range.end.toISOString(),
-      precision: range.precision
-    });
-  } catch (error) {
-    logger.error({ error }, 'Failed to create time range');
-    res.status(500).json({ error: 'Failed to create time range' });
-  }
-});
+/**
+ * GET /api/time/blocks
+ * Get time blocks
+ */
+router.get(
+  '/blocks',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const category = req.query.category as string | undefined;
 
-router.post('/sort', requireAuth, (req: AuthenticatedRequest, res) => {
-  try {
-    const parsed = sortChronologicallySchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid input' });
-    }
+    const blocks = await timeStorage.getTimeBlocks(userId, category as any);
 
-    const sorted = timeEngine.sortChronologically(parsed.data.items);
+    res.json({ blocks });
+  })
+);
 
-    res.json({
-      sorted: sorted.map(item => ({
-        item: item.item,
-        timestamp: item.timestamp.toISOString(),
-        normalizedTimestamp: item.normalizedTimestamp.toISOString(),
-        precision: item.precision
-      }))
-    });
-  } catch (error) {
-    logger.error({ error }, 'Failed to sort chronologically');
-    res.status(500).json({ error: 'Failed to sort chronologically' });
-  }
-});
+/**
+ * GET /api/time/procrastination
+ * Get procrastination signals
+ */
+router.get(
+  '/procrastination',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const type = req.query.type as string | undefined;
 
-router.post('/difference', requireAuth, (req: AuthenticatedRequest, res) => {
-  try {
-    const { from, to } = req.body;
-    if (!from) {
-      return res.status(400).json({ error: 'Missing "from" timestamp' });
-    }
+    const signals = await timeStorage.getProcrastinationSignals(userId, type as any);
 
-    const difference = timeEngine.getTimeDifference(from, to);
-    res.json(difference);
-  } catch (error) {
-    logger.error({ error }, 'Failed to calculate time difference');
-    res.status(500).json({ error: 'Failed to calculate time difference' });
-  }
-});
+    res.json({ signals });
+  })
+);
 
-router.post('/conflicts', requireAuth, (req: AuthenticatedRequest, res) => {
-  try {
-    const { timestamps, thresholdMinutes } = req.body;
-    if (!Array.isArray(timestamps)) {
-      return res.status(400).json({ error: 'timestamps must be an array' });
-    }
+/**
+ * GET /api/time/energy
+ * Get energy curve
+ */
+router.get(
+  '/energy',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
 
-    const conflicts = timeEngine.detectTemporalConflicts(timestamps, thresholdMinutes || 60);
-    res.json({ conflicts });
-  } catch (error) {
-    logger.error({ error }, 'Failed to detect conflicts');
-    res.status(500).json({ error: 'Failed to detect conflicts' });
-  }
-});
+    const curve = await timeStorage.getLatestEnergyCurve(userId);
 
-router.post('/timezone', requireAuth, (req: AuthenticatedRequest, res) => {
-  try {
-    const { timezone } = req.body;
-    if (!timezone) {
-      return res.status(400).json({ error: 'Missing timezone' });
-    }
+    res.json({ energy: curve });
+  })
+);
 
-    timeEngine.setUserTimezone(timezone);
-    res.json({ success: true, timezone });
-  } catch (error) {
-    logger.error({ error }, 'Failed to set timezone');
-    res.status(500).json({ error: 'Failed to set timezone' });
-  }
-});
+/**
+ * GET /api/time/score
+ * Get latest time score
+ */
+router.get(
+  '/score',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
 
-export const timeRouter = router;
+    const score = await timeStorage.getLatestTimeScore(userId);
 
+    res.json({ score });
+  })
+);
+
+/**
+ * GET /api/time/stats
+ * Get time statistics
+ */
+router.get(
+  '/stats',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    const stats = await timeStorage.getStats(userId);
+
+    res.json(stats);
+  })
+);
+
+export default router;

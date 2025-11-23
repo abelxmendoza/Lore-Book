@@ -27,6 +27,7 @@ export type Message = {
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   isStreaming?: boolean;
   feedback?: 'positive' | 'negative' | null;
+  isSystemMessage?: boolean;
 };
 
 type ChatMessageProps = {
@@ -63,6 +64,23 @@ export const ChatMessage = ({
   };
 
   const isUser = message.role === 'user';
+  const isSystem = message.isSystemMessage;
+
+  // System messages get special styling
+  if (isSystem) {
+    return (
+      <div className="flex justify-center my-4">
+        <Card className="max-w-[90%] bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-sm text-white/90">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <p>{message.content}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -174,22 +192,26 @@ export const ChatMessage = ({
             
             {/* Inline Citations */}
             {message.citations && message.citations.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {message.citations.map((citation, idx) => (
-                  <Badge
-                    key={idx}
-                    variant="outline"
-                    className="text-xs border-primary/30 text-primary/70 cursor-pointer hover:border-primary/50 hover:text-primary transition-colors"
-                    onClick={() => {
-                      const source = message.sources?.find(s => s.id === citation.sourceId);
-                      if (source && onSourceClick) {
-                        onSourceClick(source);
-                      }
-                    }}
-                  >
-                    {citation.text}
-                  </Badge>
-                ))}
+              <div className="mt-3 pt-2 border-t border-border/20">
+                <div className="text-xs text-white/50 mb-1.5">Sources:</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {message.citations.map((citation, idx) => (
+                    <Badge
+                      key={idx}
+                      variant="outline"
+                      className="text-xs border-primary/30 text-primary/70 bg-primary/5 cursor-pointer hover:border-primary/50 hover:text-primary hover:bg-primary/10 transition-all"
+                      onClick={() => {
+                        const source = message.sources?.find(s => s.id === citation.sourceId);
+                        if (source && onSourceClick) {
+                          onSourceClick(source);
+                        }
+                      }}
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1 inline" />
+                      {citation.text}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             )}
           </div>

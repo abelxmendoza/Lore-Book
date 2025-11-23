@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import { User } from 'lucide-react';
 
 import { getConfigDebug, isSupabaseConfigured, supabase } from '../lib/supabase';
 import { Logo } from './Logo';
@@ -7,8 +8,9 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { TermsOfServiceAgreement } from './security/TermsOfServiceAgreement';
 import { useTermsAcceptance } from '../hooks/useTermsAcceptance';
+import { useGuest } from '../contexts/GuestContext';
 
-const AuthScreen = ({ onEmailLogin }: { onEmailLogin: (email: string) => Promise<void> }) => {
+const AuthScreen = ({ onEmailLogin, onGuestLogin }: { onEmailLogin: (email: string) => Promise<void>; onGuestLogin: () => void }) => {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +74,32 @@ const AuthScreen = ({ onEmailLogin }: { onEmailLogin: (email: string) => Promise
       <Button variant="ghost" className="mt-3 w-full" onClick={handleGoogle} disabled={loading}>
         {loading ? 'Connecting...' : 'Continue with Google'}
       </Button>
+      
+      <div className="my-6 flex items-center w-full">
+        <div className="flex-1 border-t border-white/10"></div>
+        <span className="px-3 text-xs text-white/40">or</span>
+        <div className="flex-1 border-t border-white/10"></div>
+      </div>
+
+      {/* Guest Login - Prominent */}
+      <div className="w-full space-y-2">
+        <Button 
+          variant="outline" 
+          className="w-full border-primary/50 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/70 transition-all" 
+          onClick={onGuestLogin}
+          disabled={loading}
+          size="lg"
+        >
+          <User className="mr-2 h-5 w-5" />
+          Continue as Guest
+        </Button>
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-left">
+          <p className="text-xs font-medium text-primary mb-1">✨ Try without signing up</p>
+          <p className="text-xs text-white/60 leading-relaxed">
+            Explore all features with limited chat access. No account required.
+          </p>
+        </div>
+      </div>
       {status && <p className="mt-4 text-xs text-green-400">{status}</p>}
       {error && <p className="mt-4 text-xs text-red-400">{error}</p>}
     </div>
@@ -89,6 +117,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   const [initError, setInitError] = useState<string | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const { status: termsStatus, loading: termsLoading, error: termsError } = useTermsAcceptance();
+  const { isGuest, startGuestSession } = useGuest();
 
   const isConfigured = isSupabaseConfigured();
   const debug = getConfigDebug();
@@ -102,8 +131,8 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     }
   }, [termsStatus, termsLoading]);
   
-  // Bypass auth check in dev mode
-  if (DEV_DISABLE_AUTH) {
+  // Allow guest access or authenticated users
+  if (isGuest || DEV_DISABLE_AUTH) {
     // Skip terms agreement in dev mode if disabled
     if (DEV_DISABLE_TERMS) {
       return <>{children}</>;
@@ -264,8 +293,12 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  if (!session) {
-    return <AuthScreen onEmailLogin={handleEmailLogin} />;
+  const handleGuestLogin = () => {
+    startGuestSession();
+  };
+
+  if (!session && !isGuest) {
+    return <AuthScreen onEmailLogin={handleEmailLogin} onGuestLogin={handleGuestLogin} />;
   }
 
   // Check terms acceptance after authentication

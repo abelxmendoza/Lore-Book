@@ -1,9 +1,11 @@
-import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp, Settings, UserCog } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
 import { Button } from './ui/button';
 import { config } from '../config/env';
+import { useAuth } from '../lib/supabase';
+import { isAdmin } from '../middleware/roleGuard';
 
 interface SidebarProps {
   activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity';
@@ -13,22 +15,7 @@ interface SidebarProps {
   devModeEnabled?: boolean;
 }
 
-const surfaceToRoute: Record<string, string> = {
-  'chat': '/chat',
-  'timeline': '/timeline',
-  'search': '/search',
-  'characters': '/characters',
-  'locations': '/locations',
-  'memoir': '/memoir',
-  'lorebook': '/lorebook',
-  'discovery': '/discovery',
-  'continuity': '/continuity',
-  'subscription': '/subscription',
-  'pricing': '/pricing',
-  'security': '/security',
-  'privacy-settings': '/privacy',
-  'privacy-policy': '/privacy',
-};
+import { getRouteFromSurface, surfaceToRoute } from '../utils/routeMapping';
 
 export const Sidebar = ({
   activeSurface,
@@ -38,6 +25,8 @@ export const Sidebar = ({
   devModeEnabled
 }: SidebarProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
 
   const handleSurfaceChange = (surface: string) => {
     // Navigate to route
@@ -48,6 +37,12 @@ export const Sidebar = ({
     // Also call the callback for backward compatibility
     onSurfaceChange?.(surface as any);
   };
+
+  const isActiveRoute = (path: string) => {
+    return location.pathname === path || location.pathname.startsWith(path + '/');
+  };
+
+  const userIsAdmin = user ? isAdmin(user) : false;
 
   return (
   <aside className="hidden w-64 flex-col border-r border-border/60 bg-black/20 p-6 text-white lg:flex">
@@ -186,7 +181,61 @@ export const Sidebar = ({
         <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
         Privacy & Security
       </button>
+      <button
+        onClick={() => navigate('/account')}
+        aria-label="Open account center"
+        aria-current={isActiveRoute('/account') ? 'page' : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+          isActiveRoute('/account')
+            ? 'border-primary bg-primary/10 text-white'
+            : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+        }`}
+      >
+        <UserCog className="h-4 w-4 text-primary" aria-hidden="true" />
+        Account Center
+      </button>
+      {/* Admin Console - Visible to admins in production, all users in development */}
+      {(userIsAdmin || !config.env.isProduction) && (
+        <button
+          onClick={() => navigate('/admin')}
+          aria-label="Open admin console"
+          aria-current={isActiveRoute('/admin') ? 'page' : undefined}
+          className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+            isActiveRoute('/admin')
+              ? 'border-primary bg-primary/10 text-white'
+              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+          }`}
+        >
+          <Settings className="h-4 w-4 text-primary" aria-hidden="true" />
+          Admin Console
+        </button>
+      )}
     </div>
+    
+    {/* Development Routes - Only visible in development */}
+    {!config.env.isProduction && (
+      <div className="mt-8 border-t border-border/30 pt-4">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">Development</p>
+        <div className="space-y-2">
+          {!import.meta.env.PROD && (
+            <button
+              onClick={() => navigate('/dev-console')}
+              aria-label="Open dev console"
+              aria-current={isActiveRoute('/dev-console') ? 'page' : undefined}
+              className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+                isActiveRoute('/dev-console')
+                  ? 'border-primary bg-primary/10 text-white'
+                  : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+              }`}
+            >
+              <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+              Dev Console
+            </button>
+          )}
+        </div>
+      </div>
+    )}
+    
     <div className="mt-auto">
       <div className="space-y-2">
         <Button className="w-full" leftIcon={<Plus className="h-4 w-4" />} onClick={onCreateChapter}>

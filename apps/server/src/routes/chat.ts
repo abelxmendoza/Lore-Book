@@ -104,4 +104,58 @@ router.post('/', requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequ
   }
 });
 
+// Feedback endpoint for chat messages
+const feedbackSchema = z.object({
+  messageId: z.string().min(1),
+  feedback: z.enum(['positive', 'negative']),
+  message: z.string().optional(),
+  conversationContext: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string()
+  })).optional()
+});
+
+router.post('/feedback', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = feedbackSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+
+    const { messageId, feedback, message, conversationContext } = parsed.data;
+    const userId = req.user!.id;
+
+    // Store feedback for model improvement
+    // In the future, this could be stored in a database for training
+    logger.info({
+      userId,
+      messageId,
+      feedback,
+      hasMessage: !!message,
+      contextLength: conversationContext?.length || 0
+    }, 'Chat message feedback received');
+
+    // TODO: Store in database for model fine-tuning
+    // await feedbackService.saveFeedback({
+    //   userId,
+    //   messageId,
+    //   feedback,
+    //   message,
+    //   conversationContext,
+    //   timestamp: new Date()
+    // });
+
+    res.json({
+      success: true,
+      message: 'Feedback recorded. Thank you for helping us improve!'
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Feedback endpoint error');
+    res.status(500).json({
+      error: 'Failed to record feedback',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 export const chatRouter = router;

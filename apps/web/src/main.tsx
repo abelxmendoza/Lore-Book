@@ -8,6 +8,7 @@ import { Router } from './pages/Router';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DevBanner } from './components/DevBanner';
 import { DevelopmentNotice } from './components/DevelopmentNotice';
+import { GuestProvider } from './contexts/GuestContext';
 import { config, log } from './config/env';
 import { initMonitoring } from './lib/monitoring';
 
@@ -28,9 +29,11 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <BrowserRouter>
-        <DevelopmentNotice />
-        <Router />
-        <DevBanner />
+        <GuestProvider>
+          <DevelopmentNotice />
+          <Router />
+          <DevBanner />
+        </GuestProvider>
       </BrowserRouter>
     </ErrorBoundary>
   </StrictMode>

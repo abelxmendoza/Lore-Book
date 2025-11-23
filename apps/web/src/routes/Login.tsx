@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, Sparkles } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Sparkles, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { useGuest } from '../contexts/GuestContext';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { startGuestSession } = useGuest();
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -135,6 +137,38 @@ export default function Login() {
               </svg>
               Continue with Google
             </Button>
+
+            <div className="relative mt-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10"></div>
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-black/40 px-2 text-white/40">or</span>
+              </div>
+            </div>
+
+            {/* Guest Login */}
+            <div className="space-y-3">
+              <Button
+                variant="outline"
+                className="w-full border-primary/50 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/70 transition-all"
+                onClick={() => {
+                  startGuestSession();
+                  navigate('/');
+                }}
+                disabled={loading}
+                size="lg"
+              >
+                <User className="mr-2 h-5 w-5" />
+                Continue as Guest
+              </Button>
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-left">
+                <p className="text-xs font-medium text-primary mb-1">✨ Try without signing up</p>
+                <p className="text-xs text-white/60 leading-relaxed">
+                  Explore all features with limited chat access. No account required.
+                </p>
+              </div>
+            </div>
 
             {status && (
               <div className="rounded-lg bg-green-500/20 border border-green-500/50 p-4 text-green-400 text-sm">

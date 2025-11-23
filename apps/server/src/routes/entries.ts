@@ -468,6 +468,108 @@ router.post('/clusters', requireAuth, async (req: AuthenticatedRequest, res) => 
 });
 
 /**
+ * POST /api/entries/:id/link
+ * Link two entries together
+ */
+router.post('/:id/link', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const schema = z.object({
+      targetEntryId: z.string().uuid(),
+      relationshipType: z.enum(['related', 'follows', 'references', 'similar']).optional().default('related'),
+      strength: z.number().min(0).max(1).optional().default(0.5)
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+
+    const { targetEntryId, relationshipType, strength } = parsed.data;
+    const userId = req.user!.id;
+
+    // Verify both entries exist and belong to user
+    const sourceEntry = await memoryService.getEntry(userId, id);
+    const targetEntry = await memoryService.getEntry(userId, targetEntryId);
+
+    if (!sourceEntry) {
+      return res.status(404).json({ error: 'Source entry not found' });
+    }
+    if (!targetEntry) {
+      return res.status(404).json({ error: 'Target entry not found' });
+    }
+
+    // Store link in metadata
+    const sourceLinks = (sourceEntry.metadata?.links as Array<{
+      entryId: string;
+      type: string;
+      strength: number;
+      createdAt: string;
+    }>) || [];
+
+    // Check if link already exists
+    if (sourceLinks.some(link => link.entryId === targetEntryId)) {
+      return res.status(400).json({ error: 'Entries are already linked' });
+    }
+
+    // Add link to source entry
+    sourceLinks.push({
+      entryId: targetEntryId,
+      type: relationshipType,
+      strength,
+      createdAt: new Date().toISOString()
+    });
+
+    await memoryService.updateEntry(userId, id, {
+      metadata: {
+        ...sourceEntry.metadata,
+        links: sourceLinks
+      }
+    });
+
+    // Also add reverse link to target entry
+    const targetLinks = (targetEntry.metadata?.links as Array<{
+      entryId: string;
+      type: string;
+      strength: number;
+      createdAt: string;
+    }>) || [];
+
+    if (!targetLinks.some(link => link.entryId === id)) {
+      targetLinks.push({
+        entryId: id,
+        type: relationshipType,
+        strength,
+        createdAt: new Date().toISOString()
+      });
+
+      await memoryService.updateEntry(userId, targetEntryId, {
+        metadata: {
+          ...targetEntry.metadata,
+          links: targetLinks
+        }
+      });
+    }
+
+    void emitDelta('entry.link', { sourceId: id, targetId: targetEntryId }, userId);
+
+    res.json({
+      success: true,
+      message: 'Entries linked successfully',
+      link: {
+        sourceId: id,
+        targetId: targetEntryId,
+        type: relationshipType,
+        strength
+      }
+    });
+  } catch (error) {
+    logger.error({ error }, 'Error linking entries');
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to link entries' });
+  }
+});
+
+/**
  * @swagger
  * /api/entries/:id/linked:
  *   get:

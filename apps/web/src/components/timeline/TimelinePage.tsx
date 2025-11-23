@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { TimelineSkeleton } from '../ui/skeleton';
 import { useTimelineData, type TimelineEntry } from '../../hooks/useTimelineData';
 import { useTimelineKeyboard } from '../../hooks/useTimelineKeyboard';
+import { fetchJson } from '../../lib/api';
 import { TimelineHeader } from './TimelineHeader';
 import { DateRuler } from './DateRuler';
 import { EraBands } from './EraBands';
@@ -193,13 +194,30 @@ export const TimelinePage = () => {
   }, []);
 
   // Handle memory click
-  const handleMemoryClick = useCallback((entry: TimelineEntry) => {
+  const handleMemoryClick = useCallback(async (entry: TimelineEntry) => {
     if (linkingMode && linkingSource) {
       // Create link between memories
-      // TODO: Implement API call to link memories
-      console.log('Linking', linkingSource, 'to', entry.id);
-      setLinkingMode(false);
-      setLinkingSource(null);
+      try {
+        await fetchJson(`/api/entries/${linkingSource}/link`, {
+          method: 'POST',
+          body: JSON.stringify({
+            targetEntryId: entry.id,
+            relationshipType: 'related',
+            strength: 0.5
+          })
+        });
+        
+        // Refresh timeline to show the link
+        if (onRefresh) {
+          onRefresh();
+        }
+        
+        setLinkingMode(false);
+        setLinkingSource(null);
+      } catch (error) {
+        console.error('Failed to link memories:', error);
+        alert('Failed to link memories. Please try again.');
+      }
     } else {
       setSelectedMemory(entry);
     }

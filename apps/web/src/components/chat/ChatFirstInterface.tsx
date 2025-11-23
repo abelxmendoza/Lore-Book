@@ -1,14 +1,17 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Download, Search as SearchIcon, X } from 'lucide-react';
+import { Bot, Download, Search as SearchIcon, X, LogIn, AlertCircle } from 'lucide-react';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { useChatStream } from '../../hooks/useChatStream';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useGuest } from '../../contexts/GuestContext';
 import { ChatMessage, type Message, type ChatSource } from './ChatMessage';
 import { ChatComposer } from './ChatComposer';
 import { ChatLoadingPulse } from './ChatLoadingPulse';
 import { ChatSourcesBar } from './ChatSourcesBar';
 import { ChatSourceNavigator } from './ChatSourceNavigator';
 import { ChatSearch } from './ChatSearch';
+import { GuestSignUpPrompt } from '../guest/GuestSignUpPrompt';
 import { parseSlashCommand, handleSlashCommand } from '../../utils/chatCommands';
 import { exportConversationAsMarkdown, exportConversationAsJSON, downloadFile } from '../../utils/exportConversation';
 import { fetchJson } from '../../lib/api';
@@ -34,31 +37,30 @@ export const ChatFirstInterface = () => {
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
   const { streamChat, isStreaming, cancel } = useChatStream();
+  const { isGuest, canSendChatMessage, incrementChatMessage, guestState } = useGuest();
+
+  // Use localStorage hook for conversation persistence
+  const [savedMessages, setSavedMessages, clearSavedMessages] = useLocalStorage<Message[]>(
+    CONVERSATION_STORAGE_KEY,
+    []
+  );
 
   // Load conversation from localStorage on mount
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(CONVERSATION_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setMessages(parsed.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp)
-        })));
-      }
-    } catch (error) {
-      console.error('Failed to load conversation:', error);
+    if (savedMessages.length > 0) {
+      setMessages(savedMessages.map((msg: any) => ({
+        ...msg,
+        timestamp: new Date(msg.timestamp)
+      })));
     }
-  }, []);
+  }, []); // Only on mount
 
   // Save conversation to localStorage whenever messages change
   useEffect(() => {
-    try {
-      localStorage.setItem(CONVERSATION_STORAGE_KEY, JSON.stringify(messages));
-    } catch (error) {
-      console.error('Failed to save conversation:', error);
+    if (messages.length > 0) {
+      setSavedMessages(messages);
     }
-  }, [messages]);
+  }, [messages, setSavedMessages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -70,6 +72,20 @@ export const ChatFirstInterface = () => {
 
   const handleSend = async (messageText: string) => {
     if (!messageText.trim() || loading) return;
+
+    // Check guest chat limits
+    if (isGuest && !canSendChatMessage()) {
+      // Limit reached - show sign-up prompt
+      const limitMessage: Message = {
+        id: `limit-${Date.now()}`,
+        role: 'assistant',
+        content: `You've reached the guest chat limit (${guestState?.chatLimit || 5} messages). Sign up to continue chatting and unlock unlimited access to all features!`,
+        timestamp: new Date(),
+        isSystemMessage: true,
+      };
+      setMessages((prev) => [...prev, limitMessage]);
+      return;
+    }
 
     // Check for slash commands
     const parsed = parseSlashCommand(messageText.trim());
@@ -108,10 +124,21 @@ export const ChatFirstInterface = () => {
     setLoadingStage('analyzing');
     setLoadingProgress(0);
     
+    // Increment guest message count (before sending, so limit is checked)
+    if (isGuest) {
+      const limitReached = incrementChatMessage();
+      if (limitReached) {
+        analytics.track('guest_chat_limit_reached', {
+          messagesUsed: guestState?.chatMessagesUsed || 0,
+        });
+      }
+    }
+    
     // Track message sent
     analytics.track('chat_message_sent', { 
       messageLength: messageText.trim().length,
-      hasSlashCommand: messageText.trim().startsWith('/')
+      hasSlashCommand: messageText.trim().startsWith('/'),
+      isGuest: isGuest,
     });
 
     // Build conversation history
@@ -134,10 +161,14 @@ export const ChatFirstInterface = () => {
 
     setMessages((prev) => [...prev, assistantMessage]);
     setStreamingMessageId(assistantMessageId);
+    
+    // Start with analyzing stage
+    setLoadingStage('analyzing');
     setLoadingProgress(10);
 
     let accumulatedContent = '';
     let metadata: any = null;
+    let hasReceivedMetadata = false;
 
     try {
       await streamChat(
@@ -153,21 +184,36 @@ export const ChatFirstInterface = () => {
                 : msg
             )
           );
-          setLoadingStage('generating');
-          // Update progress as content streams
-          const progress = Math.min(90, 60 + (accumulatedContent.length / 500) * 30);
-          setLoadingProgress(progress);
+          
+          // Transition to generating stage once we start receiving content
+          if (!hasReceivedMetadata) {
+            setLoadingStage('generating');
+            setLoadingProgress(70);
+            hasReceivedMetadata = true;
+          }
+          
+          // Update progress as content streams (70-95%)
+          const contentProgress = Math.min(25, (accumulatedContent.length / 1000) * 25);
+          setLoadingProgress(70 + contentProgress);
         },
         (meta) => {
           metadata = meta;
-          setLoadingStage('connecting');
-          setLoadingProgress(50);
+          
+          // Progress through stages based on metadata
+          if (meta.sources && meta.sources.length > 0) {
+            setLoadingStage('searching');
+            setLoadingProgress(30);
+          } else if (meta.connections && meta.connections.length > 0) {
+            setLoadingStage('connecting');
+            setLoadingProgress(50);
+          } else {
+            setLoadingStage('reasoning');
+            setLoadingProgress(60);
+          }
         },
         () => {
-          // Complete
-          setLoading(false);
-          setStreamingMessageId(null);
-          setLoadingStage('analyzing');
+          // Complete - show final stage briefly
+          setLoadingStage('generating');
           setLoadingProgress(100);
           
           // Update message with final metadata
@@ -182,11 +228,20 @@ export const ChatFirstInterface = () => {
                     sources: metadata?.sources,
                     connections: metadata?.connections,
                     continuityWarnings: metadata?.continuityWarnings,
-                    timelineUpdates: metadata?.timelineUpdates
+                    timelineUpdates: metadata?.timelineUpdates,
+                    citations: metadata?.citations || []
                   }
                 : msg
             )
           );
+
+          // Complete loading after a brief delay
+          setTimeout(() => {
+            setLoading(false);
+            setStreamingMessageId(null);
+            setLoadingStage('analyzing');
+            setLoadingProgress(0);
+          }, 300);
 
           // Refresh data
           Promise.all([
@@ -194,9 +249,6 @@ export const ChatFirstInterface = () => {
             refreshTimeline(),
             refreshChapters()
           ]).catch(console.error);
-          
-          // Reset progress after a delay
-          setTimeout(() => setLoadingProgress(0), 500);
         },
         (error) => {
           setLoading(false);
@@ -248,11 +300,16 @@ export const ChatFirstInterface = () => {
 
     analytics.track('chat_message_regenerated', { messageId });
 
-    // Remove the old assistant message
-    setMessages((prev) => prev.filter(m => m.id !== messageId));
+    // Remove the old assistant message and any messages after it
+    setMessages((prev) => {
+      const index = prev.findIndex(m => m.id === messageId);
+      return index >= 0 ? prev.slice(0, index) : prev;
+    });
 
-    // Resend
-    await handleSend(userMessage.content);
+    // Resend with a slight delay for better UX
+    setTimeout(() => {
+      handleSend(userMessage.content);
+    }, 100);
   };
 
   const handleEdit = (messageId: string) => {
@@ -347,11 +404,12 @@ export const ChatFirstInterface = () => {
   const handleClearConversation = () => {
     if (confirm('Clear conversation history?')) {
       setMessages([]);
-      localStorage.removeItem(CONVERSATION_STORAGE_KEY);
+      clearSavedMessages();
     }
   };
 
-  const handleFeedback = (messageId: string, feedback: 'positive' | 'negative') => {
+  const handleFeedback = async (messageId: string, feedback: 'positive' | 'negative') => {
+    // Optimistically update UI
     setMessages((prev) =>
       prev.map((msg) =>
         msg.id === messageId
@@ -363,8 +421,30 @@ export const ChatFirstInterface = () => {
     // Track feedback for analytics
     analytics.track('chat_message_feedback', { messageId, feedback });
     
-    // Could send feedback to backend for learning
-    // TODO: Send to backend API for model improvement
+    // Send feedback to backend for model improvement
+    try {
+      const message = messages.find(m => m.id === messageId);
+      const conversationContext = messages
+        .slice(Math.max(0, messages.findIndex(m => m.id === messageId) - 3))
+        .slice(0, 6)
+        .map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }));
+
+      await fetchJson('/api/chat/feedback', {
+        method: 'POST',
+        body: JSON.stringify({
+          messageId,
+          feedback,
+          message: message?.content,
+          conversationContext
+        })
+      });
+    } catch (error) {
+      console.error('Failed to send feedback to backend:', error);
+      // Don't show error to user - feedback is non-critical
+    }
   };
 
   // Keyboard shortcuts
@@ -572,12 +652,20 @@ export const ChatFirstInterface = () => {
         />
       )}
 
+      {/* Guest Sign-Up Prompt */}
+      {isGuest && !canSendChatMessage() && (
+        <div className="px-4 pb-4">
+          <GuestSignUpPrompt />
+        </div>
+      )}
+
       {/* Composer */}
       <ChatComposer
         input={input}
         onInputChange={setInput}
         onSubmit={handleSend}
         loading={loading || isStreaming}
+        disabled={isGuest && !canSendChatMessage()}
       />
 
       {/* Footer Actions */}

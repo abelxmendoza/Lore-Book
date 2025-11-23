@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { CalendarRange, PenLine, PlusCircle, Search as SearchIcon, Wand2 } from 'lucide-react';
 import { config } from '../config/env';
@@ -41,6 +41,8 @@ import { PrivacySettings } from '../components/security/PrivacySettings';
 import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
 import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
 import { ContinuityDashboard } from '../components/continuity/ContinuityDashboard';
+import { GuestBanner } from '../components/guest/GuestBanner';
+import { getSurfaceFromRoute } from '../utils/routeMapping';
 
 const formatRange = (days = 7) => {
   const end = new Date();
@@ -102,12 +104,21 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
   const [persona, setPersona] = useState('The Archivist');
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeSurface, setActiveSurface] = useState<SurfaceKey>(defaultSurface || 'chat');
   const [insights, setInsights] = useState<any>(null);
 
-  // Sync route → surface
+  // Sync route → surface (handles browser back/forward and direct navigation)
   useEffect(() => {
-    if (defaultSurface) {
+    const surfaceFromRoute = getSurfaceFromRoute(location.pathname);
+    if (surfaceFromRoute !== activeSurface) {
+      setActiveSurface(surfaceFromRoute);
+    }
+  }, [location.pathname]);
+
+  // Also sync when defaultSurface prop changes (from route params)
+  useEffect(() => {
+    if (defaultSurface && defaultSurface !== activeSurface) {
       setActiveSurface(defaultSurface);
     }
   }, [defaultSurface]);
@@ -242,6 +253,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         </header>
 
+        <GuestBanner />
         <TrialBanner />
 
         {activeSurface === 'chat' && (

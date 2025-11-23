@@ -24,26 +24,26 @@ const stageConfig: Record<LoadingStage, { icon: any; label: string; description:
   searching: {
     icon: Sparkles,
     label: 'Searching memories',
-    description: 'Finding related entries via HQI',
+    description: 'Finding related entries via semantic search',
     progress: 40
   },
   connecting: {
     icon: Users,
     label: 'Finding connections',
-    description: 'Linking to characters and chapters',
+    description: 'Linking to characters, chapters, and related memories',
     progress: 60
   },
   reasoning: {
     icon: BookOpen,
     label: 'Reasoning',
-    description: 'Understanding context and patterns',
+    description: 'Understanding context and building insights',
     progress: 80
   },
   generating: {
     icon: Loader2,
     label: 'Generating response',
     description: 'Crafting your personalized answer',
-    progress: 100
+    progress: 95
   }
 };
 

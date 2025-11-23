@@ -7,6 +7,7 @@ import { config } from '../config/env';
 
 const apiEnv = import.meta.env.VITE_API_ENV || import.meta.env.MODE || 'dev';
 const adminUserId = import.meta.env.VITE_ADMIN_USER_ID;
+const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || 'abelxmendoza@gmail.com';
 const isProduction = config.env.isProduction;
 
 /**
@@ -15,12 +16,22 @@ const isProduction = config.env.isProduction;
 export const isAdmin = (user: any): boolean => {
   if (!user) return false;
   
+  // Check by email (primary method for Abel Mendoza)
+  if (user.email === adminEmail) {
+    return true;
+  }
+  
+  // Check by user ID
+  if (adminUserId && user.id === adminUserId) {
+    return true;
+  }
+  
+  // Check by role metadata
   return !!(
     user.user_metadata?.role === 'admin' ||
     user.user_metadata?.role === 'developer' ||
     user.app_metadata?.role === 'admin' ||
-    user.app_metadata?.role === 'developer' ||
-    (adminUserId && user.id === adminUserId)
+    user.app_metadata?.role === 'developer'
   );
 };
 

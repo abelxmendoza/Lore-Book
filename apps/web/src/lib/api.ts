@@ -48,6 +48,10 @@ export const fetchJson = async <T>(
     }
   }
   
+  // Create abort controller for timeout (declare outside try for catch access)
+  const controller = new AbortController();
+  let timeoutId: NodeJS.Timeout | null = null;
+  
   try {
     // Add CSRF token and auth headers
     const headers = addCsrfHeaders({
@@ -56,9 +60,8 @@ export const fetchJson = async <T>(
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     });
     
-    // Create abort controller for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), config.api.timeout);
+    // Set timeout
+    timeoutId = setTimeout(() => controller.abort(), config.api.timeout);
     
     const res = await fetch(url, {
       headers,
@@ -66,7 +69,7 @@ export const fetchJson = async <T>(
       ...init
     });
     
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
     
     // Track performance
     const duration = performance.now() - startTime;
@@ -124,8 +127,8 @@ export const fetchJson = async <T>(
     }
     
     return data;
-  } catch (error) {
-    clearTimeout(timeoutId);
+      } catch (error) {
+        if (timeoutId) clearTimeout(timeoutId);
     
     // Network errors (backend not running)
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
