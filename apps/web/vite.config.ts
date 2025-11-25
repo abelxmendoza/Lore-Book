@@ -64,16 +64,8 @@ export default defineConfig({
   },
   build: {
     // Production optimizations
-    minify: process.env.NODE_ENV === 'production' ? 'terser' : false,
+    minify: process.env.NODE_ENV === 'production' ? 'esbuild' : false,
     sourcemap: process.env.NODE_ENV !== 'production', // Disable source maps in production for security
-    // Remove console.log in production (keep console.error and console.warn)
-    terserOptions: process.env.NODE_ENV === 'production' ? {
-      compress: {
-        drop_console: true,
-        drop_debugger: true,
-        pure_funcs: ['console.log', 'console.debug', 'console.info'],
-      },
-    } : undefined,
     rollupOptions: {
       output: {
         manualChunks: (id) => {
@@ -124,7 +116,6 @@ export default defineConfig({
     // Faster builds in development
     ...(process.env.NODE_ENV === 'development' && {
       minify: false,
-      terserOptions: undefined,
     }),
   },
   optimizeDeps: {
@@ -140,6 +131,11 @@ export default defineConfig({
   },
   // Development-specific optimizations
   esbuild: {
+    // Remove console.log in production (keep console.error and console.warn)
+    ...(process.env.NODE_ENV === 'production' && {
+      drop: ['console', 'debugger'],
+      pure: ['console.log', 'console.debug', 'console.info'],
+    }),
     // Faster builds in development
     ...(process.env.NODE_ENV === 'development' && {
       minifyIdentifiers: false,

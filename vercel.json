@@ -1,11 +1,6 @@
 {
-  "installCommand": "npm install --legacy-peer-deps",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "buildCommand": "cd apps/web && rm -rf node_modules && npm ci --legacy-peer-deps && npm run build",
+  "outputDirectory": "apps/web/dist",
   "framework": "vite",
-  "env": {
-    "NODE_VERSION": "20",
-    "VITE_USE_MOCK_DATA": "true",
-    "VITE_SHOW_DEV_NOTICE": "true"
-  }
+  "installCommand": "cd apps/web && rm -rf node_modules && npm ci --legacy-peer-deps"
 }

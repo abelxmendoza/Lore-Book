@@ -203,6 +203,7 @@ export const MemoryPanel = ({
   };
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return 'No date';
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
       weekday: 'long',
@@ -214,6 +215,10 @@ export const MemoryPanel = ({
     });
   };
 
+  if (!currentEntry) {
+    return null;
+  }
+
   const era = currentEntry.era ? eras.find(e => e.id === currentEntry.era) : null;
   const saga = currentEntry.saga ? sagas.find(s => s.id === currentEntry.saga) : null;
   const arc = currentEntry.arc ? arcs.find(a => a.id === currentEntry.arc) : null;
@@ -224,9 +229,6 @@ export const MemoryPanel = ({
 
   return (
     <>
-      {/* Toast Notifications */}
-      <toast.ToastContainer />
-      
       <div
         className={`fixed right-0 top-0 h-full w-[500px] bg-gradient-to-br from-black via-purple-950/20 to-black border-l border-primary/30 shadow-2xl z-50 transition-transform duration-300 ${
           currentEntry ? 'translate-x-0' : 'translate-x-full'
@@ -448,6 +450,7 @@ export const MemoryPanel = ({
           )}
         </div>
       </div>
+    </div>
     </>
   );
 };

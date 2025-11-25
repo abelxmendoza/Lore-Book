@@ -7,7 +7,7 @@ import { FlagTogglePanel } from '../../components/dev/FlagTogglePanel';
 import { DBTools } from '../../components/dev/DBTools';
 import { canAccessDevConsole } from '../../middleware/roleGuard';
 import { config } from '../../config/env';
-import { NotFound } from '../../routes/NotFound';
+import NotFound from '../../routes/NotFound';
 
 type DevView = 'logs' | 'components' | 'preview' | 'api' | 'flags' | 'db';
 
