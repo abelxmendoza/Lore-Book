@@ -69,11 +69,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // React and core dependencies
+          // React and core dependencies - must be first and available globally
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router')) {
             return 'react-vendor';
           }
-          // UI libraries
+          // UI libraries - ensure they can access React
+          // Note: @radix-ui depends on React, so React must load first
           if (id.includes('node_modules/@radix-ui') || id.includes('node_modules/lucide-react')) {
             return 'ui-vendor';
           }
@@ -85,11 +86,11 @@ export default defineConfig({
           if (id.includes('node_modules/@sentry') || id.includes('node_modules/posthog')) {
             return 'monitoring-vendor';
           }
-          // Large visualization libraries
+          // Large visualization libraries (depend on React)
           if (id.includes('node_modules/recharts') || id.includes('node_modules/react-force-graph')) {
             return 'visualization-vendor';
           }
-          // Markdown and code editing
+          // Markdown and code editing (depend on React)
           if (id.includes('node_modules/react-markdown') || id.includes('node_modules/react-simple-code-editor') || id.includes('node_modules/highlight.js')) {
             return 'editor-vendor';
           }
