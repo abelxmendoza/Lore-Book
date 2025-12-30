@@ -1,4 +1,4 @@
-import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp, Settings, UserCog } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp, Settings, UserCog, HelpCircle, Images, Eye } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -8,8 +8,8 @@ import { useAuth } from '../lib/supabase';
 import { isAdmin } from '../middleware/roleGuard';
 
 interface SidebarProps {
-  activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity';
-  onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity') => void;
+  activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions';
+  onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions') => void;
   onCreateChapter?: () => void;
   onToggleDevMode?: () => void;
   devModeEnabled?: boolean;
@@ -143,6 +143,32 @@ export const Sidebar = ({
         Lore Book
       </button>
       <button
+        onClick={() => handleSurfaceChange('photos')}
+        aria-label="Open photo album"
+        aria-current={activeSurface === 'photos' ? 'page' : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+          activeSurface === 'photos'
+            ? 'border-primary bg-primary/10 text-white'
+            : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+        }`}
+      >
+        <Images className="h-4 w-4 text-primary" aria-hidden="true" />
+        Photo Album
+      </button>
+      <button
+        onClick={() => handleSurfaceChange('perceptions')}
+        aria-label="Open perceptions view"
+        aria-current={activeSurface === 'perceptions' ? 'page' : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+          activeSurface === 'perceptions'
+            ? 'border-primary bg-primary/10 text-white'
+            : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+        }`}
+      >
+        <Eye className="h-4 w-4 text-primary" aria-hidden="true" />
+        Perceptions
+      </button>
+      <button
         onClick={() => handleSurfaceChange('discovery')}
         aria-label="Open discovery hub"
         aria-current={activeSurface === 'discovery' ? 'page' : undefined}
@@ -180,6 +206,19 @@ export const Sidebar = ({
       >
         <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
         Privacy & Security
+      </button>
+      <button
+        onClick={() => handleSurfaceChange('guide')}
+        aria-label="Open user guide"
+        aria-current={activeSurface === 'guide' ? 'page' : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+          activeSurface === 'guide'
+            ? 'border-primary bg-primary/10 text-white'
+            : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+        }`}
+      >
+        <HelpCircle className="h-4 w-4 text-primary" aria-hidden="true" />
+        User Guide
       </button>
       <button
         onClick={() => navigate('/account')}

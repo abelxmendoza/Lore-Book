@@ -69,5 +69,49 @@ router.get('/language-style', requireAuth, async (req: AuthenticatedRequest, res
   }
 });
 
+// ChatGPT conversation import
+router.post('/import-chatgpt', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { conversation } = req.body;
+    
+    if (!conversation || typeof conversation !== 'string') {
+      return res.status(400).json({ error: 'Conversation text is required' });
+    }
+
+    const { chatGPTImportService } = await import('../services/chatGPTImportService');
+    const result = await chatGPTImportService.processConversation(req.user!.id, conversation);
+
+    res.json(result);
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to import ChatGPT conversation');
+    res.status(500).json({
+      error: 'Failed to process conversation',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Import selected facts
+router.post('/import-facts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { facts } = req.body;
+    
+    if (!facts || !Array.isArray(facts)) {
+      return res.status(400).json({ error: 'Facts array is required' });
+    }
+
+    const { chatGPTImportService } = await import('../services/chatGPTImportService');
+    const result = await chatGPTImportService.importFacts(req.user!.id, facts);
+
+    res.json(result);
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to import facts');
+    res.status(500).json({
+      error: 'Failed to import facts',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 export const documentsRouter = router;
 

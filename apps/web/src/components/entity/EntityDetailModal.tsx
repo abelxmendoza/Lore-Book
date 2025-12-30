@@ -100,6 +100,34 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
         } else if (entity.type === 'memory' && entity.memory) {
           // Memory connections - find related characters and locations
           const memory = entity.memory;
+          
+          // Load full journal entry to get summary and other details
+          try {
+            const journalEntry = await fetchJson<{
+              id: string;
+              content: string;
+              date: string;
+              summary?: string | null;
+              tags?: string[];
+              mood?: string | null;
+              metadata?: Record<string, unknown>;
+            }>(`/api/entries/${memory.journal_entry_id}`);
+            
+            // Update entity data with full journal entry info
+            setEntityData(prev => ({
+              ...prev,
+              memory: {
+                ...memory,
+                summary: journalEntry.summary,
+                tags: journalEntry.tags,
+                mood: journalEntry.mood,
+                metadata: journalEntry.metadata
+              } as any
+            }));
+          } catch (error) {
+            console.error('Error loading journal entry:', error);
+          }
+          
           if (memory.timeline_memberships && memory.timeline_memberships.length > 0) {
           // Load timeline connections
           const timelineConnections = memory.timeline_memberships.map(timelineId => ({
@@ -212,7 +240,16 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
       if (entity.location.description) prompt += `Description: ${entity.location.description}\n`;
     } else if (entity.type === 'memory' && entity.memory) {
       prompt += `Memory from ${new Date(entity.memory.start_time).toLocaleDateString()}\n`;
+      if ((entity.memory as any).summary) {
+        prompt += `Summary: ${(entity.memory as any).summary}\n`;
+      }
       prompt += `Content: ${entity.memory.content}\n`;
+      if ((entity.memory as any).mood) {
+        prompt += `Mood: ${(entity.memory as any).mood}\n`;
+      }
+      if ((entity.memory as any).tags && (entity.memory as any).tags.length > 0) {
+        prompt += `Tags: ${(entity.memory as any).tags.join(', ')}\n`;
+      }
     }
     
     prompt += `\nHelp the user understand, update, and explore this ${entity.type}. `;
@@ -590,15 +627,47 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
                       <div>
                         <label className="text-xs text-white/60 mb-1 block">Date</label>
                         <p className="text-sm text-white">
-                          {new Date(entityData.memory.start_time).toLocaleDateString()}
+                          {new Date(entityData.memory.start_time).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
                         </p>
                       </div>
+                      {(entityData.memory as any).summary && (
+                        <div>
+                          <label className="text-xs text-white/60 mb-1 block">Summary</label>
+                          <p className="text-sm text-white/80 whitespace-pre-wrap">
+                            {(entityData.memory as any).summary}
+                          </p>
+                        </div>
+                      )}
                       <div>
                         <label className="text-xs text-white/60 mb-1 block">Content</label>
                         <p className="text-sm text-white/80 whitespace-pre-wrap">
                           {entityData.memory.content}
                         </p>
                       </div>
+                      {(entityData.memory as any).mood && (
+                        <div>
+                          <label className="text-xs text-white/60 mb-1 block">Mood</label>
+                          <p className="text-sm text-white/80">
+                            {(entityData.memory as any).mood}
+                          </p>
+                        </div>
+                      )}
+                      {(entityData.memory as any).tags && (entityData.memory as any).tags.length > 0 && (
+                        <div>
+                          <label className="text-xs text-white/60 mb-1 block">Tags</label>
+                          <div className="flex flex-wrap gap-2">
+                            {(entityData.memory as any).tags.map((tag: string, idx: number) => (
+                              <Badge key={idx} variant="outline" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {entityData.memory.timeline_names && entityData.memory.timeline_names.length > 0 && (
                         <div>
                           <label className="text-xs text-white/60 mb-1 block">Timelines</label>
@@ -611,6 +680,12 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
                           </div>
                         </div>
                       )}
+                      <div>
+                        <label className="text-xs text-white/60 mb-1 block">Time Precision</label>
+                        <p className="text-sm text-white/80 capitalize">
+                          {entityData.memory.time_precision} ({(entityData.memory.time_confidence * 100).toFixed(0)}% confidence)
+                        </p>
+                      </div>
                     </CardContent>
                   </Card>
                 </>

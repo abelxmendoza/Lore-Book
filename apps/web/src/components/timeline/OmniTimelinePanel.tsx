@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
-import { Search, Sparkles, Calendar, X, Loader2, Layers, Network, List } from 'lucide-react';
+import { Search, Sparkles, Calendar, X, Loader2, Layers, Network, List, Info } from 'lucide-react';
 import { useChronology } from '../../hooks/useChronology';
 import { useTimelineV2 } from '../../hooks/useTimelineV2';
 import { searchTimelines } from '../../api/timelineV2';
@@ -9,6 +9,7 @@ import { GraphTimelineView } from './GraphTimelineView';
 import { ListTimelineView } from './ListTimelineView';
 import { VerticalTimelineView } from './VerticalTimelineView';
 import { useEntityModal } from '../../contexts/EntityModalContext';
+import { LayerDefinitions, type TimelineLayer } from './LayerDefinitions';
 import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
 
 type ViewMode = 'chronology' | 'hierarchy' | 'graph' | 'list' | 'vertical';
@@ -57,6 +58,8 @@ export const OmniTimelinePanel = () => {
   const [timelineSearchLoading, setTimelineSearchLoading] = useState(false);
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<Timeline[]>([]);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [selectedLayers, setSelectedLayers] = useState<TimelineLayer[]>([]);
+  const [showLayerDefinitions, setShowLayerDefinitions] = useState(false);
 
   // Fetch timelines and chronology
   const { timelines, loading: timelinesLoading } = useTimelineV2();
@@ -108,7 +111,7 @@ export const OmniTimelinePanel = () => {
     setShowAutocomplete(false);
   };
 
-  // Handle timeline search
+  // Handle timeline search with layer filtering
   const handleTimelineSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
       setTimelineSearchResults([]);
@@ -117,7 +120,11 @@ export const OmniTimelinePanel = () => {
 
     setTimelineSearchLoading(true);
     try {
-      const results = await searchTimelines(query, 'natural');
+      const filters: any = {};
+      if (selectedLayers.length > 0) {
+        filters.layer_type = selectedLayers;
+      }
+      const results = await searchTimelines(query, 'natural', filters);
       const foundTimelines = results.results.map(result => result.timeline);
       setTimelineSearchResults(foundTimelines);
     } catch (error) {
@@ -126,7 +133,7 @@ export const OmniTimelinePanel = () => {
     } finally {
       setTimelineSearchLoading(false);
     }
-  }, []);
+  }, [selectedLayers]);
 
   // Generate recommended timelines (ongoing, most significant, or recent)
   const recommendedTimelines = useMemo(() => {
@@ -262,85 +269,129 @@ export const OmniTimelinePanel = () => {
           </div>
 
           {/* Timeline Search - Primary with Autocomplete */}
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white/40 z-10" />
-            <input
-              type="text"
-              placeholder="Search timelines (e.g., 'fitness transformation', 'web development journey')..."
-              value={timelineSearchQuery}
-              onChange={(e) => {
-                setTimelineSearchQuery(e.target.value);
-                setShowAutocomplete(true);
-              }}
-              onFocus={() => setShowAutocomplete(true)}
-              onBlur={(e) => {
-                // Only hide if clicking outside the autocomplete dropdown
-                const relatedTarget = e.relatedTarget as HTMLElement;
-                if (!relatedTarget || !relatedTarget.closest('.autocomplete-dropdown')) {
-                  setTimeout(() => setShowAutocomplete(false), 200);
-                }
-              }}
-              className="w-full pl-10 pr-4 py-2 bg-black/40 border border-border/60 rounded-lg text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/40 transition-all backdrop-blur-sm"
-            />
-            {timelineSearchLoading && (
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              </div>
-            )}
-            {timelineSearchQuery && !timelineSearchLoading && (
-              <button
-                onClick={() => {
-                  setTimelineSearchQuery('');
-                  setTimelineSearchResults([]);
-                  setSelectedTimelineId(null);
-                  setSelectedTimeline(null);
-                  setShowAutocomplete(false);
+          <div className="space-y-2 mb-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white/40 z-10" />
+              <input
+                type="text"
+                placeholder="Search timelines (e.g., 'fitness transformation', 'web development journey')..."
+                value={timelineSearchQuery}
+                onChange={(e) => {
+                  setTimelineSearchQuery(e.target.value);
+                  setShowAutocomplete(true);
                 }}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/40 hover:text-white/60 z-10"
+                onFocus={() => setShowAutocomplete(true)}
+                onBlur={(e) => {
+                  // Only hide if clicking outside the autocomplete dropdown
+                  const relatedTarget = e.relatedTarget as HTMLElement;
+                  if (!relatedTarget || !relatedTarget.closest('.autocomplete-dropdown')) {
+                    setTimeout(() => setShowAutocomplete(false), 200);
+                  }
+                }}
+                className="w-full pl-10 pr-10 py-2 bg-black/40 border border-border/60 rounded-lg text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/40 transition-all backdrop-blur-sm"
+              />
+              <button
+                onClick={() => setShowLayerDefinitions(!showLayerDefinitions)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors z-10"
+                title="View layer definitions"
               >
-                <X className="w-4 h-4" />
+                <Info className="w-4 h-4" />
               </button>
-            )}
+              {timelineSearchLoading && (
+                <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                </div>
+              )}
+              {timelineSearchQuery && !timelineSearchLoading && (
+                <button
+                  onClick={() => {
+                    setTimelineSearchQuery('');
+                    setTimelineSearchResults([]);
+                    setSelectedTimelineId(null);
+                    setSelectedTimeline(null);
+                    setShowAutocomplete(false);
+                  }}
+                  className="absolute right-10 top-1/2 transform -translate-y-1/2 text-white/40 hover:text-white/60 z-10"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
 
-            {/* Autocomplete Dropdown */}
-            {showAutocomplete && autocompleteSuggestionsFiltered.length > 0 && (
-              <div className="autocomplete-dropdown absolute top-full left-0 right-0 mt-1 bg-black/90 border border-border/60 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
-                {autocompleteSuggestionsFiltered.map((timeline) => (
-                  <button
-                    key={timeline.id}
-                    type="button"
-                    onMouseDown={(e) => {
-                      // Use onMouseDown instead of onClick to prevent blur from firing first
-                      e.preventDefault();
-                      handleTimelineSelect(timeline);
-                      setTimelineSearchQuery(timeline.title);
-                      setShowAutocomplete(false);
-                    }}
-                    className="w-full text-left px-4 py-3 hover:bg-primary/20 transition-colors border-b border-border/40 last:border-b-0 cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{timeline.title}</p>
-                        {timeline.description && (
-                          <p className="text-xs text-white/60 mt-0.5 line-clamp-1">{timeline.description}</p>
-                        )}
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <span className="text-[10px] text-white/50 capitalize px-2 py-0.5 bg-primary/20 rounded">
-                            {timeline.timeline_type.replace('_', ' ')}
-                          </span>
-                          {timeline.tags.length > 0 && (
-                            <span className="text-[10px] text-white/40">
-                              {timeline.tags.slice(0, 2).join(', ')}
-                            </span>
+              {/* Autocomplete Dropdown */}
+              {showAutocomplete && autocompleteSuggestionsFiltered.length > 0 && (
+                <div className="autocomplete-dropdown absolute top-full left-0 right-0 mt-1 bg-black/90 border border-border/60 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                  {autocompleteSuggestionsFiltered.map((timeline) => (
+                    <button
+                      key={timeline.id}
+                      type="button"
+                      onMouseDown={(e) => {
+                        // Use onMouseDown instead of onClick to prevent blur from firing first
+                        e.preventDefault();
+                        handleTimelineSelect(timeline);
+                        setTimelineSearchQuery(timeline.title);
+                        setShowAutocomplete(false);
+                      }}
+                      className="w-full text-left px-4 py-3 hover:bg-primary/20 transition-colors border-b border-border/40 last:border-b-0 cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{timeline.title}</p>
+                          {timeline.description && (
+                            <p className="text-xs text-white/60 mt-0.5 line-clamp-1">{timeline.description}</p>
                           )}
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <span className="text-[10px] text-white/50 capitalize px-2 py-0.5 bg-primary/20 rounded">
+                              {timeline.timeline_type.replace('_', ' ')}
+                            </span>
+                            {timeline.tags.length > 0 && (
+                              <span className="text-[10px] text-white/40">
+                                {timeline.tags.slice(0, 2).join(', ')}
+                              </span>
+                            )}
+                          </div>
                         </div>
+                        <Search className="w-4 h-4 text-white/40 flex-shrink-0 ml-2" />
                       </div>
-                      <Search className="w-4 h-4 text-white/40 flex-shrink-0 ml-2" />
-                    </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {/* Layer Filter Pills */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-white/50">Filter by layer:</span>
+              {(['mythos', 'epoch', 'era', 'saga', 'arc', 'chapter', 'scene', 'action', 'microaction'] as TimelineLayer[]).map((layer) => {
+                const isSelected = selectedLayers.includes(layer);
+                return (
+                  <button
+                    key={layer}
+                    onClick={() => {
+                      setSelectedLayers(prev => 
+                        isSelected 
+                          ? prev.filter(l => l !== layer)
+                          : [...prev, layer]
+                      );
+                    }}
+                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors border ${
+                      isSelected
+                        ? 'bg-primary/20 text-white border-primary/40'
+                        : 'bg-black/40 text-white/60 border-border/60 hover:border-primary/40'
+                    }`}
+                  >
+                    {layer.charAt(0).toUpperCase() + layer.slice(1)}
                   </button>
-                ))}
-              </div>
-            )}
+                );
+              })}
+              {selectedLayers.length > 0 && (
+                <button
+                  onClick={() => setSelectedLayers([])}
+                  className="px-2 py-0.5 rounded text-xs text-white/50 hover:text-white/80 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Timeline Search Results */}
@@ -435,6 +486,32 @@ export const OmniTimelinePanel = () => {
                   <X className="w-4 h-4" />
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Layer Definitions Modal/Expansion */}
+          {showLayerDefinitions && (
+            <div className="mt-4 p-4 bg-black/60 border border-border/60 rounded-lg max-h-[600px] overflow-y-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-white">Timeline Layers Explained</h3>
+                <button
+                  onClick={() => setShowLayerDefinitions(false)}
+                  className="text-white/40 hover:text-white/70"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <LayerDefinitions 
+                selectedLayers={selectedLayers}
+                onLayerToggle={(layer) => {
+                  setSelectedLayers(prev => 
+                    prev.includes(layer)
+                      ? prev.filter(l => l !== layer)
+                      : [...prev, layer]
+                  );
+                }}
+                showFilters={true}
+              />
             </div>
           )}
 

@@ -12,12 +12,15 @@ export type SurfaceKey =
   | 'locations'
   | 'memoir'
   | 'lorebook'
+  | 'photos'
+  | 'perceptions'
   | 'discovery'
   | 'continuity'
   | 'subscription'
   | 'pricing'
   | 'security'
-  | 'privacy-settings';
+  | 'privacy-settings'
+  | 'guide';
 
 /**
  * Map from route path to surface key
@@ -31,12 +34,15 @@ export const routeToSurface: Record<string, SurfaceKey> = {
   '/locations': 'locations',
   '/memoir': 'memoir',
   '/lorebook': 'lorebook',
+  '/photos': 'photos',
+  '/perceptions': 'perceptions',
   '/discovery': 'discovery',
   '/continuity': 'continuity',
   '/subscription': 'subscription',
   '/pricing': 'pricing',
   '/security': 'security',
   '/privacy': 'privacy-settings',
+  '/guide': 'guide',
 };
 
 /**
@@ -50,12 +56,15 @@ export const surfaceToRoute: Record<SurfaceKey, string> = {
   'locations': '/locations',
   'memoir': '/memoir',
   'lorebook': '/lorebook',
+  'photos': '/photos',
+  'perceptions': '/perceptions',
   'discovery': '/discovery',
   'continuity': '/continuity',
   'subscription': '/subscription',
   'pricing': '/pricing',
   'security': '/security',
   'privacy-settings': '/privacy',
+  'guide': '/guide',
 };
 
 /**

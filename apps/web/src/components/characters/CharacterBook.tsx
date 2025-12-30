@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye } from 'lucide-react';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
@@ -23,11 +23,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-1',
     name: 'Sarah Chen',
+    first_name: 'Sarah',
+    last_name: 'Chen',
     alias: ['Sarah', 'Sara'],
     pronouns: 'she/her',
     archetype: 'ally',
     role: 'Best Friend',
     status: 'active',
+    importance_level: 'major',
+    importance_score: 87,
+    is_nickname: false,
     summary: 'My closest friend and confidante. We met in college and have been inseparable ever since. Sarah is incredibly supportive, honest, and always knows how to make me laugh.',
     tags: ['friendship', 'support', 'honesty', 'loyalty'],
     metadata: {
@@ -45,11 +50,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-2',
     name: 'Marcus Johnson',
+    first_name: 'Marcus',
+    last_name: 'Johnson',
     alias: ['Marcus', 'Marc'],
     pronouns: 'he/him',
     archetype: 'mentor',
     role: 'Mentor & Coach',
     status: 'active',
+    importance_level: 'major',
+    importance_score: 82,
+    is_nickname: false,
     summary: 'A wise mentor who has guided me through many career and life decisions. Marcus has decades of experience and always provides thoughtful, nuanced advice.',
     tags: ['mentorship', 'wisdom', 'career', 'guidance'],
     metadata: {
@@ -67,11 +77,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-3',
     name: 'Alex Rivera',
+    first_name: 'Alex',
+    last_name: 'Rivera',
     alias: ['Alex', 'A.R.'],
     pronouns: 'they/them',
     archetype: 'collaborator',
     role: 'Creative Collaborator',
     status: 'active',
+    importance_level: 'supporting',
+    importance_score: 65,
+    is_nickname: false,
     summary: 'A talented creative collaborator I\'ve worked with on several projects. Alex brings fresh perspectives and we complement each other\'s skills well.',
     tags: ['collaboration', 'creativity', 'professional', 'innovation'],
     metadata: {
@@ -89,11 +104,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-4',
     name: 'Jordan Kim',
+    first_name: 'Jordan',
+    last_name: 'Kim',
     alias: ['Jordan', 'J'],
     pronouns: 'they/them',
     archetype: 'family',
     role: 'Sibling',
     status: 'active',
+    importance_level: 'protagonist',
+    importance_score: 95,
+    is_nickname: false,
     summary: 'My sibling and one of the most important people in my life. We\'ve grown closer over the years and now have deep, meaningful conversations about life, dreams, and everything in between.',
     tags: ['family', 'sibling', 'support', 'connection'],
     metadata: {
@@ -107,11 +127,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-5',
     name: 'Dr. Maya Patel',
+    first_name: 'Maya',
+    last_name: 'Patel',
     alias: ['Maya', 'Dr. Patel'],
     pronouns: 'she/her',
     archetype: 'mentor',
     role: 'Life Coach',
     status: 'active',
+    importance_level: 'supporting',
+    importance_score: 68,
+    is_nickname: false,
     summary: 'A life coach who has helped me navigate personal challenges and develop better self-awareness. Her coaching style is gentle but direct, and she has a gift for asking the right questions.',
     tags: ['coaching', 'growth', 'self-awareness', 'wellness'],
     metadata: {
@@ -129,11 +154,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-6',
     name: 'David Martinez',
+    first_name: 'David',
+    last_name: 'Martinez',
     alias: generateNicknames('David Martinez', 'A close friend from my photography class. David has an incredible eye for composition and always pushes me to see things from new angles.', 'Photography Partner', ['photography', 'creativity', 'friendship']),
     pronouns: 'he/him',
     archetype: 'friend',
     role: 'Photography Partner',
     status: 'active',
+    importance_level: 'supporting',
+    importance_score: 58,
+    is_nickname: false,
     summary: 'A close friend from my photography class. David has an incredible eye for composition and always pushes me to see things from new angles.',
     tags: ['photography', 'creativity', 'friendship', 'art'],
     metadata: {
@@ -150,11 +180,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-7',
     name: 'Sophia Anderson',
+    first_name: 'Sophia',
+    last_name: 'Anderson',
     alias: generateNicknames('Sophia Anderson', 'A brilliant writer I met at a workshop. Her feedback is always insightful and she\'s helped me improve my craft significantly.', 'Writing Mentor', ['writing', 'mentorship', 'creativity']),
     pronouns: 'she/her',
     archetype: 'mentor',
     role: 'Writing Mentor',
     status: 'active',
+    importance_level: 'major',
+    importance_score: 79,
+    is_nickname: false,
     summary: 'A brilliant writer I met at a workshop. Her feedback is always insightful and she\'s helped me improve my craft significantly.',
     tags: ['writing', 'mentorship', 'creativity', 'feedback'],
     metadata: {
@@ -172,11 +207,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-8',
     name: 'Emma Thompson',
+    first_name: 'Emma',
+    last_name: 'Thompson',
     alias: generateNicknames('Emma Thompson', 'A friend from my writing group. We share a passion for storytelling and often exchange feedback on each other\'s work. Her perspective is always valuable.', 'Friend', ['friendship', 'writing', 'creativity', 'community']),
     pronouns: 'she/her',
     archetype: 'friend',
     role: 'Friend',
     status: 'active',
+    importance_level: 'minor',
+    importance_score: 42,
+    is_nickname: false,
     summary: 'A friend from my writing group. We share a passion for storytelling and often exchange feedback on each other\'s work. Her perspective is always valuable.',
     tags: ['friendship', 'writing', 'creativity', 'community'],
     metadata: {
@@ -193,11 +233,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-9',
     name: 'Dr. James Mitchell',
+    first_name: 'James',
+    last_name: 'Mitchell',
     alias: ['James', 'Dr. Mitchell'],
     pronouns: 'he/him',
     archetype: 'mentor',
     role: 'Therapist',
     status: 'active',
+    importance_level: 'supporting',
+    importance_score: 72,
+    is_nickname: false,
     summary: 'My therapist who has helped me navigate anxiety and build emotional resilience. His approach is evidence-based and compassionate.',
     tags: ['therapy', 'mental-health', 'growth', 'support'],
     metadata: {
@@ -214,11 +259,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-10',
     name: 'Luna Martinez',
+    first_name: 'Luna',
+    last_name: 'Martinez',
     alias: generateNicknames('Luna Martinez', 'A spontaneous friend who always pushes me out of my comfort zone. We\'ve gone on countless adventures together and she\'s taught me to embrace uncertainty.', 'Adventure Partner', ['adventure', 'spontaneity', 'friendship', 'growth']),
     pronouns: 'she/her',
     archetype: 'friend',
     role: 'Adventure Partner',
     status: 'active',
+    importance_level: 'major',
+    importance_score: 84,
+    is_nickname: false,
     summary: 'A spontaneous friend who always pushes me out of my comfort zone. We\'ve gone on countless adventures together and she\'s taught me to embrace uncertainty.',
     tags: ['adventure', 'spontaneity', 'friendship', 'growth'],
     metadata: {
@@ -235,11 +285,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-11',
     name: 'River Song',
+    first_name: 'River',
+    last_name: 'Song',
     alias: generateNicknames('River Song', 'A brilliant artist and collaborator. We\'ve worked on several creative projects together and their vision always inspires me to think differently.', 'Creative Partner', ['art', 'creativity', 'collaboration', 'inspiration']),
     pronouns: 'they/them',
     archetype: 'collaborator',
     role: 'Creative Partner',
     status: 'active',
+    importance_level: 'supporting',
+    importance_score: 61,
+    is_nickname: false,
     summary: 'A brilliant artist and collaborator. We\'ve worked on several creative projects together and their vision always inspires me to think differently.',
     tags: ['art', 'creativity', 'collaboration', 'inspiration'],
     metadata: {
@@ -257,11 +312,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-12',
     name: 'Noah Thompson',
+    first_name: 'Noah',
+    last_name: 'Thompson',
     alias: generateNicknames('Noah Thompson', 'A thoughtful friend who always asks the deep questions. Our conversations about life, purpose, and meaning have been transformative.', 'Philosophy Friend', ['philosophy', 'deep-thoughts', 'friendship']),
     pronouns: 'he/him',
     archetype: 'friend',
     role: 'Philosophy Friend',
     status: 'active',
+    importance_level: 'supporting',
+    importance_score: 63,
+    is_nickname: false,
     summary: 'A thoughtful friend who always asks the deep questions. Our conversations about life, purpose, and meaning have been transformative.',
     tags: ['philosophy', 'deep-thoughts', 'friendship', 'conversation'],
     metadata: {
@@ -278,11 +338,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-13',
     name: 'Zoe Chen',
+    first_name: 'Zoe',
+    last_name: 'Chen',
     alias: generateNicknames('Zoe Chen', 'My cousin and childhood confidante. Even though we live far apart now, we still have the deepest conversations about life, dreams, and family.', 'Cousin', ['family', 'cousin', 'childhood', 'connection']),
     pronouns: 'she/her',
     archetype: 'family',
     role: 'Cousin',
     status: 'active',
+    importance_level: 'major',
+    importance_score: 89,
+    is_nickname: false,
     summary: 'My cousin and childhood confidante. Even though we live far apart now, we still have the deepest conversations about life, dreams, and family.',
     tags: ['family', 'cousin', 'childhood', 'connection'],
     metadata: {
@@ -299,11 +364,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-14',
     name: 'Professor Elena Rodriguez',
+    first_name: 'Elena',
+    last_name: 'Rodriguez',
     alias: ['Prof. Rodriguez', 'Elena'],
     pronouns: 'she/her',
     archetype: 'mentor',
     role: 'Academic Advisor',
     status: 'active',
+    importance_level: 'major',
+    importance_score: 76,
+    is_nickname: false,
     summary: 'My former professor who became a mentor. She saw potential in me when I didn\'t see it in myself and has guided my academic and career journey.',
     tags: ['education', 'mentorship', 'academic', 'guidance'],
     metadata: {
@@ -321,11 +391,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-15',
     name: 'Sam Taylor',
+    first_name: 'Sam',
+    last_name: 'Taylor',
     alias: generateNicknames('Sam Taylor', 'My workout partner and accountability buddy. We motivate each other to stay active and healthy, and our gym sessions are always filled with great conversations.', 'Gym Buddy', ['fitness', 'health', 'friendship', 'accountability']),
     pronouns: 'they/them',
     archetype: 'friend',
     role: 'Gym Buddy',
     status: 'active',
+    importance_level: 'minor',
+    importance_score: 38,
+    is_nickname: false,
     summary: 'My workout partner and accountability buddy. We motivate each other to stay active and healthy, and our gym sessions are always filled with great conversations.',
     tags: ['fitness', 'health', 'friendship', 'accountability'],
     metadata: {
@@ -342,11 +417,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-16',
     name: 'Isabella Garcia',
+    first_name: 'Isabella',
+    last_name: 'Garcia',
     alias: generateNicknames('Isabella Garcia', 'A yoga instructor who has become a close friend. Her calming presence and wisdom about mindfulness have deeply influenced my practice.', 'Yoga Instructor', ['yoga', 'mindfulness', 'wellness', 'friendship']),
     pronouns: 'she/her',
     archetype: 'friend',
     role: 'Yoga Instructor',
     status: 'active',
+    importance_level: 'supporting',
+    importance_score: 69,
+    is_nickname: false,
     summary: 'A yoga instructor who has become a close friend. Her calming presence and wisdom about mindfulness have deeply influenced my practice.',
     tags: ['yoga', 'mindfulness', 'wellness', 'friendship'],
     metadata: {
@@ -364,11 +444,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-17',
     name: 'Maya Patel',
+    first_name: 'Maya',
+    last_name: 'Patel',
     alias: generateNicknames('Maya Patel', 'The organizer of our monthly book club. Her thoughtful discussion questions always lead to deep conversations about literature, life, and everything in between.', 'Book Club Leader', ['books', 'discussion', 'friendship', 'intellectual']),
     pronouns: 'she/her',
     archetype: 'friend',
     role: 'Book Club Leader',
     status: 'active',
+    importance_level: 'minor',
+    importance_score: 45,
+    is_nickname: false,
     summary: 'The organizer of our monthly book club. Her thoughtful discussion questions always lead to deep conversations about literature, life, and everything in between.',
     tags: ['books', 'discussion', 'friendship', 'intellectual'],
     metadata: {
@@ -385,11 +470,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-18',
     name: 'Alex Kim',
+    first_name: 'Alex',
+    last_name: 'Kim',
     alias: generateNicknames('Alex Kim', 'My work best friend. We started at the company around the same time and have supported each other through projects, challenges, and career growth.', 'Work Best Friend', ['work', 'colleague', 'friendship', 'professional']),
     pronouns: 'he/him',
     archetype: 'colleague',
     role: 'Work Best Friend',
     status: 'active',
+    importance_level: 'supporting',
+    importance_score: 56,
+    is_nickname: false,
     summary: 'My work best friend. We started at the company around the same time and have supported each other through projects, challenges, and career growth.',
     tags: ['work', 'colleague', 'friendship', 'professional'],
     metadata: {
@@ -406,11 +496,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-19',
     name: 'Oliver Bennett',
+    first_name: 'Oliver',
+    last_name: 'Bennett',
     alias: generateNicknames('Oliver Bennett', 'The owner of my favorite bookstore. He has an encyclopedic knowledge of literature and always recommends the perfect book for my mood.', 'Bookstore Owner', ['books', 'literature', 'knowledge', 'community']),
     pronouns: 'he/him',
     archetype: 'friend',
     role: 'Bookstore Owner',
     status: 'active',
+    importance_level: 'minor',
+    importance_score: 35,
+    is_nickname: false,
     summary: 'The owner of my favorite bookstore. He has an encyclopedic knowledge of literature and always recommends the perfect book for my mood.',
     tags: ['books', 'literature', 'knowledge', 'community'],
     metadata: {
@@ -427,11 +522,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-20',
     name: 'Dr. Sarah Williams',
+    first_name: 'Sarah',
+    last_name: 'Williams',
     alias: ['Dr. Williams', 'Sarah'],
     pronouns: 'she/her',
     archetype: 'mentor',
     role: 'Research Supervisor',
     status: 'active',
+    importance_level: 'major',
+    importance_score: 74,
+    is_nickname: false,
     summary: 'My research supervisor during grad school. Her rigorous standards and supportive guidance shaped my approach to research and critical thinking.',
     tags: ['research', 'academic', 'mentorship', 'guidance'],
     metadata: {
@@ -448,11 +548,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-21',
     name: 'Jamie Park',
+    first_name: 'Jamie',
+    last_name: 'Park',
     alias: generateNicknames('Jamie Park', 'A fellow musician I met at an open mic. We\'ve jammed together countless times and they\'ve introduced me to genres I never would have explored.', 'Music Partner', ['music', 'creativity', 'friendship', 'collaboration']),
     pronouns: 'they/them',
     archetype: 'friend',
     role: 'Music Partner',
     status: 'active',
+    importance_level: 'minor',
+    importance_score: 41,
+    is_nickname: false,
     summary: 'A fellow musician I met at an open mic. We\'ve jammed together countless times and they\'ve introduced me to genres I never would have explored.',
     tags: ['music', 'creativity', 'friendship', 'collaboration'],
     metadata: {
@@ -470,11 +575,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-22',
     name: 'Ethan Walker',
+    first_name: 'Ethan',
+    last_name: 'Walker',
     alias: generateNicknames('Ethan Walker', 'My hiking partner and outdoor enthusiast. We\'ve conquered many trails together and he\'s taught me to appreciate the wilderness.', 'Hiking Partner', ['hiking', 'outdoors', 'adventure', 'friendship']),
     pronouns: 'he/him',
     archetype: 'friend',
     role: 'Hiking Partner',
     status: 'active',
+    importance_level: 'minor',
+    importance_score: 39,
+    is_nickname: false,
     summary: 'My hiking partner and outdoor enthusiast. We\'ve conquered many trails together and he\'s taught me to appreciate the wilderness.',
     tags: ['hiking', 'outdoors', 'adventure', 'friendship'],
     metadata: {
@@ -491,11 +601,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-23',
     name: 'Riley Chen',
+    first_name: 'Riley',
+    last_name: 'Chen',
     alias: generateNicknames('Riley Chen', 'A friend I met in a philosophy class. We have the most engaging late-night conversations about existence, ethics, and the meaning of life.', 'Philosophy Buddy', ['philosophy', 'discussion', 'friendship', 'intellectual']),
     pronouns: 'they/them',
     archetype: 'friend',
     role: 'Philosophy Buddy',
     status: 'active',
+    importance_level: 'minor',
+    importance_score: 33,
+    is_nickname: false,
     summary: 'A friend I met in a philosophy class. We have the most engaging late-night conversations about existence, ethics, and the meaning of life.',
     tags: ['philosophy', 'discussion', 'friendship', 'intellectual'],
     metadata: {
@@ -512,11 +627,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-24',
     name: 'Ava Foster',
+    first_name: 'Ava',
+    last_name: 'Foster',
     alias: generateNicknames('Ava Foster', 'A fellow artist at the shared studio. Her bold style and fearless experimentation inspire me to push my creative boundaries.', 'Studio Artist', ['art', 'creativity', 'inspiration', 'collaboration']),
     pronouns: 'she/her',
     archetype: 'collaborator',
     role: 'Studio Artist',
     status: 'active',
+    importance_level: 'background',
+    importance_score: 28,
+    is_nickname: false,
     summary: 'A fellow artist at the shared studio. Her bold style and fearless experimentation inspire me to push my creative boundaries.',
     tags: ['art', 'creativity', 'inspiration', 'collaboration'],
     metadata: {
@@ -534,11 +654,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-25',
     name: 'Dr. Michael Chen',
+    first_name: 'Michael',
+    last_name: 'Chen',
     alias: ['Dr. Chen', 'Michael'],
     pronouns: 'he/him',
     archetype: 'mentor',
     role: 'Career Advisor',
     status: 'active',
+    importance_level: 'supporting',
+    importance_score: 52,
+    is_nickname: false,
     summary: 'A career advisor who helped me navigate job transitions and negotiate offers. His practical advice and industry insights have been invaluable.',
     tags: ['career', 'advice', 'professional', 'guidance'],
     metadata: {
@@ -556,11 +681,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-26',
     name: 'Lucas Wright',
+    first_name: 'Lucas',
+    last_name: 'Wright',
     alias: generateNicknames('Lucas Wright', 'A beach volleyball partner I met during summer. His positive energy and love for the ocean are contagious.', 'Beach Volleyball Partner', ['sports', 'beach', 'friendship', 'fun']),
     pronouns: 'he/him',
     archetype: 'friend',
     role: 'Beach Volleyball Partner',
     status: 'active',
+    importance_level: 'background',
+    importance_score: 22,
+    is_nickname: false,
     summary: 'A beach volleyball partner I met during summer. His positive energy and love for the ocean are contagious.',
     tags: ['sports', 'beach', 'friendship', 'fun'],
     metadata: {
@@ -577,11 +707,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-27',
     name: 'Casey Morgan',
+    first_name: 'Casey',
+    last_name: 'Morgan',
     alias: generateNicknames('Casey Morgan', 'My gaming partner and friend. We\'ve spent countless hours playing together and their strategic thinking always impresses me.', 'Gaming Buddy', ['gaming', 'friendship', 'strategy', 'fun']),
     pronouns: 'they/them',
     archetype: 'friend',
     role: 'Gaming Buddy',
     status: 'active',
+    importance_level: 'background',
+    importance_score: 26,
+    is_nickname: false,
     summary: 'My gaming partner and friend. We\'ve spent countless hours playing together and their strategic thinking always impresses me.',
     tags: ['gaming', 'friendship', 'strategy', 'fun'],
     metadata: {
@@ -598,11 +733,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'dummy-28',
     name: 'Grace Lee',
+    first_name: 'Grace',
+    last_name: 'Lee',
     alias: generateNicknames('Grace Lee', 'A fellow yoga practitioner who has become a close friend. Her dedication to the practice and gentle wisdom inspire me daily.', 'Yoga Friend', ['yoga', 'wellness', 'friendship', 'mindfulness']),
     pronouns: 'she/her',
     archetype: 'friend',
     role: 'Yoga Friend',
     status: 'active',
+    importance_level: 'minor',
+    importance_score: 44,
+    is_nickname: false,
     summary: 'A fellow yoga practitioner who has become a close friend. Her dedication to the practice and gentle wisdom inspire me daily.',
     tags: ['yoga', 'wellness', 'friendship', 'mindfulness'],
     metadata: {
@@ -1214,11 +1354,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'high-memory-1',
     name: 'Samantha "Sam" Rodriguez',
+    first_name: 'Samantha',
+    last_name: 'Rodriguez',
     alias: ['Sam', 'Samantha', 'Sammy', 'S-Rod'],
     pronouns: 'she/her',
     archetype: 'ally',
     role: 'Best Friend',
     status: 'active',
+    importance_level: 'protagonist',
+    importance_score: 98,
+    is_nickname: false,
     summary: 'My best friend since high school. We\'ve been through everything together - breakups, career changes, family drama, celebrations. She knows me better than anyone.',
     tags: ['friendship', 'best-friend', 'support', 'loyalty', 'history', 'trust'],
     metadata: {
@@ -1241,11 +1386,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'many-tags-1',
     name: 'Dr. Marcus "Marc" Thompson',
+    first_name: 'Marcus',
+    last_name: 'Thompson',
     alias: generateNicknames('Dr. Marcus Thompson', 'A renaissance person - doctor, musician, writer, and mentor. He\'s been a huge influence in multiple areas of my life.', 'Renaissance Mentor', ['medicine', 'music', 'writing', 'mentorship', 'multi-talented', 'inspiration', 'guidance', 'creativity']),
     pronouns: 'he/him',
     archetype: 'mentor',
     role: 'Multi-Faceted Mentor',
     status: 'active',
+    importance_level: 'major',
+    importance_score: 91,
+    is_nickname: false,
     summary: 'A renaissance person - doctor, musician, writer, and mentor. He\'s been a huge influence in multiple areas of my life.',
     tags: ['medicine', 'music', 'writing', 'mentorship', 'multi-talented', 'inspiration', 'guidance', 'creativity', 'wisdom'],
     metadata: {
@@ -1267,11 +1417,16 @@ const dummyCharacters: Character[] = [
   {
     id: 'no-social-1',
     name: 'Grandma Li',
+    first_name: null,
+    last_name: 'Li',
     alias: ['Grandma', 'Nai Nai'],
     pronouns: 'she/her',
     archetype: 'family',
     role: 'Grandmother',
     status: 'active',
+    importance_level: 'protagonist',
+    importance_score: 96,
+    is_nickname: false,
     summary: 'My grandmother. She doesn\'t use social media, but we talk on the phone weekly. Her stories and wisdom are priceless.',
     tags: ['family', 'grandmother', 'wisdom', 'tradition'],
     metadata: {
@@ -1284,15 +1439,209 @@ const dummyCharacters: Character[] = [
     relationship_count: 8
   },
   
+  // === CHARACTERS WITH NICKNAMES (AUTO-GENERATED) ===
+  {
+    id: 'nickname-1',
+    name: 'The Coffee Shop Friend',
+    first_name: null,
+    last_name: null,
+    alias: ['Coffee Friend', 'Barista Friend'],
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Coffee Shop Regular',
+    status: 'active',
+    importance_level: 'minor',
+    importance_score: 31,
+    is_nickname: true,
+    proximity_level: 'distant',
+    has_met: true,
+    relationship_depth: 'acquaintance',
+    likelihood_to_meet: 'likely',
+    summary: 'A friendly person I see regularly at my favorite coffee shop. We always have brief but pleasant conversations. I don\'t know their real name yet.',
+    tags: ['coffee', 'casual-friend', 'regular', 'auto-generated'],
+    metadata: {
+      relationship_type: 'acquaintance',
+      closeness_score: 45,
+      first_met: '2023-01-15',
+      autoGenerated: true,
+      fromNickname: true
+    },
+    social_media: {},
+    memory_count: 8,
+    relationship_count: 0
+  },
+  {
+    id: 'nickname-2',
+    name: 'The Midnight Philosopher',
+    first_name: null,
+    last_name: null,
+    alias: ['Philosophy Friend', 'Late Night Thinker'],
+    pronouns: 'he/him',
+    archetype: 'friend',
+    role: 'Philosophy Discussion Partner',
+    status: 'active',
+    importance_level: 'supporting',
+    importance_score: 54,
+    is_nickname: true,
+    proximity_level: 'distant',
+    has_met: false,
+    relationship_depth: 'casual',
+    likelihood_to_meet: 'unlikely',
+    summary: 'Someone I met online who shares my love for deep philosophical discussions. We have late-night conversations about existence, meaning, and consciousness. Real name unknown.',
+    tags: ['philosophy', 'online-friend', 'deep-conversations', 'auto-generated'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 72,
+      first_met: '2022-11-20',
+      autoGenerated: true,
+      fromNickname: true
+    },
+    social_media: {},
+    memory_count: 15,
+    relationship_count: 1
+  },
+  {
+    id: 'nickname-3',
+    name: 'The Gym Buddy',
+    first_name: null,
+    last_name: null,
+    alias: ['Workout Partner', 'Fitness Friend'],
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Gym Partner',
+    status: 'active',
+    importance_level: 'minor',
+    importance_score: 36,
+    is_nickname: true,
+    proximity_level: 'distant',
+    has_met: true,
+    relationship_depth: 'casual',
+    likelihood_to_meet: 'likely',
+    summary: 'A person I work out with regularly at the gym. We motivate each other and spot each other during workouts. Haven\'t learned their real name yet.',
+    tags: ['fitness', 'gym', 'workout', 'auto-generated'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 58,
+      first_met: '2023-03-10',
+      autoGenerated: true,
+      fromNickname: true
+    },
+    social_media: {},
+    memory_count: 11,
+    relationship_count: 0
+  },
+  
+  // === THIRD PARTY / INDIRECT CHARACTERS ===
+  {
+    id: 'third-party-1',
+    name: 'Sarah\'s Ex-Boyfriend',
+    first_name: null,
+    last_name: null,
+    alias: ['Sarah\'s Ex', 'The Ex'],
+    pronouns: 'he/him',
+    archetype: 'friend',
+    role: 'Friend\'s Ex',
+    status: 'active',
+    importance_level: 'background',
+    importance_score: 15,
+    is_nickname: true,
+    proximity_level: 'third_party',
+    has_met: false,
+    relationship_depth: 'mentioned_only',
+    likelihood_to_meet: 'never',
+    context_of_mention: 'Mentioned by Sarah when talking about her past relationships',
+    associated_with_character_ids: ['dummy-1'], // Associated with Sarah Chen
+    summary: 'Sarah\'s ex-boyfriend that she mentioned in conversation. I\'ve never met him and probably never will. Just mentioned in passing.',
+    tags: ['third-party', 'mentioned-only', 'auto-generated'],
+    metadata: {
+      relationship_type: 'third_party',
+      closeness_score: 0,
+      autoGenerated: true,
+      fromNickname: true
+    },
+    social_media: {},
+    memory_count: 2,
+    relationship_count: 0
+  },
+  {
+    id: 'third-party-2',
+    name: 'Marcus\'s Wife',
+    first_name: null,
+    last_name: null,
+    alias: ['Marcus\'s Spouse', 'The Wife'],
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Mentor\'s Spouse',
+    status: 'active',
+    importance_level: 'background',
+    importance_score: 12,
+    is_nickname: true,
+    proximity_level: 'indirect',
+    has_met: false,
+    relationship_depth: 'mentioned_only',
+    likelihood_to_meet: 'possible',
+    context_of_mention: 'Mentioned by Marcus when talking about his family life',
+    associated_with_character_ids: ['dummy-2'], // Associated with Marcus Johnson
+    summary: 'Marcus\'s wife. He\'s mentioned her a few times but I\'ve never met her. Might meet her at some point if I visit Marcus.',
+    tags: ['indirect', 'mentioned-only', 'auto-generated'],
+    metadata: {
+      relationship_type: 'indirect',
+      closeness_score: 5,
+      autoGenerated: true,
+      fromNickname: true
+    },
+    social_media: {},
+    memory_count: 3,
+    relationship_count: 1
+  },
+  {
+    id: 'distant-1',
+    name: 'The Neighbor Downstairs',
+    first_name: null,
+    last_name: null,
+    alias: ['Downstairs Neighbor', 'The Neighbor'],
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Neighbor',
+    status: 'active',
+    importance_level: 'background',
+    importance_score: 8,
+    is_nickname: true,
+    proximity_level: 'distant',
+    has_met: true,
+    relationship_depth: 'acquaintance',
+    likelihood_to_meet: 'likely',
+    summary: 'My neighbor who lives downstairs. We\'ve exchanged brief greetings in the hallway but I don\'t really know them. Just a casual acquaintance.',
+    tags: ['neighbor', 'acquaintance', 'auto-generated'],
+    metadata: {
+      relationship_type: 'acquaintance',
+      closeness_score: 20,
+      autoGenerated: true,
+      fromNickname: true
+    },
+    social_media: {},
+    memory_count: 4,
+    relationship_count: 0
+  },
+  
   // === INACTIVE CHARACTERS ===
   {
     id: 'inactive-1',
     name: 'Tom Wilson',
+    first_name: 'Tom',
+    last_name: 'Wilson',
     alias: ['Tom', 'Tommy'],
     pronouns: 'he/him',
     archetype: 'friend',
     role: 'Former Roommate',
     status: 'inactive',
+    importance_level: 'background',
+    importance_score: 18,
+    is_nickname: false,
+    proximity_level: 'direct',
+    has_met: true,
+    relationship_depth: 'moderate',
+    likelihood_to_meet: 'unlikely',
     summary: 'A former roommate from college. We were close then but drifted apart after graduation. Haven\'t talked in years.',
     tags: ['past', 'college', 'roommate'],
     metadata: {
@@ -1310,7 +1659,7 @@ const dummyCharacters: Character[] = [
 
 const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows
 
-type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professional' | 'creative' | 'mentioned';
+type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professional' | 'creative' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
 
 export const CharacterBook = () => {
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -1398,7 +1747,17 @@ export const CharacterBook = () => {
           case 'creative':
             return char.archetype === 'collaborator' && char.status !== 'unmet';
           case 'mentioned':
-            return char.status === 'unmet';
+            return char.status === 'unmet' || char.relationship_depth === 'mentioned_only';
+          case 'direct':
+            return char.proximity_level === 'direct' && (char.has_met ?? true);
+          case 'indirect':
+            return char.proximity_level === 'indirect';
+          case 'distant':
+            return char.proximity_level === 'distant';
+          case 'unmet':
+            return !(char.has_met ?? true) || char.proximity_level === 'unmet';
+          case 'third_party':
+            return char.proximity_level === 'third_party';
           default:
             return true;
         }
@@ -1545,6 +1904,34 @@ export const CharacterBook = () => {
             >
               <MessageSquare className="h-4 w-4" />
               <span>Mentioned</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="direct"
+              className="flex items-center gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400"
+            >
+              <User className="h-4 w-4" />
+              <span>Direct</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="indirect"
+              className="flex items-center gap-2 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400"
+            >
+              <Link2 className="h-4 w-4" />
+              <span>Indirect</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="unmet"
+              className="flex items-center gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400"
+            >
+              <UserX className="h-4 w-4" />
+              <span>Unmet</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="third_party"
+              className="flex items-center gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400"
+            >
+              <Eye className="h-4 w-4" />
+              <span>Third Party</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>

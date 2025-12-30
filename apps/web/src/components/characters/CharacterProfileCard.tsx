@@ -1,4 +1,4 @@
-import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight } from 'lucide-react';
+import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -18,6 +18,8 @@ export type SocialMedia = {
 export type Character = {
   id: string;
   name: string;
+  first_name?: string | null;
+  last_name?: string | null;
   alias?: string[];
   pronouns?: string;
   archetype?: string;
@@ -33,6 +35,16 @@ export type Character = {
   updated_at?: string;
   memory_count?: number;
   relationship_count?: number;
+  importance_level?: 'protagonist' | 'major' | 'supporting' | 'minor' | 'background' | null;
+  importance_score?: number | null;
+  is_nickname?: boolean | null;
+  proximity_level?: 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party' | null;
+  has_met?: boolean | null;
+  relationship_depth?: 'close' | 'moderate' | 'casual' | 'acquaintance' | 'mentioned_only' | null;
+  associated_with_character_ids?: string[] | null;
+  mentioned_by_character_ids?: string[] | null;
+  context_of_mention?: string | null;
+  likelihood_to_meet?: 'likely' | 'possible' | 'unlikely' | 'never' | null;
 };
 
 type CharacterProfileCardProps = {
@@ -54,7 +66,86 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
     return colors[archetype?.toLowerCase() || ''] || 'bg-primary/20 text-primary border-primary/30';
   };
 
+  const getImportanceColor = (level?: string | null) => {
+    const colors: Record<string, string> = {
+      'protagonist': 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+      'major': 'bg-purple-500/20 text-purple-400 border-purple-500/40',
+      'supporting': 'bg-blue-500/20 text-blue-400 border-blue-500/40',
+      'minor': 'bg-gray-500/20 text-gray-400 border-gray-500/40',
+      'background': 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+    };
+    return colors[level || ''] || 'bg-gray-500/20 text-gray-400 border-gray-500/40';
+  };
+
+  const getImportanceIcon = (level?: string | null) => {
+    switch (level) {
+      case 'protagonist':
+        return <Star className="h-3 w-3" />;
+      case 'major':
+        return <Award className="h-3 w-3" />;
+      case 'supporting':
+        return <User className="h-3 w-3" />;
+      case 'minor':
+        return <Hash className="h-3 w-3" />;
+      default:
+        return <Hash className="h-3 w-3" />;
+    }
+  };
+
+  const getImportanceLabel = (level?: string | null) => {
+    switch (level) {
+      case 'protagonist':
+        return 'Protagonist';
+      case 'major':
+        return 'Major';
+      case 'supporting':
+        return 'Supporting';
+      case 'minor':
+        return 'Minor';
+      case 'background':
+        return 'Background';
+      default:
+        return 'Unknown';
+    }
+  };
+
   const isUnmet = character.status === 'unmet';
+  const hasMet = character.has_met ?? true;
+  const proximity = character.proximity_level || 'direct';
+  const relationshipDepth = character.relationship_depth || 'moderate';
+  
+  // Display name: use first + last if available, otherwise use name
+  const displayName = character.first_name && character.last_name
+    ? `${character.first_name} ${character.last_name}`
+    : character.name;
+
+  const getProximityColor = (level?: string | null) => {
+    const colors: Record<string, string> = {
+      'direct': 'bg-green-500/20 text-green-400 border-green-500/40',
+      'indirect': 'bg-blue-500/20 text-blue-400 border-blue-500/40',
+      'distant': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40',
+      'unmet': 'bg-orange-500/20 text-orange-400 border-orange-500/40',
+      'third_party': 'bg-purple-500/20 text-purple-400 border-purple-500/40',
+    };
+    return colors[level || ''] || 'bg-gray-500/20 text-gray-400 border-gray-500/40';
+  };
+
+  const getProximityLabel = (level?: string | null) => {
+    switch (level) {
+      case 'direct':
+        return 'Direct';
+      case 'indirect':
+        return 'Indirect';
+      case 'distant':
+        return 'Distant';
+      case 'unmet':
+        return 'Unmet';
+      case 'third_party':
+        return 'Third Party';
+      default:
+        return 'Unknown';
+    }
+  };
   
   return (
     <Card 
@@ -71,30 +162,74 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
         <div className="relative z-10">
           <CharacterAvatar url={character.avatar_url} name={character.name} size={40} />
         </div>
-        {character.status && (
-          <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 items-end">
+          {character.importance_level && (
+            <Badge 
+              variant="outline"
+              className={`${getImportanceColor(character.importance_level)} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
+            >
+              {getImportanceIcon(character.importance_level)}
+              <span className="hidden sm:inline">{getImportanceLabel(character.importance_level)}</span>
+            </Badge>
+          )}
+          {!hasMet && (
+            <Badge 
+              variant="outline"
+              className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] px-1.5 py-0.5 flex items-center gap-0.5"
+              title="Never met in person"
+            >
+              <UserX className="h-2.5 w-2.5" />
+              <span className="hidden sm:inline">Unmet</span>
+            </Badge>
+          )}
+          {proximity !== 'direct' && (
+            <Badge 
+              variant="outline"
+              className={`${getProximityColor(proximity)} text-[10px] px-1.5 py-0.5 flex items-center gap-0.5`}
+              title={`Connection: ${getProximityLabel(proximity)}`}
+            >
+              {proximity === 'indirect' && <Link2 className="h-2.5 w-2.5" />}
+              {proximity === 'third_party' && <Eye className="h-2.5 w-2.5" />}
+              <span className="hidden sm:inline">{getProximityLabel(proximity)}</span>
+            </Badge>
+          )}
+          {character.status && character.status !== 'active' && (
             <Badge 
               variant="outline"
               className={`${
-                character.status === 'active' 
-                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                  : character.status === 'unmet'
-                  ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 border-dashed'
+                character.status === 'inactive'
+                  ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
                   : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-              } text-xs`}
+              } text-[10px] px-1.5 py-0.5`}
             >
-              {character.status === 'unmet' ? 'Unmet' : character.status}
+              {character.status}
             </Badge>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <CardHeader className="pb-1.5 pt-2.5 px-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-semibold text-white truncate group-hover:text-primary transition-colors">
-              {character.name}
-            </h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-base font-semibold text-white truncate group-hover:text-primary transition-colors">
+                {displayName}
+              </h3>
+              {character.is_nickname && (
+                <Badge 
+                  variant="outline" 
+                  className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-[9px] px-1.5 py-0"
+                  title="Generated nickname"
+                >
+                  Nickname
+                </Badge>
+              )}
+            </div>
+            {character.first_name && character.last_name && character.name !== displayName && (
+              <p className="text-xs text-white/40 mt-0.5 truncate">
+                Also known as: {character.name}
+              </p>
+            )}
             {character.alias && character.alias.length > 0 && (
               <p className="text-xs text-white/50 mt-0.5 truncate">
                 {character.alias.join(', ')}
@@ -110,16 +245,30 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
           <p className="text-xs text-white/70 line-clamp-2 leading-snug">{character.summary}</p>
         )}
         
-        {/* Archetype Badge */}
-        {character.archetype && (
-          <Badge 
-            variant="outline" 
-            className={`${getArchetypeColor(character.archetype)} text-xs w-fit`}
-          >
-            <Sparkles className="h-3 w-3 mr-1" />
-            {character.archetype}
-          </Badge>
-        )}
+        {/* Importance and Archetype Badges */}
+        <div className="flex flex-wrap gap-1.5">
+          {character.importance_level && (
+            <Badge 
+              variant="outline" 
+              className={`${getImportanceColor(character.importance_level)} text-xs w-fit flex items-center gap-1`}
+            >
+              {getImportanceIcon(character.importance_level)}
+              {getImportanceLabel(character.importance_level)}
+              {character.importance_score !== null && character.importance_score !== undefined && (
+                <span className="text-[10px] opacity-70">({Math.round(character.importance_score)})</span>
+              )}
+            </Badge>
+          )}
+          {character.archetype && (
+            <Badge 
+              variant="outline" 
+              className={`${getArchetypeColor(character.archetype)} text-xs w-fit`}
+            >
+              <Sparkles className="h-3 w-3 mr-1" />
+              {character.archetype}
+            </Badge>
+          )}
+        </div>
         
         {/* Metadata Row */}
         <div className="flex flex-wrap gap-2 text-[10px] text-white/50">
@@ -133,6 +282,24 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
             <div className="flex items-center gap-1">
               <Tag className="h-2.5 w-2.5" />
               <span className="truncate max-w-[80px]">{character.role}</span>
+            </div>
+          )}
+          {!hasMet && (
+            <div className="flex items-center gap-1 text-orange-400/70" title="Never met in person">
+              <UserX className="h-2.5 w-2.5" />
+              <span>Unmet</span>
+            </div>
+          )}
+          {proximity === 'third_party' && (
+            <div className="flex items-center gap-1 text-purple-400/70" title="Mentioned by others, don't know personally">
+              <Eye className="h-2.5 w-2.5" />
+              <span>Third Party</span>
+            </div>
+          )}
+          {relationshipDepth === 'mentioned_only' && (
+            <div className="flex items-center gap-1 text-yellow-400/70" title="Only mentioned, no real relationship">
+              <EyeOff className="h-2.5 w-2.5" />
+              <span>Mentioned Only</span>
             </div>
           )}
           {character.first_appearance && (

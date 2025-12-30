@@ -26,13 +26,37 @@ export const findCharacterMentions = (
   knownCharacters: CharacterProfile[]
 ): CharacterMatch[] => {
   const candidates = extractNameCandidates(text);
+  const textLower = text.toLowerCase();
+  
   return candidates.map((candidate) => {
-    const match = knownCharacters.find((char) => char.name.toLowerCase() === candidate.toLowerCase());
-    const confidence = match ? 0.95 : 0.55;
+    // Check for exact name match
+    let match = knownCharacters.find((char) => char.name.toLowerCase() === candidate.toLowerCase());
+    
+    // If no exact match, check aliases/nicknames
+    if (!match) {
+      match = knownCharacters.find((char) => {
+        if (char.alias && Array.isArray(char.alias)) {
+          return char.alias.some(alias => alias.toLowerCase() === candidate.toLowerCase());
+        }
+        return false;
+      });
+    }
+    
+    // Also check if the text mentions any character by alias (even if candidate doesn't match)
+    const aliasMentioned = knownCharacters.find((char) => {
+      if (char.alias && Array.isArray(char.alias)) {
+        return char.alias.some(alias => textLower.includes(alias.toLowerCase()));
+      }
+      return false;
+    });
+    
+    const finalMatch = match || aliasMentioned;
+    const confidence = finalMatch ? 0.95 : 0.55;
+    
     return {
-      id: match?.id,
-      name: match?.name ?? candidate,
-      portraitUrl: match?.portraitUrl,
+      id: finalMatch?.id,
+      name: finalMatch?.name ?? candidate,
+      portraitUrl: finalMatch?.portraitUrl,
       confidence
     } satisfies CharacterMatch;
   });

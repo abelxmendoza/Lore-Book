@@ -15,6 +15,8 @@ const router = Router();
 
 const createCharacterSchema = z.object({
   name: z.string().min(1),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
   alias: z.array(z.string()).optional(),
   pronouns: z.string().optional(),
   archetype: z.string().optional(),
@@ -22,6 +24,12 @@ const createCharacterSchema = z.object({
   status: z.string().optional(),
   summary: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  isNickname: z.boolean().optional(),
+  proximity: z.enum(['direct', 'indirect', 'distant', 'unmet', 'third_party']).optional(),
+  hasMet: z.boolean().optional(),
+  relationshipDepth: z.enum(['close', 'moderate', 'casual', 'acquaintance', 'mentioned_only']).optional(),
+  associatedWith: z.array(z.string()).optional(), // Character names
+  likelihoodToMeet: z.enum(['likely', 'possible', 'unlikely', 'never']).optional(),
   social_media: z
     .object({
       instagram: z.string().optional(),
@@ -39,6 +47,8 @@ const createCharacterSchema = z.object({
 
 const updateCharacterSchema = z.object({
   name: z.string().optional(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
   alias: z.array(z.string()).optional(),
   pronouns: z.string().optional(),
   archetype: z.string().optional(),
@@ -46,6 +56,12 @@ const updateCharacterSchema = z.object({
   status: z.string().optional(),
   summary: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  isNickname: z.boolean().optional(),
+  proximity: z.enum(['direct', 'indirect', 'distant', 'unmet', 'third_party']).optional(),
+  hasMet: z.boolean().optional(),
+  relationshipDepth: z.enum(['close', 'moderate', 'casual', 'acquaintance', 'mentioned_only']).optional(),
+  associatedWith: z.array(z.string()).optional(), // Character names
+  likelihoodToMeet: z.enum(['likely', 'possible', 'unlikely', 'never']).optional(),
   social_media: z
     .object({
       instagram: z.string().optional(),
@@ -133,6 +149,39 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       logger.warn({ error, characterId: id }, 'Avatar caching failed, using direct URL');
     }
 
+    // Parse name if first/last not provided
+    const parseName = (fullName: string): { firstName: string; lastName?: string } => {
+      const parts = fullName.trim().split(/\s+/);
+      if (parts.length === 1) {
+        return { firstName: parts[0] };
+      }
+      return {
+        firstName: parts[0],
+        lastName: parts.slice(1).join(' ')
+      };
+    };
+
+    const nameParts = characterData.firstName 
+      ? { firstName: characterData.firstName, lastName: characterData.lastName }
+      : parseName(characterData.name);
+
+    // Determine if this is a nickname (if not explicitly set, check if it looks like a real name)
+    const isNickname = characterData.isNickname ?? (!characterData.firstName && !characterData.lastName && !characterData.name.includes(' '));
+
+    // Find associated character IDs if provided
+    let associatedWithIds: string[] = [];
+    if (characterData.associatedWith && characterData.associatedWith.length > 0) {
+      const { data: associatedChars } = await supabaseAdmin
+        .from('characters')
+        .select('id')
+        .eq('user_id', userId)
+        .in('name', characterData.associatedWith);
+      
+      if (associatedChars) {
+        associatedWithIds = associatedChars.map(c => c.id);
+      }
+    }
+
     // Merge social_media into metadata
     const metadata: Record<string, unknown> = {
       ...(characterData.metadata || {}),
@@ -146,6 +195,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         id,
         user_id: userId,
         name: characterData.name,
+        first_name: nameParts.firstName,
+        last_name: nameParts.lastName || null,
         alias: characterData.alias || [],
         pronouns: characterData.pronouns || null,
         archetype: characterData.archetype || null,
@@ -154,6 +205,16 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         summary: characterData.summary || null,
         tags: characterData.tags || [],
         avatar_url: avatarUrl,
+        is_nickname: isNickname,
+        importance_level: 'minor', // Will be calculated
+        importance_score: 0,
+        proximity_level: characterData.proximity || 'direct',
+        has_met: characterData.hasMet ?? true,
+        relationship_depth: characterData.relationshipDepth || 'moderate',
+        associated_with_character_ids: associatedWithIds,
+        mentioned_by_character_ids: [],
+        context_of_mention: null,
+        likelihood_to_meet: characterData.likelihoodToMeet || 'likely',
         metadata,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -169,6 +230,16 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       logger.error({ err: error }, 'Failed to create character');
       return res.status(500).json({ error: 'Failed to create character' });
     }
+
+    // Calculate importance asynchronously
+    const { characterImportanceService } = await import('../services/characterImportanceService');
+    characterImportanceService.calculateImportance(userId, character.id, {})
+      .then(importance => {
+        return characterImportanceService.updateCharacterImportance(userId, character.id, importance);
+      })
+      .catch(err => {
+        logger.debug({ err, characterId: character.id }, 'Failed to calculate initial importance');
+      });
 
     res.status(201).json({ character });
   } catch (error) {
@@ -520,19 +591,77 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       ...(updateData.social_media ? { social_media: updateData.social_media } : {})
     };
 
+    // Get existing character to check if it's a nickname
+    const { data: existingChar } = await supabaseAdmin
+      .from('characters')
+      .select('name, first_name, last_name, is_nickname, alias')
+      .eq('id', req.params.id)
+      .eq('user_id', userId)
+      .single();
+
+    // Parse name if first/last not provided but name is updated
+    const parseName = (fullName: string): { firstName: string; lastName?: string } => {
+      const parts = fullName.trim().split(/\s+/);
+      if (parts.length === 1) {
+        return { firstName: parts[0] };
+      }
+      return {
+        firstName: parts[0],
+        lastName: parts.slice(1).join(' ')
+      };
+    };
+
+    // If real name is being provided for a nickname character, move nickname to alias
+    let nameToUpdate = updateData.name;
+    let firstNameToUpdate = updateData.firstName;
+    let lastNameToUpdate = updateData.lastName;
+    let aliasToUpdate = updateData.alias ?? existingChar?.alias ?? [];
+
+    if (updateData.name && existingChar?.is_nickname && !updateData.isNickname) {
+      // Real name provided for a nickname character
+      const nameParts = updateData.firstName 
+        ? { firstName: updateData.firstName, lastName: updateData.lastName }
+        : parseName(updateData.name);
+      
+      nameToUpdate = updateData.name;
+      firstNameToUpdate = nameParts.firstName;
+      lastNameToUpdate = nameParts.lastName;
+      
+      // Move old nickname to alias if not already there
+      if (existingChar.name && !aliasToUpdate.includes(existingChar.name)) {
+        aliasToUpdate = [...aliasToUpdate, existingChar.name];
+      }
+    } else if (updateData.firstName || updateData.lastName) {
+      // First/last name provided directly
+      firstNameToUpdate = updateData.firstName;
+      lastNameToUpdate = updateData.lastName;
+      // Reconstruct full name if not provided
+      if (!updateData.name && (updateData.firstName || updateData.lastName)) {
+        nameToUpdate = [updateData.firstName, updateData.lastName].filter(Boolean).join(' ');
+      }
+    } else if (updateData.name && !updateData.firstName && !updateData.lastName) {
+      // Name provided but not first/last - parse it
+      const nameParts = parseName(updateData.name);
+      firstNameToUpdate = nameParts.firstName;
+      lastNameToUpdate = nameParts.lastName;
+    }
+
     // Prepare update payload
     const payload: Record<string, unknown> = {
       updated_at: new Date().toISOString()
     };
 
-    if (updateData.name !== undefined) payload.name = updateData.name;
-    if (updateData.alias !== undefined) payload.alias = updateData.alias;
+    if (nameToUpdate !== undefined) payload.name = nameToUpdate;
+    if (firstNameToUpdate !== undefined) payload.first_name = firstNameToUpdate;
+    if (lastNameToUpdate !== undefined) payload.last_name = lastNameToUpdate;
+    if (updateData.alias !== undefined || aliasToUpdate !== existingChar?.alias) payload.alias = aliasToUpdate;
     if (updateData.pronouns !== undefined) payload.pronouns = updateData.pronouns;
     if (updateData.archetype !== undefined) payload.archetype = updateData.archetype;
     if (updateData.role !== undefined) payload.role = updateData.role;
     if (updateData.status !== undefined) payload.status = updateData.status;
     if (updateData.summary !== undefined) payload.summary = updateData.summary;
     if (updateData.tags !== undefined) payload.tags = updateData.tags;
+    if (updateData.isNickname !== undefined) payload.is_nickname = updateData.isNickname;
     payload.metadata = updatedMetadata;
 
     const { data: updated, error } = await supabaseAdmin
@@ -548,6 +677,18 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(500).json({ error: 'Failed to update character' });
     }
 
+    // Recalculate importance if role, archetype, or other significant fields changed
+    if (updateData.role !== undefined || updateData.archetype !== undefined || updateData.name !== undefined) {
+      const { characterImportanceService } = await import('../services/characterImportanceService');
+      characterImportanceService.calculateImportance(userId, updated.id, {})
+        .then(importance => {
+          return characterImportanceService.updateCharacterImportance(userId, updated.id, importance);
+        })
+        .catch(err => {
+          logger.debug({ err, characterId: updated.id }, 'Failed to recalculate importance after update');
+        });
+    }
+
     res.json({ character: updated });
   } catch (error) {
     logger.error({ err: error }, 'Failed to update character');
@@ -557,17 +698,18 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
 /**
  * Extract character information from chat message
+ * Now also detects unnamed characters and generates nicknames
  */
 router.post('/extract-from-chat', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { message } = req.body;
+    const { message, conversationHistory = [] } = req.body;
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Message is required' });
     }
 
     const openai = new OpenAI({ apiKey: config.openAiKey });
 
-    // Use OpenAI to extract character information
+    // Use OpenAI to extract character information (named and unnamed)
     const completion = await openai.chat.completions.create({
       model: config.defaultModel,
       temperature: 0.2,
@@ -576,56 +718,170 @@ router.post('/extract-from-chat', requireAuth, async (req: AuthenticatedRequest,
         {
           role: 'system',
           content: `Extract character information from the user's message. Look for:
-- Names of people mentioned
+- Names of people mentioned (named characters) - try to identify first and last names
+- Unnamed people mentioned (e.g., "my friend", "the colleague", "someone I met") - these need nicknames
+- People mentioned by others (e.g., "Sarah's friend", "my coworker's partner")
+- People the user barely knows or will never meet
 - Their roles, relationships, or archetypes
 - Any descriptive information about them
 - Pronouns if mentioned
+- Nicknames or alternative names used
+- Whether the user has met them
+- How they're connected (directly, through someone else, etc.)
 
 Return JSON:
 {
-  "characters": [
+  "namedCharacters": [
     {
-      "name": "string (required)",
+      "name": "string (required, full name)",
+      "firstName": "string (optional, if can be parsed)",
+      "lastName": "string (optional, if can be parsed)",
       "alias": ["string"] (optional),
       "pronouns": "string" (optional),
-      "archetype": "string" (optional, e.g., "friend", "mentor", "family", "colleague"),
+      "archetype": "string" (optional),
       "role": "string" (optional),
-      "summary": "string" (optional, brief description),
-      "tags": ["string"] (optional)
+      "summary": "string" (optional),
+      "tags": ["string"] (optional),
+      "proximity": "direct|indirect|distant|unmet|third_party",
+      "hasMet": true|false,
+      "relationshipDepth": "close|moderate|casual|acquaintance|mentioned_only",
+      "associatedWith": ["character names"],
+      "likelihoodToMeet": "likely|possible|unlikely|never"
+    }
+  ],
+  "unnamedCharacters": [
+    {
+      "description": "brief description of who this person is",
+      "role": "friend|colleague|mentor|family|acquaintance|other",
+      "relationship": "how they relate to the user",
+      "pronouns": "he|she|they|unknown",
+      "context": "the specific mention from the message",
+      "proximity": "direct|indirect|distant|unmet|third_party",
+      "hasMet": true|false,
+      "relationshipDepth": "close|moderate|casual|acquaintance|mentioned_only",
+      "associatedWith": ["character names"],
+      "likelihoodToMeet": "likely|possible|unlikely|never"
     }
   ]
 }
 
-Only extract characters that are clearly mentioned. Skip generic references like "my friend" without a name.
-If no characters are found, return {"characters": []}.`
+Proximity levels:
+- direct: User knows them directly (e.g., "my friend John", "I met Sarah")
+- indirect: User knows them through someone else (e.g., "Sarah's friend", "Marcus's wife", "my coworker's partner")
+- distant: User barely knows them (e.g., "someone I see at the coffee shop", "a neighbor I've said hi to")
+- unmet: User has never met them (e.g., "someone I've only talked to online", "a person I've never met")
+- third_party: Mentioned by others, user doesn't know them personally (e.g., "Sarah mentioned her ex", "Marcus talked about his colleague", "my friend's roommate")
+
+Relationship depth:
+- close: Close relationship (best friend, family member, close mentor)
+- moderate: Moderate relationship (regular friend, colleague you work with often)
+- casual: Casual relationship (acquaintance you see occasionally)
+- acquaintance: Just an acquaintance (person you barely know)
+- mentioned_only: Only mentioned, no real relationship (e.g., "Sarah's ex", "someone's friend I've never met")
+
+IMPORTANT: Pay attention to possessive phrases like "Sarah's friend", "Marcus's wife", "my coworker's partner" - these indicate indirect or third_party proximity.
+Also detect phrases like "I've never met", "mentioned by", "talked about" - these indicate unmet or third_party.
+
+For named characters, try to parse first and last names if the full name is provided (e.g., "John Smith" -> firstName: "John", lastName: "Smith").
+For unnamed characters, extract them even if they don't have names - we'll generate nicknames for them.
+If no characters are found, return {"namedCharacters": [], "unnamedCharacters": []}.`
         },
         {
           role: 'user',
-          content: message
+          content: `Message: ${message}\n\nConversation history:\n${conversationHistory.map((m: any) => `${m.role}: ${m.content}`).join('\n')}`
         }
       ]
     });
 
     const response = completion.choices[0]?.message?.content ?? '{}';
-    const parsed = JSON.parse(response) as { characters?: any[] };
+    const parsed = JSON.parse(response) as { 
+      namedCharacters?: any[];
+      unnamedCharacters?: any[];
+    };
 
-    const characters = Array.isArray(parsed.characters) ? parsed.characters : [];
+    const namedCharacters = Array.isArray(parsed.namedCharacters) ? parsed.namedCharacters : [];
+    const unnamedCharacters = Array.isArray(parsed.unnamedCharacters) ? parsed.unnamedCharacters : [];
 
-    // Validate and clean character data
-    const validatedCharacters = characters
+    // Helper function to parse name into first/last
+    const parseName = (fullName: string): { firstName: string; lastName?: string } => {
+      const parts = fullName.trim().split(/\s+/);
+      if (parts.length === 1) {
+        return { firstName: parts[0] };
+      }
+      return {
+        firstName: parts[0],
+        lastName: parts.slice(1).join(' ')
+      };
+    };
+
+    // Validate and clean named character data
+    const validatedNamedCharacters = namedCharacters
       .filter(char => char.name && typeof char.name === 'string' && char.name.trim().length > 0)
-      .map(char => ({
-        name: char.name.trim(),
-        alias: Array.isArray(char.alias) ? char.alias.filter((a: any) => typeof a === 'string').map((a: string) => a.trim()) : [],
-        pronouns: typeof char.pronouns === 'string' ? char.pronouns.trim() : undefined,
-        archetype: typeof char.archetype === 'string' ? char.archetype.trim() : undefined,
-        role: typeof char.role === 'string' ? char.role.trim() : undefined,
-        summary: typeof char.summary === 'string' ? char.summary.trim() : undefined,
-        tags: Array.isArray(char.tags) ? char.tags.filter((t: any) => typeof t === 'string').map((t: string) => t.trim()) : [],
-        status: 'active'
-      }));
+      .map(char => {
+        const fullName = char.name.trim();
+        // Use provided first/last names or parse from full name
+        const nameParts = char.firstName 
+          ? { firstName: char.firstName, lastName: char.lastName }
+          : parseName(fullName);
+        
+        return {
+          name: fullName,
+          firstName: nameParts.firstName,
+          lastName: nameParts.lastName,
+          alias: Array.isArray(char.alias) ? char.alias.filter((a: any) => typeof a === 'string').map((a: string) => a.trim()) : [],
+          pronouns: typeof char.pronouns === 'string' ? char.pronouns.trim() : undefined,
+          archetype: typeof char.archetype === 'string' ? char.archetype.trim() : undefined,
+          role: typeof char.role === 'string' ? char.role.trim() : undefined,
+          summary: typeof char.summary === 'string' ? char.summary.trim() : undefined,
+          tags: Array.isArray(char.tags) ? char.tags.filter((t: any) => typeof t === 'string').map((t: string) => t.trim()) : [],
+          status: 'active' as const,
+          isNickname: false, // Named characters have real names
+          proximity: char.proximity || 'direct',
+          hasMet: char.hasMet !== undefined ? char.hasMet : true,
+          relationshipDepth: char.relationshipDepth || 'moderate',
+          associatedWith: Array.isArray(char.associatedWith) ? char.associatedWith : [],
+          likelihoodToMeet: char.likelihoodToMeet || 'likely'
+        };
+      });
 
-    res.json({ characters: validatedCharacters });
+    // Generate nicknames for unnamed characters
+    const { characterNicknameService } = await import('../services/characterNicknameService');
+    const charactersWithNicknames = await characterNicknameService.detectAndGenerateNicknames(
+      req.user!.id,
+      message,
+      conversationHistory
+    );
+
+    // Combine named characters with generated nicknames
+    const allCharacters = [
+      ...validatedNamedCharacters,
+      ...charactersWithNicknames.map(char => ({
+        name: char.name,
+        firstName: char.firstName,
+        lastName: char.lastName,
+        alias: char.alias || [],
+        pronouns: char.pronouns,
+        archetype: char.archetype,
+        role: char.role,
+        summary: char.summary,
+        tags: char.tags || [],
+        status: 'active' as const,
+        isNickname: true, // Generated nicknames
+        proximity: char.proximity || 'distant',
+        hasMet: char.hasMet ?? false,
+        relationshipDepth: char.relationshipDepth || 'mentioned_only',
+        associatedWith: char.associatedWith || [],
+        likelihoodToMeet: char.likelihoodToMeet || 'unlikely',
+        _autoGenerated: true,
+        _context: char.context
+      }))
+    ];
+
+    res.json({ 
+      characters: allCharacters,
+      unnamedDetected: unnamedCharacters.length,
+      nicknamesGenerated: charactersWithNicknames.length
+    });
   } catch (error) {
     logger.error({ err: error }, 'Failed to extract characters from chat');
     res.status(500).json({ error: 'Failed to extract characters' });

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, Heart, Star, Zap, BarChart3, Lightbulb } from 'lucide-react';
+import { PerceptionsView } from '../perceptions/PerceptionsView';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -37,6 +38,18 @@ type Relationship = {
 };
 
 type CharacterDetail = Character & {
+  first_name?: string | null;
+  last_name?: string | null;
+  importance_level?: 'protagonist' | 'major' | 'supporting' | 'minor' | 'background' | null;
+  importance_score?: number | null;
+  is_nickname?: boolean | null;
+  proximity_level?: 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party' | null;
+  has_met?: boolean | null;
+  relationship_depth?: 'close' | 'moderate' | 'casual' | 'acquaintance' | 'mentioned_only' | null;
+  associated_with_character_ids?: string[] | null;
+  mentioned_by_character_ids?: string[] | null;
+  context_of_mention?: string | null;
+  likelihood_to_meet?: 'likely' | 'possible' | 'unlikely' | 'never' | null;
   social_media?: SocialMedia;
   relationships?: Relationship[];
   shared_memories?: Array<{
@@ -53,13 +66,14 @@ type CharacterDetailModalProps = {
   onUpdate: () => void;
 };
 
-type TabKey = 'info' | 'social' | 'relationships' | 'history' | 'context' | 'timeline' | 'chat' | 'insights' | 'metadata';
+type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'context' | 'timeline' | 'chat' | 'insights' | 'metadata';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'info', label: 'Info', icon: FileText },
   { key: 'chat', label: 'Chat', icon: MessageSquare },
   { key: 'social', label: 'Social Media', icon: Globe },
   { key: 'relationships', label: 'Connections', icon: Network },
+  { key: 'perceptions', label: 'Perceptions', icon: Eye },
   { key: 'history', label: 'History', icon: Calendar },
   { key: 'context', label: 'Context', icon: Layers },
   { key: 'timeline', label: 'Timeline', icon: Clock },
@@ -69,6 +83,49 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
 
 export const CharacterDetailModal = ({ character, onClose, onUpdate }: CharacterDetailModalProps) => {
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
+
+  const getImportanceColor = (level?: string | null) => {
+    const colors: Record<string, string> = {
+      'protagonist': 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+      'major': 'bg-purple-500/20 text-purple-400 border-purple-500/40',
+      'supporting': 'bg-blue-500/20 text-blue-400 border-blue-500/40',
+      'minor': 'bg-gray-500/20 text-gray-400 border-gray-500/40',
+      'background': 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+    };
+    return colors[level || ''] || 'bg-gray-500/20 text-gray-400 border-gray-500/40';
+  };
+
+  const getImportanceIcon = (level?: string | null) => {
+    switch (level) {
+      case 'protagonist':
+        return <Star className="h-4 w-4" />;
+      case 'major':
+        return <Award className="h-4 w-4" />;
+      case 'supporting':
+        return <User className="h-4 w-4" />;
+      case 'minor':
+        return <Hash className="h-4 w-4" />;
+      default:
+        return <Hash className="h-4 w-4" />;
+    }
+  };
+
+  const getImportanceLabel = (level?: string | null) => {
+    switch (level) {
+      case 'protagonist':
+        return 'Protagonist';
+      case 'major':
+        return 'Major';
+      case 'supporting':
+        return 'Supporting';
+      case 'minor':
+        return 'Minor';
+      case 'background':
+        return 'Background';
+      default:
+        return 'Unknown';
+    }
+  };
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(true);
   const [loadingMemories, setLoadingMemories] = useState(false);
@@ -410,6 +467,8 @@ User's message: ${message}`;
         method: 'PATCH',
         body: JSON.stringify({
           name: editedCharacter.name,
+          firstName: editedCharacter.first_name,
+          lastName: editedCharacter.last_name,
           alias: editedCharacter.alias,
           pronouns: editedCharacter.pronouns,
           archetype: editedCharacter.archetype,
@@ -417,6 +476,11 @@ User's message: ${message}`;
           status: editedCharacter.status,
           summary: editedCharacter.summary,
           tags: editedCharacter.tags,
+          isNickname: editedCharacter.is_nickname,
+          proximity: editedCharacter.proximity_level,
+          hasMet: editedCharacter.has_met,
+          relationshipDepth: editedCharacter.relationship_depth,
+          likelihoodToMeet: editedCharacter.likelihood_to_meet,
           social_media: editedCharacter.social_media,
           metadata: editedCharacter.metadata
         })
@@ -487,13 +551,45 @@ User's message: ${message}`;
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="text-3xl font-bold text-white mb-1 tracking-tight">{editedCharacter.name}</h2>
+                <div className="flex items-center gap-2 mb-1">
+                  <h2 className="text-3xl font-bold text-white tracking-tight">
+                    {editedCharacter.first_name && editedCharacter.last_name
+                      ? `${editedCharacter.first_name} ${editedCharacter.last_name}`
+                      : editedCharacter.name}
+                  </h2>
+                  {editedCharacter.is_nickname && (
+                    <Badge 
+                      variant="outline" 
+                      className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs px-2 py-0.5"
+                      title="Generated nickname"
+                    >
+                      Nickname
+                    </Badge>
+                  )}
+                </div>
+                {editedCharacter.first_name && editedCharacter.last_name && editedCharacter.name !== `${editedCharacter.first_name} ${editedCharacter.last_name}` && (
+                  <p className="text-sm text-white/60 mb-1">
+                    Display name: {editedCharacter.name}
+                  </p>
+                )}
                 {editedCharacter.alias && editedCharacter.alias.length > 0 && (
                   <p className="text-base text-white/70 mb-2">
                     <span className="text-white/50">Also known as:</span> {editedCharacter.alias.join(', ')}
                   </p>
                 )}
                 <div className="flex items-center gap-3 flex-wrap">
+                  {editedCharacter.importance_level && (
+                    <Badge 
+                      variant="outline" 
+                      className={`${getImportanceColor(editedCharacter.importance_level)} text-sm px-3 py-1 flex items-center gap-1.5`}
+                    >
+                      {getImportanceIcon(editedCharacter.importance_level)}
+                      <span>{getImportanceLabel(editedCharacter.importance_level)}</span>
+                      {editedCharacter.importance_score !== null && editedCharacter.importance_score !== undefined && (
+                        <span className="text-xs opacity-70">({Math.round(editedCharacter.importance_score)})</span>
+                      )}
+                    </Badge>
+                  )}
                   {editedCharacter.role && (
                     <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-sm px-3 py-1">
                       <Tag className="h-3 w-3 mr-1" />
@@ -567,18 +663,58 @@ User's message: ${message}`;
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <label className="text-base font-semibold text-white/90 mb-2 block">Name</label>
-                    <Input
-                      value={editedCharacter.name}
-                      onChange={(e) => setEditedCharacter((prev) => ({ ...prev, name: e.target.value }))}
-                      className="bg-black/60 border-border/50 text-white text-base h-11"
-                    />
+                {/* Name Section */}
+                <div className="space-y-4 p-4 bg-black/40 rounded-lg border border-border/30">
+                  <div className="flex items-center gap-2 mb-3">
+                    <User className="h-4 w-4 text-primary" />
+                    <h3 className="text-base font-semibold text-white">Name Information</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-semibold text-white/90 mb-2 block">First Name</label>
+                      <Input
+                        value={editedCharacter.first_name || ''}
+                        onChange={(e) => setEditedCharacter((prev) => ({ ...prev, first_name: e.target.value || null }))}
+                        placeholder="First name"
+                        className="bg-black/60 border-border/50 text-white text-sm h-10"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-semibold text-white/90 mb-2 block">Last Name</label>
+                      <Input
+                        value={editedCharacter.last_name || ''}
+                        onChange={(e) => setEditedCharacter((prev) => ({ ...prev, last_name: e.target.value || null }))}
+                        placeholder="Last name"
+                        className="bg-black/60 border-border/50 text-white text-sm h-10"
+                      />
+                    </div>
                   </div>
 
                   <div>
-                    <label className="text-base font-semibold text-white/90 mb-2 block">Aliases</label>
+                    <label className="text-sm font-semibold text-white/90 mb-2 block flex items-center gap-2">
+                      Display Name
+                      {editedCharacter.is_nickname && (
+                        <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs px-1.5 py-0">
+                          Nickname
+                        </Badge>
+                      )}
+                    </label>
+                    <Input
+                      value={editedCharacter.name}
+                      onChange={(e) => setEditedCharacter((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="Full display name"
+                      className="bg-black/60 border-border/50 text-white text-sm h-10"
+                    />
+                    <p className="text-xs text-white/50 mt-1">
+                      {editedCharacter.first_name && editedCharacter.last_name
+                        ? `Will display as: ${editedCharacter.first_name} ${editedCharacter.last_name}`
+                        : 'This is the name shown throughout the app'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-semibold text-white/90 mb-2 block">Aliases / Nicknames</label>
                     <Input
                       value={editedCharacter.alias?.join(', ') || ''}
                       onChange={(e) =>
@@ -588,9 +724,131 @@ User's message: ${message}`;
                         }))
                       }
                       placeholder="Alias1, Alias2, ..."
-                      className="bg-black/60 border-border/50 text-white text-base h-11"
+                      className="bg-black/60 border-border/50 text-white text-sm h-10"
                     />
+                    <p className="text-xs text-white/50 mt-1">Alternative names or nicknames (comma-separated)</p>
                   </div>
+                </div>
+
+                {/* Importance Section */}
+                {(editedCharacter.importance_level || editedCharacter.importance_score !== null) && (
+                  <div className="space-y-4 p-4 bg-black/40 rounded-lg border border-border/30">
+                    <div className="flex items-center gap-2 mb-3">
+                      <TrendingUp className="h-4 w-4 text-primary" />
+                      <h3 className="text-base font-semibold text-white">Importance Level</h3>
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                      {editedCharacter.importance_level && (
+                        <div className="flex items-center gap-2">
+                          <Badge 
+                            variant="outline" 
+                            className={`${getImportanceColor(editedCharacter.importance_level)} text-sm px-3 py-1.5 flex items-center gap-1.5`}
+                          >
+                            {getImportanceIcon(editedCharacter.importance_level)}
+                            <span>{getImportanceLabel(editedCharacter.importance_level)}</span>
+                          </Badge>
+                        </div>
+                      )}
+                      {editedCharacter.importance_score !== null && editedCharacter.importance_score !== undefined && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-white/70">Score:</span>
+                          <span className="text-sm font-semibold text-primary">{Math.round(editedCharacter.importance_score)}/100</span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-white/50 flex items-start gap-1.5">
+                      <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                      <span>Importance is automatically calculated based on mentions, relationships, role significance, and interaction frequency. This helps identify major vs. minor characters in your story.</span>
+                    </p>
+                  </div>
+                )}
+
+                {/* Relationship Proximity Section */}
+                <div className="space-y-4 p-4 bg-black/40 rounded-lg border border-border/30">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Network className="h-4 w-4 text-primary" />
+                    <h3 className="text-base font-semibold text-white">Relationship & Proximity</h3>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-semibold text-white/90 mb-2 block">Proximity Level</label>
+                      <select
+                        value={editedCharacter.proximity_level || 'direct'}
+                        onChange={(e) => setEditedCharacter((prev) => ({ ...prev, proximity_level: e.target.value as any }))}
+                        className="w-full bg-black/60 border-border/50 text-white text-sm h-10 rounded px-3"
+                      >
+                        <option value="direct">Direct (Know them directly)</option>
+                        <option value="indirect">Indirect (Through someone else)</option>
+                        <option value="distant">Distant (Barely know them)</option>
+                        <option value="unmet">Unmet (Never met)</option>
+                        <option value="third_party">Third Party (Mentioned by others)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-semibold text-white/90 mb-2 block">Relationship Depth</label>
+                      <select
+                        value={editedCharacter.relationship_depth || 'moderate'}
+                        onChange={(e) => setEditedCharacter((prev) => ({ ...prev, relationship_depth: e.target.value as any }))}
+                        className="w-full bg-black/60 border-border/50 text-white text-sm h-10 rounded px-3"
+                      >
+                        <option value="close">Close</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="casual">Casual</option>
+                        <option value="acquaintance">Acquaintance</option>
+                        <option value="mentioned_only">Mentioned Only</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="hasMet"
+                        checked={editedCharacter.has_met ?? true}
+                        onChange={(e) => setEditedCharacter((prev) => ({ ...prev, has_met: e.target.checked }))}
+                        className="w-4 h-4 rounded border-border/50 bg-black/60 text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="hasMet" className="text-sm text-white/90 cursor-pointer">
+                        Have met in person
+                      </label>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-semibold text-white/90 mb-2 block">Likelihood to Meet</label>
+                      <select
+                        value={editedCharacter.likelihood_to_meet || 'likely'}
+                        onChange={(e) => setEditedCharacter((prev) => ({ ...prev, likelihood_to_meet: e.target.value as any }))}
+                        className="w-full bg-black/60 border-border/50 text-white text-sm h-10 rounded px-3"
+                      >
+                        <option value="likely">Likely</option>
+                        <option value="possible">Possible</option>
+                        <option value="unlikely">Unlikely</option>
+                        <option value="never">Never</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {editedCharacter.context_of_mention && (
+                    <div>
+                      <label className="text-sm font-semibold text-white/90 mb-2 block">Context of Mention</label>
+                      <Textarea
+                        value={editedCharacter.context_of_mention || ''}
+                        onChange={(e) => setEditedCharacter((prev) => ({ ...prev, context_of_mention: e.target.value }))}
+                        placeholder="How/why this person was mentioned..."
+                        rows={2}
+                        className="bg-black/60 border-border/50 text-white text-sm"
+                      />
+                    </div>
+                  )}
+
+                  <p className="text-xs text-white/50 flex items-start gap-1.5">
+                    <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                    <span>Proximity tracks how directly you know this person. Use "Third Party" for people mentioned by others that you don't know personally.</span>
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-3 gap-6">
@@ -868,6 +1126,64 @@ User's message: ${message}`;
                     </div>
                   </div>
                 )}
+
+                {/* Associated Characters (for indirect/third-party characters) */}
+                {(editedCharacter.proximity_level === 'indirect' || editedCharacter.proximity_level === 'third_party' || editedCharacter.associated_with_character_ids) && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                      <Link2 className="h-5 w-5 text-primary" />
+                      Associated With
+                    </h3>
+                    <Card className="bg-black/40 border-border/50">
+                      <CardContent className="p-4">
+                        {editedCharacter.associated_with_character_ids && editedCharacter.associated_with_character_ids.length > 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-sm text-white/70 mb-3">
+                              This person is connected to or mentioned by:
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {editedCharacter.associated_with_character_ids.map((charId) => {
+                                // Try to find character name from relationships or metadata
+                                const associatedChar = editedCharacter.relationships?.find(r => r.character_id === charId);
+                                return (
+                                  <Badge
+                                    key={charId}
+                                    variant="outline"
+                                    className="bg-blue-500/10 text-blue-400 border-blue-500/30 px-3 py-1.5"
+                                  >
+                                    {associatedChar?.character_name || `Character ${charId.slice(0, 8)}...`}
+                                  </Badge>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-4 text-white/40">
+                            <Link2 className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">No associated characters</p>
+                            <p className="text-xs mt-1">This person is not linked to any other characters</p>
+                          </div>
+                        )}
+                        {editedCharacter.context_of_mention && (
+                          <div className="mt-4 pt-4 border-t border-border/30">
+                            <p className="text-xs text-white/50 mb-1">Context:</p>
+                            <p className="text-sm text-white/70">{editedCharacter.context_of_mention}</p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!loadingDetails && activeTab === 'perceptions' && (
+              <div className="space-y-6">
+                <PerceptionsView
+                  personId={editedCharacter.id}
+                  personName={editedCharacter.name}
+                  showCreateButton={true}
+                />
               </div>
             )}
 

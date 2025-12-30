@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Calendar, RotateCcw } from 'lucide-react';
 import { useChronology } from '../../hooks/useChronology';
 import { useTimelineV2 } from '../../hooks/useTimelineV2';
+import { useEntityModal } from '../../contexts/EntityModalContext';
 import type { ChronologyEntry, Timeline as TimelineType } from '../../types/timelineV2';
 
 // Import vis-timeline CSS
@@ -28,6 +29,7 @@ export const ChronologyTimelineView: React.FC<ChronologyTimelineViewProps> = ({
 
   const { entries: chronologyEntries, loading: chronologyLoading } = useChronology();
   const { timelines, loading: timelinesLoading } = useTimelineV2();
+  const { openMemory } = useEntityModal();
 
   // Build groups from timelines (simplified - no nesting for now to avoid vis-timeline errors)
   const groups = useMemo(() => {
@@ -206,16 +208,8 @@ export const ChronologyTimelineView: React.FC<ChronologyTimelineViewProps> = ({
           if (item.data.type === 'memory') {
             setSelectedItem(itemId);
             onEntrySelect?.(item.data.entry);
-            // Also trigger entity modal
-            if (typeof window !== 'undefined' && (window as any).openEntityModal) {
-              (window as any).openEntityModal({
-                type: 'memory',
-                id: item.data.entry.id,
-                memory: item.data.entry,
-                content: item.data.entry.content,
-                date: item.data.entry.start_time
-              });
-            }
+            // Open entity modal with full memory data
+            openMemory(item.data.entry);
           } else if (item.data.type === 'timeline') {
             setSelectedTimeline(item.data.timeline);
             onTimelineSelect?.(item.data.timeline);

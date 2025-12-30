@@ -1,4 +1,4 @@
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, Upload, Paperclip, MessageSquare } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Textarea } from '../../../components/ui/textarea';
 import { Card } from '../../../components/ui/card';
@@ -7,17 +7,22 @@ import { CommandSuggestions } from './CommandSuggestions';
 import { ComposerHints } from './ComposerHints';
 import { MoodIndicator } from './MoodIndicator';
 import { TagSuggestions } from './TagSuggestions';
+import { useState, useRef } from 'react';
+import { DocumentUpload } from '../components/DocumentUpload';
+import { ChatGPTImport } from '../components/ChatGPTImport';
 
 type ChatComposerProps = {
   onSubmit: (message: string) => void;
   loading: boolean;
   disabled?: boolean;
+  onUploadComplete?: () => void;
 };
 
 export const ChatComposer = ({
   onSubmit,
   loading,
-  disabled = false
+  disabled = false,
+  onUploadComplete
 }: ChatComposerProps) => {
   const {
     input,
@@ -35,8 +40,22 @@ export const ChatComposer = ({
     insertSuggestion
   } = useChatComposer(onSubmit);
 
+  const [showUpload, setShowUpload] = useState(false);
+  const [showChatGPTImport, setShowChatGPTImport] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUploadClick = () => {
+    setShowUpload(!showUpload);
+    if (showUpload) setShowChatGPTImport(false);
+  };
+
+  const handleChatGPTImportClick = () => {
+    setShowChatGPTImport(!showChatGPTImport);
+    if (showChatGPTImport) setShowUpload(false);
+  };
+
   return (
-    <div className="border-t border-border/60 bg-black/20 chat-composer">
+    <div className="border-t border-border/60 bg-black/20 chat-composer flex-shrink-0">
       {/* Command Suggestions */}
       {showCommandSuggestions && commandSuggestions.length > 0 && (
         <CommandSuggestions
@@ -52,6 +71,38 @@ export const ChatComposer = ({
           characterCount={characterIndexer.matches.length}
           tagCount={autoTagger.suggestions.length}
         />
+      )}
+
+      {/* Document Upload Section */}
+      {showUpload && (
+        <div className="px-4 py-2 border-b border-border/60 bg-black/30 max-h-[300px] overflow-y-auto">
+          <DocumentUpload
+            compact={true}
+            onUploadComplete={async () => {
+              setShowUpload(false);
+              onUploadComplete?.();
+            }}
+            onUploadError={(error) => {
+              console.error('Document upload error:', error);
+            }}
+          />
+        </div>
+      )}
+
+      {/* ChatGPT Import Section */}
+      {showChatGPTImport && (
+        <div className="px-4 py-2 border-b border-border/60 bg-black/30 max-h-[400px] overflow-y-auto">
+          <ChatGPTImport
+            onImportComplete={async (stats) => {
+              setShowChatGPTImport(false);
+              console.log('ChatGPT import complete:', stats);
+              onUploadComplete?.();
+            }}
+            onImportError={(error) => {
+              console.error('ChatGPT import error:', error);
+            }}
+          />
+        </div>
       )}
 
       {/* Input Form */}
@@ -79,6 +130,28 @@ export const ChatComposer = ({
               />
             )}
           </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={handleUploadClick}
+            disabled={loading || disabled}
+            className={`text-white/60 hover:text-white ${showUpload ? 'text-primary' : ''}`}
+            title="Upload documents, biographies, or diaries"
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={handleChatGPTImportClick}
+            disabled={loading || disabled}
+            className={`text-white/60 hover:text-white ${showChatGPTImport ? 'text-primary' : ''}`}
+            title="Import ChatGPT conversation with fact-checking"
+          >
+            <MessageSquare className="h-4 w-4" />
+          </Button>
           <Button 
             type="submit" 
             disabled={!input.trim() || loading || disabled} 

@@ -17,6 +17,7 @@ import { exportConversationAsMarkdown, exportConversationAsJSON, downloadFile } 
 import { diagnoseEndpoints, logDiagnostics } from '../../../utils/errorDiagnostics';
 import { analytics } from '../../../lib/monitoring';
 import { fetchJson } from '../../../lib/api';
+import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
 import type { ChatSource } from '../message/ChatMessage';
 import '../styles/chat-theme.css';
 import '../styles/message-animations.css';
@@ -25,6 +26,7 @@ export const ChatFirstInterface = () => {
   const navigate = useNavigate();
   const conversationStore = useConversationStore();
   const { messageRefs, registerMessageRef, loadConversation, setMessages } = conversationStore;
+  const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
   
   const { 
     messages, 
@@ -220,7 +222,7 @@ export const ChatFirstInterface = () => {
   };
 
   return (
-    <div className="flex flex-col h-full relative chat-container">
+    <div className="flex flex-col h-full relative chat-container overflow-hidden">
       <ChatHeader
         messageCount={messages.length}
         onSearchClick={() => setShowSearch(!showSearch)}
@@ -247,59 +249,77 @@ export const ChatFirstInterface = () => {
         />
       )}
 
-      {/* Messages Area */}
-      {messages.length === 0 ? (
-        <ChatEmptyState />
-      ) : (
-        <ChatMessageList
-          messages={messages}
-          streamingMessageId={streamingMessageId}
-          searchMessageId={searchMessageId}
-          messageRefs={messageRefs}
-          onCopy={handleCopy}
-          onRegenerate={handleRegenerate}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onSourceClick={handleSourceClick}
-          onFeedback={handleFeedback}
-          registerMessageRef={registerMessageRef}
+      {/* Messages Area - flex-1 with min-h-0 to allow shrinking */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        {messages.length === 0 ? (
+          <div className="flex-1 overflow-y-auto">
+            <ChatEmptyState />
+          </div>
+        ) : (
+          <ChatMessageList
+            messages={messages}
+            streamingMessageId={streamingMessageId}
+            searchMessageId={searchMessageId}
+            messageRefs={messageRefs}
+            onCopy={handleCopy}
+            onRegenerate={handleRegenerate}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onSourceClick={handleSourceClick}
+            onFeedback={handleFeedback}
+            registerMessageRef={registerMessageRef}
+          />
+        )}
+
+        {/* Loading Indicator */}
+        {isLoading && !streamingMessageId && (
+          <div className="px-4 flex-shrink-0">
+            <ChatLoadingPulse stage={loadingStage} progress={loadingProgress} />
+          </div>
+        )}
+
+        <div ref={messagesEndRef} className="flex-shrink-0" />
+
+        {/* Sources Bar */}
+        {messages.length > 0 && (
+          <div className="flex-shrink-0">
+            <ChatSourcesBar
+              sources={sources}
+              onSourceClick={handleSourceClick}
+            />
+          </div>
+        )}
+
+        {/* Guest Sign-Up Prompt */}
+        {isGuest && !canSendChatMessage() && (
+          <div className="px-4 pb-4 flex-shrink-0">
+            <GuestSignUpPrompt />
+          </div>
+        )}
+      </div>
+
+      {/* Composer - flex-shrink-0 to prevent shrinking */}
+      <div className="flex-shrink-0">
+        <ChatComposer
+          onSubmit={sendMessage}
+          loading={isLoading}
+          disabled={isGuest && !canSendChatMessage()}
+          onUploadComplete={async () => {
+            // Refresh all data
+            await Promise.all([
+              refreshEntries(),
+              refreshTimeline(),
+              refreshChapters()
+            ]);
+            // Reload conversation to show new entries
+            loadConversation();
+          }}
         />
-      )}
+      </div>
 
-      {/* Loading Indicator */}
-      {isLoading && !streamingMessageId && (
-        <div className="px-4">
-          <ChatLoadingPulse stage={loadingStage} progress={loadingProgress} />
-        </div>
-      )}
-
-      <div ref={messagesEndRef} />
-
-      {/* Sources Bar */}
+      {/* Footer Actions - flex-shrink-0 to prevent shrinking */}
       {messages.length > 0 && (
-        <ChatSourcesBar
-          sources={sources}
-          onSourceClick={handleSourceClick}
-        />
-      )}
-
-      {/* Guest Sign-Up Prompt */}
-      {isGuest && !canSendChatMessage() && (
-        <div className="px-4 pb-4">
-          <GuestSignUpPrompt />
-        </div>
-      )}
-
-      {/* Composer */}
-      <ChatComposer
-        onSubmit={sendMessage}
-        loading={isLoading}
-        disabled={isGuest && !canSendChatMessage()}
-      />
-
-      {/* Footer Actions */}
-      {messages.length > 0 && (
-        <div className="px-4 pb-2 flex items-center justify-between border-t border-border/30 pt-2">
+        <div className="px-4 pb-2 flex items-center justify-between border-t border-border/30 pt-2 flex-shrink-0">
           <button
             onClick={handleClearConversation}
             className="text-xs text-white/30 hover:text-white/50 transition-colors"

@@ -189,11 +189,128 @@ router.post('/sync', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 /**
- * Get all photos for the authenticated user (deprecated - photos not stored)
+ * Analyze photo to determine type and suggest placement
+ */
+router.post('/analyze', requireAuth, upload.single('photo'), async (req: AuthenticatedRequest, res) => {
+  try {
+    // Support both file upload and base64
+    let photoBuffer: Buffer;
+    let filename: string;
+    
+    if (req.file) {
+      // File upload
+      photoBuffer = req.file.buffer;
+      filename = req.file.originalname || `photo-${Date.now()}.jpg`;
+    } else {
+      // Base64 from body
+      const { photo, filename: bodyFilename } = req.body;
+      if (!photo) {
+        return res.status(400).json({ error: 'Photo data is required' });
+      }
+      photoBuffer = Buffer.from(photo, 'base64');
+      filename = bodyFilename || `photo-${Date.now()}.jpg`;
+    }
+
+    const { photoAnalysisService } = await import('../services/photoAnalysisService');
+    
+    // Extract basic metadata
+    const metadata = await photoService.extractMetadata(photoBuffer, filename);
+    
+    // Reverse geocode if coordinates available
+    if (metadata.latitude && metadata.longitude) {
+      metadata.locationName = await photoService.reverseGeocode(metadata.latitude, metadata.longitude);
+    }
+    
+    // Analyze photo
+    const analysis = await photoAnalysisService.analyzePhoto(
+      req.user!.id,
+      photoBuffer,
+      filename,
+      metadata
+    );
+
+    res.json(analysis);
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to analyze photo');
+    res.status(500).json({
+      error: 'Failed to analyze photo',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * Process photo based on user's decision
+ */
+router.post('/process', requireAuth, upload.single('photo'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No photo file provided' });
+    }
+
+    const { options } = req.body;
+    const parsedOptions = typeof options === 'string' ? JSON.parse(options) : options;
+
+    const filename = req.file.originalname || `photo-${Date.now()}.jpg`;
+    const metadata = await photoService.extractMetadata(req.file.buffer, filename);
+    
+    if (metadata.latitude && metadata.longitude) {
+      metadata.locationName = await photoService.reverseGeocode(metadata.latitude, metadata.longitude);
+    }
+
+    const { photoAnalysisService } = await import('../services/photoAnalysisService');
+    const result = await photoAnalysisService.processPhoto(
+      req.user!.id,
+      req.file.buffer,
+      filename,
+      metadata,
+      parsedOptions
+    );
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to process photo');
+    res.status(500).json({
+      error: 'Failed to process photo',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * Get all photos for the authenticated user
+ * Returns entries that have photoUrl in metadata
  */
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
-  // Photos are not stored - only metadata is used to create entries
-  res.json({ photos: [], message: 'Photos are processed but not stored. Check journal entries instead.' });
+  try {
+    const { memoryService } = await import('../services/memoryService');
+    
+    // Get entries with photo metadata
+    const entries = await memoryService.searchEntries(req.user!.id, {
+      search: '',
+      limit: 1000
+    });
+
+    // Filter entries that have photoUrl or photoId in metadata
+    const photoEntries = entries.filter(entry => {
+      const metadata = entry.metadata || {};
+      return metadata.photoUrl || metadata.photoId;
+    });
+
+    res.json({ 
+      entries: photoEntries,
+      count: photoEntries.length
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get photos');
+    res.status(500).json({
+      error: 'Failed to get photos',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 });
 
 export const photosRouter = router;

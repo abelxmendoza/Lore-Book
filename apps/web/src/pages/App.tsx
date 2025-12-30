@@ -28,6 +28,7 @@ import { Button } from '../components/ui/button';
 import { ChatFirstInterface } from '../features/chat/components/ChatFirstInterface';
 import { CharacterBook } from '../components/characters/CharacterBook';
 import { LocationBook } from '../components/locations/LocationBook';
+import { PhotoAlbum } from '../components/photos/PhotoAlbum';
 import { ImprovedTimelineView } from '../components/timeline/ImprovedTimelineView';
 import { BiographyEditor } from '../components/biography/BiographyEditor';
 import { LoreBook } from '../components/lorebook/LoreBook';
@@ -37,7 +38,10 @@ import { TimelinePage } from '../components/timeline/TimelinePage';
 import { OmniTimelinePanel } from '../components/timeline/OmniTimelinePanel';
 import { EntityDetailModal } from '../components/entity/EntityDetailModal';
 import { useEntityModal } from '../contexts/EntityModalContext';
+import UserGuide from '../components/guide/UserGuide';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
+import { PerceptionsView } from '../components/perceptions/PerceptionsView';
+import { PerceptionLensView } from '../components/perceptions/PerceptionLensView';
 import { TrialBanner } from '../components/subscription/TrialBanner';
 import { PricingPage } from '../components/subscription/PricingPage';
 import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage';
@@ -59,7 +63,7 @@ const formatRange = (days = 7) => {
   };
 };
 
-type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity';
+type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide';
 
 interface AppContentProps {
   defaultSurface?: SurfaceKey;
@@ -111,6 +115,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [activeSurface, setActiveSurface] = useState<SurfaceKey>(defaultSurface || 'chat');
+  const [activePerceptionView, setActivePerceptionView] = useState<'list' | 'lens'>('list');
   const [insights, setInsights] = useState<any>(null);
 
   // Sync route → surface (handles browser back/forward and direct navigation)
@@ -320,12 +325,22 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             <BiographyEditor />
           </div>
         )}
-        {activeSurface === 'lorebook' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)]">
-            <LoreBook />
-          </div>
-        )}
-        {activeSurface === 'subscription' && (
+                        {activeSurface === 'lorebook' && (
+                          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)]">
+                            <LoreBook />
+                          </div>
+                        )}
+                        {activeSurface === 'photos' && (
+                          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+                            <PhotoAlbum />
+                          </div>
+                        )}
+                        {activeSurface === 'perceptions' && (
+                          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+                            <PerceptionsView showCreateButton={true} />
+                          </div>
+                        )}
+                        {activeSurface === 'subscription' && (
           <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] p-6">
             <TrialBanner />
             <SubscriptionManagement />
@@ -356,6 +371,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             <DiscoveryHub />
           </div>
         )}
+        {activeSurface === 'guide' && <UserGuide />}
 
         {/* Hide dev mode panel in production and timeline view */}
         {!config.env.isProduction && devMode && activeSurface !== 'timeline' && (

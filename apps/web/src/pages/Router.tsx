@@ -19,6 +19,8 @@ const Login = lazy(() => import('../routes/Login'));
 const NotFound = lazy(() => import('../routes/NotFound'));
 const Terms = lazy(() => import('../routes/Terms'));
 const PrivacyPolicy = lazy(() => import('../routes/PrivacyPolicy'));
+const UserGuide = lazy(() => import('../components/guide/UserGuide'));
+const Perceptions = lazy(() => import('../routes/Perceptions'));
 
 // Loading fallback component
 const LoadingFallback = () => (
@@ -106,6 +108,14 @@ export const Router = () => {
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="lorebook" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/photos" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="photos" /></AuthGate>
           </LazyRoute>
         } 
       />
@@ -198,6 +208,22 @@ export const Router = () => {
         element={
           <LazyRoute>
             <AuthGate><AccountCenter /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/guide" 
+        element={
+          <LazyRoute>
+            <AuthGate><UserGuide /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/perceptions" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="perceptions" /></AuthGate>
           </LazyRoute>
         } 
       />

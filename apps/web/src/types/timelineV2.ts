@@ -89,6 +89,7 @@ export interface TimelineRelationship {
 
 export interface SearchFilters {
   timeline_type?: string[];
+  layer_type?: Array<'mythos' | 'epoch' | 'era' | 'saga' | 'arc' | 'chapter' | 'scene' | 'action' | 'microaction'>;
   era?: string[];
   skill?: string[];
   job?: string[];

@@ -93,6 +93,10 @@ export const searchTimelines = (query: string, mode: SearchMode = 'natural', fil
   if (filters?.tags) {
     filters.tags.forEach(t => params.append('tags', t));
   }
+  // Add layer type filtering for 9-layer hierarchy
+  if (filters?.layer_type) {
+    filters.layer_type.forEach(l => params.append('layer_type', l));
+  }
 
   return fetchJson<TimelineSearchResult>(`/api/timeline-v2/search?${params.toString()}`);
 };
