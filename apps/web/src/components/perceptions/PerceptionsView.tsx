@@ -997,16 +997,16 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
         </Card>
       )}
 
-      {selectedPerceptionForDetail && (
-        <PerceptionDetailModal
-          perception={selectedPerceptionForDetail}
-          onClose={() => setSelectedPerceptionForDetail(null)}
-          onUpdate={(updated) => {
-            setSelectedPerceptionForDetail(updated);
-            void loadPerceptions();
-          }}
-        />
-      )}
+          {selectedPerceptionForDetail && (
+            <PerceptionDetailModal
+              perception={selectedPerceptionForDetail}
+              onClose={() => setSelectedPerceptionForDetail(null)}
+              onUpdate={(updated) => {
+                setSelectedPerceptionForDetail(updated);
+                void loadPerceptions();
+              }}
+            />
+          )}
 
           {showGossipChat && (
             <GossipChatModal

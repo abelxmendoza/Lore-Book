@@ -187,14 +187,17 @@ export const ReflectiveView: React.FC = () => {
             {patterns.commonPatterns.some(p => p.trigger_type === 'perception' && p.avg_intensity > 0.7) && (
               <p>
                 • Some beliefs trigger strong reactions even with low confidence. 
-                What might that mean?
+                What do you notice about that?
               </p>
             )}
             <p>
-              • How have your coping responses changed over time?
+              • How have your coping responses changed over time? What do you notice?
             </p>
             <p>
-              • Are there patterns you'd like to understand better?
+              • Are there patterns you'd like to explore further?
+            </p>
+            <p className="text-xs text-white/50 italic mt-3 pt-3 border-t border-purple-500/20">
+              Remember: These are patterns, not diagnoses. Your reactions are valid responses, not character flaws.
             </p>
           </div>
         </CardContent>
