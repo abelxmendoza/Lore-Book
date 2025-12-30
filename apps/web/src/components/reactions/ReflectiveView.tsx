@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, TrendingUp, AlertTriangle, Eye, HelpCircle, Loader2 } from 'lucide-react';
+import { Brain, TrendingUp, AlertTriangle, Eye, HelpCircle, Loader2, Activity } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { reactionApi } from '../../api/reactions';
+import { perceptionReactionEngineApi } from '../../api/perceptionReactionEngine';
 import type { ReactionPatterns } from '../../types/reaction';
+import type { PatternInsight, StabilityMetrics } from '../../api/perceptionReactionEngine';
 
 /**
  * Reflective View (Therapist Mode)
@@ -39,7 +41,7 @@ export const ReflectiveView: React.FC = () => {
     );
   }
 
-  if (!patterns) {
+  if (!patterns && insights.length === 0 && !stabilityMetrics) {
     return (
       <div className="text-center py-12 text-white/60">
         <Brain className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -162,6 +164,115 @@ export const ReflectiveView: React.FC = () => {
         </Card>
       )}
 
+      {/* Engine Insights - Pattern Detection */}
+      {insights.length > 0 && (
+        <Card className="bg-blue-500/10 border-blue-500/30">
+          <CardHeader>
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Brain className="h-5 w-5 text-blue-400" />
+              Pattern Insights
+            </h3>
+            <p className="text-sm text-white/60 mt-1">
+              Patterns detected in your perceptions and reactions. Questions, not conclusions.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {insights.map((insight, idx) => (
+              <div
+                key={idx}
+                className="bg-black/40 border border-blue-500/30 rounded-lg p-4"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1">
+                    <p className="text-sm text-white/90 mb-1">{insight.description}</p>
+                    <p className="text-sm text-blue-300 font-medium italic">
+                      {insight.question}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-xs ml-2">
+                    {Math.round(insight.confidence * 100)}% confidence
+                  </Badge>
+                </div>
+                {insight.data.avg_intensity && (
+                  <p className="text-xs text-white/50 mt-2">
+                    Avg intensity: {Math.round(insight.data.avg_intensity * 100)}%
+                  </p>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Stability Metrics - Resilience Focus */}
+      {stabilityMetrics && (
+        <Card className="bg-green-500/10 border-green-500/30">
+          <CardHeader>
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-green-400" />
+              Stability & Resilience
+            </h3>
+            <p className="text-sm text-white/60 mt-1">
+              Focus on recovery and resilience, not emotion
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {stabilityMetrics.avg_recovery_time_minutes !== null && (
+              <div>
+                <div className="text-sm text-white/70 mb-1">Average Recovery Time</div>
+                <div className="text-2xl font-bold text-white">
+                  {Math.floor(stabilityMetrics.avg_recovery_time_minutes / 60)}h{' '}
+                  {stabilityMetrics.avg_recovery_time_minutes % 60}m
+                </div>
+                {stabilityMetrics.recovery_trend !== 'unknown' && (
+                  <div className="text-xs text-white/50 mt-1">
+                    Trend: {stabilityMetrics.recovery_trend}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-sm text-white/70 mb-1">Recurrence Rate</div>
+                <div className="text-xl font-bold text-white">
+                  {Math.round(stabilityMetrics.recurrence_rate * 100)}%
+                </div>
+                <div className="text-xs text-white/50 mt-1">
+                  {stabilityMetrics.recurrence_rate < 0.3 ? 'Low recurrence' : 'Some recurrence'}
+                </div>
+              </div>
+
+              {stabilityMetrics.resilience_score !== null && (
+                <div>
+                  <div className="text-sm text-white/70 mb-1">Resilience</div>
+                  <div className="text-xl font-bold text-white">
+                    {Math.round(stabilityMetrics.resilience_score * 100)}%
+                  </div>
+                  <div className="text-xs text-white/50 mt-1">
+                    Based on recovery time and recurrence
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {stabilityMetrics.intensity_trend !== 'unknown' && (
+              <div>
+                <div className="text-sm text-white/70 mb-1">Intensity Trend</div>
+                <div className="text-lg font-semibold text-white capitalize">
+                  {stabilityMetrics.intensity_trend}
+                </div>
+                <div className="text-xs text-white/50 mt-1">
+                  {stabilityMetrics.intensity_trend === 'decreasing' && 'Reactions becoming less intense over time'}
+                  {stabilityMetrics.intensity_trend === 'stable' && 'Reaction intensity remains consistent'}
+                  {stabilityMetrics.intensity_trend === 'increasing' && 'Reaction intensity increasing - what do you notice?'}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Questions Section */}
       <Card className="bg-purple-500/10 border-purple-500/30">
         <CardHeader>
@@ -172,22 +283,25 @@ export const ReflectiveView: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="text-sm text-white/80 space-y-2">
-            {patterns.commonPatterns.length > 0 && (
+            {insights.length > 0 && (
+              <p>
+                • {insights[0].question}
+              </p>
+            )}
+            {stabilityMetrics && stabilityMetrics.recovery_trend === 'improving' && (
+              <p>
+                • Your recovery times are improving. What's changed?
+              </p>
+            )}
+            {stabilityMetrics && stabilityMetrics.recurrence_rate > 0.5 && (
+              <p>
+                • Some reactions recur. What patterns do you notice?
+              </p>
+            )}
+            {patterns && patterns.commonPatterns.length > 0 && (
               <p>
                 • This perception triggered {patterns.commonPatterns[0].reaction_label} {patterns.commonPatterns[0].count} times. 
                 Does that feel accurate?
-              </p>
-            )}
-            {Object.entries(patterns.byType).find(([_, count]) => count > 5) && (
-              <p>
-                • You have more {Object.entries(patterns.byType).sort(([, a], [, b]) => b - a)[0][0]} reactions than others. 
-                What do you notice about that?
-              </p>
-            )}
-            {patterns.commonPatterns.some(p => p.trigger_type === 'perception' && p.avg_intensity > 0.7) && (
-              <p>
-                • Some beliefs trigger strong reactions even with low confidence. 
-                What do you notice about that?
               </p>
             )}
             <p>

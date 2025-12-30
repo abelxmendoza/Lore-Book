@@ -44,7 +44,9 @@ export const ReactionChip: React.FC<ReactionChipProps> = ({
 }) => {
   const colors = REACTION_COLORS[reaction.reaction_label.toLowerCase()] || REACTION_COLORS.default;
   const Icon = getReactionIcon(reaction.reaction_type);
-  const isResolved = reaction.timestamp_resolved !== null;
+  const isResolved = reaction.resolution_state === 'resolved' || reaction.timestamp_resolved !== null;
+  const isLingering = reaction.resolution_state === 'lingering';
+  const isRecurring = reaction.resolution_state === 'recurring';
 
   return (
     <div
@@ -68,6 +70,17 @@ export const ReactionChip: React.FC<ReactionChipProps> = ({
           )}
           {isResolved && (
             <span className="text-white/30 text-[10px]">resolved</span>
+          )}
+          {isLingering && (
+            <span className="text-white/40 text-[10px]">lingering</span>
+          )}
+          {isRecurring && (
+            <span className="text-white/40 text-[10px]">
+              recurring {reaction.recurrence_count ? `(${reaction.recurrence_count})` : ''}
+            </span>
+          )}
+          {reaction.outcome && (
+            <span className="text-white/50 text-[10px] capitalize">{reaction.outcome}</span>
           )}
         </>
       )}

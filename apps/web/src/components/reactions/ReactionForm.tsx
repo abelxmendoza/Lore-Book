@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { reactionApi } from '../../api/reactions';
+import { perceptionReactionEngineApi } from '../../api/perceptionReactionEngine';
 import { REACTION_LABELS } from '../../types/reaction';
 import type { ReactionTriggerType, ReactionType, CreateReactionInput } from '../../types/reaction';
 
@@ -27,6 +28,8 @@ export const ReactionForm: React.FC<ReactionFormProps> = ({
   const [description, setDescription] = useState('');
   const [automatic, setAutomatic] = useState(true);
   const [copingResponse, setCopingResponse] = useState('');
+  const [resolutionState, setResolutionState] = useState<'active' | 'resolved' | 'lingering' | 'recurring'>('active');
+  const [outcome, setOutcome] = useState<'avoided' | 'confronted' | 'self_soothed' | 'escalated' | 'processed' | 'other' | ''>('');
   const [saving, setSaving] = useState(false);
 
   const availableLabels = REACTION_LABELS[reactionType] || [];
@@ -52,7 +55,16 @@ export const ReactionForm: React.FC<ReactionFormProps> = ({
         timestamp_started: new Date().toISOString()
       };
 
-      await reactionApi.createReaction(input);
+      const created = await reactionApi.createReaction(input);
+
+      // If resolved, update resolution state and outcome
+      if (resolutionState !== 'active') {
+        await perceptionReactionEngineApi.updateResolution(
+          created.id,
+          resolutionState,
+          outcome || undefined
+        );
+      }
       onSave();
       onClose();
     } catch (error) {
@@ -191,6 +203,41 @@ export const ReactionForm: React.FC<ReactionFormProps> = ({
             placeholder="What did you do to handle it?"
           />
         </div>
+
+        {/* Resolution State (if resolved) */}
+        <div>
+          <label className="text-sm font-medium text-white/70 mb-2 block">Resolution State</label>
+          <select
+            value={resolutionState}
+            onChange={(e) => setResolutionState(e.target.value as any)}
+            className="w-full bg-black/60 border-border/50 text-white text-sm h-10 rounded px-3"
+          >
+            <option value="active">Active (ongoing)</option>
+            <option value="resolved">Resolved</option>
+            <option value="lingering">Lingering (low-level ongoing)</option>
+            <option value="recurring">Recurring (comes back)</option>
+          </select>
+        </div>
+
+        {/* Outcome (if resolved) */}
+        {resolutionState === 'resolved' && (
+          <div>
+            <label className="text-sm font-medium text-white/70 mb-2 block">Outcome (optional)</label>
+            <select
+              value={outcome}
+              onChange={(e) => setOutcome(e.target.value as any)}
+              className="w-full bg-black/60 border-border/50 text-white text-sm h-10 rounded px-3"
+            >
+              <option value="">Select outcome...</option>
+              <option value="avoided">Avoided</option>
+              <option value="confronted">Confronted</option>
+              <option value="self_soothed">Self-soothed</option>
+              <option value="escalated">Escalated</option>
+              <option value="processed">Processed</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3 pt-4 border-t border-orange-500/30">

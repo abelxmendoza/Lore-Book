@@ -20,6 +20,14 @@ export type ReactionEntry = {
   coping_response: string | null;
   timestamp_started: string;
   timestamp_resolved: string | null;
+  resolution_state?: 'active' | 'resolved' | 'lingering' | 'recurring';
+  outcome?: 'avoided' | 'confronted' | 'self_soothed' | 'escalated' | 'processed' | 'other' | null;
+  recurrence_count?: number;
+  recovery_time_minutes?: number | null;
+  intensity_over_time?: number[];
+  reflection_prompted_at?: string | null;
+  reflection_answered_at?: string | null;
+  reflection_response?: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -41,6 +49,12 @@ export type CreateReactionInput = {
 
 export type UpdateReactionInput = Partial<Omit<CreateReactionInput, 'trigger_type' | 'trigger_id'>> & {
   timestamp_resolved?: string | null;
+  resolution_state?: 'active' | 'resolved' | 'lingering' | 'recurring';
+  outcome?: 'avoided' | 'confronted' | 'self_soothed' | 'escalated' | 'processed' | 'other' | null;
+  recurrence_count?: number;
+  recovery_time_minutes?: number | null;
+  intensity_over_time?: number[];
+  reflection_response?: string | null;
 };
 
 /**
