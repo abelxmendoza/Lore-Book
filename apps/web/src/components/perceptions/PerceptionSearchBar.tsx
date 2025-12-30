@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, X, Eye, Clock, User, AlertTriangle } from 'lucide-react';
 import { perceptionApi } from '../../api/perceptions';
 import type { PerceptionEntry } from '../../types/perception';
@@ -7,10 +7,16 @@ import { formatDistanceToNow } from 'date-fns';
 interface PerceptionSearchBarProps {
   onSelect?: (perception: PerceptionEntry) => void;
   onSearchChange?: (query: string) => void;
+  initialQuery?: string;
 }
 
-export const PerceptionSearchBar = ({ onSelect, onSearchChange }: PerceptionSearchBarProps) => {
-  const [query, setQuery] = useState('');
+export const PerceptionSearchBar = ({ onSelect, onSearchChange, initialQuery = '' }: PerceptionSearchBarProps) => {
+  const [query, setQuery] = useState(initialQuery);
+  
+  // Sync with external query changes
+  useEffect(() => {
+    setQuery(initialQuery);
+  }, [initialQuery]);
   const [suggestions, setSuggestions] = useState<PerceptionEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);

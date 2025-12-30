@@ -11,6 +11,7 @@ import { perceptionApi } from '../../api/perceptions';
 import type { PerceptionEntry, PerceptionStatus } from '../../types/perception';
 import { formatDistanceToNow } from 'date-fns';
 import { Textarea } from '../ui/textarea';
+import { ReactionList } from '../reactions/ReactionList';
 
 interface PerceptionDetailModalProps {
   perception: PerceptionEntry;
@@ -496,6 +497,17 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
                           <p className="text-sm text-white/70 italic">{perception.resolution_note}</p>
                         </div>
                       )}
+
+                      {/* Reactions */}
+                      <div className="pt-4 border-t border-border/50">
+                        <ReactionList
+                          triggerType="perception"
+                          triggerId={perception.id}
+                          onReactionChange={() => {
+                            // Could reload perception if needed
+                          }}
+                        />
+                      </div>
                     </CardContent>
                   </Card>
                 </div>

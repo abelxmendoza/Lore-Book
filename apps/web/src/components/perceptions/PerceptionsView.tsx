@@ -8,6 +8,7 @@ import type { PerceptionEntry, PerceptionSource, PerceptionStatus } from '../../
 import { PerceptionDetailModal } from './PerceptionDetailModal';
 import { GossipChatModal } from './GossipChatModal';
 import { PerceptionSearchBar } from './PerceptionSearchBar';
+import { PerceptionSearchSuggestions } from './PerceptionSearchSuggestions';
 import { Card, CardContent } from '../ui/card';
 
 const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows for grid view
@@ -213,6 +214,397 @@ const mockPerceptions: PerceptionEntry[] = [
     metadata: {},
     created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     updated_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  // Additional mock data for multiple pages
+  {
+    id: 'mock-9',
+    user_id: 'mock-user',
+    subject_alias: 'Jordan Martinez',
+    subject_person_id: null,
+    content: 'I heard that Jordan got promoted to senior manager. Someone at the company told me they were chosen over other candidates.',
+    source: 'told_by',
+    source_detail: 'Colleague at work',
+    confidence_level: 0.7,
+    sentiment: 'neutral',
+    timestamp_heard: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt happy for Jordan but also a bit envious. I started questioning whether I should be more ambitious in my own career.',
+    status: 'confirmed',
+    retracted: false,
+    resolution_note: 'Confirmed - Jordan did get the promotion',
+    original_content: 'I heard that Jordan got promoted to senior manager. Someone at the company told me they were chosen over other candidates.',
+    evolution_notes: [],
+    created_in_high_emotion: false,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-10',
+    user_id: 'mock-user',
+    subject_alias: 'Alex Kim',
+    subject_person_id: null,
+    content: 'Rumor has it that Alex is moving to Seattle for a new job opportunity. I saw it mentioned in a group chat.',
+    source: 'rumor',
+    source_detail: 'Group chat message',
+    confidence_level: 0.4,
+    sentiment: 'neutral',
+    timestamp_heard: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt sad because Alex is a good friend. I started wondering if I should reach out before they leave.',
+    status: 'unverified',
+    retracted: false,
+    resolution_note: null,
+    original_content: 'Rumor has it that Alex is moving to Seattle for a new job opportunity. I saw it mentioned in a group chat.',
+    evolution_notes: [],
+    created_in_high_emotion: false,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-11',
+    user_id: 'mock-user',
+    subject_alias: 'Morgan Lee',
+    subject_person_id: null,
+    content: 'I saw on Instagram that Morgan posted about a new relationship. They seemed really happy in the photos.',
+    source: 'social_media',
+    source_detail: 'Instagram post',
+    confidence_level: 0.8,
+    sentiment: 'positive',
+    timestamp_heard: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt genuinely happy for Morgan. It reminded me to check in with friends more often.',
+    status: 'confirmed',
+    retracted: false,
+    resolution_note: 'Confirmed - Morgan did start a new relationship',
+    original_content: 'I saw on Instagram that Morgan posted about a new relationship. They seemed really happy in the photos.',
+    evolution_notes: [],
+    created_in_high_emotion: false,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-12',
+    user_id: 'mock-user',
+    subject_alias: 'Riley Thompson',
+    subject_person_id: null,
+    content: 'I assumed Riley was avoiding me at the party because they didn\'t come over to say hello when I arrived.',
+    source: 'assumption',
+    source_detail: 'Observed behavior at party',
+    confidence_level: 0.3,
+    sentiment: 'negative',
+    timestamp_heard: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt awkward and didn\'t approach them either. I left the party early because I felt uncomfortable.',
+    status: 'disproven',
+    retracted: false,
+    resolution_note: 'Riley was actually dealing with a family emergency and didn\'t see me arrive. They reached out later to apologize.',
+    original_content: 'I assumed Riley was avoiding me at the party because they didn\'t come over to say hello when I arrived.',
+    evolution_notes: [
+      '2024-01-22: Riley was actually dealing with a family emergency and didn\'t see me arrive. They reached out later to apologize.'
+    ],
+    created_in_high_emotion: true,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-13',
+    user_id: 'mock-user',
+    subject_alias: 'Jamie Wilson',
+    subject_person_id: null,
+    content: 'I overheard Jamie talking about me in the break room. They said I was being too sensitive about the project feedback.',
+    source: 'overheard',
+    source_detail: 'Break room conversation',
+    confidence_level: 0.5,
+    sentiment: 'negative',
+    timestamp_heard: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt defensive and hurt. I started second-guessing my reactions and became more withdrawn in team meetings.',
+    status: 'unverified',
+    retracted: false,
+    resolution_note: null,
+    original_content: 'I overheard Jamie talking about me in the break room. They said I was being too sensitive about the project feedback.',
+    evolution_notes: [],
+    created_in_high_emotion: true,
+    review_reminder_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+    metadata: {},
+    created_at: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-14',
+    user_id: 'mock-user',
+    subject_alias: 'Quinn Anderson',
+    subject_person_id: null,
+    content: 'Someone told me that Quinn was spreading rumors about my work performance. I heard it from a mutual friend.',
+    source: 'told_by',
+    source_detail: 'Mutual friend',
+    confidence_level: 0.3,
+    sentiment: 'negative',
+    timestamp_heard: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I became paranoid and started documenting everything I did at work. I avoided Quinn and felt anxious about my reputation.',
+    status: 'disproven',
+    retracted: false,
+    resolution_note: 'The mutual friend misunderstood - Quinn was actually defending my work, not criticizing it.',
+    original_content: 'Someone told me that Quinn was spreading rumors about my work performance. I heard it from a mutual friend.',
+    evolution_notes: [
+      '2024-01-24: The mutual friend misunderstood - Quinn was actually defending my work, not criticizing it.'
+    ],
+    created_in_high_emotion: true,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-15',
+    user_id: 'mock-user',
+    subject_alias: 'Avery Davis',
+    subject_person_id: null,
+    content: 'I read on social media that Avery got engaged. There were photos of the proposal on their timeline.',
+    source: 'social_media',
+    source_detail: 'Facebook timeline',
+    confidence_level: 0.9,
+    sentiment: 'positive',
+    timestamp_heard: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt happy for Avery and reached out to congratulate them. It made me reflect on my own relationships.',
+    status: 'confirmed',
+    retracted: false,
+    resolution_note: 'Confirmed - Avery did get engaged',
+    original_content: 'I read on social media that Avery got engaged. There were photos of the proposal on their timeline.',
+    evolution_notes: [],
+    created_in_high_emotion: false,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-16',
+    user_id: 'mock-user',
+    subject_alias: 'Cameron White',
+    subject_person_id: null,
+    content: 'I thought Cameron was being passive-aggressive in their messages. The tone seemed off and I felt like they were upset with me.',
+    source: 'intuition',
+    source_detail: 'Text message tone',
+    confidence_level: 0.4,
+    sentiment: 'negative',
+    timestamp_heard: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I overthought the messages and delayed responding. I felt anxious about what I might have done wrong.',
+    status: 'unverified',
+    retracted: false,
+    resolution_note: null,
+    original_content: 'I thought Cameron was being passive-aggressive in their messages. The tone seemed off and I felt like they were upset with me.',
+    evolution_notes: [],
+    created_in_high_emotion: true,
+    review_reminder_at: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(),
+    metadata: {},
+    created_at: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-17',
+    user_id: 'mock-user',
+    subject_alias: 'Dakota Brown',
+    subject_person_id: null,
+    content: 'Rumor has it that Dakota is starting their own business. I heard it from someone in our friend group.',
+    source: 'rumor',
+    source_detail: 'Friend group conversation',
+    confidence_level: 0.5,
+    sentiment: 'positive',
+    timestamp_heard: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt inspired and proud of Dakota. It motivated me to think about my own career goals.',
+    status: 'unverified',
+    retracted: false,
+    resolution_note: null,
+    original_content: 'Rumor has it that Dakota is starting their own business. I heard it from someone in our friend group.',
+    evolution_notes: [],
+    created_in_high_emotion: false,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-18',
+    user_id: 'mock-user',
+    subject_alias: 'Sage Green',
+    subject_person_id: null,
+    content: 'I overheard Sage talking about moving to a different city. They were discussing job opportunities with someone.',
+    source: 'overheard',
+    source_detail: 'Coffee shop conversation',
+    confidence_level: 0.6,
+    sentiment: 'neutral',
+    timestamp_heard: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt a bit sad because Sage is a good friend, but also excited for their potential opportunities.',
+    status: 'unverified',
+    retracted: false,
+    resolution_note: null,
+    original_content: 'I overheard Sage talking about moving to a different city. They were discussing job opportunities with someone.',
+    evolution_notes: [],
+    created_in_high_emotion: false,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-19',
+    user_id: 'mock-user',
+    subject_alias: 'River Johnson',
+    subject_person_id: null,
+    content: 'I assumed River was ignoring my messages because they didn\'t respond for three days. I thought they were upset with me.',
+    source: 'assumption',
+    source_detail: 'No response to messages',
+    confidence_level: 0.3,
+    sentiment: 'negative',
+    timestamp_heard: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt anxious and kept checking my phone. I started overthinking what I might have said wrong.',
+    status: 'disproven',
+    retracted: false,
+    resolution_note: 'River was traveling and had limited phone service. They responded as soon as they got back.',
+    original_content: 'I assumed River was ignoring my messages because they didn\'t respond for three days. I thought they were upset with me.',
+    evolution_notes: [
+      '2024-01-27: River was traveling and had limited phone service. They responded as soon as they got back.'
+    ],
+    created_in_high_emotion: true,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-20',
+    user_id: 'mock-user',
+    subject_alias: 'Phoenix Taylor',
+    subject_person_id: null,
+    content: 'I saw on Twitter that Phoenix shared an article criticizing my industry. I thought it was a subtle dig at me.',
+    source: 'social_media',
+    source_detail: 'Twitter post',
+    confidence_level: 0.2,
+    sentiment: 'negative',
+    timestamp_heard: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt defensive and started questioning our friendship. I considered unfollowing them on social media.',
+    status: 'unverified',
+    retracted: false,
+    resolution_note: null,
+    original_content: 'I saw on Twitter that Phoenix shared an article criticizing my industry. I thought it was a subtle dig at me.',
+    evolution_notes: [],
+    created_in_high_emotion: true,
+    review_reminder_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+    metadata: {},
+    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-21',
+    user_id: 'mock-user',
+    subject_alias: 'Blake Moore',
+    subject_person_id: null,
+    content: 'Someone told me that Blake was organizing a party and didn\'t invite me. I heard it from another friend who was going.',
+    source: 'told_by',
+    source_detail: 'Friend who was invited',
+    confidence_level: 0.6,
+    sentiment: 'negative',
+    timestamp_heard: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt excluded and hurt. I started wondering if Blake didn\'t like me or if I had done something wrong.',
+    status: 'unverified',
+    retracted: false,
+    resolution_note: null,
+    original_content: 'Someone told me that Blake was organizing a party and didn\'t invite me. I heard it from another friend who was going.',
+    evolution_notes: [],
+    created_in_high_emotion: true,
+    review_reminder_at: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toISOString(),
+    metadata: {},
+    created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-22',
+    user_id: 'mock-user',
+    subject_alias: 'Skylar Adams',
+    subject_person_id: null,
+    content: 'I thought Skylar was being dismissive of my ideas in the meeting. Their body language seemed uninterested.',
+    source: 'intuition',
+    source_detail: 'Meeting observation',
+    confidence_level: 0.4,
+    sentiment: 'negative',
+    timestamp_heard: new Date(Date.now() - 22 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I became less confident sharing ideas in future meetings. I started second-guessing my contributions.',
+    status: 'unverified',
+    retracted: false,
+    resolution_note: null,
+    original_content: 'I thought Skylar was being dismissive of my ideas in the meeting. Their body language seemed uninterested.',
+    evolution_notes: [],
+    created_in_high_emotion: false,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 22 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 22 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-23',
+    user_id: 'mock-user',
+    subject_alias: 'Rowan Clark',
+    subject_person_id: null,
+    content: 'I heard that Rowan got a significant raise. A colleague mentioned it during a casual conversation.',
+    source: 'told_by',
+    source_detail: 'Colleague',
+    confidence_level: 0.7,
+    sentiment: 'neutral',
+    timestamp_heard: new Date(Date.now() - 19 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt a mix of happiness for Rowan and some envy. It made me think about negotiating my own salary.',
+    status: 'unverified',
+    retracted: false,
+    resolution_note: null,
+    original_content: 'I heard that Rowan got a significant raise. A colleague mentioned it during a casual conversation.',
+    evolution_notes: [],
+    created_in_high_emotion: false,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 19 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 19 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: 'mock-24',
+    user_id: 'mock-user',
+    subject_alias: 'Finley Lewis',
+    subject_person_id: null,
+    content: 'I saw on LinkedIn that Finley changed jobs. Their profile showed they\'re now at a different company.',
+    source: 'social_media',
+    source_detail: 'LinkedIn profile update',
+    confidence_level: 0.9,
+    sentiment: 'positive',
+    timestamp_heard: new Date(Date.now() - 17 * 24 * 60 * 60 * 1000).toISOString(),
+    related_memory_id: null,
+    impact_on_me: 'I felt happy for Finley and reached out to congratulate them. It reminded me to update my own network.',
+    status: 'confirmed',
+    retracted: false,
+    resolution_note: 'Confirmed - Finley did change jobs',
+    original_content: 'I saw on LinkedIn that Finley changed jobs. Their profile showed they\'re now at a different company.',
+    evolution_notes: [],
+    created_in_high_emotion: false,
+    review_reminder_at: null,
+    metadata: {},
+    created_at: new Date(Date.now() - 17 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 11 * 24 * 60 * 60 * 1000).toISOString()
   }
 ];
 
@@ -227,6 +619,8 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
   const [loading, setLoading] = useState(false);
   const [selectedPerceptionForDetail, setSelectedPerceptionForDetail] = useState<PerceptionEntry | null>(null);
   const [showGossipChat, setShowGossipChat] = useState(false);
+  const [showReflectiveView, setShowReflectiveView] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<PerceptionSource | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<PerceptionStatus | 'all' | 'unverified_only'>('unverified_only');
   const [showRetracted, setShowRetracted] = useState(false);
@@ -391,13 +785,23 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
           </p>
         </div>
         {showCreateButton && (
-          <Button 
-            onClick={() => setShowGossipChat(true)} 
-            leftIcon={<MessageSquare className="h-4 w-4" />}
-            className="bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border-orange-500/30"
-          >
-            Gossip Chat
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              onClick={() => setShowReflectiveView(!showReflectiveView)} 
+              leftIcon={<Brain className="h-4 w-4" />}
+              variant={showReflectiveView ? 'default' : 'outline'}
+              className={showReflectiveView ? 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border-purple-500/30' : ''}
+            >
+              Reflective View
+            </Button>
+            <Button 
+              onClick={() => setShowGossipChat(true)} 
+              leftIcon={<MessageSquare className="h-4 w-4" />}
+              className="bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border-orange-500/30"
+            >
+              Gossip Chat
+            </Button>
+          </div>
         )}
       </div>
 
@@ -406,7 +810,13 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
         <PerceptionSearchBar
           onSelect={(perception) => setSelectedPerceptionForDetail(perception)}
           onSearchChange={(query) => setSearchQuery(query)}
+          initialQuery={searchQuery}
         />
+        {!searchQuery && (
+          <PerceptionSearchSuggestions
+            onSelect={(query) => setSearchQuery(query)}
+          />
+        )}
       </div>
 
       {/* Filters */}
@@ -598,13 +1008,15 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
         />
       )}
 
-      {showGossipChat && (
-        <GossipChatModal
-          onClose={() => setShowGossipChat(false)}
-          onPerceptionsCreated={() => {
-            void loadPerceptions();
-          }}
-        />
+          {showGossipChat && (
+            <GossipChatModal
+              onClose={() => setShowGossipChat(false)}
+              onPerceptionsCreated={() => {
+                void loadPerceptions();
+              }}
+            />
+          )}
+        </>
       )}
     </div>
   );

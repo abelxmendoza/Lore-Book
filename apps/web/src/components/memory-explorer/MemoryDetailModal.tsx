@@ -7,6 +7,7 @@ import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { ChatComposer } from '../chat/ChatComposer';
 import { MemoryComponents } from './MemoryComponents';
 import { KnowledgeGraphViewer } from '../graph/KnowledgeGraphViewer';
+import { ReactionList } from '../reactions/ReactionList';
 import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard, type LinkedMemory } from '../../types/memory';
 
@@ -530,6 +531,17 @@ The user can ask questions about this memory, request to add details, update tag
                       </p>
                     </div>
                   )}
+                </div>
+
+                {/* Reactions */}
+                <div className="pt-4 border-t border-border/50">
+                  <ReactionList
+                    triggerType="memory"
+                    triggerId={memory.id}
+                    onReactionChange={() => {
+                      // Could reload memory if needed
+                    }}
+                  />
                 </div>
 
                 {/* Memory Components */}
