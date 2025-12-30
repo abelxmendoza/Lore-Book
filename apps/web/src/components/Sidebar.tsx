@@ -232,6 +232,21 @@ export const Sidebar = ({
               Dev Console
             </button>
           )}
+          {/* Dev Mode toggle - moved into Development section */}
+          {onToggleDevMode && (
+            <button
+              onClick={onToggleDevMode}
+              aria-label={devModeEnabled ? 'Hide dev mode' : 'Show dev mode'}
+              className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+                devModeEnabled
+                  ? 'border-primary bg-primary/10 text-white'
+                  : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+              }`}
+            >
+              <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+              {devModeEnabled ? 'Hide Dev Mode' : 'Dev Mode'}
+            </button>
+          )}
         </div>
       </div>
     )}
@@ -241,17 +256,6 @@ export const Sidebar = ({
         <Button className="w-full" leftIcon={<Plus className="h-4 w-4" />} onClick={onCreateChapter}>
           New Chapter
         </Button>
-        {/* Hide Dev Mode button in production */}
-        {!config.env.isProduction && onToggleDevMode && (
-          <Button
-            variant={devModeEnabled ? 'secondary' : 'outline'}
-            className="w-full"
-            onClick={onToggleDevMode}
-            leftIcon={<Sparkles className="h-4 w-4" />}
-          >
-            {devModeEnabled ? 'Hide Dev Mode' : 'Dev Mode'}
-          </Button>
-        )}
       </div>
     </div>
   </aside>

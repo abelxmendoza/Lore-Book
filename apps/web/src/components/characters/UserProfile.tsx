@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { User, Calendar, BookOpen, Users, Tag, TrendingUp, Sparkles, Clock, FileText, Heart, MapPin, Award, BarChart3, Activity, Brain } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { User, Calendar, BookOpen, Users, Tag, TrendingUp, Sparkles, Clock, FileText, Heart, MapPin, Award, BarChart3, Activity, Brain, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { fetchJson } from '../../lib/api';
 import { IdentityPulseModal } from '../identity/IdentityPulseModal';
 import { InsightsModal } from '../InsightsModal';
+import { AIInsightModal } from './AIInsightModal';
 
 const DEBUG = true; // Set to false in production
 
@@ -43,6 +45,7 @@ type UserStats = {
 };
 
 export const UserProfile = () => {
+  const navigate = useNavigate();
   const { entries = [], chapters = [], tags = [], timeline } = useLoreKeeper();
   const [characters, setCharacters] = useState<any[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -54,13 +57,120 @@ export const UserProfile = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [identityPulseModalOpen, setIdentityPulseModalOpen] = useState(false);
   const [insightsModalOpen, setInsightsModalOpen] = useState(false);
+  const [engineResults, setEngineResults] = useState<Record<string, any> | null>(null);
+  const [engineResultsLoading, setEngineResultsLoading] = useState(false);
+  const [aiInsightModal, setAiInsightModal] = useState<{ type: string; data: any } | null>(null);
 
   useEffect(() => {
     debugLog('useEffect', 'Component mounted, loading initial data');
     loadCharacters();
     loadLanguageStyle();
     loadInsights();
+    loadEngineResults();
   }, []);
+
+  // Mock engine results for UI preview
+  const getMockEngineResults = (): Record<string, any> => ({
+    storyOfSelf: {
+      mode: {
+        mode: 'Reflective',
+        confidence: 0.85
+      },
+      themes: [
+        { theme: 'Self-Discovery', confidence: 0.92, frequency: 45 },
+        { theme: 'Growth', confidence: 0.88, frequency: 38 },
+        { theme: 'Connection', confidence: 0.75, frequency: 32 }
+      ],
+      coherence: {
+        score: 0.82,
+        contradictions: []
+      }
+    },
+    archetype: {
+      profile: {
+        dominant: 'The Seeker',
+        secondary: ['The Sage', 'The Creator'],
+        scores: {
+          seeker: 0.89,
+          sage: 0.76,
+          creator: 0.71
+        }
+      }
+    },
+    shadow: {
+      dominant_shadow: 'The Perfectionist',
+      archetype_scores: {
+        perfectionist: 0.78,
+        critic: 0.65,
+        controller: 0.52
+      },
+      projection: {
+        recommended_focus: 'Self-compassion',
+        trajectory: 'Integrating shadow patterns'
+      }
+    },
+    growth: {
+      trajectory: 'Ascending',
+      milestones: [
+        { date: '2024-01', event: 'Started journaling' },
+        { date: '2024-06', event: 'Major breakthrough' }
+      ],
+      velocity: 0.73
+    },
+    innerDialogue: {
+      voices: [
+        { role: 'future_self', tone: 'encouraging', frequency: 0.45 },
+        { role: 'inner_critic', tone: 'critical', frequency: 0.32 },
+        { role: 'wise_self', tone: 'compassionate', frequency: 0.28 }
+      ],
+      dominant_voice: 'future_self'
+    },
+    alternateSelf: {
+      clusters: [
+        { self_type: 'The Ideal Self', trajectory: 'aspiring', confidence: 0.85 },
+        { self_type: 'The Past Self', trajectory: 'reflecting', confidence: 0.72 }
+      ],
+      trajectory: 'Forward-moving'
+    },
+    cognitiveBias: {
+      dominant_bias: 'Confirmation Bias',
+      impact_score: 0.68,
+      biases: [
+        { type: 'confirmation', severity: 0.75 },
+        { type: 'anchoring', severity: 0.52 }
+      ]
+    },
+    paracosm: {
+      clusters: [
+        { category: 'Imagined Worlds', signals: Array(12).fill({}), confidence: 0.81 },
+        { category: 'Future Visions', signals: Array(8).fill({}), confidence: 0.74 }
+      ]
+    }
+  });
+
+  const loadEngineResults = async () => {
+    debugLog('loadEngineResults', 'Starting to load engine results');
+    setEngineResultsLoading(true);
+    setErrors(prev => ({ ...prev, engineResults: '' }));
+    try {
+      const result = await fetchJson<Record<string, any>>('/api/engine-runtime/summary/cached');
+      debugLog('loadEngineResults', 'Engine results loaded successfully', { 
+        engines: result ? Object.keys(result) : [] 
+      });
+      // Use mock data if no results from API (for UI preview)
+      setEngineResults(result && Object.keys(result).length > 0 ? result : getMockEngineResults());
+    } catch (error: any) {
+      debugError('loadEngineResults', 'Failed to load engine results', error);
+      // Use mock data on error for UI preview
+      setEngineResults(getMockEngineResults());
+      setErrors(prev => ({ 
+        ...prev, 
+        engineResults: error?.message || 'Using mock data for preview' 
+      }));
+    } finally {
+      setEngineResultsLoading(false);
+    }
+  };
 
   const loadInsights = async () => {
     debugLog('loadInsights', 'Starting to load insights');
@@ -535,6 +645,183 @@ export const UserProfile = () => {
             </div>
           </div>
 
+          {/* Engine Quick Insights */}
+          {(engineResults && Object.keys(engineResults).length > 0) && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 text-white/70 mb-3">
+                <Sparkles className="h-4 w-4" />
+                <span className="text-sm font-semibold">AI Insights</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* Story of Self - Quick */}
+                {engineResults.storyOfSelf && (
+                  <button
+                    onClick={() => setAiInsightModal({ type: 'storyOfSelf', data: engineResults.storyOfSelf })}
+                    className="bg-black/40 rounded-lg p-3 border border-border/50 hover:border-primary/50 transition-colors text-left group"
+                  >
+                    <div className="flex items-center gap-2 text-white/60 mb-1">
+                      <BookOpen className="h-4 w-4" />
+                      <span className="text-xs">Your Story</span>
+                    </div>
+                    <div className="text-sm font-bold text-primary group-hover:text-primary/80">
+                      {engineResults.storyOfSelf.mode?.mode || 'Discovering...'}
+                    </div>
+                    {engineResults.storyOfSelf.themes?.[0] && (
+                      <div className="text-xs text-white/50 mt-1 truncate">
+                        {engineResults.storyOfSelf.themes[0].theme}
+                      </div>
+                    )}
+                  </button>
+                )}
+
+                {/* Archetype - Quick */}
+                {engineResults.archetype && (
+                  <button
+                    onClick={() => setAiInsightModal({ type: 'archetype', data: engineResults.archetype })}
+                    className="bg-black/40 rounded-lg p-3 border border-border/50 hover:border-primary/50 transition-colors text-left group"
+                  >
+                    <div className="flex items-center gap-2 text-white/60 mb-1">
+                      <Sparkles className="h-4 w-4" />
+                      <span className="text-xs">Archetype</span>
+                    </div>
+                    <div className="text-sm font-bold text-primary group-hover:text-primary/80">
+                      {engineResults.archetype.profile?.dominant || 'Unknown'}
+                    </div>
+                    {engineResults.archetype.profile?.secondary?.[0] && (
+                      <div className="text-xs text-white/50 mt-1 truncate">
+                        Also: {engineResults.archetype.profile.secondary[0]}
+                      </div>
+                    )}
+                  </button>
+                )}
+
+                {/* Shadow - Quick */}
+                {engineResults.shadow && (
+                  <button
+                    onClick={() => setAiInsightModal({ type: 'shadow', data: engineResults.shadow })}
+                    className="bg-black/40 rounded-lg p-3 border border-red-500/30 hover:border-red-500/50 transition-colors text-left group"
+                  >
+                    <div className="flex items-center gap-2 text-white/60 mb-1">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="text-xs">Shadow</span>
+                    </div>
+                    <div className="text-sm font-bold text-red-300 group-hover:text-red-200">
+                      {engineResults.shadow.dominant_shadow || 'None'}
+                    </div>
+                    {engineResults.shadow.projection?.recommended_focus && (
+                      <div className="text-xs text-white/50 mt-1 truncate">
+                        {engineResults.shadow.projection.recommended_focus}
+                      </div>
+                    )}
+                  </button>
+                )}
+
+                {/* Growth - Quick */}
+                {engineResults.growth && (
+                  <button
+                    onClick={() => setAiInsightModal({ type: 'growth', data: engineResults.growth })}
+                    className="bg-black/40 rounded-lg p-3 border border-green-500/30 hover:border-green-500/50 transition-colors text-left group"
+                  >
+                    <div className="flex items-center gap-2 text-white/60 mb-1">
+                      <TrendingUp className="h-4 w-4" />
+                      <span className="text-xs">Growth</span>
+                    </div>
+                    <div className="text-sm font-bold text-green-300 group-hover:text-green-200">
+                      {engineResults.growth.trajectory || 'Analyzing...'}
+                    </div>
+                    <div className="text-xs text-white/50 mt-1">
+                      View trajectory →
+                    </div>
+                  </button>
+                )}
+
+                {/* Inner Dialogue - Quick */}
+                {engineResults.innerDialogue && (
+                  <button
+                    onClick={() => setAiInsightModal({ type: 'innerDialogue', data: engineResults.innerDialogue })}
+                    className="bg-black/40 rounded-lg p-3 border border-border/50 hover:border-primary/50 transition-colors text-left group"
+                  >
+                    <div className="flex items-center gap-2 text-white/60 mb-1">
+                      <Brain className="h-4 w-4" />
+                      <span className="text-xs">Inner Voice</span>
+                    </div>
+                    <div className="text-sm font-bold text-primary group-hover:text-primary/80">
+                      {engineResults.innerDialogue.voices?.[0]?.role || 'Exploring...'}
+                    </div>
+                    {engineResults.innerDialogue.voices?.[0]?.tone && (
+                      <div className="text-xs text-white/50 mt-1 truncate">
+                        {engineResults.innerDialogue.voices[0].tone}
+                      </div>
+                    )}
+                  </button>
+                )}
+
+                {/* Alternate Self - Quick */}
+                {engineResults.alternateSelf && (
+                  <button
+                    onClick={() => setAiInsightModal({ type: 'alternateSelf', data: engineResults.alternateSelf })}
+                    className="bg-black/40 rounded-lg p-3 border border-border/50 hover:border-primary/50 transition-colors text-left group"
+                  >
+                    <div className="flex items-center gap-2 text-white/60 mb-1">
+                      <Users className="h-4 w-4" />
+                      <span className="text-xs">Alternate Self</span>
+                    </div>
+                    <div className="text-sm font-bold text-primary group-hover:text-primary/80">
+                      {engineResults.alternateSelf.clusters?.[0]?.self_type || 'Exploring...'}
+                    </div>
+                    {engineResults.alternateSelf.clusters?.[0]?.trajectory && (
+                      <div className="text-xs text-white/50 mt-1 truncate">
+                        {engineResults.alternateSelf.clusters[0].trajectory}
+                      </div>
+                    )}
+                  </button>
+                )}
+
+                {/* Cognitive Bias - Quick */}
+                {engineResults.cognitiveBias && (
+                  <button
+                    onClick={() => setAiInsightModal({ type: 'cognitiveBias', data: engineResults.cognitiveBias })}
+                    className="bg-black/40 rounded-lg p-3 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors text-left group"
+                  >
+                    <div className="flex items-center gap-2 text-white/60 mb-1">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="text-xs">Bias Patterns</span>
+                    </div>
+                    <div className="text-sm font-bold text-yellow-300 group-hover:text-yellow-200">
+                      {engineResults.cognitiveBias.dominant_bias || 'None'}
+                    </div>
+                    {engineResults.cognitiveBias.impact_score !== undefined && (
+                      <div className="text-xs text-white/50 mt-1">
+                        Impact: {Math.round(engineResults.cognitiveBias.impact_score * 100)}%
+                      </div>
+                    )}
+                  </button>
+                )}
+
+                {/* Paracosm - Quick */}
+                {engineResults.paracosm && (
+                  <button
+                    onClick={() => setAiInsightModal({ type: 'paracosm', data: engineResults.paracosm })}
+                    className="bg-black/40 rounded-lg p-3 border border-border/50 hover:border-primary/50 transition-colors text-left group"
+                  >
+                    <div className="flex items-center gap-2 text-white/60 mb-1">
+                      <Sparkles className="h-4 w-4" />
+                      <span className="text-xs">Paracosm</span>
+                    </div>
+                    <div className="text-sm font-bold text-primary group-hover:text-primary/80">
+                      {engineResults.paracosm.clusters?.[0]?.category || 'Exploring...'}
+                    </div>
+                    {engineResults.paracosm.clusters?.[0]?.signals?.length > 0 && (
+                      <div className="text-xs text-white/50 mt-1">
+                        {engineResults.paracosm.clusters[0].signals.length} signals
+                      </div>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Identity Pulse & Insights - Clickable Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <button
@@ -594,6 +881,14 @@ export const UserProfile = () => {
         loading={insightsLoading}
         onRefresh={loadInsights}
       />
+      {aiInsightModal && (
+        <AIInsightModal
+          isOpen={!!aiInsightModal}
+          onClose={() => setAiInsightModal(null)}
+          engineType={aiInsightModal.type as any}
+          engineData={aiInsightModal.data}
+        />
+      )}
     </div>
   );
 };

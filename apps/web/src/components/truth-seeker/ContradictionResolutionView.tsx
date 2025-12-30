@@ -10,6 +10,7 @@ import { Badge } from '../ui/badge';
 import { Textarea } from '../ui/textarea';
 import { Modal } from '../ui/modal';
 import { useContradictionResolution } from '../../hooks/useContradictionResolution';
+import { useToast } from '../ui/toast';
 import type { ContinuityEvent } from '../../types/continuity';
 
 type ContradictionResolutionViewProps = {
@@ -19,6 +20,7 @@ type ContradictionResolutionViewProps = {
   onPrevious?: () => void;
   hasNext?: boolean;
   hasPrevious?: boolean;
+  onResolutionComplete?: () => void;
 };
 
 export const ContradictionResolutionView = ({
@@ -28,16 +30,19 @@ export const ContradictionResolutionView = ({
   onPrevious,
   hasNext = false,
   hasPrevious = false,
+  onResolutionComplete,
 }: ContradictionResolutionViewProps) => {
   const { contradictionDetails, loading, resolveContradiction, getAISuggestion, setSelectedContradiction } =
     useContradictionResolution();
   const [resolvedText, setResolvedText] = useState('');
   const [showSidebar, setShowSidebar] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const [showInstructions, setShowInstructions] = useState(() => {
     return !localStorage.getItem('truth-seeker-instructions-dismissed');
   });
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const toast = useToast();
 
   // Set selected contradiction when component mounts
   useEffect(() => {
@@ -52,32 +57,88 @@ export const ContradictionResolutionView = ({
   }, [contradictionDetails]);
 
   const handleAcceptLeft = async () => {
-    await resolveContradiction(contradiction.id, 'accept_left');
-    onClose?.();
+    setResolving(true);
+    try {
+      await resolveContradiction(contradiction.id, 'accept_left');
+      toast.success('Accepted original statement');
+      onResolutionComplete?.();
+      onClose?.();
+    } catch (error) {
+      console.error('Failed to resolve contradiction:', error);
+      toast.error('Failed to resolve contradiction. Please try again.');
+    } finally {
+      setResolving(false);
+    }
   };
 
   const handleAcceptRight = async () => {
-    await resolveContradiction(contradiction.id, 'accept_right');
-    onClose?.();
+    setResolving(true);
+    try {
+      await resolveContradiction(contradiction.id, 'accept_right');
+      toast.success('Accepted contradicting statement');
+      onResolutionComplete?.();
+      onClose?.();
+    } catch (error) {
+      console.error('Failed to resolve contradiction:', error);
+      toast.error('Failed to resolve contradiction. Please try again.');
+    } finally {
+      setResolving(false);
+    }
   };
 
-  const handleMerge = () => {
-    // User can edit resolvedText in the bottom panel
+  const handleMerge = async () => {
+    if (!resolvedText.trim()) {
+      toast.warning('Please edit the resolved text before merging');
+      return;
+    }
+    setResolving(true);
+    try {
+      await resolveContradiction(contradiction.id, 'merge', undefined, resolvedText);
+      toast.success('Contradiction merged successfully');
+      onResolutionComplete?.();
+      onClose?.();
+    } catch (error) {
+      console.error('Failed to merge contradiction:', error);
+      toast.error('Failed to merge contradiction. Please try again.');
+    } finally {
+      setResolving(false);
+    }
   };
 
   const handleResolveWithNotes = async (notes: string) => {
-    await resolveContradiction(contradiction.id, 'resolve_with_notes', notes, resolvedText);
-    onClose?.();
+    setResolving(true);
+    try {
+      await resolveContradiction(contradiction.id, 'resolve_with_notes', notes, resolvedText);
+      toast.success('Resolved with custom notes');
+      onResolutionComplete?.();
+      onClose?.();
+    } catch (error) {
+      console.error('Failed to resolve contradiction:', error);
+      toast.error('Failed to resolve contradiction. Please try again.');
+    } finally {
+      setResolving(false);
+    }
   };
 
   const handleDismiss = async () => {
-    await resolveContradiction(contradiction.id, 'dismiss');
-    onClose?.();
+    setResolving(true);
+    try {
+      await resolveContradiction(contradiction.id, 'dismiss');
+      toast.info('Contradiction dismissed');
+      onResolutionComplete?.();
+      onClose?.();
+    } catch (error) {
+      console.error('Failed to dismiss contradiction:', error);
+      toast.error('Failed to dismiss contradiction. Please try again.');
+    } finally {
+      setResolving(false);
+    }
   };
 
   const handleSaveDraft = () => {
     // Save to localStorage or backend
     localStorage.setItem(`contradiction-draft-${contradiction.id}`, resolvedText);
+    toast.info('Draft saved locally');
   };
 
   const handleAISuggestion = async () => {
@@ -90,9 +151,11 @@ export const ContradictionResolutionView = ({
         await handleAcceptRight();
       } else if (suggestion.action === 'merge') {
         setResolvedText(suggestion.suggestion);
+        toast.success('AI suggestion applied to resolved text');
       }
     } catch (error) {
       console.error('Failed to get AI suggestion:', error);
+      toast.error('Failed to get AI suggestion. Please try again.');
     } finally {
       setAiLoading(false);
     }
@@ -115,7 +178,8 @@ export const ContradictionResolutionView = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-black/40">
+    <>
+      <div className="flex flex-col h-full bg-black/40">
       {/* Instructions Panel */}
       {showInstructions && (
         <div className="border-b border-border/60 bg-gradient-to-r from-cyan-500/10 to-purple-500/10 p-4 animate-in slide-in-from-top-2">
@@ -287,7 +351,7 @@ export const ContradictionResolutionView = ({
               onResolveWithNotes={handleResolveWithNotes}
               onDismiss={handleDismiss}
               onSaveDraft={handleSaveDraft}
-              loading={loading}
+              loading={loading || resolving}
             />
           </div>
         </div>
@@ -319,7 +383,8 @@ export const ContradictionResolutionView = ({
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

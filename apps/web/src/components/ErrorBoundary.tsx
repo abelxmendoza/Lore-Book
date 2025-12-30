@@ -91,22 +91,92 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                   Error Details {this.state.errorInfo ? '(Development Only)' : ''}
                 </summary>
                 <div className="mt-2 space-y-3">
+                  {this.state.error?.message && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-white/50">Error Message:</p>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(this.state.error?.message || '');
+                          }}
+                          className="text-xs text-primary hover:text-primary/80 transition-colors"
+                          title="Copy error message"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <pre className="text-xs text-white/40 overflow-auto max-h-40 p-2 bg-black/40 rounded border border-white/10 select-all">
+                        {this.state.error.message}
+                      </pre>
+                    </div>
+                  )}
                   {this.state.error?.stack && (
                     <div>
-                      <p className="text-xs text-white/50 mb-1">Stack Trace:</p>
-                      <pre className="text-xs text-white/40 overflow-auto max-h-40 p-2 bg-black/40 rounded border border-white/10">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-white/50">Stack Trace:</p>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(this.state.error?.stack || '');
+                          }}
+                          className="text-xs text-primary hover:text-primary/80 transition-colors"
+                          title="Copy stack trace"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <pre className="text-xs text-white/40 overflow-auto max-h-40 p-2 bg-black/40 rounded border border-white/10 select-all">
                         {this.state.error.stack}
                       </pre>
                     </div>
                   )}
                   {this.state.errorInfo?.componentStack && (
                     <div>
-                      <p className="text-xs text-white/50 mb-1">Component Stack:</p>
-                      <pre className="text-xs text-white/40 overflow-auto max-h-40 p-2 bg-black/40 rounded border border-white/10">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-white/50">Component Stack:</p>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(this.state.errorInfo?.componentStack || '');
+                          }}
+                          className="text-xs text-primary hover:text-primary/80 transition-colors"
+                          title="Copy component stack"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <pre className="text-xs text-white/40 overflow-auto max-h-40 p-2 bg-black/40 rounded border border-white/10 select-all">
                         {this.state.errorInfo.componentStack}
                       </pre>
                     </div>
                   )}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs text-white/50">Full Error Details (JSON):</p>
+                      <button
+                        onClick={() => {
+                          const errorData = {
+                            message: this.state.error?.message,
+                            stack: this.state.error?.stack,
+                            componentStack: this.state.errorInfo?.componentStack,
+                            name: this.state.error?.name,
+                            timestamp: new Date().toISOString()
+                          };
+                          navigator.clipboard.writeText(JSON.stringify(errorData, null, 2));
+                        }}
+                        className="text-xs text-primary hover:text-primary/80 transition-colors"
+                        title="Copy all error details as JSON"
+                      >
+                        Copy All
+                      </button>
+                    </div>
+                    <pre className="text-xs text-white/40 overflow-auto max-h-40 p-2 bg-black/40 rounded border border-white/10 select-all">
+                      {JSON.stringify({
+                        message: this.state.error?.message,
+                        stack: this.state.error?.stack,
+                        componentStack: this.state.errorInfo?.componentStack,
+                        name: this.state.error?.name
+                      }, null, 2)}
+                    </pre>
+                  </div>
                 </div>
               </details>
             )}

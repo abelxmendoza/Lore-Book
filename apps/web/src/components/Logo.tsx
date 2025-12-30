@@ -18,8 +18,8 @@ export const Logo = ({ className, size = 'md', showText = true }: LogoProps) => 
     <div className={cn('flex items-center gap-4', className)}>
       <div className="relative inline-block">
         <img 
-          src="/images/loreKeeperlogo3.png" 
-          alt="Lore Keeper Logo" 
+          src="/images/LoreBookLogo2.jpg" 
+          alt="Lore Book Logo" 
           className={cn(
             'relative z-10 flex-shrink-0 object-contain drop-shadow-[0_0_15px_rgba(124,58,237,0.5)]',
             sizeClasses[size]
@@ -31,7 +31,7 @@ export const Logo = ({ className, size = 'md', showText = true }: LogoProps) => 
       {showText && (
         <div className="flex flex-col">
           <span className="text-2xl font-bold text-primary tracking-wider drop-shadow-[0_0_8px_rgba(124,58,237,0.6)]">LORE</span>
-          <span className="text-2xl font-bold text-gray-300 tracking-wider">KEEPER</span>
+          <span className="text-2xl font-bold text-gray-300 tracking-wider">BOOK</span>
         </div>
       )}
     </div>

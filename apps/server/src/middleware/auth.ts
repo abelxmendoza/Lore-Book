@@ -31,14 +31,16 @@ export const authMiddleware = async (
   next: NextFunction
 ) => {
   try {
-    // TEMPORARY: Disable auth for development
-    const DEV_DISABLE_AUTH = true;
+    // SECURITY: Only disable auth in development mode, NEVER in production
+    const isDevelopment = process.env.NODE_ENV === 'development' || 
+                          process.env.API_ENV === 'dev';
+    const allowDevBypass = isDevelopment && process.env.DISABLE_AUTH_FOR_DEV === 'true';
     
-    if (DEV_DISABLE_AUTH) {
-      // Set a mock user for dev
-      // Use a valid UUID format for dev mode (consistent UUID for testing)
+    if (allowDevBypass) {
+      // Only allow dev bypass if explicitly enabled via environment variable
+      // This prevents accidental exposure in production
       req.user = {
-        id: '00000000-0000-0000-0000-000000000000', // Valid UUID format for dev
+        id: '00000000-0000-0000-0000-000000000000',
         email: 'dev@example.com',
         lastSignInAt: new Date().toISOString()
       };

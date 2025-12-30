@@ -54,13 +54,19 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
     return colors[archetype?.toLowerCase() || ''] || 'bg-primary/20 text-primary border-primary/30';
   };
 
+  const isUnmet = character.status === 'unmet';
+  
   return (
     <Card 
-      className="group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden"
+      className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden ${
+        isUnmet ? 'opacity-75 border-dashed border-2' : ''
+      }`}
       onClick={onClick}
     >
       {/* Header with Avatar */}
-      <div className="relative h-16 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center">
+      <div className={`relative h-16 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center ${
+        isUnmet ? 'opacity-60' : ''
+      }`}>
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
         <div className="relative z-10">
           <CharacterAvatar url={character.avatar_url} name={character.name} size={40} />
@@ -72,10 +78,12 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
               className={`${
                 character.status === 'active' 
                   ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                  : character.status === 'unmet'
+                  ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 border-dashed'
                   : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
               } text-xs`}
             >
-              {character.status}
+              {character.status === 'unmet' ? 'Unmet' : character.status}
             </Badge>
           </div>
         )}

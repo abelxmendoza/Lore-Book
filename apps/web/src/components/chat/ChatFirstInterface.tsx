@@ -366,14 +366,14 @@ export const ChatFirstInterface = () => {
   const handleExportMarkdown = () => {
     const markdown = exportConversationAsMarkdown(messages);
     const date = new Date().toISOString().split('T')[0];
-    downloadFile(markdown, `lorekeeper-chat-${date}.md`, 'text/markdown');
+    downloadFile(markdown, `lorebook-chat-${date}.md`, 'text/markdown');
     setShowExportMenu(false);
   };
 
   const handleExportJSON = () => {
     const json = exportConversationAsJSON(messages);
     const date = new Date().toISOString().split('T')[0];
-    downloadFile(json, `lorekeeper-chat-${date}.json`, 'application/json');
+    downloadFile(json, `lorebook-chat-${date}.json`, 'application/json');
     setShowExportMenu(false);
   };
 

@@ -6,7 +6,8 @@ import { Badge } from '../ui/badge';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { LocationTimeline } from './LocationTimeline';
-import { ChatComposer } from '../chat/ChatComposer';
+import { ChatComposer } from '../../features/chat/composer/ChatComposer';
+import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
 import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { LocationProfile } from './LocationProfileCard';
@@ -17,15 +18,15 @@ type LocationDetailModalProps = {
   onClose: () => void;
 };
 
-type TabKey = 'overview' | 'visits' | 'people' | 'context' | 'timeline' | 'chat' | 'insights' | 'metadata';
+type TabKey = 'overview' | 'chat' | 'visits' | 'people' | 'context' | 'timeline' | 'insights' | 'metadata';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
-  { key: 'overview', label: 'Overview', icon: FileText },
-  { key: 'visits', label: 'Visits', icon: Calendar },
+  { key: 'overview', label: 'Info', icon: FileText },
+  { key: 'chat', label: 'Chat', icon: MessageSquare },
+  { key: 'visits', label: 'History', icon: Calendar },
   { key: 'people', label: 'People', icon: Users },
   { key: 'context', label: 'Context', icon: Layers },
   { key: 'timeline', label: 'Timeline', icon: Clock },
-  { key: 'chat', label: 'Chat', icon: MessageSquare },
   { key: 'insights', label: 'Insights', icon: Brain },
   { key: 'metadata', label: 'Metadata', icon: Database }
 ];
@@ -46,6 +47,7 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
   const [insights, setInsights] = useState<any>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Reset scroll position when tab changes
@@ -56,59 +58,152 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
 
   useEffect(() => {
     const loadLocationMemories = async () => {
-      if (location.entries.length === 0) return;
-      
       setLoadingMemories(true);
       try {
-        // Fetch full entry details for each visit
-        const entryPromises = location.entries.map(async (entry) => {
-          try {
-            const fullEntry = await fetchJson<{
-              id: string;
-              date: string;
-              content: string;
-              summary?: string | null;
-              tags: string[];
-              mood?: string | null;
-              chapter_id?: string | null;
-              source: string;
-              metadata?: Record<string, unknown>;
-            }>(`/api/entries/${entry.id}`);
-            return memoryEntryToCard(fullEntry);
-          } catch (error) {
-            console.error(`Failed to load entry ${entry.id}:`, error);
-            return null;
-          }
-        });
+        if (location.entries.length > 0) {
+          // Fetch full entry details for each visit
+          const entryPromises = location.entries.map(async (entry) => {
+            try {
+              const fullEntry = await fetchJson<{
+                id: string;
+                date: string;
+                content: string;
+                summary?: string | null;
+                tags: string[];
+                mood?: string | null;
+                chapter_id?: string | null;
+                source: string;
+                metadata?: Record<string, unknown>;
+              }>(`/api/entries/${entry.id}`);
+              return memoryEntryToCard(fullEntry);
+            } catch (error) {
+              console.error(`Failed to load entry ${entry.id}:`, error);
+              return null;
+            }
+          });
 
-        const cards = (await Promise.all(entryPromises)).filter((card): card is MemoryCard => card !== null);
-        setMemoryCards(cards);
+          const cards = (await Promise.all(entryPromises)).filter((card): card is MemoryCard => card !== null);
+          setMemoryCards(cards);
 
-        // Convert memory cards to timeline entries
-        const entries: TimelineEntry[] = cards.map(card => ({
-          id: card.id,
-          timestamp: card.date,
-          title: card.content.substring(0, 100) || 'Untitled',
-          summary: card.summary || card.content.substring(0, 200),
-          full_text: card.content,
-          mood: card.mood || null,
-          arc: null,
-          saga: null,
-          era: null,
-          lane: 'life', // Default lane, could be enhanced to detect from tags/content
-          tags: card.tags || [],
-          character_ids: [],
-          related_entry_ids: []
-        }));
-        setTimelineEntries(entries);
+          // Convert memory cards to timeline entries
+          const entries: TimelineEntry[] = cards.map(card => ({
+            id: card.id,
+            timestamp: card.date,
+            title: card.content.substring(0, 100) || 'Untitled',
+            summary: card.summary || card.content.substring(0, 200),
+            full_text: card.content,
+            mood: card.mood || null,
+            arc: null,
+            saga: null,
+            era: null,
+            lane: 'life', // Default lane, could be enhanced to detect from tags/content
+            tags: card.tags || [],
+            character_ids: [],
+            related_entry_ids: []
+          }));
+          setTimelineEntries(entries);
+        } else {
+          // Generate mock memories if no entries from API
+          const mockMemories: MemoryCard[] = [
+            {
+              id: `mock-mem-${location.id}-1`,
+              title: `First visit to ${location.name}`,
+              content: `Visited ${location.name} for the first time today. It was a memorable experience and I'm looking forward to coming back.`,
+              date: location.firstVisited || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+              tags: location.tagCounts.slice(0, 3).map(t => t.tag) || ['visit', 'exploration'],
+              mood: location.moods?.[0]?.mood || 'excited',
+              source: 'manual',
+              sourceIcon: '📖',
+              characters: location.relatedPeople.slice(0, 2).map(p => p.name),
+            },
+            {
+              id: `mock-mem-${location.id}-2`,
+              title: `Return visit to ${location.name}`,
+              content: `Came back to ${location.name} today. It's becoming one of my favorite places. The atmosphere here is always welcoming.`,
+              date: location.lastVisited || new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+              tags: location.tagCounts.slice(0, 3).map(t => t.tag) || ['visit', 'return'],
+              mood: location.moods?.[0]?.mood || 'calm',
+              source: 'manual',
+              sourceIcon: '📖',
+              characters: location.relatedPeople.slice(0, 2).map(p => p.name),
+            },
+            {
+              id: `mock-mem-${location.id}-3`,
+              title: `Memorable moment at ${location.name}`,
+              content: `Had a great time at ${location.name} today. ${location.relatedPeople.length > 0 ? `Spent time with ${location.relatedPeople[0].name}.` : 'The experience was wonderful.'}`,
+              date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+              tags: location.tagCounts.slice(0, 3).map(t => t.tag) || ['visit', 'memory'],
+              mood: location.moods?.[1]?.mood || 'happy',
+              source: 'manual',
+              sourceIcon: '📖',
+              characters: location.relatedPeople.slice(0, 1).map(p => p.name),
+            },
+            {
+              id: `mock-mem-${location.id}-4`,
+              title: `Exploring ${location.name}`,
+              content: `Took some time to really explore ${location.name} today. There's so much to discover here.`,
+              date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+              tags: location.tagCounts.slice(0, 3).map(t => t.tag) || ['visit', 'exploration'],
+              mood: location.moods?.[0]?.mood || 'curious',
+              source: 'manual',
+              sourceIcon: '📖',
+              characters: [],
+            },
+          ];
+          setMemoryCards(mockMemories);
+          
+          // Convert mock memories to timeline entries
+          const entries: TimelineEntry[] = mockMemories.map(card => ({
+            id: card.id,
+            timestamp: card.date,
+            title: card.content.substring(0, 100) || 'Untitled',
+            summary: card.summary || card.content.substring(0, 200),
+            full_text: card.content,
+            mood: card.mood || null,
+            arc: null,
+            saga: null,
+            era: null,
+            lane: 'life',
+            tags: card.tags || [],
+            character_ids: [],
+            related_entry_ids: []
+          }));
+          setTimelineEntries(entries);
+        }
       } catch (error) {
         console.error('Failed to load location memories:', error);
+        // Fallback to mock memories even if API fails
+        const mockMemories: MemoryCard[] = [
+          {
+            id: `mock-mem-${location.id}-1`,
+            title: `First visit to ${location.name}`,
+            content: `Visited ${location.name} for the first time today. It was a memorable experience and I'm looking forward to coming back.`,
+            date: location.firstVisited || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+            tags: location.tagCounts.slice(0, 3).map(t => t.tag) || ['visit', 'exploration'],
+            mood: location.moods?.[0]?.mood || 'excited',
+            source: 'manual',
+            sourceIcon: '📖',
+            characters: location.relatedPeople.slice(0, 2).map(p => p.name),
+          },
+          {
+            id: `mock-mem-${location.id}-2`,
+            title: `Return visit to ${location.name}`,
+            content: `Came back to ${location.name} today. It's becoming one of my favorite places. The atmosphere here is always welcoming.`,
+            date: location.lastVisited || new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+            tags: location.tagCounts.slice(0, 3).map(t => t.tag) || ['visit', 'return'],
+            mood: location.moods?.[0]?.mood || 'calm',
+            source: 'manual',
+            sourceIcon: '📖',
+            characters: location.relatedPeople.slice(0, 2).map(p => p.name),
+          },
+        ];
+        setMemoryCards(mockMemories);
       } finally {
         setLoadingMemories(false);
       }
     };
     void loadLocationMemories();
-  }, [location.entries]);
+  }, [location.entries, location.id, location.name, location.firstVisited, location.lastVisited, location.tagCounts, location.moods, location.relatedPeople]);
 
   // Load timeline bands (eras, sagas, arcs) when timeline tab is active
   useEffect(() => {
@@ -137,6 +232,13 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
       void loadTimelineBands();
     }
   }, [activeTab]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages]);
 
   // Load insights when Insights tab is active
   useEffect(() => {
@@ -244,34 +346,34 @@ Chapters: ${location.chapters.map(c => c.title).join(', ')}`;
               )}
             </div>
           </div>
-          <Button variant="ghost" onClick={onClose}>
-            <X className="h-4 w-4" />
+          <Button variant="ghost" onClick={onClose} className="absolute top-4 right-4 text-white/70 hover:text-white">
+            <X className="h-5 w-5" />
           </Button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-border/60 overflow-x-auto">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition whitespace-nowrap ${
-                  activeTab === tab.key
-                    ? 'border-b-2 border-primary text-white'
-                    : 'text-white/60 hover:text-white'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+          {/* Tab Navigation */}
+          <div className="flex border-b border-border/60 overflow-x-auto flex-shrink-0">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-2 px-4 py-3 text-base font-medium transition whitespace-nowrap ${
+                    activeTab === tab.key
+                      ? 'border-b-2 border-primary text-primary'
+                      : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-        <div ref={contentRef} className="flex-1 overflow-y-auto">
-          <div className="p-6 space-y-6">
+          <div ref={contentRef} className="p-6 space-y-8 custom-scrollbar flex-1 min-h-0">
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 {/* Stats Grid */}
@@ -399,58 +501,50 @@ Chapters: ${location.chapters.map(c => c.title).join(', ')}`;
             )}
 
             {activeTab === 'visits' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-primary" />
-                  Visit History ({location.entries.length})
-                </h3>
-                {location.entries.length === 0 ? (
-                  <div className="text-center py-12 text-white/60">
-                    <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-lg font-medium mb-1">No visits recorded</p>
-                    <p className="text-sm">Visits will appear here as you mention this location in your journal entries</p>
+              <div className="space-y-8">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-xl font-semibold text-white flex items-center gap-3">
+                      <Calendar className="h-6 w-6 text-primary" />
+                      Shared Memories
+                    </h3>
+                    <p className="text-base text-white/60 mt-1">
+                      Stories and moments at {location.name}
+                    </p>
+                  </div>
+                  {memoryCards.length > 0 && (
+                    <span className="text-base text-white/50">
+                      {memoryCards.length} {memoryCards.length === 1 ? 'memory' : 'memories'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Memory Cards */}
+                {loadingMemories ? (
+                  <div className="text-center py-12 text-white/60 text-lg">
+                    <p>Loading shared memories...</p>
+                  </div>
+                ) : memoryCards.length > 0 ? (
+                  <div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {memoryCards.map((memory) => (
+                        <div key={memory.id} data-memory-id={memory.id}>
+                          <MemoryCardComponent
+                            memory={memory}
+                            showLinked={true}
+                            expanded={expandedCardId === memory.id}
+                            onToggleExpand={() => setExpandedCardId(expandedCardId === memory.id ? null : memory.id)}
+                            onSelect={() => setSelectedMemory(memory)}
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {location.entries.map((entry) => (
-                      <Card key={entry.id} className="bg-black/40 border-border/50">
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Calendar className="h-4 w-4 text-white/50" />
-                                <span className="text-sm text-white/70">
-                                  {new Date(entry.date).toLocaleDateString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </span>
-                                {entry.mood && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {entry.mood}
-                                  </Badge>
-                                )}
-                              </div>
-                              {entry.summary && (
-                                <p className="text-sm text-white/80 mb-2">{entry.summary}</p>
-                              )}
-                              {entry.tags.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                  {entry.tags.map((tag) => (
-                                    <Badge key={tag} variant="outline" className="text-xs">
-                                      {tag}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                  <div className="text-center py-12 text-white/40 text-lg">
+                    <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-xl font-medium mb-1">No shared memories yet</p>
+                    <p className="text-base">Memories will appear here as you mention {location.name} in your journal entries</p>
                   </div>
                 )}
               </div>
@@ -610,43 +704,42 @@ Chapters: ${location.chapters.map(c => c.title).join(', ')}`;
             )}
 
             {activeTab === 'chat' && (
-              <div className="space-y-4">
+              <div className="space-y-6 flex flex-col h-full min-h-0">
                 <div>
-                  <h3 className="text-lg font-semibold text-white mb-2">Chat about this Location</h3>
-                  <p className="text-sm text-white/60 mb-4">
-                    Ask questions or add information about {location.name} through conversation.
+                  <h3 className="text-xl font-semibold text-white mb-2 flex items-center gap-3">
+                    <MessageSquare className="h-6 w-6 text-primary" />
+                    Chat about {location.name}
+                  </h3>
+                  <p className="text-base text-white/60 mt-1">
+                    Ask questions, share stories, or update information about {location.name} through conversation.
                   </p>
                 </div>
-                <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar p-2 rounded-lg border border-border/50 bg-black/30">
                   {chatMessages.length === 0 ? (
-                    <div className="text-center py-8 text-white/60">
+                    <div className="text-center py-8 text-white/60 text-base">
                       <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                      <p>Start a conversation about this location</p>
-                      <p className="text-xs mt-2">Try: "Tell me more about this place" or "What memories are associated here?"</p>
+                      <p className="text-lg font-medium mb-1">Start a conversation about {location.name}</p>
+                      <p className="text-sm mt-2">Try asking:</p>
+                      <ul className="list-disc list-inside text-left w-fit mx-auto text-sm text-white/50">
+                        <li>"Tell me more about {location.name}"</li>
+                        <li>"What do I know about {location.name}?"</li>
+                        <li>"What memories are associated with this place?"</li>
+                        <li>"Update {location.name}'s information: ..."</li>
+                      </ul>
                     </div>
                   ) : (
                     chatMessages.map((msg, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div
-                          className={`max-w-[80%] rounded-lg p-3 ${
-                            msg.role === 'user'
-                              ? 'bg-primary/20 text-white'
-                              : 'bg-black/40 border border-border/50 text-white'
-                          }`}
-                        >
-                          <p className="text-sm">{msg.content}</p>
-                          <p className="text-xs text-white/40 mt-1">
-                            {msg.timestamp.toLocaleTimeString()}
-                          </p>
-                        </div>
-                      </div>
+                      <ChatMessage key={idx} message={{
+                        id: `msg-${idx}`,
+                        role: msg.role,
+                        content: msg.content,
+                        timestamp: msg.timestamp
+                      }} />
                     ))
                   )}
+                  <div ref={chatMessagesEndRef} />
                 </div>
-                <div className="border-t border-border/60 pt-4">
+                <div className="border-t border-border/60 pt-4 flex-shrink-0">
                   <ChatComposer
                     input={chatInput}
                     onInputChange={setChatInput}

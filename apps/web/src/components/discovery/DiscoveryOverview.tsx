@@ -13,7 +13,8 @@ import {
   TrendingUp,
   Map,
   Search,
-  Activity
+  Activity,
+  Calendar
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { CharactersAnalyticsPanel } from './CharactersAnalyticsPanel';

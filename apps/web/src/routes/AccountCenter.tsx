@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { 
   User, Mail, Shield, CreditCard, Activity, Download, Trash2, 
   Save, Edit2, Camera, Bell, Lock, Eye, EyeOff, Key, FileText,
-  Calendar, HardDrive, AlertTriangle, CheckCircle2, X, Loader2
+  Calendar, HardDrive, AlertTriangle, CheckCircle2, X, Loader2, LogIn, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../lib/supabase';
+import { useGuest } from '../contexts/GuestContext';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
 import { Button } from '../components/ui/button';
 import {
@@ -26,6 +27,7 @@ type Tab = 'profile' | 'subscription' | 'billing' | 'privacy' | 'activity' | 'da
 
 export default function AccountCenter() {
   const { user } = useAuth();
+  const { isGuest, guestState } = useGuest();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [isEditing, setIsEditing] = useState(false);
@@ -59,13 +61,17 @@ export default function AccountCenter() {
 
   // Load initial data
   useEffect(() => {
-    if (!user) {
-      // Redirect to login if no user
-      navigate('/login');
-      return;
+    // Check if we're in dev mode with auth disabled (similar to AuthGate)
+    const DEV_DISABLE_AUTH = import.meta.env.DEV && import.meta.env.VITE_DISABLE_AUTH === 'true';
+    
+    // Load account data if user is authenticated (not guest) OR if auth is disabled in dev
+    if ((user && !isGuest) || DEV_DISABLE_AUTH) {
+      loadAccountData();
+    } else {
+      // If guest or no user, just set loading to false
+      setLoading(false);
     }
-    loadAccountData();
-  }, [user, navigate]);
+  }, [user, isGuest]);
 
   const loadAccountData = async () => {
     if (!user) {
@@ -205,7 +211,7 @@ export default function AccountCenter() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `lorekeeper-export-${new Date().toISOString().split('T')[0]}.${format}`;
+      a.download = `lorebook-export-${new Date().toISOString().split('T')[0]}.${format}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -220,7 +226,157 @@ export default function AccountCenter() {
     }
   };
 
-  if (loading && !user) {
+  // Show guest account page
+  if (isGuest && !user) {
+    const messagesRemaining = guestState?.chatLimit ? guestState.chatLimit - (guestState.chatMessagesUsed || 0) : 0;
+    const limitReached = messagesRemaining <= 0;
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black">
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          {/* Header */}
+          <div className="mb-8">
+            <button
+              onClick={() => navigate('/')}
+              className="text-white/60 hover:text-white mb-4 flex items-center gap-2 transition"
+            >
+              ← Back to App
+            </button>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+              Account Center
+            </h1>
+            <p className="text-white/60">Manage your account settings, subscription, and preferences</p>
+          </div>
+
+          {/* Guest Account Card */}
+          <div className="rounded-2xl border border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 via-yellow-500/5 to-transparent backdrop-blur-sm p-8">
+            <div className="flex items-start gap-6">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center flex-shrink-0">
+                <User className="h-8 w-8 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-2">
+                  <h2 className="text-2xl font-bold text-white">Guest Account</h2>
+                  <span className="px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-300 text-xs font-medium border border-yellow-500/30">
+                    Limited Access
+                  </span>
+                </div>
+                <p className="text-white/70 mb-6">
+                  You're currently using Lore Book as a guest. Guest accounts have limited features and data is stored locally in your browser.
+                </p>
+
+                {/* Guest Account Info */}
+                <div className="grid md:grid-cols-2 gap-4 mb-6">
+                  <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Sparkles className="h-5 w-5 text-yellow-400" />
+                      <h3 className="text-sm font-semibold text-white">Chat Messages</h3>
+                    </div>
+                    <p className="text-2xl font-bold text-white mb-1">
+                      {limitReached ? '0' : messagesRemaining} / {guestState?.chatLimit || 5}
+                    </p>
+                    <p className="text-xs text-white/60">
+                      {limitReached ? 'Limit reached' : 'Messages remaining'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Calendar className="h-5 w-5 text-yellow-400" />
+                      <h3 className="text-sm font-semibold text-white">Session</h3>
+                    </div>
+                    <p className="text-sm font-medium text-white mb-1">
+                      {guestState?.createdAt 
+                        ? new Date(guestState.createdAt).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric',
+                            year: 'numeric'
+                          })
+                        : 'Active'}
+                    </p>
+                    <p className="text-xs text-white/60">Guest session expires in 24 hours</p>
+                  </div>
+                </div>
+
+                {/* Limitations */}
+                <div className="rounded-xl border border-white/10 bg-black/40 p-6 mb-6">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-yellow-400" />
+                    Guest Account Limitations
+                  </h3>
+                  <ul className="space-y-3 text-white/70">
+                    <li className="flex items-start gap-3">
+                      <X className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">Limited Chat Messages</p>
+                        <p className="text-sm text-white/50">Only {guestState?.chatLimit || 5} chat messages per session</p>
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <X className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">No Cloud Sync</p>
+                        <p className="text-sm text-white/50">Data is stored locally and may be lost if you clear your browser</p>
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <X className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">No Account Management</p>
+                        <p className="text-sm text-white/50">Cannot access profile settings, subscriptions, or data export</p>
+                      </div>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <X className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">Temporary Session</p>
+                        <p className="text-sm text-white/50">Guest sessions expire after 24 hours</p>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Sign Up CTA */}
+                <div className="rounded-xl border border-primary/50 bg-gradient-to-br from-purple-500/20 to-pink-500/20 p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-white mb-2">Unlock Full Access</h3>
+                      <p className="text-white/80 mb-4">
+                        Sign up for a free account to unlock unlimited chat messages, cloud sync, full account management, and all premium features.
+                      </p>
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          onClick={() => navigate('/login')}
+                          className="bg-gradient-to-r from-purple-500 to-pink-500 hover:opacity-90"
+                        >
+                          <LogIn className="h-4 w-4 mr-2" />
+                          Sign Up for Free
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => navigate('/')}
+                        >
+                          Continue as Guest
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if we're in dev mode with auth disabled
+  const DEV_DISABLE_AUTH = import.meta.env.DEV && import.meta.env.VITE_DISABLE_AUTH === 'true';
+  
+  if (loading && !user && !DEV_DISABLE_AUTH && !isGuest) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black flex items-center justify-center">
         <div className="text-center">
@@ -230,6 +386,9 @@ export default function AccountCenter() {
       </div>
     );
   }
+
+  // Show dev mode notice if auth is disabled and no user
+  const showDevModeNotice = DEV_DISABLE_AUTH && !user && !isGuest;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black">
@@ -247,6 +406,22 @@ export default function AccountCenter() {
           </h1>
           <p className="text-white/60">Manage your account settings, subscription, and preferences</p>
         </div>
+
+        {/* Dev Mode Notice */}
+        {showDevModeNotice && (
+          <div className="mb-6 rounded-lg bg-yellow-500/20 border border-yellow-500/50 p-4 text-yellow-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-yellow-400" />
+              <div>
+                <p className="font-medium">Development Mode</p>
+                <p className="text-sm text-yellow-200/80">Authentication is disabled. Some features may be limited.</p>
+              </div>
+            </div>
+            <button onClick={() => navigate('/login')} className="text-yellow-400 hover:text-yellow-300 underline text-sm">
+              Sign In
+            </button>
+          </div>
+        )}
 
         {/* Error/Success Messages */}
         {error && (
@@ -297,23 +472,25 @@ export default function AccountCenter() {
                   <User className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <p className="font-semibold text-white">{profile.name || 'User'}</p>
-                  <p className="text-xs text-white/60">{user?.email}</p>
+                  <p className="font-semibold text-white">{profile.name || user?.email || 'Guest User'}</p>
+                  <p className="text-xs text-white/60">{user?.email || (showDevModeNotice ? 'Dev Mode' : 'Not signed in')}</p>
                 </div>
               </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between text-white/70">
-                  <span>Member since</span>
-                  <span className="text-white">Jan 2024</span>
+              {user && (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between text-white/70">
+                    <span>Member since</span>
+                    <span className="text-white">Jan 2024</span>
+                  </div>
+                  <div className="flex justify-between text-white/70">
+                    <span>Status</span>
+                    <span className="text-green-400 flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Active
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-white/70">
-                  <span>Status</span>
-                  <span className="text-green-400 flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Active
-                  </span>
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -327,10 +504,16 @@ export default function AccountCenter() {
                     <h2 className="text-2xl font-bold text-white mb-1">Profile Settings</h2>
                     <p className="text-white/60">Update your personal information and preferences</p>
                   </div>
-                  {!isEditing && (
+                  {!isEditing && user && (
                     <Button onClick={() => setIsEditing(true)} variant="outline">
                       <Edit2 className="h-4 w-4 mr-2" />
                       Edit Profile
+                    </Button>
+                  )}
+                  {!user && !isGuest && (
+                    <Button onClick={() => navigate('/login')} variant="outline">
+                      <LogIn className="h-4 w-4 mr-2" />
+                      Sign In to Edit
                     </Button>
                   )}
                 </div>

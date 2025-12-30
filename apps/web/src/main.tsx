@@ -1,4 +1,5 @@
 import './styles/tailwind.css';
+import './styles/timeline.css';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -9,6 +10,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { DevBanner } from './components/DevBanner';
 import { DevelopmentNotice } from './components/DevelopmentNotice';
 import { GuestProvider } from './contexts/GuestContext';
+import { EntityModalProvider } from './contexts/EntityModalContext';
 import { config, log } from './config/env';
 import { initMonitoring } from './lib/monitoring';
 
@@ -30,9 +32,11 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <BrowserRouter>
         <GuestProvider>
+          <EntityModalProvider>
           <DevelopmentNotice />
           <Router />
           <DevBanner />
+          </EntityModalProvider>
         </GuestProvider>
       </BrowserRouter>
     </ErrorBoundary>

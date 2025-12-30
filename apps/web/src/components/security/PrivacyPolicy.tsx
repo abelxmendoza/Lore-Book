@@ -35,11 +35,11 @@ export const PrivacyPolicy = ({ onBack }: PrivacyPolicyProps) => {
         </CardHeader>
         <CardContent className="space-y-3 text-white/80 leading-relaxed">
           <p>
-            Welcome to LoreKeeper ("we," "our," or "us"). We are committed to protecting your privacy and ensuring the security of your personal information. 
+            Welcome to Lore Book ("we," "our," or "us"). We are committed to protecting your privacy and ensuring the security of your personal information. 
             This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our application.
           </p>
           <p>
-            By using LoreKeeper, you agree to the collection and use of information in accordance with this policy. 
+            By using Lore Book, you agree to the collection and use of information in accordance with this policy. 
             If you do not agree with our policies and practices, please do not use our Service.
           </p>
         </CardContent>
@@ -99,7 +99,7 @@ export const PrivacyPolicy = ({ onBack }: PrivacyPolicyProps) => {
             We use the information we collect solely to provide, maintain, and improve our Service. Specifically:
           </p>
           <ul className="list-disc list-inside space-y-2 ml-4">
-            <li><strong className="text-white">Service Delivery:</strong> To provide you with access to LoreKeeper and its features, including AI-powered assistance, timeline management, and data storage.</li>
+            <li><strong className="text-white">Service Delivery:</strong> To provide you with access to Lore Book and its features, including AI-powered assistance, timeline management, and data storage.</li>
             <li><strong className="text-white">Account Management:</strong> To create and manage your account, authenticate your identity, and maintain your preferences.</li>
             <li><strong className="text-white">Data Processing:</strong> To process your journal entries, generate insights, and provide AI-powered features that enhance your experience.</li>
             <li><strong className="text-white">Communication:</strong> To send you important updates about the Service, security notifications, and respond to your inquiries.</li>
@@ -242,7 +242,7 @@ export const PrivacyPolicy = ({ onBack }: PrivacyPolicyProps) => {
         </CardHeader>
         <CardContent className="space-y-3 text-white/80 leading-relaxed">
           <p>
-            LoreKeeper is not intended for children under the age of 13. We do not knowingly collect personal information from children under 13. 
+            Lore Book is not intended for children under the age of 13. We do not knowingly collect personal information from children under 13. 
             If you are a parent or guardian and believe your child has provided us with personal information, please contact us immediately.
           </p>
           <p>
@@ -300,7 +300,7 @@ export const PrivacyPolicy = ({ onBack }: PrivacyPolicyProps) => {
             If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us:
           </p>
           <div className="bg-black/40 p-4 rounded-lg border border-white/10">
-            <p className="font-semibold text-white mb-2">LoreKeeper Privacy Team</p>
+            <p className="font-semibold text-white mb-2">Lore Book Privacy Team</p>
             <p className="text-sm">Email: privacy@lorekeeper.app</p>
             <p className="text-sm">Support: support@lorekeeper.app</p>
           </div>

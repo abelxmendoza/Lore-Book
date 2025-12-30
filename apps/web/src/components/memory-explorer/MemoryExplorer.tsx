@@ -1,14 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Sparkles, Loader2 } from 'lucide-react';
-import { Input } from '../ui/input';
-import { Button } from '../ui/button';
+import { useState, useEffect, useMemo } from 'react';
+import { Search, Sparkles } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { MemoryCardComponent } from './MemoryCard';
 import { MemoryDetailModal } from './MemoryDetailModal';
-import { MemoryFiltersSidebar } from './MemoryFiltersSidebar';
-import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
+import { MemoryBook } from './MemoryBook';
 import { fetchJson } from '../../lib/api';
-import { memoryEntryToCard, type MemoryCard, type MemoryFilters, type MemorySearchResult } from '../../types/memory';
+import { memoryEntryToCard, type MemoryCard, type MemorySearchResult } from '../../types/memory';
 import type { HQIResult } from '../hqi/HQIResultCard';
 
 const DEBOUNCE_DELAY = 300;
@@ -262,26 +259,10 @@ const dummyMemoryCards: MemoryCard[] = [
 
 export const MemoryExplorer = () => {
   const [query, setQuery] = useState('');
-  const [filters, setFilters] = useState<MemoryFilters>({
-    eras: [],
-    sagas: [],
-    arcs: [],
-    characters: [],
-    sources: [],
-    tags: []
-  });
-  const [recentMemories, setRecentMemories] = useState<MemoryCard[]>(dummyMemoryCards.slice(0, 20));
   const [searchResults, setSearchResults] = useState<MemorySearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
-
-  // Load recent memories on mount and when filters change
-  useEffect(() => {
-    if (!query.trim()) {
-      loadRecentMemories();
-    }
-  }, [filters, query]);
 
   // Debounced search
   useEffect(() => {
@@ -297,41 +278,6 @@ export const MemoryExplorer = () => {
     return () => clearTimeout(timeoutId);
   }, [query]);
 
-  const loadRecentMemories = async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.append('limit', '20');
-      if (filters.eras.length > 0) params.append('eras', filters.eras.join(','));
-      if (filters.sagas.length > 0) params.append('sagas', filters.sagas.join(','));
-      if (filters.arcs.length > 0) params.append('arcs', filters.arcs.join(','));
-      if (filters.sources.length > 0) params.append('sources', filters.sources.join(','));
-      if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
-      if (filters.dateFrom) params.append('dateFrom', filters.dateFrom);
-      if (filters.dateTo) params.append('dateTo', filters.dateTo);
-
-      const response = await fetchJson<{ entries: Array<{
-        id: string;
-        date: string;
-        content: string;
-        summary?: string | null;
-        tags: string[];
-        mood?: string | null;
-        chapter_id?: string | null;
-        source: string;
-        metadata?: Record<string, unknown>;
-      }> }>(`/api/entries/recent?${params.toString()}`);
-      const cards = response.entries.map(memoryEntryToCard);
-      // Use dummy data if no real entries found
-      setRecentMemories(cards.length > 0 ? cards : dummyMemoryCards.slice(0, 20));
-    } catch (error) {
-      console.error('Failed to load recent memories:', error);
-      // Use dummy data on error
-      setRecentMemories(dummyMemoryCards.slice(0, 20));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const performSearch = async () => {
     if (!query.trim()) {
@@ -353,12 +299,18 @@ export const MemoryExplorer = () => {
           const params = new URLSearchParams();
           params.append('query', query);
           params.append('limit', '20');
-          if (filters.sources.length > 0) params.append('sources', filters.sources.join(','));
-          if (filters.tags.length > 0) params.append('tags', filters.tags.join(','));
-          if (filters.dateFrom) params.append('dateFrom', filters.dateFrom);
-          if (filters.dateTo) params.append('dateTo', filters.dateTo);
 
-          const response = await fetchJson<{ entries: MemoryEntry[] }>(`/api/entries/search/keyword?${params.toString()}`);
+          const response = await fetchJson<{ entries: Array<{
+            id: string;
+            date: string;
+            content: string;
+            summary?: string | null;
+            tags: string[];
+            mood?: string | null;
+            chapter_id?: string | null;
+            source: string;
+            metadata?: Record<string, unknown>;
+          }> }>(`/api/entries/search/keyword?${params.toString()}`);
           return response.entries || [];
         })()
       ]);
@@ -454,13 +406,13 @@ export const MemoryExplorer = () => {
 
   const isSearchMode = query.trim().length > 0;
 
-  // Get all memories for navigation (from search results or recent memories)
+  // Get all memories for navigation (from search results)
   const allMemories = useMemo(() => {
     if (isSearchMode) {
       return searchResults.flatMap(result => result.memories);
     }
-    return recentMemories;
-  }, [isSearchMode, searchResults, recentMemories]);
+    return [];
+  }, [isSearchMode, searchResults]);
 
   const handleNavigateMemory = (memoryId: string) => {
     const memory = allMemories.find(m => m.id === memoryId);
@@ -470,157 +422,79 @@ export const MemoryExplorer = () => {
   };
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Filters Sidebar */}
-      <MemoryFiltersSidebar filters={filters} onFiltersChange={setFilters} />
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Search Bar */}
-        <div className="border-b border-border/60 bg-black/50 p-6">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-1 items-center gap-3 rounded-xl border border-border/50 bg-black/60 px-4 py-3">
-              <Sparkles className="h-5 w-5 text-primary flex-shrink-0" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search your memories... e.g., 'robotics events involving Kai in March'"
-                className="border-none bg-transparent text-white text-base placeholder:text-white/40 focus-visible:ring-0"
-                disabled={loading}
-              />
-            </div>
-            {loading && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+    <div className="space-y-6">
+      {/* Search Results Section - Only show when searching */}
+      {isSearchMode && searchResults.length > 0 && (
+        <div className="space-y-8 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-semibold text-white flex items-center gap-2">
+              <Search className="h-6 w-6 text-primary" />
+              Search Results
+            </h2>
+            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+              {searchResults.reduce((sum, r) => sum + r.memories.length, 0)} results
+            </Badge>
           </div>
-        </div>
-
-        {/* Timeline */}
-        {!isSearchMode && (
-          <div className="border-b border-border/60 bg-black/40 p-4">
-            <div className="mb-3">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                Timeline
-              </h3>
-            </div>
-            <div className="overflow-x-auto overflow-y-hidden">
-              <ColorCodedTimeline
-                entries={recentMemories.map(memory => ({
-                  id: memory.id,
-                  content: memory.content,
-                  date: memory.date,
-                  chapter_id: memory.chapterId || null
-                }))}
-                useDummyData={recentMemories.length === 0}
-                showLabel={true}
-                onItemClick={(item) => {
-                  const clickedMemory = recentMemories.find(m => m.id === item.id);
-                  if (clickedMemory) {
-                    setSelectedMemory(clickedMemory);
-                  }
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {isSearchMode ? (
-            /* Search Results */
-            <div className="space-y-8">
-              {searchResults.length === 0 && !loading && (
-                <div className="text-center py-12 text-white/60">
-                  <p className="text-lg font-medium mb-2">No results found</p>
-                  <p className="text-sm">Try rephrasing your search or use different keywords</p>
-                </div>
-              )}
-
-              {searchResults.map((result, idx) => (
-                <div key={idx} className="space-y-4">
-                  {/* Section Header */}
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-lg font-semibold text-white">
-                      {result.type === 'semantic' && (
-                        <>
-                          <Sparkles className="h-5 w-5 inline-block mr-2 text-primary" />
-                          Semantic Matches
-                        </>
-                      )}
-                      {result.type === 'keyword' && (
-                        <>
-                          <Search className="h-5 w-5 inline-block mr-2 text-primary" />
-                          Keyword Matches
-                        </>
-                      )}
-                      {result.type === 'cluster' && (
-                        <>
-                          <Sparkles className="h-5 w-5 inline-block mr-2 text-primary" />
-                          {result.clusterLabel || 'Related Clusters'}
-                        </>
-                      )}
-                    </h3>
-                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                      {result.memories.length}
-                    </Badge>
-                    {result.clusterReason && (
-                      <span className="text-xs text-white/50">{result.clusterReason}</span>
-                    )}
-                  </div>
-
-                  {/* Memory Cards Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {result.memories.map((memory) => (
-                      <MemoryCardComponent
-                        key={memory.id}
-                        memory={memory}
-                        showLinked={true}
-                        expanded={expandedCardId === memory.id}
-                        onToggleExpand={() => setExpandedCardId(expandedCardId === memory.id ? null : memory.id)}
-                        onSelect={() => setSelectedMemory(memory)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            /* Default View - Recent Memories */
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white">Recent Memories</h2>
+          
+          {searchResults.map((result, idx) => (
+            <div key={idx} className="space-y-4">
+              {/* Section Header */}
+              <div className="flex items-center gap-3">
+                <h3 className="text-lg font-semibold text-white">
+                  {result.type === 'semantic' && (
+                    <>
+                      <Sparkles className="h-5 w-5 inline-block mr-2 text-primary" />
+                      Semantic Matches
+                    </>
+                  )}
+                  {result.type === 'keyword' && (
+                    <>
+                      <Search className="h-5 w-5 inline-block mr-2 text-primary" />
+                      Keyword Matches
+                    </>
+                  )}
+                  {result.type === 'cluster' && (
+                    <>
+                      <Sparkles className="h-5 w-5 inline-block mr-2 text-primary" />
+                      {result.clusterLabel || 'Related Clusters'}
+                    </>
+                  )}
+                </h3>
                 <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                  {recentMemories.length}
+                  {result.memories.length}
                 </Badge>
+                {result.clusterReason && (
+                  <span className="text-xs text-white/50">{result.clusterReason}</span>
+                )}
               </div>
 
-              {loading && recentMemories.length === 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
-              ) : recentMemories.length === 0 ? (
-                <div className="text-center py-12 text-white/60">
-                  <Sparkles className="h-12 w-12 mx-auto mb-4 text-white/20" />
-                  <p className="text-lg font-medium mb-2">No memories yet</p>
-                  <p className="text-sm">Start creating journal entries to see them here</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {recentMemories.map((memory) => (
-                    <MemoryCardComponent
-                      key={memory.id}
-                      memory={memory}
-                      showLinked={true}
-                      expanded={expandedCardId === memory.id}
-                      onToggleExpand={() => setExpandedCardId(expandedCardId === memory.id ? null : memory.id)}
-                      onSelect={() => setSelectedMemory(memory)}
-                    />
-                  ))}
-                </div>
-              )}
+              {/* Memory Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {result.memories.map((memory) => (
+                  <MemoryCardComponent
+                    key={memory.id}
+                    memory={memory}
+                    showLinked={true}
+                    expanded={expandedCardId === memory.id}
+                    onToggleExpand={() => setExpandedCardId(expandedCardId === memory.id ? null : memory.id)}
+                    onSelect={() => setSelectedMemory(memory)}
+                  />
+                ))}
+              </div>
             </div>
-          )}
+          ))}
         </div>
-      </div>
+      )}
+
+      {isSearchMode && searchResults.length === 0 && !loading && (
+        <div className="text-center py-12 text-white/60 mb-8">
+          <p className="text-lg font-medium mb-2">No results found</p>
+          <p className="text-sm">Try rephrasing your search or use different keywords</p>
+        </div>
+      )}
+
+      {/* Memory Book - Always visible as the main view, styled like CharacterBook/LocationBook */}
+      <MemoryBook />
 
       {/* Memory Detail Modal */}
       {selectedMemory && (

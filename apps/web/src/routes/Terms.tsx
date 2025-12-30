@@ -41,7 +41,7 @@ export default function Terms() {
               1. Acceptance of Terms
             </h2>
             <p className="text-white/80 leading-relaxed">
-              By accessing and using Lore Keeper ("the Service"), you accept and agree to be bound by the terms and provision of this agreement. 
+              By accessing and using Lore Book ("the Service"), you accept and agree to be bound by the terms and provision of this agreement. 
               If you do not agree to these terms, you must not use the Service.
             </p>
           </div>
@@ -103,7 +103,7 @@ export default function Terms() {
           <div className="rounded-xl border border-border/60 bg-black/40 backdrop-blur-sm p-6">
             <h2 className="text-2xl font-bold text-white mb-4">4. Intellectual Property</h2>
             <p className="text-white/80 leading-relaxed">
-              The Service, including its original content, features, and functionality, is owned by Lore Keeper and is protected by international copyright, 
+              The Service, including its original content, features, and functionality, is owned by Lore Book and is protected by international copyright, 
               trademark, patent, trade secret, and other intellectual property laws. You may not copy, modify, distribute, sell, or lease any part of the Service 
               without our express written permission.
             </p>
@@ -130,7 +130,7 @@ export default function Terms() {
           <div className="rounded-xl border border-border/60 bg-black/40 backdrop-blur-sm p-6">
             <h2 className="text-2xl font-bold text-white mb-4">6. Limitation of Liability</h2>
             <p className="text-white/80 leading-relaxed">
-              To the maximum extent permitted by law, Lore Keeper shall not be liable for any indirect, incidental, special, consequential, or punitive damages, 
+              To the maximum extent permitted by law, Lore Book shall not be liable for any indirect, incidental, special, consequential, or punitive damages, 
               or any loss of profits or revenues, whether incurred directly or indirectly, or any loss of data, use, goodwill, or other intangible losses, 
               resulting from your use of the Service.
             </p>
@@ -157,7 +157,7 @@ export default function Terms() {
           <div className="rounded-xl border border-border/60 bg-black/40 backdrop-blur-sm p-6">
             <h2 className="text-2xl font-bold text-white mb-4">9. Governing Law</h2>
             <p className="text-white/80 leading-relaxed">
-              These Terms shall be governed by and construed in accordance with the laws of the jurisdiction in which Lore Keeper operates, 
+              These Terms shall be governed by and construed in accordance with the laws of the jurisdiction in which Lore Book operates, 
               without regard to its conflict of law provisions.
             </p>
           </div>
@@ -174,7 +174,7 @@ export default function Terms() {
         <div className="pt-8 border-t border-white/10 text-center">
           <Logo size="md" showText={true} />
           <p className="text-sm text-white/60 mt-4">
-            By using Lore Keeper, you agree to these Terms of Service.
+            By using Lore Book, you agree to these Terms of Service.
           </p>
         </div>
       </div>

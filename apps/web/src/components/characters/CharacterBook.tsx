@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare } from 'lucide-react';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
+import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
 import { UserProfile } from './UserProfile';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
@@ -8,12 +9,16 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent } from '../ui/card';
 import { CharacterCardSkeleton } from '../ui/skeleton';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
+import { useCharacterExtraction } from '../../hooks/useCharacterExtraction';
+import { useConversationStore } from '../../features/chat/hooks/useConversationStore';
+import { generateNicknames } from '../../utils/nicknameGenerator';
 
-// Dummy character data for display
+// Comprehensive mock character data showcasing all app capabilities
 const dummyCharacters: Character[] = [
   {
     id: 'dummy-1',
@@ -123,42 +128,51 @@ const dummyCharacters: Character[] = [
   },
   {
     id: 'dummy-6',
-    name: 'The Coffee Shop',
-    alias: ['Coffee Shop', 'The Shop'],
-    pronouns: 'it/its',
-    archetype: 'place',
-    role: 'Workspace',
+    name: 'David Martinez',
+    alias: generateNicknames('David Martinez', 'A close friend from my photography class. David has an incredible eye for composition and always pushes me to see things from new angles.', 'Photography Partner', ['photography', 'creativity', 'friendship']),
+    pronouns: 'he/him',
+    archetype: 'friend',
+    role: 'Photography Partner',
     status: 'active',
-    summary: 'My favorite place to work and think. The atmosphere is perfect for creativity - not too quiet, not too loud. I\'ve written some of my best work here and had many meaningful conversations.',
-    tags: ['workspace', 'creativity', 'routine', 'comfort'],
+    summary: 'A close friend from my photography class. David has an incredible eye for composition and always pushes me to see things from new angles.',
+    tags: ['photography', 'creativity', 'friendship', 'art'],
     metadata: {
-      relationship_type: 'place',
-      visit_frequency: 'weekly'
+      relationship_type: 'friend',
+      closeness_score: 76,
+      first_met: '2021-04-12'
     },
-    memory_count: 28,
-    relationship_count: 0
+    social_media: {
+      instagram: '@david_photography'
+    },
+    memory_count: 16,
+    relationship_count: 3
   },
   {
     id: 'dummy-7',
-    name: 'Central Park',
-    alias: ['The Park'],
-    pronouns: 'it/its',
-    archetype: 'place',
-    role: 'Reflection Space',
+    name: 'Sophia Anderson',
+    alias: generateNicknames('Sophia Anderson', 'A brilliant writer I met at a workshop. Her feedback is always insightful and she\'s helped me improve my craft significantly.', 'Writing Mentor', ['writing', 'mentorship', 'creativity']),
+    pronouns: 'she/her',
+    archetype: 'mentor',
+    role: 'Writing Mentor',
     status: 'active',
-    summary: 'A peaceful place for walks and reflection. I come here when I need to clear my mind, process thoughts, or simply enjoy nature. It\'s become a sanctuary for me.',
-    tags: ['nature', 'peace', 'reflection', 'walking'],
+    summary: 'A brilliant writer I met at a workshop. Her feedback is always insightful and she\'s helped me improve my craft significantly.',
+    tags: ['writing', 'mentorship', 'creativity', 'feedback'],
     metadata: {
-      relationship_type: 'place',
-      visit_frequency: 'bi-weekly'
+      relationship_type: 'professional',
+      closeness_score: 81,
+      first_met: '2020-11-20'
     },
-    memory_count: 19,
-    relationship_count: 0
+    social_media: {
+      twitter: '@sophia_writes',
+      website: 'sophiaanderson.com'
+    },
+    memory_count: 27,
+    relationship_count: 2
   },
   {
     id: 'dummy-8',
     name: 'Emma Thompson',
-    alias: ['Emma'],
+    alias: generateNicknames('Emma Thompson', 'A friend from my writing group. We share a passion for storytelling and often exchange feedback on each other\'s work. Her perspective is always valuable.', 'Friend', ['friendship', 'writing', 'creativity', 'community']),
     pronouns: 'she/her',
     archetype: 'friend',
     role: 'Friend',
@@ -175,20 +189,1156 @@ const dummyCharacters: Character[] = [
     },
     memory_count: 9,
     relationship_count: 2
+  },
+  {
+    id: 'dummy-9',
+    name: 'Dr. James Mitchell',
+    alias: ['James', 'Dr. Mitchell'],
+    pronouns: 'he/him',
+    archetype: 'mentor',
+    role: 'Therapist',
+    status: 'active',
+    summary: 'My therapist who has helped me navigate anxiety and build emotional resilience. His approach is evidence-based and compassionate.',
+    tags: ['therapy', 'mental-health', 'growth', 'support'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 75,
+      first_met: '2022-05-10'
+    },
+    social_media: {
+      website: 'drjamesmitchell.com'
+    },
+    memory_count: 22,
+    relationship_count: 1
+  },
+  {
+    id: 'dummy-10',
+    name: 'Luna Martinez',
+    alias: generateNicknames('Luna Martinez', 'A spontaneous friend who always pushes me out of my comfort zone. We\'ve gone on countless adventures together and she\'s taught me to embrace uncertainty.', 'Adventure Partner', ['adventure', 'spontaneity', 'friendship', 'growth']),
+    pronouns: 'she/her',
+    archetype: 'friend',
+    role: 'Adventure Partner',
+    status: 'active',
+    summary: 'A spontaneous friend who always pushes me out of my comfort zone. We\'ve gone on countless adventures together and she\'s taught me to embrace uncertainty.',
+    tags: ['adventure', 'spontaneity', 'friendship', 'growth'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 80,
+      first_met: '2020-08-20'
+    },
+    social_media: {
+      instagram: '@luna_adventures'
+    },
+    memory_count: 31,
+    relationship_count: 6
+  },
+  {
+    id: 'dummy-11',
+    name: 'River Song',
+    alias: generateNicknames('River Song', 'A brilliant artist and collaborator. We\'ve worked on several creative projects together and their vision always inspires me to think differently.', 'Creative Partner', ['art', 'creativity', 'collaboration', 'inspiration']),
+    pronouns: 'they/them',
+    archetype: 'collaborator',
+    role: 'Creative Partner',
+    status: 'active',
+    summary: 'A brilliant artist and collaborator. We\'ve worked on several creative projects together and their vision always inspires me to think differently.',
+    tags: ['art', 'creativity', 'collaboration', 'inspiration'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 72,
+      first_met: '2021-03-15'
+    },
+    social_media: {
+      instagram: '@river_creates',
+      website: 'riversong.art'
+    },
+    memory_count: 18,
+    relationship_count: 4
+  },
+  {
+    id: 'dummy-12',
+    name: 'Noah Thompson',
+    alias: generateNicknames('Noah Thompson', 'A thoughtful friend who always asks the deep questions. Our conversations about life, purpose, and meaning have been transformative.', 'Philosophy Friend', ['philosophy', 'deep-thoughts', 'friendship']),
+    pronouns: 'he/him',
+    archetype: 'friend',
+    role: 'Philosophy Friend',
+    status: 'active',
+    summary: 'A thoughtful friend who always asks the deep questions. Our conversations about life, purpose, and meaning have been transformative.',
+    tags: ['philosophy', 'deep-thoughts', 'friendship', 'conversation'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 83,
+      first_met: '2021-08-30'
+    },
+    social_media: {
+      email: 'noah.thompson@example.com'
+    },
+    memory_count: 20,
+    relationship_count: 4
+  },
+  {
+    id: 'dummy-13',
+    name: 'Zoe Chen',
+    alias: generateNicknames('Zoe Chen', 'My cousin and childhood confidante. Even though we live far apart now, we still have the deepest conversations about life, dreams, and family.', 'Cousin', ['family', 'cousin', 'childhood', 'connection']),
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Cousin',
+    status: 'active',
+    summary: 'My cousin and childhood confidante. Even though we live far apart now, we still have the deepest conversations about life, dreams, and family.',
+    tags: ['family', 'cousin', 'childhood', 'connection'],
+    metadata: {
+      relationship_type: 'family',
+      closeness_score: 88,
+      first_met: '1995-01-01'
+    },
+    social_media: {
+      email: 'zoe.chen@example.com'
+    },
+    memory_count: 28,
+    relationship_count: 10
+  },
+  {
+    id: 'dummy-14',
+    name: 'Professor Elena Rodriguez',
+    alias: ['Prof. Rodriguez', 'Elena'],
+    pronouns: 'she/her',
+    archetype: 'mentor',
+    role: 'Academic Advisor',
+    status: 'active',
+    summary: 'My former professor who became a mentor. She saw potential in me when I didn\'t see it in myself and has guided my academic and career journey.',
+    tags: ['education', 'mentorship', 'academic', 'guidance'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 82,
+      first_met: '2019-09-01'
+    },
+    social_media: {
+      email: 'elena.rodriguez@university.edu',
+      linkedin: 'elena-rodriguez-phd'
+    },
+    memory_count: 26,
+    relationship_count: 3
+  },
+  {
+    id: 'dummy-15',
+    name: 'Sam Taylor',
+    alias: generateNicknames('Sam Taylor', 'My workout partner and accountability buddy. We motivate each other to stay active and healthy, and our gym sessions are always filled with great conversations.', 'Gym Buddy', ['fitness', 'health', 'friendship', 'accountability']),
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Gym Buddy',
+    status: 'active',
+    summary: 'My workout partner and accountability buddy. We motivate each other to stay active and healthy, and our gym sessions are always filled with great conversations.',
+    tags: ['fitness', 'health', 'friendship', 'accountability'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 68,
+      first_met: '2022-01-15'
+    },
+    social_media: {
+      instagram: '@sam_fitness'
+    },
+    memory_count: 14,
+    relationship_count: 2
+  },
+  {
+    id: 'dummy-16',
+    name: 'Isabella Garcia',
+    alias: generateNicknames('Isabella Garcia', 'A yoga instructor who has become a close friend. Her calming presence and wisdom about mindfulness have deeply influenced my practice.', 'Yoga Instructor', ['yoga', 'mindfulness', 'wellness', 'friendship']),
+    pronouns: 'she/her',
+    archetype: 'friend',
+    role: 'Yoga Instructor',
+    status: 'active',
+    summary: 'A yoga instructor who has become a close friend. Her calming presence and wisdom about mindfulness have deeply influenced my practice.',
+    tags: ['yoga', 'mindfulness', 'wellness', 'friendship'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 78,
+      first_met: '2022-02-14'
+    },
+    social_media: {
+      instagram: '@isabella_yoga',
+      website: 'isabellayoga.com'
+    },
+    memory_count: 25,
+    relationship_count: 3
+  },
+  {
+    id: 'dummy-17',
+    name: 'Maya Patel',
+    alias: generateNicknames('Maya Patel', 'The organizer of our monthly book club. Her thoughtful discussion questions always lead to deep conversations about literature, life, and everything in between.', 'Book Club Leader', ['books', 'discussion', 'friendship', 'intellectual']),
+    pronouns: 'she/her',
+    archetype: 'friend',
+    role: 'Book Club Leader',
+    status: 'active',
+    summary: 'The organizer of our monthly book club. Her thoughtful discussion questions always lead to deep conversations about literature, life, and everything in between.',
+    tags: ['books', 'discussion', 'friendship', 'intellectual'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 73,
+      first_met: '2021-06-10'
+    },
+    social_media: {
+      email: 'maya.bookclub@example.com'
+    },
+    memory_count: 19,
+    relationship_count: 5
+  },
+  {
+    id: 'dummy-18',
+    name: 'Alex Kim',
+    alias: generateNicknames('Alex Kim', 'My work best friend. We started at the company around the same time and have supported each other through projects, challenges, and career growth.', 'Work Best Friend', ['work', 'colleague', 'friendship', 'professional']),
+    pronouns: 'he/him',
+    archetype: 'colleague',
+    role: 'Work Best Friend',
+    status: 'active',
+    summary: 'My work best friend. We started at the company around the same time and have supported each other through projects, challenges, and career growth.',
+    tags: ['work', 'colleague', 'friendship', 'professional'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 77,
+      first_met: '2021-02-01'
+    },
+    social_media: {
+      linkedin: 'alex-kim-dev'
+    },
+    memory_count: 21,
+    relationship_count: 3
+  },
+  {
+    id: 'dummy-19',
+    name: 'Oliver Bennett',
+    alias: generateNicknames('Oliver Bennett', 'The owner of my favorite bookstore. He has an encyclopedic knowledge of literature and always recommends the perfect book for my mood.', 'Bookstore Owner', ['books', 'literature', 'knowledge', 'community']),
+    pronouns: 'he/him',
+    archetype: 'friend',
+    role: 'Bookstore Owner',
+    status: 'active',
+    summary: 'The owner of my favorite bookstore. He has an encyclopedic knowledge of literature and always recommends the perfect book for my mood.',
+    tags: ['books', 'literature', 'knowledge', 'community'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 71,
+      first_met: '2021-05-08'
+    },
+    social_media: {
+      email: 'oliver@bookstore.com'
+    },
+    memory_count: 14,
+    relationship_count: 1
+  },
+  {
+    id: 'dummy-20',
+    name: 'Dr. Sarah Williams',
+    alias: ['Dr. Williams', 'Sarah'],
+    pronouns: 'she/her',
+    archetype: 'mentor',
+    role: 'Research Supervisor',
+    status: 'active',
+    summary: 'My research supervisor during grad school. Her rigorous standards and supportive guidance shaped my approach to research and critical thinking.',
+    tags: ['research', 'academic', 'mentorship', 'guidance'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 79,
+      first_met: '2020-09-15'
+    },
+    social_media: {
+      email: 'sarah.williams@university.edu'
+    },
+    memory_count: 24,
+    relationship_count: 2
+  },
+  {
+    id: 'dummy-21',
+    name: 'Jamie Park',
+    alias: generateNicknames('Jamie Park', 'A fellow musician I met at an open mic. We\'ve jammed together countless times and they\'ve introduced me to genres I never would have explored.', 'Music Partner', ['music', 'creativity', 'friendship', 'collaboration']),
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Music Partner',
+    status: 'active',
+    summary: 'A fellow musician I met at an open mic. We\'ve jammed together countless times and they\'ve introduced me to genres I never would have explored.',
+    tags: ['music', 'creativity', 'friendship', 'collaboration'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 71,
+      first_met: '2021-07-22'
+    },
+    social_media: {
+      instagram: '@jamie_music',
+      spotify: 'jamiepark'
+    },
+    memory_count: 17,
+    relationship_count: 4
+  },
+  {
+    id: 'dummy-22',
+    name: 'Ethan Walker',
+    alias: generateNicknames('Ethan Walker', 'My hiking partner and outdoor enthusiast. We\'ve conquered many trails together and he\'s taught me to appreciate the wilderness.', 'Hiking Partner', ['hiking', 'outdoors', 'adventure', 'friendship']),
+    pronouns: 'he/him',
+    archetype: 'friend',
+    role: 'Hiking Partner',
+    status: 'active',
+    summary: 'My hiking partner and outdoor enthusiast. We\'ve conquered many trails together and he\'s taught me to appreciate the wilderness.',
+    tags: ['hiking', 'outdoors', 'adventure', 'friendship'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 74,
+      first_met: '2021-09-18'
+    },
+    social_media: {
+      instagram: '@ethan_hikes'
+    },
+    memory_count: 19,
+    relationship_count: 2
+  },
+  {
+    id: 'dummy-23',
+    name: 'Riley Chen',
+    alias: generateNicknames('Riley Chen', 'A friend I met in a philosophy class. We have the most engaging late-night conversations about existence, ethics, and the meaning of life.', 'Philosophy Buddy', ['philosophy', 'discussion', 'friendship', 'intellectual']),
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Philosophy Buddy',
+    status: 'active',
+    summary: 'A friend I met in a philosophy class. We have the most engaging late-night conversations about existence, ethics, and the meaning of life.',
+    tags: ['philosophy', 'discussion', 'friendship', 'intellectual'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 74,
+      first_met: '2021-09-05'
+    },
+    social_media: {
+      email: 'riley.thoughts@example.com'
+    },
+    memory_count: 13,
+    relationship_count: 1
+  },
+  {
+    id: 'dummy-24',
+    name: 'Ava Foster',
+    alias: generateNicknames('Ava Foster', 'A fellow artist at the shared studio. Her bold style and fearless experimentation inspire me to push my creative boundaries.', 'Studio Artist', ['art', 'creativity', 'inspiration', 'collaboration']),
+    pronouns: 'she/her',
+    archetype: 'collaborator',
+    role: 'Studio Artist',
+    status: 'active',
+    summary: 'A fellow artist at the shared studio. Her bold style and fearless experimentation inspire me to push my creative boundaries.',
+    tags: ['art', 'creativity', 'inspiration', 'collaboration'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 69,
+      first_met: '2022-03-22'
+    },
+    social_media: {
+      instagram: '@ava_creates',
+      website: 'avafoster.art'
+    },
+    memory_count: 11,
+    relationship_count: 1
+  },
+  {
+    id: 'dummy-25',
+    name: 'Dr. Michael Chen',
+    alias: ['Dr. Chen', 'Michael'],
+    pronouns: 'he/him',
+    archetype: 'mentor',
+    role: 'Career Advisor',
+    status: 'active',
+    summary: 'A career advisor who helped me navigate job transitions and negotiate offers. His practical advice and industry insights have been invaluable.',
+    tags: ['career', 'advice', 'professional', 'guidance'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 76,
+      first_met: '2022-03-20'
+    },
+    social_media: {
+      linkedin: 'michael-chen-career',
+      email: 'michael@careeradvice.com'
+    },
+    memory_count: 12,
+    relationship_count: 1
+  },
+  {
+    id: 'dummy-26',
+    name: 'Lucas Wright',
+    alias: generateNicknames('Lucas Wright', 'A beach volleyball partner I met during summer. His positive energy and love for the ocean are contagious.', 'Beach Volleyball Partner', ['sports', 'beach', 'friendship', 'fun']),
+    pronouns: 'he/him',
+    archetype: 'friend',
+    role: 'Beach Volleyball Partner',
+    status: 'active',
+    summary: 'A beach volleyball partner I met during summer. His positive energy and love for the ocean are contagious.',
+    tags: ['sports', 'beach', 'friendship', 'fun'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 66,
+      first_met: '2022-07-05'
+    },
+    social_media: {
+      instagram: '@lucas_beach'
+    },
+    memory_count: 9,
+    relationship_count: 1
+  },
+  {
+    id: 'dummy-27',
+    name: 'Casey Morgan',
+    alias: generateNicknames('Casey Morgan', 'My gaming partner and friend. We\'ve spent countless hours playing together and their strategic thinking always impresses me.', 'Gaming Buddy', ['gaming', 'friendship', 'strategy', 'fun']),
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Gaming Buddy',
+    status: 'active',
+    summary: 'My gaming partner and friend. We\'ve spent countless hours playing together and their strategic thinking always impresses me.',
+    tags: ['gaming', 'friendship', 'strategy', 'fun'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 69,
+      first_met: '2022-06-12'
+    },
+    social_media: {
+      discord: 'casey_games#1234'
+    },
+    memory_count: 10,
+    relationship_count: 2
+  },
+  {
+    id: 'dummy-28',
+    name: 'Grace Lee',
+    alias: generateNicknames('Grace Lee', 'A fellow yoga practitioner who has become a close friend. Her dedication to the practice and gentle wisdom inspire me daily.', 'Yoga Friend', ['yoga', 'wellness', 'friendship', 'mindfulness']),
+    pronouns: 'she/her',
+    archetype: 'friend',
+    role: 'Yoga Friend',
+    status: 'active',
+    summary: 'A fellow yoga practitioner who has become a close friend. Her dedication to the practice and gentle wisdom inspire me daily.',
+    tags: ['yoga', 'wellness', 'friendship', 'mindfulness'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 72,
+      first_met: '2022-01-28'
+    },
+    social_media: {
+      email: 'grace.lee@example.com'
+    },
+    memory_count: 17,
+    relationship_count: 2
+  },
+  {
+    id: 'dummy-29',
+    name: 'Taylor Kim',
+    alias: generateNicknames('Taylor Kim', 'A friend I met while traveling. We\'ve explored several countries together and she\'s taught me to be more adventurous and open to new experiences.', 'Travel Companion', ['travel', 'adventure', 'friendship', 'exploration']),
+    pronouns: 'she/her',
+    archetype: 'friend',
+    role: 'Travel Companion',
+    status: 'active',
+    summary: 'A friend I met while traveling. We\'ve explored several countries together and she\'s taught me to be more adventurous and open to new experiences.',
+    tags: ['travel', 'adventure', 'friendship', 'exploration'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 78,
+      first_met: '2021-05-18'
+    },
+    social_media: {
+      instagram: '@taylor_travels'
+    },
+    memory_count: 23,
+    relationship_count: 5
+  },
+  {
+    id: 'dummy-30',
+    name: 'Harper Davis',
+    alias: generateNicknames('Harper Davis', 'A vendor at the farmer\'s market who always has the best produce and stories. We\'ve become friends over our weekly conversations about food and community.', 'Market Vendor', ['food', 'community', 'local', 'friendship']),
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Market Vendor',
+    status: 'active',
+    summary: 'A vendor at the farmer\'s market who always has the best produce and stories. We\'ve become friends over our weekly conversations about food and community.',
+    tags: ['food', 'community', 'local', 'friendship'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 65,
+      first_met: '2021-10-12'
+    },
+    social_media: {
+      email: 'harper@localmarket.com'
+    },
+    memory_count: 10,
+    relationship_count: 1
+  },
+  // Unmet characters - mentioned but not met
+  {
+    id: 'unmet-1',
+    name: 'Dr. Elena Vasquez',
+    alias: generateNicknames('Dr. Elena Vasquez', 'A renowned psychologist I\'ve been reading about. Her work on trauma recovery is fascinating and I\'d love to attend one of her workshops someday.', 'Future Mentor', ['psychology', 'trauma-recovery', 'inspiration']),
+    pronouns: 'she/her',
+    archetype: 'mentor',
+    role: 'Future Mentor',
+    status: 'unmet',
+    summary: 'A renowned psychologist I\'ve been reading about. Her work on trauma recovery is fascinating and I\'d love to attend one of her workshops someday.',
+    tags: ['psychology', 'trauma-recovery', 'inspiration', 'future'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 0,
+      mentioned_in: ['chat', 'entries'],
+      first_mentioned: '2024-11-15'
+    },
+    social_media: {
+      website: 'elenavasquez.com',
+      twitter: '@dr_vasquez'
+    },
+    memory_count: 3,
+    relationship_count: 0
+  },
+  {
+    id: 'unmet-2',
+    name: 'Alex Morgan',
+    alias: generateNicknames('Alex Morgan', 'A friend of a friend who sounds really interesting. Sarah keeps telling me I should meet them - they\'re into the same hobbies and seem like someone I\'d get along with.', 'Future Friend', ['mutual-friend', 'shared-interests', 'recommended']),
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Future Friend',
+    status: 'unmet',
+    summary: 'A friend of a friend who sounds really interesting. Sarah keeps telling me I should meet them - they\'re into the same hobbies and seem like someone I\'d get along with.',
+    tags: ['mutual-friend', 'shared-interests', 'recommended', 'future'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 0,
+      mentioned_in: ['chat'],
+      first_mentioned: '2024-11-20',
+      mutual_connection: 'Sarah Chen'
+    },
+    memory_count: 2,
+    relationship_count: 0
+  },
+  {
+    id: 'unmet-3',
+    name: 'The Wanderer',
+    alias: ['Wanderer', 'The Traveler', 'Nomad'],
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Paracosm Character',
+    status: 'unmet',
+    summary: 'A character from my imagined world - a mysterious traveler who appears in my creative writing. They represent freedom and adventure.',
+    tags: ['paracosm', 'creative', 'imagined', 'story'],
+    metadata: {
+      relationship_type: 'imagined',
+      closeness_score: 0,
+      mentioned_in: ['entries', 'creative-work'],
+      first_mentioned: '2024-09-10',
+      source: 'paracosm'
+    },
+    memory_count: 8,
+    relationship_count: 0
+  },
+  {
+    id: 'unmet-4',
+    name: 'Professor James Chen',
+    alias: generateNicknames('Professor James Chen', 'A professor at the university I want to transfer to. His research on cognitive science aligns perfectly with my interests. I\'ve been following his papers.', 'Future Academic Advisor', ['academic', 'research', 'future', 'inspiration']),
+    pronouns: 'he/him',
+    archetype: 'mentor',
+    role: 'Future Academic Advisor',
+    status: 'unmet',
+    summary: 'A professor at the university I want to transfer to. His research on cognitive science aligns perfectly with my interests. I\'ve been following his papers.',
+    tags: ['academic', 'research', 'future', 'inspiration'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 0,
+      mentioned_in: ['entries', 'research'],
+      first_mentioned: '2024-10-05'
+    },
+    social_media: {
+      website: 'jameschen.research.edu',
+      linkedin: 'james-chen-phd'
+    },
+    memory_count: 5,
+    relationship_count: 0
+  },
+  {
+    id: 'unmet-5',
+    name: 'Maya Starling',
+    alias: generateNicknames('Maya Starling', 'An artist whose work I discovered online. Her paintings capture emotions in a way that resonates deeply with me. I\'d love to collaborate with her someday.', 'Future Collaborator', ['art', 'collaboration', 'inspiration', 'future']),
+    pronouns: 'she/her',
+    archetype: 'collaborator',
+    role: 'Future Collaborator',
+    status: 'unmet',
+    summary: 'An artist whose work I discovered online. Her paintings capture emotions in a way that resonates deeply with me. I\'d love to collaborate with her someday.',
+    tags: ['art', 'collaboration', 'inspiration', 'future'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 0,
+      mentioned_in: ['entries', 'research'],
+      first_mentioned: '2024-11-01'
+    },
+    social_media: {
+      instagram: '@maya_starling_art',
+      website: 'mayastarling.art'
+    },
+    memory_count: 4,
+    relationship_count: 0
+  },
+  // Additional diverse characters to showcase app capabilities
+  
+  // === FAMILY MEMBERS ===
+  {
+    id: 'family-1',
+    name: 'Robert Chen',
+    alias: ['Dad', 'Robert', 'Rob'],
+    pronouns: 'he/him',
+    archetype: 'family',
+    role: 'Father',
+    status: 'active',
+    summary: 'My father. We have a complex relationship that has evolved over the years. He taught me the value of hard work and perseverance.',
+    tags: ['family', 'father', 'mentor', 'support'],
+    metadata: {
+      relationship_type: 'family',
+      closeness_score: 75,
+      first_met: '1990-01-01'
+    },
+    social_media: {
+      email: 'robert.chen@example.com',
+      phone: '+1-555-0101'
+    },
+    memory_count: 45,
+    relationship_count: 15
+  },
+  {
+    id: 'family-2',
+    name: 'Linda Chen',
+    alias: ['Mom', 'Linda'],
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Mother',
+    status: 'active',
+    summary: 'My mother. Her unconditional love and wisdom have shaped who I am today. She always knows how to make me feel better.',
+    tags: ['family', 'mother', 'love', 'support', 'wisdom'],
+    metadata: {
+      relationship_type: 'family',
+      closeness_score: 92,
+      first_met: '1990-01-01'
+    },
+    social_media: {
+      email: 'linda.chen@example.com',
+      phone: '+1-555-0102'
+    },
+    memory_count: 58,
+    relationship_count: 20
+  },
+  
+  // === FRIENDS (Diverse) ===
+  {
+    id: 'friend-1',
+    name: 'Chris Park',
+    alias: ['Chris', 'CP'],
+    pronouns: 'he/him',
+    archetype: 'friend',
+    role: 'Childhood Friend',
+    status: 'active',
+    summary: 'We\'ve been friends since elementary school. Even though we live in different cities now, we still talk regularly and pick up right where we left off.',
+    tags: ['friendship', 'childhood', 'long-term', 'loyalty'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 88,
+      first_met: '2000-09-01'
+    },
+    social_media: {
+      instagram: '@chris_park',
+      email: 'chris.park@example.com'
+    },
+    memory_count: 42,
+    relationship_count: 18
+  },
+  {
+    id: 'friend-2',
+    name: 'Morgan Lee',
+    alias: generateNicknames('Morgan Lee', 'A friend I met at a coding bootcamp. We bonded over our shared struggles and now we\'re both working in tech. They\'re always up for a late-night coding session.', 'Coding Buddy', ['coding', 'tech', 'friendship', 'learning']),
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Coding Buddy',
+    status: 'active',
+    summary: 'A friend I met at a coding bootcamp. We bonded over our shared struggles and now we\'re both working in tech. They\'re always up for a late-night coding session.',
+    tags: ['coding', 'tech', 'friendship', 'learning'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 76,
+      first_met: '2022-03-15'
+    },
+    social_media: {
+      github: 'morgan-lee-dev',
+      linkedin: 'morgan-lee-tech'
+    },
+    memory_count: 28,
+    relationship_count: 5
+  },
+  {
+    id: 'friend-3',
+    name: 'Quinn Anderson',
+    alias: ['Quinn', 'Q'],
+    pronouns: 'they/them',
+    archetype: 'ally',
+    role: 'Support System',
+    status: 'active',
+    summary: 'One of my most supportive friends. They always know what to say and when to just listen. I can be completely myself around them.',
+    tags: ['support', 'friendship', 'trust', 'authenticity'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 91,
+      first_met: '2019-05-20'
+    },
+    social_media: {
+      email: 'quinn.anderson@example.com'
+    },
+    memory_count: 35,
+    relationship_count: 12
+  },
+  {
+    id: 'friend-4',
+    name: 'Dakota Singh',
+    alias: generateNicknames('Dakota Singh', 'A friend from my meditation retreat. Their calm presence and deep insights have been incredibly valuable.', 'Meditation Friend', ['meditation', 'mindfulness', 'friendship', 'peace']),
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Meditation Friend',
+    status: 'active',
+    summary: 'A friend from my meditation retreat. Their calm presence and deep insights have been incredibly valuable.',
+    tags: ['meditation', 'mindfulness', 'friendship', 'peace'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 73,
+      first_met: '2021-08-10'
+    },
+    memory_count: 15,
+    relationship_count: 3
+  },
+  
+  // === MENTORS (Diverse) ===
+  {
+    id: 'mentor-1',
+    name: 'Dr. Patricia Wong',
+    alias: ['Dr. Wong', 'Patricia', 'Pat'],
+    pronouns: 'she/her',
+    archetype: 'mentor',
+    role: 'Career Mentor',
+    status: 'active',
+    summary: 'A senior executive who took me under her wing. Her career advice and industry connections have been invaluable. She pushes me to aim higher.',
+    tags: ['career', 'mentorship', 'leadership', 'professional'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 84,
+      first_met: '2020-06-01'
+    },
+    social_media: {
+      linkedin: 'patricia-wong-exec',
+      email: 'patricia.wong@example.com'
+    },
+    memory_count: 31,
+    relationship_count: 8
+  },
+  {
+    id: 'mentor-2',
+    name: 'Master Chen Wei',
+    alias: ['Master Chen', 'Sifu'],
+    pronouns: 'he/him',
+    archetype: 'mentor',
+    role: 'Martial Arts Instructor',
+    status: 'active',
+    summary: 'My martial arts instructor for the past 5 years. He teaches me discipline, focus, and inner strength. His philosophy extends beyond the dojo.',
+    tags: ['martial-arts', 'discipline', 'philosophy', 'mentorship'],
+    metadata: {
+      relationship_type: 'coach',
+      closeness_score: 79,
+      first_met: '2019-01-10'
+    },
+    social_media: {
+      website: 'chenweimartialarts.com'
+    },
+    memory_count: 38,
+    relationship_count: 2
+  },
+  {
+    id: 'mentor-3',
+    name: 'Dr. Rachel Kim',
+    alias: ['Dr. Kim', 'Rachel'],
+    pronouns: 'she/her',
+    archetype: 'mentor',
+    role: 'Academic Advisor',
+    status: 'active',
+    summary: 'My PhD advisor. She\'s brilliant, demanding, and incredibly supportive. Her research guidance has shaped my academic journey.',
+    tags: ['academic', 'research', 'mentorship', 'education'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 86,
+      first_met: '2021-09-01'
+    },
+    social_media: {
+      email: 'rachel.kim@university.edu',
+      website: 'rachelkim.research.edu'
+    },
+    memory_count: 52,
+    relationship_count: 6
+  },
+  
+  // === PROFESSIONAL NETWORK ===
+  {
+    id: 'professional-1',
+    name: 'Jessica Martinez',
+    alias: ['Jess', 'Jessica'],
+    pronouns: 'she/her',
+    archetype: 'colleague',
+    role: 'Team Lead',
+    status: 'active',
+    summary: 'My team lead at work. She\'s a great manager who balances high expectations with genuine care for her team. I\'ve learned a lot from her leadership style.',
+    tags: ['work', 'leadership', 'professional', 'management'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 68,
+      first_met: '2021-02-15'
+    },
+    social_media: {
+      linkedin: 'jessica-martinez-lead',
+      email: 'jessica.martinez@company.com'
+    },
+    memory_count: 24,
+    relationship_count: 4
+  },
+  {
+    id: 'professional-2',
+    name: 'Ryan O\'Connor',
+    alias: ['Ryan', 'RO'],
+    pronouns: 'he/him',
+    archetype: 'colleague',
+    role: 'Senior Developer',
+    status: 'active',
+    summary: 'A senior developer on my team. He\'s always willing to help debug issues and share knowledge. His code reviews are thorough and educational.',
+    tags: ['coding', 'work', 'professional', 'mentorship'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 71,
+      first_met: '2021-03-01'
+    },
+    social_media: {
+      github: 'ryan-oconnor-dev',
+      linkedin: 'ryan-oconnor'
+    },
+    memory_count: 19,
+    relationship_count: 3
+  },
+  {
+    id: 'professional-3',
+    name: 'Amara Patel',
+    alias: ['Amara'],
+    pronouns: 'she/her',
+    archetype: 'colleague',
+    role: 'Product Manager',
+    status: 'active',
+    summary: 'A product manager I work closely with. Her strategic thinking and user-focused approach inspire me. We collaborate well on cross-functional projects.',
+    tags: ['product', 'strategy', 'professional', 'collaboration'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 65,
+      first_met: '2022-01-10'
+    },
+    social_media: {
+      linkedin: 'amara-patel-pm',
+      twitter: '@amara_product'
+    },
+    memory_count: 16,
+    relationship_count: 2
+  },
+  
+  // === CREATIVE CIRCLE ===
+  {
+    id: 'creative-1',
+    name: 'Phoenix Black',
+    alias: ['Phoenix', 'Nix'],
+    pronouns: 'they/them',
+    archetype: 'collaborator',
+    role: 'Music Producer',
+    status: 'active',
+    summary: 'A talented music producer I collaborate with. Their production skills are incredible and they always bring fresh ideas to our projects.',
+    tags: ['music', 'production', 'creativity', 'collaboration'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 74,
+      first_met: '2021-11-05'
+    },
+    social_media: {
+      instagram: '@phoenix_black_music',
+      spotify: 'phoenixblack',
+      website: 'phoenixblackmusic.com'
+    },
+    memory_count: 22,
+    relationship_count: 7
+  },
+  {
+    id: 'creative-2',
+    name: 'Sage Thompson',
+    alias: generateNicknames('Sage Thompson', 'A writer I met at a workshop. We exchange manuscripts and provide feedback. Their writing style is poetic and powerful.', 'Writing Partner', ['writing', 'literature', 'creativity', 'feedback']),
+    pronouns: 'they/them',
+    archetype: 'collaborator',
+    role: 'Writing Partner',
+    status: 'active',
+    summary: 'A writer I met at a workshop. We exchange manuscripts and provide feedback. Their writing style is poetic and powerful.',
+    tags: ['writing', 'literature', 'creativity', 'feedback'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 77,
+      first_met: '2022-04-20'
+    },
+    social_media: {
+      twitter: '@sage_writes',
+      website: 'sagethompson.com'
+    },
+    memory_count: 18,
+    relationship_count: 4
+  },
+  {
+    id: 'creative-3',
+    name: 'Indigo Moon',
+    alias: ['Indigo', 'Indy'],
+    pronouns: 'she/her',
+    archetype: 'collaborator',
+    role: 'Visual Artist',
+    status: 'active',
+    summary: 'A visual artist whose work I admire. We\'ve collaborated on a few projects combining her illustrations with my writing. Her aesthetic is stunning.',
+    tags: ['art', 'illustration', 'creativity', 'collaboration'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 70,
+      first_met: '2021-12-15'
+    },
+    social_media: {
+      instagram: '@indigo_moon_art',
+      website: 'indigomoon.art'
+    },
+    memory_count: 14,
+    relationship_count: 3
+  },
+  
+  // === MORE UNMET CHARACTERS ===
+  {
+    id: 'unmet-6',
+    name: 'Dr. Aria Chen',
+    alias: ['Dr. Chen', 'Aria'],
+    pronouns: 'she/her',
+    archetype: 'mentor',
+    role: 'Future Research Collaborator',
+    status: 'unmet',
+    summary: 'A researcher whose papers I\'ve been following. Her work on neural interfaces is groundbreaking. I\'d love to collaborate with her someday.',
+    tags: ['research', 'neuroscience', 'future', 'inspiration'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 0,
+      mentioned_in: ['entries', 'research'],
+      first_mentioned: '2024-10-20'
+    },
+    social_media: {
+      website: 'ariachen.research.edu',
+      linkedin: 'aria-chen-phd'
+    },
+    memory_count: 6,
+    relationship_count: 0
+  },
+  {
+    id: 'unmet-7',
+    name: 'Kai Storm',
+    alias: ['Kai', 'Storm'],
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Future Adventure Partner',
+    status: 'unmet',
+    summary: 'Someone I met online in a hiking group. We\'ve been planning a backpacking trip together. They seem adventurous and fun.',
+    tags: ['adventure', 'hiking', 'future', 'online-friend'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 0,
+      mentioned_in: ['chat'],
+      first_mentioned: '2024-11-10'
+    },
+    social_media: {
+      instagram: '@kai_storm_adventures'
+    },
+    memory_count: 2,
+    relationship_count: 0
+  },
+  {
+    id: 'unmet-8',
+    name: 'The Oracle',
+    alias: ['Oracle', 'The Guide'],
+    pronouns: 'it/its',
+    archetype: 'mentor',
+    role: 'Paracosm Guide',
+    status: 'unmet',
+    summary: 'A wise entity from my imagined world who appears in my dreams and creative writing. Represents inner wisdom and guidance.',
+    tags: ['paracosm', 'imagined', 'wisdom', 'creative'],
+    metadata: {
+      relationship_type: 'imagined',
+      closeness_score: 0,
+      mentioned_in: ['entries', 'creative-work', 'dreams'],
+      first_mentioned: '2023-05-15',
+      source: 'paracosm'
+    },
+    memory_count: 12,
+    relationship_count: 0
+  },
+  
+  // === EDGE CASES: Characters with minimal data ===
+  {
+    id: 'minimal-1',
+    name: 'Alex Unknown',
+    alias: [],
+    pronouns: 'they/them',
+    archetype: 'friend',
+    role: 'Acquaintance',
+    status: 'active',
+    summary: 'Someone I met briefly at an event. We exchanged contact info but haven\'t connected much yet.',
+    tags: ['acquaintance'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 25,
+      first_met: '2024-09-15'
+    },
+    memory_count: 1,
+    relationship_count: 0
+  },
+  {
+    id: 'minimal-2',
+    name: 'Dr. Smith',
+    alias: ['Dr. Smith'],
+    pronouns: 'he/him',
+    archetype: 'mentor',
+    role: 'Former Professor',
+    status: 'inactive',
+    summary: 'A professor from my undergraduate years. We haven\'t been in touch since graduation.',
+    tags: ['academic', 'past'],
+    metadata: {
+      relationship_type: 'professional',
+      closeness_score: 45,
+      first_met: '2018-09-01'
+    },
+    memory_count: 8,
+    relationship_count: 1
+  },
+  
+  // === HIGH MEMORY COUNT CHARACTERS ===
+  {
+    id: 'high-memory-1',
+    name: 'Samantha "Sam" Rodriguez',
+    alias: ['Sam', 'Samantha', 'Sammy', 'S-Rod'],
+    pronouns: 'she/her',
+    archetype: 'ally',
+    role: 'Best Friend',
+    status: 'active',
+    summary: 'My best friend since high school. We\'ve been through everything together - breakups, career changes, family drama, celebrations. She knows me better than anyone.',
+    tags: ['friendship', 'best-friend', 'support', 'loyalty', 'history', 'trust'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 98,
+      first_met: '2012-09-01'
+    },
+    social_media: {
+      instagram: '@sam_rodriguez',
+      twitter: '@sam_ro',
+      facebook: 'samantha.rodriguez',
+      email: 'sam.rodriguez@example.com',
+      phone: '+1-555-0201'
+    },
+    memory_count: 127,
+    relationship_count: 45
+  },
+  
+  // === CHARACTERS WITH MANY TAGS ===
+  {
+    id: 'many-tags-1',
+    name: 'Dr. Marcus "Marc" Thompson',
+    alias: generateNicknames('Dr. Marcus Thompson', 'A renaissance person - doctor, musician, writer, and mentor. He\'s been a huge influence in multiple areas of my life.', 'Renaissance Mentor', ['medicine', 'music', 'writing', 'mentorship', 'multi-talented', 'inspiration', 'guidance', 'creativity']),
+    pronouns: 'he/him',
+    archetype: 'mentor',
+    role: 'Multi-Faceted Mentor',
+    status: 'active',
+    summary: 'A renaissance person - doctor, musician, writer, and mentor. He\'s been a huge influence in multiple areas of my life.',
+    tags: ['medicine', 'music', 'writing', 'mentorship', 'multi-talented', 'inspiration', 'guidance', 'creativity', 'wisdom'],
+    metadata: {
+      relationship_type: 'coach',
+      closeness_score: 87,
+      first_met: '2019-06-10'
+    },
+    social_media: {
+      website: 'marcusthompson.com',
+      linkedin: 'marcus-thompson-md',
+      instagram: '@marcus_thompson_md',
+      twitter: '@dr_marcus_t'
+    },
+    memory_count: 67,
+    relationship_count: 15
+  },
+  
+  // === CHARACTERS WITH NO SOCIAL MEDIA ===
+  {
+    id: 'no-social-1',
+    name: 'Grandma Li',
+    alias: ['Grandma', 'Nai Nai'],
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Grandmother',
+    status: 'active',
+    summary: 'My grandmother. She doesn\'t use social media, but we talk on the phone weekly. Her stories and wisdom are priceless.',
+    tags: ['family', 'grandmother', 'wisdom', 'tradition'],
+    metadata: {
+      relationship_type: 'family',
+      closeness_score: 89,
+      first_met: '1990-01-01'
+    },
+    social_media: {},
+    memory_count: 41,
+    relationship_count: 8
+  },
+  
+  // === INACTIVE CHARACTERS ===
+  {
+    id: 'inactive-1',
+    name: 'Tom Wilson',
+    alias: ['Tom', 'Tommy'],
+    pronouns: 'he/him',
+    archetype: 'friend',
+    role: 'Former Roommate',
+    status: 'inactive',
+    summary: 'A former roommate from college. We were close then but drifted apart after graduation. Haven\'t talked in years.',
+    tags: ['past', 'college', 'roommate'],
+    metadata: {
+      relationship_type: 'friend',
+      closeness_score: 30,
+      first_met: '2016-09-01'
+    },
+    social_media: {
+      facebook: 'tom.wilson'
+    },
+    memory_count: 12,
+    relationship_count: 3
   }
 ];
 
 const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows
 
+type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professional' | 'creative' | 'mentioned';
+
 export const CharacterBook = () => {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
   const [loading, setLoading] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const { entries = [], chapters = [], timeline, refreshEntries, refreshTimeline } = useLoreKeeper();
+  
+  // Get chat messages for character extraction
+  const conversationStore = useConversationStore();
+  const chatMessages = conversationStore.messages.map(msg => ({
+    role: msg.role,
+    content: msg.content,
+    timestamp: msg.timestamp
+  }));
+
+  // Auto-extract characters from chat
+  useCharacterExtraction(chatMessages, {
+    enabled: true,
+    onCharacterCreated: (newCharacter) => {
+      // Refresh character list when a new character is created
+      void loadCharacters();
+    }
+  });
 
   const loadCharacters = async () => {
     setLoading(true);
@@ -227,25 +1377,57 @@ export const CharacterBook = () => {
   }, [entries]);
 
   const filteredCharacters = useMemo(() => {
-    if (!searchTerm.trim()) return characters;
-    const term = searchTerm.toLowerCase();
-    return characters.filter(
-      (char) =>
-        char.name.toLowerCase().includes(term) ||
-        char.alias?.some((a) => a.toLowerCase().includes(term)) ||
-        char.summary?.toLowerCase().includes(term) ||
-        char.tags?.some((t) => t.toLowerCase().includes(term)) ||
-        char.archetype?.toLowerCase().includes(term) ||
-        char.role?.toLowerCase().includes(term)
-    );
-  }, [characters, searchTerm]);
+    // Filter out places - only show actual characters (people)
+    let filtered = characters.filter(char => char.archetype !== 'place');
+    
+    // Filter by category
+    if (activeCategory !== 'all') {
+      filtered = filtered.filter(char => {
+        switch (activeCategory) {
+          case 'family':
+            return char.archetype === 'family' || char.metadata?.relationship_type === 'family';
+          case 'friends':
+            return (char.archetype === 'friend' || char.archetype === 'ally') && 
+                   char.status !== 'unmet' &&
+                   (char.metadata?.relationship_type === 'friend' || !char.metadata?.relationship_type);
+          case 'mentors':
+            return char.archetype === 'mentor' && char.status !== 'unmet';
+          case 'professional':
+            return (char.archetype === 'colleague' || char.metadata?.relationship_type === 'professional') && 
+                   char.status !== 'unmet';
+          case 'creative':
+            return char.archetype === 'collaborator' && char.status !== 'unmet';
+          case 'mentioned':
+            return char.status === 'unmet';
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // Filter by search term
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(
+        (char) =>
+          char.name.toLowerCase().includes(term) ||
+          char.alias?.some((a) => a.toLowerCase().includes(term)) ||
+          char.summary?.toLowerCase().includes(term) ||
+          char.tags?.some((t) => t.toLowerCase().includes(term)) ||
+          char.archetype?.toLowerCase().includes(term) ||
+          char.role?.toLowerCase().includes(term)
+      );
+    }
+    
+    return filtered;
+  }, [characters, searchTerm, activeCategory]);
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when search or category changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, activeCategory]);
 
-  // Calculate pagination
+  // Calculate pagination - always use grid pagination (multiple characters per page)
   const totalPages = Math.ceil(filteredCharacters.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
@@ -297,7 +1479,7 @@ export const CharacterBook = () => {
         <UserProfile />
       </div>
 
-      {/* Character Search Bar - Right under user profile */}
+      {/* Character Search Bar and Navigation Tabs */}
       <div className="space-y-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
@@ -312,6 +1494,61 @@ export const CharacterBook = () => {
           />
         </div>
         
+        {/* Navigation Tabs */}
+        <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as CharacterCategory)}>
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto">
+            <TabsTrigger 
+              value="all" 
+              className="flex items-center gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+            >
+              <Users className="h-4 w-4" />
+              <span>All</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="family"
+              className="flex items-center gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400"
+            >
+              <Heart className="h-4 w-4" />
+              <span>Family</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="friends"
+              className="flex items-center gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400"
+            >
+              <Users className="h-4 w-4" />
+              <span>Friends</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="mentors"
+              className="flex items-center gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400"
+            >
+              <GraduationCap className="h-4 w-4" />
+              <span>Mentors</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="professional"
+              className="flex items-center gap-2 data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400"
+            >
+              <Briefcase className="h-4 w-4" />
+              <span>Professional</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="creative"
+              className="flex items-center gap-2 data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-400"
+            >
+              <Palette className="h-4 w-4" />
+              <span>Creative</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="mentioned"
+              className="flex items-center gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400"
+            >
+              <MessageSquare className="h-4 w-4" />
+              <span>Mentioned</span>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold text-white">Character Book</h2>
@@ -322,7 +1559,7 @@ export const CharacterBook = () => {
             </p>
           </div>
           <Button 
-            leftIcon={<Plus className="h-4 w-4" />} 
+            leftIcon={<RefreshCw className="h-4 w-4" />} 
             onClick={() => void loadCharacters()}
             disabled={loading}
           >
@@ -341,87 +1578,116 @@ export const CharacterBook = () => {
         <div className="text-center py-12 text-white/60">
           <User className="h-12 w-12 mx-auto mb-4 text-white/20" />
           <p className="text-lg font-medium mb-2">No characters found</p>
-          <p className="text-sm">Try a different search term</p>
+          <p className="text-sm">Try a different search term or mention characters in chat to auto-create them</p>
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {paginatedCharacters.map((character, index) => {
-              try {
-                return (
-                  <CharacterProfileCard
-                    key={character.id || `char-${index}`}
-                    character={character}
-                    onClick={() => {
-                      setSelectedCharacter(character);
-                    }}
-                  />
-                );
-              } catch {
-                return null;
-              }
-            })}
-          </div>
-
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-6 border-t border-border/50">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goToPrevious}
-                disabled={currentPage === 1}
-                leftIcon={<ChevronLeft className="h-4 w-4" />}
-              >
-                Previous
-              </Button>
-
-              <div className="flex items-center gap-2">
-                {/* Page indicators */}
-                <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-border/50">
-                  {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-                    let pageNum: number;
-                    if (totalPages <= 7) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 4) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 3) {
-                      pageNum = totalPages - 6 + i;
-                    } else {
-                      pageNum = currentPage - 3 + i;
-                    }
-
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => goToPage(pageNum)}
-                        className={`px-2 py-1 rounded text-sm transition ${
-                          currentPage === pageNum
-                            ? 'bg-primary text-white'
-                            : 'text-white/60 hover:text-white hover:bg-white/10'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
+          {/* Book Page Container with Grid Inside */}
+          <div className="relative w-full min-h-[600px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden">
+            {/* Page Content */}
+            <div className="p-8 flex flex-col">
+              {/* Page Header */}
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-amber-800/20">
+                <div className="flex items-center gap-3">
+                  <BookOpen className="h-6 w-6 text-amber-600/60" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-amber-900/40 uppercase tracking-wider">
+                      Character Book
+                    </h3>
+                    <p className="text-xs text-amber-700/50 mt-0.5">
+                      Page {currentPage} of {totalPages}
+                    </p>
+                  </div>
                 </div>
-                <span className="text-sm text-white/60">
-                  {startIndex + 1}-{Math.min(endIndex, filteredCharacters.length)} of {filteredCharacters.length}
-                </span>
+                <div className="text-xs text-amber-700/40 font-mono">
+                  {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
               </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goToNext}
-                disabled={currentPage === totalPages}
-                rightIcon={<ChevronRight className="h-4 w-4" />}
-              >
-                Next
-              </Button>
+              {/* Character Grid */}
+              <div className="flex-1 grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-6">
+                {paginatedCharacters.map((character, index) => {
+                  try {
+                    return (
+                      <CharacterProfileCard
+                        key={character.id || `char-${index}`}
+                        character={character}
+                        onClick={() => {
+                          setSelectedCharacter(character);
+                        }}
+                      />
+                    );
+                  } catch {
+                    return null;
+                  }
+                })}
+              </div>
+
+              {/* Page Footer with Navigation */}
+              <div className="flex items-center justify-between pt-4 border-t border-amber-800/20">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={goToPrevious}
+                  disabled={currentPage === 1}
+                  className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
+
+                <div className="flex items-center gap-2">
+                  {/* Page indicators */}
+                  <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-amber-800/30">
+                    {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                      let pageNum: number;
+                      if (totalPages <= 7) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 4) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 3) {
+                        pageNum = totalPages - 6 + i;
+                      } else {
+                        pageNum = currentPage - 3 + i;
+                      }
+
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => goToPage(pageNum)}
+                          className={`px-2 py-1 rounded text-sm transition ${
+                            currentPage === pageNum
+                              ? 'bg-amber-600 text-white'
+                              : 'text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="text-sm text-amber-700/50">
+                    {startIndex + 1}-{Math.min(endIndex, filteredCharacters.length)} of {filteredCharacters.length}
+                  </span>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={goToNext}
+                  disabled={currentPage === totalPages}
+                  className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
             </div>
-          )}
+
+            {/* Book Binding Effect */}
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-900/40 via-amber-800/30 to-amber-900/40" />
+            <div className="absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-900/40 via-amber-800/30 to-amber-900/40" />
+          </div>
         </>
       )}
 

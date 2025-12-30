@@ -64,6 +64,7 @@ import { verificationRouter } from './routes/verification';
 import { timelineV2Router } from './routes/timelineV2';
 import { memoryEngineRouter } from './routes/memoryEngine';
 import { knowledgeGraphRouter } from './routes/knowledgeGraph';
+import { searchRouter } from './routes/search';
 import { analyticsRouter } from './routes/analytics';
 import { chronologyRouter } from './routes/chronology';
 import recommendationsRouter from './routes/recommendations';
@@ -106,30 +107,108 @@ import scenesRouter from './routes/scenes';
 import conflictsRouter from './routes/conflicts';
 import toxicityRouter from './routes/toxicity';
 import socialProjectionRouter from './routes/socialProjection';
+import paracosmRouter from './routes/paracosm';
+import innerMythologyRouter from './routes/innerMythology';
+import identityCoreRouter from './routes/identityCore';
+import storyOfSelfRouter from './routes/storyOfSelf';
+import innerDialogueRouter from './routes/innerDialogue';
+import alternateSelfRouter from './routes/alternateSelf';
+import cognitiveBiasRouter from './routes/cognitiveBias';
+import distortionRouter from './routes/distortion';
+import shadowEngineRouter from './routes/shadowEngine';
+import emotionalIntelligenceRouter from './routes/emotionalIntelligence';
+import engineRuntimeRouter from './routes/engineRuntime';
+import chatMemoryRouter from './routes/chatMemory';
 import { errorHandler } from './middleware/errorHandler';
 import { asyncHandler } from './middleware/errorHandler';
 import { requestIdMiddleware } from './utils/requestId';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
+import { intrusionDetection } from './middleware/intrusionDetection';
+import { performSecurityCheck } from './utils/securityCheck';
 
 assertConfig();
 
-const app = express();
-const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production';
+// Perform security check on startup
+const securityCheck = performSecurityCheck();
+if (!securityCheck.passed) {
+  logger.error('🚨 Security check failed - server starting but may be vulnerable');
+  if (isProduction) {
+    logger.error('⚠️  PRODUCTION MODE: Fix security issues before deploying');
+  }
+}
 
-// Configure Helmet with relaxed CSP for development
+const app = express();
+// SECURITY: Properly detect production environment
+// Default to production for safety if NODE_ENV is not explicitly set to 'development'
+const isDevelopment = process.env.NODE_ENV === 'development' || 
+                      (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+const isProduction = process.env.NODE_ENV === 'production' || 
+                     process.env.API_ENV === 'production' ||
+                     (!process.env.NODE_ENV && !process.env.API_ENV); // Default to production for safety
+
+// Configure Helmet with strict security in production
 app.use(
   helmet({
-    contentSecurityPolicy: isDevelopment ? false : undefined, // Disable CSP in development
-    crossOriginEmbedderPolicy: false, // Allow Vite HMR to work
-    hsts: !isDevelopment // Only enforce HSTS in production
+    contentSecurityPolicy: isDevelopment ? false : {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"], // Needed for some frameworks
+        styleSrc: ["'self'", "'unsafe-inline'"], // Needed for Tailwind
+        imgSrc: ["'self'", "data:", "https:"],
+        fontSrc: ["'self'", "data:"],
+        connectSrc: ["'self'", "https://*.supabase.co", "https://api.openai.com"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'none'"],
+        formAction: ["'self'"],
+        upgradeInsecureRequests: []
+      }
+    },
+    crossOriginEmbedderPolicy: false, // Allow some third-party integrations
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    hsts: {
+      maxAge: 31536000, // 1 year
+      includeSubDomains: true,
+      preload: true
+    },
+    frameguard: { action: 'deny' },
+    noSniff: true,
+    xssFilter: true,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
   })
 );
 
-// CORS - more permissive in development
+// CORS - strict in production, permissive only in development
 app.use(cors({
-  origin: isDevelopment ? true : process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
+  origin: isDevelopment 
+    ? true // Allow all origins in development
+    : (origin, callback) => {
+        // In production, only allow specific origins
+        const allowedOrigins = [
+          process.env.FRONTEND_URL,
+          process.env.VITE_API_URL?.replace('/api', ''), // Remove /api if present
+          'https://lorekeeper.app',
+          'https://www.lorekeeper.app'
+        ].filter(Boolean) as string[];
+        
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) {
+          return callback(null, true);
+        }
+        
+        if (allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          logger.warn({ origin, allowedOrigins }, 'CORS: Blocked request from unauthorized origin');
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Request-ID'],
+  exposedHeaders: ['X-CSRF-Token', 'X-Request-ID'],
+  maxAge: isDevelopment ? 86400 : 3600 // 24h in dev, 1h in prod
 }));
 
 // Stripe webhook endpoint (must be before body parser - needs raw body)
@@ -151,20 +230,29 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 // Health check routes (no auth required)
 app.use('/', healthRouter);
 
+// Diagnostic routes (no auth required, for troubleshooting)
+import diagnosticsRouter from './routes/diagnostics';
+app.use('/api/diagnostics', diagnosticsRouter);
+
 const apiRouter = express.Router();
 
-// Security middleware stack (with dev-friendly settings)
-apiRouter.use(authMiddleware);
-apiRouter.use(csrfTokenMiddleware); // Generate CSRF tokens (skipped in dev)
-apiRouter.use(validateRequestSize); // Validate request sizes (relaxed in dev)
-if (!isDevelopment) {
-  apiRouter.use(csrfProtection); // CSRF protection (skipped in dev)
-  apiRouter.use(validateCommonPatterns); // Pattern validation (skipped in dev)
+// Security middleware stack - ALWAYS enabled in production
+apiRouter.use(intrusionDetection); // Intrusion detection (blocks suspicious activity)
+apiRouter.use(authMiddleware); // Authentication required for all API routes
+apiRouter.use(csrfTokenMiddleware); // Generate CSRF tokens
+apiRouter.use(validateRequestSize); // Validate request sizes
+if (isProduction) {
+  // CRITICAL: These security features MUST be enabled in production
+  apiRouter.use(csrfProtection); // CSRF protection
+  apiRouter.use(validateCommonPatterns); // Pattern validation (SQL injection, XSS, etc.)
+  logger.info('🔒 Production security enabled: CSRF protection and pattern validation active');
+} else {
+  logger.warn('⚠️  Development mode: Some security features are relaxed');
 }
-apiRouter.use(rateLimitMiddleware);
-apiRouter.use(inputSanitizer);
-apiRouter.use(secureHeaders);
-apiRouter.use(auditLogger);
+apiRouter.use(rateLimitMiddleware); // Rate limiting
+apiRouter.use(inputSanitizer); // Input sanitization
+apiRouter.use(secureHeaders); // Additional security headers
+apiRouter.use(auditLogger); // Security audit logging
 apiRouter.use('/entries', entriesRouter);
 apiRouter.use('/photos', photosRouter);
 apiRouter.use('/calendar', calendarRouter);
@@ -181,6 +269,7 @@ apiRouter.use('/memory-ladder', memoryLadderRouter);
 apiRouter.use('/hqi', hqiRouter);
 apiRouter.use('/people-places', peoplePlacesRouter);
 apiRouter.use('/locations', locationsRouter);
+apiRouter.use('/search', searchRouter);
 apiRouter.use('/x', xRouter);
 apiRouter.use('/tasks', tasksRouter);
 apiRouter.use('/account', accountRouter);
@@ -252,11 +341,24 @@ apiRouter.use('/locations', locationResolutionRouter);
 apiRouter.use('/activities', activitiesRouter);
 apiRouter.use('/temporal-events', temporalEventsRouter);
 apiRouter.use('/emotion', emotionResolutionRouter);
+apiRouter.use('/emotions', emotionalIntelligenceRouter);
 apiRouter.use('/behavior', behaviorRouter);
+apiRouter.use('/engine-runtime', engineRuntimeRouter);
 apiRouter.use('/scenes', scenesRouter);
 apiRouter.use('/conflicts', conflictsRouter);
 apiRouter.use('/toxicity', toxicityRouter);
 apiRouter.use('/social-projection', socialProjectionRouter);
+apiRouter.use('/paracosm', paracosmRouter);
+apiRouter.use('/inner-mythology', innerMythologyRouter);
+apiRouter.use('/identity-core', identityCoreRouter);
+apiRouter.use('/story-of-self', storyOfSelfRouter);
+apiRouter.use('/inner-dialogue', innerDialogueRouter);
+apiRouter.use('/alternate-self', alternateSelfRouter);
+apiRouter.use('/cognitive-bias', cognitiveBiasRouter);
+apiRouter.use('/distortions', distortionRouter);
+apiRouter.use('/shadow', shadowEngineRouter);
+apiRouter.use('/engine-runtime', engineRuntimeRouter);
+apiRouter.use('/chat-memory', chatMemoryRouter);
 
 app.use('/api', apiRouter);
 
@@ -282,6 +384,17 @@ try {
   continuityEngineJob.register();
 } catch (error) {
   logger.warn({ error }, 'Failed to register background jobs, continuing anyway');
+}
+
+// Start engine scheduler (if enabled)
+if (process.env.ENABLE_ENGINE_SCHEDULER === 'true') {
+  try {
+    const { startEngineScheduler } = await import('./engineRuntime/scheduler');
+    startEngineScheduler();
+    logger.info('Engine scheduler started');
+  } catch (error) {
+    logger.warn({ error }, 'Failed to start engine scheduler, continuing anyway');
+  }
 }
 
 const server = app.listen(config.port, () => {

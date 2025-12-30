@@ -126,6 +126,8 @@ export default defineConfig({
       'react-dom',
       'react-router-dom',
       '@supabase/supabase-js',
+      'vis-timeline',
+      'vis-data',
     ],
     // Exclude these from pre-bundling (they're large)
     exclude: ['@tanstack/react-virtual'],

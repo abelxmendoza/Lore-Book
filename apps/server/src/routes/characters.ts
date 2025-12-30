@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
+import OpenAI from 'openai';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { peoplePlacesService } from '../services/peoplePlacesService';
@@ -8,6 +9,7 @@ import { supabaseAdmin } from '../services/supabaseClient';
 import { logger } from '../logger';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
+import { config } from '../config';
 
 const router = Router();
 
@@ -550,6 +552,83 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to update character');
     res.status(500).json({ error: 'Failed to update character' });
+  }
+});
+
+/**
+ * Extract character information from chat message
+ */
+router.post('/extract-from-chat', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { message } = req.body;
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const openai = new OpenAI({ apiKey: config.openAiKey });
+
+    // Use OpenAI to extract character information
+    const completion = await openai.chat.completions.create({
+      model: config.defaultModel,
+      temperature: 0.2,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `Extract character information from the user's message. Look for:
+- Names of people mentioned
+- Their roles, relationships, or archetypes
+- Any descriptive information about them
+- Pronouns if mentioned
+
+Return JSON:
+{
+  "characters": [
+    {
+      "name": "string (required)",
+      "alias": ["string"] (optional),
+      "pronouns": "string" (optional),
+      "archetype": "string" (optional, e.g., "friend", "mentor", "family", "colleague"),
+      "role": "string" (optional),
+      "summary": "string" (optional, brief description),
+      "tags": ["string"] (optional)
+    }
+  ]
+}
+
+Only extract characters that are clearly mentioned. Skip generic references like "my friend" without a name.
+If no characters are found, return {"characters": []}.`
+        },
+        {
+          role: 'user',
+          content: message
+        }
+      ]
+    });
+
+    const response = completion.choices[0]?.message?.content ?? '{}';
+    const parsed = JSON.parse(response) as { characters?: any[] };
+
+    const characters = Array.isArray(parsed.characters) ? parsed.characters : [];
+
+    // Validate and clean character data
+    const validatedCharacters = characters
+      .filter(char => char.name && typeof char.name === 'string' && char.name.trim().length > 0)
+      .map(char => ({
+        name: char.name.trim(),
+        alias: Array.isArray(char.alias) ? char.alias.filter((a: any) => typeof a === 'string').map((a: string) => a.trim()) : [],
+        pronouns: typeof char.pronouns === 'string' ? char.pronouns.trim() : undefined,
+        archetype: typeof char.archetype === 'string' ? char.archetype.trim() : undefined,
+        role: typeof char.role === 'string' ? char.role.trim() : undefined,
+        summary: typeof char.summary === 'string' ? char.summary.trim() : undefined,
+        tags: Array.isArray(char.tags) ? char.tags.filter((t: any) => typeof t === 'string').map((t: string) => t.trim()) : [],
+        status: 'active'
+      }));
+
+    res.json({ characters: validatedCharacters });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to extract characters from chat');
+    res.status(500).json({ error: 'Failed to extract characters' });
   }
 });
 

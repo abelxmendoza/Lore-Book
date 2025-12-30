@@ -1,17 +1,55 @@
-import { useState } from 'react';
-import { AlertCircle, RefreshCw, ArrowLeft, Info, HelpCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertCircle, RefreshCw, ArrowLeft, Info, HelpCircle, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { Modal } from '../ui/modal';
 import { ContradictionList } from '../truth-seeker/ContradictionList';
 import { ContradictionResolutionView } from '../truth-seeker/ContradictionResolutionView';
 import { useContradictionResolution } from '../../hooks/useContradictionResolution';
+import { useToast } from '../ui/toast';
 import type { ContinuityEvent } from '../../types/continuity';
 
 export const TruthSeekerPanel = () => {
   const { contradictions, loading, refresh, setSelectedContradiction } = useContradictionResolution();
   const [selectedContradiction, setSelected] = useState<ContinuityEvent | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'resolution'>('list');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const toast = useToast();
+
+  // Auto-refresh on mount to get latest contradictions
+  useEffect(() => {
+    handleRefresh(true); // Silent refresh on mount
+  }, []);
+
+  const handleRefresh = async (silent = false) => {
+    if (!silent) {
+      setIsRefreshing(true);
+    }
+    try {
+      await refresh();
+      if (!silent) {
+        toast.success('Contradictions list refreshed');
+      }
+    } catch (error) {
+      console.error('Failed to refresh contradictions:', error);
+      if (!silent) {
+        toast.error('Failed to refresh contradictions');
+      }
+    } finally {
+      if (!silent) {
+        setIsRefreshing(false);
+      }
+    }
+  };
+
+  const handleResolutionComplete = () => {
+    // Auto-refresh after resolution
+    handleRefresh(true);
+    toast.success('Contradiction resolved successfully');
+    setViewMode('list');
+    setSelected(null);
+    setSelectedContradiction(null);
+  };
 
   const handleContradictionClick = (contradiction: ContinuityEvent) => {
     setSelected(contradiction);
@@ -53,47 +91,57 @@ export const TruthSeekerPanel = () => {
 
   if (viewMode === 'resolution' && selectedContradiction) {
     return (
-      <div className="space-y-6">
-        <Card className="bg-black/40 border-border/60">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleCloseResolution}
-                  className="text-white/60 hover:text-white"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to List
-                </Button>
-                <CardTitle className="font-techno text-lg flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-cyan-400" />
-                  Truth Seeker - Resolution
-                </CardTitle>
+      <>
+        <toast.ToastContainer />
+        <div className="space-y-6">
+          <Card className="bg-black/40 border-border/60">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCloseResolution}
+                    className="text-white/60 hover:text-white"
+                  >
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Back to List
+                  </Button>
+                  <CardTitle className="font-techno text-lg flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-cyan-400" />
+                    Truth Seeker - Resolution
+                  </CardTitle>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-sm text-white/60">
+                    {currentIndex + 1} of {contradictions.length}
+                  </div>
+                  {isRefreshing && (
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" aria-label="Refreshing" />
+                  )}
+                </div>
               </div>
-              <div className="text-sm text-white/60">
-                {currentIndex + 1} of {contradictions.length}
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
-        <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-12rem)] overflow-auto">
-          <ContradictionResolutionView
-            contradiction={selectedContradiction}
-            onClose={handleCloseResolution}
-            onNext={handleNext}
-            onPrevious={handlePrevious}
-            hasNext={hasNext}
-            hasPrevious={hasPrevious}
-          />
+            </CardHeader>
+          </Card>
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-12rem)] overflow-auto">
+            <ContradictionResolutionView
+              contradiction={selectedContradiction}
+              onClose={handleCloseResolution}
+              onNext={handleNext}
+              onPrevious={handlePrevious}
+              hasNext={hasNext}
+              hasPrevious={hasPrevious}
+              onResolutionComplete={handleResolutionComplete}
+            />
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
     <>
+      <toast.ToastContainer />
       <Card className="neon-surface border border-cyan/30">
         <CardHeader className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -110,15 +158,18 @@ export const TruthSeekerPanel = () => {
             >
               <HelpCircle className="h-4 w-4" />
             </Button>
+            {(loading || isRefreshing) && (
+              <Loader2 className="h-4 w-4 animate-spin text-primary" aria-label="Loading" />
+            )}
           </div>
           <Button
             variant="ghost"
             size="sm"
-            onClick={refresh}
-            disabled={loading}
+            onClick={() => handleRefresh()}
+            disabled={loading || isRefreshing}
             className="text-white/60 hover:text-white"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${(loading || isRefreshing) ? 'animate-spin' : ''}`} />
           </Button>
         </CardHeader>
         <CardContent className="space-y-6">

@@ -59,3 +59,4 @@ vite.config.js
 # Misc
 .cache/
 .parcel-cache/
+.vercel

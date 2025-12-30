@@ -5,6 +5,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
 import { logger } from '../logger';
 import { ChronologyEngine, EventMapper } from '../services/chronology';
+import { chronologyService } from '../services/chronologyV2';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
@@ -205,6 +206,61 @@ router.get(
     );
 
     res.json({ chains: relevantChains });
+  })
+);
+
+/**
+ * GET /api/chronology
+ * Get master chronology view (new V2 service)
+ */
+router.get(
+  '/',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const startTime = req.query.start_time as string | undefined;
+    const endTime = req.query.end_time as string | undefined;
+    const timelineIds = req.query.timeline_ids
+      ? (Array.isArray(req.query.timeline_ids)
+          ? (req.query.timeline_ids as string[])
+          : [req.query.timeline_ids as string])
+      : undefined;
+
+    const entries = await chronologyService.getChronologicalOrder(
+      req.user!.id,
+      startTime,
+      endTime,
+      timelineIds
+    );
+
+    res.json({ entries });
+  })
+);
+
+/**
+ * GET /api/chronology/overlaps
+ * Detect overlapping periods
+ */
+router.get(
+  '/overlaps',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const entryId = req.query.entry_id as string | undefined;
+    const overlaps = await chronologyService.detectOverlaps(req.user!.id, entryId);
+    res.json({ overlaps });
+  })
+);
+
+/**
+ * GET /api/chronology/buckets
+ * Get time buckets at different resolutions
+ */
+router.get(
+  '/buckets',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const resolution = (req.query.resolution as 'decade' | 'year' | 'month') || 'year';
+    const buckets = await chronologyService.getTimeBuckets(req.user!.id, resolution);
+    res.json({ buckets });
   })
 );
 

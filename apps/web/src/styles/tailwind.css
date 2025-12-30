@@ -8,9 +8,19 @@
   font-family: 'Space Grotesk', system-ui, sans-serif;
 }
 
+html, body {
+  min-height: 100%;
+}
+
 body {
-  background: #030014;
+  background: transparent;
   color: #f8f5ff;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  min-height: 100%;
 }
 
 .crt-scanlines {

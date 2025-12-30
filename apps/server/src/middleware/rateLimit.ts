@@ -10,7 +10,11 @@ interface RateLimitStore {
 
 const store: RateLimitStore = {};
 
-const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production';
+// SECURITY: Properly detect production environment
+const isDevelopment = process.env.NODE_ENV === 'development' || 
+                      (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+const isProduction = process.env.NODE_ENV === 'production' || 
+                     process.env.API_ENV === 'production';
 
 // More lenient rate limits in development
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes

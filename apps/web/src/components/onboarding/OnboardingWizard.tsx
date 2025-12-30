@@ -43,7 +43,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
   const steps: Step[] = [
     {
       id: 'welcome',
-      title: 'Welcome to LoreKeeper',
+      title: 'Welcome to Lore Book',
       description: 'Your AI-powered memory and journaling companion',
       icon: Sparkles,
       content: (
@@ -56,7 +56,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
               Your Digital Memory Palace
             </h2>
             <p className="text-lg text-white/70 max-w-2xl mx-auto">
-              LoreKeeper helps you capture, organize, and understand your life's story through AI-powered memory management.
+              Lore Book helps you capture, organize, and understand your life's story through AI-powered memory management.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-4 mt-8">
@@ -77,14 +77,14 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
     },
     {
       id: 'why-here',
-      title: 'Why LoreKeeper?',
+      title: 'Why Lore Book?',
       description: 'Tell us what brings you here',
       icon: Heart,
       content: (
         <div className="space-y-6">
           <div className="text-center space-y-4">
             <p className="text-white/70 text-lg">
-              What brings you to LoreKeeper? What are you hoping to capture, discover, or create?
+              What brings you to Lore Book? What are you hoping to capture, discover, or create?
             </p>
             <p className="text-white/50 text-sm">
               Share your story, goals, or what you're looking for. We'll personalize your experience.
@@ -109,7 +109,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
     {
       id: 'features',
       title: 'Key Features Tour',
-      description: 'Discover what makes LoreKeeper special',
+      description: 'Discover what makes Lore Book special',
       icon: Zap,
       content: (
         <div className="space-y-6">
@@ -182,7 +182,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
     {
       id: 'personas-detected',
       title: 'Your Journey Awaits',
-      description: 'We\'ve personalized your LoreKeeper experience',
+      description: 'We\'ve personalized your Lore Book experience',
       icon: Sparkles,
       content: (
         <div className="space-y-6">
@@ -190,7 +190,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
             <div className="rounded-xl border border-primary/40 bg-gradient-to-br from-primary/20 to-purple-900/20 p-6 space-y-3 mb-6">
               <div className="flex items-center gap-2 text-primary mb-2">
                 <Sparkles className="h-5 w-5" />
-                <h3 className="font-semibold text-white">Your LoreKeeper Journey</h3>
+                <h3 className="font-semibold text-white">Your Lore Book Journey</h3>
               </div>
               <p className="text-white/90 leading-relaxed whitespace-pre-wrap text-lg">{personalizedResponse}</p>
             </div>
@@ -258,7 +258,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
           </div>
           {detectedPersonas.length > 0 && (
             <p className="text-center text-sm text-white/50 mt-4">
-              All detected personas will be active in your LoreKeeper experience
+              All detected personas will be active in your Lore Book experience
             </p>
           )}
         </div>
@@ -267,7 +267,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
     {
       id: 'complete',
       title: 'You\'re All Set!',
-      description: 'Welcome to your LoreKeeper',
+      description: 'Welcome to your Lore Book',
       icon: CheckCircle2,
       content: (
         <div className="space-y-6 text-center">
@@ -277,7 +277,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
           <div>
             <h2 className="text-3xl font-bold text-white mb-4">Ready to Begin Your Journey</h2>
             <p className="text-lg text-white/70 max-w-2xl mx-auto">
-              Your LoreKeeper is set up and ready. Start capturing memories, explore your timeline, or chat with your AI companion.
+              Your Lore Book is set up and ready. Start capturing memories, explore your timeline, or chat with your AI companion.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-4 mt-8">
@@ -340,7 +340,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
           }
         } catch (err: any) {
           console.warn('Failed to analyze user, using defaults:', err);
-          setPersonalizedResponse('Welcome to LoreKeeper! We\'re excited to help you on your journey.');
+          setPersonalizedResponse('Welcome to Lore Book! We\'re excited to help you on your journey.');
           setDetectedPersonas(['journaler']); // Default fallback
         } finally {
           setDetectingPersonas(false);

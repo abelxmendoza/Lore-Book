@@ -176,7 +176,7 @@ export const FirstMemoryStep = ({
       </div>
       <div className="rounded-xl border border-primary/30 bg-primary/10 p-4">
         <p className="text-sm text-white/80">
-          💡 <strong>Tip:</strong> The more details you add, the better LoreKeeper can help you discover patterns and connections later.
+          💡 <strong>Tip:</strong> The more details you add, the better Lore Book can help you discover patterns and connections later.
         </p>
       </div>
     </div>

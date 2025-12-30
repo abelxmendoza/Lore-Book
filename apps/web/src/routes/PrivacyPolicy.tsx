@@ -40,11 +40,11 @@ export default function PrivacyPolicy() {
             <h2 className="text-2xl font-bold text-white mb-4">1. Introduction</h2>
             <div className="space-y-3 text-white/80 leading-relaxed">
               <p>
-                Welcome to LoreKeeper ("we," "our," or "us"). We are committed to protecting your privacy and ensuring the security of your personal information. 
+                Welcome to Lore Book ("we," "our," or "us"). We are committed to protecting your privacy and ensuring the security of your personal information. 
                 This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our application.
               </p>
               <p>
-                By using LoreKeeper, you agree to the collection and use of information in accordance with this policy. 
+                By using Lore Book, you agree to the collection and use of information in accordance with this policy. 
                 If you do not agree with our policies and practices, please do not use our Service.
               </p>
             </div>
@@ -89,7 +89,7 @@ export default function PrivacyPolicy() {
             <div className="space-y-3 text-white/80 leading-relaxed">
               <p>We use the information we collect solely to provide, maintain, and improve our Service. Specifically:</p>
               <ul className="list-disc list-inside space-y-2 ml-4">
-                <li><strong className="text-white">Service Delivery:</strong> To provide you with access to LoreKeeper and its features, including AI-powered assistance, timeline management, and data storage.</li>
+                <li><strong className="text-white">Service Delivery:</strong> To provide you with access to Lore Book and its features, including AI-powered assistance, timeline management, and data storage.</li>
                 <li><strong className="text-white">Account Management:</strong> To create and manage your account, authenticate your identity, and maintain your preferences.</li>
                 <li><strong className="text-white">Data Processing:</strong> To process your journal entries, generate insights, and provide AI-powered features that enhance your experience.</li>
                 <li><strong className="text-white">Security:</strong> To detect, prevent, and address security issues, fraud, and unauthorized access.</li>
@@ -169,7 +169,7 @@ export default function PrivacyPolicy() {
             <div className="space-y-3 text-white/80 leading-relaxed">
               <p>If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us:</p>
               <div className="bg-black/40 p-4 rounded-lg border border-white/10">
-                <p className="font-semibold text-white mb-2">LoreKeeper Privacy Team</p>
+                <p className="font-semibold text-white mb-2">Lore Book Privacy Team</p>
                 <p className="text-sm">Email: privacy@lorekeeper.app</p>
                 <p className="text-sm">Support: support@lorekeeper.app</p>
               </div>

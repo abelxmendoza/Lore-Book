@@ -63,8 +63,8 @@ export const JournalComposer = ({ onSave, onAsk, onVoiceUpload, loading, chapter
     try {
       await onAsk(value.trim());
     } catch (error) {
-      console.error('Failed to ask Lore Keeper:', error);
-      alert(error instanceof Error ? error.message : 'Failed to ask Lore Keeper. Check console for details.');
+      console.error('Failed to ask Lore Book:', error);
+      alert(error instanceof Error ? error.message : 'Failed to ask Lore Book. Check console for details.');
     }
   };
 
@@ -144,7 +144,7 @@ export const JournalComposer = ({ onSave, onAsk, onVoiceUpload, loading, chapter
           Save to Lore
         </Button>
         <Button variant="ghost" onClick={handleAsk} disabled={!value.trim() || loading} leftIcon={<Sparkles className="h-4 w-4 text-primary" />}>
-          Ask Lore Keeper
+          Ask Lore Book
         </Button>
       </div>
     </div>

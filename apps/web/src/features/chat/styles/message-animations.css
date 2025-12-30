@@ -1,0 +1,54 @@
+/* Message Animations */
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.chat-message-enter {
+  animation: fadeUp 0.3s ease-out;
+}
+
+.chat-message-streaming {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.chat-loading-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Smooth transitions */
+.chat-message {
+  transition: all 0.2s ease-out;
+}
+
+.chat-message:hover {
+  transform: translateY(-1px);
+}
+

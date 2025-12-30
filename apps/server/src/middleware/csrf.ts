@@ -14,8 +14,11 @@ export const generateCsrfToken = (): string => {
   return crypto.randomBytes(32).toString('hex');
 };
 
-// Development mode bypass
-const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production';
+// SECURITY: Properly detect production environment
+const isDevelopment = process.env.NODE_ENV === 'development' || 
+                      (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+const isProduction = process.env.NODE_ENV === 'production' || 
+                     process.env.API_ENV === 'production';
 
 // Middleware to generate and set CSRF token
 export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunction) => {

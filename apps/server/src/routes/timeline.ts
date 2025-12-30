@@ -9,8 +9,13 @@ import { timelinePageService } from '../services/timelinePageService';
 import { autoTaggingService } from '../services/autoTaggingService';
 import { emitDelta } from '../realtime/orchestratorEmitter';
 import { logger } from '../logger';
+import { TimelineEngine, TimelineSyncService, TimelinePresets } from '../services/timeline';
 
 const router = Router();
+
+// Initialize timeline engine services
+const timelineEngine = new TimelineEngine();
+const timelineSyncService = new TimelineSyncService(timelineEngine);
 
 router.get('/', requireAuth, getTimeline);
 
@@ -254,6 +259,199 @@ router.get('/character/:characterId', requireAuth, async (req: AuthenticatedRequ
   } catch (error) {
     logger.error({ error }, 'Error fetching character timeline');
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch character timeline' });
+  }
+});
+
+/**
+ * GET /api/timeline/events
+ * Get unified timeline events with filters
+ */
+router.get('/events', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    
+    // Parse query parameters
+    const tags = req.query.tags 
+      ? (Array.isArray(req.query.tags) ? req.query.tags as string[] : [req.query.tags as string])
+      : undefined;
+    
+    const sourceTypes = req.query.sourceTypes
+      ? (Array.isArray(req.query.sourceTypes) ? req.query.sourceTypes as string[] : [req.query.sourceTypes as string])
+      : undefined;
+    
+    const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
+    const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
+
+    // Check for preset filters
+    const preset = req.query.preset as string | undefined;
+    let filter: any = {
+      tags,
+      sourceTypes,
+      startDate,
+      endDate,
+      limit,
+      offset
+    };
+
+    // Apply preset if specified
+    if (preset) {
+      switch (preset) {
+        case 'life':
+          filter = TimelinePresets.life();
+          break;
+        case 'martial_arts':
+          filter = TimelinePresets.martialArts();
+          break;
+        case 'job':
+          filter = TimelinePresets.job(req.query.jobId as string | undefined);
+          break;
+        case 'project':
+          filter = TimelinePresets.project(req.query.projectId as string | undefined);
+          break;
+        case 'relationships':
+          filter = TimelinePresets.relationships();
+          break;
+        case 'eras':
+          filter = TimelinePresets.eras();
+          break;
+        case 'identity':
+          filter = TimelinePresets.identity();
+          break;
+        case 'emotions':
+          filter = TimelinePresets.emotions();
+          break;
+        case 'paracosm':
+          filter = TimelinePresets.paracosm();
+          break;
+        case 'journal':
+          filter = TimelinePresets.journal();
+          break;
+        case 'habits':
+          filter = TimelinePresets.habits();
+          break;
+        case 'recent':
+          const days = req.query.days ? parseInt(req.query.days as string, 10) : 30;
+          filter = TimelinePresets.recent(days);
+          break;
+        default:
+          // Use custom filter
+          break;
+      }
+    }
+
+    // Apply additional filters on top of preset
+    if (tags && tags.length > 0) filter.tags = [...(filter.tags || []), ...tags];
+    if (sourceTypes && sourceTypes.length > 0) filter.sourceTypes = [...(filter.sourceTypes || []), ...sourceTypes];
+    if (startDate) filter.startDate = startDate;
+    if (endDate) filter.endDate = endDate;
+    if (limit) filter.limit = limit;
+    if (offset) filter.offset = offset;
+
+    const events = await timelineEngine.getTimeline(userId, filter);
+    
+    res.json({ 
+      events,
+      count: events.length,
+      filter: {
+        preset,
+        ...filter
+      }
+    });
+  } catch (error) {
+    logger.error({ error }, 'Error fetching timeline events');
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch timeline events' });
+  }
+});
+
+/**
+ * POST /api/timeline/refresh
+ * Rebuild the timeline from all data sources
+ */
+router.post('/refresh', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    
+    logger.info({ userId }, 'Starting timeline refresh');
+    
+    // Rebuild timeline asynchronously (don't block the response)
+    void timelineSyncService.rebuildForUser(userId).then(() => {
+      logger.info({ userId }, 'Timeline refresh completed');
+      void emitDelta('timeline.refresh', { status: 'completed' }, userId);
+    }).catch((error) => {
+      logger.error({ error, userId }, 'Timeline refresh failed');
+      void emitDelta('timeline.refresh', { status: 'failed', error: error.message }, userId);
+    });
+    
+    // Return immediately
+    res.json({ 
+      status: 'started',
+      message: 'Timeline refresh started. This may take a few moments.'
+    });
+  } catch (error) {
+    logger.error({ error }, 'Error starting timeline refresh');
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to start timeline refresh' });
+  }
+});
+
+/**
+ * DELETE /api/timeline/events/:id
+ * Delete a specific timeline event
+ */
+router.delete('/events/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    
+    await timelineEngine.deleteEvent(id, userId);
+    
+    res.json({ success: true, message: 'Event deleted' });
+  } catch (error) {
+    logger.error({ error }, 'Error deleting timeline event');
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to delete timeline event' });
+  }
+});
+
+/**
+ * PATCH /api/timeline/events/:id
+ * Update a timeline event
+ */
+router.patch('/events/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    
+    const schema = z.object({
+      title: z.string().optional(),
+      description: z.string().optional(),
+      eventDate: z.string().optional(),
+      endDate: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      metadata: z.record(z.any()).optional(),
+      confidence: z.number().min(0).max(1).optional()
+    });
+    
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    
+    const updates: any = {};
+    if (parsed.data.title !== undefined) updates.title = parsed.data.title;
+    if (parsed.data.description !== undefined) updates.description = parsed.data.description;
+    if (parsed.data.eventDate !== undefined) updates.eventDate = new Date(parsed.data.eventDate);
+    if (parsed.data.endDate !== undefined) updates.endDate = parsed.data.endDate ? new Date(parsed.data.endDate) : undefined;
+    if (parsed.data.tags !== undefined) updates.tags = parsed.data.tags;
+    if (parsed.data.metadata !== undefined) updates.metadata = parsed.data.metadata;
+    if (parsed.data.confidence !== undefined) updates.confidence = parsed.data.confidence;
+    
+    await timelineEngine.updateEvent(id, userId, updates);
+    
+    res.json({ success: true, message: 'Event updated' });
+  } catch (error) {
+    logger.error({ error }, 'Error updating timeline event');
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to update timeline event' });
   }
 });
 

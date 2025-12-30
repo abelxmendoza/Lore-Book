@@ -20,7 +20,11 @@ export const dateRangeSchema = z.object({
 });
 
 // Development mode - relaxed limits
-const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production';
+// SECURITY: Properly detect production environment
+const isDevelopment = process.env.NODE_ENV === 'development' || 
+                      (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+const isProduction = process.env.NODE_ENV === 'production' || 
+                     process.env.API_ENV === 'production';
 const DEV_MAX_BODY_SIZE = 50 * 1024 * 1024; // 50MB in dev
 
 // Middleware to validate request sizes

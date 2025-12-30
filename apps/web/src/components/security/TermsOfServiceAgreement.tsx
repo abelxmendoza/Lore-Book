@@ -83,7 +83,7 @@ export const TermsOfServiceAgreement = ({ onAccept }: TermsOfServiceAgreementPro
                   1. Acceptance of Terms
                 </h2>
                 <p className="text-white/80 leading-relaxed">
-                  By accessing and using Lore Keeper ("the Service"), you accept and agree to be bound by the terms and provision of this agreement. 
+                  By accessing and using Lore Book ("the Service"), you accept and agree to be bound by the terms and provision of this agreement. 
                   If you do not agree to these terms, you must not use the Service.
                 </p>
               </div>
@@ -145,7 +145,7 @@ export const TermsOfServiceAgreement = ({ onAccept }: TermsOfServiceAgreementPro
               <div>
                 <h2 className="text-xl font-bold text-white mb-3">4. Intellectual Property</h2>
                 <p className="text-white/80 leading-relaxed">
-                  The Service, including its original content, features, and functionality, is owned by Lore Keeper and is protected by international copyright, 
+                  The Service, including its original content, features, and functionality, is owned by Lore Book and is protected by international copyright, 
                   trademark, patent, trade secret, and other intellectual property laws. You may not copy, modify, distribute, sell, or lease any part of the Service 
                   without our express written permission.
                 </p>
@@ -172,7 +172,7 @@ export const TermsOfServiceAgreement = ({ onAccept }: TermsOfServiceAgreementPro
               <div>
                 <h2 className="text-xl font-bold text-white mb-3">6. Limitation of Liability</h2>
                 <p className="text-white/80 leading-relaxed">
-                  To the maximum extent permitted by law, Lore Keeper shall not be liable for any indirect, incidental, special, consequential, or punitive damages, 
+                  To the maximum extent permitted by law, Lore Book shall not be liable for any indirect, incidental, special, consequential, or punitive damages, 
                   or any loss of profits or revenues, whether incurred directly or indirectly, or any loss of data, use, goodwill, or other intangible losses, 
                   resulting from your use of the Service.
                 </p>
@@ -199,7 +199,7 @@ export const TermsOfServiceAgreement = ({ onAccept }: TermsOfServiceAgreementPro
               <div>
                 <h2 className="text-xl font-bold text-white mb-3">9. Governing Law</h2>
                 <p className="text-white/80 leading-relaxed">
-                  These Terms shall be governed by and construed in accordance with the laws of the jurisdiction in which Lore Keeper operates, 
+                  These Terms shall be governed by and construed in accordance with the laws of the jurisdiction in which Lore Book operates, 
                   without regard to its conflict of law provisions.
                 </p>
               </div>
