@@ -46,27 +46,6 @@ console.log(`📁 Working directory: ${process.cwd()}`);
 export default defineConfig({
   plugins: [
     react({ typescript: { ignoreBuildErrors: true } }),
-    // Plugin to ensure React loads first
-    {
-      name: 'ensure-react-first',
-      generateBundle(options, bundle) {
-        // Find react-vendor chunk
-        const reactVendor = Object.keys(bundle).find(key => key.includes('react-vendor'));
-        const uiVendor = Object.keys(bundle).find(key => key.includes('ui-vendor'));
-        
-        if (reactVendor && uiVendor) {
-          const reactChunk = bundle[reactVendor];
-          const uiChunk = bundle[uiVendor];
-          
-          // Ensure react-vendor is a dependency of ui-vendor
-          if (reactChunk.type === 'chunk' && uiChunk.type === 'chunk') {
-            if (!uiChunk.imports.includes(reactVendor)) {
-              uiChunk.imports.push(reactVendor);
-            }
-          }
-        }
-      }
-    }
   ],
   resolve: {
     alias: {
@@ -94,12 +73,11 @@ export default defineConfig({
         manualChunks: (id) => {
           // React and core dependencies - must be first and available globally
           // This ensures React loads before any other chunks
+          // Match all React-related modules
           if (
-            id.includes('node_modules/react/') || 
-            id.includes('node_modules/react-dom/') || 
-            id.includes('node_modules/react-router') ||
-            id.includes('node_modules/react/jsx-runtime') || 
-            id.includes('node_modules/react/jsx-dev-runtime')
+            id.includes('node_modules/react') || 
+            id.includes('node_modules/react-dom') || 
+            id.includes('node_modules/react-router')
           ) {
             return 'react-vendor';
           }
