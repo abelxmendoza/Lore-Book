@@ -297,7 +297,23 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  // CRITICAL: Safety timeout to prevent infinite loading screen
+  /**
+   * CRITICAL: Safety timeout to prevent infinite loading screen
+   * 
+   * Pattern: Never allow a gate to hold the UI hostage indefinitely.
+   * 
+   * This timeout ensures that even if Supabase initialization:
+   * - Hangs (network stall)
+   * - Fails silently (bad DNS, misconfigured env)
+   * - Takes too long (cold-start edge cases)
+   * 
+   * The UI will still render after 5 seconds, preventing black screens.
+   * 
+   * This is the production-safe pattern for any blocking initialization:
+   * 1. Set a timeout
+   * 2. Clear it when done
+   * 3. Force release if timeout fires
+   */
   useEffect(() => {
     if (loading) {
       const safetyTimeout = setTimeout(() => {
@@ -308,14 +324,22 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     }
   }, [loading]);
 
+  /**
+   * CRITICAL: Always render something visible - never return null
+   * 
+   * This prevents black screens even if auth logic fails silently.
+   * A visible loading state is always better than silent emptiness.
+   */
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-black via-purple-950 to-black">
         <div className="text-center">
+          <div className="mx-auto w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4" />
           <p className="animate-pulse font-techno tracking-[0.5em] text-primary">Syncing memory…</p>
           {initError && (
             <p className="mt-4 text-xs text-red-400 max-w-md">{initError}</p>
           )}
+          <p className="mt-2 text-xs text-white/40">This should only take a moment...</p>
         </div>
       </div>
     );
