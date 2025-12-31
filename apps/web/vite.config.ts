@@ -70,12 +70,14 @@ export default defineConfig({
       output: {
         manualChunks: (id) => {
           // React and core dependencies - must be first and available globally
-          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router')) {
-            return 'react-vendor';
-          }
-          // React must be loaded before any React-dependent libraries
-          // Ensure React is in a separate chunk that loads first
-          if (id.includes('node_modules/react/jsx-runtime') || id.includes('node_modules/react/jsx-dev-runtime')) {
+          // This ensures React loads before any other chunks
+          if (
+            id.includes('node_modules/react/') || 
+            id.includes('node_modules/react-dom/') || 
+            id.includes('node_modules/react-router') ||
+            id.includes('node_modules/react/jsx-runtime') || 
+            id.includes('node_modules/react/jsx-dev-runtime')
+          ) {
             return 'react-vendor';
           }
           // UI libraries - ensure they can access React
@@ -116,6 +118,13 @@ export default defineConfig({
           if (id.includes('/components/timeline/')) {
             return 'timeline-components';
           }
+        },
+        // Ensure React vendor chunk is loaded first
+        chunkFileNames: (chunkInfo) => {
+          if (chunkInfo.name === 'react-vendor') {
+            return 'assets/react-vendor-[hash].js';
+          }
+          return 'assets/[name]-[hash].js';
         },
       },
     },
