@@ -15,6 +15,7 @@ import { chapterService } from './chapterService';
 import { correctionService } from './correctionService';
 import { embeddingService } from './embeddingService';
 import { peoplePlacesService } from './peoplePlacesService';
+import { skillExtractionService } from './skills/skillExtractionService';
 import { supabaseAdmin } from './supabaseClient';
 
 export type SaveEntryPayload = {
@@ -88,6 +89,25 @@ class MemoryService {
       await peoplePlacesService.recordEntitiesForEntry(entry, payload.relationships);
     } catch (serviceError) {
       logger.warn({ serviceError }, 'Entry saved but failed to track people/places');
+    }
+
+    // Auto-extract skills from entry (fire and forget - non-blocking)
+    // Only for non-encrypted entries with sufficient content
+    if (!isEncrypted && payload.content && payload.content.length > 50) {
+      skillExtractionService.processEntryForSkills(payload.userId, entry.id, payload.content)
+        .then(results => {
+          if (results.length > 0) {
+            logger.info({ 
+              userId: payload.userId, 
+              entryId: entry.id, 
+              skillCount: results.length,
+              skills: results.map(r => r.skill.skill_name)
+            }, 'Auto-extracted skills from journal entry');
+          }
+        })
+        .catch(err => {
+          logger.warn({ error: err, userId: payload.userId, entryId: entry.id }, 'Failed to extract skills from entry (non-blocking)');
+        });
     }
 
     return entry;

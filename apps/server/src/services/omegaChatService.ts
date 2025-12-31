@@ -19,6 +19,7 @@ import { locationService } from './locationService';
 import { supabaseAdmin } from './supabaseClient';
 import { ragPacketCacheService } from './ragPacketCacheService';
 import { essenceProfileService } from './essenceProfileService';
+import { essenceRefinementEngine } from './essenceRefinement';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
@@ -702,6 +703,24 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       logger.debug({ error }, 'Failed to load essence profile, continuing without');
     }
 
+    // Check for essence refinement intent (fire and forget - doesn't block chat)
+    essenceRefinementEngine.handleChatMessage(userId, message, {
+      activePanel: 'SoulProfile', // Could be dynamic based on current UI state
+      lastSurfacedInsights: essenceProfile 
+        ? this.getRecentInsights(essenceProfile)
+        : undefined
+    }).then(result => {
+      if (result.clarificationRequest) {
+        // Could inject clarification into chat response, but for now just log
+        logger.debug({ userId, clarification: result.clarificationRequest }, 'Refinement clarification needed');
+      } else if (result.silentProfileUpdate) {
+        logger.debug({ userId, action: result.refinementAction?.intent }, 'Essence profile refined via chat');
+      }
+    }).catch(err => {
+      // Fail silently - never interrupt chat flow
+      logger.debug({ err, userId }, 'Essence refinement check failed, continuing');
+    });
+
     // Check continuity with error handling
     let continuityWarnings: string[] = [];
     try {
@@ -1034,6 +1053,52 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       logger.debug({ error }, 'Could not fetch autopilot guidance');
     }
     return null;
+  }
+}
+
+  /**
+   * Helper: Get recent insights from essence profile for refinement context
+   */
+  private getRecentInsights(profile: any): Array<{ id: string; category: string; text: string; confidence: number }> {
+    const insights: Array<{ id: string; category: string; text: string; confidence: number }> = [];
+    
+    const categories: Array<keyof typeof profile> = [
+      'hopes', 'dreams', 'fears', 'strengths', 'weaknesses',
+      'coreValues', 'personalityTraits', 'relationshipPatterns'
+    ];
+
+    for (const category of categories) {
+      const items = profile[category] || [];
+      items.forEach((item: any, idx: number) => {
+        if (item.confidence > 0.5) {
+          insights.push({
+            id: `${category}-${idx}`,
+            category,
+            text: item.text,
+            confidence: item.confidence
+          });
+        }
+      });
+    }
+
+    // Add skills
+    if (profile.topSkills) {
+      profile.topSkills.forEach((skill: any, idx: number) => {
+        if (skill.confidence > 0.5) {
+          insights.push({
+            id: `topSkills-${idx}`,
+            category: 'topSkills',
+            text: skill.skill,
+            confidence: skill.confidence
+          });
+        }
+      });
+    }
+
+    // Return top 10 most confident insights
+    return insights
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 10);
   }
 }
 

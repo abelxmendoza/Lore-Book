@@ -10,11 +10,12 @@ import {
   Settings, 
   Database,
   Flag,
-  DollarSign
+  DollarSign,
+  Activity
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-export type AdminSection = 'dashboard' | 'users' | 'logs' | 'ai-events' | 'tools' | 'feature-flags' | 'finance';
+export type AdminSection = 'dashboard' | 'users' | 'logs' | 'ai-events' | 'tools' | 'feature-flags' | 'finance' | 'engine-health';
 
 interface AdminSidebarProps {
   activeSection: AdminSection;
@@ -30,6 +31,7 @@ export const AdminSidebar = ({ activeSection, onSectionChange }: AdminSidebarPro
     { id: 'users' as AdminSection, label: 'Users', icon: Users },
     { id: 'logs' as AdminSection, label: 'Logs', icon: FileText },
     { id: 'ai-events' as AdminSection, label: 'AI Gen Events', icon: Zap },
+    { id: 'engine-health' as AdminSection, label: 'Engine Health', icon: Activity },
     { id: 'tools' as AdminSection, label: 'Tools', icon: Settings },
     { id: 'feature-flags' as AdminSection, label: 'Feature Flags', icon: Flag },
     { id: 'finance' as AdminSection, label: 'Finance', icon: DollarSign },

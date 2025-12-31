@@ -137,7 +137,7 @@ export const ChatComposer = ({
             onClick={handleUploadClick}
             disabled={loading || disabled}
             className={`text-white/60 hover:text-white ${showUpload ? 'text-primary' : ''}`}
-            title="Upload documents, biographies, or diaries"
+            title="Upload documents, resumes, biographies, or diaries"
           >
             <Paperclip className="h-4 w-4" />
           </Button>

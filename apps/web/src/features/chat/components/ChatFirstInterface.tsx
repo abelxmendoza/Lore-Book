@@ -13,6 +13,7 @@ import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
 import { GuestSignUpPrompt } from '../../../components/guest/GuestSignUpPrompt';
 import { useGuest } from '../../../contexts/GuestContext';
+import { WorkSummaryImporter } from '../../../components/work/WorkSummaryImporter';
 import { exportConversationAsMarkdown, exportConversationAsJSON, downloadFile } from '../../../utils/exportConversation';
 import { diagnoseEndpoints, logDiagnostics } from '../../../utils/errorDiagnostics';
 import { analytics } from '../../../lib/monitoring';
@@ -45,6 +46,7 @@ export const ChatFirstInterface = () => {
   const [selectedSource, setSelectedSource] = useState<ChatSource | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchMessageId, setSearchMessageId] = useState<string | null>(null);
+  const [showWorkSummary, setShowWorkSummary] = useState(false);
 
   // Load conversation on mount
   useEffect(() => {
@@ -237,6 +239,21 @@ export const ChatFirstInterface = () => {
           isOpen={showSearch}
           onResultClick={handleSearchResultClick}
           onClose={() => setShowSearch(false)}
+        />
+      )}
+
+      {/* Work Summary Importer */}
+      {showWorkSummary && (
+        <WorkSummaryImporter
+          onClose={() => setShowWorkSummary(false)}
+          onSuccess={async () => {
+            await Promise.all([
+              refreshEntries(),
+              refreshTimeline(),
+              refreshChapters()
+            ]);
+            loadConversation();
+          }}
         />
       )}
 

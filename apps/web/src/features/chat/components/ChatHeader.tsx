@@ -1,4 +1,4 @@
-import { Download, Search as SearchIcon } from 'lucide-react';
+import { Download, Search as SearchIcon, FileText } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { useState } from 'react';
 
@@ -7,13 +7,15 @@ type ChatHeaderProps = {
   onSearchClick?: () => void;
   onExportMarkdown?: () => void;
   onExportJSON?: () => void;
+  onWorkSummaryClick?: () => void;
 };
 
 export const ChatHeader = ({ 
   messageCount, 
   onSearchClick, 
   onExportMarkdown, 
-  onExportJSON 
+  onExportJSON,
+  onWorkSummaryClick
 }: ChatHeaderProps) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
 
@@ -28,6 +30,15 @@ export const ChatHeader = ({
         )}
       </div>
       <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onWorkSummaryClick}
+          className="text-white/60 hover:text-white"
+          title="Import work summary from ChatGPT"
+        >
+          <FileText className="h-4 w-4" />
+        </Button>
         <Button
           variant="ghost"
           size="sm"

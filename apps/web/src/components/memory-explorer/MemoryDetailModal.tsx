@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Calendar, Tag, Users, Sparkles, MapPin, ChevronLeft, ChevronRight, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, Link2 } from 'lucide-react';
+import { X, Calendar, Tag, Users, Sparkles, MapPin, ChevronLeft, ChevronRight, FileText, Network, MessageSquare, Brain, Clock, Layers, Link2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -18,7 +18,7 @@ type MemoryDetailModalProps = {
   allMemories?: MemoryCard[]; // For navigation between memories
 };
 
-type TabKey = 'overview' | 'context' | 'connections' | 'linked' | 'chat' | 'insights' | 'timeline' | 'metadata';
+type TabKey = 'overview' | 'chat' | 'context' | 'connections' | 'linked' | 'insights' | 'timeline';
 
 const moodColors: Record<string, string> = {
   happy: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
@@ -43,13 +43,12 @@ const formatDate = (dateString: string) => {
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'overview', label: 'Overview', icon: FileText },
+  { key: 'chat', label: 'Chat', icon: MessageSquare },
   { key: 'context', label: 'Context', icon: Layers },
   { key: 'connections', label: 'Connections', icon: Network },
   { key: 'linked', label: 'Linked Memories', icon: Link2 },
-  { key: 'chat', label: 'Chat', icon: MessageSquare },
   { key: 'insights', label: 'Insights', icon: Brain },
-  { key: 'timeline', label: 'Timeline', icon: Clock },
-  { key: 'metadata', label: 'Metadata', icon: Database }
+  { key: 'timeline', label: 'Timeline', icon: Clock }
 ];
 
 type MemoryComponent = {
@@ -82,8 +81,6 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
   const [similarMemories, setSimilarMemories] = useState<MemoryCard[]>([]);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
   const [characterTimeline, setCharacterTimeline] = useState<Array<{ character: string; date: string; memoryId: string }>>([]);
-  const [editingMetadata, setEditingMetadata] = useState(false);
-  const [editedMetadata, setEditedMetadata] = useState<string>('');
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Find previous and next memories for navigation
@@ -1194,131 +1191,6 @@ The user can ask questions about this memory, request to add details, update tag
               </div>
             )}
 
-            {/* Metadata Tab */}
-            {activeTab === 'metadata' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">Source Information</h3>
-                  <Card className="bg-black/40 border-border/50">
-                    <CardContent className="p-4">
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-white/60">Source:</span>
-                          <span className="text-white">{memory.source}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-white/60">Source Icon:</span>
-                          <span className="text-2xl">{memory.sourceIcon}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {entryMetadata && Object.keys(entryMetadata).length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-lg font-semibold text-white">Raw Metadata</h3>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          if (editingMetadata) {
-                            // Save metadata
-                            try {
-                              const parsed = JSON.parse(editedMetadata);
-                              fetchJson(`/api/entries/${memory.id}`, {
-                                method: 'PATCH',
-                                body: JSON.stringify({ metadata: parsed })
-                              }).then(() => {
-                                setEntryMetadata(parsed);
-                                setEditingMetadata(false);
-                                window.location.reload();
-                              });
-                            } catch (e) {
-                              alert('Invalid JSON');
-                            }
-                          } else {
-                            setEditedMetadata(JSON.stringify(entryMetadata, null, 2));
-                            setEditingMetadata(true);
-                          }
-                        }}
-                      >
-                        {editingMetadata ? 'Save' : 'Edit'}
-                      </Button>
-                    </div>
-                    <Card className="bg-black/40 border-border/50">
-                      <CardContent className="p-4">
-                        {editingMetadata ? (
-                          <textarea
-                            value={editedMetadata}
-                            onChange={(e) => setEditedMetadata(e.target.value)}
-                            className="w-full h-64 px-3 py-2 bg-black/60 border border-border/50 rounded text-xs text-white font-mono focus:outline-none focus:border-primary/50"
-                          />
-                        ) : (
-                          <pre className="text-xs text-white/80 overflow-x-auto">
-                            {JSON.stringify(entryMetadata, null, 2)}
-                          </pre>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
-
-                {/* Embedding Info */}
-                {entryMetadata && entryMetadata.embedding && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-white mb-3">Embedding Information</h3>
-                    <Card className="bg-black/40 border-border/50">
-                      <CardContent className="p-4">
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-white/60">Has Embedding:</span>
-                            <span className="text-white">Yes</span>
-                          </div>
-                          {Array.isArray(entryMetadata.embedding) && (
-                            <div className="flex justify-between">
-                              <span className="text-white/60">Vector Dimensions:</span>
-                              <span className="text-white">{(entryMetadata.embedding as number[]).length}</span>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
-
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-3">Memory Details</h3>
-                  <Card className="bg-black/40 border-border/50">
-                    <CardContent className="p-4">
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-white/60">Memory ID:</span>
-                          <span className="text-white font-mono text-xs">{memory.id}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-white/60">Date:</span>
-                          <span className="text-white">{formatDate(memory.date)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-white/60">Word Count:</span>
-                          <span className="text-white">{wordCount}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-white/60">Tags Count:</span>
-                          <span className="text-white">{memory.tags.length}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-white/60">Characters Count:</span>
-                          <span className="text-white">{memory.characters.length}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

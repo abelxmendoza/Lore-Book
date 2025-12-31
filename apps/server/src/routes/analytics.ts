@@ -27,11 +27,14 @@ router.use(requireAuth);
 
 /**
  * GET /api/analytics/identity
- * Get identity pulse analytics
+ * Get identity pulse analytics with enhanced structure
+ * Query params: timeRange (30, 90, 180, all)
  */
 router.get('/identity', async (req: AuthenticatedRequest, res) => {
   try {
-    const payload = await identityPulseModule.run(req.user!.id);
+    const timeRange = req.query.timeRange as string || '30';
+    const payload = await identityPulseModule.runEnhanced(req.user!.id, timeRange);
+    // Return the enhanced payload directly (it's already in the right format)
     res.json(payload);
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Error generating identity pulse');

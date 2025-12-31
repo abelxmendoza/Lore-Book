@@ -42,6 +42,12 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       return;
     }
 
+    // Check if it's a resume file
+    const fileName = file.name.toLowerCase();
+    const isResume = fileName.includes('resume') || 
+                     fileName.includes('cv') || 
+                     fileName.includes('curriculum');
+
     // Validate file type for documents
     const allowedTypes = [
       'text/plain',
@@ -63,11 +69,20 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       return;
     }
 
-    // Validate file size (10MB limit)
-    if (file.size > 10 * 1024 * 1024) {
-      const error = 'File size exceeds 10MB limit.';
+    // Validate file size (10MB limit for documents, 5MB for resumes)
+    const maxSize = isResume ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      const error = isResume 
+        ? 'Resume file size exceeds 5MB limit.'
+        : 'File size exceeds 10MB limit.';
       setUploadResult({ success: false, message: error });
       onUploadError?.(error);
+      return;
+    }
+
+    // Route to resume upload if it's a resume
+    if (isResume) {
+      await uploadResume(file);
       return;
     }
 
@@ -192,6 +207,74 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
     }
   };
 
+  const uploadResume = async (file: File) => {
+    setIsUploading(true);
+    setUploadProgress('Processing resume...');
+    setUploadResult(null);
+
+    try {
+      // Get auth token
+      const { supabase } = await import('../../../lib/supabase');
+      const { data: session } = await supabase.auth.getSession();
+      const token = session?.session?.access_token;
+
+      if (!token) {
+        throw new Error('Authentication required. Please log in.');
+      }
+
+      setUploadProgress('Extracting claims from resume...');
+
+      const formData = new FormData();
+      formData.append('resume', file);
+
+      const response = await fetch('/api/resume/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || 'Failed to process resume');
+      }
+
+      const data = await response.json();
+
+      setUploadResult({
+        success: true,
+        message: data.message || `Resume processed! ${data.claims?.length || 0} claims extracted.`,
+        entriesCreated: data.claims?.length
+      });
+
+      setUploadProgress(null);
+      onUploadComplete?.();
+
+      // Clear file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => {
+        setUploadResult(null);
+      }, 5000);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload resume';
+      setUploadResult({ success: false, message: errorMessage });
+      setUploadProgress(null);
+      onUploadError?.(errorMessage);
+
+      // Clear file input on error
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const uploadFile = async (file: File) => {
     setIsUploading(true);
     setUploadProgress('Preparing upload...');
@@ -280,7 +363,23 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
     const file = e.dataTransfer.files[0];
     if (file) {
-      uploadFile(file);
+      // Check if it's an image
+      if (file.type.startsWith('image/')) {
+        handlePhotoUpload(file);
+        return;
+      }
+
+      // Check if it's a resume
+      const fileName = file.name.toLowerCase();
+      const isResume = fileName.includes('resume') || 
+                       fileName.includes('cv') || 
+                       fileName.includes('curriculum');
+
+      if (isResume) {
+        uploadResume(file);
+      } else {
+        uploadFile(file);
+      }
     }
   };
 
@@ -341,7 +440,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
                 <Upload className={`${compact ? 'w-5 h-5' : 'w-6 h-6'} text-primary`} />
               </div>
               <p className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-white ${compact ? 'mb-1' : 'mb-1'}`}>
-                {compact ? 'Upload Documents or Photos' : 'Upload Documents, Photos, Biographies, or Diaries'}
+                {compact ? 'Upload Documents, Resumes, or Photos' : 'Upload Documents, Resumes, Photos, Biographies, or Diaries'}
               </p>
               {!compact && (
                 <p className="text-xs text-white/60 mb-4">
@@ -372,7 +471,8 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
               </div>
               {!compact && (
                 <p className="text-xs text-white/40 mt-3">
-                  Supported: .txt, .md, .pdf, .doc, .docx, images (max 10MB)
+                  Supported: .txt, .md, .pdf, .doc, .docx, images (max 10MB)<br />
+                  <span className="text-primary/70">✨ Resumes/CVs are automatically detected and extract skills & experience</span>
                 </p>
               )}
             </>

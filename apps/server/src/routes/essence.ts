@@ -108,64 +108,56 @@ router.get('/evolution', requireAuth, async (req: AuthenticatedRequest, res) => 
 
 /**
  * POST /api/essence/refine
- * User refines/corrects AI findings
+ * User refines/corrects AI findings via chat-driven refinement
+ * This endpoint is called by EssenceRefinementEngine after intent detection
  */
 const refineSchema = z.object({
-  type: z.enum(['hopes', 'dreams', 'fears', 'strengths', 'weaknesses', 'coreValues', 'personalityTraits', 'relationshipPatterns']),
-  action: z.enum(['add', 'remove', 'update']),
-  data: z.any()
+  userId: z.string().uuid(),
+  insightId: z.string(),
+  action: z.enum(['affirm', 'downgrade_confidence', 'reject', 'time_bound', 'scope_refine', 'split_insight']),
+  metadata: z.object({
+    reason: z.string(),
+    originalText: z.string(),
+    refinementText: z.string().optional(),
+    temporalScope: z.object({
+      validFrom: z.string().optional(),
+      validTo: z.string().optional(),
+      era: z.string().optional()
+    }).optional(),
+    domainScope: z.string().optional(),
+    confidenceChange: z.number().optional()
+  })
 });
 
 router.post('/refine', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = refineSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid request' });
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
     }
 
-    const profile = await essenceProfileService.getProfile(req.user!.id);
-    const { type, action, data } = parsed.data;
+    const { userId, insightId, action, metadata } = parsed.data;
 
-    if (action === 'add') {
-      const now = new Date().toISOString();
-      const newItem = {
-        text: data.text || data.skill,
-        confidence: 1.0, // User-added items have full confidence
-        extractedAt: now,
-        sources: ['user-curated'],
-        ...(data.evidence && { evidence: data.evidence })
-      };
-
-      if (type === 'topSkills') {
-        profile.topSkills.push(newItem as any);
-      } else {
-        (profile[type] as any[]).push(newItem);
-      }
-    } else if (action === 'remove') {
-      if (type === 'topSkills') {
-        profile.topSkills = profile.topSkills.filter((s: any) => s.skill !== data.skill);
-      } else {
-        (profile[type] as any[]) = (profile[type] as any[]).filter((item: any) => item.text !== data.text);
-      }
-    } else if (action === 'update') {
-      if (type === 'topSkills') {
-        const skill = profile.topSkills.find((s: any) => s.skill === data.skill);
-        if (skill) {
-          Object.assign(skill, data);
-        }
-      } else {
-        const item = (profile[type] as any[]).find((i: any) => i.text === data.text);
-        if (item) {
-          Object.assign(item, data);
-        }
-      }
+    // Verify user owns this request
+    if (userId !== req.user!.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    await essenceProfileService.updateProfile(req.user!.id, profile);
-    res.json({ success: true, profile });
+    // The actual refinement is handled by EssenceRefinementEngine
+    // This endpoint just validates and acknowledges
+    // The engine already applied the changes via saveFullProfile
+    
+    logger.info({ userId, insightId, action }, 'Essence refinement applied via chat');
+
+    res.json({ 
+      success: true,
+      message: 'Refinement applied successfully',
+      action,
+      insightId
+    });
   } catch (error) {
-    logger.error({ error }, 'Failed to refine essence profile');
-    res.status(500).json({ error: 'Failed to refine essence profile' });
+    logger.error({ error }, 'Failed to process essence refinement');
+    res.status(500).json({ error: 'Failed to process refinement' });
   }
 });
 

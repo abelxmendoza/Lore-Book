@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { asyncHandler } from '../utils/asyncHandler';
+import { asyncHandler } from '../middleware/errorHandler';
 import { logger } from '../logger';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { supabaseAdmin } from '../services/supabaseClient';

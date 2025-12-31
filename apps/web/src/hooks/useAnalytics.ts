@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
 import { getModuleByKey } from '../config/analyticsModules';
+import { isDevelopment } from '../config/env';
 import type { AnalyticsPayload } from '../../../server/src/services/analytics/types';
 
 interface UseAnalyticsResult {
@@ -33,12 +34,19 @@ export function useAnalytics(moduleKey: string | null): UseAnalyticsResult {
 
       const endpoint = module.apiEndpoint;
 
-      const result = await fetchJson<AnalyticsPayload>(endpoint);
+      // In development, allow mock data fallback
+      const result = await fetchJson<AnalyticsPayload>(endpoint, undefined, {
+        useMockData: isDevelopment,
+        mockData: null // Will be handled by individual panels
+      });
       setData(result);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch analytics data';
       setError(errorMessage);
-      setData(null);
+      // In development, don't set data to null immediately - let panels handle mock data
+      if (!isDevelopment) {
+        setData(null);
+      }
       console.error('Analytics fetch error:', err);
     } finally {
       setLoading(false);

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, Star } from 'lucide-react';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
@@ -17,6 +17,7 @@ import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { useCharacterExtraction } from '../../hooks/useCharacterExtraction';
 import { useConversationStore } from '../../features/chat/hooks/useConversationStore';
 import { generateNicknames } from '../../utils/nicknameGenerator';
+import { useAuth } from '../../lib/supabase';
 
 // Comprehensive mock character data showcasing all app capabilities
 const dummyCharacters: Character[] = [
@@ -1662,6 +1663,7 @@ const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows
 type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professional' | 'creative' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
 
 export const CharacterBook = () => {
+  const { user } = useAuth();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
@@ -1988,6 +1990,18 @@ export const CharacterBook = () => {
                 </div>
                 <div className="text-xs text-amber-700/40 font-mono">
                   {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
+              </div>
+
+              {/* Main Character Section */}
+              <div className="mb-6 pb-4 border-b border-amber-800/20">
+                <div className="flex items-center gap-3">
+                  <Star className="h-5 w-5 text-amber-600/80" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900/60">
+                      Main Character: <span className="text-amber-900/80">{user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'You'}</span>
+                    </p>
+                  </div>
                 </div>
               </div>
 

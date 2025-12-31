@@ -7,6 +7,7 @@ import { AdminTable } from './AdminTable';
 import { AdminHeader } from './AdminHeader';
 import { FinanceDashboard } from './FinanceDashboard';
 import { LogsViewer } from './LogsViewer';
+import { EngineHealthDashboard } from './EngineHealthDashboard';
 import { canAccessAdmin } from '../../middleware/roleGuard';
 import { Users, FileText, Zap, Database, AlertTriangle } from 'lucide-react';
 
@@ -104,6 +105,7 @@ export const AdminConsole = () => {
       case 'users': return 'User Management';
       case 'logs': return 'System Logs';
       case 'ai-events': return 'AI Generation Events';
+      case 'engine-health': return 'Engine Health';
       case 'tools': return 'Admin Tools';
       case 'feature-flags': return 'Feature Flags';
       case 'finance': return 'Finance Dashboard';
@@ -216,6 +218,10 @@ export const AdminConsole = () => {
                   data={aiEvents}
                 />
               </div>
+            )}
+
+            {activeSection === 'engine-health' && (
+              <EngineHealthDashboard />
             )}
 
             {activeSection === 'tools' && (

@@ -15,19 +15,27 @@ import type { PatternInsight, StabilityMetrics } from '../../api/perceptionReact
  */
 export const ReflectiveView: React.FC = () => {
   const [patterns, setPatterns] = useState<ReactionPatterns | null>(null);
+  const [insights, setInsights] = useState<PatternInsight[]>([]);
+  const [stabilityMetrics, setStabilityMetrics] = useState<StabilityMetrics | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    void loadPatterns();
+    void loadData();
   }, []);
 
-  const loadPatterns = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const data = await reactionApi.getReactionPatterns();
-      setPatterns(data);
+      const [patternData, insightData, stabilityData] = await Promise.all([
+        reactionApi.getReactionPatterns(),
+        perceptionReactionEngineApi.getPatterns(),
+        perceptionReactionEngineApi.getStabilityMetrics()
+      ]);
+      setPatterns(patternData);
+      setInsights(insightData);
+      setStabilityMetrics(stabilityData);
     } catch (error) {
-      console.error('Failed to load reaction patterns:', error);
+      console.error('Failed to load reflective data:', error);
     } finally {
       setLoading(false);
     }
@@ -53,21 +61,8 @@ export const ReflectiveView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-purple-500/10 to-orange-500/10 border border-purple-500/30 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <Brain className="h-6 w-6 text-purple-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <h2 className="text-lg font-semibold text-white mb-1">Reflective View</h2>
-            <p className="text-sm text-white/70">
-              Patterns, not advice. Questions, not conclusions.
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Common Patterns */}
-      {patterns.commonPatterns.length > 0 && (
+      {patterns && patterns.commonPatterns.length > 0 && (
         <Card className="bg-black/40 border-border/60">
           <CardHeader>
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -113,27 +108,29 @@ export const ReflectiveView: React.FC = () => {
       )}
 
       {/* Reaction Types Distribution */}
-      <Card className="bg-black/40 border-border/60">
-        <CardHeader>
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <Eye className="h-5 w-5 text-primary" />
-            Reaction Types
-          </h3>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {Object.entries(patterns.byType).map(([type, count]) => (
-              <div key={type} className="text-center">
-                <div className="text-2xl font-bold text-white">{count}</div>
-                <div className="text-xs text-white/60 capitalize">{type}</div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {patterns && (
+        <Card className="bg-black/40 border-border/60">
+          <CardHeader>
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Eye className="h-5 w-5 text-primary" />
+              Reaction Types
+            </h3>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Object.entries(patterns.byType).map(([type, count]) => (
+                <div key={type} className="text-center">
+                  <div className="text-2xl font-bold text-white">{count}</div>
+                  <div className="text-xs text-white/60 capitalize">{type}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Top Reactions */}
-      {Object.keys(patterns.byLabel).length > 0 && (
+      {patterns && Object.keys(patterns.byLabel).length > 0 && (
         <Card className="bg-black/40 border-border/60">
           <CardHeader>
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">

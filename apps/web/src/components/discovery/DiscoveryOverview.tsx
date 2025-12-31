@@ -1,37 +1,24 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
   Brain, 
-  Users, 
-  BookOpen, 
-  Network, 
   Sparkles, 
   Zap, 
   Heart, 
-  AlertCircle,
   Compass,
   X,
-  TrendingUp,
-  Map,
-  Search,
+  Award,
+  Users,
   Activity,
-  Calendar
+  AlertCircle
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
-import { CharactersAnalyticsPanel } from './CharactersAnalyticsPanel';
-import { RelationshipsAnalyticsPanel } from './RelationshipsAnalyticsPanel';
-import { SagaScreen } from '../saga/SagaScreen';
-import { MemoryFabricPanel } from '../fabric/MemoryFabricPanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
-import { MonthlyYearlyInsights } from '../insights/MonthlyYearlyInsights';
-import { PredictionsAnalyticsPanel } from './PredictionsAnalyticsPanel';
-import { SearchAnalyticsPanel } from './SearchAnalyticsPanel';
-import { ShadowAnalyticsPanel } from './ShadowAnalyticsPanel';
 import { XpAnalyticsPanel } from './XpAnalyticsPanel';
-import { LifeMapPanel } from './LifeMapPanel';
-import { AutopilotPanel } from '../AutopilotPanel';
 import { SoulProfilePanel } from './SoulProfilePanel';
-import { TruthSeekerPanel } from './TruthSeekerPanel';
+import { AchievementsPanel } from './AchievementsPanel';
+import { RelationshipsAnalyticsPanel } from './RelationshipsAnalyticsPanel';
 import { ContinuityDashboard } from '../continuity/ContinuityDashboard';
+import { ShadowAnalyticsPanel } from './ShadowAnalyticsPanel';
 import { fetchJson } from '../../lib/api';
 
 // Wrapper component for InsightsPanel that fetches data
@@ -67,120 +54,64 @@ interface PanelConfig {
   component: React.ComponentType;
 }
 
+// Core analytics panels that answer human questions
+// Each panel provides unique insights not available elsewhere
 const PANEL_CONFIGS: PanelConfig[] = [
-  // Core Analytics Panels
-  {
-    id: 'continuity',
-    title: 'Continuity Intelligence',
-    description: 'The Jarvis of your life. Detects contradictions, emotional arcs, identity drift, and repeating loops.',
-    icon: Activity,
-    component: ContinuityDashboard
-  },
   {
     id: 'identity',
     title: 'Identity Pulse',
-    description: 'Your persona signature and emotional trajectory.',
+    description: 'How am I changing right now? Short-term identity shifts, drift, and emotional trajectory.',
     icon: Brain,
     component: IdentityPulsePanel
   },
   {
-    id: 'relationships',
-    title: 'Relationships',
-    description: 'See who shapes your emotional landscape.',
-    icon: Users,
-    component: RelationshipsAnalyticsPanel
-  },
-  {
-    id: 'characters',
-    title: 'Characters',
-    description: 'Character mention patterns, sentiment trends, and interaction analytics.',
-    icon: Users,
-    component: CharactersAnalyticsPanel
-  },
-  {
-    id: 'saga',
-    title: 'Sagas',
-    description: 'Your life\'s arcs, eras, and narrative beats.',
-    icon: BookOpen,
-    component: SagaScreen
-  },
-  {
-    id: 'memory-fabric',
-    title: 'Memory Fabric',
-    description: 'Clusters, bridges, and outliers in your memories.',
-    icon: Network,
-    component: MemoryFabricPanel
-  },
-  {
-    id: 'insights',
-    title: 'Insights',
-    description: 'Correlations, loops, and recurring patterns.',
-    icon: Sparkles,
-    component: InsightsPanelWrapper
-  },
-  {
-    id: 'time-insights',
-    title: 'Time-based Insights',
-    description: 'Monthly and yearly insights across different time periods.',
-    icon: Calendar,
-    component: MonthlyYearlyInsights
-  },
-  {
-    id: 'predictions',
-    title: 'Predictions',
-    description: 'Forecast where your story is heading.',
-    icon: TrendingUp,
-    component: PredictionsAnalyticsPanel
-  },
-  {
-    id: 'search',
-    title: 'Search Analytics',
-    description: 'Search behavior and retrieval patterns.',
-    icon: Search,
-    component: SearchAnalyticsPanel
-  },
-  {
-    id: 'shadow',
-    title: 'Shadow',
-    description: 'Suppressed topics, negative loops, and inner archetypes.',
-    icon: AlertCircle,
-    component: ShadowAnalyticsPanel
-  },
-  {
-    id: 'xp',
-    title: 'XP Dashboard',
-    description: 'Your life XP, levels, and streaks.',
-    icon: Zap,
-    component: XpAnalyticsPanel
-  },
-  {
-    id: 'map',
-    title: 'Life Map',
-    description: 'The global graph of your life: eras and turning points.',
-    icon: Map,
-    component: LifeMapPanel
-  },
-  // Additional panels (kept for now)
-  {
-    id: 'autopilot',
-    title: 'Autopilot',
-    description: 'AI life guidance and recommendations.',
-    icon: Zap,
-    component: AutopilotPanel
-  },
-  {
     id: 'soul-profile',
     title: 'Soul Profile',
-    description: 'Your essence, hopes, dreams, fears, strengths, and skills.',
+    description: 'Who am I underneath the day-to-day noise? Your essence, hopes, dreams, fears, strengths, and skills.',
     icon: Heart,
     component: SoulProfilePanel
   },
   {
-    id: 'truth-seeker',
-    title: 'Truth Seeker',
-    description: 'Fact checking and contradiction detection.',
+    id: 'relationships',
+    title: 'Relationships',
+    description: 'Who shapes my emotional landscape? Relationship network, sentiment patterns, and attachment dynamics.',
+    icon: Users,
+    component: RelationshipsAnalyticsPanel
+  },
+  {
+    id: 'continuity',
+    title: 'Continuity Intelligence',
+    description: 'Are there contradictions in my story? Detects conflicts, emotional arcs, identity drift, and repeating loops.',
+    icon: Activity,
+    component: ContinuityDashboard
+  },
+  {
+    id: 'shadow',
+    title: 'Shadow',
+    description: 'What am I suppressing? Suppressed topics, negative loops, and inner archetypes.',
     icon: AlertCircle,
-    component: TruthSeekerPanel
+    component: ShadowAnalyticsPanel
+  },
+  {
+    id: 'insights',
+    title: 'Insights',
+    description: 'What patterns do I repeat? Correlations, loops, and recurring patterns.',
+    icon: Sparkles,
+    component: InsightsPanelWrapper
+  },
+  {
+    id: 'xp',
+    title: 'Skills & Progress',
+    description: 'How am I progressing in my skills? Your life XP, levels, streaks, and skill development.',
+    icon: Zap,
+    component: XpAnalyticsPanel
+  },
+  {
+    id: 'achievements',
+    title: 'Achievements',
+    description: 'Unlocked milestones and accomplishments in your journey.',
+    icon: Award,
+    component: AchievementsPanel
   }
 ];
 

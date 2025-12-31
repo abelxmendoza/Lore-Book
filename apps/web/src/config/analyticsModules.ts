@@ -8,7 +8,9 @@ import {
   AlertCircle, 
   Zap, 
   Map,
-  Search
+  Search,
+  HeartPulse,
+  Award
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -94,6 +96,17 @@ export const ANALYTICS_MODULES: AnalyticsModule[] = [
     apiEndpoint: '/api/analytics/insights'
   },
   {
+    key: 'reactions-resilience',
+    title: 'Reactions & Resilience',
+    description: 'How you respond to experiences and beliefs. Recovery patterns and therapeutic reflection.',
+    tier: 'core',
+    route: '/discovery/reactions-resilience',
+    icon: HeartPulse,
+    metrics: ['avgRecoveryTime', 'recurrenceRate', 'resilienceScore', 'totalReactions'],
+    defaultCharts: ['recoveryTimeline', 'reactionPatterns'],
+    apiEndpoint: '/api/perception-reaction-engine/stability'
+  },
+  {
     key: 'predictions',
     title: 'Predictions',
     description: 'Forecast where your story is heading.',
@@ -125,6 +138,17 @@ export const ANALYTICS_MODULES: AnalyticsModule[] = [
     metrics: ['level', 'totalXP', 'streakLength'],
     defaultCharts: ['xpTimeline', 'xpByCategory'],
     apiEndpoint: '/api/analytics/xp'
+  },
+  {
+    key: 'achievements',
+    title: 'Achievements',
+    description: 'Unlocked milestones and accomplishments in your journey.',
+    tier: 'advanced',
+    route: '/discovery/achievements',
+    icon: Award,
+    metrics: ['totalAchievements', 'byRarity', 'byType'],
+    defaultCharts: ['achievementTimeline', 'rarityDistribution'],
+    apiEndpoint: '/api/achievements/statistics'
   },
   {
     key: 'map',

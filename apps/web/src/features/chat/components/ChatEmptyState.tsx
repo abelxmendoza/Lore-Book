@@ -15,10 +15,10 @@ export const ChatEmptyState = () => {
         <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Paperclip className="h-5 w-5 text-primary" />
-            <h3 className="text-sm font-semibold text-white">Upload Your Documents</h3>
+            <h3 className="text-sm font-semibold text-white">Upload Other Documents</h3>
           </div>
           <p className="text-xs text-white/70 mb-3">
-            Click the <Paperclip className="h-3 w-3 inline text-primary" /> paperclip button below to upload:
+            You can also upload:
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-white/60">
             <span className="flex items-center gap-1">
@@ -46,19 +46,6 @@ export const ChatEmptyState = () => {
           </p>
         </div>
 
-        <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <ImageIcon className="h-5 w-5 text-blue-400" />
-            <h3 className="text-sm font-semibold text-white">Upload Photos</h3>
-          </div>
-          <p className="text-xs text-white/70 mb-2">
-            Upload photos and the AI will analyze them to suggest where they belong in your lore book.
-          </p>
-          <p className="text-xs text-blue-200/80">
-            ✨ Photos of documents will extract text. Memory photos can be added to your lore book. Junk photos are automatically filtered.
-          </p>
-        </div>
-
         <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
           <div className="flex items-center justify-center gap-2 mb-2">
             <MessageSquare className="h-5 w-5 text-yellow-400" />
@@ -69,6 +56,32 @@ export const ChatEmptyState = () => {
           </p>
           <p className="text-xs text-yellow-200/80">
             ✨ All information will be automatically fact-checked and verified against your existing memories. Contradictions will be flagged for review.
+          </p>
+        </div>
+
+        <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <FileText className="h-5 w-5 text-purple-400" />
+            <h3 className="text-sm font-semibold text-white">Upload Your Resume</h3>
+          </div>
+          <p className="text-xs text-white/70 mb-2">
+            Click the <Paperclip className="h-3 w-3 inline text-primary" /> paperclip button below to upload your resume (PDF, DOC, DOCX, or TXT).
+          </p>
+          <p className="text-xs text-purple-200/80">
+            ✨ Automatically extracts skills, experience, and achievements to track your career growth.
+          </p>
+        </div>
+
+        <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <ImageIcon className="h-5 w-5 text-blue-400" />
+            <h3 className="text-sm font-semibold text-white">Upload Photos</h3>
+          </div>
+          <p className="text-xs text-white/70 mb-2">
+            Upload photos and the AI will analyze them to suggest where they belong in your lore book.
+          </p>
+          <p className="text-xs text-blue-200/80">
+            ✨ Photos of documents will extract text. Memory photos can be added to your lore book. Junk photos are automatically filtered.
           </p>
         </div>
       </div>

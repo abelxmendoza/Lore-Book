@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { BookOpen, Bot, Send, Loader2 } from 'lucide-react';
+import { BookOpen, Bot, Send, Loader2, Sparkles } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
@@ -9,6 +9,8 @@ import { useLoreNavigatorData } from '../../hooks/useLoreNavigatorData';
 import { LoreNavigator, type SelectedItem } from './LoreNavigator';
 import { LoreContentViewer } from './LoreContentViewer';
 import { TruthSeekerPanel } from '../discovery/TruthSeekerPanel';
+import { BiographyGenerator } from './BiographyGenerator';
+import type { Biography } from '../../../server/src/services/biographyGeneration/types';
 
 type BiographyMessage = {
   id: string;
@@ -23,6 +25,8 @@ export const BiographyEditor = () => {
   const [loading, setLoading] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
+  const [showGenerator, setShowGenerator] = useState(false);
+  const [generatedBiography, setGeneratedBiography] = useState<Biography | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { streamChat, isStreaming, cancel } = useChatStream();
@@ -219,14 +223,38 @@ export const BiographyEditor = () => {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="border-b border-border/50 p-4 bg-black/40">
-        <div className="flex items-center gap-3">
-          <BookOpen className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-2xl font-semibold text-white">My Biography Editor</h1>
-            <p className="text-sm text-white/60">Edit your biography, characters, locations, and chapters with AI assistance</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <BookOpen className="h-6 w-6 text-primary" />
+            <div>
+              <h1 className="text-2xl font-semibold text-white">My Biography Editor</h1>
+              <p className="text-sm text-white/60">Edit your biography, characters, locations, and chapters with AI assistance</p>
+            </div>
           </div>
+          <Button
+            onClick={() => setShowGenerator(!showGenerator)}
+            variant="outline"
+            className="bg-primary/20 hover:bg-primary/30 text-primary border-primary/30"
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            Generate Biography
+          </Button>
         </div>
       </div>
+
+      {/* Biography Generator */}
+      {showGenerator && (
+        <div className="border-b border-border/50 p-4 bg-black/30">
+          <BiographyGenerator
+            onBiographyGenerated={(biography) => {
+              setGeneratedBiography(biography);
+              setShowGenerator(false);
+              // Could navigate to view the biography or add it to the editor
+              refreshData();
+            }}
+          />
+        </div>
+      )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 flex overflow-hidden min-h-0">

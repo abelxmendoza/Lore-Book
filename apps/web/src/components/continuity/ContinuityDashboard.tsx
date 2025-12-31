@@ -5,6 +5,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
+import { isDevelopment } from '../../config/env';
 
 type ContinuityEvent = {
   id: string;
@@ -16,12 +17,85 @@ type ContinuityEvent = {
   metadata?: Record<string, unknown>;
 };
 
+// Mock data for development
+const MOCK_CONTINUITY_EVENTS: ContinuityEvent[] = [
+  {
+    id: '1',
+    event_type: 'contradiction',
+    description: 'You mentioned being "completely done with coding" in January but then wrote about "excited to start new project" in February',
+    source_components: ['journal_entry_123', 'journal_entry_145'],
+    severity: 7,
+    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    metadata: { entry1: 'Jan 15', entry2: 'Feb 3' }
+  },
+  {
+    id: '2',
+    event_type: 'identity_drift',
+    description: 'Identity shift detected: Moving from "coder" to "creative" identity',
+    source_components: ['identity_pulse', 'essence_profile'],
+    severity: 6,
+    created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: '3',
+    event_type: 'abandoned_goal',
+    description: 'Goal "Learn Spanish" was mentioned 5 times but no progress entries found',
+    source_components: ['goal_tracker'],
+    severity: 4,
+    created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: '4',
+    event_type: 'emotional_transition',
+    description: 'Emotional arc shift: From "anxious" to "confident" over 2 weeks',
+    source_components: ['emotional_intelligence'],
+    severity: 5,
+    created_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  }
+];
+
+const MOCK_GOALS = {
+  active: [
+    {
+      id: 'g1',
+      event_type: 'abandoned_goal' as const,
+      description: 'Build side project',
+      source_components: ['goals'],
+      severity: 3,
+      created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    }
+  ],
+  abandoned: [
+    {
+      id: 'g2',
+      event_type: 'abandoned_goal' as const,
+      description: 'Learn Spanish',
+      source_components: ['goals'],
+      severity: 4,
+      created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    }
+  ]
+};
+
+const MOCK_CONTRADICTIONS: ContinuityEvent[] = [
+  MOCK_CONTINUITY_EVENTS[0],
+  {
+    id: '5',
+    event_type: 'contradiction',
+    description: 'You said "I never drink coffee" but mentioned "morning coffee routine" in 3 entries',
+    source_components: ['journal_entry_89', 'journal_entry_102', 'journal_entry_115'],
+    severity: 8,
+    created_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString()
+  }
+];
+
 export const ContinuityDashboard = () => {
   const [events, setEvents] = useState<ContinuityEvent[]>([]);
   const [goals, setGoals] = useState<{ active: ContinuityEvent[]; abandoned: ContinuityEvent[] }>({ active: [], abandoned: [] });
   const [contradictions, setContradictions] = useState<ContinuityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [useMockData, setUseMockData] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -32,28 +106,57 @@ export const ContinuityDashboard = () => {
     try {
       const [eventsData, goalsData, contradictionsData] = await Promise.all([
         fetchJson<{ events: ContinuityEvent[] }>('/api/continuity/events?limit=50', undefined, {
-          useMockData: true,
-          mockData: { events: [] },
-        }).catch(() => ({ events: [] })),
+          useMockData: isDevelopment,
+          mockData: { events: MOCK_CONTINUITY_EVENTS },
+        }).catch(() => {
+          if (isDevelopment) {
+            setUseMockData(true);
+            return { events: MOCK_CONTINUITY_EVENTS };
+          }
+          return { events: [] };
+        }),
         fetchJson<{ active: ContinuityEvent[]; abandoned: ContinuityEvent[] }>('/api/continuity/goals', undefined, {
-          useMockData: true,
-          mockData: { active: [], abandoned: [] },
-        }).catch(() => ({ active: [], abandoned: [] })),
+          useMockData: isDevelopment,
+          mockData: MOCK_GOALS,
+        }).catch(() => {
+          if (isDevelopment) {
+            return MOCK_GOALS;
+          }
+          return { active: [], abandoned: [] };
+        }),
         fetchJson<{ contradictions: ContinuityEvent[] }>('/api/continuity/contradictions', undefined, {
-          useMockData: true,
-          mockData: { contradictions: [] },
-        }).catch(() => ({ contradictions: [] })),
+          useMockData: isDevelopment,
+          mockData: { contradictions: MOCK_CONTRADICTIONS },
+        }).catch(() => {
+          if (isDevelopment) {
+            return { contradictions: MOCK_CONTRADICTIONS };
+          }
+          return { contradictions: [] };
+        }),
       ]);
 
-      setEvents(eventsData.events || []);
-      setGoals(goalsData || { active: [], abandoned: [] });
-      setContradictions(contradictionsData.contradictions || []);
+      if (eventsData.events && eventsData.events.length > 0) {
+        setUseMockData(false);
+      } else if (isDevelopment) {
+        setUseMockData(true);
+      }
+
+      setEvents(eventsData.events && eventsData.events.length > 0 ? eventsData.events : (isDevelopment ? MOCK_CONTINUITY_EVENTS : []));
+      setGoals(goalsData && (goalsData.active.length > 0 || goalsData.abandoned.length > 0) ? goalsData : (isDevelopment ? MOCK_GOALS : { active: [], abandoned: [] }));
+      setContradictions(contradictionsData.contradictions && contradictionsData.contradictions.length > 0 ? contradictionsData.contradictions : (isDevelopment ? MOCK_CONTRADICTIONS : []));
     } catch (error) {
       console.error('Failed to load continuity data:', error);
-      // Set empty data on error
-      setEvents([]);
-      setGoals({ active: [], abandoned: [] });
-      setContradictions([]);
+      // Use mock data in development on error
+      if (isDevelopment) {
+        setUseMockData(true);
+        setEvents(MOCK_CONTINUITY_EVENTS);
+        setGoals(MOCK_GOALS);
+        setContradictions(MOCK_CONTRADICTIONS);
+      } else {
+        setEvents([]);
+        setGoals({ active: [], abandoned: [] });
+        setContradictions([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -128,6 +231,13 @@ export const ContinuityDashboard = () => {
 
   return (
     <div className="space-y-6">
+      {/* Mock Data Banner */}
+      {useMockData && isDevelopment && (
+        <div className="text-xs text-yellow-400/80 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
+          📊 Showing mock data for demonstration. Real data will appear as you journal and contradictions are detected.
+        </div>
+      )}
+
       {/* Header */}
       <Card className="bg-gradient-to-r from-purple-900/30 to-fuchsia-900/30 border-purple-500/50">
         <CardHeader>

@@ -1,9 +1,16 @@
 import { useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, ChevronUp, ChevronDown, Type, AlignJustify } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, ChevronUp, ChevronDown, Type, AlignJustify, Search, Sparkles, Loader2, Download } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { ChatFirstInterface } from '../chat/ChatFirstInterface';
+import { BiographyGenerator } from '../biography/BiographyGenerator';
+import { BiographyRecommendations } from './BiographyRecommendations';
+import { SavedBiographies } from './SavedBiographies';
+import { CoreLorebooks } from './CoreLorebooks';
+import { fetchJson } from '../../lib/api';
+import type { Biography, BiographySpec } from '../../../server/src/services/biographyGeneration/types';
 
 type MemoirSection = {
   id: string;
@@ -182,13 +189,22 @@ const dummyChapters: Chapter[] = [
 
 export const LoreBook = () => {
   // Use dummy data for demonstration (read-only mode)
-  const [outline] = useState<MemoirOutline>(dummyBook);
-  const [chapters] = useState<Chapter[]>(dummyChapters);
+  const [outline, setOutline] = useState<MemoirOutline>(dummyBook);
+  const [chapters, setChapters] = useState<Chapter[]>(dummyChapters);
   const [loading] = useState(false);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('base');
   const [lineHeight, setLineHeight] = useState<'normal' | 'relaxed' | 'loose'>('relaxed');
   const [showChat, setShowChat] = useState(false); // Hidden by default for reading focus
+  const [searchQuery, setSearchQuery] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [selectedBiography, setSelectedBiography] = useState<Biography | null>(null);
+  const [showGenerator, setShowGenerator] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(true);
+  const [showSaved, setShowSaved] = useState(false);
+  const [showCoreLorebooks, setShowCoreLorebooks] = useState(false);
+  const [availableBiographies, setAvailableBiographies] = useState<Biography[]>([]);
+  const [downloading, setDownloading] = useState(false);
 
   const flattenSections = (sections: MemoirSection[]): MemoirSection[] => {
     const result: MemoirSection[] = [];
@@ -226,6 +242,21 @@ export const LoreBook = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Calculate approximate page count for a section
+  const calculatePageCount = (section: MemoirSection): number => {
+    if (!section.content) return 0;
+    
+    // Average words per page in a book: ~250-300 words
+    // Average characters per word: ~5 (including space)
+    // So roughly 1250-1500 characters per page
+    const charsPerPage = 1400; // Conservative estimate
+    const contentLength = section.content.length;
+    const pageCount = Math.ceil(contentLength / charsPerPage);
+    
+    // Minimum 1 page if there's any content
+    return Math.max(1, pageCount);
+  };
+
   const fontSizeClasses = {
     sm: 'text-sm',
     base: 'text-base',
@@ -259,8 +290,334 @@ export const LoreBook = () => {
     );
   }
 
+  const handleGenerateFromSearch = async () => {
+    if (!searchQuery.trim()) return;
+    
+    setGenerating(true);
+    try {
+      // Parse search query to determine biography spec
+      const lowerQuery = searchQuery.toLowerCase();
+      
+      let scope: 'full_life' | 'domain' | 'time_range' | 'thematic' = 'thematic';
+      let domain: any = undefined;
+      
+      if (lowerQuery.includes('fight') || lowerQuery.includes('bjj')) {
+        scope = 'domain';
+        domain = 'fighting';
+      } else if (lowerQuery.includes('robot') || lowerQuery.includes('code')) {
+        scope = 'domain';
+        domain = 'robotics';
+      } else if (lowerQuery.includes('relationship') || lowerQuery.includes('love')) {
+        scope = 'domain';
+        domain = 'relationships';
+      } else if (lowerQuery.includes('full') || lowerQuery.includes('life')) {
+        scope = 'full_life';
+      }
+
+      const spec = {
+        scope,
+        domain,
+        tone: 'neutral' as const,
+        depth: 'detailed' as const,
+        audience: 'self' as const,
+        includeIntrospection: true,
+        themes: searchQuery.split(/\s+/).filter(w => w.length > 4)
+      };
+
+      const result = await fetchJson<{ biography: Biography }>('/api/biography/generate', {
+        method: 'POST',
+        body: JSON.stringify(spec)
+      });
+
+      if (result.biography) {
+        // Convert biography to memoir outline format
+        const newOutline: MemoirOutline = {
+          id: result.biography.id,
+          title: result.biography.title,
+          lastUpdated: result.biography.metadata.generatedAt,
+          autoUpdate: false,
+          sections: result.biography.chapters.map((chapter, idx) => ({
+            id: chapter.id,
+            title: chapter.title,
+            content: chapter.text,
+            order: idx + 1,
+            period: {
+              from: chapter.timeSpan.start,
+              to: chapter.timeSpan.end
+            }
+          }))
+        };
+
+        setOutline(newOutline);
+        setCurrentSectionIndex(0);
+        setSelectedBiography(result.biography);
+        setShowGenerator(false);
+        setSearchQuery('');
+      }
+    } catch (error) {
+      console.error('Failed to generate biography:', error);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (downloading) return;
+    
+    setDownloading(true);
+    try {
+      const bookTitle = outline.title || 'My Lore Book';
+      const date = new Date().toISOString().split('T')[0];
+      
+      // Dynamically import jsPDF to avoid React hook issues
+      const { default: jsPDF } = await import('jspdf');
+    
+    // Create PDF document
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    // Set up fonts and styles
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const maxWidth = pageWidth - (margin * 2);
+    let yPosition = margin;
+
+    // Helper function to add a new page if needed
+    const checkPageBreak = (requiredHeight: number) => {
+      if (yPosition + requiredHeight > pageHeight - margin) {
+        doc.addPage();
+        yPosition = margin;
+      }
+    };
+
+    // Add title
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    const titleLines = doc.splitTextToSize(bookTitle, maxWidth);
+    doc.text(titleLines, margin, yPosition);
+    yPosition += titleLines.length * 10 + 10;
+
+    // Add date
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(128, 128, 128);
+    doc.text(`Generated on ${new Date().toLocaleDateString()}`, margin, yPosition);
+    yPosition += 10;
+
+    // Add sections
+    flatSections.forEach((section, idx) => {
+      checkPageBreak(30);
+
+      // Section title
+      doc.setFontSize(18);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      const sectionTitleLines = doc.splitTextToSize(section.title, maxWidth);
+      doc.text(sectionTitleLines, margin, yPosition);
+      yPosition += sectionTitleLines.length * 8 + 5;
+
+      // Section period (if available)
+      if (section.period) {
+        checkPageBreak(10);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(128, 128, 128);
+        const periodText = `${new Date(section.period.from).toLocaleDateString()} - ${section.period.to ? new Date(section.period.to).toLocaleDateString() : 'Present'}`;
+        doc.text(periodText, margin, yPosition);
+        yPosition += 8;
+      }
+
+      // Section content
+      if (section.content) {
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        
+        // Split content into paragraphs and process
+        const paragraphs = section.content.split('\n\n').filter(p => p.trim());
+        
+        paragraphs.forEach(paragraph => {
+          checkPageBreak(15);
+          
+          // Clean up paragraph (remove markdown formatting, etc.)
+          const cleanParagraph = paragraph
+            .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+            .replace(/\*(.*?)\*/g, '$1') // Remove italic
+            .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove links
+            .trim();
+          
+          if (cleanParagraph) {
+            const contentLines = doc.splitTextToSize(cleanParagraph, maxWidth);
+            doc.text(contentLines, margin, yPosition);
+            yPosition += contentLines.length * 6 + 4;
+          }
+        });
+      }
+
+      // Add separator between sections (except last)
+      if (idx < flatSections.length - 1) {
+        checkPageBreak(15);
+        yPosition += 5;
+        doc.setDrawColor(200, 200, 200);
+        doc.line(margin, yPosition, pageWidth - margin, yPosition);
+        yPosition += 10;
+      }
+    });
+
+      // Save PDF
+      const filename = `${bookTitle.toLowerCase().replace(/\s+/g, '-')}-${date}.pdf`;
+      doc.save(filename);
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleLoadBiography = (biography: Biography) => {
+    const newOutline: MemoirOutline = {
+      id: biography.id,
+      title: biography.title,
+      lastUpdated: biography.metadata.generatedAt,
+      autoUpdate: false,
+      sections: biography.chapters.map((chapter, idx) => ({
+        id: chapter.id,
+        title: chapter.title,
+        content: chapter.text,
+        order: idx + 1,
+        period: {
+          from: chapter.timeSpan.start,
+          to: chapter.timeSpan.end
+        }
+      }))
+    };
+
+    setOutline(newOutline);
+    setCurrentSectionIndex(0);
+    setSelectedBiography(biography);
+    setShowSaved(false);
+    setShowRecommendations(false);
+  };
+
+  const handleGenerateFromRecommendation = async (spec: BiographySpec, version?: string) => {
+    setGenerating(true);
+    setShowRecommendations(false);
+    try {
+      const result = await fetchJson<{ biography: Biography }>('/api/biography/generate', {
+        method: 'POST',
+        body: JSON.stringify(spec)
+      });
+
+      if (result.biography) {
+        handleLoadBiography(result.biography);
+      }
+    } catch (error) {
+      console.error('Failed to generate biography:', error);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Show recommendations if no book is loaded
+  if (showRecommendations && (!outline || outline.sections.length === 0)) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] flex flex-col bg-gradient-to-br from-black via-purple-950/20 to-black p-8">
+        <div className="max-w-6xl mx-auto w-full">
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-white mb-2">Your Lorebook</h1>
+            <p className="text-white/60">Choose a biography to generate or view your recommendations</p>
+          </div>
+          <BiographyRecommendations onGenerate={handleGenerateFromRecommendation} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col bg-gradient-to-br from-black via-purple-950/20 to-black">
+      {/* Search Bar Section - Above the book */}
+      <div className="border-b border-border/50 p-4 bg-black/30">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold text-white">Generate Biography</h3>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowSaved(!showSaved);
+                  setShowRecommendations(false);
+                }}
+                className="text-white/60 hover:text-white"
+              >
+                {showSaved ? 'Hide' : 'Show'} Saved
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowRecommendations(!showRecommendations);
+                  setShowSaved(false);
+                }}
+                className="text-white/60 hover:text-white"
+              >
+                {showRecommendations ? 'Hide' : 'Show'} Recommendations
+              </Button>
+            </div>
+          </div>
+          {showRecommendations && (
+            <div className="mb-4">
+              <BiographyRecommendations onGenerate={handleGenerateFromRecommendation} />
+            </div>
+          )}
+          {showSaved && (
+            <div className="mb-4">
+              <SavedBiographies onLoadBiography={handleLoadBiography} />
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/40" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !generating) {
+                    handleGenerateFromSearch();
+                  }
+                }}
+                placeholder="Generate biography: 'my fighting career', 'robotics journey', 'full life story'..."
+                className="pl-10 bg-black/60 border-white/20 text-white placeholder:text-white/40"
+              />
+            </div>
+            <Button
+              onClick={handleGenerateFromSearch}
+              disabled={!searchQuery.trim() || generating}
+              className="bg-primary/20 hover:bg-primary/30 text-primary border-primary/30"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Generate
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="border-b border-border/60 bg-black/40 backdrop-blur-sm px-8 py-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-4">
@@ -306,9 +663,57 @@ export const LoreBook = () => {
         </div>
       </div>
 
-      {/* Book Content - Larger reading area */}
-      <div className="flex-1 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto px-16 py-32">
+      {/* Main Content Area with Sidebar */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Sidebar - Chapter Navigation */}
+        <div className="w-64 flex-shrink-0 border-r border-border/60 bg-black/30 overflow-y-auto">
+          <div className="p-4">
+            <h3 className="text-sm font-semibold text-white/80 mb-3 uppercase tracking-wider">Chapters</h3>
+            <nav className="space-y-1">
+              {flatSections.map((section, index) => {
+                const pageCount = calculatePageCount(section);
+                return (
+                  <button
+                    key={section.id || index}
+                    onClick={() => goToSection(index)}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-all ${
+                      index === currentSectionIndex
+                        ? 'bg-primary/20 text-primary border border-primary/30'
+                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-xs text-white/40 mt-0.5 font-mono">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          {section.title}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {section.period && (
+                            <div className="text-xs text-white/40">
+                              {new Date(section.period.from).getFullYear()}
+                              {section.period.to && ` - ${new Date(section.period.to).getFullYear()}`}
+                            </div>
+                          )}
+                          <span className="text-xs text-white/30">•</span>
+                          <div className="text-xs text-white/40">
+                            {pageCount} {pageCount === 1 ? 'page' : 'pages'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+
+        {/* Book Content - Larger reading area */}
+        <div className="flex-1 overflow-x-hidden">
+          <div className="max-w-7xl mx-auto px-16 py-32">
           {/* Section Title */}
           {currentSection && (
             <div className="mb-12">
@@ -348,6 +753,7 @@ export const LoreBook = () => {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
 
@@ -389,6 +795,19 @@ export const LoreBook = () => {
           aria-label="Next section"
         >
           Next
+        </Button>
+      </div>
+
+      {/* Download Section */}
+      <div className="border-t border-border/60 bg-black/50 backdrop-blur-sm px-8 py-4 flex items-center justify-center flex-shrink-0">
+        <Button
+          onClick={handleDownload}
+          disabled={downloading}
+          variant="outline"
+          className="bg-primary/20 hover:bg-primary/30 text-primary border-primary/30"
+          leftIcon={downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        >
+          {downloading ? 'Generating PDF...' : 'Download as PDF'}
         </Button>
       </div>
 
