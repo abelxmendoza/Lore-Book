@@ -619,7 +619,6 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
   const [loading, setLoading] = useState(false);
   const [selectedPerceptionForDetail, setSelectedPerceptionForDetail] = useState<PerceptionEntry | null>(null);
   const [showGossipChat, setShowGossipChat] = useState(false);
-  const [showReflectiveView, setShowReflectiveView] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<PerceptionSource | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<PerceptionStatus | 'all' | 'unverified_only'>('unverified_only');
@@ -785,101 +784,92 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
           </p>
         </div>
         {showCreateButton && (
-          <div className="flex items-center gap-2">
-            <Button 
-              onClick={() => setShowReflectiveView(!showReflectiveView)} 
-              leftIcon={<Brain className="h-4 w-4" />}
-              variant={showReflectiveView ? 'default' : 'outline'}
-              className={showReflectiveView ? 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border-purple-500/30' : ''}
-            >
-              Reflective View
-            </Button>
-            <Button 
-              onClick={() => setShowGossipChat(true)} 
-              leftIcon={<MessageSquare className="h-4 w-4" />}
-              className="bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border-orange-500/30"
-            >
-              Gossip Chat
-            </Button>
-          </div>
+          <Button 
+            onClick={() => setShowGossipChat(true)} 
+            leftIcon={<MessageSquare className="h-4 w-4" />}
+            variant="outline"
+            className="bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border-orange-500/30"
+          >
+            Gossip Chat
+          </Button>
         )}
       </div>
 
       {/* Search Bar */}
-      <div className="mb-4">
-        <PerceptionSearchBar
-          onSelect={(perception) => setSelectedPerceptionForDetail(perception)}
-          onSearchChange={(query) => setSearchQuery(query)}
-          initialQuery={searchQuery}
-        />
-        {!searchQuery && (
-          <PerceptionSearchSuggestions
-            onSelect={(query) => setSearchQuery(query)}
-          />
-        )}
-      </div>
+          <div className="mb-4">
+            <PerceptionSearchBar
+              onSelect={(perception) => setSelectedPerceptionForDetail(perception)}
+              onSearchChange={(query) => setSearchQuery(query)}
+              initialQuery={searchQuery}
+            />
+            {!searchQuery && (
+              <PerceptionSearchSuggestions
+                onSelect={(query) => setSearchQuery(query)}
+              />
+            )}
+          </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-white/50" />
-          <span className="text-sm text-white/70">Source:</span>
-          <select
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value as any)}
-            className="bg-black/60 border-border/50 text-white text-sm h-8 rounded px-2"
-          >
-            <option value="all">All</option>
-            <option value="overheard">Overheard</option>
-            <option value="told_by">Told By</option>
-            <option value="rumor">Rumor</option>
-            <option value="social_media">Social Media</option>
-            <option value="intuition">Intuition</option>
-            <option value="assumption">Assumption</option>
-          </select>
-        </div>
+          {/* Filters */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-white/50" />
+              <span className="text-sm text-white/70">Source:</span>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value as any)}
+                className="bg-black/60 border-border/50 text-white text-sm h-8 rounded px-2"
+              >
+                <option value="all">All</option>
+                <option value="overheard">Overheard</option>
+                <option value="told_by">Told By</option>
+                <option value="rumor">Rumor</option>
+                <option value="social_media">Social Media</option>
+                <option value="intuition">Intuition</option>
+                <option value="assumption">Assumption</option>
+              </select>
+            </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-white/70">Status:</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="bg-black/60 border-border/50 text-white text-sm h-8 rounded px-2"
-          >
-            <option value="unverified_only">Unverified Only</option>
-            <option value="all">All</option>
-            <option value="unverified">Unverified</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="disproven">Disproven</option>
-            <option value="retracted">Retracted</option>
-          </select>
-        </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-white/70">Status:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="bg-black/60 border-border/50 text-white text-sm h-8 rounded px-2"
+              >
+                <option value="unverified_only">Unverified Only</option>
+                <option value="all">All</option>
+                <option value="unverified">Unverified</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="disproven">Disproven</option>
+                <option value="retracted">Retracted</option>
+              </select>
+            </div>
 
-        <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showRetracted}
-            onChange={(e) => setShowRetracted(e.target.checked)}
-            className="w-4 h-4 rounded border-border/50 bg-black/60 text-primary focus:ring-primary"
-          />
-          Show retracted
-        </label>
-      </div>
+            <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showRetracted}
+                onChange={(e) => setShowRetracted(e.target.checked)}
+                className="w-4 h-4 rounded border-border/50 bg-black/60 text-primary focus:ring-primary"
+              />
+              Show retracted
+            </label>
+          </div>
 
-      {/* Warning banner */}
-      <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 flex items-start gap-2">
-        <AlertTriangle className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" />
-        <div className="text-sm text-orange-200/90">
-          <p className="font-medium mb-1">This is your perception, not objective truth</p>
-          <p className="text-orange-200/70">
-            These entries represent what you heard, believed, or assumed — they may be incomplete, biased, or false.
-            Track how your beliefs evolved over time.
-          </p>
-        </div>
-      </div>
+          {/* Warning banner */}
+          <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 flex items-start gap-2">
+            <AlertTriangle className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-orange-200/90">
+              <p className="font-medium mb-1">This is your perception, not objective truth</p>
+              <p className="text-orange-200/70">
+                These entries represent what you heard, believed, or assumed — they may be incomplete, biased, or false.
+                Track how your beliefs evolved over time.
+              </p>
+            </div>
+          </div>
 
-      {/* Perceptions list - Book/Grid View with Pagination */}
-      {loading ? (
+          {/* Perceptions list - Book/Grid View with Pagination */}
+          {loading ? (
         <div className="text-center py-12 text-white/60">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
           <p>Loading perceptions...</p>
@@ -997,26 +987,25 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
         </Card>
       )}
 
-          {selectedPerceptionForDetail && (
-            <PerceptionDetailModal
-              perception={selectedPerceptionForDetail}
-              onClose={() => setSelectedPerceptionForDetail(null)}
-              onUpdate={(updated) => {
-                setSelectedPerceptionForDetail(updated);
-                void loadPerceptions();
-              }}
-            />
-          )}
+      {/* Modals */}
+      {selectedPerceptionForDetail && (
+        <PerceptionDetailModal
+          perception={selectedPerceptionForDetail}
+          onClose={() => setSelectedPerceptionForDetail(null)}
+          onUpdate={(updated) => {
+            setSelectedPerceptionForDetail(updated);
+            void loadPerceptions();
+          }}
+        />
+      )}
 
-          {showGossipChat && (
-            <GossipChatModal
-              onClose={() => setShowGossipChat(false)}
-              onPerceptionsCreated={() => {
-                void loadPerceptions();
-              }}
-            />
-          )}
-        </>
+      {showGossipChat && (
+        <GossipChatModal
+          onClose={() => setShowGossipChat(false)}
+          onPerceptionsCreated={() => {
+            void loadPerceptions();
+          }}
+        />
       )}
     </div>
   );
