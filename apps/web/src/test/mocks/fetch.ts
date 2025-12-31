@@ -2,11 +2,22 @@ import { vi } from 'vitest';
 
 // Mock fetch globally - this intercepts all fetch calls
 global.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-  const url = typeof input === 'string' ? input : input.toString();
+  let url = typeof input === 'string' ? input : input.toString();
+  
+  // Handle relative URLs
+  if (url.startsWith('/')) {
+    url = `http://localhost:3000${url}`;
+  }
   
   // Extract path from full URL
-  const urlObj = new URL(url, 'http://localhost:3000');
-  const path = urlObj.pathname;
+  let path = url;
+  try {
+    const urlObj = new URL(url);
+    path = urlObj.pathname;
+  } catch {
+    // If URL parsing fails, use the original string
+    path = url;
+  }
   
   // Default mock response
   const mockResponse = {
@@ -19,29 +30,76 @@ global.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
   };
 
   // Handle different endpoints (match by path, not full URL)
-  if (path.includes('/api/entries')) {
+  if (path.includes('/api/entries') && (!init?.method || init.method === 'GET')) {
     return Promise.resolve({
       ...mockResponse,
       json: async () => ({
-        entries: [],
+        entries: [{ id: '1', content: 'Test entry', date: new Date().toISOString(), tags: [], source: 'test' }],
       }),
     } as Response);
   }
 
-  if (path.includes('/api/timeline')) {
+  if (path.includes('/api/entries') && init?.method === 'POST') {
+    let content = 'New entry';
+    try {
+      if (init?.body) {
+        const body = typeof init.body === 'string' ? JSON.parse(init.body) : init.body;
+        content = body.content || content;
+      }
+    } catch {
+      // If parsing fails, use default
+    }
+    
     return Promise.resolve({
       ...mockResponse,
       json: async () => ({
-        timeline: [],
+        id: '2',
+        content,
+        date: new Date().toISOString(),
+        tags: [],
+        source: 'test',
       }),
     } as Response);
   }
 
-  if (path.includes('/api/chapters')) {
+  if (path.includes('/api/timeline') && !path.includes('/tags')) {
+    return Promise.resolve({
+      ...mockResponse,
+      json: async () => ({
+        timeline: { chapters: [], unassigned: [] },
+      }),
+    } as Response);
+  }
+
+  if (path.includes('/api/timeline/tags')) {
+    return Promise.resolve({
+      ...mockResponse,
+      json: async () => ({
+        tags: [],
+      }),
+    } as Response);
+  }
+
+  if (path.includes('/api/chapters') && (!init?.method || init.method === 'GET')) {
     return Promise.resolve({
       ...mockResponse,
       json: async () => ({
         chapters: [],
+        candidates: [],
+      }),
+    } as Response);
+  }
+
+  if (path.includes('/api/chapters') && init?.method === 'POST') {
+    return Promise.resolve({
+      ...mockResponse,
+      json: async () => ({
+        chapter: {
+          id: '1',
+          title: 'Test Chapter',
+          start_date: new Date().toISOString(),
+          end_date: null,
+        },
       }),
     } as Response);
   }
@@ -77,7 +135,24 @@ global.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     return Promise.resolve({
       ...mockResponse,
       json: async () => ({
-        characters: [],
+        characters: [{ id: '1', name: 'Test Character', role: 'Friend' }],
+      }),
+    } as Response);
+  }
+
+  if (path.includes('/api/health')) {
+    return Promise.resolve({
+      ...mockResponse,
+      json: async () => ({ status: 'ok' }),
+    } as Response);
+  }
+
+  if (path.includes('/api/summary')) {
+    return Promise.resolve({
+      ...mockResponse,
+      json: async () => ({
+        summary: 'Test summary',
+        entryCount: 1,
       }),
     } as Response);
   }

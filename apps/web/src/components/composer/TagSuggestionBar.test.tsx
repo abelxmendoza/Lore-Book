@@ -19,18 +19,17 @@ describe('TagSuggestionBar', () => {
   });
 
   it('shows loading state while fetching suggestions', async () => {
+    // Make the promise take longer so we can see the loading state
     vi.mocked(entriesApi.suggestTags).mockImplementation(
-      () => new Promise(resolve => setTimeout(() => resolve(['tag1', 'tag2']), 100))
+      () => new Promise(resolve => setTimeout(() => resolve(['tag1', 'tag2']), 1000))
     );
 
     render(<TagSuggestionBar content="This is a test entry with some content" />);
-    // The component shows "Suggesting tags..." when loading
-    expect(screen.getByText('Suggesting tags...')).toBeInTheDocument();
     
-    // Wait for loading to complete
+    // Wait for debounce (500ms) + a bit more to see loading state
     await waitFor(() => {
-      expect(screen.queryByText('Suggesting tags...')).not.toBeInTheDocument();
-    }, { timeout: 200 });
+      expect(screen.getByText('Suggesting tags...')).toBeInTheDocument();
+    }, { timeout: 800 });
   });
 
   it('displays suggested tags after loading', async () => {
