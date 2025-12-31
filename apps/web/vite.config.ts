@@ -72,6 +72,7 @@ export default defineConfig({
     sourcemap: process.env.NODE_ENV !== 'production', // Disable source maps in production for security
     rollupOptions: {
       output: {
+        // Use hybrid approach: object for React (explicit), function for others
         manualChunks: (id) => {
           // CRITICAL: Force React into a dedicated chunk that loads FIRST
           // This ensures React is available before UI vendor chunks execute
@@ -120,6 +121,14 @@ export default defineConfig({
           if (id.includes('/components/timeline/')) {
             return 'timeline-components';
           }
+        },
+        // Ensure chunk dependencies - React vendor must load before UI vendor
+        chunkFileNames: (chunkInfo) => {
+          // Ensure react-vendor has a predictable name and loads first
+          if (chunkInfo.name === 'react-vendor') {
+            return 'assets/react-vendor-[hash].js';
+          }
+          return 'assets/[name]-[hash].js';
         },
       },
     },
