@@ -50,14 +50,18 @@ global.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       // If parsing fails, use default
     }
     
+    const entry = {
+      id: '2',
+      content,
+      date: new Date().toISOString(),
+      tags: [],
+      source: 'test',
+    };
+    
     return Promise.resolve({
       ...mockResponse,
       json: async () => ({
-        id: '2',
-        content,
-        date: new Date().toISOString(),
-        tags: [],
-        source: 'test',
+        entry, // useLoreKeeper expects { entry: ... }
       }),
     } as Response);
   }

@@ -31,9 +31,11 @@ describe('CharacterAvatar', () => {
     );
     const img = container.querySelector('img');
     expect(img).toBeInTheDocument();
-    // Check style attribute contains size
+    // LazyImage wraps the img, so check the wrapper or the img itself
+    // The size is applied via style prop
     const style = img?.getAttribute('style') || '';
-    expect(style).toMatch(/64px/);
+    // Style might be inline or computed, check for size in pixels
+    expect(style.includes('64px') || img?.style.width === '64px' || img?.style.height === '64px').toBeTruthy();
   });
 });
 
