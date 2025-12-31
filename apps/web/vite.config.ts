@@ -73,6 +73,11 @@ export default defineConfig({
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router')) {
             return 'react-vendor';
           }
+          // React must be loaded before any React-dependent libraries
+          // Ensure React is in a separate chunk that loads first
+          if (id.includes('node_modules/react/jsx-runtime') || id.includes('node_modules/react/jsx-dev-runtime')) {
+            return 'react-vendor';
+          }
           // UI libraries - ensure they can access React
           // Note: @radix-ui depends on React, so React must load first
           if (id.includes('node_modules/@radix-ui') || id.includes('node_modules/lucide-react')) {
@@ -129,8 +134,8 @@ export default defineConfig({
       'vis-timeline',
       'vis-data',
     ],
-    // Exclude these from pre-bundling (they're large)
-    exclude: ['@tanstack/react-virtual'],
+    // Exclude these from pre-bundling (they're large or cause issues)
+    exclude: ['@tanstack/react-virtual', 'jspdf'],
   },
   // Development-specific optimizations
   esbuild: {
