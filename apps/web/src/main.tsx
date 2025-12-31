@@ -33,18 +33,37 @@ if (config.env.isDevelopment) {
   });
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <BrowserRouter>
-        <GuestProvider>
-          <EntityModalProvider>
-          <DevelopmentNotice />
-          <Router />
-          <DevBanner />
-          </EntityModalProvider>
-        </GuestProvider>
-      </BrowserRouter>
-    </ErrorBoundary>
-  </StrictMode>
-);
+// Ensure root element exists
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  console.error('[Main] Root element not found!');
+  document.body.innerHTML = '<div style="padding: 20px; color: white; text-align: center;"><h1>Error</h1><p>Root element not found. Please check the HTML structure.</p></div>';
+} else {
+  try {
+    createRoot(rootElement).render(
+      <StrictMode>
+        <ErrorBoundary>
+          <BrowserRouter>
+            <GuestProvider>
+              <EntityModalProvider>
+              <DevelopmentNotice />
+              <Router />
+              <DevBanner />
+              </EntityModalProvider>
+            </GuestProvider>
+          </BrowserRouter>
+        </ErrorBoundary>
+      </StrictMode>
+    );
+    console.log('[Main] React app mounted successfully');
+  } catch (error) {
+    console.error('[Main] Failed to mount React app:', error);
+    rootElement.innerHTML = `
+      <div style="padding: 20px; color: white; text-align: center;">
+        <h1>Application Error</h1>
+        <p>Failed to initialize the application.</p>
+        <pre style="text-align: left; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; overflow: auto;">${error instanceof Error ? error.stack : String(error)}</pre>
+      </div>
+    `;
+  }
+}
