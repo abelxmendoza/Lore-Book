@@ -269,6 +269,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
     </div>
   );
 
+  console.log('[App] AppContent returning JSX', { activeSurface });
+  
   return (
     <div 
       ref={(el) => {
@@ -281,6 +283,10 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       }}
       className={`flex bg-gradient-to-br from-black via-purple-950 to-black ${activeSurface === 'timeline' ? 'min-h-screen' : 'min-h-screen'}`}
     >
+      {/* Debug: Visible test to confirm render */}
+      <div style={{ position: 'fixed', top: 0, left: 0, zIndex: 99999, background: 'red', color: 'white', padding: '4px 8px', fontSize: '12px' }}>
+        [DEBUG] App rendering - {activeSurface}
+      </div>
       <SkipLink />
       <Sidebar
         activeSurface={activeSurface}
