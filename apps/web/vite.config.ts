@@ -44,7 +44,30 @@ console.log(`📁 Working directory: ${process.cwd()}`);
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react({ typescript: { ignoreBuildErrors: true } })],
+  plugins: [
+    react({ typescript: { ignoreBuildErrors: true } }),
+    // Plugin to ensure React loads first
+    {
+      name: 'ensure-react-first',
+      generateBundle(options, bundle) {
+        // Find react-vendor chunk
+        const reactVendor = Object.keys(bundle).find(key => key.includes('react-vendor'));
+        const uiVendor = Object.keys(bundle).find(key => key.includes('ui-vendor'));
+        
+        if (reactVendor && uiVendor) {
+          const reactChunk = bundle[reactVendor];
+          const uiChunk = bundle[uiVendor];
+          
+          // Ensure react-vendor is a dependency of ui-vendor
+          if (reactChunk.type === 'chunk' && uiChunk.type === 'chunk') {
+            if (!uiChunk.imports.includes(reactVendor)) {
+              uiChunk.imports.push(reactVendor);
+            }
+          }
+        }
+      }
+    }
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -118,13 +141,6 @@ export default defineConfig({
           if (id.includes('/components/timeline/')) {
             return 'timeline-components';
           }
-        },
-        // Ensure React vendor chunk is loaded first
-        chunkFileNames: (chunkInfo) => {
-          if (chunkInfo.name === 'react-vendor') {
-            return 'assets/react-vendor-[hash].js';
-          }
-          return 'assets/[name]-[hash].js';
         },
       },
     },
