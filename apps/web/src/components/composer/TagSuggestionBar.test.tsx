@@ -24,7 +24,13 @@ describe('TagSuggestionBar', () => {
     );
 
     render(<TagSuggestionBar content="This is a test entry with some content" />);
+    // The component shows "Suggesting tags..." when loading
     expect(screen.getByText('Suggesting tags...')).toBeInTheDocument();
+    
+    // Wait for loading to complete
+    await waitFor(() => {
+      expect(screen.queryByText('Suggesting tags...')).not.toBeInTheDocument();
+    }, { timeout: 200 });
   });
 
   it('displays suggested tags after loading', async () => {

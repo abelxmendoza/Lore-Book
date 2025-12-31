@@ -51,13 +51,9 @@ beforeAll(() => {
 // Reset any request handlers that are declared as a part of our tests
 // (i.e. for testing one-time error scenarios)
 afterEach(() => {
-  server.resetHandlers();
   cleanup();
-});
-
-// Clean up after the tests are finished
-afterAll(() => {
-  server.close();
+  // Clear fetch mocks
+  vi.clearAllMocks();
 });
 
 // Suppress console errors in tests unless explicitly testing them

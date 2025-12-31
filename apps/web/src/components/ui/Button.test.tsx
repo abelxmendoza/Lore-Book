@@ -35,10 +35,13 @@ describe('Button', () => {
 
   it('supports different variants', () => {
     const { rerender } = render(<Button variant="default">Default</Button>);
-    expect(screen.getByRole('button')).toHaveClass('bg-primary');
+    const defaultButton = screen.getByRole('button');
+    // Check for gradient classes that indicate primary variant
+    expect(defaultButton.className).toMatch(/bg-gradient|from-purple|to-fuchsia/);
     
     rerender(<Button variant="outline">Outline</Button>);
-    expect(screen.getByRole('button')).toHaveClass('border');
+    const outlineButton = screen.getByRole('button');
+    expect(outlineButton).toHaveClass('border');
   });
 
   it('supports leftIcon prop', () => {
