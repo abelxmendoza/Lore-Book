@@ -15,7 +15,13 @@ import { config, log } from './config/env';
 import { initMonitoring } from './lib/monitoring';
 
 // Initialize monitoring (error tracking, analytics, performance)
-initMonitoring();
+// Wrap in try-catch to prevent blocking app initialization
+try {
+  initMonitoring();
+} catch (error) {
+  console.error('[Main] Failed to initialize monitoring:', error);
+  // Continue with app initialization even if monitoring fails
+}
 
 // Log environment info in development
 if (config.env.isDevelopment) {
