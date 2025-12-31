@@ -70,6 +70,8 @@ interface AppContentProps {
 }
 
 const AppContent = ({ defaultSurface }: AppContentProps) => {
+  console.log('[App] AppContent render start', { defaultSurface });
+  
   const { selectedEntity, isOpen, closeEntity, updateEntity } = useEntityModal();
   const {
     entries,

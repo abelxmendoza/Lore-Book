@@ -44,6 +44,7 @@ console.log(`📁 Working directory: ${process.cwd()}`);
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: '/',
   plugins: [
     react({ typescript: { ignoreBuildErrors: true } }),
   ],
