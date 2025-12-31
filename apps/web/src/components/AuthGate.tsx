@@ -122,6 +122,13 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   const isConfigured = isSupabaseConfigured();
   const debug = getConfigDebug();
   
+  // CRITICAL: Set loading to false immediately when auth is disabled (must be at top level)
+  useEffect(() => {
+    if (DEV_DISABLE_AUTH || isGuest) {
+      setLoading(false);
+    }
+  }, [isGuest]);
+  
   // Check terms acceptance (works in both dev and production)
   useEffect(() => {
     if (termsStatus && !termsStatus.accepted && !termsLoading) {
@@ -158,8 +165,15 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   }
 
   useEffect(() => {
+    // CRITICAL: Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      console.warn('[AuthGate] Session check timeout - proceeding without auth');
+      setLoading(false);
+    }, 5000); // 5 second timeout
+
     if (!isConfigured) {
       console.warn('[AuthGate] Supabase not configured:', debug);
+      clearTimeout(timeoutId);
       setLoading(false);
       return;
     }
@@ -167,6 +181,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     console.log('[AuthGate] Initializing Supabase session...');
     supabase.auth.getSession()
       .then(({ data, error }) => {
+        clearTimeout(timeoutId);
         if (error) {
           console.error('[AuthGate] Session error:', error);
           setInitError(`Session error: ${error.message}`);
@@ -192,6 +207,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
         setLoading(false);
       })
       .catch((err) => {
+        clearTimeout(timeoutId);
         console.error('[AuthGate] Session exception:', err);
         setInitError(`Failed to initialize: ${err.message}`);
         setLoading(false);
@@ -224,6 +240,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     });
 
     return () => {
+      clearTimeout(timeoutId);
       listener?.subscription.unsubscribe();
     };
   }, [isConfigured, debug]);
@@ -279,6 +296,17 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
       </div>
     );
   }
+
+  // CRITICAL: Safety timeout to prevent infinite loading screen
+  useEffect(() => {
+    if (loading) {
+      const safetyTimeout = setTimeout(() => {
+        console.warn('[AuthGate] Loading timeout (5s) - proceeding anyway to prevent black screen');
+        setLoading(false);
+      }, 5000);
+      return () => clearTimeout(safetyTimeout);
+    }
+  }, [loading]);
 
   if (loading) {
     return (
