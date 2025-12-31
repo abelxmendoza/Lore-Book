@@ -73,8 +73,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // Force React into a dedicated chunk that loads first
+          // CRITICAL: Force React into a dedicated chunk that loads FIRST
           // This ensures React is available before UI vendor chunks execute
+          // The UI vendor chunk imports React.forwardRef, so React MUST be loaded first
           if (
             id.includes('node_modules/react') || 
             id.includes('node_modules/react-dom') || 
@@ -82,7 +83,7 @@ export default defineConfig({
           ) {
             return 'react-vendor';
           }
-          // UI libraries - can be split since React will be in main bundle
+          // UI libraries - these depend on React, so they load AFTER react-vendor
           if (id.includes('node_modules/@radix-ui') || id.includes('node_modules/lucide-react')) {
             return 'ui-vendor';
           }
@@ -130,6 +131,7 @@ export default defineConfig({
   optimizeDeps: {
     // Pre-bundle these for faster dev server startup
     // CRITICAL: Include React to ensure it's available before vendor chunks
+    // This prevents UI vendor chunks from executing before React is defined
     include: [
       'react',
       'react-dom',
