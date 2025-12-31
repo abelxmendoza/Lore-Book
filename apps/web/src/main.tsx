@@ -1,3 +1,7 @@
+// BRUTAL BOOT TEST - This MUST execute if entry script loads
+console.log('[BOOT] main.tsx executing');
+document.body.innerHTML = '<h1 style="color:red;padding:20px;background:black;text-align:center;font-size:24px;">BOOT EXECUTED - Entry script is running</h1>';
+
 import './styles/tailwind.css';
 import './styles/timeline.css';
 
