@@ -72,19 +72,15 @@ export default defineConfig({
     sourcemap: process.env.NODE_ENV !== 'production', // Disable source maps in production for security
     rollupOptions: {
       output: {
-        // Use hybrid approach: object for React (explicit), function for others
+        // CRITICAL FIX: Force React into the main entry chunk to ensure it's always available
+        // This prevents UI vendor chunks from executing before React is defined
         manualChunks: (id) => {
-          // CRITICAL: Force React into a dedicated chunk that loads FIRST
-          // This ensures React is available before UI vendor chunks execute
-          // The UI vendor chunk imports React.forwardRef, so React MUST be loaded first
-          if (
-            id.includes('node_modules/react') || 
-            id.includes('node_modules/react-dom') || 
-            id.includes('node_modules/react-router')
-          ) {
-            return 'react-vendor';
-          }
-          // UI libraries - these depend on React, so they load AFTER react-vendor
+          // DO NOT split React into a separate chunk - keep it in the main bundle
+          // This ensures React.forwardRef is always available when UI vendor chunks execute
+          // The trade-off is a slightly larger main bundle, but it prevents runtime errors
+          
+          // UI libraries - these depend on React, so they can be in a separate chunk
+          // React will already be loaded in the main bundle before these execute
           if (id.includes('node_modules/@radix-ui') || id.includes('node_modules/lucide-react')) {
             return 'ui-vendor';
           }
@@ -121,14 +117,6 @@ export default defineConfig({
           if (id.includes('/components/timeline/')) {
             return 'timeline-components';
           }
-        },
-        // Ensure chunk dependencies - React vendor must load before UI vendor
-        chunkFileNames: (chunkInfo) => {
-          // Ensure react-vendor has a predictable name and loads first
-          if (chunkInfo.name === 'react-vendor') {
-            return 'assets/react-vendor-[hash].js';
-          }
-          return 'assets/[name]-[hash].js';
         },
       },
     },
