@@ -77,6 +77,20 @@ if (!indexHtml.includes('src=')) {
   console.warn(`⚠️  WARNING: index.html doesn't contain script tags`);
 } else {
   console.log(`✅ index.html contains expected structure`);
+  
+  // CRITICAL: Check if script points to built assets, not source files
+  if (indexHtml.includes('/src/main.tsx')) {
+    console.error(`❌ CRITICAL ERROR: index.html still references source file /src/main.tsx`);
+    console.error(`   This means Vite did not transform the HTML correctly.`);
+    console.error(`   The built HTML should reference /assets/index-*.js, not /src/main.tsx`);
+    process.exit(1);
+  }
+  if (indexHtml.includes('/assets/') && indexHtml.includes('.js')) {
+    console.log(`✅ index.html correctly references built assets (/assets/*.js)`);
+  } else {
+    console.warn(`⚠️  WARNING: Could not find /assets/*.js reference in index.html`);
+    console.warn(`   Script tag content:`, indexHtml.match(/<script[^>]*src="([^"]+)"/)?.[1] || 'not found');
+  }
 }
 console.log('');
 
