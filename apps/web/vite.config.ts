@@ -49,6 +49,7 @@ export default defineConfig({
     react({ typescript: { ignoreBuildErrors: true } }),
   ],
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
@@ -72,15 +73,14 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // Don't split React - keep it in the main bundle to ensure it loads first
-          // This prevents the forwardRef error where UI vendor tries to use React before it's loaded
+          // Force React into a dedicated chunk that loads first
+          // This ensures React is available before UI vendor chunks execute
           if (
             id.includes('node_modules/react') || 
             id.includes('node_modules/react-dom') || 
             id.includes('node_modules/react-router')
           ) {
-            // Return undefined to keep React in the main bundle
-            return undefined;
+            return 'react-vendor';
           }
           // UI libraries - can be split since React will be in main bundle
           if (id.includes('node_modules/@radix-ui') || id.includes('node_modules/lucide-react')) {
@@ -129,9 +129,12 @@ export default defineConfig({
   },
   optimizeDeps: {
     // Pre-bundle these for faster dev server startup
+    // CRITICAL: Include React to ensure it's available before vendor chunks
     include: [
       'react',
       'react-dom',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
       'react-router-dom',
       '@supabase/supabase-js',
       'vis-timeline',
