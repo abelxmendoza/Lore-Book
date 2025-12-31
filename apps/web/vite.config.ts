@@ -71,18 +71,17 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // React and core dependencies - must be first and available globally
-          // This ensures React loads before any other chunks
-          // Match all React-related modules
+          // Don't split React - keep it in the main bundle to ensure it loads first
+          // This prevents the forwardRef error where UI vendor tries to use React before it's loaded
           if (
             id.includes('node_modules/react') || 
             id.includes('node_modules/react-dom') || 
             id.includes('node_modules/react-router')
           ) {
-            return 'react-vendor';
+            // Return undefined to keep React in the main bundle
+            return undefined;
           }
-          // UI libraries - ensure they can access React
-          // Note: @radix-ui depends on React, so React must load first
+          // UI libraries - can be split since React will be in main bundle
           if (id.includes('node_modules/@radix-ui') || id.includes('node_modules/lucide-react')) {
             return 'ui-vendor';
           }
