@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">LoreKeeper Icon</title>
+  <desc id="desc">Neon monogram for LoreKeeper by Omega Technologies</desc>
+  <defs>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6B2EFF" />
+      <stop offset="100%" stop-color="#B300FF" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="128" height="128" rx="24" ry="24" fill="#0f0b1d" />
+  <rect x="10" y="10" width="108" height="108" rx="20" ry="20" fill="#140f2b" stroke="url(#glow)" stroke-width="3" opacity="0.9" />
+  <path d="M36 34h20l16 24 16-24h20l-28 40 28 40H88l-16-24-16 24H36l28-40z" fill="none" stroke="url(#glow)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)" />
+  <circle cx="64" cy="64" r="8" fill="#B300FF" opacity="0.8" />
+</svg>

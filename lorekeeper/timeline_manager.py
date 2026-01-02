@@ -1,3 +1,4 @@
+# © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 """Manager for sharded LoreKeeper timeline event storage.
 
 This module now keeps in-memory secondary indexes to provide near O(1)
@@ -29,8 +30,9 @@ from .security import secure_load_json
 class TimelineManager:
     """Provides append-only, year-sharded timeline storage utilities."""
 
-    def __init__(self, base_path: Path | None = None) -> None:
-        self.base_path = base_path or Path(__file__).resolve().parent / "timeline"
+    def __init__(self, base_path: Path | None = None, user_id: str | None = None) -> None:
+        self.user_id = user_id or "anonymous"
+        self.base_path = (base_path or Path(__file__).resolve().parent / "timeline") / self.user_id
         self.base_path.mkdir(parents=True, exist_ok=True)
         self.date_index: BPlusTree[str, TimelineEvent] = BPlusTree()
         self.recency_index: SkipList[str, TimelineEvent] = SkipList()

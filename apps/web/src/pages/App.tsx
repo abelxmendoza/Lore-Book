@@ -1,3 +1,7 @@
+// © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
+
+import { useState } from 'react';
+import { CalendarRange, PenLine, PlusCircle, Search, Wand2 } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -23,6 +27,10 @@ import { TimelinePanel } from '../components/TimelinePanel';
 import { CharacterPage } from '../components/characters/CharacterPage';
 import { useLoreKeeper } from '../hooks/useLoreKeeper';
 import { useTaskEngine } from '../hooks/useTaskEngine';
+import { Header } from '../components/Header';
+import { Footer } from '../components/Footer';
+import { DeleteAccountDialog } from '../components/settings/DeleteAccountDialog';
+import { AccountSafetyPanel } from '../components/settings/AccountSafetyPanel';
 import { fetchJson } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { ChatFirstInterface } from '../features/chat/components/ChatFirstInterface';
@@ -213,6 +221,50 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
     }
   };
 
+  const handleUpgrade = () => {
+    window.location.href = '/upgrade';
+  };
+
+  const handleDeleteAccount = async () => {
+    await fetch('/api/account/delete', { method: 'POST' });
+    alert('Account deletion requested. Your session will be cleared.');
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black text-white">
+      <Header onUpgrade={handleUpgrade} />
+      <div className="flex min-h-[calc(100vh-64px)]">
+        <Sidebar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onCreateChapter={() => setChapterModalOpen(true)}
+          onScrollToComposer={scrollToComposer}
+        />
+        <main className="flex-1 space-y-6 p-6">
+        <header className="rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-6 shadow-panel">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <Logo size="lg" showText={false} className="mb-4" />
+              <p className="text-xs uppercase text-white/60">Timeline Intelligence</p>
+              <h1 className="mt-1 text-3xl font-semibold">Welcome back, Archivist</h1>
+            </div>
+            <div className="rounded-xl border border-primary/50 px-4 py-2 text-sm text-white/70">
+              Total Memories · {entries.length}
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-6 text-sm text-white/60">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-primary/70">Timeline Nodes</p>
+              <p className="text-xl font-semibold text-white">{timelineCount}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-primary/70">Tracked Tags</p>
+              <p className="text-xl font-semibold text-white">{tags.length}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-widest text-primary/70">Chapters</p>
+              <p className="text-xl font-semibold text-white">{chapters.length}</p>
+            </div>
 
 
   const visibleEntries = useMemo(() => (searchResults.length ? searchResults : entries).slice(0, 8), [entries, searchResults]);
@@ -397,6 +449,38 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
               <AgentPanel />
             </div>
           </div>
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-black/40 p-6 shadow-panel">
+          <div className="flex items-center justify-between">
+            <div>
+              <div id="ownership" className="sr-only">Ownership</div>
+              <p className="text-xs uppercase text-white/50">Account</p>
+              <h3 className="text-lg font-semibold">Ownership & Safety</h3>
+              <p className="text-xs text-white/60">Export or irreversibly delete your LoreKeeper data.</p>
+            </div>
+            <DeleteAccountDialog onConfirm={handleDeleteAccount} />
+          </div>
+          <p className="mt-3 text-xs text-white/60">
+            Need a copy first? <a className="underline" href="/api/account/export">Download your JSON export.</a>
+          </p>
+        </div>
+        <div className="fixed bottom-6 right-6 z-30 flex flex-col gap-2">
+          <Button size="lg" leftIcon={<PlusCircle className="h-4 w-4" />} onClick={scrollToComposer}>
+            + New Entry
+          </Button>
+          <Button size="lg" variant="outline" leftIcon={<PenLine className="h-4 w-4" />} onClick={handleQuickCorrection}>
+            + Correction
+          </Button>
+        </div>
+        <CreateChapterModal
+          open={chapterModalOpen}
+          onClose={() => setChapterModalOpen(false)}
+          onCreate={async (payload) => {
+            const chapter = await createChapter(payload);
+            await Promise.all([refreshTimeline(), refreshChapters()]);
+            return chapter;
+          }}
+        />
         )}
 
         {/* Footer - positioned right after dev mode */}
@@ -415,7 +499,9 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         </footer>
       </main>
     </div>
-  );
+    <Footer />
+  </div>
+);
 };
 
 interface AppProps {
