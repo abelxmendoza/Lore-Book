@@ -3,7 +3,7 @@
 # LoreBook
 
 <div align="center">
-  <img src="apps/web/public/branding/logo.svg" alt="LoreBook Logo" width="200" />
+  <img src="apps/web/public/images/LoreBookLogo2.jpg" alt="LoreBook Logo" width="200" />
   
   **AI Life Engine**
   
