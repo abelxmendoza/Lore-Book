@@ -267,6 +267,11 @@ class LocationService {
 
     return locations.sort((a, b) => (b.lastVisited ?? '').localeCompare(a.lastVisited ?? ''));
   }
+
+  async getLocationProfile(userId: string, id: string): Promise<LocationProfile | null> {
+    const locations = await this.listLocations(userId);
+    return locations.find((loc) => loc.id === id) ?? null;
+  }
 }
 
 export const locationService = new LocationService();

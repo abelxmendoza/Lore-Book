@@ -1054,7 +1054,6 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
     }
     return null;
   }
-}
 
   /**
    * Helper: Get recent insights from essence profile for refinement context

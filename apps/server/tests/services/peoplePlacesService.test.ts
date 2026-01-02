@@ -21,11 +21,10 @@ describe('PeoplePlacesService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
-    const mockLimit = vi.fn().mockResolvedValue({
+    const mockOrder = vi.fn().mockResolvedValue({
       data: [],
       error: null
     });
-    const mockOrder = vi.fn().mockReturnValue({ limit: mockLimit });
     mockEq = vi.fn().mockReturnValue({ order: mockOrder });
     mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
     mockFrom = vi.fn().mockReturnValue({ select: mockSelect });
@@ -33,15 +32,15 @@ describe('PeoplePlacesService', () => {
     (supabaseAdmin.from as any) = mockFrom;
   });
 
-  describe('listPeoplePlaces', () => {
+  describe('listEntities', () => {
     it('should return empty array when no entities exist', async () => {
-      const mockLimit = vi.fn().mockResolvedValue({
+      const mockOrder = vi.fn().mockResolvedValue({
         data: [],
         error: null
       });
-      mockEq.mockReturnValue({ order: vi.fn().mockReturnValue({ limit: mockLimit }) });
+      mockEq.mockReturnValue({ order: mockOrder });
 
-      const result = await peoplePlacesService.listPeoplePlaces('user-123');
+      const result = await peoplePlacesService.listEntities('user-123');
 
       expect(result).toEqual([]);
       expect(mockFrom).toHaveBeenCalledWith('people_places');
@@ -58,13 +57,13 @@ describe('PeoplePlacesService', () => {
         }
       ];
 
-      const mockLimit = vi.fn().mockResolvedValue({
+      const mockOrder = vi.fn().mockResolvedValue({
         data: mockEntities,
         error: null
       });
-      mockEq.mockReturnValue({ order: vi.fn().mockReturnValue({ limit: mockLimit }) });
+      mockEq.mockReturnValue({ order: mockOrder });
 
-      const result = await peoplePlacesService.listPeoplePlaces('user-123');
+      const result = await peoplePlacesService.listEntities('user-123');
 
       expect(result).toEqual(mockEntities);
       expect(result[0]).toHaveProperty('id');
@@ -73,26 +72,26 @@ describe('PeoplePlacesService', () => {
     });
 
     it('should filter by type when provided', async () => {
-      const mockLimit = vi.fn().mockResolvedValue({
+      const mockOrder = vi.fn().mockResolvedValue({
         data: [],
         error: null
       });
-      const mockFilter = vi.fn().mockReturnValue({ order: vi.fn().mockReturnValue({ limit: mockLimit }) });
-      mockEq.mockReturnValue({ eq: mockFilter });
+      const mockSecondEq = vi.fn().mockReturnValue({ order: mockOrder });
+      mockEq.mockReturnValue({ eq: mockSecondEq });
 
-      await peoplePlacesService.listPeoplePlaces('user-123', { type: 'person' });
+      await peoplePlacesService.listEntities('user-123', 'person');
 
-      expect(mockEq).toHaveBeenCalledWith('type', 'person');
+      expect(mockSecondEq).toHaveBeenCalledWith('type', 'person');
     });
 
     it('should handle database errors', async () => {
-      const mockLimit = vi.fn().mockResolvedValue({
+      const mockOrder = vi.fn().mockResolvedValue({
         data: null,
         error: { message: 'Database error' }
       });
-      mockEq.mockReturnValue({ order: vi.fn().mockReturnValue({ limit: mockLimit }) });
+      mockEq.mockReturnValue({ order: mockOrder });
 
-      await expect(peoplePlacesService.listPeoplePlaces('user-123')).rejects.toThrow();
+      await expect(peoplePlacesService.listEntities('user-123')).rejects.toThrow();
     });
   });
 
@@ -109,13 +108,14 @@ describe('PeoplePlacesService', () => {
         data: mockEntity,
         error: null
       });
-      mockEq.mockReturnValue({ single: mockSingle });
+      const mockSecondEq = vi.fn().mockReturnValue({ single: mockSingle });
+      mockEq.mockReturnValue({ eq: mockSecondEq });
 
       const result = await peoplePlacesService.getEntity('user-123', 'entity-1');
 
       expect(result).toEqual(mockEntity);
-      expect(mockEq).toHaveBeenCalledWith('id', 'entity-1');
       expect(mockEq).toHaveBeenCalledWith('user_id', 'user-123');
+      expect(mockSecondEq).toHaveBeenCalledWith('id', 'entity-1');
     });
 
     it('should return null when entity not found', async () => {
@@ -123,7 +123,8 @@ describe('PeoplePlacesService', () => {
         data: null,
         error: { code: 'PGRST116' }
       });
-      mockEq.mockReturnValue({ single: mockSingle });
+      const mockSecondEq = vi.fn().mockReturnValue({ single: mockSingle });
+      mockEq.mockReturnValue({ eq: mockSecondEq });
 
       const result = await peoplePlacesService.getEntity('user-123', 'non-existent');
 

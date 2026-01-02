@@ -536,6 +536,10 @@ class TaskEngineService {
     return { created, commands };
   }
 
+  async extractTasksFromChat(userId: string, message: string): Promise<ChatExtraction> {
+    return this.handleChatMessage(userId, message);
+  }
+
   private async applyQuickCommands(userId: string, message: string): Promise<string[]> {
     const normalized = message.toLowerCase();
     const commands: string[] = [];

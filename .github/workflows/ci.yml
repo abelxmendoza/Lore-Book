@@ -34,7 +34,7 @@ jobs:
       - name: Run unit tests
         run: |
           cd apps/web
-          npm run test
+          npm run test:unit
 
       - name: Generate coverage report
         run: |
@@ -172,6 +172,11 @@ jobs:
           cd apps/web
           npm run test:integration
 
+      - name: Run black screen prevention tests
+        run: |
+          cd apps/web
+          npm run test:black-screen
+
       - name: Upload coverage
         if: always()
         uses: codecov/codecov-action@v3
@@ -208,6 +213,11 @@ jobs:
         env:
           VITE_USE_MOCK_DATA: 'true'
           VITE_SHOW_DEV_NOTICE: 'true'
+
+      - name: Validate build output
+        run: |
+          cd apps/web
+          npm run test:build
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v3

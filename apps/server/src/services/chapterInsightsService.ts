@@ -125,7 +125,6 @@ class ChapterInsightsService {
     });
 
       // Cache the profiles for future use
-      const { chapterInsightsCacheService } = await import('./chapterInsightsCacheService');
       await chapterInsightsCacheService.cacheInsights(userId, profiles);
 
       return profiles;

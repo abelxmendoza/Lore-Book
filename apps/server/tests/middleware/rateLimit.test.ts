@@ -19,6 +19,7 @@ describe('Rate Limit Middleware', () => {
       method: 'GET',
       path: '/api/test',
       ip: '127.0.0.1',
+      headers: { 'user-agent': 'test-agent' },
       user: { id: 'test-user-id' }
     } as any;
     

@@ -273,6 +273,20 @@ router.post('/', requireAuth, checkEntryLimit, validateBody(entrySchema), async 
   }
 });
 
+router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const entryId = req.params.id;
+    const entry = await memoryService.getEntry(req.user!.id, entryId);
+    if (!entry) {
+      return res.status(404).json({ error: 'Entry not found' });
+    }
+    res.json({ entry });
+  } catch (error) {
+    logger.error({ error }, 'Error fetching entry');
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch entry' });
+  }
+});
+
 router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const entryId = req.params.id;

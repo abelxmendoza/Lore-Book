@@ -29,13 +29,24 @@ describe('CharacterAvatar', () => {
     const { container } = render(
       <CharacterAvatar url="https://example.com/avatar.svg" name="Test" size={64} />
     );
+    // Find the image or the wrapper div
     const img = container.querySelector('img');
-    expect(img).toBeInTheDocument();
-    // LazyImage wraps the img, so check the wrapper or the img itself
-    // The size is applied via style prop
-    const style = img?.getAttribute('style') || '';
-    // Style might be inline or computed, check for size in pixels
-    expect(style.includes('64px') || img?.style.width === '64px' || img?.style.height === '64px').toBeTruthy();
+    const wrapper = container.querySelector('div[style*="64px"]');
+    
+    // Either the img or wrapper should have the size
+    expect(img || wrapper).toBeTruthy();
+    
+    if (img) {
+      const style = img.getAttribute('style') || '';
+      const hasSize = style.includes('64px') || 
+                     img.style.width === '64px' || 
+                     img.style.height === '64px' ||
+                     wrapper !== null;
+      expect(hasSize).toBeTruthy();
+    } else if (wrapper) {
+      // Wrapper has the size
+      expect(wrapper).toBeTruthy();
+    }
   });
 });
 

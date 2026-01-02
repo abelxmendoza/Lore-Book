@@ -161,6 +161,14 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/e2e/**', // Exclude Playwright tests
+      '**/*.e2e.spec.ts',
+      '**/*.e2e.spec.tsx',
+    ],
     environmentOptions: {
       jsdom: {
         url: 'http://localhost:5173',

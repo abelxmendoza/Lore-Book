@@ -175,35 +175,43 @@ describe('Monitoring', () => {
       const markSpy = vi.fn();
       global.performance.mark = markSpy;
       
-      performance.mark('test-mark');
-      expect(markSpy).toHaveBeenCalledWith('test-mark');
-      
-      global.performance.mark = originalMark;
+      try {
+        performance.mark('test-mark');
+        expect(markSpy).toHaveBeenCalledWith('test-mark');
+      } finally {
+        global.performance.mark = originalMark;
+      }
     });
 
     it('measures performance', () => {
       // Mock performance methods to avoid infinite recursion
       const originalMeasure = global.performance.measure;
       const originalGetEntries = global.performance.getEntriesByName;
+      const originalMark = global.performance.mark;
       
       const measureSpy = vi.fn().mockReturnValue({ duration: 100 } as PerformanceMeasure);
       const getEntriesSpy = vi.fn().mockReturnValue([
         { duration: 100 } as PerformanceEntry,
       ] as PerformanceEntry[]);
+      const markSpy = vi.fn();
       
       global.performance.measure = measureSpy;
       global.performance.getEntriesByName = getEntriesSpy;
+      global.performance.mark = markSpy;
 
-      performance.mark('start');
-      performance.mark('end');
-      const result = performance.measure('test-measure', 'start', 'end');
+      try {
+        performance.mark('start');
+        performance.mark('end');
+        const result = performance.measure('test-measure', 'start', 'end');
 
-      expect(measureSpy).toHaveBeenCalled();
-      expect(result).toBeDefined();
-      
-      // Restore originals
-      global.performance.measure = originalMeasure;
-      global.performance.getEntriesByName = originalGetEntries;
+        expect(measureSpy).toHaveBeenCalled();
+        expect(result).toBeDefined();
+      } finally {
+        // Restore originals
+        global.performance.measure = originalMeasure;
+        global.performance.getEntriesByName = originalGetEntries;
+        global.performance.mark = originalMark;
+      }
     });
 
     it('tracks API calls', () => {
@@ -215,7 +223,6 @@ describe('Monitoring', () => {
 
       // Verify the function doesn't throw (track may or may not be called depending on config)
       expect(() => performance.trackApiCall('/api/test', 150, true)).not.toThrow();
-      });
       
       trackSpy.mockRestore();
     });

@@ -15,15 +15,16 @@ export const generateCsrfToken = (): string => {
 };
 
 // SECURITY: Properly detect production environment
-const isDevelopment = process.env.NODE_ENV === 'development' || 
+const isDevelopment = () => process.env.NODE_ENV === 'development' || 
+                      process.env.NODE_ENV === 'test' ||
                       (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
-const isProduction = process.env.NODE_ENV === 'production' || 
+const isProduction = () => process.env.NODE_ENV === 'production' || 
                      process.env.API_ENV === 'production';
 
 // Middleware to generate and set CSRF token
 export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunction) => {
   // Skip CSRF in development mode
-  if (isDevelopment) {
+  if (isDevelopment()) {
     return next();
   }
 
@@ -50,7 +51,7 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
     });
     
     // Set cookie (only in production, requires cookie-parser)
-    if (!isDevelopment && typeof res.cookie === 'function') {
+    if (!isDevelopment() && typeof res.cookie === 'function') {
       res.cookie(CSRF_COOKIE_NAME, token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -71,7 +72,7 @@ export const csrfTokenMiddleware = (req: Request, res: Response, next: NextFunct
 // Middleware to validate CSRF token
 export const csrfProtection = (req: Request, res: Response, next: NextFunction) => {
   // Skip CSRF in development mode
-  if (isDevelopment) {
+  if (isDevelopment()) {
     return next();
   }
 

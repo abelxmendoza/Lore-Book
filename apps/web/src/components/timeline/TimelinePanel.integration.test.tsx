@@ -1,52 +1,93 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
-import { TimelinePanel } from './TimelinePanel';
+import { TimelinePanel } from '../TimelinePanel';
+import type { TimelineResponse } from '../../hooks/useLoreKeeper';
 
-// Mock the timeline data
-const mockTimeline = [
-  {
-    id: '1',
-    content: 'Test timeline entry',
-    timestamp: new Date().toISOString(),
-    tags: [],
-  },
-];
+// Mock the timeline data - matches TimelineResponse structure
+const mockTimelineWithData: TimelineResponse = {
+  chapters: [
+    {
+      id: 'chapter-1',
+      title: 'Test Chapter',
+      months: [
+        {
+          month: 'January 2024',
+          entries: [
+            {
+              id: 'entry-1',
+              content: 'Test timeline entry',
+              date: new Date().toISOString(),
+              tags: [],
+              source: 'manual'
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  unassigned: []
+};
+
+const mockEmptyTimeline: TimelineResponse = {
+  chapters: [],
+  unassigned: []
+};
 
 describe('TimelinePanel Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should render timeline panel', async () => {
+  it('should render timeline panel with data', () => {
     render(
       <BrowserRouter>
-        <TimelinePanel timeline={mockTimeline} loading={false} />
+        <TimelinePanel timeline={mockTimelineWithData} />
       </BrowserRouter>
     );
 
-    await waitFor(() => {
-      expect(screen.getByText('Test timeline entry')).toBeInTheDocument();
-    });
-  });
-
-  it('should display loading state', () => {
-    render(
-      <BrowserRouter>
-        <TimelinePanel timeline={[]} loading={true} />
-      </BrowserRouter>
-    );
-
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.getByText('Timeline')).toBeInTheDocument();
+    expect(screen.getByText('Test Chapter')).toBeInTheDocument();
+    expect(screen.getByText('Test timeline entry')).toBeInTheDocument();
   });
 
   it('should handle empty timeline', () => {
     render(
       <BrowserRouter>
-        <TimelinePanel timeline={[]} loading={false} />
+        <TimelinePanel timeline={mockEmptyTimeline} />
       </BrowserRouter>
     );
 
+    expect(screen.getByText('Timeline')).toBeInTheDocument();
     expect(screen.queryByText('Test timeline entry')).not.toBeInTheDocument();
+  });
+
+  it('should render unassigned entries', () => {
+    const timelineWithUnassigned: TimelineResponse = {
+      chapters: [],
+      unassigned: [
+        {
+          month: 'January 2024',
+          entries: [
+            {
+              id: 'entry-2',
+              content: 'Unassigned entry',
+              date: new Date().toISOString(),
+              tags: [],
+              source: 'manual'
+            }
+          ]
+        }
+      ]
+    };
+
+    render(
+      <BrowserRouter>
+        <TimelinePanel timeline={timelineWithUnassigned} />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText('Unassigned')).toBeInTheDocument();
+    expect(screen.getByText('Unassigned entry')).toBeInTheDocument();
   });
 });

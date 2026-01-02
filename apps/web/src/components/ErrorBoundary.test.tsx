@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '../../test/utils';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ErrorBoundary } from './ErrorBoundary';
 import { errorTracking } from '../lib/monitoring';
 
@@ -42,7 +42,9 @@ describe('ErrorBoundary', () => {
     );
 
     expect(screen.getByText(/Something went wrong/i)).toBeInTheDocument();
-    expect(screen.getByText(/Test error/i)).toBeInTheDocument();
+    // Use getAllByText and check first occurrence since error might appear multiple times
+    const errorTexts = screen.getAllByText(/Test error/i);
+    expect(errorTexts.length).toBeGreaterThan(0);
   });
 
   it('calls errorTracking.captureException when error occurs', () => {

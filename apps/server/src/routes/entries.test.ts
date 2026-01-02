@@ -40,9 +40,9 @@ describe('Entries API', () => {
     app = express();
     app.use(express.json());
     
-    // Import the router - it's exported as 'router' from entries.ts
+    // Import the router - it's exported as 'entriesRouter' from entries.ts
     const entriesModule = await import('./entries');
-    const entriesRouter = (entriesModule as any).router;
+    const entriesRouter = (entriesModule as any).entriesRouter;
     app.use('/api/entries', entriesRouter);
     
     vi.clearAllMocks();

@@ -1,31 +1,63 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useLoreKeeper } from './useLoreKeeper';
-import { fetchJson } from '../lib/api';
 
-vi.mock('../lib/api', () => ({
-  fetchJson: vi.fn()
+// Mock supabase
+vi.mock('../lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } })
+    }
+  }
 }));
+
+// Mock fetch
+global.fetch = vi.fn();
 
 describe('useLoreKeeper', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Setup default fetch mock
+    (global.fetch as any).mockImplementation((url: string) => {
+      if (url.includes('/api/entries') && !url.includes('?')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ entries: [] })
+        });
+      }
+      if (url.includes('/api/timeline') && !url.includes('tags')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
+        });
+      }
+      if (url.includes('/api/timeline/tags')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ tags: [] })
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({})
+      });
+    });
   });
 
-  it('should load characters successfully', async () => {
-    // useLoreKeeper doesn't have a characters property directly
-    // This test might need to be updated or removed
-    // For now, just verify the hook initializes
+  it('should initialize successfully', async () => {
     const { result } = renderHook(() => useLoreKeeper());
     
     expect(result.current).toBeDefined();
     expect(result.current.entries).toBeDefined();
     expect(result.current.timeline).toBeDefined();
+    expect(Array.isArray(result.current.entries)).toBe(true);
   });
 
   it('should handle errors gracefully', async () => {
     // Mock fetch to throw an error
-    global.fetch = vi.fn().mockRejectedValueOnce(new Error('Network error'));
+    (global.fetch as any).mockImplementationOnce(() => 
+      Promise.reject(new Error('Network error'))
+    );
 
     const { result } = renderHook(() => useLoreKeeper());
 
@@ -35,6 +67,7 @@ describe('useLoreKeeper', () => {
     } catch (error) {
       // Error is expected, verify hook still works
       expect(result.current).toBeDefined();
+      expect(result.current.entries).toBeDefined();
     }
   });
 });

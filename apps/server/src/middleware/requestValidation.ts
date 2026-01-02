@@ -21,9 +21,10 @@ export const dateRangeSchema = z.object({
 
 // Development mode - relaxed limits
 // SECURITY: Properly detect production environment
-const isDevelopment = process.env.NODE_ENV === 'development' || 
+const isDevelopment = () => process.env.NODE_ENV === 'development' || 
+                      process.env.NODE_ENV === 'test' ||
                       (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
-const isProduction = process.env.NODE_ENV === 'production' || 
+const isProduction = () => process.env.NODE_ENV === 'production' || 
                      process.env.API_ENV === 'production';
 const DEV_MAX_BODY_SIZE = 50 * 1024 * 1024; // 50MB in dev
 
@@ -33,7 +34,7 @@ export const validateRequestSize = (req: Request, res: Response, next: NextFunct
   const querySize = JSON.stringify(req.query || {}).length;
   const paramsSize = JSON.stringify(req.params || {}).length;
 
-  const maxBodySize = isDevelopment ? DEV_MAX_BODY_SIZE : MAX_BODY_SIZE;
+  const maxBodySize = isDevelopment() ? DEV_MAX_BODY_SIZE : MAX_BODY_SIZE;
 
   if (bodySize > maxBodySize) {
     logSecurityEvent('request_body_too_large', {
@@ -80,7 +81,7 @@ export const validateRequestSize = (req: Request, res: Response, next: NextFunct
 // Middleware to validate common patterns
 export const validateCommonPatterns = (req: Request, res: Response, next: NextFunction) => {
   // Skip pattern validation in development for easier testing
-  if (isDevelopment) {
+  if (isDevelopment()) {
     return next();
   }
 
