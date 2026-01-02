@@ -1,0 +1,12 @@
+{
+  "buildCommand": "cd apps/web && rm -rf node_modules && npm ci --legacy-peer-deps && npm run build",
+  "outputDirectory": "apps/web/dist",
+  "framework": "vite",
+  "installCommand": "cd apps/web && rm -rf node_modules && npm ci --legacy-peer-deps",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

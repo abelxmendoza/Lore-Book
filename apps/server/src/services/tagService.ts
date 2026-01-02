@@ -1,28 +1,58 @@
 import OpenAI from 'openai';
+import crypto from 'crypto';
 
 import { config } from '../config';
+import { logger } from '../logger';
+import { ruleBasedTagExtractionService } from './ruleBasedTagExtraction';
+import { memoryService } from './memoryService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
-export class TagService {
-  async suggestTags(content: string) {
-    const completion = await openai.chat.completions.create({
-      model: config.defaultModel,
-      temperature: 0.2,
-      messages: [
-        {
-          role: 'system',
-          content: 'Extract up to 5 short lowercase tags from the text. Respond with comma separated values.'
-        },
-        { role: 'user', content }
-      ]
-    });
+// Simple in-memory cache for tag suggestions
+const tagCache = new Map<string, string[]>();
+const TAG_CACHE_SIZE = 1000;
 
-    const raw = completion.choices[0]?.message?.content ?? '';
-    return raw
-      .split(',')
-      .map((tag) => tag.trim().toLowerCase())
-      .filter(Boolean);
+export class TagService {
+  /**
+   * Generate cache key from content
+   */
+  private hashContent(content: string): string {
+    const normalized = content.trim().toLowerCase().slice(0, 1000);
+    return crypto.createHash('sha256').update(normalized).digest('hex');
+  }
+
+  /**
+   * Suggest tags using rule-based extraction first, fallback to AI if needed
+   */
+  async suggestTags(content: string, userId?: string): Promise<string[]> {
+    // Check cache first
+    const cacheKey = this.hashContent(content);
+    if (tagCache.has(cacheKey)) {
+      return tagCache.get(cacheKey)!;
+    }
+
+    // Use rule-based extraction (FREE - no API call)
+    const ruleBasedTags = await ruleBasedTagExtractionService.suggestTags(content, userId);
+
+    // Cache the result
+    if (tagCache.size >= TAG_CACHE_SIZE) {
+      const firstKey = tagCache.keys().next().value;
+      if (firstKey) {
+        tagCache.delete(firstKey);
+      }
+    }
+    tagCache.set(cacheKey, ruleBasedTags);
+
+    return ruleBasedTags;
+  }
+
+  /**
+   * Legacy method - kept for backward compatibility
+   * Now uses rule-based extraction instead of API
+   */
+  async suggestTagsLegacy(content: string): Promise<string[]> {
+    // Use rule-based extraction instead of API
+    return this.suggestTags(content);
   }
 }
 

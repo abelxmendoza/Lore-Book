@@ -1,0 +1,7 @@
+# Migration Environment Variables
+# Copy this file to .migration-env and fill in your password
+# The .migration-env file is gitignored for security
+
+# Database password for Supabase
+DB_PASSWORD=your_password_here
+

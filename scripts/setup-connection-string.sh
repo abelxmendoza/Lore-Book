@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Setup script to get and save your Supabase connection string
+
+echo "🔗 Supabase Connection String Setup"
+echo "===================================="
+echo ""
+echo "To get your connection string:"
+echo ""
+echo "1. Go to: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/settings/database"
+echo ""
+echo "2. Click 'Connect' button at the top"
+echo ""
+echo "3. Select 'URI' format"
+echo ""
+echo "4. Choose one of these connection types:"
+echo "   - Direct connection (if IPv6 supported)"
+echo "   - Session pooler (recommended for IPv4)"
+echo "   - Transaction pooler (for serverless)"
+echo ""
+echo "5. Copy the connection string"
+echo ""
+echo "6. Run this command to save it:"
+echo "   export SUPABASE_CONNECTION_STRING='your-connection-string-here'"
+echo ""
+echo "7. Then run migrations:"
+echo "   ./scripts/run-migration.sh migrations/filename.sql"
+echo ""
+echo "Or add it to your .env file:"
+echo "   SUPABASE_CONNECTION_STRING='your-connection-string-here'"
+echo ""
+

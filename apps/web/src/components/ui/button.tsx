@@ -41,11 +41,25 @@ export const Button = ({
   leftIcon,
   rightIcon,
   children,
+  disabled,
+  'aria-label': ariaLabel,
   ...props
-}: ButtonProps) => (
-  <button className={cn(buttonVariants({ variant, size }), className)} {...props}>
-    {leftIcon && <span className="mr-2">{leftIcon}</span>}
-    {children}
-    {rightIcon && <span className="ml-2">{rightIcon}</span>}
-  </button>
-);
+}: ButtonProps) => {
+  // Generate accessible label if children is just text
+  const accessibleLabel = ariaLabel || (typeof children === 'string' ? children : undefined);
+  
+  return (
+    <button
+      className={cn(buttonVariants({ variant, size }), className)}
+      disabled={disabled}
+      aria-label={accessibleLabel}
+      aria-disabled={disabled}
+      tabIndex={disabled ? -1 : 0}
+      {...props}
+    >
+      {leftIcon && <span className="mr-2" aria-hidden="true">{leftIcon}</span>}
+      {children}
+      {rightIcon && <span className="ml-2" aria-hidden="true">{rightIcon}</span>}
+    </button>
+  );
+};

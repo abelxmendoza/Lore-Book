@@ -1,8 +1,12 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Camera, Upload, Image as ImageIcon } from 'lucide-react';
 
 import { Button } from './ui/button';
 import { Card } from './ui/card';
+import { LazyImage } from './ui/LazyImage';
+import { config } from '../config/env';
+import { supabase } from '../lib/supabase';
+import { fetchJson } from '../lib/api';
 
 interface PhotoMetadata {
   photoId: string;
@@ -25,6 +29,42 @@ interface PhotoGalleryProps {
   onPhotoUploaded?: (photo: PhotoMetadata) => void;
 }
 
+// Convert journal entry to photo metadata format
+const entryToPhotoMetadata = (entry: {
+  id: string;
+  date: string;
+  content: string;
+  summary?: string | null;
+  tags: string[];
+  metadata?: Record<string, unknown>;
+}): PhotoMetadata => {
+  const metadata = (entry.metadata || {}) as {
+    latitude?: number;
+    longitude?: number;
+    locationName?: string;
+    dateTime?: string;
+    people?: string[];
+    photoUrl?: string;
+  };
+
+  return {
+    photoId: entry.id,
+    url: metadata.photoUrl || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400',
+    metadata: {
+      latitude: metadata.latitude,
+      longitude: metadata.longitude,
+      locationName: metadata.locationName,
+      dateTime: metadata.dateTime || entry.date,
+      people: metadata.people
+    },
+    autoEntry: {
+      id: entry.id,
+      content: entry.content,
+      tags: entry.tags
+    }
+  };
+};
+
 export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
   const [photos, setPhotos] = useState<PhotoMetadata[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -33,26 +73,71 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
 
   const fetchPhotos = useCallback(async () => {
     setLoading(true);
-    try {
-      const { data: { session } } = await import('../lib/supabase').then(m => m.supabase).then(s => s.auth.getSession());
-      if (!session) return;
-
-      const response = await fetch('/api/photos', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
+    
+    // Mock entries for fallback
+    const mockEntries = [
+      {
+        id: 'mock-entry-1',
+        date: new Date().toISOString(),
+        content: 'Beautiful mountain landscape captured during a hike. The view was breathtaking.',
+        summary: 'Mountain hike',
+        tags: ['nature', 'hiking', 'mountains'],
+        metadata: {
+          locationName: 'Mountain View',
+          dateTime: new Date().toISOString(),
+          latitude: 37.4219,
+          longitude: -122.0840,
+          photoUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400'
         }
+      },
+      {
+        id: 'mock-entry-2',
+        date: new Date(Date.now() - 86400000).toISOString(),
+        content: 'Stunning sunset at the beach. Perfect end to a wonderful day.',
+        summary: 'Beach sunset',
+        tags: ['beach', 'sunset', 'vacation'],
+        metadata: {
+          locationName: 'Beach Sunset',
+          dateTime: new Date(Date.now() - 86400000).toISOString(),
+          photoUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=400'
+        }
+      }
+    ];
+
+    try {
+      // Fetch entries with source=photo
+      const data = await fetchJson<{ entries: Array<{
+        id: string;
+        date: string;
+        content: string;
+        summary?: string | null;
+        tags: string[];
+        metadata?: Record<string, unknown>;
+      }> }>('/api/entries/recent?sources=photo&limit=50', undefined, {
+        useMockData: true,
+        mockData: { entries: mockEntries }
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setPhotos(data.photos || []);
-      }
+      const photoEntries = data.entries.map(entryToPhotoMetadata);
+      setPhotos(photoEntries);
     } catch (error) {
-      console.error('Failed to fetch photos:', error);
+      if (config.dev.enableConsoleLogs) {
+        console.error('Failed to fetch photo entries:', error);
+      }
+      // On error, use empty array or mock data if enabled
+      if (config.dev.allowMockData) {
+        setPhotos(mockEntries.map(entryToPhotoMetadata));
+      } else {
+        setPhotos([]);
+      }
     } finally {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    fetchPhotos();
+  }, [fetchPhotos]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -60,9 +145,49 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
 
     setUploading(true);
     try {
-      const { data: { session } } = await import('../lib/supabase').then(m => m.supabase).then(s => s.auth.getSession());
+      // If mock data is enabled, simulate upload
+      if (config.dev.allowMockData) {
+        if (config.dev.enableConsoleLogs) {
+          console.log('[MOCK API] Photo upload - Using mock data');
+        }
+        
+        // Simulate processing delay
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        const mockPhotos: PhotoMetadata[] = Array.from(files).map((file, index) => {
+          const entryId = `mock-entry-${Date.now()}-${index}`;
+          const photoUrl = URL.createObjectURL(file);
+          return {
+            photoId: entryId,
+            url: photoUrl,
+            metadata: {
+              locationName: 'Mock Location',
+              dateTime: new Date().toISOString(),
+            },
+            autoEntry: {
+              id: entryId,
+              content: `Auto-generated entry from photo: ${file.name}. This would be created from photo metadata in production.`,
+              tags: ['photo', 'mock']
+            }
+          };
+        });
+        
+        setPhotos((prev) => [...mockPhotos, ...prev]);
+        mockPhotos.forEach((photo) => {
+          if (onPhotoUploaded) onPhotoUploaded(photo);
+        });
+        
+        setUploading(false);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         alert('Please sign in to upload photos');
+        setUploading(false);
         return;
       }
 
@@ -71,7 +196,8 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
         formData.append('photos', file);
       });
 
-      const response = await fetch('/api/photos/upload/batch', {
+      const apiBaseUrl = config.api.url;
+      const response = await fetch(`${apiBaseUrl}/api/photos/upload/batch`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`
@@ -81,18 +207,45 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
 
       if (response.ok) {
         const data = await response.json();
-        setPhotos((prev) => [...data.photos, ...prev]);
-        data.photos.forEach((photo: PhotoMetadata) => {
-          if (onPhotoUploaded) onPhotoUploaded(photo);
-        });
-        alert(`Uploaded ${data.photos.length} photo(s)!`);
+        // Backend returns entries created from photos
+        if (data.entriesCreated > 0 && data.entries) {
+          // Convert entries to photo metadata format
+          const newPhotos = data.entries.map((entry: any) => entryToPhotoMetadata({
+            id: entry.id,
+            date: entry.date || new Date().toISOString(),
+            content: entry.content,
+            summary: entry.summary,
+            tags: entry.tags || [],
+            metadata: entry.metadata || {}
+          }));
+          
+          setPhotos((prev) => [...newPhotos, ...prev]);
+          newPhotos.forEach((photo) => {
+            if (onPhotoUploaded) onPhotoUploaded(photo);
+          });
+          
+          // Show success message
+          if (data.entriesCreated === 1) {
+            console.log('Successfully processed 1 photo! Journal entry created.');
+          } else {
+            console.log(`Successfully processed ${data.entriesCreated} photos! Journal entries created.`);
+          }
+        } else {
+          console.log('Photos processed but no entries were created (may have been filtered out).');
+        }
+        
+        // Refresh to get latest entries
+        await fetchPhotos();
       } else {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Upload failed:', error.error || 'Unknown error');
         alert(`Upload failed: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Upload error:', error);
-      alert('Failed to upload photos');
+      if (config.dev.enableConsoleLogs) {
+        console.error('Upload error:', error);
+      }
+      alert('Failed to upload photos. Please try again.');
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -171,10 +324,11 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
         <div className="grid grid-cols-3 gap-4">
           {photos.map((photo) => (
             <div key={photo.photoId} className="relative group">
-              <img
+              <LazyImage
                 src={photo.url}
                 alt="Photo"
                 className="w-full aspect-square object-cover rounded-lg border border-border/60"
+                loading="lazy"
               />
               {photo.metadata.locationName && (
                 <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 rounded-b-lg">

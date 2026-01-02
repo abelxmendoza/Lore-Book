@@ -30,13 +30,26 @@ const createMockQueryBuilder = () => {
   return builder;
 };
 
+const createMockRealtimeChannel = () => {
+  const channel: any = {
+    on: () => channel,
+    subscribe: () => channel,
+    send: async () => ({ status: 'ok' }),
+    unsubscribe: () => undefined
+  };
+  return channel;
+};
+
 const createMockSupabaseClient = () => {
   console.warn('⚠️  Using mock Supabase client because environment variables are missing.');
   return {
     from: () => createMockQueryBuilder(),
-    rpc: async () => ({ data: null, error: missingConfigError })
+    rpc: async () => ({ data: null, error: missingConfigError }),
+    channel: () => createMockRealtimeChannel()
   } as any;
 };
+
+export const isSupabaseConfigured = !missingSupabaseConfig;
 
 export const supabaseAdmin = missingSupabaseConfig
   ? createMockSupabaseClient()

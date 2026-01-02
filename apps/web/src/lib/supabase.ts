@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 type SupabaseConfig = {
@@ -65,3 +66,27 @@ export const supabase = config
 export const isSupabaseConfigured = () => config !== null;
 
 export const getConfigDebug = () => debug;
+
+// Auth hook
+export function useAuth() {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return { user, loading };
+}

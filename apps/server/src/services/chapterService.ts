@@ -4,41 +4,67 @@ import type { Chapter, ChapterInput } from '../types';
 
 class ChapterService {
   async createChapter(userId: string, data: ChapterInput): Promise<Chapter> {
-    const payload = {
-      user_id: userId,
-      title: data.title,
-      start_date: data.startDate,
-      end_date: data.endDate ?? null,
-      description: data.description ?? null
-    };
+    try {
+      const payload = {
+        user_id: userId,
+        title: data.title,
+        start_date: data.startDate,
+        end_date: data.endDate ?? null,
+        description: data.description ?? null
+      };
 
-    const { data: created, error } = await supabaseAdmin
-      .from('chapters')
-      .insert(payload)
-      .select('*')
-      .single();
+      const { data: created, error } = await supabaseAdmin
+        .from('chapters')
+        .insert(payload)
+        .select('*')
+        .single();
 
-    if (error) {
-      logger.error({ error }, 'Failed to create chapter');
+      if (error) {
+        // Check if table doesn't exist
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          logger.error({ error }, 'chapters table does not exist. Please run database migrations.');
+          throw new Error('Database table "chapters" does not exist. Please run migrations.');
+        }
+        logger.error({ error }, 'Failed to create chapter');
+        throw error;
+      }
+
+      return created as Chapter;
+    } catch (error) {
+      if (error instanceof Error && (error.message?.includes('does not exist') || (error as any).code === '42P01')) {
+        throw new Error('Database table "chapters" does not exist. Please run migrations.');
+      }
       throw error;
     }
-
-    return created as Chapter;
   }
 
   async listChapters(userId: string): Promise<Chapter[]> {
-    const { data, error } = await supabaseAdmin
-      .from('chapters')
-      .select('*')
-      .eq('user_id', userId)
-      .order('start_date', { ascending: false });
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('chapters')
+        .select('*')
+        .eq('user_id', userId)
+        .order('start_date', { ascending: false });
 
-    if (error) {
-      logger.error({ error }, 'Failed to list chapters');
+      if (error) {
+        // Check if table doesn't exist
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          logger.warn('chapters table does not exist yet, returning empty array');
+          return [];
+        }
+        logger.error({ error }, 'Failed to list chapters');
+        throw error;
+      }
+
+      return (data ?? []) as Chapter[];
+    } catch (error) {
+      // If it's a table doesn't exist error, return empty array
+      if (error instanceof Error && (error.message?.includes('does not exist') || (error as any).code === '42P01')) {
+        logger.warn('chapters table does not exist yet, returning empty array');
+        return [];
+      }
       throw error;
     }
-
-    return (data ?? []) as Chapter[];
   }
 
   async getChapter(userId: string, chapterId: string): Promise<Chapter | null> {

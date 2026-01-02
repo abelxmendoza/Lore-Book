@@ -29,21 +29,88 @@ class PeoplePlacesService {
 
   private fallbackDetect(content: string): DetectedEntity[] {
     const candidates = new Set<string>();
-    const pattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/g;
+    
+    // Enhanced pattern matching for names (first name + last name)
+    const namePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
     let match;
-    while ((match = pattern.exec(content)) !== null) {
+    while ((match = namePattern.exec(content)) !== null) {
       const candidate = match[1];
-      if (candidate.length >= 3) {
+      if (candidate.length >= 3 && candidate.split(' ').length >= 2) {
         candidates.add(candidate.trim());
       }
     }
 
-    const placeHints = ['park', 'city', 'town', 'cafe', 'restaurant', 'gym', 'school', 'office', 'street', 'road', 'avenue', 'beach'];
-    return Array.from(candidates).map((name) => {
-      const lower = name.toLowerCase();
-      const type = placeHints.some((hint) => lower.includes(hint)) ? 'place' : ('person' as const);
-      return { name, type } satisfies DetectedEntity;
+    // Single capitalized words (might be names or places)
+    const singleWordPattern = /\b([A-Z][a-z]{2,})\b/g;
+    const singleWords = new Set<string>();
+    while ((match = singleWordPattern.exec(content)) !== null) {
+      const word = match[1];
+      // Exclude common words
+      if (!this.isCommonWord(word.toLowerCase()) && word.length >= 3) {
+        singleWords.add(word);
+      }
+    }
+
+    // Place detection patterns
+    const placePatterns = [
+      /\b(in|at|from|to|near|by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/g, // "in Seattle", "at New York"
+      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*([A-Z]{2})\b/g, // "Seattle, WA"
+      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(Street|Avenue|Road|Boulevard|Drive|Lane|Way|Court|Place|Park|Beach|Mountain|Lake|River)\b/gi,
+    ];
+
+    const placeHints = ['park', 'city', 'town', 'cafe', 'restaurant', 'gym', 'school', 'office', 'street', 'road', 'avenue', 'beach', 'mountain', 'lake', 'river', 'airport', 'hotel', 'hospital', 'store', 'mall', 'library', 'museum'];
+    const placeKeywords = new Set<string>();
+
+    for (const pattern of placePatterns) {
+      while ((match = pattern.exec(content)) !== null) {
+        const place = match[2] || match[1];
+        if (place && place.length >= 3) {
+          placeKeywords.add(place.trim());
+        }
+      }
+    }
+
+    const entities: DetectedEntity[] = [];
+
+    // Add full names as persons
+    candidates.forEach(name => {
+      entities.push({ name, type: 'person' });
     });
+
+    // Add single words - check if they're places or persons
+    singleWords.forEach(word => {
+      const lower = word.toLowerCase();
+      const isPlace = placeHints.some(hint => lower.includes(hint)) || 
+                     placeKeywords.has(word) ||
+                     lower.includes('street') || lower.includes('avenue') || lower.includes('road');
+      entities.push({ 
+        name: word, 
+        type: isPlace ? 'place' : 'person' 
+      });
+    });
+
+    // Add detected places
+    placeKeywords.forEach(place => {
+      if (!entities.some(e => e.name === place)) {
+        entities.push({ name: place, type: 'place' });
+      }
+    });
+
+    return entities;
+  }
+
+  private isCommonWord(word: string): boolean {
+    const commonWords = [
+      'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how',
+      'its', 'may', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'let', 'put', 'say', 'she', 'too', 'use', 'this', 'that', 'with',
+      'have', 'from', 'they', 'know', 'want', 'been', 'good', 'much', 'some', 'time', 'very', 'when', 'come', 'here', 'just', 'like', 'long', 'make',
+      'many', 'over', 'such', 'take', 'than', 'them', 'well', 'were', 'what', 'when', 'will', 'your', 'about', 'after', 'again', 'before', 'being',
+      'below', 'between', 'during', 'first', 'found', 'great', 'group', 'house', 'large', 'learn', 'never', 'other', 'place', 'plant', 'point', 'right',
+      'small', 'sound', 'spell', 'still', 'study', 'their', 'there', 'these', 'thing', 'think', 'three', 'water', 'where', 'which', 'world', 'would', 'write',
+      'today', 'yesterday', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+      'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'
+    ];
+    return commonWords.includes(word.toLowerCase());
   }
 
   private extractRelationshipForName(name: string, relationships?: EntryRelationship[]): RelationshipTag | undefined {
@@ -70,6 +137,21 @@ class PeoplePlacesService {
   }
 
   private async detectEntities(content: string): Promise<DetectedEntity[]> {
+    // Use rule-based detection first (FREE - no API call)
+    // Only use API if rule-based fails or user explicitly requests enhanced detection
+    const ruleBasedEntities = this.fallbackDetect(content);
+    
+    // If we found entities with rule-based, use them
+    if (ruleBasedEntities.length > 0) {
+      return ruleBasedEntities.map(entity => ({
+        name: this.normalizeName(entity.name),
+        type: entity.type,
+        corrected_names: []
+      }));
+    }
+
+    // Fallback to API only if rule-based found nothing (optional enhancement)
+    // This can be disabled entirely if you want 100% free
     try {
       const completion = await this.openai.chat.completions.create({
         model: config.defaultModel,
@@ -97,8 +179,12 @@ class PeoplePlacesService {
             : []
         }));
     } catch (error) {
-      logger.warn({ error }, 'Falling back to heuristic entity detection');
-      return this.fallbackDetect(content);
+      logger.warn({ error }, 'API detection failed, using rule-based only');
+      return ruleBasedEntities.map(entity => ({
+        name: this.normalizeName(entity.name),
+        type: entity.type,
+        corrected_names: []
+      }));
     }
   }
 

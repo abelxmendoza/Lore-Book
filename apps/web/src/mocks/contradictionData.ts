@@ -1,0 +1,360 @@
+import type { ContinuityEvent, ContradictionDetails, MemoryComponent } from '../types/continuity';
+
+export const mockContradictions: ContinuityEvent[] = [
+  {
+    id: 'contradiction-1',
+    user_id: 'dev-user-id',
+    event_type: 'contradiction',
+    description: 'Contradiction detected: "I love living in New York" vs "I hate the city life"',
+    source_components: ['component-1', 'component-2'],
+    severity: 8,
+    metadata: {
+      method: 'semantic_cluster',
+      similarity_score: 0.35,
+      topic_match: true,
+    },
+    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+  },
+  {
+    id: 'contradiction-2',
+    user_id: 'dev-user-id',
+    event_type: 'contradiction',
+    description: 'Contradiction detected: "I never drink coffee" vs "I had my morning coffee today"',
+    source_components: ['component-3', 'component-4'],
+    severity: 6,
+    metadata: {
+      method: 'keyword_match',
+      similarity_score: 0.42,
+      topic_match: true,
+    },
+    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days ago
+  },
+  {
+    id: 'contradiction-3',
+    user_id: 'dev-user-id',
+    event_type: 'contradiction',
+    description: 'Contradiction detected: "I am an introvert" vs "I love going to parties every weekend"',
+    source_components: ['component-5', 'component-6'],
+    severity: 9,
+    metadata: {
+      method: 'semantic_cluster',
+      similarity_score: 0.28,
+      topic_match: true,
+    },
+    created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days ago
+  },
+  {
+    id: 'contradiction-4',
+    user_id: 'dev-user-id',
+    event_type: 'contradiction',
+    description: 'Contradiction detected: "I work from home" vs "I commute to the office daily"',
+    source_components: ['component-7', 'component-8'],
+    severity: 7,
+    metadata: {
+      method: 'temporal_analysis',
+      similarity_score: 0.38,
+      topic_match: true,
+    },
+    created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), // 10 days ago
+  },
+  {
+    id: 'contradiction-5',
+    user_id: 'dev-user-id',
+    event_type: 'contradiction',
+    description: 'Contradiction detected: "I am vegetarian" vs "I had steak for dinner"',
+    source_components: ['component-9', 'component-10'],
+    severity: 4,
+    metadata: {
+      method: 'keyword_match',
+      similarity_score: 0.55,
+      topic_match: true,
+    },
+    created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
+  },
+];
+
+export const mockContradictionDetails: Record<string, ContradictionDetails> = {
+  'contradiction-1': {
+    event: mockContradictions[0],
+    originalComponent: {
+      id: 'component-1',
+      component_type: 'thought',
+      text: 'I love living in New York. The energy of the city is incredible, and there\'s always something exciting happening. The diversity, the culture, the opportunities - it all makes me feel alive.',
+      characters_involved: [],
+      location: 'New York',
+      timestamp: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days ago
+      tags: ['location', 'lifestyle', 'positive'],
+      importance_score: 7,
+      metadata: {},
+      created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    contradictingComponent: {
+      id: 'component-2',
+      component_type: 'thought',
+      text: 'I hate the city life. The noise, the crowds, the constant rush - it\'s overwhelming. I feel like I can\'t breathe. I need space and quiet.',
+      characters_involved: [],
+      location: 'New York',
+      timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+      tags: ['location', 'lifestyle', 'negative'],
+      importance_score: 8,
+      metadata: {},
+      created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    supportingEvidence: [
+      {
+        id: 'evidence-1',
+        component_id: 'component-1a',
+        text: 'Mentioned enjoying Central Park walks multiple times',
+        date: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+        confidence_score: 0.85,
+        similarity_score: 0.78,
+      },
+      {
+        id: 'evidence-2',
+        component_id: 'component-1b',
+        text: 'Expressed excitement about NYC events and concerts',
+        date: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+        confidence_score: 0.80,
+        similarity_score: 0.75,
+      },
+    ],
+    contradictingEvidence: [
+      {
+        id: 'evidence-3',
+        component_id: 'component-2a',
+        text: 'Complained about subway delays and crowds',
+        date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        confidence_score: 0.90,
+        similarity_score: 0.82,
+      },
+    ],
+    timelineContext: [
+      {
+        id: 'context-1',
+        date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Moved to NYC',
+      },
+      {
+        id: 'context-2',
+        date: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Started new job',
+      },
+      {
+        id: 'context-3',
+        date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Recent stress',
+      },
+    ],
+  },
+  'contradiction-2': {
+    event: mockContradictions[1],
+    originalComponent: {
+      id: 'component-3',
+      component_type: 'thought',
+      text: 'I never drink coffee. I don\'t like the taste and it makes me jittery. I prefer tea or just water.',
+      characters_involved: [],
+      location: null,
+      timestamp: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+      tags: ['habits', 'health'],
+      importance_score: 5,
+      metadata: {},
+      created_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    contradictingComponent: {
+      id: 'component-4',
+      component_type: 'event',
+      text: 'I had my morning coffee today and it really helped me wake up. Starting to think I should make it a daily habit.',
+      characters_involved: [],
+      location: null,
+      timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+      tags: ['habits', 'morning'],
+      importance_score: 4,
+      metadata: {},
+      created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    supportingEvidence: [],
+    contradictingEvidence: [
+      {
+        id: 'evidence-4',
+        component_id: 'component-4a',
+        text: 'Mentioned coffee multiple times in recent entries',
+        date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+        confidence_score: 0.75,
+        similarity_score: 0.70,
+      },
+    ],
+    timelineContext: [
+      {
+        id: 'context-4',
+        date: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Original statement',
+      },
+      {
+        id: 'context-5',
+        date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Recent change',
+      },
+    ],
+  },
+  'contradiction-3': {
+    event: mockContradictions[2],
+    originalComponent: {
+      id: 'component-5',
+      component_type: 'thought',
+      text: 'I am an introvert. I need alone time to recharge. Social gatherings drain me, and I prefer small, intimate settings.',
+      characters_involved: [],
+      location: null,
+      timestamp: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+      tags: ['personality', 'self-reflection'],
+      importance_score: 9,
+      metadata: {},
+      created_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    contradictingComponent: {
+      id: 'component-6',
+      component_type: 'event',
+      text: 'I love going to parties every weekend. The energy, the music, meeting new people - it\'s exhilarating! I can\'t get enough of the social scene.',
+      characters_involved: ['Sarah', 'Mike'],
+      location: 'Various venues',
+      timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+      tags: ['social', 'activities', 'friends'],
+      importance_score: 8,
+      metadata: {},
+      created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    supportingEvidence: [
+      {
+        id: 'evidence-5',
+        component_id: 'component-5a',
+        text: 'Multiple entries about needing alone time',
+        date: new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString(),
+        confidence_score: 0.88,
+        similarity_score: 0.80,
+      },
+    ],
+    contradictingEvidence: [
+      {
+        id: 'evidence-6',
+        component_id: 'component-6a',
+        text: 'Frequent mentions of parties and social events',
+        date: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+        confidence_score: 0.92,
+        similarity_score: 0.85,
+      },
+    ],
+    timelineContext: [
+      {
+        id: 'context-6',
+        date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Self-identification',
+      },
+      {
+        id: 'context-7',
+        date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Started socializing more',
+      },
+      {
+        id: 'context-8',
+        date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Recent party activity',
+      },
+    ],
+  },
+  'contradiction-4': {
+    event: mockContradictions[3],
+    originalComponent: {
+      id: 'component-7',
+      component_type: 'event',
+      text: 'I work from home. My home office setup is perfect, and I love the flexibility. No commute, no distractions.',
+      characters_involved: [],
+      location: 'Home',
+      timestamp: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+      tags: ['work', 'lifestyle'],
+      importance_score: 6,
+      metadata: {},
+      created_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    contradictingComponent: {
+      id: 'component-8',
+      component_type: 'event',
+      text: 'I commute to the office daily. The routine helps me stay focused, and I enjoy the separation between work and home.',
+      characters_involved: ['Colleagues'],
+      location: 'Office',
+      timestamp: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+      tags: ['work', 'commute'],
+      importance_score: 7,
+      metadata: {},
+      created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    supportingEvidence: [],
+    contradictingEvidence: [],
+    timelineContext: [
+      {
+        id: 'context-9',
+        date: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'WFH setup',
+      },
+      {
+        id: 'context-10',
+        date: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Policy change',
+      },
+      {
+        id: 'context-11',
+        date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Return to office',
+      },
+    ],
+  },
+  'contradiction-5': {
+    event: mockContradictions[4],
+    originalComponent: {
+      id: 'component-9',
+      component_type: 'thought',
+      text: 'I am vegetarian. I made this choice for ethical and environmental reasons, and I\'ve been committed to it for years.',
+      characters_involved: [],
+      location: null,
+      timestamp: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+      tags: ['diet', 'values'],
+      importance_score: 8,
+      metadata: {},
+      created_at: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    contradictingComponent: {
+      id: 'component-10',
+      component_type: 'event',
+      text: 'I had steak for dinner at that fancy restaurant. It was delicious, though I felt a bit guilty afterward.',
+      characters_involved: ['Date'],
+      location: 'Restaurant',
+      timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+      tags: ['diet', 'food', 'social'],
+      importance_score: 5,
+      metadata: {},
+      created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    supportingEvidence: [
+      {
+        id: 'evidence-7',
+        component_id: 'component-9a',
+        text: 'Multiple entries about vegetarian lifestyle',
+        date: new Date(Date.now() - 80 * 24 * 60 * 60 * 1000).toISOString(),
+        confidence_score: 0.95,
+        similarity_score: 0.88,
+      },
+    ],
+    contradictingEvidence: [],
+    timelineContext: [
+      {
+        id: 'context-12',
+        date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Became vegetarian',
+      },
+      {
+        id: 'context-13',
+        date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        label: 'Recent exception',
+      },
+    ],
+  },
+};
+

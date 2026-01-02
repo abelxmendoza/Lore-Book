@@ -1,0 +1,159 @@
+/* Shimmer animation for progress-bar-like timelines */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 3s infinite;
+}
+
+/* Custom styles for vis-timeline to match app's neon/purple theme */
+
+.vis-timeline {
+  border: none;
+  font-family: inherit;
+  min-height: 0;
+  height: 100%;
+  background: transparent;
+}
+
+/* Custom scrollbar styling for timeline containers - matching app theme */
+.timeline-scrollable::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.timeline-scrollable::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.timeline-scrollable::-webkit-scrollbar-thumb {
+  background: rgba(154, 77, 255, 0.4);
+  border-radius: 4px;
+}
+
+.timeline-scrollable::-webkit-scrollbar-thumb:hover {
+  background: rgba(154, 77, 255, 0.6);
+}
+
+/* Horizontal scrollbar */
+.timeline-scrollable::-webkit-scrollbar:horizontal {
+  height: 8px;
+}
+
+/* Time axis - dark theme */
+.vis-timeline .vis-time-axis {
+  background-color: rgba(0, 0, 0, 0.3);
+  border-color: rgba(126, 34, 206, 0.3);
+}
+
+.vis-timeline .vis-time-axis .vis-text {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+}
+
+/* Timeline items - purple/neon theme */
+.vis-timeline .vis-item {
+  border-radius: 4px;
+  border: 1px solid rgba(154, 77, 255, 0.6);
+  background: linear-gradient(135deg, rgba(154, 77, 255, 0.8), rgba(126, 34, 206, 0.8));
+  color: white;
+  font-size: 12px;
+  padding: 2px 6px;
+  box-shadow: 0 0 10px rgba(154, 77, 255, 0.3);
+}
+
+.vis-timeline .vis-item.selected {
+  border-color: rgba(154, 77, 255, 1);
+  background: linear-gradient(135deg, rgba(154, 77, 255, 1), rgba(126, 34, 206, 1));
+  box-shadow: 0 0 15px rgba(154, 77, 255, 0.6), 0 0 25px rgba(154, 77, 255, 0.3);
+}
+
+.vis-timeline .vis-item.vis-background {
+  background: rgba(154, 77, 255, 0.1);
+  border-color: rgba(154, 77, 255, 0.3);
+  box-shadow: none;
+}
+
+.vis-timeline .vis-item.vis-point {
+  border-radius: 50%;
+  width: 10px;
+  height: 10px;
+  background: radial-gradient(circle, rgba(154, 77, 255, 1), rgba(126, 34, 206, 0.8));
+  box-shadow: 0 0 8px rgba(154, 77, 255, 0.6);
+}
+
+.vis-timeline .vis-item.vis-range {
+  border-radius: 4px;
+}
+
+/* Groups - dark theme */
+.vis-timeline .vis-group {
+  border-right: 1px solid rgba(126, 34, 206, 0.3);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.vis-timeline .vis-label {
+  padding: 8px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  background: transparent;
+}
+
+/* Current time indicator - cyan accent */
+.vis-timeline .vis-current-time {
+  background-color: rgba(23, 212, 255, 0.8);
+  width: 2px;
+  box-shadow: 0 0 8px rgba(23, 212, 255, 0.6);
+}
+
+/* Grid lines - subtle purple */
+.vis-timeline .vis-grid {
+  border-color: rgba(126, 34, 206, 0.2);
+}
+
+.vis-timeline .vis-grid.vis-minor {
+  border-color: rgba(126, 34, 206, 0.1);
+}
+
+/* Tooltip - dark theme */
+.vis-timeline .vis-tooltip {
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(154, 77, 255, 0.4);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(154, 77, 255, 0.3);
+  padding: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+}
+
+/* Timeline panel background */
+.vis-timeline .vis-panel {
+  background: transparent;
+}
+
+.vis-timeline .vis-panel.vis-left {
+  background: rgba(0, 0, 0, 0.2);
+  border-right-color: rgba(126, 34, 206, 0.3);
+}
+
+.vis-timeline .vis-panel.vis-center {
+  background: transparent;
+}
+
+.vis-timeline .vis-panel.vis-top {
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom-color: rgba(126, 34, 206, 0.3);
+}
+
+.vis-timeline .vis-panel.vis-bottom {
+  background: rgba(0, 0, 0, 0.3);
+  border-top-color: rgba(126, 34, 206, 0.3);
+}

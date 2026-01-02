@@ -41,4 +41,20 @@ router.get('/description', requireAuth, (req: AuthenticatedRequest, res) => {
   res.json({ description: lines.join('\n') });
 });
 
+router.get('/pulse', requireAuth, (req: AuthenticatedRequest, res) => {
+  const persona = personaService.getPersona(req.user!.id);
+  const pulse = {
+    persona: persona.version,
+    motifs: persona.motifs.map(motif => ({ name: motif, energy: 0.7 })),
+    emotionTrajectory: [
+      { label: 'Stability', value: persona.emotionalVector?.overall_slope || 0 },
+      { label: 'Growth', value: 0.6 },
+      { label: 'Curiosity', value: 0.8 }
+    ],
+    stability: Math.max(0.5, 1 - Math.abs(persona.emotionalVector?.overall_slope || 0)),
+    driftWarnings: []
+  };
+  res.json({ pulse });
+});
+
 export const personaRouter = router;

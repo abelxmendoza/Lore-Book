@@ -1,20 +1,16 @@
 {
   "name": "lorekeeper",
-  "private": true,
   "version": "0.1.0",
-  "description": "Lore Keeper by Omega Technologies - AI powered journaling platform",
-  "workspaces": [
-    "apps/server",
-    "apps/web"
-  ],
+  "private": true,
   "scripts": {
-    "dev:web": "pnpm --filter web dev",
-    "dev:server": "pnpm --filter server dev",
-    "build": "pnpm -r build",
-    "lint": "pnpm -r lint",
-    "format": "prettier --write ."
+    "test:security": "cd apps/server && npm test middleware/ integration/privacy.test.ts",
+    "test:e2e:security": "cd apps/web && npm run test:e2e security.spec.ts",
+    "test:all": "npm run test:security && npm run test:e2e:security",
+    "find-unused": "cd apps/server && node scripts/find-unused-code.js",
+    "lint:fix": "cd apps/server && npm run lint -- --fix && cd ../web && npm run lint -- --fix",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "prettier": "^3.2.5"
+    "husky": "^9.1.7"
   }
 }

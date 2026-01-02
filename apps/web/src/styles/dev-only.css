@@ -1,0 +1,39 @@
+/* Development-only styles - removed in production builds */
+
+/* Highlight focusable elements in dev mode */
+@media (prefers-reduced-motion: no-preference) {
+  [data-dev-mode="true"] *:focus-visible {
+    outline: 2px solid rgba(124, 58, 237, 0.5) !important;
+    outline-offset: 2px;
+  }
+}
+
+/* Screen reader only class */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Skip link for accessibility */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--primary);
+  color: white;
+  padding: 8px;
+  text-decoration: none;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+

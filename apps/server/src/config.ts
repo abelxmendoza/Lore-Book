@@ -9,19 +9,33 @@ const currentDir = path.dirname(fileURLToPath(import.meta.url)); // apps/server/
 const serverDir = path.dirname(currentDir); // apps/server
 const appsDir = path.dirname(serverDir); // apps
 const rootDir = path.dirname(appsDir); // root
-const envPath = path.resolve(rootDir, '.env');
 
-const result = dotenv.config({ path: envPath });
+// Determine which .env file to load based on API_ENV
+const tempApiEnv = process.env.API_ENV || 'dev';
+const envFileName = tempApiEnv === 'production' ? '.env.production' : 
+                     tempApiEnv === 'staging' ? '.env.staging' : 
+                     '.env.development';
+const envPath = path.resolve(rootDir, envFileName);
+const defaultEnvPath = path.resolve(rootDir, '.env');
+
+// Try to load environment-specific file first, then fallback to .env
+let result = dotenv.config({ path: envPath });
 if (result.error) {
-  console.error(`❌ Failed to load .env from ${envPath}:`, result.error.message);
-  // Try process.cwd() as fallback
-  const fallbackPath = path.resolve(process.cwd(), '.env');
-  const fallbackResult = dotenv.config({ path: fallbackPath });
-  if (!fallbackResult.error) {
-    console.log(`✅ Loaded .env from fallback: ${fallbackPath}`);
+  console.log(`⚠️  Failed to load ${envFileName}, trying .env`);
+  result = dotenv.config({ path: defaultEnvPath });
+  if (result.error) {
+    console.error(`❌ Failed to load .env from ${defaultEnvPath}:`, result.error.message);
+    // Try process.cwd() as fallback
+    const fallbackPath = path.resolve(process.cwd(), '.env');
+    const fallbackResult = dotenv.config({ path: fallbackPath });
+    if (!fallbackResult.error) {
+      console.log(`✅ Loaded .env from fallback: ${fallbackPath}`);
+    }
+  } else {
+    console.log(`✅ Loaded .env from: ${defaultEnvPath}`);
   }
 } else {
-  console.log(`✅ Loaded .env from: ${envPath}`);
+  console.log(`✅ Loaded ${envFileName} from: ${envPath}`);
 }
 
 type EnvConfig = {
@@ -38,7 +52,20 @@ type EnvConfig = {
   microsoftTenantId?: string;
   microsoftRedirectUri?: string;
   encryptionSalt?: string;
+  githubToken?: string;
+  stripeSecretKey?: string;
+  stripePublishableKey?: string;
+  stripeWebhookSecret?: string;
+  subscriptionPriceId?: string;
+  freeTierEntryLimit?: number;
+  freeTierAiLimit?: number;
+  apiEnv: 'dev' | 'staging' | 'production';
+  enableExperimental: boolean;
+  adminUserId?: string;
 };
+
+const apiEnv = (process.env.API_ENV ?? 'dev') as 'dev' | 'staging' | 'production';
+const enableExperimental = process.env.ENABLE_EXPERIMENTAL === 'true';
 
 export const config: EnvConfig = {
   port: Number(process.env.PORT ?? 4000),
@@ -53,7 +80,17 @@ export const config: EnvConfig = {
   microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET ?? '',
   microsoftTenantId: process.env.MICROSOFT_TENANT_ID ?? 'common',
   microsoftRedirectUri: process.env.MICROSOFT_REDIRECT_URI ?? '',
-  encryptionSalt: process.env.ENCRYPTION_SALT ?? ''
+  encryptionSalt: process.env.ENCRYPTION_SALT ?? '',
+  githubToken: process.env.GITHUB_TOKEN ?? process.env.GITHUB_API_TOKEN ?? '',
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',
+  stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+  subscriptionPriceId: process.env.SUBSCRIPTION_PRICE_ID ?? '',
+  freeTierEntryLimit: Number(process.env.FREE_TIER_ENTRY_LIMIT ?? 50),
+  freeTierAiLimit: Number(process.env.FREE_TIER_AI_LIMIT ?? 100),
+  apiEnv,
+  enableExperimental,
+  adminUserId: process.env.ADMIN_USER_ID
 };
 
 export const assertConfig = () => {

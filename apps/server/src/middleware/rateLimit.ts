@@ -1,46 +1,73 @@
-import type { NextFunction, Request, Response } from 'express';
-
+import type { Request, Response, NextFunction } from 'express';
 import { logSecurityEvent } from '../services/securityLog';
 
-const WINDOW_MS = 60_000;
-const SOFT_LIMIT = 50;
-const HARD_LIMIT = 200;
+interface RateLimitStore {
+  [key: string]: {
+    count: number;
+    resetTime: number;
+  };
+}
 
-type Tracker = {
-  count: number;
-  firstRequest: number;
+const store: RateLimitStore = {};
+
+// SECURITY: Properly detect production environment
+const isDevelopment = () => process.env.NODE_ENV === 'development' || 
+                      process.env.NODE_ENV === 'test' ||
+                      (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+const isProduction = () => process.env.NODE_ENV === 'production' || 
+                     process.env.API_ENV === 'production';
+
+// More lenient rate limits in development
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const getMaxRequests = () => isDevelopment() ? 10000 : 100; // Much higher limit in dev
+
+const getClientId = (req: Request): string => {
+  return (req as any).user?.id || req.ip || 'anonymous';
 };
-
-const requestCounts = new Map<string, Tracker>();
 
 export const rateLimitMiddleware = (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  const ip = req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown';
+  const clientId = getClientId(req);
   const now = Date.now();
-  const tracker = requestCounts.get(ip) ?? { count: 0, firstRequest: now };
+  const record = store[clientId];
 
-  if (now - tracker.firstRequest > WINDOW_MS) {
-    tracker.count = 0;
-    tracker.firstRequest = now;
+  if (!record || now > record.resetTime) {
+    // New window
+    store[clientId] = {
+      count: 1,
+      resetTime: now + RATE_LIMIT_WINDOW_MS,
+    };
+    return next();
   }
 
-  tracker.count += 1;
-  requestCounts.set(ip, tracker);
+  if (record.count >= getMaxRequests()) {
+    logSecurityEvent('rate_limit_exceeded', {
+      ip: req.ip,
+      path: req.path,
+      clientId: clientId.substring(0, 8),
+      userAgent: req.headers['user-agent'] || 'unknown',
+    });
 
-  if (tracker.count > HARD_LIMIT) {
-    logSecurityEvent('hard_rate_limit', { ip, path: req.path, count: tracker.count });
-    res.setHeader('Retry-After', '60');
-    return res.status(429).json({ error: 'Too many requests. Please slow down.' });
+    return res.status(429).json({
+      error: 'Too many requests',
+      message: 'Rate limit exceeded. Please try again later.',
+      retryAfter: Math.ceil((record.resetTime - now) / 1000),
+    });
   }
 
-  if (tracker.count > SOFT_LIMIT) {
-    logSecurityEvent('soft_rate_limit', { ip, path: req.path, count: tracker.count });
-    res.setHeader('Retry-After', '15');
-    return res.status(429).json({ error: 'You are making requests too quickly. Please retry shortly.' });
-  }
-
+  record.count++;
   next();
 };
+
+// Cleanup old entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of Object.entries(store)) {
+    if (now > record.resetTime) {
+      delete store[key];
+    }
+  }
+}, 60 * 1000); // Every minute

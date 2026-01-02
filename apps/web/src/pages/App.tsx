@@ -2,29 +2,63 @@
 
 import { useState } from 'react';
 import { CalendarRange, PenLine, PlusCircle, Search, Wand2 } from 'lucide-react';
+import { useMemo, useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { CalendarRange, PenLine, PlusCircle, Search as SearchIcon, Wand2 } from 'lucide-react';
+import { config } from '../config/env';
 
 import { AuthGate } from '../components/AuthGate';
-import { ChatPanel } from '../components/ChatPanel';
+import { SkipLink } from '../components/SkipLink';
+import { AgentPanel } from '../components/AgentPanel';
+import { ChaptersList } from '../components/ChaptersList';
+import { ChapterViewer } from '../components/ChapterViewer';
+import { CreateChapterModal } from '../components/CreateChapterModal';
 import { EntryList } from '../components/EntryList';
-import { JournalComposer } from '../components/JournalComposer';
+import { EvolutionPanel } from '../components/EvolutionPanel';
+import { MemoryExplorer } from '../components/memory-explorer/MemoryExplorer';
+import { TimelineSearch } from '../components/search/TimelineSearch';
 import { Logo } from '../components/Logo';
+import { MemoryTimeline } from '../components/MemoryTimeline';
 import { Sidebar } from '../components/Sidebar';
 import { TagCloud } from '../components/TagCloud';
-import { TimelinePanel } from '../components/TimelinePanel';
-import { useLoreKeeper } from '../hooks/useLoreKeeper';
-import { Button } from '../components/ui/button';
-import { ChaptersList } from '../components/ChaptersList';
-import { CreateChapterModal } from '../components/CreateChapterModal';
-import { EvolutionPanel } from '../components/EvolutionPanel';
-import { ChapterViewer } from '../components/ChapterViewer';
-import { MemoryTimeline } from '../components/MemoryTimeline';
-import { fetchJson } from '../lib/api';
 import { TaskEnginePanel } from '../components/TaskEnginePanel';
+import { TimelinePanel } from '../components/TimelinePanel';
+import { CharacterPage } from '../components/characters/CharacterPage';
+import { useLoreKeeper } from '../hooks/useLoreKeeper';
 import { useTaskEngine } from '../hooks/useTaskEngine';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { DeleteAccountDialog } from '../components/settings/DeleteAccountDialog';
 import { AccountSafetyPanel } from '../components/settings/AccountSafetyPanel';
+import { fetchJson } from '../lib/api';
+import { Button } from '../components/ui/button';
+import { ChatFirstInterface } from '../features/chat/components/ChatFirstInterface';
+import { CharacterBook } from '../components/characters/CharacterBook';
+import { LocationBook } from '../components/locations/LocationBook';
+import { PhotoAlbum } from '../components/photos/PhotoAlbum';
+import { ImprovedTimelineView } from '../components/timeline/ImprovedTimelineView';
+import { BiographyEditor } from '../components/biography/BiographyEditor';
+import { LoreBook } from '../components/lorebook/LoreBook';
+import { ChapterCreationChatbot } from '../components/chapters/ChapterCreationChatbot';
+import { TimelineHierarchyPanel } from '../components/timeline-hierarchy/TimelineHierarchyPanel';
+import { TimelinePage } from '../components/timeline/TimelinePage';
+import { OmniTimelinePanel } from '../components/timeline/OmniTimelinePanel';
+import { EntityDetailModal } from '../components/entity/EntityDetailModal';
+import { useEntityModal } from '../contexts/EntityModalContext';
+import UserGuide from '../components/guide/UserGuide';
+import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
+import { PerceptionsView } from '../components/perceptions/PerceptionsView';
+import { PerceptionLensView } from '../components/perceptions/PerceptionLensView';
+import { TrialBanner } from '../components/subscription/TrialBanner';
+import { PricingPage } from '../components/subscription/PricingPage';
+import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage';
+import { PrivacySettings } from '../components/security/PrivacySettings';
+import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
+import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
+import { ContinuityDashboard } from '../components/continuity/ContinuityDashboard';
+import { GuestBanner } from '../components/guest/GuestBanner';
+import { getSurfaceFromRoute } from '../utils/routeMapping';
 
 const formatRange = (days = 7) => {
   const end = new Date();
@@ -37,7 +71,16 @@ const formatRange = (days = 7) => {
   };
 };
 
-const AppContent = () => {
+type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide';
+
+interface AppContentProps {
+  defaultSurface?: SurfaceKey;
+}
+
+const AppContent = ({ defaultSurface }: AppContentProps) => {
+  console.log('[App] AppContent render start', { defaultSurface });
+  
+  const { selectedEntity, isOpen, closeEntity, updateEntity } = useEntityModal();
   const {
     entries,
     timeline,
@@ -57,8 +100,6 @@ const AppContent = () => {
     timelineCount,
     semanticSearch,
     searchResults,
-    reflect,
-    reflection,
     uploadVoiceEntry,
     evolution,
     refreshEvolution
@@ -77,13 +118,76 @@ const AppContent = () => {
   const [rangeLabel, setRangeLabel] = useState(formatRange().label);
   const [lastPrompt, setLastPrompt] = useState('');
   const [chapterModalOpen, setChapterModalOpen] = useState(false);
-  const [chapterSummary, setChapterSummary] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [semantic, setSemantic] = useState(true);
   const [persona, setPersona] = useState('The Archivist');
-  const [reflecting, setReflecting] = useState(false);
-  const [activeTab, setActiveTab] = useState<'log' | 'timeline'>('log');
   const [generatingSummary, setGeneratingSummary] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [activeSurface, setActiveSurface] = useState<SurfaceKey>(defaultSurface || 'chat');
+  const [activePerceptionView, setActivePerceptionView] = useState<'list' | 'lens'>('list');
+  const [insights, setInsights] = useState<any>(null);
+
+  // Sync route → surface (handles browser back/forward and direct navigation)
+  useEffect(() => {
+    const surfaceFromRoute = getSurfaceFromRoute(location.pathname);
+    if (surfaceFromRoute !== activeSurface) {
+      setActiveSurface(surfaceFromRoute);
+    }
+  }, [location.pathname]);
+
+  // Also sync when defaultSurface prop changes (from route params)
+  useEffect(() => {
+    if (defaultSurface && defaultSurface !== activeSurface) {
+      setActiveSurface(defaultSurface);
+    }
+  }, [defaultSurface]);
+
+  // Listen for navigation events from subscription components
+  useEffect(() => {
+    const handleNavigate = (e: CustomEvent) => {
+      if (e.detail?.surface) {
+        setActiveSurface(e.detail.surface as SurfaceKey);
+      }
+    };
+    window.addEventListener('navigate', handleNavigate as EventListener);
+    return () => window.removeEventListener('navigate', handleNavigate as EventListener);
+  }, []);
+  const [devMode, setDevMode] = useState(false);
+  const [showChapterChatbot, setShowChapterChatbot] = useState(false);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts([
+    {
+      key: 'k',
+      meta: true,
+      handler: () => {
+        navigate('/search');
+        setActiveSurface('search');
+        // Focus search input if it exists
+        setTimeout(() => {
+          const searchInput = document.querySelector('input[type="search"], input[placeholder*="search" i]') as HTMLInputElement;
+          searchInput?.focus();
+        }, 100);
+      },
+      description: 'Open search'
+    },
+    {
+      key: 'n',
+      meta: true,
+      handler: () => {
+        // Switch to timeline and focus on entry creation
+        navigate('/timeline');
+        setActiveSurface('timeline');
+        // Try to focus on entry composer if it exists
+        setTimeout(() => {
+          const textarea = document.querySelector('textarea[placeholder*="memory" i], textarea[placeholder*="entry" i]') as HTMLTextAreaElement;
+          textarea?.focus();
+        }, 100);
+      },
+      description: 'New entry'
+    }
+  ]);
 
   const handleSummary = async () => {
     setGeneratingSummary(true);
@@ -99,10 +203,6 @@ const AppContent = () => {
     }
   };
 
-  const scrollToComposer = () => {
-    const composer = document.getElementById('journal-composer');
-    composer?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
 
   const handleQuickCorrection = async () => {
     const entryId = prompt('Which entry needs a correction? (Provide entry ID)');
@@ -165,256 +265,189 @@ const AppContent = () => {
               <p className="text-xs uppercase tracking-widest text-primary/70">Chapters</p>
               <p className="text-xl font-semibold text-white">{chapters.length}</p>
             </div>
+
+
+  const visibleEntries = useMemo(() => (searchResults.length ? searchResults : entries).slice(0, 8), [entries, searchResults]);
+
+  const renderTimelineSurface = () => (
+    <ImprovedTimelineView
+      timeline={timeline}
+      chapters={chapters}
+      chapterCandidates={chapterCandidates}
+      tags={tags.map(t => ({ tag: t.name, count: t.count }))}
+      taskList={taskList}
+      taskEvents={taskEvents}
+      taskBriefing={taskBriefing}
+      loading={loading}
+      onCreateChapter={() => setShowChapterChatbot(true)}
+      onSummarizeChapter={async (chapterId) => {
+        await summarizeChapter(chapterId);
+        await Promise.all([refreshTimeline(), refreshChapters()]);
+      }}
+      onCreateTask={async (payload) => {
+        await createTask(payload);
+      }}
+      onCompleteTask={async (id) => {
+        await completeTask(id);
+      }}
+      onDeleteTask={async (id) => {
+        await deleteTask(id);
+      }}
+      onProcessChat={async (command) => {
+        await processChat(command);
+      }}
+      onSyncMicrosoft={async () => {
+        // Note: syncMicrosoft requires accessToken parameter
+        // TaskEnginePanel's onSync will be called with the token when user initiates sync
+        // This wrapper satisfies the type but won't be called directly
+        return Promise.resolve();
+      }}
+      onRefreshChapters={refreshChapters}
+    />
+  );
+
+  const renderSearchSurface = () => (
+    <div className="h-full space-y-6">
+      <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel p-6">
+        <div className="mb-4">
+          <h2 className="text-2xl font-semibold mb-2">Universal Timeline Search</h2>
+          <p className="text-sm text-white/60">Search across people, places, skills, jobs, projects, eras, and more</p>
+        </div>
+        <TimelineSearch />
+      </div>
+      <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-24rem)]">
+        <MemoryExplorer />
+      </div>
+    </div>
+  );
+
+  console.log('[App] AppContent returning JSX', { activeSurface });
+  
+  return (
+    <div 
+      ref={(el) => {
+        if (el && activeSurface === 'timeline') {
+          // #region agent log
+          const computedStyle = window.getComputedStyle(el);
+          fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:253',message:'Root container height measured',data:{rootHeight:el.offsetHeight,rootStyleHeight:computedStyle.height,rootMinHeight:computedStyle.minHeight,viewportHeight:window.innerHeight,sidebarHeight:el.querySelector('aside')?.offsetHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'height-debug',hypothesisId:'ROOT'})}).catch(()=>{});
+          // #endregion
+        }
+      }}
+      className={`flex bg-gradient-to-br from-black via-purple-950 to-black ${activeSurface === 'timeline' ? 'min-h-screen' : 'min-h-screen'}`}
+    >
+      {/* Debug: Visible test to confirm render */}
+      <div style={{ position: 'fixed', top: 0, left: 0, zIndex: 99999, background: 'red', color: 'white', padding: '4px 8px', fontSize: '12px' }}>
+        [DEBUG] App rendering - {activeSurface}
+      </div>
+      <SkipLink />
+      <Sidebar
+        activeSurface={activeSurface}
+        onSurfaceChange={setActiveSurface}
+        onCreateChapter={() => setShowChapterChatbot(true)}
+        onToggleDevMode={() => setDevMode((prev) => !prev)}
+        devModeEnabled={devMode}
+      />
+      <main 
+        ref={(el) => {
+          if (el && activeSurface === 'timeline') {
+            // #region agent log
+            const computedStyle = window.getComputedStyle(el);
+            fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:262',message:'Main element dimensions measured',data:{mainHeight:el.offsetHeight,mainPaddingTop:computedStyle.paddingTop,mainPaddingBottom:computedStyle.paddingBottom,mainPadding:computedStyle.padding,headerHeight:el.querySelector('header')?.offsetHeight,viewportHeight:window.innerHeight,spaceY:computedStyle.gap},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+          }
+        }}
+        id="main-content" 
+        className="flex-1 text-white overflow-x-hidden flex flex-col space-y-6 p-6"
+        role="main"
+        style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : {}}
+      >
+        <header className="flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
+          <div>
+            <h1 className="text-2xl font-semibold">Welcome back</h1>
+            <p className="text-sm text-white/60">{entries.length} memories · {chapters.length} chapters</p>
           </div>
         </header>
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          <div className="space-y-6">
-            <JournalComposer
-              loading={loading}
-              chapters={chapters}
-              onSave={async (content, options) => {
-                try {
-                  await createEntry(content, { chapter_id: options?.chapterId ?? null, metadata: options?.metadata });
-                  await Promise.all([refreshEntries(), refreshTimeline()]);
-                } catch (error) {
-                  console.error('Failed to create entry:', error);
-                  throw error;
-                }
-              }}
-              onAsk={async (content) => {
-                try {
-                  setLastPrompt(content);
-                  await askLoreKeeper(content, persona);
-                } catch (error) {
-                  console.error('Failed to ask Lore Keeper:', error);
-                  throw error;
-                }
-              }}
-              onVoiceUpload={async (file) => {
-                await uploadVoiceEntry(file);
-                await Promise.all([refreshEntries(), refreshTimeline()]);
-              }}
-            />
-            <div className="rounded-2xl border border-border/60 bg-black/40 p-4 shadow-panel">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2 text-sm text-white/70">
-                  <Search className="h-4 w-4 text-primary" />
-                  <input
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Ask for robotics last year or heartbreak entries..."
-                    className="w-72 rounded-lg border border-border/50 bg-black/60 px-3 py-2 text-sm text-white"
-                  />
-                </div>
-                <label className="flex items-center gap-2 text-xs text-white/60">
-                  <input
-                    type="checkbox"
-                    checked={semantic}
-                    onChange={(event) => setSemantic(event.target.checked)}
-                    className="h-4 w-4 rounded border-border/50 bg-black/60"
-                  />
-                  Semantic
-                </label>
-                <Button
-                  size="sm"
-                  onClick={() => searchTerm && semanticSearch(searchTerm, semantic)}
-                  leftIcon={<Wand2 className="h-4 w-4 text-primary" />}
-                >
-                  Search
-                </Button>
-              </div>
-              {searchResults.length > 0 && (
-                <p className="mt-2 text-xs text-white/50">Showing {searchResults.length} semantic matches.</p>
-              )}
-            </div>
-            <EntryList entries={(searchResults.length ? searchResults : entries).slice(0, 8)} />
-          </div>
-          <div className="space-y-6">
-            <TimelinePanel timeline={timeline} />
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant={activeTab === 'log' ? 'default' : 'outline'} onClick={() => setActiveTab('log')} size="sm">
-            Memory Log
-          </Button>
-          <Button variant={activeTab === 'timeline' ? 'default' : 'outline'} onClick={() => setActiveTab('timeline')} size="sm">
-            Timeline
-          </Button>
-        </div>
-        {activeTab === 'log' ? (
-          <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-            <div className="space-y-6">
-              <div id="journal-composer">
-                <JournalComposer
-                  loading={loading}
-                  chapters={chapters}
-                  onSave={async (content, options) => {
-                    try {
-                      await createEntry(content, { chapter_id: options?.chapterId ?? null, metadata: options?.metadata });
-                      await Promise.all([refreshEntries(), refreshTimeline()]);
-                    } catch (error) {
-                      console.error('Failed to create entry:', error);
-                      throw error;
-                    }
-                  }}
-                  onAsk={async (content) => {
-                    try {
-                      setLastPrompt(content);
-                      await askLoreKeeper(content, persona);
-                    } catch (error) {
-                      console.error('Failed to ask Lore Keeper:', error);
-                      throw error;
-                    }
-                  }}
-                  onVoiceUpload={async (file) => {
-                    await uploadVoiceEntry(file);
-                    await Promise.all([refreshEntries(), refreshTimeline()]);
-                  }}
-                />
-              </div>
-              <div className="rounded-2xl border border-border/60 bg-black/40 p-4 shadow-panel">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2 text-sm text-white/70">
-                    <Search className="h-4 w-4 text-primary" />
-                    <input
-                      value={searchTerm}
-                      onChange={(event) => setSearchTerm(event.target.value)}
-                      placeholder="Ask for robotics last year or heartbreak entries..."
-                      className="w-72 rounded-lg border border-border/50 bg-black/60 px-3 py-2 text-sm text-white"
-                    />
-                  </div>
-                  <label className="flex items-center gap-2 text-xs text-white/60">
-                    <input
-                      type="checkbox"
-                      checked={semantic}
-                      onChange={(event) => setSemantic(event.target.checked)}
-                      className="h-4 w-4 rounded border-border/50 bg-black/60"
-                    />
-                    Semantic
-                  </label>
-                  <Button
-                    size="sm"
-                    onClick={() => searchTerm && semanticSearch(searchTerm, semantic)}
-                    leftIcon={<Wand2 className="h-4 w-4 text-primary" />}
-                  >
-                    Search
-                  </Button>
-                </div>
-                {searchResults.length > 0 && (
-                  <p className="mt-2 text-xs text-white/50">Showing {searchResults.length} semantic matches.</p>
-                )}
-              </div>
-              <EntryList entries={(searchResults.length ? searchResults : entries).slice(0, 8)} />
-            </div>
-            <div className="space-y-6">
-              <TimelinePanel timeline={timeline} />
-              <ChaptersList
-                timeline={timeline}
-                onCreateClick={() => setChapterModalOpen(true)}
-                onSummarize={async (chapterId) => {
-                  const summaryText = await summarizeChapter(chapterId);
-                  setChapterSummary(summaryText);
-                  await Promise.all([refreshTimeline(), refreshChapters()]);
-                }}
-              />
-              <div className="rounded-2xl border border-border/60 bg-black/40 p-6 shadow-panel">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase text-white/50">Tag Cloud</p>
-                    <h3 className="text-lg font-semibold">Topics</h3>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <TagCloud tags={tags} />
-                </div>
-              </div>
-              <AccountSafetyPanel />
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <TimelinePanel timeline={timeline} />
-            <ChaptersList
-              timeline={timeline}
-              onCreateClick={() => setChapterModalOpen(true)}
-              onSummarize={async (chapterId) => {
-                const summaryText = await summarizeChapter(chapterId);
-                setChapterSummary(summaryText);
-                await Promise.all([refreshTimeline(), refreshChapters()]);
-              }}
-            />
-            <div className="rounded-2xl border border-border/60 bg-black/40 p-6 shadow-panel">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase text-white/50">Tag Cloud</p>
-                  <h3 className="text-lg font-semibold">Topics</h3>
-                </div>
-              </div>
-              <div className="mt-4">
-                <TagCloud tags={tags} />
-              </div>
-            </div>
-            <AccountSafetyPanel />
+
+        <GuestBanner />
+        <TrialBanner />
+
+        {activeSurface === 'chat' && (
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-12rem)]">
+            <ChatFirstInterface />
           </div>
         )}
-        <div className="grid gap-6 xl:grid-cols-3" data-chat-panel>
-          <div className="xl:col-span-2">
-            <ChatPanel
-              answer={answer}
-              loading={loading}
-              persona={persona}
-              onPersonaChange={setPersona}
-              onRefresh={() => {
-                if (lastPrompt) askLoreKeeper(lastPrompt, persona);
-              }}
-              onAsk={async (message) => {
-                try {
-                  setLastPrompt(message);
-                  await askLoreKeeper(message, persona);
-                } catch (error) {
-                  console.error('Failed to ask Lore Keeper:', error);
-                  throw error; // Re-throw to let ChatPanel handle display
-                }
-              }}
-            />
+        {activeSurface === 'timeline' && <OmniTimelinePanel />}
+        {activeSurface === 'search' && renderSearchSurface()}
+        {activeSurface === 'characters' && <CharacterBook />}
+        {activeSurface === 'locations' && <LocationBook />}
+        {activeSurface === 'memoir' && (
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-12rem)]">
+            <BiographyEditor />
           </div>
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-border/60 bg-black/40 p-6 shadow-panel">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase text-white/50">Summaries</p>
-                  <h3 className="text-lg font-semibold">Weekly Debrief</h3>
-                  <p className="text-xs text-white/40">{rangeLabel}</p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  leftIcon={<CalendarRange className="h-4 w-4" />}
-                  onClick={handleSummary}
-                  disabled={generatingSummary || loading}
-                >
-                  {generatingSummary ? 'Generating...' : 'Generate'}
-                </Button>
+        )}
+                        {activeSurface === 'lorebook' && (
+                          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)]">
+                            <LoreBook />
+                          </div>
+                        )}
+                        {activeSurface === 'photos' && (
+                          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+                            <PhotoAlbum />
+                          </div>
+                        )}
+                        {activeSurface === 'perceptions' && (
+                          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+                            <PerceptionsView showCreateButton={true} />
+                          </div>
+                        )}
+                        {activeSurface === 'subscription' && (
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] p-6">
+            <TrialBanner />
+            <SubscriptionManagement />
+          </div>
+        )}
+        {activeSurface === 'pricing' && (
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto">
+            <PricingPage onSurfaceChange={(surface) => setActiveSurface(surface as SurfaceKey)} />
+          </div>
+        )}
+        {activeSurface === 'security' && (
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+            <PrivacySecurityPage onSurfaceChange={(surface) => setActiveSurface(surface as SurfaceKey)} />
+          </div>
+        )}
+        {activeSurface === 'privacy-settings' && (
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+            <PrivacySettings onBack={() => setActiveSurface('security')} />
+          </div>
+        )}
+        {activeSurface === 'privacy-policy' && (
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+            <PrivacyPolicy onBack={() => setActiveSurface('security')} />
+          </div>
+        )}
+        {activeSurface === 'discovery' && (
+          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+            <DiscoveryHub />
+          </div>
+        )}
+        {activeSurface === 'guide' && <UserGuide />}
+
+        {/* Hide dev mode panel in production and timeline view */}
+        {!config.env.isProduction && devMode && activeSurface !== 'timeline' && (
+          <div className="space-y-4 rounded-2xl border border-primary/40 bg-black/40 p-4 shadow-panel mb-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase text-primary/70">Developer Diagnostics</p>
+                <p className="text-sm text-white/70">Raw fabric edges, agent logs, and embedding inspector.</p>
               </div>
-              {summary && (
-                <div className="mt-4 rounded-xl border border-primary/30 bg-primary/10 p-4 text-sm text-white/80">
-                  <p className="text-xs uppercase text-primary/70 mb-2">Summary</p>
-                  <p className="whitespace-pre-line">{summary}</p>
-                </div>
-              )}
+              <Button size="sm" variant="ghost" onClick={() => setDevMode(false)}>
+                Hide
+              </Button>
             </div>
-            <TaskEnginePanel
-              tasks={taskList}
-              events={taskEvents}
-              briefing={taskBriefing}
-              loading={loading}
-              onCreate={(payload) => createTask(payload)}
-              onComplete={completeTask}
-              onDelete={deleteTask}
-              onChatCommand={processChat}
-              onSync={syncMicrosoft}
-            />
-            <ChapterViewer chapters={chapters} candidates={chapterCandidates} onRefresh={refreshChapters} />
+            <div className="grid gap-4 md:grid-cols-2">
+              <AgentPanel />
+            </div>
           </div>
         </div>
         <div className="rounded-2xl border border-border/60 bg-black/40 p-6 shadow-panel">
@@ -448,6 +481,22 @@ const AppContent = () => {
             return chapter;
           }}
         />
+        )}
+
+        {/* Footer - positioned right after dev mode */}
+        <footer className="w-full border-t border-border/60 bg-transparent py-4 px-6 text-white/60 text-sm flex-shrink-0 mt-auto">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span>© {new Date().getFullYear()} Lore Book by Omega Technologies</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <a href="/privacy" className="hover:text-white transition-colors">Privacy</a>
+              <a href="/terms" className="hover:text-white transition-colors">Terms</a>
+              <span className="text-white/40">•</span>
+              <span className="text-white/40">v1.0.0</span>
+            </div>
+          </div>
+        </footer>
       </main>
     </div>
     <Footer />
@@ -455,10 +504,12 @@ const AppContent = () => {
 );
 };
 
-const App = () => (
-  <AuthGate>
-    <AppContent />
-  </AuthGate>
+interface AppProps {
+  defaultSurface?: SurfaceKey;
+}
+
+const App = ({ defaultSurface }: AppProps) => (
+  <AppContent defaultSurface={defaultSurface} />
 );
 
 export default App;

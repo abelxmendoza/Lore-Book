@@ -1,0 +1,57 @@
+/* Chat Theme - Dark Purple */
+.chat-container {
+  background: #0c0c0f;
+  color: #ffffff;
+}
+
+.chat-message-user {
+  background: linear-gradient(135deg, rgba(126, 34, 206, 0.1) 0%, rgba(126, 34, 206, 0.05) 100%);
+  border-color: rgba(126, 34, 206, 0.3);
+}
+
+.chat-message-assistant {
+  background: rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.chat-composer {
+  background: rgba(0, 0, 0, 0.2);
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.chat-sources-bar {
+  background: rgba(0, 0, 0, 0.2);
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Primary accent color */
+.chat-primary {
+  color: #a855f7;
+}
+
+.chat-primary-bg {
+  background-color: rgba(168, 85, 247, 0.1);
+}
+
+.chat-primary-border {
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+/* Scrollbar styling */
+.chat-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.chat-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(168, 85, 247, 0.3);
+  border-radius: 4px;
+}
+
+.chat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 85, 247, 0.5);
+}
+

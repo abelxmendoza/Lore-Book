@@ -378,3 +378,205 @@ export type MemoryGraph = {
   generatedAt: string;
   entryCount?: number;
 };
+
+// Truth Seeker and Verification Types
+export type VerificationStatus = 'verified' | 'unverified' | 'contradicted' | 'ambiguous';
+
+export type ClaimType = 'date' | 'location' | 'character' | 'event' | 'relationship' | 'attribute' | 'other';
+
+export type FactClaim = {
+  id: string;
+  user_id: string;
+  entry_id: string;
+  claim_type: ClaimType;
+  subject: string;
+  attribute: string;
+  value: string;
+  confidence: number;
+  extracted_at: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type EntryVerification = {
+  id: string;
+  user_id: string;
+  entry_id: string;
+  verification_status: VerificationStatus;
+  verified_at: string;
+  verified_by: string;
+  confidence_score: number;
+  evidence_count: number;
+  contradiction_count: number;
+  supporting_entries: string[];
+  contradicting_entries: string[];
+  verification_report: Record<string, unknown>;
+  resolved: boolean;
+  resolved_at?: string | null;
+  resolution_notes?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+// Memory Engine Types
+export type ConversationSession = {
+  id: string;
+  user_id: string;
+  started_at: string;
+  ended_at?: string | null;
+  title?: string | null;
+  summary?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  session_id: string;
+  user_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type MemoryComponentType =
+  | 'event'
+  | 'thought'
+  | 'reflection'
+  | 'decision'
+  | 'relationship_update'
+  | 'worldbuilding'
+  | 'lore_drop'
+  | 'timeline_marker';
+
+export type MemoryComponent = {
+  id: string;
+  journal_entry_id: string;
+  component_type: MemoryComponentType;
+  text: string;
+  characters_involved: string[];
+  location?: string | null;
+  timestamp?: string | null;
+  tags: string[];
+  importance_score: number;
+  embedding?: number[] | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type TimelineLink = {
+  id: string;
+  component_id: string;
+  mythos_id?: string | null;
+  epoch_id?: string | null;
+  era_id?: string | null;
+  saga_id?: string | null;
+  arc_id?: string | null;
+  chapter_id?: string | null;
+  scene_id?: string | null;
+  action_id?: string | null;
+  micro_action_id?: string | null;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+};
+
+// Service Input Types
+export type CreateSessionInput = {
+  userId: string;
+  title?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type SaveMessageInput = {
+  sessionId: string;
+  userId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type ExtractMemoryInput = {
+  sessionId: string;
+  userId: string;
+  immediate?: boolean; // If true, process immediately; otherwise queue for background
+};
+
+export type ComponentExtractionResult = {
+  components: MemoryComponent[];
+  journalEntryId: string;
+  extractionConfidence: number;
+};
+
+// Knowledge Graph Types
+export type GraphEdgeType =
+  | 'semantic'
+  | 'social'
+  | 'thematic'
+  | 'narrative'
+  | 'temporal'
+  | 'emotional'
+  | 'character'
+  | 'location'
+  | 'tag';
+
+export type GraphEdge = {
+  id: string;
+  source_component_id: string;
+  target_component_id: string;
+  relationship_type: GraphEdgeType;
+  weight: number;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+};
+
+// Insight Types
+export type InsightType =
+  | 'pattern'
+  | 'correlation'
+  | 'cyclic_behavior'
+  | 'identity_shift'
+  | 'motif'
+  | 'prediction'
+  | 'trend'
+  | 'relationship'
+  | 'emotional'
+  | 'behavioral';
+
+export type Insight = {
+  id: string;
+  user_id: string;
+  insight_type: InsightType;
+  text: string;
+  confidence: number;
+  source_component_ids: string[];
+  source_entry_ids: string[];
+  tags: string[];
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+};
+
+// Continuity Engine Types
+export type ContinuityEventType =
+  | 'contradiction'
+  | 'abandoned_goal'
+  | 'arc_shift'
+  | 'identity_drift'
+  | 'emotional_transition'
+  | 'thematic_drift'
+  | 'goal_progress'
+  | 'goal_reappearance'
+  | 'behavioral_loop';
+
+export type ContinuityEvent = {
+  id: string;
+  user_id: string;
+  event_type: ContinuityEventType;
+  description: string;
+  source_components: string[];
+  severity: number;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
+};

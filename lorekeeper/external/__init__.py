@@ -1,0 +1,1 @@
+"""External Signals Hub module."""

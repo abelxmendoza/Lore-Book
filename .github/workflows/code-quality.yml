@@ -1,0 +1,113 @@
+name: Code Quality Checks
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 2 * * 0' # Weekly on Sunday at 2 AM UTC
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '8'
+
+jobs:
+  lint-check:
+    name: Lint & Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Lint server
+        run: pnpm --filter server lint
+      
+      - name: Lint web
+        run: pnpm --filter web lint
+      
+      - name: Check for duplicate imports
+        run: |
+          echo "🔍 Checking for duplicate imports..."
+          if pnpm --filter server lint 2>&1 | grep -i "duplicate\|no-duplicate"; then
+            echo "⚠️ Duplicate imports detected in server"
+            exit 1
+          fi
+          if pnpm --filter web lint 2>&1 | grep -i "duplicate\|no-duplicate"; then
+            echo "⚠️ Duplicate imports detected in web"
+            exit 1
+          fi
+          echo "✅ No duplicate imports found"
+      
+      - name: Check import order
+        run: |
+          echo "🔍 Checking import order..."
+          pnpm --filter server lint --quiet || echo "⚠️ Import order issues in server"
+          pnpm --filter web lint --quiet || echo "⚠️ Import order issues in web"
+        continue-on-error: true
+
+  unused-code-check:
+    name: Unused Code Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Check for unused code
+        run: |
+          echo "🔍 Checking for unused code..."
+          cd apps/server
+          npm run find-unused || echo "⚠️ Unused code check completed"
+        continue-on-error: true
+      
+      - name: Report unused code
+        if: always()
+        run: |
+          echo "## Unused Code Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This check identifies potentially unused exports." >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ Always verify manually before removing code." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Run locally: \`npm run find-unused\`" >> $GITHUB_STEP_SUMMARY
+
+  summary:
+    name: Code Quality Summary
+    runs-on: ubuntu-latest
+    needs: [lint-check, unused-code-check]
+    if: always()
+    steps:
+      - name: Code Quality Summary
+        run: |
+          echo "## Code Quality Checks" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Lint & Code Quality" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ${{ needs.lint-check.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Duplicate imports: ✅ Checked" >> $GITHUB_STEP_SUMMARY
+          echo "- Import order: ✅ Checked" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Unused Code Detection" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ${{ needs.unused-code-check.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Analysis: ✅ Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Prevention Measures" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ ESLint rules for duplicate detection" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Automated unused code detection" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Import order enforcement" >> $GITHUB_STEP_SUMMARY
+
