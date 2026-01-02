@@ -7,8 +7,46 @@ on:
     branches: [main, develop]
 
 jobs:
+  server-tests:
+    name: Server Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd apps/server
+          npm ci
+
+      - name: Run server tests
+        run: |
+          cd apps/server
+          npm test
+
+      - name: Generate server coverage
+        run: |
+          cd apps/server
+          npm test -- --coverage
+
+      - name: Upload server coverage
+        if: always()
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./apps/server/coverage/coverage-final.json
+          flags: backend
+          name: backend-coverage
+          fail_ci_if_error: false
+
   lint-and-test:
-    name: Lint and Test
+    name: Lint and Test (Web)
     runs-on: ubuntu-latest
     
     steps:
@@ -35,6 +73,11 @@ jobs:
         run: |
           cd apps/web
           npm run test:unit
+
+      - name: Run error handling tests
+        run: |
+          cd apps/web
+          npm run test:unit -- "**/*.error.test.*"
 
       - name: Generate coverage report
         run: |
@@ -189,7 +232,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint-and-test, integration-tests]
+    needs: [server-tests, lint-and-test, integration-tests]
     
     steps:
       - name: Checkout code
