@@ -1,9 +1,9 @@
 
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
-# Lore Keeper
+# LoreBook
 
 <div align="center">
-  <img src="apps/web/public/images/loreKeeperlogo3.png" alt="Lore Keeper Logo" width="200" />
+  <img src="apps/web/public/branding/logo.svg" alt="LoreBook Logo" width="200" />
   
   **AI Life Engine**
   
@@ -21,7 +21,7 @@
 
 ## Table of Contents
 
-- [What is Lore Keeper?](#what-is-lore-keeper)
+- [What is LoreBook?](#what-is-lore-keeper)
 - [Key Features](#key-features)
   - [User-Facing Features](#user-facing-features)
   - [Technical Features](#technical-features)
@@ -39,13 +39,13 @@
 
 ---
 
-## What is Lore Keeper?
+## What is LoreBook?
 
-**Lore Keeper** is an **AI Life Engine**—not just journaling, but a system that remembers you, studies your identity, tracks your emotional and narrative arcs, predicts your trajectory, and preserves your evolving digital self.
+**LoreBook** is an **AI Life Engine**—not just journaling, but a system that remembers you, studies your identity, tracks your emotional and narrative arcs, predicts your trajectory, and preserves your evolving digital self.
 
 **Its purpose is to give people self-awareness, continuity, identity clarity, and a long-term companion that understands the story they're living.**
 
-Lore Keeper helps you:
+LoreBook helps you:
 - **Understand who you are** - See your values, fears, strengths, patterns, and behavioral trends
 - **See how you're changing** - Track identity drift, emotional arcs, and personal evolution
 - **Track what you keep repeating** - Identify behavioral loops, abandoned goals, and recurring patterns
@@ -57,7 +57,7 @@ Lore Keeper helps you:
 
 **In short:** ✨ It helps people understand their past, navigate their present, and predict their future.
 
-**Lore Keeper is your favorite:**
+**LoreBook is your favorite:**
 - 🗣️ **Gossip Buddy** - Curious, engaging, relationship-focused. Discusses characters, relationships, and social dynamics with enthusiasm and curiosity.
 - 🛋️ **Therapist** - Deep, reflective, supportive. Validates emotions, helps process experiences, asks gentle exploratory questions.
 - 📚 **Historian** - Preserves your complete story, organizes your timeline, and maintains truth and continuity across your entire narrative.
@@ -139,15 +139,15 @@ Lore Keeper helps you:
 - ✅ **Financial Engine** - Tracks financial patterns, spending habits, and financial goals
 - ✅ **Health Engine** - Monitors health patterns, symptoms, and wellness trends
 
-Lore Keeper becomes your memory, your story engine, and your mirror—a living archive of who you are, who you were, and who you're becoming. The Continuity Engine acts as the core intelligence, running automatically after every entry to detect contradictions, emotional changes, identity drift, and repeating patterns. This is not just journaling—this is digital immortality, properly structured, with continuity intelligence that helps you understand your past, navigate your present, and predict your future.
+LoreBook becomes your memory, your story engine, and your mirror—a living archive of who you are, who you were, and who you're becoming. The Continuity Engine acts as the core intelligence, running automatically after every entry to detect contradictions, emotional changes, identity drift, and repeating patterns. This is not just journaling—this is digital immortality, properly structured, with continuity intelligence that helps you understand your past, navigate your present, and predict your future.
 
 ### For Everyone (Non-Technical Users)
 
-**What can Lore Keeper do for you?**
+**What can LoreBook do for you?**
 
 - **🧠 Continuity Intelligence** - Your life's Jarvis. Detects contradictions, emotional changes, identity drift, abandoned goals, repeating loops, suppressed topics, and self-narrative instability. Automatically runs after every journal entry and saves events for your review.
 
-- **📖 Capture Your Complete Story**: Write naturally about your experiences, thoughts, and feelings—Lore Keeper preserves everything
+- **📖 Capture Your Complete Story**: Write naturally about your experiences, thoughts, and feelings—LoreBook preserves everything
 
 - **🗣️ Your Favorite Gossip Buddy**: Curious, engaging, relationship-focused AI that discusses characters, relationships, and social dynamics with enthusiasm
 
@@ -159,9 +159,9 @@ Lore Keeper becomes your memory, your story engine, and your mirror—a living a
 
 - **🧠 Your Memory Bank**: Remembers everything—your complete digital memory that never forgets and can answer questions about your past, present, and patterns
 
-- **📚 Automatic Biography Generation**: **Your biography writes itself automatically**—just journal your life, and Lore Keeper transforms your entries into a polished, comprehensive biography with AI assistance. No writing skills required.
+- **📚 Automatic Biography Generation**: **Your biography writes itself automatically**—just journal your life, and LoreBook transforms your entries into a polished, comprehensive biography with AI assistance. No writing skills required.
 
-- **📊 Automatic Timeline Creation**: **Your timeline builds itself automatically**—Lore Keeper organizes your entries into a hierarchical timeline (mythos, eras, sagas, arcs, chapters, scenes) as you journal. See your life story unfold chronologically with beautiful visualizations.
+- **📊 Automatic Timeline Creation**: **Your timeline builds itself automatically**—LoreBook organizes your entries into a hierarchical timeline (mythos, eras, sagas, arcs, chapters, scenes) as you journal. See your life story unfold chronologically with beautiful visualizations.
 
 - **🔮 Predictive Intelligence**: Forecast mood trends, identify goals at risk, predict relationship outcomes, and forecast your trajectory based on patterns
 
@@ -177,9 +177,9 @@ Lore Keeper becomes your memory, your story engine, and your mirror—a living a
 
 - **📊 Life Patterns**: Discover insights about your habits, growth, repeating loops, and the themes that define you
 
-**Why use Lore Keeper?**
+**Why use LoreBook?**
 
-Traditional journals capture only fragments—dates and events—but miss the deeper essence of who you are. Lore Keeper is an **AI Life Engine** designed for **continuity intelligence**, **self-awareness**, and **predictive life modeling**, capturing:
+Traditional journals capture only fragments—dates and events—but miss the deeper essence of who you are. LoreBook is an **AI Life Engine** designed for **continuity intelligence**, **self-awareness**, and **predictive life modeling**, capturing:
 
 - **Your Complete Story**: Not just what happened, but why it mattered
 - **Your Emotional Journey**: How experiences shaped your heart and soul, with automatic detection of emotional arcs and transitions
@@ -189,7 +189,7 @@ Traditional journals capture only fragments—dates and events—but miss the de
 - **Your Continuity**: Automatic detection of contradictions, abandoned goals, and narrative inconsistencies
 - **Your Future**: Predictive modeling of mood trends, goal risks, and trajectory forecasting
 
-Unlike simple journals, Lore Keeper uses AI to:
+Unlike simple journals, LoreBook uses AI to:
 - **Automatically detect continuity events**—contradictions, identity drift, emotional arcs, abandoned goals, repeating loops
 - **Automatically write your biography** from your journal entries—no writing required
 - **Automatically create your timeline**—organizing entries into eras, sagas, arcs, chapters, and scenes as you journal
@@ -210,7 +210,7 @@ Unlike simple journals, Lore Keeper uses AI to:
          │
          ▼
 ┌─────────────────────────────────────┐
-│  Lore Keeper AI Processing          │
+│  LoreBook AI Processing              │
 │  • Extracts facts, themes, patterns │
 │  • Detects relationships & emotions│
 │  • Organizes chronologically        │
@@ -237,13 +237,13 @@ Unlike simple journals, Lore Keeper uses AI to:
 └─────────────────┘ └──────────────┘ └──────────────────┘ └──────────────────┘
 ```
 
-**The Magic**: You just journal. Lore Keeper's Continuity Engine (the Jarvis of your life) automatically detects contradictions, emotional changes, identity drift, abandoned goals, and repeating loops. The system organizes, structures, predicts, and preserves your complete digital self.
+**The Magic**: You just journal. LoreBook's Continuity Engine (the Jarvis of your life) automatically detects contradictions, emotional changes, identity drift, abandoned goals, and repeating loops. The system organizes, structures, predicts, and preserves your complete digital self.
 
-**Your AI Companion**: Lore Keeper adapts to be exactly what you need—your gossip buddy for relationship talk, your therapist for emotional support, your historian for your story, your strategist for planning, and your memory bank that never forgets.
+**Your AI Companion**: LoreBook adapts to be exactly what you need—your gossip buddy for relationship talk, your therapist for emotional support, your historian for your story, your strategist for planning, and your memory bank that never forgets.
 
-### Lore Keeper vs. Traditional Journals
+### LoreBook vs. Traditional Journals
 
-| Feature | Traditional Journal | Other Journal Apps | **Lore Keeper** |
+| Feature | Traditional Journal | Other Journal Apps | **LoreBook** |
 |---------|-------------------|-------------------|-----------------|
 | **Biography Writing** | Manual, time-consuming | Not available | ✅ **Automatic** |
 | **Timeline Creation** | Manual organization | Basic date sorting | ✅ **Automatic 9-layer hierarchy** |
@@ -290,7 +290,7 @@ Unlike simple journals, Lore Keeper uses AI to:
 ### User-Facing Features
 
 #### 💬 **AI Chat Assistant** - Your Multi-Faceted Companion ⭐
-Lore Keeper seamlessly blends five personas based on context, becoming exactly what you need:
+LoreBook seamlessly blends five personas based on context, becoming exactly what you need:
 
 - 🗣️ **Gossip Buddy**: Curious, engaging, relationship-focused. Discusses characters, relationships, and social dynamics with enthusiasm and curiosity. Perfect for: "Tell me about Sarah" or "Who have I been spending time with?"
 - 🛋️ **Therapist**: Deep, reflective, supportive. Validates emotions, helps process experiences, asks gentle exploratory questions. Perfect for: Processing difficult experiences or understanding your emotional patterns.
@@ -314,7 +314,7 @@ Lore Keeper seamlessly blends five personas based on context, becoming exactly w
 - **Clickable Sources**: Sources and citations are clickable to view entries/chapters
 - Context-aware responses using your entire journal history
 - **Intelligent Persona Blending**: Automatically adapts to your needs—emotional topics trigger Therapist, goal-setting triggers Strategist, character talk triggers Gossip Buddy, story editing triggers Biography Writer
-- **Automatic Essence Extraction**: After every conversation, Lore Keeper extracts insights about your hopes, dreams, fears, strengths, weaknesses, skills, values, and relationship patterns
+- **Automatic Essence Extraction**: After every conversation, LoreBook extracts insights about your hopes, dreams, fears, strengths, weaknesses, skills, values, and relationship patterns
 - **Cached RAG Packets**: Expensive context building cached for 5 minutes (50x faster)
 - Source citations showing where information came from
 - **Optimized Context Building**: Batched database queries, parallel operations
@@ -376,7 +376,7 @@ Lore Keeper seamlessly blends five personas based on context, becoming exactly w
 - Chat integration for updating character information through conversation
 
 #### 📊 **Automatic Timeline Creation** ⭐ **Core Feature**
-- **Your timeline builds itself automatically** - Just journal your life, and Lore Keeper organizes your entries into a hierarchical timeline
+- **Your timeline builds itself automatically** - Just journal your life, and LoreBook organizes your entries into a hierarchical timeline
 - **9-Layer Hierarchy**: Automatically organizes entries into Mythos → Epochs → Eras → Sagas → Arcs → Chapters → Scenes → Actions → MicroActions
 - **AI-Powered Organization**: AI detects themes, relationships, and patterns to create meaningful timeline structure
 - **Color-Coded Visualization**: Beautiful visual representation of your life story
@@ -415,7 +415,7 @@ Lore Keeper seamlessly blends five personas based on context, becoming exactly w
 - **Verification Badges**: Visual indicators on entries showing verification status
 
 #### 📖 **Automatic Biography Generation & Lorebooks** ⭐ **Core Feature**
-- **Your biography writes itself automatically** - Just journal your life, and Lore Keeper transforms your entries into a polished biography
+- **Your biography writes itself automatically** - Just journal your life, and LoreBook transforms your entries into a polished biography
 - **Multi-Biography Generation Engine**: Generate multiple versions of your life story (Main, Safe, Explicit, Private) with intelligent content filtering
 - **Lorebook System**: 
   - **Core Lorebooks**: Save named, versioned editions of your biographies
@@ -507,7 +507,7 @@ Lore Keeper seamlessly blends five personas based on context, becoming exactly w
 
 #### 🧠 **Analytics & Intelligence Engines**
 
-Lore Keeper includes a comprehensive suite of analytics engines that automatically extract insights from your journal entries:
+LoreBook includes a comprehensive suite of analytics engines that automatically extract insights from your journal entries:
 
 **Creative & Productivity Engines:**
 - **Creative Output Engine**: Tracks creative activities (coding, art, music, writing, video, robotics, design, performance), detects flow states, identifies creative blocks, tracks inspiration sources, monitors project lifecycles, and computes creative scores
@@ -641,7 +641,7 @@ Lore Keeper includes a comprehensive suite of analytics engines that automatical
 **First Steps**
 
 - Write a few journal entries about recent events
-- Let Lore Keeper automatically detect characters and relationships
+- Let LoreBook automatically detect characters and relationships
 - Try asking the AI: "What have I been working on lately?"
 - Explore the Timeline to see your entries visualized
 - Check out the Characters tab to see people automatically tracked
@@ -732,7 +732,7 @@ pnpm dev:web
 - `POST /api/billing/webhook` – Billing webhook receiver
 
 ## Ownership & Rights
-This project, LoreKeeper, including all code, documentation, and concepts, is © 2025 Abel Mendoza (Omega Technologies).
+This project, LoreBook, including all code, documentation, and concepts, is © 2025 Abel Mendoza (Omega Technologies).
 All rights reserved. No part of this software may be used commercially, redistributed, or sold without explicit permission.
 
 ### Character Knowledge Base (Entity-Relationship Schema)
@@ -818,11 +818,11 @@ left join public.character_memories cm
   on cm.character_id = c.id
 left join public.character_relationships cr
   on cr.source_character_id = c.id;
-**Open your browser** to `http://localhost:5173` and start using Lore Keeper!
+**Open your browser** to `http://localhost:5173` and start using LoreBook!
 
 #### Populating Dummy Data
 
-To see Lore Keeper in action with sample data:
+To see LoreBook in action with sample data:
 
 1. Open the browser console (F12)
 2. Copy and paste the script from `populate-browser-console.js`
@@ -1141,7 +1141,7 @@ psql "your-db-url" -f migrations/your_migration.sql
 
 ### Timeline Hierarchy
 
-Lore Keeper uses a 9-layer hierarchy to organize memories:
+LoreBook uses a 9-layer hierarchy to organize memories:
 
 1. **Mythos** - Top-level narrative themes
 2. **Epochs** - Major time periods
@@ -1172,7 +1172,7 @@ HQI provides semantic search capabilities:
 
 ### Continuity Intelligence
 
-The Continuity Engine is the core intelligence of Lore Keeper—the "Jarvis of your life." It ensures narrative consistency and provides self-awareness:
+The Continuity Engine is the core intelligence of LoreBook—the "Jarvis of your life." It ensures narrative consistency and provides self-awareness:
 - **Detects contradictions** in your story automatically
 - **Tracks emotional arcs** and transitions
 - **Monitors identity drift** and personal evolution
@@ -1427,8 +1427,8 @@ We welcome contributions! Here's how to get started:
 
 ### General Questions
 
-**Q: Do I need to be a good writer to use Lore Keeper?**  
-A: No! Lore Keeper is designed for everyone. Just write naturally about your life—the AI handles the rest. Your biography and timeline write themselves automatically.
+**Q: Do I need to be a good writer to use LoreBook?**  
+A: No! LoreBook is designed for everyone. Just write naturally about your life—the AI handles the rest. Your biography and timeline write themselves automatically.
 
 **Q: How automatic is it really?**  
 A: Very automatic! When you create a journal entry:
@@ -1452,12 +1452,12 @@ A: Your data is yours. We use:
 A: Yes! You can export all your data in JSON format (GDPR compliant). Future export formats include PDF, eBook, and structured formats for AI systems.
 
 **Q: How much does it cost?**  
-A: Lore Keeper is cost-optimized with rule-based extraction and aggressive caching, eliminating most API costs. The core operations are free—no expensive API calls for common tasks.
+A: LoreBook is cost-optimized with rule-based extraction and aggressive caching, eliminating most API costs. The core operations are free—no expensive API calls for common tasks.
 
 ### Technical Questions
 
-**Q: What are the different personas/roles Lore Keeper can be?**  
-A: Lore Keeper seamlessly blends six personas based on context:
+**Q: What are the different personas/roles LoreBook can be?**  
+A: LoreBook seamlessly blends six personas based on context:
 - **Gossip Buddy**: For discussing characters, relationships, and social dynamics
 - **Therapist**: For emotional support and processing experiences
 - **Biography Writer**: For shaping compelling life stories and structuring narratives
@@ -1478,10 +1478,10 @@ A: The Soul Profile automatically extracts and tracks your psychological essence
 - **Personality Traits**: Your character attributes
 - **Relationship Patterns**: How you interact with others
 
-The profile **dynamically evolves** with every conversation—Lore Keeper learns more about you over time and tracks how you change. View it in Discovery Hub → Soul Profile panel or use `/soul` command in chat.
+The profile **dynamically evolves** with every conversation—LoreBook learns more about you over time and tracks how you change. View it in Discovery Hub → Soul Profile panel or use `/soul` command in chat.
 
 **Q: How does automatic biography generation work?**  
-A: Lore Keeper analyzes your journal entries, extracts themes and stories, and uses AI to transform them into polished biography sections. You can refine through a chatbot-style editor.
+A: LoreBook analyzes your journal entries, extracts themes and stories, and uses AI to transform them into polished biography sections. You can refine through a chatbot-style editor.
 
 **Q: How does automatic timeline creation work?**  
 A: AI analyzes your entries to detect themes, relationships, and patterns, then automatically organizes them into a 9-layer hierarchy (Mythos → Epochs → Eras → Sagas → Arcs → Chapters → Scenes → Actions → MicroActions).
@@ -1496,7 +1496,7 @@ A: Very fast! Through optimizations:
 - Tag extraction: 500ms → 10ms (50x faster)
 - Most operations are 10-100x faster than before
 
-**Q: What technologies does Lore Keeper use?**  
+**Q: What technologies does LoreBook use?**  
 A: 
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS
 - **Backend**: Node.js, Express, TypeScript
@@ -1513,7 +1513,7 @@ A: Currently, you can export your data in JSON format. Import features for other
 A: Currently, it's private to you. Collaborative memories (letting others contribute) are planned for the future.
 
 **Q: Does it work offline?**  
-A: Currently, Lore Keeper requires an internet connection. Offline support is planned for future releases.
+A: Currently, LoreBook requires an internet connection. Offline support is planned for future releases.
 
 **Q: Can I use it on mobile?**  
 A: The web app works on mobile browsers. A dedicated mobile app is planned (see Roadmap).
