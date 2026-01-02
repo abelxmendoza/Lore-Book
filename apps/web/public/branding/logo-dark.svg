@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80">
+  <defs>
+    <linearGradient id="pulseDark" x1="0%" x2="100%" y1="0%" y2="0%">
+      <stop offset="0%" stop-color="#B300FF"/>
+      <stop offset="100%" stop-color="#6B2EFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="80" rx="16" fill="#05010c" stroke="#B300FF" stroke-width="2"/>
+  <path d="M46 60C30 60 20 48 20 35c0-13 10-23 26-23 10 0 17 4 22 8l-10 9c-3-3-6-5-11-5-7 0-12 6-12 12 0 7 5 12 12 12 5 0 9-2 12-6l10 8c-6 7-14 10-23 10z" fill="url(#pulseDark)"/>
+  <text x="98" y="46" fill="#e0d7ff" font-family="'Inter', sans-serif" font-size="28" font-weight="700">LoreKeeper</text>
+  <text x="98" y="64" fill="#6B2EFF" font-family="'Inter', sans-serif" font-size="12" letter-spacing="2">Omega Technologies</text>
+</svg>

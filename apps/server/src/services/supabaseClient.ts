@@ -16,6 +16,7 @@ const createMockQueryBuilder = () => {
     delete: () => builder,
     update: () => builder,
     upsert: () => builder,
+    delete: () => builder,
     select: () => builder,
     eq: () => builder,
     ilike: () => builder,

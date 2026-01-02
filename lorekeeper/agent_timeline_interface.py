@@ -1,3 +1,4 @@
+# © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 """Interface layer for agents interacting with the LoreKeeper timeline."""
 from __future__ import annotations
 
@@ -15,6 +16,9 @@ class TimelineAgentInterface:
     """Provides helper methods for agent-driven timeline operations."""
 
     def __init__(
+        self, base_path: Path | None = None, max_context_events: int = 20, user_id: str | None = None
+    ) -> None:
+        self.manager = TimelineManager(base_path=base_path, user_id=user_id)
         self,
         base_path: Path | None = None,
         max_context_events: int = 20,
@@ -36,6 +40,13 @@ class TimelineAgentInterface:
             filtered.append(event)
         return filtered
 
+    def load_timeline_context(self, request_user_id: str | None = None) -> List[dict]:
+        """Load a limited set of recent, non-archived events for prompt injection."""
+
+        if request_user_id is not None:
+            assert request_user_id == self.manager.user_id
+        events = self.manager.get_events(include_archived=False)
+        sorted_events = sorted(events, key=lambda e: e.date, reverse=True)
     def load_timeline_context(
         self,
         *,
@@ -56,9 +67,13 @@ class TimelineAgentInterface:
         trimmed = sorted_events[: self.max_context_events]
         return [asdict(event) for event in trimmed]
 
-    def query_context_window(self, period: str, tags: Optional[List[str]] = None) -> List[dict]:
+    def query_context_window(
+        self, period: str, tags: Optional[List[str]] = None, request_user_id: str | None = None
+    ) -> List[dict]:
         """Convenience helper to fetch events for common context windows."""
 
+        if request_user_id is not None:
+            assert request_user_id == self.manager.user_id
         events = self.manager.get_events_by_period(period, tags=tags, include_archived=False)
         scoped = self._filter_private(events)
         sorted_events = sorted(scoped, key=lambda e: e.date, reverse=True)

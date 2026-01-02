@@ -24,6 +24,9 @@ import { peoplePlacesRouter } from './routes/peoplePlaces';
 import { locationsRouter } from './routes/locations';
 import { xRouter } from './routes/x';
 import { tasksRouter } from './routes/tasks';
+import { legalRouter } from './routes/legal';
+import { billingRouter } from './billing/billingRouter';
+import { accountRouter } from './routes/account';
 import { insightsRouter } from './routes/insights';
 import { authMiddleware } from './middleware/auth';
 import { rateLimitMiddleware } from './middleware/rateLimit';
@@ -240,6 +243,26 @@ app.use('/', healthRouter);
 import diagnosticsRouter from './routes/diagnostics';
 app.use('/api/diagnostics', diagnosticsRouter);
 
+app.use('/api/entries', entriesRouter);
+app.use('/api/photos', photosRouter);
+app.use('/api/calendar', calendarRouter);
+app.use('/api/chat', chatRouter);
+app.use('/api/timeline', timelineRouter);
+app.use('/api/summary', summaryRouter);
+app.use('/api/chapters', chaptersRouter);
+app.use('/api/evolution', evolutionRouter);
+app.use('/api/corrections', correctionsRouter);
+app.use('/api/canon', canonRouter);
+app.use('/api/ladder', ladderRouter);
+app.use('/api/memory-graph', memoryGraphRouter);
+app.use('/api/memory-ladder', memoryLadderRouter);
+app.use('/api/people-places', peoplePlacesRouter);
+app.use('/api/locations', locationsRouter);
+app.use('/api/x', xRouter);
+app.use('/api/tasks', tasksRouter);
+app.use('/api/legal', legalRouter);
+app.use('/api/billing', billingRouter);
+app.use('/api/account', accountRouter);
 const apiRouter = express.Router();
 
 // Security middleware stack - ALWAYS enabled in production
