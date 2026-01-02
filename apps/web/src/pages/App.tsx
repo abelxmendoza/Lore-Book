@@ -215,7 +215,10 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
 
 
 
-  const visibleEntries = useMemo(() => (searchResults.length ? searchResults : entries).slice(0, 8), [entries, searchResults]);
+  const visibleEntries = useMemo(() => {
+    const source = searchResults.length > 0 ? searchResults : entries;
+    return source.slice(0, 8);
+  }, [entries, searchResults]);
 
   const renderTimelineSurface = () => (
     <ImprovedTimelineView
