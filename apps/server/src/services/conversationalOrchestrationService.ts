@@ -215,11 +215,32 @@ Return JSON:
 
       const formatted = await this.formatInsights(insights);
 
+      // Also get predictions if available
+      const predictions = await predictiveContinuityService.getPredictions(context.user_id, {
+        dismissed: false,
+        limit: 3,
+      });
+
+      let fullFormatted = formatted;
+      if (predictions.length > 0) {
+        const predictionsText = await this.formatPredictions(predictions);
+        fullFormatted += '\n\n' + predictionsText;
+      }
+
+      // Also get goal alignment if available
+      const goals = await goalValueAlignmentService.getActiveGoals(context.user_id);
+      if (goals.length > 0) {
+        const alignmentText = await this.formatGoalAlignment(context.user_id, goals);
+        if (alignmentText) {
+          fullFormatted += '\n\n' + alignmentText;
+        }
+      }
+
       return {
-        content: formatted,
+        content: fullFormatted,
         response_mode: 'INSIGHT_REFLECTION',
         related_insights: insights.map(i => i.id),
-        disclaimer: 'These are observations, not facts.',
+        disclaimer: 'These are observations and probabilistic projections, not facts or advice.',
       };
     } catch (error) {
       logger.error({ err: error }, 'Failed to reflect with insights');
@@ -489,6 +510,37 @@ Answer the question using ONLY the information from these claims.`
     }).join('\n\n');
 
     return `Here are some possible trajectories based on past patterns:\n\n${formatted}`;
+  }
+
+  /**
+   * Format goal alignment for display
+   */
+  private async formatGoalAlignment(userId: string, goals: any[]): Promise<string> {
+    try {
+      const snapshots = await goalValueAlignmentService.getLatestAlignmentSnapshots(
+        userId,
+        goals.map(g => g.id)
+      );
+
+      if (snapshots.length === 0) {
+        return '';
+      }
+
+      const formatted = goals.map(goal => {
+        const snapshot = snapshots.find(s => s.goal_id === goal.id);
+        if (!snapshot) {
+          return null;
+        }
+
+        const alignmentPercent = ((snapshot.alignment_score + 1) / 2 * 100).toFixed(0);
+        return `**${goal.title}**\nAlignment: ${alignmentPercent}% (Confidence: ${(snapshot.confidence * 100).toFixed(0)}%)`;
+      }).filter(Boolean).join('\n\n');
+
+      return formatted ? `Goal Alignment:\n\n${formatted}\n\nAlignment reflects observed patterns, not intent.` : '';
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to format goal alignment');
+      return '';
+    }
   }
 
   /**
