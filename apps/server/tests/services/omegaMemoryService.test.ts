@@ -29,17 +29,16 @@ describe('OmegaMemoryService', () => {
         updated_at: new Date().toISOString()
       };
 
-      vi.mocked(supabaseAdmin.from).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            or: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: mockEntity, error: null })
-              })
-            })
-          })
-        })
-      } as any);
+      // Create proper chainable mock
+      const mockChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        or: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockEntity, error: null })
+      };
+
+      vi.mocked(supabaseAdmin.from).mockReturnValue(mockChain as any);
 
       const result = await omegaMemoryService.resolveEntities('user-123', [
         { name: 'John Doe', type: 'PERSON' }
@@ -50,18 +49,14 @@ describe('OmegaMemoryService', () => {
     });
 
     it('should create new entity if not found', async () => {
-      // Mock findEntityByNameOrAlias to return null
-      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            or: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: null, error: { code: 'PGRST116' } })
-              })
-            })
-          })
-        })
-      } as any);
+      // Mock findEntityByNameOrAlias to return null (not found)
+      const mockFindChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        or: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: { code: 'PGRST116' } })
+      };
 
       // Mock createEntity
       const newEntity = {
@@ -74,13 +69,15 @@ describe('OmegaMemoryService', () => {
         updated_at: new Date().toISOString()
       };
 
-      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: newEntity, error: null })
-          })
-        })
-      } as any);
+      const mockCreateChain = {
+        insert: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: newEntity, error: null })
+      };
+
+      vi.mocked(supabaseAdmin.from)
+        .mockReturnValueOnce(mockFindChain as any)
+        .mockReturnValueOnce(mockCreateChain as any);
 
       const result = await omegaMemoryService.resolveEntities('user-123', [
         { name: 'Jane Doe', type: 'PERSON' }
@@ -184,28 +181,29 @@ describe('OmegaMemoryService', () => {
         }
       ];
 
-      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockResolvedValue({ data: claims, error: null })
-            })
-          })
-        })
-      } as any);
+      // Mock claims fetch
+      const mockClaimsChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: claims, error: null })
+      };
 
-      // Mock evidence counts - need to return count for each claim
-      vi.mocked(supabaseAdmin.from).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ count: 0 })
-        })
-      } as any);
+      // Mock evidence count queries (called for each claim)
+      const mockEvidenceChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ count: 0, error: null })
+      };
+
+      vi.mocked(supabaseAdmin.from)
+        .mockReturnValueOnce(mockClaimsChain as any) // First call for claims
+        .mockReturnValue(mockEvidenceChain as any); // Subsequent calls for evidence
 
       const ranked = await omegaMemoryService.rankClaims('entity-1');
 
       expect(ranked).toBeDefined();
-      expect(ranked.length).toBeGreaterThan(0);
+      expect(ranked.length).toBe(2);
+      // Recent claim should rank higher due to recency and confidence
+      expect(ranked[0].id).toBe('claim-2');
     });
   });
 });
-
