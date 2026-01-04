@@ -296,6 +296,7 @@ apiRouter.use('/corrections', correctionsRouter);
 apiRouter.use('/canon', canonRouter);
 apiRouter.use('/memory-graph', memoryGraphRouter);
 apiRouter.use('/memory-ladder', memoryLadderRouter);
+apiRouter.use('/omega-memory', omegaMemoryRouter);
 apiRouter.use('/hqi', hqiRouter);
 apiRouter.use('/people-places', peoplePlacesRouter);
 apiRouter.use('/locations', locationsRouter);
