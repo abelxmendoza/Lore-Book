@@ -10,7 +10,8 @@ import {
   Users,
   Activity,
   AlertCircle,
-  ClipboardCheck
+  ClipboardCheck,
+  Clock
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
@@ -21,6 +22,7 @@ import { RelationshipsAnalyticsPanel } from './RelationshipsAnalyticsPanel';
 import { ContinuityDashboard } from '../continuity/ContinuityDashboard';
 import { ShadowAnalyticsPanel } from './ShadowAnalyticsPanel';
 import { MemoryReviewQueuePanel } from './MemoryReviewQueuePanel';
+import { DecisionMemoryPanel } from './DecisionMemoryPanel';
 import { fetchJson } from '../../lib/api';
 
 // Wrapper component for InsightsPanel that fetches data
@@ -65,6 +67,13 @@ const PANEL_CONFIGS: PanelConfig[] = [
     description: 'Review and control what memories are being proposed. The trust choke point for all memory ingestion.',
     icon: ClipboardCheck,
     component: MemoryReviewQueuePanel
+  },
+  {
+    id: 'decisions',
+    title: 'Decision Memory',
+    description: 'Snapshots of decisions you\'ve made, preserving context, options, and reasoning from that moment.',
+    icon: Clock,
+    component: DecisionMemoryPanel
   },
   {
     id: 'identity',
