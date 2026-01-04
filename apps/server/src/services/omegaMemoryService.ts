@@ -710,7 +710,7 @@ A contradiction means the claims cannot both be true at the same time.`
   }
 
   /**
-   * Rank claims by truth score (recency + confidence + evidence)
+   * Rank claims by truth score (recency + confidence + evidence + temporal confidence)
    */
   async rankClaims(entityId: string): Promise<RankedClaim[]> {
     const { data: claims, error } = await supabaseAdmin
@@ -725,29 +725,51 @@ A contradiction means the claims cannot both be true at the same time.`
       throw error;
     }
 
-    // Get evidence counts for each claim
+    // Get evidence-weighted scores for each claim
     const claimsWithEvidence = await Promise.all(
       (claims || []).map(async (claim) => {
-        const { count } = await supabaseAdmin
+        // Get evidence with reliability scores
+        const { data: evidence } = await supabaseAdmin
           .from('omega_evidence')
-          .select('*', { count: 'exact', head: true })
+          .select('reliability_score, source_type')
           .eq('claim_id', claim.id);
+
+        // Calculate evidence-weighted score
+        const evidenceCount = evidence?.length || 0;
+        const evidenceWeightedScore = evidence && evidence.length > 0
+          ? evidence.reduce((sum: number, e: any) => sum + (e.reliability_score || 1.0), 0) / evidence.length
+          : 0.5;
+
+        // Get temporal confidence from metadata or default
+        const temporalConfidence = (claim as any).temporal_confidence || 
+                                   (claim.metadata as any)?.temporal_confidence || 
+                                   0.8;
 
         return {
           ...claim,
-          evidence_count: count || 0,
+          evidence_count: evidenceCount,
+          evidence_weighted_score: evidenceWeightedScore,
+          temporal_confidence: temporalConfidence,
         };
       })
     );
 
-    // Calculate scores
+    // Calculate scores with enhanced weighting
     const now = Date.now();
     const ranked = claimsWithEvidence.map((claim) => {
       const recencyWeight = this.timeDecay(new Date(claim.start_time).getTime(), now);
       const confidenceWeight = claim.confidence;
       const evidenceWeight = Math.min(claim.evidence_count / 10, 1.0); // Cap at 1.0
+      const evidenceReliabilityWeight = claim.evidence_weighted_score || 0.5;
+      const temporalWeight = claim.temporal_confidence || 0.8;
 
-      const score = recencyWeight * 0.4 + confidenceWeight * 0.4 + evidenceWeight * 0.2;
+      // Enhanced scoring: recency (30%) + confidence (25%) + evidence count (15%) + evidence reliability (15%) + temporal (15%)
+      const score = 
+        recencyWeight * 0.30 +
+        confidenceWeight * 0.25 +
+        evidenceWeight * 0.15 +
+        evidenceReliabilityWeight * 0.15 +
+        temporalWeight * 0.15;
 
       return {
         ...claim,
