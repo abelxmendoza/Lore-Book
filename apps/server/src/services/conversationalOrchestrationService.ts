@@ -13,6 +13,7 @@ import { perspectiveService } from './perspectiveService';
 import { insightReflectionService } from './insightReflectionService';
 import { memoryReviewQueueService } from './memoryReviewQueueService';
 import { decisionMemoryService } from './decisionMemoryService';
+import { predictiveContinuityService } from './predictiveContinuityService';
 import type {
   ChatContext,
   ChatMessage,
