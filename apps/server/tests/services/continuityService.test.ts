@@ -75,8 +75,16 @@ describe('ContinuityService', () => {
         id: 'event-1',
         user_id: 'user-123',
         type: 'CLAIM_CREATED',
-        explanation: expect.stringContaining('John Doe'),
+        explanation: 'Claim created about John Doe from input: "Source text here"',
         reversible: true,
+        timestamp: new Date().toISOString(),
+        context: {},
+        related_claim_ids: [],
+        related_entity_ids: [],
+        related_location_ids: [],
+        initiated_by: 'USER',
+        severity: 'INFO',
+        created_at: new Date().toISOString(),
       };
 
       vi.mocked(supabaseAdmin.from).mockReturnValue({
@@ -293,14 +301,13 @@ describe('ContinuityService', () => {
         snapshot_after: {},
       };
 
-      // Mock event fetch
-      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockEvent, error: null })
-          })
-        })
-      } as any);
+      // Mock event fetch with proper chaining
+      const mockEventChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockEvent, error: null })
+      };
+      vi.mocked(supabaseAdmin.from).mockReturnValueOnce(mockEventChain as any);
 
       // Mock snapshot creation (claims fetch)
       vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
@@ -351,13 +358,12 @@ describe('ContinuityService', () => {
         reversal_id: null,
       };
 
-      vi.mocked(supabaseAdmin.from).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockEvent, error: null })
-          })
-        })
-      } as any);
+      const mockEventChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockEvent, error: null })
+      };
+      vi.mocked(supabaseAdmin.from).mockReturnValue(mockEventChain as any);
 
       const result = await continuityService.revertEvent(
         'user-123',
