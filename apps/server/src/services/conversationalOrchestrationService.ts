@@ -14,6 +14,7 @@ import { insightReflectionService } from './insightReflectionService';
 import { memoryReviewQueueService } from './memoryReviewQueueService';
 import { decisionMemoryService } from './decisionMemoryService';
 import { predictiveContinuityService } from './predictiveContinuityService';
+import { goalValueAlignmentService } from './goalValueAlignmentService';
 import type {
   ChatContext,
   ChatMessage,
