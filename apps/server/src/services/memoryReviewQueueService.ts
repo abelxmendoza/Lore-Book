@@ -10,6 +10,11 @@ import { config } from '../config';
 import { embeddingService } from './embeddingService';
 import { continuityService } from './continuityService';
 import { omegaMemoryService } from './omegaMemoryService';
+import { memoryService } from './memoryService';
+import { peoplePlacesService } from './peoplePlacesService';
+import { essenceProfileService } from './essenceProfileService';
+import { memoirService } from './memoirService';
+import { extractTags } from '../utils/keywordDetector';
 import type {
   MemoryProposal,
   MemoryDecision,
@@ -325,6 +330,9 @@ Identity-affecting claims include:
       // Commit the claim
       await this.commitClaim(proposal);
 
+      // Run comprehensive ingestion to parse and categorize into all LoreBook systems
+      await this.comprehensiveIngestion(userId, proposal);
+
       // Record decision
       const { data: decision, error } = await supabaseAdmin
         .from('memory_decisions')
@@ -348,6 +356,136 @@ Identity-affecting claims include:
     } catch (error) {
       logger.error({ err: error, userId, proposalId }, 'Failed to approve proposal');
       throw error;
+    }
+  }
+
+  /**
+   * Comprehensive ingestion - parse and categorize into all LoreBook systems
+   * This ensures approved memories update timeline, characters, locations, essence, memoir, etc.
+   */
+  private async comprehensiveIngestion(userId: string, proposal: MemoryProposal): Promise<void> {
+    const sourceText = proposal.source_excerpt || proposal.claim_text;
+    
+    // Run all ingestion processes in parallel (fire and forget for non-critical ones)
+    const ingestionPromises: Promise<any>[] = [];
+
+    // 1. Omega Memory ingestion (entities, claims, relationships)
+    ingestionPromises.push(
+      omegaMemoryService.ingestText(userId, sourceText, 'AI')
+        .then(result => {
+          logger.info({ 
+            userId, 
+            proposalId: proposal.id,
+            entities: result.entities.length,
+            claims: result.claims.length,
+            relationships: result.relationships.length
+          }, 'Omega Memory ingestion completed');
+        })
+        .catch(err => {
+          logger.warn({ err, userId, proposalId: proposal.id }, 'Omega Memory ingestion failed (non-blocking)');
+        })
+    );
+
+    // 2. Extract dates and create timeline entry if dates present
+    ingestionPromises.push(
+      this.extractAndSaveTimelineEntry(userId, sourceText, proposal)
+        .catch(err => {
+          logger.warn({ err, userId, proposalId: proposal.id }, 'Timeline entry creation failed (non-blocking)');
+        })
+    );
+
+    // 3. Extract essence insights (psychological patterns)
+    ingestionPromises.push(
+      essenceProfileService.extractEssence(userId, [{ role: 'user', content: sourceText }], [])
+        .then(insights => {
+          if (Object.keys(insights).length > 0) {
+            return essenceProfileService.updateProfile(userId, insights);
+          }
+        })
+        .then(() => {
+          logger.info({ userId, proposalId: proposal.id }, 'Essence insights extracted');
+        })
+        .catch(err => {
+          logger.warn({ err, userId, proposalId: proposal.id }, 'Essence extraction failed (non-blocking)');
+        })
+    );
+
+    // 4. Update memoir if significant
+    ingestionPromises.push(
+      memoirService.autoUpdateMemoir(userId)
+        .then(() => {
+          logger.info({ userId, proposalId: proposal.id }, 'Memoir updated');
+        })
+        .catch(err => {
+          logger.warn({ err, userId, proposalId: proposal.id }, 'Memoir update failed (non-blocking)');
+        })
+    );
+
+    // Wait for all ingestion processes (but don't fail if some fail)
+    await Promise.allSettled(ingestionPromises);
+  }
+
+  /**
+   * Extract dates from text and create timeline entry
+   */
+  private async extractAndSaveTimelineEntry(
+    userId: string,
+    text: string,
+    proposal: MemoryProposal
+  ): Promise<void> {
+    try {
+      // Use LLM to extract dates from text
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-4o-mini',
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `Extract dates and temporal information from the text.
+
+Return JSON:
+{
+  "has_date": boolean,
+  "date": "ISO date string or null",
+  "date_precision": "EXACT" | "MONTH" | "YEAR" | "DECADE" | null,
+  "date_confidence": 0.0-1.0,
+  "temporal_context": "description of when this happened"
+}
+
+Only extract if there's a clear date reference. Return has_date: false if uncertain.`
+          },
+          {
+            role: 'user',
+            content: text
+          }
+        ]
+      });
+
+      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+
+      if (response.has_date && response.date) {
+        // Create timeline entry
+        await memoryService.saveEntry({
+          userId,
+          content: proposal.claim_text,
+          date: response.date,
+          tags: extractTags(text),
+          source: 'memory_suggestion',
+          metadata: {
+            proposal_id: proposal.id,
+            entity_id: proposal.entity_id,
+            date_precision: response.date_precision,
+            date_confidence: response.date_confidence,
+            temporal_context: response.temporal_context,
+            auto_captured: true,
+          }
+        });
+
+        logger.info({ userId, proposalId: proposal.id, date: response.date }, 'Timeline entry created from memory suggestion');
+      }
+    } catch (error) {
+      logger.debug({ err: error, userId, proposalId: proposal.id }, 'Date extraction failed, skipping timeline entry');
     }
   }
 

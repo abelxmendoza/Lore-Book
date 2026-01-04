@@ -229,7 +229,9 @@ export const ChatFirstInterface = () => {
                     connections: metadata?.connections,
                     continuityWarnings: metadata?.continuityWarnings,
                     timelineUpdates: metadata?.timelineUpdates,
-                    citations: metadata?.citations || []
+                    citations: metadata?.citations || [],
+                    memories: metadata?.memories || [],
+                    memorySuggestion: metadata?.memorySuggestion
                   }
                 : msg
             )
@@ -447,6 +449,30 @@ export const ChatFirstInterface = () => {
     }
   };
 
+  const handleApproveMemorySuggestion = async (proposalId: string) => {
+    try {
+      await fetchJson(`/api/mrq/proposals/${proposalId}/approve`, {
+        method: 'POST',
+      });
+      analytics.track('memory_suggestion_approved', { proposalId });
+    } catch (error) {
+      console.error('Failed to approve memory suggestion:', error);
+      throw error;
+    }
+  };
+
+  const handleDismissMemorySuggestion = (proposalId: string) => {
+    // Remove suggestion from message
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.memorySuggestion?.proposal_id === proposalId
+          ? { ...msg, memorySuggestion: undefined }
+          : msg
+      )
+    );
+    analytics.track('memory_suggestion_dismissed', { proposalId });
+  };
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -627,6 +653,8 @@ export const ChatFirstInterface = () => {
                   onDelete={() => handleDelete(message.id)}
                   onSourceClick={handleSourceClick}
                   onFeedback={handleFeedback}
+                  onApproveMemorySuggestion={handleApproveMemorySuggestion}
+                  onDismissMemorySuggestion={handleDismissMemorySuggestion}
                   onEditMemory={(claimId) => {
                     // Navigate to Memory Management panel with claim selected
                     navigate('/discovery?memory=' + claimId);

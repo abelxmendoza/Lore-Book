@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ChatMemoryIndicator, type MemoryIndicator } from './ChatMemoryIndicator';
+import { ChatMemorySuggestion } from './ChatMemorySuggestion';
 
 export type ChatSource = {
   type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
@@ -12,6 +13,16 @@ export type ChatSource = {
   title: string;
   snippet?: string;
   date?: string;
+};
+
+export type MemorySuggestion = {
+  proposal_id: string;
+  entity_name: string;
+  claim_text: string;
+  confidence: number;
+  source_excerpt: string;
+  reasoning?: string;
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
 };
 
 export type Message = {
@@ -27,6 +38,7 @@ export type Message = {
   sources?: ChatSource[];
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   memories?: MemoryIndicator[]; // Memories used in this response
+  memorySuggestion?: MemorySuggestion; // Proactive memory suggestion
   isStreaming?: boolean;
   feedback?: 'positive' | 'negative' | null;
   isSystemMessage?: boolean;
@@ -51,7 +63,9 @@ export const ChatMessage = ({
   onDelete,
   onSourceClick,
   onFeedback,
-  onEditMemory
+  onEditMemory,
+  onApproveMemorySuggestion,
+  onDismissMemorySuggestion
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -224,6 +238,22 @@ export const ChatMessage = ({
               <ChatMemoryIndicator
                 memories={message.memories}
                 onEdit={onEditMemory}
+              />
+            )}
+
+            {/* Memory Suggestion - Proactive Memory Capture */}
+            {!isUser && message.memorySuggestion && (
+              <ChatMemorySuggestion
+                suggestion={{
+                  id: message.memorySuggestion.proposal_id,
+                  entity_name: message.memorySuggestion.entity_name,
+                  claim_text: message.memorySuggestion.claim_text,
+                  confidence: message.memorySuggestion.confidence,
+                  source_excerpt: message.memorySuggestion.source_excerpt,
+                  reasoning: message.memorySuggestion.reasoning
+                }}
+                onApprove={onApproveMemorySuggestion ? () => onApproveMemorySuggestion(message.memorySuggestion!.proposal_id) : undefined}
+                onDismiss={onDismissMemorySuggestion ? () => onDismissMemorySuggestion(message.memorySuggestion!.proposal_id) : undefined}
               />
             )}
           </div>

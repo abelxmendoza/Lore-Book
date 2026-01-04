@@ -21,6 +21,8 @@ import { ragPacketCacheService } from './ragPacketCacheService';
 import { essenceProfileService } from './essenceProfileService';
 import { essenceRefinementEngine } from './essenceRefinement';
 import { omegaMemoryService } from './omegaMemoryService';
+import { memoryReviewQueueService } from './memoryReviewQueueService';
+import { perspectiveService } from './perspectiveService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
@@ -53,6 +55,17 @@ export type OmegaChatResponse = {
   sources?: ChatSource[];
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   memories?: MemoryClaim[]; // Memory claims used in this response
+  memorySuggestion?: MemorySuggestion; // Proactive memory suggestion
+};
+
+export type MemorySuggestion = {
+  proposal_id: string;
+  entity_name: string;
+  claim_text: string;
+  confidence: number;
+  source_excerpt: string;
+  reasoning?: string;
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
 };
 
 export type StreamingChatResponse = {
@@ -64,6 +77,7 @@ export type StreamingChatResponse = {
     connections?: string[];
     continuityWarnings?: string[];
     timelineUpdates?: string[];
+    memorySuggestion?: MemorySuggestion;
   };
 };
 
@@ -592,7 +606,7 @@ class OmegaChatService {
 **CHARACTERS (${loreData?.allCharacters?.length || orchestratorSummary.characters.length} total):**
 ${charactersKnowledge || 'No characters tracked yet.'}
 
-${locationsKnowledge ? `**LOCATIONS (${loreData.allLocations.length} total):**\n${locationsKnowledge}\n\n` : ''}
+${locationsKnowledge ? `**LOCATIONS (${loreData?.allLocations?.length || 0} total):**\n${locationsKnowledge}\n\n` : ''}
 **CHAPTERS & STORY ARCS:**
 ${chaptersKnowledge || 'No chapters yet.'}
 
@@ -832,9 +846,9 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
     const messageLower = message.toLowerCase();
     const mentionedCharacters = characters.filter(char => {
       const nameMatch = messageLower.includes(char.name.toLowerCase());
-      // Also check aliases/nicknames
-      const aliasMatch = char.alias && Array.isArray(char.alias) 
-        ? char.alias.some(alias => messageLower.includes(alias.toLowerCase()))
+      // Also check corrected names (nicknames/aliases)
+      const aliasMatch = char.corrected_names && Array.isArray(char.corrected_names) 
+        ? char.corrected_names.some((alias: string) => messageLower.includes(alias.toLowerCase()))
         : false;
       return nameMatch || aliasMatch;
     });
@@ -869,6 +883,14 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
         logger.debug({ err }, 'Failed to extract nicknames from conversation');
       });
 
+    // Detect memory suggestion (proactive memory capture)
+    let memorySuggestion: MemorySuggestion | null = null;
+    try {
+      memorySuggestion = await this.detectMemorySuggestion(userId, message);
+    } catch (error) {
+      logger.debug({ error }, 'Failed to detect memory suggestion, continuing');
+    }
+
     return {
       stream,
       metadata: {
@@ -877,7 +899,8 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
         sources: sources.slice(0, 10),
         connections,
         continuityWarnings,
-        timelineUpdates
+        timelineUpdates,
+        memorySuggestion: memorySuggestion || undefined
       }
     };
   }
@@ -947,22 +970,9 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
     const citations = this.generateCitations(sources, answer);
 
     // Extract memory claims used in response (from omega memory)
+    // Note: This is a placeholder - in production, you'd query omega_claims
+    // based on entities mentioned in sources or the response content
     const memories: MemoryClaim[] = [];
-    try {
-      // Get entities mentioned in the response
-      const entities = await omegaMemoryService.getEntities(userId);
-      
-      // For each source, try to find related memory claims
-      for (const source of sources.slice(0, 5)) {
-        if (source.type === 'entry' || source.type === 'character') {
-          // Try to find claims related to this source
-          // This is a simplified version - in production, you'd query omega_claims
-          // based on the source content or entity relationships
-        }
-      }
-    } catch (error) {
-      logger.debug({ error }, 'Failed to extract memory claims from response');
-    }
 
     // Save entry if needed
     let entryId: string | undefined;
@@ -1055,6 +1065,14 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
         logger.debug({ err }, 'Failed to extract nicknames from conversation');
       });
 
+    // Detect memory suggestion (proactive memory capture)
+    let memorySuggestion: MemorySuggestion | null = null;
+    try {
+      memorySuggestion = await this.detectMemorySuggestion(userId, message);
+    } catch (error) {
+      logger.debug({ error }, 'Failed to detect memory suggestion, continuing');
+    }
+
     return {
       answer,
       entryId,
@@ -1065,7 +1083,8 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       strategicGuidance: strategicGuidance || undefined,
       extractedDates,
       sources: sources.slice(0, 10),
-      citations
+      citations,
+      memorySuggestion: memorySuggestion || undefined
     };
   }
 
@@ -1085,6 +1104,112 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
   }
 
   /**
+   * Detect memory-worthy content and create suggestion
+   * Proactive memory capture - better than ChatGPT
+   */
+  private async detectMemorySuggestion(
+    userId: string,
+    message: string
+  ): Promise<MemorySuggestion | null> {
+    try {
+      // Use LLM to detect if message contains memory-worthy content
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-4o-mini',
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `You are a memory detection system. Determine if the user message contains a factual statement worth remembering.
+
+Return JSON:
+{
+  "is_memory_worthy": boolean,
+  "entity_name": "name of entity (or 'self' for user)",
+  "claim_text": "the factual statement to remember",
+  "confidence": 0.0-1.0,
+  "reasoning": "why this is memory-worthy"
+}
+
+Examples of memory-worthy:
+- "I'm a software engineer"
+- "I live in Seattle"
+- "I like coffee"
+- "John is my best friend"
+- "I work at Google"
+
+Examples of NOT memory-worthy:
+- "What do I like?"
+- "Tell me about myself"
+- "How are you?"
+- "Thanks"
+- Questions or commands`
+          },
+          {
+            role: 'user',
+            content: message
+          }
+        ]
+      });
+
+      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+
+      if (!response.is_memory_worthy || !response.entity_name || !response.claim_text) {
+        return null;
+      }
+
+      // Get or resolve entity
+      const entities = await omegaMemoryService.getEntities(userId);
+      let entity = entities.find(e =>
+        e.primary_name.toLowerCase() === response.entity_name.toLowerCase() ||
+        e.aliases.some((a: string) => a.toLowerCase() === response.entity_name.toLowerCase())
+      );
+
+      // If entity is 'self', use first entity or create a default
+      if (!entity && response.entity_name.toLowerCase() === 'self') {
+        entity = entities[0] || null;
+      }
+
+      // If no entity found, try to create one (or skip for now)
+      if (!entity) {
+        logger.debug({ entityName: response.entity_name }, 'Entity not found for memory suggestion, skipping');
+        return null;
+      }
+
+      // Get default perspective
+      const perspectives = await perspectiveService.getOrCreateDefaultPerspectives(userId);
+      const selfPerspective = perspectives.find(p => p.type === 'SELF');
+
+      // Create memory proposal through MRQ
+      const { proposal } = await memoryReviewQueueService.ingestMemory(
+        userId,
+        {
+          id: '',
+          text: response.claim_text,
+          confidence: response.confidence || 0.6,
+          metadata: {},
+        },
+        entity,
+        selfPerspective?.id || null,
+        message
+      );
+
+      return {
+        proposal_id: proposal.id,
+        entity_name: entity.primary_name,
+        claim_text: response.claim_text,
+        confidence: response.confidence || 0.6,
+        source_excerpt: message.length > 200 ? message.substring(0, 200) + '...' : message,
+        reasoning: response.reasoning || proposal.reasoning,
+        risk_level: proposal.risk_level,
+      };
+    } catch (error) {
+      logger.debug({ err: error, userId, message }, 'Failed to detect memory suggestion');
+      return null;
+    }
+  }
+
+  /**
    * Helper: Get recent insights from essence profile for refinement context
    */
   private getRecentInsights(profile: any): Array<{ id: string; category: string; text: string; confidence: number }> {
@@ -1100,8 +1225,8 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       items.forEach((item: any, idx: number) => {
         if (item.confidence > 0.5) {
           insights.push({
-            id: `${category}-${idx}`,
-            category,
+            id: `${String(category)}-${idx}`,
+            category: String(category),
             text: item.text,
             confidence: item.confidence
           });
