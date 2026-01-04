@@ -11,9 +11,12 @@ import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
+import { mockDataService } from '../../services/mockDataService';
+import { useMockData } from '../../contexts/MockDataContext';
 
 // Comprehensive mock location data showcasing all app capabilities
-const dummyLocations: LocationProfile[] = [
+// Export for use in mock data service
+export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-1',
     name: 'San Francisco Tech Hub',
@@ -320,9 +323,15 @@ const dummyLocations: LocationProfile[] = [
 const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows for grid view
 
 export const LocationBook = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [locations, setLocations] = useState<LocationProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // Register mock data with service on mount
+  useEffect(() => {
+    mockDataService.register.locations(dummyLocations);
+  }, []);
   const [selectedLocation, setSelectedLocation] = useState<LocationProfile | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
@@ -336,9 +345,18 @@ export const LocationBook = () => {
     try {
       const response = await fetchJson<{ locations: LocationProfile[] }>('/api/locations');
       const locationList = response?.locations || [];
-      setLocations(locationList.length > 0 ? locationList : dummyLocations);
+      
+      // Use mock data service to determine what to show - pass current toggle state
+      const result = mockDataService.getWithFallback.locations(
+        locationList.length > 0 ? locationList : null,
+        isMockDataEnabled
+      );
+      
+      setLocations(result.data);
     } catch {
-      setLocations(dummyLocations);
+      // On error, use mock data if enabled
+      const result = mockDataService.getWithFallback.locations(null, isMockDataEnabled);
+      setLocations(result.data);
     } finally {
       setLoading(false);
     }
@@ -347,6 +365,11 @@ export const LocationBook = () => {
   useEffect(() => {
     void loadLocations();
   }, []);
+
+  // Refresh when mock data toggle changes
+  useEffect(() => {
+    void loadLocations();
+  }, [isMockDataEnabled]);
 
   useEffect(() => {
     const memoryCards = entries.map(entry => memoryEntryToCard({

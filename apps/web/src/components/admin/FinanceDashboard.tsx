@@ -11,6 +11,7 @@ import { PaymentEventsFeed } from './PaymentEventsFeed';
 import { AdminCard } from './AdminCard';
 import { DollarSign, Users, TrendingDown, AlertTriangle } from 'lucide-react';
 import { generateMockFinanceMetrics } from '../../lib/mockData';
+import { useMockData } from '../../contexts/MockDataContext';
 
 interface FinanceMetrics {
   mrr: number;
@@ -21,28 +22,40 @@ interface FinanceMetrics {
 }
 
 export const FinanceDashboard = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [metrics, setMetrics] = useState<FinanceMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMockData, setIsMockData] = useState(false);
 
   useEffect(() => {
     loadMetrics();
-  }, []);
+  }, [isMockDataEnabled]);
 
   const loadMetrics = async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await fetchJson<FinanceMetrics>('/api/admin/finance/metrics');
-      setMetrics(data);
-      setIsMockData(false);
+      // Only use real data if toggle is off, or if we have data and toggle is on
+      if (data && !isMockDataEnabled) {
+        setMetrics(data);
+      } else if (isMockDataEnabled) {
+        // Use mock data if toggle is on
+        const mockMetrics = generateMockFinanceMetrics();
+        setMetrics(mockMetrics);
+      } else {
+        setMetrics(data);
+      }
     } catch (err: any) {
-      // Use mock data on error
-      const mockMetrics = generateMockFinanceMetrics();
-      setMetrics(mockMetrics);
-      setIsMockData(true);
-      console.error('Finance metrics load error, using mock data:', err);
+      // Use mock data on error only if toggle is enabled
+      if (isMockDataEnabled) {
+        const mockMetrics = generateMockFinanceMetrics();
+        setMetrics(mockMetrics);
+      } else {
+        setMetrics(null);
+        setError(err.message || 'Failed to load finance metrics');
+      }
+      console.error('Finance metrics load error:', err);
     } finally {
       setLoading(false);
     }
@@ -58,10 +71,10 @@ export const FinanceDashboard = () => {
 
   return (
     <div className="space-y-6">
-      {isMockData && (
+      {isMockDataEnabled && metrics && (
         <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-3 text-yellow-400 flex items-center gap-2 text-sm">
           <AlertTriangle className="h-4 w-4" />
-          Showing demo data - API unavailable or no data available
+          Showing demo data - Mock data toggle is enabled
         </div>
       )}
       {error && !isMockData && (

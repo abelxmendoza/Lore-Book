@@ -8,7 +8,9 @@ import {
 import { useAuth } from '../lib/supabase';
 import { useGuest } from '../contexts/GuestContext';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
+import { MockDataToggle } from '../components/settings/MockDataToggle';
 import { Button } from '../components/ui/button';
+import { useMockData } from '../contexts/MockDataContext';
 import {
   fetchUserProfile,
   updateUserProfile,
@@ -28,6 +30,7 @@ type Tab = 'profile' | 'subscription' | 'billing' | 'privacy' | 'activity' | 'da
 export default function AccountCenter() {
   const { user } = useAuth();
   const { isGuest, guestState } = useGuest();
+  const { useMockData: isMockDataEnabled } = useMockData();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [isEditing, setIsEditing] = useState(false);
@@ -71,7 +74,7 @@ export default function AccountCenter() {
       // If guest or no user, just set loading to false
       setLoading(false);
     }
-  }, [user, isGuest]);
+  }, [user, isGuest, isMockDataEnabled]);
 
   const loadAccountData = async () => {
     if (!user) {
@@ -990,6 +993,35 @@ export default function AccountCenter() {
                       </div>
                     </>
                   )}
+                </div>
+
+                {/* Mock Data Toggle - For Development & Showcasing */}
+                <div className="rounded-xl border border-border/60 bg-white/5 p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
+                      <Sparkles className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-white">Data Source</h3>
+                      <p className="text-sm text-white/60">Toggle between mock data and real backend data</p>
+                    </div>
+                  </div>
+                  <MockDataToggle />
+                </div>
+
+                {/* Ownership & Safety */}
+                <div className="rounded-xl border border-border/60 bg-white/5 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <div id="ownership" className="sr-only">Ownership</div>
+                      <p className="text-xs uppercase text-white/50">Account</p>
+                      <h3 className="text-lg font-semibold text-white">Ownership & Safety</h3>
+                      <p className="text-xs text-white/60">Export or irreversibly delete your LoreBook data.</p>
+                    </div>
+                  </div>
+                  <p className="mb-4 text-xs text-white/60">
+                    Need a copy first? <a className="underline hover:text-white transition-colors" href="/api/account/export">Download your JSON export.</a>
+                  </p>
                 </div>
 
                 {/* Danger Zone */}

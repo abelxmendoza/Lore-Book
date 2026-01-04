@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { LazyImage } from './ui/LazyImage';
 import { config } from '../config/env';
+import { useMockData } from '../contexts/MockDataContext';
 import { supabase } from '../lib/supabase';
 import { fetchJson } from '../lib/api';
 
@@ -66,6 +67,7 @@ const entryToPhotoMetadata = (entry: {
 };
 
 export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [photos, setPhotos] = useState<PhotoMetadata[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -113,19 +115,24 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
         summary?: string | null;
         tags: string[];
         metadata?: Record<string, unknown>;
-      }> }>('/api/entries/recent?sources=photo&limit=50', undefined, {
-        useMockData: true,
+      }>       }>('/api/entries/recent?sources=photo&limit=50', undefined, {
+        useMockData: isMockDataEnabled,
         mockData: { entries: mockEntries }
       });
 
       const photoEntries = data.entries.map(entryToPhotoMetadata);
-      setPhotos(photoEntries);
+      // Only use mock data if toggle is enabled
+      if (photoEntries.length === 0 && isMockDataEnabled) {
+        setPhotos(mockEntries.map(entryToPhotoMetadata));
+      } else {
+        setPhotos(photoEntries);
+      }
     } catch (error) {
       if (config.dev.enableConsoleLogs) {
         console.error('Failed to fetch photo entries:', error);
       }
       // On error, use empty array or mock data if enabled
-      if (config.dev.allowMockData) {
+      if (isMockDataEnabled) {
         setPhotos(mockEntries.map(entryToPhotoMetadata));
       } else {
         setPhotos([]);
@@ -137,7 +144,7 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
 
   useEffect(() => {
     fetchPhotos();
-  }, [fetchPhotos]);
+  }, [fetchPhotos, isMockDataEnabled]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -146,7 +153,7 @@ export const PhotoGallery = ({ onPhotoUploaded }: PhotoGalleryProps) => {
     setUploading(true);
     try {
       // If mock data is enabled, simulate upload
-      if (config.dev.allowMockData) {
+      if (isMockDataEnabled) {
         if (config.dev.enableConsoleLogs) {
           console.log('[MOCK API] Photo upload - Using mock data');
         }

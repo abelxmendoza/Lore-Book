@@ -11,7 +11,8 @@ import {
   removeMemoryFromTimeline as removeMemoryFromTimelineApi
 } from '../api/timelineV2';
 import { generateMockTimelines } from '../mocks/timelineMockData';
-import { config } from '../config/env';
+import { shouldUseMockData } from './useShouldUseMockData';
+import { subscribeToMockDataState } from '../contexts/MockDataContext';
 
 export const useTimelineV2 = (filters?: { timeline_type?: string; parent_id?: string | null }) => {
   const [timelines, setTimelines] = useState<Timeline[]>([]);
@@ -25,7 +26,7 @@ export const useTimelineV2 = (filters?: { timeline_type?: string; parent_id?: st
       const response = await fetchTimelines(filters);
       
       // Use mock data if response is empty and mock data is enabled
-      if ((!response.timelines || response.timelines.length === 0) && config.dev.allowMockData) {
+      if ((!response.timelines || response.timelines.length === 0) && shouldUseMockData()) {
         const mockTimelines = generateMockTimelines();
         
         // Apply filters
@@ -45,7 +46,7 @@ export const useTimelineV2 = (filters?: { timeline_type?: string; parent_id?: st
       }
     } catch (err) {
       // Use mock data on error if enabled
-      if (config.dev.allowMockData) {
+      if (shouldUseMockData()) {
         console.warn('Timelines API failed, using mock data:', err);
         const mockTimelines = generateMockTimelines();
         
@@ -72,6 +73,14 @@ export const useTimelineV2 = (filters?: { timeline_type?: string; parent_id?: st
 
   useEffect(() => {
     loadTimelines();
+  }, [loadTimelines]);
+
+  // Refresh when mock data toggle changes
+  useEffect(() => {
+    const unsubscribe = subscribeToMockDataState(() => {
+      loadTimelines();
+    });
+    return unsubscribe;
   }, [loadTimelines]);
 
   const createTimeline = useCallback(async (payload: Parameters<typeof createTimelineApi>[0]) => {

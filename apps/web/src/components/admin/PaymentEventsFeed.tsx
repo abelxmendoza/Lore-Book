@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { fetchJson } from '../../lib/api';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
 import { generateMockPaymentEvents } from '../../lib/mockData';
+import { useMockData } from '../../contexts/MockDataContext';
 
 interface PaymentEvent {
   id: string;
@@ -22,12 +23,12 @@ interface PaymentEvent {
 }
 
 export const PaymentEventsFeed = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [events, setEvents] = useState<PaymentEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
-  const [isMockData, setIsMockData] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -48,7 +49,7 @@ export const PaymentEventsFeed = () => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [autoRefresh, eventTypeFilter]);
+  }, [autoRefresh, eventTypeFilter, isMockDataEnabled]);
 
   const loadEvents = async () => {
     try {
@@ -62,21 +63,25 @@ export const PaymentEventsFeed = () => {
       const response = await fetchJson<{ events: PaymentEvent[] }>(
         `/api/admin/finance/payment-events?${params.toString()}`
       );
-      if (response.events && response.events.length > 0) {
+      if (response.events && response.events.length > 0 && !isMockDataEnabled) {
         setEvents(response.events);
-        setIsMockData(false);
-      } else {
-        // Use mock data if API returns empty
+      } else if (isMockDataEnabled) {
+        // Use mock data if toggle is enabled
         const mockData = generateMockPaymentEvents(25);
         setEvents(mockData);
-        setIsMockData(true);
+      } else {
+        setEvents(response.events || []);
       }
     } catch (err: any) {
-      // Use mock data on error
-      const mockData = generateMockPaymentEvents(25);
-      setEvents(mockData);
-      setIsMockData(true);
-      console.error('Payment events load error, using mock data:', err);
+      // Use mock data on error only if toggle is enabled
+      if (isMockDataEnabled) {
+        const mockData = generateMockPaymentEvents(25);
+        setEvents(mockData);
+      } else {
+        setEvents([]);
+        setError(err.message || 'Failed to load payment events');
+      }
+      console.error('Payment events load error:', err);
     } finally {
       setLoading(false);
     }
@@ -134,7 +139,7 @@ export const PaymentEventsFeed = () => {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold text-white">Payment Events</h3>
-          {isMockData && (
+          {isMockDataEnabled && (
             <span className="px-2 py-0.5 text-xs font-medium bg-yellow-500/20 text-yellow-400 rounded border border-yellow-500/30">
               Demo Data
             </span>
@@ -180,7 +185,7 @@ export const PaymentEventsFeed = () => {
       )}
 
       <div className="space-y-2 max-h-96 overflow-y-auto">
-        {events.length === 0 && !isMockData ? (
+        {events.length === 0 && !isMockDataEnabled ? (
           <div className="text-center py-8 text-white/50">
             No payment events found
           </div>

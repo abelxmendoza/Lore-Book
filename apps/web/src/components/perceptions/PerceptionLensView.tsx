@@ -5,11 +5,12 @@ import { perceptionApi } from '../../api/perceptions';
 import type { PerceptionEntry, PerceptionSource, PerceptionStatus } from '../../types/perception';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
+import { mockDataService } from '../../services/mockDataService';
+import { useMockData } from '../../contexts/MockDataContext';
+import { mockPerceptions } from './PerceptionsView';
 
-// Import mock data from PerceptionsView
-const mockPerceptions: PerceptionEntry[] = [
-  {
-    id: 'mock-1',
+// Re-export mock data for service
+export { mockPerceptions };
     user_id: 'mock-user',
     subject_alias: 'Sarah Chen',
     subject_person_id: null,
@@ -221,8 +222,14 @@ const mockPerceptions: PerceptionEntry[] = [
  * Outcome: Lorebook becomes a mirror, not just a log. Turns gossip into self-awareness.
  */
 export const PerceptionLensView = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [perceptions, setPerceptions] = useState<PerceptionEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // Register mock data with service on mount
+  useEffect(() => {
+    mockDataService.register.perceptions(mockPerceptions);
+  }, []);
   
   // Filters
   const [subjectFilter, setSubjectFilter] = useState<string>('');
@@ -238,7 +245,7 @@ export const PerceptionLensView = () => {
 
   useEffect(() => {
     void loadPerceptions();
-  }, [subjectFilter, sourceFilter, statusFilter, confidenceMin, confidenceMax, timeStart, timeEnd]);
+  }, [subjectFilter, sourceFilter, statusFilter, confidenceMin, confidenceMax, timeStart, timeEnd, isMockDataEnabled]);
 
   const loadPerceptions = async () => {
     setLoading(true);
@@ -253,11 +260,15 @@ export const PerceptionLensView = () => {
         timeEnd: timeEnd || undefined
       });
       
-      // Use mock data if no real data (for development/demo)
-      let finalData = data.length === 0 ? mockPerceptions : data;
+      // Use mock data service to determine what to show
+      let finalData = data;
+      if (data.length === 0) {
+        const result = mockDataService.getWithFallback.perceptions(null, isMockDataEnabled);
+        finalData = result.data;
+      }
       
       // Apply filters to mock data if using it
-      if (data.length === 0) {
+      if (data.length === 0 && isMockDataEnabled) {
         if (subjectFilter) {
           finalData = finalData.filter(p => p.subject_alias.toLowerCase().includes(subjectFilter.toLowerCase()));
         }
@@ -281,8 +292,13 @@ export const PerceptionLensView = () => {
       setPerceptions(finalData);
     } catch (error) {
       console.error('Failed to load perception lens:', error);
-      // Fallback to mock data on error
-      let mockData = [...mockPerceptions];
+      // Fallback to mock data on error if toggle is enabled
+      if (!isMockDataEnabled) {
+        setPerceptions([]);
+        return;
+      }
+      const result = mockDataService.getWithFallback.perceptions(null, isMockDataEnabled);
+      let mockData = [...result.data];
       if (subjectFilter) {
         mockData = mockData.filter(p => p.subject_alias.toLowerCase().includes(subjectFilter.toLowerCase()));
       }

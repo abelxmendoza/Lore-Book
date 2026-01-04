@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { fetchJson } from '../../lib/api';
 import { AlertTriangle, X, RotateCcw } from 'lucide-react';
 import { generateMockSubscriptions } from '../../lib/mockData';
+import { useMockData } from '../../contexts/MockDataContext';
 
 interface Subscription {
   id: string;
@@ -24,6 +25,7 @@ type SortField = 'email' | 'plan' | 'amount' | 'renewalDate' | 'status' | 'ltv';
 type SortDirection = 'asc' | 'desc';
 
 export const SubscriptionTable = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +33,10 @@ export const SubscriptionTable = () => {
   const [sortField, setSortField] = useState<SortField>('email');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [isMockData, setIsMockData] = useState(false);
 
   useEffect(() => {
     loadSubscriptions();
-  }, []);
+  }, [isMockDataEnabled]);
 
   const loadSubscriptions = async () => {
     try {
@@ -44,21 +45,25 @@ export const SubscriptionTable = () => {
       const response = await fetchJson<{ subscriptions: Subscription[] }>(
         '/api/admin/finance/subscriptions'
       );
-      if (response.subscriptions && response.subscriptions.length > 0) {
+      if (response.subscriptions && response.subscriptions.length > 0 && !isMockDataEnabled) {
         setSubscriptions(response.subscriptions);
-        setIsMockData(false);
-      } else {
-        // Use mock data if API returns empty
+      } else if (isMockDataEnabled) {
+        // Use mock data if toggle is enabled
         const mockData = generateMockSubscriptions(12);
         setSubscriptions(mockData);
-        setIsMockData(true);
+      } else {
+        setSubscriptions(response.subscriptions || []);
       }
     } catch (err: any) {
-      // Use mock data on error
-      const mockData = generateMockSubscriptions(12);
-      setSubscriptions(mockData);
-      setIsMockData(true);
-      console.error('Subscriptions load error, using mock data:', err);
+      // Use mock data on error only if toggle is enabled
+      if (isMockDataEnabled) {
+        const mockData = generateMockSubscriptions(12);
+        setSubscriptions(mockData);
+      } else {
+        setSubscriptions([]);
+        setError(err.message || 'Failed to load subscriptions');
+      }
+      console.error('Subscriptions load error:', err);
     } finally {
       setLoading(false);
     }
@@ -194,7 +199,7 @@ export const SubscriptionTable = () => {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold text-white">Subscriptions</h3>
-          {isMockData && (
+          {isMockDataEnabled && (
             <span className="px-2 py-0.5 text-xs font-medium bg-yellow-500/20 text-yellow-400 rounded border border-yellow-500/30">
               Demo Data
             </span>

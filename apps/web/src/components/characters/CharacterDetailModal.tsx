@@ -82,6 +82,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
 ];
 
 export const CharacterDetailModal = ({ character, onClose, onUpdate }: CharacterDetailModalProps) => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
 
   const getImportanceColor = (level?: string | null) => {
@@ -209,15 +210,23 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
         if (response.shared_memories && response.shared_memories.length > 0) {
           await loadSharedMemories(response.shared_memories);
         } else {
-          // If no shared memories, show mock memories for demonstration
-          const mockMemories = createMockMemories(character.name);
-          setSharedMemoryCards(mockMemories);
+          // If no shared memories, show mock memories only if toggle is enabled
+          if (isMockDataEnabled) {
+            const mockMemories = createMockMemories(character.name);
+            setSharedMemoryCards(mockMemories);
+          } else {
+            setSharedMemoryCards([]);
+          }
         }
       } catch (error) {
         console.error('Failed to load character details:', error);
-        // On error, still show mock memories
-        const mockMemories = createMockMemories(character.name);
-        setSharedMemoryCards(mockMemories);
+        // On error, show mock memories only if toggle is enabled
+        if (isMockDataEnabled) {
+          const mockMemories = createMockMemories(character.name);
+          setSharedMemoryCards(mockMemories);
+        } else {
+          setSharedMemoryCards([]);
+        }
       } finally {
         setLoadingDetails(false);
       }

@@ -5,7 +5,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
-import { isDevelopment } from '../../config/env';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 
 type ContinuityEvent = {
   id: string;
@@ -95,60 +95,55 @@ export const ContinuityDashboard = () => {
   const [contradictions, setContradictions] = useState<ContinuityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
-  const [useMockData, setUseMockData] = useState(false);
+  const { useMockData: isMockDataEnabled } = useMockData();
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [isMockDataEnabled]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [eventsData, goalsData, contradictionsData] = await Promise.all([
         fetchJson<{ events: ContinuityEvent[] }>('/api/continuity/events?limit=50', undefined, {
-          useMockData: isDevelopment,
+          useMockData: isMockDataEnabled,
           mockData: { events: MOCK_CONTINUITY_EVENTS },
         }).catch(() => {
-          if (isDevelopment) {
-            setUseMockData(true);
+          if (isMockDataEnabled) {
             return { events: MOCK_CONTINUITY_EVENTS };
           }
           return { events: [] };
         }),
         fetchJson<{ active: ContinuityEvent[]; abandoned: ContinuityEvent[] }>('/api/continuity/goals', undefined, {
-          useMockData: isDevelopment,
+          useMockData: isMockDataEnabled,
           mockData: MOCK_GOALS,
         }).catch(() => {
-          if (isDevelopment) {
+          if (isMockDataEnabled) {
             return MOCK_GOALS;
           }
           return { active: [], abandoned: [] };
         }),
         fetchJson<{ contradictions: ContinuityEvent[] }>('/api/continuity/contradictions', undefined, {
-          useMockData: isDevelopment,
+          useMockData: isMockDataEnabled,
           mockData: { contradictions: MOCK_CONTRADICTIONS },
         }).catch(() => {
-          if (isDevelopment) {
+          if (isMockDataEnabled) {
             return { contradictions: MOCK_CONTRADICTIONS };
           }
           return { contradictions: [] };
         }),
       ]);
 
-      if (eventsData.events && eventsData.events.length > 0) {
-        setUseMockData(false);
-      } else if (isDevelopment) {
-        setUseMockData(true);
-      }
-
-      setEvents(eventsData.events && eventsData.events.length > 0 ? eventsData.events : (isDevelopment ? MOCK_CONTINUITY_EVENTS : []));
-      setGoals(goalsData && (goalsData.active.length > 0 || goalsData.abandoned.length > 0) ? goalsData : (isDevelopment ? MOCK_GOALS : { active: [], abandoned: [] }));
-      setContradictions(contradictionsData.contradictions && contradictionsData.contradictions.length > 0 ? contradictionsData.contradictions : (isDevelopment ? MOCK_CONTRADICTIONS : []));
+      // Use real data if available, otherwise use mock data if toggle is on
+      const useMockData = isMockDataEnabled && (!eventsData.events || eventsData.events.length === 0);
+      
+      setEvents(eventsData.events && eventsData.events.length > 0 ? eventsData.events : (useMockData ? MOCK_CONTINUITY_EVENTS : []));
+      setGoals(goalsData && (goalsData.active.length > 0 || goalsData.abandoned.length > 0) ? goalsData : (useMockData ? MOCK_GOALS : { active: [], abandoned: [] }));
+      setContradictions(contradictionsData.contradictions && contradictionsData.contradictions.length > 0 ? contradictionsData.contradictions : (useMockData ? MOCK_CONTRADICTIONS : []));
     } catch (error) {
       console.error('Failed to load continuity data:', error);
-      // Use mock data in development on error
-      if (isDevelopment) {
-        setUseMockData(true);
+      // Use mock data if toggle is on
+      if (shouldUseMock) {
         setEvents(MOCK_CONTINUITY_EVENTS);
         setGoals(MOCK_GOALS);
         setContradictions(MOCK_CONTRADICTIONS);
@@ -232,7 +227,7 @@ export const ContinuityDashboard = () => {
   return (
     <div className="space-y-6">
       {/* Mock Data Banner */}
-      {useMockData && isDevelopment && (
+      {useMockData && (
         <div className="text-xs text-yellow-400/80 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
           📊 Showing mock data for demonstration. Real data will appear as you journal and contradictions are detected.
         </div>

@@ -18,9 +18,12 @@ import { useCharacterExtraction } from '../../hooks/useCharacterExtraction';
 import { useConversationStore } from '../../features/chat/hooks/useConversationStore';
 import { generateNicknames } from '../../utils/nicknameGenerator';
 import { useAuth } from '../../lib/supabase';
+import { mockDataService } from '../../services/mockDataService';
+import { useMockData } from '../../contexts/MockDataContext';
 
 // Comprehensive mock character data showcasing all app capabilities
-const dummyCharacters: Character[] = [
+// Export for use in mock data service
+export const dummyCharacters: Character[] = [
   {
     id: 'dummy-1',
     name: 'Sarah Chen',
@@ -1664,9 +1667,15 @@ type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professiona
 
 export const CharacterBook = () => {
   const { user } = useAuth();
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
+  
+  // Register mock data with service on mount
+  useEffect(() => {
+    mockDataService.register.characters(dummyCharacters);
+  }, []);
   const [loading, setLoading] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
@@ -1697,11 +1706,18 @@ export const CharacterBook = () => {
     try {
       const response = await fetchJson<{ characters: Character[] }>('/api/characters/list');
       const characterList = response?.characters || [];
-      // If no characters loaded, use dummy data
-      setCharacters(characterList.length > 0 ? characterList : dummyCharacters);
+      
+      // Use mock data service to determine what to show - pass current toggle state
+      const result = mockDataService.getWithFallback.characters(
+        characterList.length > 0 ? characterList : null,
+        isMockDataEnabled
+      );
+      
+      setCharacters(result.data);
     } catch {
-      // Silently fail - use dummy data instead
-      setCharacters(dummyCharacters);
+      // On error, use mock data if enabled, otherwise empty array
+      const result = mockDataService.getWithFallback.characters(null, isMockDataEnabled);
+      setCharacters(result.data);
     } finally {
       setLoading(false);
     }
@@ -1710,6 +1726,11 @@ export const CharacterBook = () => {
   useEffect(() => {
     void loadCharacters();
   }, []);
+
+  // Refresh when mock data toggle changes
+  useEffect(() => {
+    void loadCharacters();
+  }, [isMockDataEnabled]);
 
   // Convert entries to MemoryCard format for modal
   useEffect(() => {

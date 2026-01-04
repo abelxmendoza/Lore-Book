@@ -5,9 +5,12 @@ import { LocationDetailModal } from './LocationDetailModal';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { fetchJson } from '../../lib/api';
+import { mockDataService } from '../../services/mockDataService';
+import { useMockData } from '../../contexts/MockDataContext';
 
 // Dummy location data for display
-const dummyLocations: LocationProfile[] = [
+// Export for use in mock data service
+export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-1',
     name: 'San Francisco Tech Hub',
@@ -87,10 +90,16 @@ const dummyLocations: LocationProfile[] = [
 ];
 
 export const Locations = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [locations, setLocations] = useState<LocationProfile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationProfile | null>(null);
+
+  // Register mock data with service on mount
+  useEffect(() => {
+    mockDataService.register.locations(dummyLocations);
+  }, []);
 
   const loadLocations = async () => {
     setLoading(true);
@@ -98,11 +107,18 @@ export const Locations = () => {
     try {
       const response = await fetchJson<{ locations: LocationProfile[] }>('/api/locations');
       const locationList = response?.locations || [];
-      // If no locations loaded, use dummy data
-      setLocations(locationList.length > 0 ? locationList : dummyLocations);
+      
+      // Use mock data service to determine what to show
+      const result = mockDataService.getWithFallback.locations(
+        locationList.length > 0 ? locationList : null,
+        isMockDataEnabled
+      );
+      
+      setLocations(result.data);
     } catch {
-      // Silently fail - use dummy data instead
-      setLocations(dummyLocations);
+      // On error, use mock data if enabled
+      const result = mockDataService.getWithFallback.locations(null, isMockDataEnabled);
+      setLocations(result.data);
     } finally {
       setLoading(false);
     }
@@ -111,6 +127,11 @@ export const Locations = () => {
   useEffect(() => {
     void loadLocations();
   }, []);
+
+  // Refresh when mock data toggle changes
+  useEffect(() => {
+    void loadLocations();
+  }, [isMockDataEnabled]);
 
   const filteredLocations = useMemo(() => {
     if (!searchTerm.trim()) return locations;

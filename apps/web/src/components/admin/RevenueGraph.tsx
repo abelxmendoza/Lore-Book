@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { fetchJson } from '../../lib/api';
 import { generateMockMonthlyFinancials } from '../../lib/mockData';
+import { useMockData } from '../../contexts/MockDataContext';
 
 interface MonthlyFinancial {
   month: string;
@@ -22,11 +23,11 @@ interface RevenueGraphProps {
 }
 
 export const RevenueGraph = ({ timeRange: initialTimeRange = '90d' }: RevenueGraphProps) => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [timeRange, setTimeRange] = useState<TimeRange>(initialTimeRange);
   const [data, setData] = useState<MonthlyFinancial[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isMockData, setIsMockData] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -43,32 +44,36 @@ export const RevenueGraph = ({ timeRange: initialTimeRange = '90d' }: RevenueGra
         const response = await fetchJson<{ data: MonthlyFinancial[] }>(
           `/api/admin/finance/revenue?days=${days}`
         );
-        if (response.data && response.data.length > 0) {
+        if (response.data && response.data.length > 0 && !isMockDataEnabled) {
           setData(response.data);
-          setIsMockData(false);
-        } else {
-          // Use mock data if API returns empty
+        } else if (isMockDataEnabled) {
+          // Use mock data if toggle is enabled
           const mockData = generateMockMonthlyFinancials(
             timeRange === '30d' ? 1 : timeRange === '90d' ? 3 : timeRange === '6m' ? 6 : timeRange === '12m' ? 12 : 24
           );
           setData(mockData);
-          setIsMockData(true);
+        } else {
+          setData(response.data || []);
         }
       } catch (err: any) {
-        // Use mock data on error
-        const mockData = generateMockMonthlyFinancials(
-          timeRange === '30d' ? 1 : timeRange === '90d' ? 3 : timeRange === '6m' ? 6 : timeRange === '12m' ? 12 : 24
-        );
-        setData(mockData);
-        setIsMockData(true);
-        console.error('Revenue data load error, using mock data:', err);
+        // Use mock data on error only if toggle is enabled
+        if (isMockDataEnabled) {
+          const mockData = generateMockMonthlyFinancials(
+            timeRange === '30d' ? 1 : timeRange === '90d' ? 3 : timeRange === '6m' ? 6 : timeRange === '12m' ? 12 : 24
+          );
+          setData(mockData);
+        } else {
+          setData([]);
+          setError(err.message || 'Failed to load revenue data');
+        }
+        console.error('Revenue data load error:', err);
       } finally {
         setLoading(false);
       }
     };
 
     loadData();
-  }, [timeRange]);
+  }, [timeRange, isMockDataEnabled]);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -129,7 +134,7 @@ export const RevenueGraph = ({ timeRange: initialTimeRange = '90d' }: RevenueGra
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold text-white">Revenue (MRR / Month)</h3>
-          {isMockData && (
+          {isMockDataEnabled && (
             <span className="px-2 py-0.5 text-xs font-medium bg-yellow-500/20 text-yellow-400 rounded border border-yellow-500/30">
               Demo Data
             </span>

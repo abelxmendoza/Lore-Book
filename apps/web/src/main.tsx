@@ -1,6 +1,6 @@
 // BRUTAL BOOT TEST - This MUST execute if entry script loads
 console.log('[BOOT] main.tsx executing');
-document.body.innerHTML = '<h1 style="color:red;padding:20px;background:black;text-align:center;font-size:24px;">BOOT EXECUTED - Entry script is running</h1>';
+// Removed body.innerHTML replacement - it was breaking React mounting
 
 import './styles/tailwind.css';
 import './styles/timeline.css';
@@ -13,8 +13,11 @@ import { Router } from './pages/Router';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DevBanner } from './components/DevBanner';
 import { DevelopmentNotice } from './components/DevelopmentNotice';
+import { MockDataIndicator } from './components/MockDataIndicator';
 import { GuestProvider } from './contexts/GuestContext';
 import { EntityModalProvider } from './contexts/EntityModalContext';
+import { MockDataProvider } from './contexts/MockDataContext';
+import { mockDataService } from './services/mockDataService';
 import { config, log } from './config/env';
 import { initMonitoring } from './lib/monitoring';
 
@@ -37,6 +40,11 @@ if (config.env.isDevelopment) {
   });
 }
 
+// Initialize mock data service
+mockDataService.initialize().catch((error) => {
+  console.error('[Main] Failed to initialize mock data service:', error);
+});
+
 // Ensure root element exists
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -48,13 +56,16 @@ if (!rootElement) {
       <StrictMode>
         <ErrorBoundary>
           <BrowserRouter>
-            <GuestProvider>
-              <EntityModalProvider>
-              <DevelopmentNotice />
-              <Router />
-              <DevBanner />
-              </EntityModalProvider>
-            </GuestProvider>
+            <MockDataProvider>
+              <GuestProvider>
+                <EntityModalProvider>
+                  <DevelopmentNotice />
+                  <Router />
+                  <DevBanner />
+                  <MockDataIndicator />
+                </EntityModalProvider>
+              </GuestProvider>
+            </MockDataProvider>
           </BrowserRouter>
         </ErrorBoundary>
       </StrictMode>

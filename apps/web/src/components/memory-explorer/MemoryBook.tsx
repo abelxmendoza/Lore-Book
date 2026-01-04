@@ -8,13 +8,16 @@ import { Card, CardContent } from '../ui/card';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
+import { mockDataService } from '../../services/mockDataService';
+import { useMockData } from '../../contexts/MockDataContext';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 
 const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows for grid view
 
 // Comprehensive mock memory data showcasing all app capabilities
-const dummyMemoryCards: MemoryCard[] = [
+// Export for use in mock data service
+export const dummyMemoryCards: MemoryCard[] = [
   {
     id: 'dummy-1',
     title: 'The Awakening - First Day at the Academy',
@@ -455,6 +458,7 @@ const dummyMemoryCards: MemoryCard[] = [
 ];
 
 export const MemoryBook = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [memories, setMemories] = useState<MemoryCard[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
@@ -464,6 +468,11 @@ export const MemoryBook = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'book'>('book');
   const [selectedTab, setSelectedTab] = useState('all');
   const { entries = [], chapters = [], timeline, refreshEntries, refreshTimeline } = useLoreKeeper();
+
+  // Register mock data with service on mount
+  useEffect(() => {
+    mockDataService.register.memories(dummyMemoryCards);
+  }, []);
 
   const loadMemories = async () => {
     setLoading(true);
@@ -480,13 +489,20 @@ export const MemoryBook = () => {
         metadata?: Record<string, unknown>;
       }> }>('/api/entries/recent?limit=100');
       const cards = response.entries.map(memoryEntryToCard);
-      // Use dummy data if no real entries found
-      setMemories(cards.length > 0 ? cards : dummyMemoryCards);
-      setAllMemories(cards.length > 0 ? cards : dummyMemoryCards);
+      
+      // Use mock data service to determine what to show - pass current toggle state
+      const result = mockDataService.getWithFallback.memories(
+        cards.length > 0 ? cards : null,
+        isMockDataEnabled
+      );
+      
+      setMemories(result.data);
+      setAllMemories(result.data);
     } catch {
-      // Use dummy data on error
-      setMemories(dummyMemoryCards);
-      setAllMemories(dummyMemoryCards);
+      // On error, use mock data if enabled
+      const result = mockDataService.getWithFallback.memories(null, isMockDataEnabled);
+      setMemories(result.data);
+      setAllMemories(result.data);
     } finally {
       setLoading(false);
     }
@@ -495,6 +511,11 @@ export const MemoryBook = () => {
   useEffect(() => {
     void loadMemories();
   }, []);
+
+  // Refresh when mock data toggle changes
+  useEffect(() => {
+    void loadMemories();
+  }, [isMockDataEnabled]);
 
   useEffect(() => {
     const memoryCards = entries.map(entry => memoryEntryToCard({

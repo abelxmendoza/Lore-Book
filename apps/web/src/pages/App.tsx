@@ -1,75 +1,43 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import { useState } from 'react';
-import { CalendarRange, PenLine, PlusCircle, Search, Wand2 } from 'lucide-react';
-import { useMemo, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { PlusCircle } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
-import { CalendarRange, PenLine, PlusCircle, Search as SearchIcon, Wand2 } from 'lucide-react';
 import { config } from '../config/env';
 
 import { AuthGate } from '../components/AuthGate';
 import { SkipLink } from '../components/SkipLink';
 import { AgentPanel } from '../components/AgentPanel';
-import { ChaptersList } from '../components/ChaptersList';
-import { ChapterViewer } from '../components/ChapterViewer';
 import { CreateChapterModal } from '../components/CreateChapterModal';
-import { EntryList } from '../components/EntryList';
-import { EvolutionPanel } from '../components/EvolutionPanel';
 import { MemoryExplorer } from '../components/memory-explorer/MemoryExplorer';
 import { TimelineSearch } from '../components/search/TimelineSearch';
-import { Logo } from '../components/Logo';
-import { MemoryTimeline } from '../components/MemoryTimeline';
 import { Sidebar } from '../components/Sidebar';
-import { TagCloud } from '../components/TagCloud';
-import { TaskEnginePanel } from '../components/TaskEnginePanel';
-import { TimelinePanel } from '../components/TimelinePanel';
-import { CharacterPage } from '../components/characters/CharacterPage';
 import { useLoreKeeper } from '../hooks/useLoreKeeper';
 import { useTaskEngine } from '../hooks/useTaskEngine';
-import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
-import { DeleteAccountDialog } from '../components/settings/DeleteAccountDialog';
-import { AccountSafetyPanel } from '../components/settings/AccountSafetyPanel';
-import { fetchJson } from '../lib/api';
 import { Button } from '../components/ui/button';
+import { MockDataToggle } from '../components/settings/MockDataToggle';
+import { useMockData } from '../contexts/MockDataContext';
 import { ChatFirstInterface } from '../features/chat/components/ChatFirstInterface';
 import { CharacterBook } from '../components/characters/CharacterBook';
 import { LocationBook } from '../components/locations/LocationBook';
 import { PhotoAlbum } from '../components/photos/PhotoAlbum';
-import { ImprovedTimelineView } from '../components/timeline/ImprovedTimelineView';
 import { BiographyEditor } from '../components/biography/BiographyEditor';
 import { LoreBook } from '../components/lorebook/LoreBook';
-import { ChapterCreationChatbot } from '../components/chapters/ChapterCreationChatbot';
-import { TimelineHierarchyPanel } from '../components/timeline-hierarchy/TimelineHierarchyPanel';
-import { TimelinePage } from '../components/timeline/TimelinePage';
 import { OmniTimelinePanel } from '../components/timeline/OmniTimelinePanel';
-import { EntityDetailModal } from '../components/entity/EntityDetailModal';
-import { useEntityModal } from '../contexts/EntityModalContext';
 import UserGuide from '../components/guide/UserGuide';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
 import { PerceptionsView } from '../components/perceptions/PerceptionsView';
-import { PerceptionLensView } from '../components/perceptions/PerceptionLensView';
 import { TrialBanner } from '../components/subscription/TrialBanner';
 import { PricingPage } from '../components/subscription/PricingPage';
 import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage';
 import { PrivacySettings } from '../components/security/PrivacySettings';
 import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
 import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
-import { ContinuityDashboard } from '../components/continuity/ContinuityDashboard';
 import { GuestBanner } from '../components/guest/GuestBanner';
 import { getSurfaceFromRoute } from '../utils/routeMapping';
 
-const formatRange = (days = 7) => {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(end.getDate() - days);
-  return {
-    from: start.toISOString(),
-    to: end.toISOString(),
-    label: `${start.toLocaleDateString()} → ${end.toLocaleDateString()}`
-  };
-};
 
 type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide';
 
@@ -80,53 +48,19 @@ interface AppContentProps {
 const AppContent = ({ defaultSurface }: AppContentProps) => {
   console.log('[App] AppContent render start', { defaultSurface });
   
-  const { selectedEntity, isOpen, closeEntity, updateEntity } = useEntityModal();
   const {
     entries,
-    timeline,
-    tags,
-    answer,
-    askLoreKeeper,
-    createEntry,
     createChapter,
     chapters,
-    chapterCandidates,
-    summarizeChapter,
-    summarize,
-    loading,
     refreshEntries,
     refreshTimeline,
-    refreshChapters,
-    timelineCount,
-    semanticSearch,
-    searchResults,
-    uploadVoiceEntry,
-    evolution,
-    refreshEvolution
+    refreshChapters
   } = useLoreKeeper();
-  const {
-    tasks: taskList,
-    events: taskEvents,
-    briefing: taskBriefing,
-    createTask,
-    completeTask,
-    deleteTask,
-    processChat,
-    syncMicrosoft
-  } = useTaskEngine();
-  const [summary, setSummary] = useState('');
-  const [rangeLabel, setRangeLabel] = useState(formatRange().label);
-  const [lastPrompt, setLastPrompt] = useState('');
-  const [chapterModalOpen, setChapterModalOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [semantic, setSemantic] = useState(true);
-  const [persona, setPersona] = useState('The Archivist');
-  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const { useMockData: isMockDataEnabled } = useMockData();
   const navigate = useNavigate();
   const location = useLocation();
   const [activeSurface, setActiveSurface] = useState<SurfaceKey>(defaultSurface || 'chat');
-  const [activePerceptionView, setActivePerceptionView] = useState<'list' | 'lens'>('list');
-  const [insights, setInsights] = useState<any>(null);
+  const [chapterModalOpen, setChapterModalOpen] = useState(false);
 
   // Sync route → surface (handles browser back/forward and direct navigation)
   useEffect(() => {
@@ -153,8 +87,41 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
     window.addEventListener('navigate', handleNavigate as EventListener);
     return () => window.removeEventListener('navigate', handleNavigate as EventListener);
   }, []);
+
+  // Refresh data when mock data toggle changes
+  useEffect(() => {
+    // Only refresh if we have the refresh functions available
+    if (!refreshEntries || !refreshTimeline || !refreshChapters) return;
+    
+    const refreshAllData = async () => {
+      try {
+        // Clear any caches first
+        if (typeof window !== 'undefined') {
+          // Clear localStorage cache
+          window.localStorage.removeItem('lorekeeper-cache');
+        }
+        
+        // Refresh all data
+        await Promise.all([
+          refreshEntries(),
+          refreshTimeline(),
+          refreshChapters()
+        ]);
+        
+        // Force a window event to notify other components
+        window.dispatchEvent(new CustomEvent('mockDataToggled', { 
+          detail: { enabled: isMockDataEnabled } 
+        }));
+      } catch (error) {
+        console.error('Error refreshing data after mock toggle:', error);
+      }
+    };
+    
+    // Small delay to ensure state has updated
+    const timeoutId = setTimeout(refreshAllData, 100);
+    return () => clearTimeout(timeoutId);
+  }, [isMockDataEnabled, refreshEntries, refreshTimeline, refreshChapters]);
   const [devMode, setDevMode] = useState(false);
-  const [showChapterChatbot, setShowChapterChatbot] = useState(false);
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -176,138 +143,31 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       key: 'n',
       meta: true,
       handler: () => {
-        // Switch to timeline and focus on entry creation
-        navigate('/timeline');
-        setActiveSurface('timeline');
-        // Try to focus on entry composer if it exists
+        // Navigate to chatbot where entries can be created
+        navigate('/chat');
+        setActiveSurface('chat');
+        // Try to focus on chat input if it exists
         setTimeout(() => {
-          const textarea = document.querySelector('textarea[placeholder*="memory" i], textarea[placeholder*="entry" i]') as HTMLTextAreaElement;
+          const textarea = document.querySelector('textarea[placeholder*="message" i], textarea[placeholder*="chat" i]') as HTMLTextAreaElement;
           textarea?.focus();
+          textarea?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 100);
       },
       description: 'New entry'
     }
   ]);
 
-  const handleSummary = async () => {
-    setGeneratingSummary(true);
-    try {
-      const range = formatRange();
-      const data = await summarize(range.from, range.to);
-      setSummary(data.summary);
-      setRangeLabel(range.label);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to generate summary');
-    } finally {
-      setGeneratingSummary(false);
-    }
+  const navigateToChat = () => {
+    // Navigate to chatbot where entries can be created
+    navigate('/chat');
+    setActiveSurface('chat');
+    // Try to focus on chat input if it exists
+    setTimeout(() => {
+      const textarea = document.querySelector('textarea[placeholder*="message" i], textarea[placeholder*="chat" i]') as HTMLTextAreaElement;
+      textarea?.focus();
+      textarea?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
   };
-
-
-  const handleQuickCorrection = async () => {
-    const entryId = prompt('Which entry needs a correction? (Provide entry ID)');
-    if (!entryId) return;
-    const correctedContent = prompt('Paste the corrected content');
-    if (!correctedContent) return;
-    try {
-      await fetchJson(`/api/corrections/${entryId}`, {
-        method: 'POST',
-        body: JSON.stringify({ correctedContent })
-      });
-      await Promise.all([refreshEntries(), refreshTimeline()]);
-      alert('Correction captured and ladder updated.');
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Unable to save correction');
-    }
-  };
-
-  const handleUpgrade = () => {
-    window.location.href = '/upgrade';
-  };
-
-  const handleDeleteAccount = async () => {
-    await fetch('/api/account/delete', { method: 'POST' });
-    alert('Account deletion requested. Your session will be cleared.');
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black text-white">
-      <Header onUpgrade={handleUpgrade} />
-      <div className="flex min-h-[calc(100vh-64px)]">
-        <Sidebar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          onCreateChapter={() => setChapterModalOpen(true)}
-          onScrollToComposer={scrollToComposer}
-        />
-        <main className="flex-1 space-y-6 p-6">
-        <header className="rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-6 shadow-panel">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <Logo size="lg" showText={false} className="mb-4" />
-              <p className="text-xs uppercase text-white/60">Timeline Intelligence</p>
-              <h1 className="mt-1 text-3xl font-semibold">Welcome back, Archivist</h1>
-            </div>
-            <div className="rounded-xl border border-primary/50 px-4 py-2 text-sm text-white/70">
-              Total Memories · {entries.length}
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-6 text-sm text-white/60">
-            <div>
-              <p className="text-xs uppercase tracking-widest text-primary/70">Timeline Nodes</p>
-              <p className="text-xl font-semibold text-white">{timelineCount}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-widest text-primary/70">Tracked Tags</p>
-              <p className="text-xl font-semibold text-white">{tags.length}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-widest text-primary/70">Chapters</p>
-              <p className="text-xl font-semibold text-white">{chapters.length}</p>
-            </div>
-
-
-  const visibleEntries = useMemo(() => {
-    const source = searchResults.length > 0 ? searchResults : entries;
-    return source.slice(0, 8);
-  }, [entries, searchResults]);
-
-  const renderTimelineSurface = () => (
-    <ImprovedTimelineView
-      timeline={timeline}
-      chapters={chapters}
-      chapterCandidates={chapterCandidates}
-      tags={tags.map(t => ({ tag: t.name, count: t.count }))}
-      taskList={taskList}
-      taskEvents={taskEvents}
-      taskBriefing={taskBriefing}
-      loading={loading}
-      onCreateChapter={() => setShowChapterChatbot(true)}
-      onSummarizeChapter={async (chapterId) => {
-        await summarizeChapter(chapterId);
-        await Promise.all([refreshTimeline(), refreshChapters()]);
-      }}
-      onCreateTask={async (payload) => {
-        await createTask(payload);
-      }}
-      onCompleteTask={async (id) => {
-        await completeTask(id);
-      }}
-      onDeleteTask={async (id) => {
-        await deleteTask(id);
-      }}
-      onProcessChat={async (command) => {
-        await processChat(command);
-      }}
-      onSyncMicrosoft={async () => {
-        // Note: syncMicrosoft requires accessToken parameter
-        // TaskEnginePanel's onSync will be called with the token when user initiates sync
-        // This wrapper satisfies the type but won't be called directly
-        return Promise.resolve();
-      }}
-      onRefreshChapters={refreshChapters}
-    />
-  );
 
   const renderSearchSurface = () => (
     <div className="h-full space-y-6">
@@ -338,15 +198,11 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       }}
       className={`flex bg-gradient-to-br from-black via-purple-950 to-black ${activeSurface === 'timeline' ? 'min-h-screen' : 'min-h-screen'}`}
     >
-      {/* Debug: Visible test to confirm render */}
-      <div style={{ position: 'fixed', top: 0, left: 0, zIndex: 99999, background: 'red', color: 'white', padding: '4px 8px', fontSize: '12px' }}>
-        [DEBUG] App rendering - {activeSurface}
-      </div>
       <SkipLink />
       <Sidebar
         activeSurface={activeSurface}
         onSurfaceChange={setActiveSurface}
-        onCreateChapter={() => setShowChapterChatbot(true)}
+        onCreateChapter={() => setChapterModalOpen(true)}
         onToggleDevMode={() => setDevMode((prev) => !prev)}
         devModeEnabled={devMode}
       />
@@ -451,28 +307,15 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             <div className="grid gap-4 md:grid-cols-2">
               <AgentPanel />
             </div>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-black/40 p-6 shadow-panel">
-          <div className="flex items-center justify-between">
-            <div>
-              <div id="ownership" className="sr-only">Ownership</div>
-              <p className="text-xs uppercase text-white/50">Account</p>
-              <h3 className="text-lg font-semibold">Ownership & Safety</h3>
-              <p className="text-xs text-white/60">Export or irreversibly delete your LoreKeeper data.</p>
+            <div className="mt-4">
+              <MockDataToggle />
             </div>
-            <DeleteAccountDialog onConfirm={handleDeleteAccount} />
           </div>
-          <p className="mt-3 text-xs text-white/60">
-            Need a copy first? <a className="underline" href="/api/account/export">Download your JSON export.</a>
-          </p>
-        </div>
+        )}
+
         <div className="fixed bottom-6 right-6 z-30 flex flex-col gap-2">
-          <Button size="lg" leftIcon={<PlusCircle className="h-4 w-4" />} onClick={scrollToComposer}>
+          <Button size="lg" leftIcon={<PlusCircle className="h-4 w-4" />} onClick={navigateToChat}>
             + New Entry
-          </Button>
-          <Button size="lg" variant="outline" leftIcon={<PenLine className="h-4 w-4" />} onClick={handleQuickCorrection}>
-            + Correction
           </Button>
         </div>
         <CreateChapterModal
@@ -484,27 +327,11 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             return chapter;
           }}
         />
-        )}
 
-        {/* Footer - positioned right after dev mode */}
-        <footer className="w-full border-t border-border/60 bg-transparent py-4 px-6 text-white/60 text-sm flex-shrink-0 mt-auto">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span>© {new Date().getFullYear()} Lore Book by Omega Technologies</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <a href="/privacy" className="hover:text-white transition-colors">Privacy</a>
-              <a href="/terms" className="hover:text-white transition-colors">Terms</a>
-              <span className="text-white/40">•</span>
-              <span className="text-white/40">v1.0.0</span>
-            </div>
-          </div>
-        </footer>
+        <Footer />
       </main>
     </div>
-    <Footer />
-  </div>
-);
+  );
 };
 
 interface AppProps {

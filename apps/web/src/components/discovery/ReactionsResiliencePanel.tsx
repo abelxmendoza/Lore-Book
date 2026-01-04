@@ -19,6 +19,7 @@ import type { PatternInsight, StabilityMetrics } from '../../api/perceptionReact
  * Part of Discovery Hub - all insights in one place.
  */
 export const ReactionsResiliencePanel: React.FC = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [patterns, setPatterns] = useState<ReactionPatterns | null>(null);
   const [insights, setInsights] = useState<PatternInsight[]>([]);
   const [stabilityMetrics, setStabilityMetrics] = useState<StabilityMetrics | null>(null);
@@ -27,7 +28,7 @@ export const ReactionsResiliencePanel: React.FC = () => {
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [isMockDataEnabled]);
 
   const loadData = async () => {
     setLoading(true);
@@ -112,12 +113,13 @@ export const ReactionsResiliencePanel: React.FC = () => {
         resilience_score: 0.72
       };
 
-      setPatterns(patternData || mockPatterns);
-      setInsights(insightData.length > 0 ? insightData : mockInsights);
-      setStabilityMetrics(stabilityData || mockStabilityMetrics);
+      // Only use mock data if toggle is enabled
+      setPatterns(patternData || (isMockDataEnabled ? mockPatterns : { byTrigger: {}, byLabel: {}, byType: {}, intensityAverages: {}, commonPatterns: [] }));
+      setInsights(insightData.length > 0 ? insightData : (isMockDataEnabled ? mockInsights : []));
+      setStabilityMetrics(stabilityData || (isMockDataEnabled ? mockStabilityMetrics : { avg_recovery_time_minutes: 0, recovery_trend: 'stable', recurrence_rate: 0, intensity_trend: 'stable', resilience_score: 0 }));
     } catch (err) {
       console.error('Failed to load reactions data:', err);
-      // Use mock data on error
+      // Use mock data on error only if toggle is enabled
       const mockPatterns: ReactionPatterns = {
         byTrigger: { 'memory-1': 3, 'perception-1': 5, 'memory-2': 2 },
         byLabel: { anxiety: 8, anger: 3, sadness: 4, avoidance: 5, rumination: 6 },
@@ -162,9 +164,15 @@ export const ReactionsResiliencePanel: React.FC = () => {
         resilience_score: 0.72
       };
 
-      setPatterns(mockPatterns);
-      setInsights(mockInsights);
-      setStabilityMetrics(mockStabilityMetrics);
+      if (isMockDataEnabled) {
+        setPatterns(mockPatterns);
+        setInsights(mockInsights);
+        setStabilityMetrics(mockStabilityMetrics);
+      } else {
+        setPatterns({ byTrigger: {}, byLabel: {}, byType: {}, intensityAverages: {}, commonPatterns: [] });
+        setInsights([]);
+        setStabilityMetrics({ avg_recovery_time_minutes: 0, recovery_trend: 'stable', recurrence_rate: 0, intensity_trend: 'stable', resilience_score: 0 });
+      }
     } finally {
       setLoading(false);
     }

@@ -10,11 +10,15 @@ import { GossipChatModal } from './GossipChatModal';
 import { PerceptionSearchBar } from './PerceptionSearchBar';
 import { PerceptionSearchSuggestions } from './PerceptionSearchSuggestions';
 import { Card, CardContent } from '../ui/card';
+import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { mockDataService } from '../../services/mockDataService';
+import { useMockData } from '../../contexts/MockDataContext';
 
 const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows for grid view
 
 // Mock dummy data for perceptions
-const mockPerceptions: PerceptionEntry[] = [
+// Export for use in mock data service
+export const mockPerceptions: PerceptionEntry[] = [
   {
     id: 'mock-1',
     user_id: 'mock-user',
@@ -615,8 +619,14 @@ type PerceptionsViewProps = {
 };
 
 export const PerceptionsView = ({ personId, personName, showCreateButton = true }: PerceptionsViewProps) => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [perceptions, setPerceptions] = useState<PerceptionEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // Register mock data with service on mount
+  useEffect(() => {
+    mockDataService.register.perceptions(mockPerceptions);
+  }, []);
   const [selectedPerceptionForDetail, setSelectedPerceptionForDetail] = useState<PerceptionEntry | null>(null);
   const [showGossipChat, setShowGossipChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -627,7 +637,7 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
 
   useEffect(() => {
     void loadPerceptions();
-  }, [personId, sourceFilter, statusFilter, showRetracted]);
+  }, [personId, sourceFilter, statusFilter, showRetracted, isMockDataEnabled]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -647,17 +657,24 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
         });
       }
 
-      // Use mock data if no real data (for development/demo)
-      if (data.length === 0 && !personId) {
-        data = mockPerceptions;
+      // Use mock data service to determine what to show
+      if (!personId) {
+        const result = mockDataService.getWithFallback.perceptions(
+          data.length > 0 ? data : null,
+          isMockDataEnabled
+        );
+        setPerceptions(result.data);
+      } else {
+        setPerceptions(data);
       }
-
-      setPerceptions(data);
     } catch (error) {
       console.error('Failed to load perceptions:', error);
-      // Fallback to mock data on error
+      // Fallback to mock data on error if toggle is enabled
       if (!personId) {
-        setPerceptions(mockPerceptions);
+        const result = mockDataService.getWithFallback.perceptions(null, isMockDataEnabled);
+        setPerceptions(result.data);
+      } else {
+        setPerceptions([]);
       }
     } finally {
       setLoading(false);

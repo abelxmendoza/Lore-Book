@@ -105,45 +105,54 @@ export const AdminPage = () => {
         { timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString(), type: 'chat', tokens: 2100, userId: '1' },
       ];
 
-      // Try to fetch real data, fallback to mock data
+      // Try to fetch real data, fallback to mock data if toggle is enabled
+      const useMock = shouldUseMockData();
       try {
         const metricsData = await fetchJson<AdminMetrics>('/api/admin/metrics', undefined, {
-          useMockData: true,
+          useMockData: useMock,
           mockData: mockMetrics,
         });
         setMetrics(metricsData);
       } catch {
-        setMetrics(mockMetrics);
+        if (useMock) {
+          setMetrics(mockMetrics);
+        }
       }
 
       try {
         const usersData = await fetchJson<{ users: User[] }>('/api/admin/users', undefined, {
-          useMockData: true,
+          useMockData: useMock,
           mockData: { users: mockUsers },
         });
         setUsers(usersData.users);
       } catch {
-        setUsers(mockUsers);
+        if (useMock) {
+          setUsers(mockUsers);
+        }
       }
 
       try {
         const logsData = await fetchJson<{ logs: Log[] }>('/api/admin/logs', undefined, {
-          useMockData: true,
+          useMockData: useMock,
           mockData: { logs: mockLogs },
         });
         setLogs(logsData.logs);
       } catch {
-        setLogs(mockLogs);
+        if (useMock) {
+          setLogs(mockLogs);
+        }
       }
 
       try {
         const eventsData = await fetchJson<{ events: AIEvent[] }>('/api/admin/ai-events', undefined, {
-          useMockData: true,
+          useMockData: useMock,
           mockData: { events: mockAiEvents },
         });
         setAiEvents(eventsData.events);
       } catch {
-        setAiEvents(mockAiEvents);
+        if (useMock) {
+          setAiEvents(mockAiEvents);
+        }
       }
     } catch (err: any) {
       // If all requests fail, use mock data

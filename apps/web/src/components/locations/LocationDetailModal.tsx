@@ -12,6 +12,7 @@ import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { LocationProfile } from './LocationProfileCard';
 import type { TimelineEntry } from '../../hooks/useTimelineData';
+import { useMockData } from '../../contexts/MockDataContext';
 
 type LocationDetailModalProps = {
   location: LocationProfile;
@@ -32,6 +33,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
 ];
 
 export const LocationDetailModal = ({ location, onClose }: LocationDetailModalProps) => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
@@ -103,7 +105,14 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
           }));
           setTimelineEntries(entries);
         } else {
-          // Generate mock memories if no entries from API
+          // Generate mock memories if no entries from API and toggle is enabled
+          if (!isMockDataEnabled) {
+            setMemoryCards([]);
+            setTimelineEntries([]);
+            setLoadingMemories(false);
+            return;
+          }
+          
           const mockMemories: MemoryCard[] = [
             {
               id: `mock-mem-${location.id}-1`,

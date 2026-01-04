@@ -7,8 +7,10 @@ import { useState, useEffect, useRef } from 'react';
 import { fetchJson } from '../../lib/api';
 import { RefreshCw, AlertTriangle, ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { generateMockLogs, type Log } from '../../lib/mockData';
+import { useMockData } from '../../contexts/MockDataContext';
 
 export const LogsViewer = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,6 @@ export const LogsViewer = () => {
   const [timeRange, setTimeRange] = useState<string>('24h');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
-  const [isMockData, setIsMockData] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -39,7 +40,7 @@ export const LogsViewer = () => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [autoRefresh, levelFilter, sourceFilter, timeRange]);
+  }, [autoRefresh, levelFilter, sourceFilter, timeRange, isMockDataEnabled]);
 
   const loadLogs = async () => {
     try {
@@ -61,11 +62,10 @@ export const LogsViewer = () => {
         `/api/admin/logs?${params.toString()}`
       );
       
-      if (response.logs && response.logs.length > 0) {
+      if (response.logs && response.logs.length > 0 && !isMockDataEnabled) {
         setLogs(response.logs);
-        setIsMockData(false);
-      } else {
-        // Use mock data if API returns empty
+      } else if (isMockDataEnabled) {
+        // Use mock data if toggle is enabled
         const hours = timeRange === '1h' ? 1 : timeRange === '24h' ? 24 : timeRange === '7d' ? 168 : timeRange === '30d' ? 720 : 24;
         const mockData = generateMockLogs(50, {
           level: levelFilter !== 'all' ? levelFilter as any : undefined,
@@ -73,19 +73,24 @@ export const LogsViewer = () => {
           timeRange: hours,
         });
         setLogs(mockData);
-        setIsMockData(true);
+      } else {
+        setLogs(response.logs || []);
       }
     } catch (err: any) {
-      // Use mock data on error
-      const hours = timeRange === '1h' ? 1 : timeRange === '24h' ? 24 : timeRange === '7d' ? 168 : timeRange === '30d' ? 720 : 24;
-      const mockData = generateMockLogs(50, {
-        level: levelFilter !== 'all' ? levelFilter as any : undefined,
-        source: sourceFilter !== 'all' ? sourceFilter as any : undefined,
-        timeRange: hours,
-      });
-      setLogs(mockData);
-      setIsMockData(true);
-      console.error('Logs load error, using mock data:', err);
+      // Use mock data on error only if toggle is enabled
+      if (isMockDataEnabled) {
+        const hours = timeRange === '1h' ? 1 : timeRange === '24h' ? 24 : timeRange === '7d' ? 168 : timeRange === '30d' ? 720 : 24;
+        const mockData = generateMockLogs(50, {
+          level: levelFilter !== 'all' ? levelFilter as any : undefined,
+          source: sourceFilter !== 'all' ? sourceFilter as any : undefined,
+          timeRange: hours,
+        });
+        setLogs(mockData);
+      } else {
+        setLogs([]);
+        setError(err.message || 'Failed to load logs');
+      }
+      console.error('Logs load error:', err);
     } finally {
       setLoading(false);
     }
@@ -193,7 +198,7 @@ export const LogsViewer = () => {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold text-white">System Logs</h3>
-          {isMockData && (
+          {isMockDataEnabled && (
             <span className="px-2 py-0.5 text-xs font-medium bg-yellow-500/20 text-yellow-400 rounded border border-yellow-500/30">
               Demo Data
             </span>
@@ -282,7 +287,7 @@ export const LogsViewer = () => {
         )}
       </div>
 
-      {error && !isMockData && (
+      {error && !isMockDataEnabled && (
         <div className="mb-4 rounded-lg bg-red-500/20 border border-red-500/50 p-3 text-red-400 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4" />
           {error}

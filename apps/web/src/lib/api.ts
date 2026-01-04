@@ -4,6 +4,7 @@ import { config, log } from '../config/env';
 import { performance as perfMonitoring, errorTracking } from './monitoring';
 import { apiCache, generateCacheKey } from './cache';
 import { handleError, createAppError, retryWithBackoff, type AppError } from './errorHandler';
+import { getGlobalMockDataEnabled } from '../contexts/MockDataContext';
 
 export const fetchJson = async <T>(
   input: RequestInfo, 
@@ -32,9 +33,14 @@ export const fetchJson = async <T>(
   
   const startTime = performance.now();
   
-  // Check cache for GET requests
+  // Check global mock data toggle
+  const globalMockEnabled = getGlobalMockDataEnabled();
+  const shouldUseMock = (globalMockEnabled || options?.useMockData === true) && 
+                       options?.useMockData !== false;
+  
+  // Check cache for GET requests (skip cache if using mock data)
   const isGetRequest = !init?.method || init.method === 'GET';
-  const useCache = options?.useMockData !== true && isGetRequest;
+  const useCache = !shouldUseMock && isGetRequest;
   
   if (useCache) {
     const cacheKey = generateCacheKey(url, init);
@@ -85,9 +91,9 @@ export const fetchJson = async <T>(
       const errorMessage = error.error || error.message || `HTTP ${res.status}: ${res.statusText}`;
       
       // Check if backend is not running (dev mode or when mock data is enabled)
-      if (config.dev.allowMockData && (res.status === 0 || res.status === 503 || res.status === 502)) {
-        if (options?.useMockData && options?.mockData) {
-          if (config.isDevelopment) {
+      if ((config.dev.allowMockData || globalMockEnabled) && (res.status === 0 || res.status === 503 || res.status === 502)) {
+        if (shouldUseMock && options?.mockData) {
+          if (config.env.isDevelopment || globalMockEnabled) {
             log.warn('Backend unavailable, using mock data:', typeof input === 'string' ? input : 'Request');
           }
           return options.mockData;
@@ -132,9 +138,9 @@ export const fetchJson = async <T>(
     
     // Network errors (backend not running)
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-      // Allow mock data fallback when enabled (dev or production with VITE_USE_MOCK_DATA)
-      if (config.dev.allowMockData && options?.useMockData && options?.mockData) {
-        if (config.isDevelopment) {
+      // Allow mock data fallback when enabled (dev or production with global toggle)
+      if ((config.dev.allowMockData || globalMockEnabled) && shouldUseMock && options?.mockData) {
+        if (config.env.isDevelopment || globalMockEnabled) {
           log.warn('Network error, using mock data:', typeof input === 'string' ? input : 'Request');
         }
         return options.mockData;

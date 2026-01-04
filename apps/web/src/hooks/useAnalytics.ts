@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
 import { getModuleByKey } from '../config/analyticsModules';
-import { isDevelopment } from '../config/env';
+import { shouldUseMockData } from './useShouldUseMockData';
 import type { AnalyticsPayload } from '../../../server/src/services/analytics/types';
 
 interface UseAnalyticsResult {
@@ -34,17 +34,17 @@ export function useAnalytics(moduleKey: string | null): UseAnalyticsResult {
 
       const endpoint = module.apiEndpoint;
 
-      // In development, allow mock data fallback
+      // Allow mock data fallback if toggle is enabled
       const result = await fetchJson<AnalyticsPayload>(endpoint, undefined, {
-        useMockData: isDevelopment,
+        useMockData: shouldUseMockData(),
         mockData: null // Will be handled by individual panels
       });
       setData(result);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch analytics data';
       setError(errorMessage);
-      // In development, don't set data to null immediately - let panels handle mock data
-      if (!isDevelopment) {
+      // If mock data is enabled, don't set data to null immediately - let panels handle mock data
+      if (!shouldUseMockData()) {
         setData(null);
       }
       console.error('Analytics fetch error:', err);

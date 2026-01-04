@@ -1,4 +1,5 @@
 import { useRef, useEffect, useMemo } from 'react';
+import { useMockData } from '../../contexts/MockDataContext';
 import { BookOpenCheck, Sparkles, Layers, Clock, Star } from 'lucide-react';
 import type { TimelineNode, TimelineLayer, LAYER_COLORS } from '../../types/timeline';
 
@@ -78,7 +79,7 @@ type ColorCodedTimelineProps = {
   onItemClick?: (item: TimelineItem) => void;
   showLabel?: boolean;
   sectionIndexMap?: Map<string, number>; // Optional map of section ID to index for navigation
-  useDummyData?: boolean; // Option to use dummy data
+  useDummyData?: boolean; // Option to use dummy data (deprecated - use mock data toggle)
 };
 
 // Dummy data for timeline visualization
@@ -261,7 +262,11 @@ export const ColorCodedTimeline = ({
   };
   
   // Use dummy data if requested or if no real data exists
-  const dummyData = useDummyData || (hierarchyNodes.length === 0 && chapters.length === 0 && sections.length === 0 && entries.length === 0) 
+  // Check mock data toggle
+  const { useMockData: isMockDataEnabled } = useMockData();
+  const shouldUseDummy = useDummyData || (isMockDataEnabled && hierarchyNodes.length === 0 && chapters.length === 0 && sections.length === 0 && entries.length === 0);
+  
+  const dummyData = shouldUseDummy 
     ? generateDummyTimelineData() 
     : { eras: [], sagas: [], arcs: [], chapters: [], memories: [] };
   

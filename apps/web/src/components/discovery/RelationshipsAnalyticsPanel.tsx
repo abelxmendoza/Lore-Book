@@ -16,7 +16,7 @@ import { RelationshipArchetypeCard } from './RelationshipArchetypeCard';
 import { AttachmentGravityCard } from './AttachmentGravityCard';
 import { RelationshipForecastCard } from './RelationshipForecastCard';
 import { ArcAppearanceCard } from './ArcAppearanceCard';
-import { isDevelopment } from '../../config/env';
+import { useMockData } from '../../contexts/MockDataContext';
 import type { AnalyticsPayload } from '../../../server/src/services/analytics/types';
 
 // Mock data for development/demo
@@ -88,16 +88,10 @@ const MOCK_RELATIONSHIPS_DATA: AnalyticsPayload = {
 export const RelationshipsAnalyticsPanel = () => {
   const analyticsModule = getModuleByKey('relationships');
   const { data: realData, loading, error } = useAnalytics('relationships');
-  const [useMockData, setUseMockData] = useState(false);
-
-  useEffect(() => {
-    // Auto-use mock data in development if backend fails or no data
-    if (isDevelopment && (error || (!loading && !realData))) {
-      setUseMockData(true);
-    } else if (realData) {
-      setUseMockData(false);
-    }
-  }, [realData, loading, error]);
+  const { useMockData: isMockDataEnabled } = useMockData();
+  
+  // Use mock data if toggle is on AND (no real data OR error)
+  const useMockData = isMockDataEnabled && (!realData || error);
 
   if (!analyticsModule) {
     return (
@@ -123,8 +117,7 @@ export const RelationshipsAnalyticsPanel = () => {
     );
   }
 
-  // Show mock data banner in development
-  const isMockData = useMockData || (isDevelopment && !realData);
+  const isMockData = useMockData;
 
   const metadata = data.metadata || {};
   const sentimentTimeline = Array.isArray(metadata.sentimentTimeline) ? metadata.sentimentTimeline : [];

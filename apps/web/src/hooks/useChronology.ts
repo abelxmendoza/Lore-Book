@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ChronologyEntry, ChronologyOverlap, TimeBucket, Timeline } from '../types/timelineV2';
 import { fetchChronology, fetchChronologyOverlaps, fetchTimeBuckets } from '../api/timelineV2';
 import { generateMockChronologyEntries, generateMockTimelines } from '../mocks/timelineMockData';
-import { config } from '../config/env';
+import { shouldUseMockData } from './useShouldUseMockData';
+import { subscribeToMockDataState } from '../contexts/MockDataContext';
 
 export const useChronology = (startTime?: string, endTime?: string, timelineIds?: string[]) => {
   const [entries, setEntries] = useState<ChronologyEntry[]>([]);
@@ -16,7 +17,7 @@ export const useChronology = (startTime?: string, endTime?: string, timelineIds?
       const response = await fetchChronology(startTime, endTime, timelineIds);
       
       // Use mock data if response is empty and mock data is enabled
-      if ((!response.entries || response.entries.length === 0) && config.dev.allowMockData) {
+      if ((!response.entries || response.entries.length === 0) && shouldUseMockData()) {
         // Generate timelines first, then entries linked to them
         const mockTimelines = generateMockTimelines();
         const mockEntries = generateMockChronologyEntries(mockTimelines);
@@ -45,7 +46,7 @@ export const useChronology = (startTime?: string, endTime?: string, timelineIds?
       }
     } catch (err) {
       // Use mock data on error if enabled
-      if (config.dev.allowMockData) {
+      if (shouldUseMockData()) {
         console.warn('Chronology API failed, using mock data:', err);
         // Generate timelines first, then entries linked to them
         const mockTimelines = generateMockTimelines();
@@ -79,6 +80,14 @@ export const useChronology = (startTime?: string, endTime?: string, timelineIds?
 
   useEffect(() => {
     loadChronology();
+  }, [loadChronology]);
+
+  // Refresh when mock data toggle changes
+  useEffect(() => {
+    const unsubscribe = subscribeToMockDataState(() => {
+      loadChronology();
+    });
+    return unsubscribe;
   }, [loadChronology]);
 
   return { entries, loading, error, refetch: loadChronology };

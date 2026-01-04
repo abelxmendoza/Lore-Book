@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
 import { mockContradictions, mockContradictionDetails } from '../mocks/contradictionData';
+import { shouldUseMockData } from './useShouldUseMockData';
 import type { ContinuityEvent, ContradictionDetails, MemoryComponent } from '../types/continuity';
 
 export const useContradictionResolution = () => {
@@ -19,10 +20,14 @@ export const useContradictionResolution = () => {
       );
       setContradictions(response.contradictions || []);
     } catch (err) {
-      // Use mock data when API fails (for development/demo)
-      console.warn('API failed, using mock data:', err);
-      setContradictions(mockContradictions);
-      setError(null); // Don't show error when using mock data
+      // Use mock data when API fails if toggle is enabled
+      if (shouldUseMockData()) {
+        console.warn('API failed, using mock data:', err);
+        setContradictions(mockContradictions);
+        setError(null); // Don't show error when using mock data
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to fetch contradictions');
+      }
     } finally {
       setLoading(false);
     }
@@ -37,12 +42,16 @@ export const useContradictionResolution = () => {
       );
       setContradictionDetails(response);
     } catch (err) {
-      // Use mock data when API fails (for development/demo)
-      console.warn('API failed, using mock data:', err);
-      const mockDetails = mockContradictionDetails[eventId];
-      if (mockDetails) {
-        setContradictionDetails(mockDetails);
-        setError(null); // Don't show error when using mock data
+      // Use mock data when API fails if toggle is enabled
+      if (shouldUseMockData()) {
+        console.warn('API failed, using mock data:', err);
+        const mockDetails = mockContradictionDetails[eventId];
+        if (mockDetails) {
+          setContradictionDetails(mockDetails);
+          setError(null); // Don't show error when using mock data
+        } else {
+          setError(err instanceof Error ? err.message : 'Failed to fetch contradiction details');
+        }
       } else {
         setError(err instanceof Error ? err.message : 'Failed to fetch contradiction details');
       }
