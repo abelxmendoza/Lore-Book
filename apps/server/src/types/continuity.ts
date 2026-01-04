@@ -15,7 +15,8 @@ export type ContinuityEventType =
   | 'TIMELINE_SEGMENTED'
   | 'NARRATIVE_TRANSITION'
   | 'DECISION_RECORDED'
-  | 'DECISION_OUTCOME_RECORDED';
+  | 'DECISION_OUTCOME_RECORDED'
+  | 'RESOURCE_DELETED';
 
 export type InitiatedBy = 'SYSTEM' | 'USER' | 'AI';
 export type Severity = 'INFO' | 'WARNING' | 'ALERT';

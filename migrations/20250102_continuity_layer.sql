@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS continuity_events (
         'TIMELINE_SEGMENTED',
         'NARRATIVE_TRANSITION',
         'DECISION_RECORDED',
-        'DECISION_OUTCOME_RECORDED'
+        'DECISION_OUTCOME_RECORDED',
+        'RESOURCE_DELETED'
     )),
     timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
     context JSONB NOT NULL DEFAULT '{}'::jsonb,
