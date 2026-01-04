@@ -9,6 +9,7 @@ import { supabaseAdmin } from './supabaseClient';
 import { logger } from '../logger';
 import { config } from '../config';
 import { embeddingService } from './embeddingService';
+import { continuityService } from './continuityService';
 import type {
   Entity,
   Claim,
@@ -48,9 +49,29 @@ export class OmegaMemoryService {
           await this.markClaimsInactive(existingClaims);
           await this.lowerConfidence(existingClaims);
           conflictsDetected++;
+          
+          // Record contradiction event
+          if (existingClaims.length > 0) {
+            await continuityService.recordContradiction(
+              userId,
+              claim,
+              existingClaims[0]
+            );
+          }
         }
         
-        await this.storeClaim(claim);
+        const storedClaim = await this.storeClaim(claim);
+        
+        // Record claim creation event
+        const entity = resolvedEntities.find(e => e.id === claim.entity_id);
+        if (entity) {
+          await continuityService.recordClaimCreation(
+            userId,
+            storedClaim,
+            inputText,
+            entity
+          );
+        }
       }
       
       // Step 5: Extract relationships
@@ -167,6 +188,8 @@ Only extract entities that are clearly mentioned. Be conservative with confidenc
       .single();
 
     if (exactMatch && !exactError) {
+      // Record entity resolution
+      await continuityService.recordEntityResolved(userId, exactMatch, 'exact_match');
       return exactMatch;
     }
 
@@ -187,7 +210,8 @@ Only extract entities that are clearly mentioned. Be conservative with confidenc
       );
 
       if (similarEntities && similarEntities.length > 0) {
-        // Return the most similar
+        // Record entity resolution via semantic match
+        await continuityService.recordEntityResolved(userId, similarEntities[0], 'semantic_match');
         return similarEntities[0];
       }
     } catch (error) {
@@ -706,6 +730,87 @@ A contradiction means the claims cannot both be true at the same time.`
       if (error) {
         logger.error({ err: error, entityId: entity.id }, 'Failed to update entity timestamp');
       }
+    }
+  }
+
+  /**
+   * Merge two entities (with continuity tracking)
+   */
+  async mergeEntities(
+    userId: string,
+    sourceEntityId: string,
+    targetEntityId: string
+  ): Promise<{ success: boolean; event_id?: string }> {
+    try {
+      // Get entities
+      const { data: sourceEntity } = await supabaseAdmin
+        .from('omega_entities')
+        .select('*')
+        .eq('id', sourceEntityId)
+        .eq('user_id', userId)
+        .single();
+
+      const { data: targetEntity } = await supabaseAdmin
+        .from('omega_entities')
+        .select('*')
+        .eq('id', targetEntityId)
+        .eq('user_id', userId)
+        .single();
+
+      if (!sourceEntity || !targetEntity) {
+        throw new Error('Entities not found');
+      }
+
+      // Get claims for source entity
+      const { data: sourceClaims } = await supabaseAdmin
+        .from('omega_claims')
+        .select('id')
+        .eq('entity_id', sourceEntityId)
+        .eq('user_id', userId);
+
+      const mergedClaimIds = sourceClaims?.map(c => c.id) || [];
+
+      // Update claims to point to target entity
+      if (mergedClaimIds.length > 0) {
+        await supabaseAdmin
+          .from('omega_claims')
+          .update({ entity_id: targetEntityId })
+          .in('id', mergedClaimIds);
+      }
+
+      // Update relationships
+      await supabaseAdmin
+        .from('omega_relationships')
+        .update({ from_entity_id: targetEntityId })
+        .eq('from_entity_id', sourceEntityId)
+        .eq('user_id', userId);
+
+      await supabaseAdmin
+        .from('omega_relationships')
+        .update({ to_entity_id: targetEntityId })
+        .eq('to_entity_id', sourceEntityId)
+        .eq('user_id', userId);
+
+      // Delete source entity
+      await supabaseAdmin
+        .from('omega_entities')
+        .delete()
+        .eq('id', sourceEntityId)
+        .eq('user_id', userId);
+
+      // Record merge event
+      const event = await continuityService.recordEntityMerge(userId, {
+        source_entity_id: sourceEntityId,
+        target_entity_id: targetEntityId,
+        merged_claim_ids: mergedClaimIds,
+        source_entity: sourceEntity,
+        target_entity: targetEntity,
+      });
+
+      return { success: true, event_id: event.id };
+    } catch (error) {
+      logger.error({ err: error, userId, sourceEntityId, targetEntityId }, 'Failed to merge entities');
+      throw error;
     }
   }
 

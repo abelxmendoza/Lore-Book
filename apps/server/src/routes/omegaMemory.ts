@@ -153,5 +153,30 @@ router.post('/suggestions/:id/approve', requireAuth, async (req: AuthenticatedRe
   }
 });
 
+/**
+ * POST /api/omega-memory/entities/merge
+ * Merge two entities
+ */
+router.post('/entities/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { source_entity_id, target_entity_id } = req.body;
+
+    if (!source_entity_id || !target_entity_id) {
+      return res.status(400).json({ error: 'source_entity_id and target_entity_id are required' });
+    }
+
+    const result = await omegaMemoryService.mergeEntities(
+      req.user!.id,
+      source_entity_id,
+      target_entity_id
+    );
+
+    res.json(result);
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to merge entities');
+    res.status(500).json({ error: 'Failed to merge entities' });
+  }
+});
+
 export const omegaMemoryRouter = router;
 
