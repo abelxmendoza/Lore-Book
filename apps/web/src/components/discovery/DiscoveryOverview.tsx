@@ -9,7 +9,8 @@ import {
   Award,
   Users,
   Activity,
-  AlertCircle
+  AlertCircle,
+  ClipboardCheck
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
@@ -19,6 +20,7 @@ import { AchievementsPanel } from './AchievementsPanel';
 import { RelationshipsAnalyticsPanel } from './RelationshipsAnalyticsPanel';
 import { ContinuityDashboard } from '../continuity/ContinuityDashboard';
 import { ShadowAnalyticsPanel } from './ShadowAnalyticsPanel';
+import { MemoryReviewQueuePanel } from './MemoryReviewQueuePanel';
 import { fetchJson } from '../../lib/api';
 
 // Wrapper component for InsightsPanel that fetches data
@@ -57,6 +59,13 @@ interface PanelConfig {
 // Core analytics panels that answer human questions
 // Each panel provides unique insights not available elsewhere
 const PANEL_CONFIGS: PanelConfig[] = [
+  {
+    id: 'memory-review',
+    title: 'Memory Review Queue',
+    description: 'Review and control what memories are being proposed. The trust choke point for all memory ingestion.',
+    icon: ClipboardCheck,
+    component: MemoryReviewQueuePanel
+  },
   {
     id: 'identity',
     title: 'Identity Pulse',
