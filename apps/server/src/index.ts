@@ -71,6 +71,7 @@ import { userRouter } from './routes/user';
 import { essenceRouter } from './routes/essence';
 import { verificationRouter } from './routes/verification';
 import { timelineV2Router } from './routes/timelineV2';
+import { omegaMemoryRouter } from './routes/omegaMemory';
 import { memoryEngineRouter } from './routes/memoryEngine';
 import { knowledgeGraphRouter } from './routes/knowledgeGraph';
 import { searchRouter } from './routes/search';

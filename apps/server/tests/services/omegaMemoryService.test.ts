@@ -1,0 +1,214 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { omegaMemoryService } from '../../src/services/omegaMemoryService';
+import { supabaseAdmin } from '../../src/services/supabaseClient';
+
+// Mock dependencies
+vi.mock('../../src/services/supabaseClient');
+vi.mock('../../src/logger', () => ({
+  logger: {
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn()
+  }
+}));
+
+describe('OmegaMemoryService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('resolveEntities', () => {
+    it('should find existing entity by name', async () => {
+      const mockEntity = {
+        id: 'entity-1',
+        user_id: 'user-123',
+        type: 'PERSON',
+        primary_name: 'John Doe',
+        aliases: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      vi.mocked(supabaseAdmin.from).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            or: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: mockEntity, error: null })
+              })
+            })
+          })
+        })
+      } as any);
+
+      const result = await omegaMemoryService.resolveEntities('user-123', [
+        { name: 'John Doe', type: 'PERSON' }
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].primary_name).toBe('John Doe');
+    });
+
+    it('should create new entity if not found', async () => {
+      // Mock findEntityByNameOrAlias to return null
+      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            or: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({ data: null, error: { code: 'PGRST116' } })
+              })
+            })
+          })
+        })
+      } as any);
+
+      // Mock createEntity
+      const newEntity = {
+        id: 'entity-2',
+        user_id: 'user-123',
+        type: 'PERSON',
+        primary_name: 'Jane Doe',
+        aliases: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
+        insert: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: newEntity, error: null })
+          })
+        })
+      } as any);
+
+      const result = await omegaMemoryService.resolveEntities('user-123', [
+        { name: 'Jane Doe', type: 'PERSON' }
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].primary_name).toBe('Jane Doe');
+    });
+  });
+
+  describe('conflictDetected', () => {
+    it('should detect semantic opposites', async () => {
+      const newClaim = {
+        id: 'claim-1',
+        user_id: 'user-123',
+        entity_id: 'entity-1',
+        text: 'John is a good person',
+        source: 'USER' as const,
+        confidence: 0.8,
+        start_time: new Date().toISOString(),
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const existingClaim = {
+        id: 'claim-2',
+        user_id: 'user-123',
+        entity_id: 'entity-1',
+        text: 'John is not a good person',
+        source: 'USER' as const,
+        confidence: 0.7,
+        start_time: new Date().toISOString(),
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const hasConflict = await omegaMemoryService.conflictDetected(newClaim, [existingClaim]);
+      expect(hasConflict).toBe(true);
+    });
+
+    it('should not detect conflict for unrelated claims', async () => {
+      const newClaim = {
+        id: 'claim-1',
+        user_id: 'user-123',
+        entity_id: 'entity-1',
+        text: 'John likes pizza',
+        source: 'USER' as const,
+        confidence: 0.8,
+        start_time: new Date().toISOString(),
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const existingClaim = {
+        id: 'claim-2',
+        user_id: 'user-123',
+        entity_id: 'entity-1',
+        text: 'John lives in New York',
+        source: 'USER' as const,
+        confidence: 0.7,
+        start_time: new Date().toISOString(),
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const hasConflict = await omegaMemoryService.conflictDetected(newClaim, [existingClaim]);
+      expect(hasConflict).toBe(false);
+    });
+  });
+
+  describe('rankClaims', () => {
+    it('should rank claims by score', async () => {
+      const claims = [
+        {
+          id: 'claim-1',
+          user_id: 'user-123',
+          entity_id: 'entity-1',
+          text: 'Old claim',
+          source: 'USER' as const,
+          confidence: 0.5,
+          start_time: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year ago
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        {
+          id: 'claim-2',
+          user_id: 'user-123',
+          entity_id: 'entity-1',
+          text: 'Recent claim',
+          source: 'USER' as const,
+          confidence: 0.9,
+          start_time: new Date().toISOString(), // Recent
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+      ];
+
+      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              order: vi.fn().mockResolvedValue({ data: claims, error: null })
+            })
+          })
+        })
+      } as any);
+
+      // Mock evidence counts
+      vi.mocked(supabaseAdmin.from).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            count: 'exact',
+            head: true
+          })
+        })
+      } as any);
+
+      const ranked = await omegaMemoryService.rankClaims('entity-1');
+
+      expect(ranked).toBeDefined();
+      expect(ranked.length).toBeGreaterThan(0);
+    });
+  });
+});
+
