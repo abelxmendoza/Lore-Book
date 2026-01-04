@@ -7,12 +7,15 @@ export type ContinuityEventType =
   | 'CLAIM_CREATED'
   | 'CLAIM_UPDATED'
   | 'CLAIM_ENDED'
+  | 'CLAIM_REJECTED'
   | 'ENTITY_RESOLVED'
   | 'ENTITY_MERGED'
   | 'CONTRADICTION_FOUND'
   | 'CONTINUITY_ALERT'
   | 'TIMELINE_SEGMENTED'
-  | 'NARRATIVE_TRANSITION';
+  | 'NARRATIVE_TRANSITION'
+  | 'DECISION_RECORDED'
+  | 'DECISION_OUTCOME_RECORDED';
 
 export type InitiatedBy = 'SYSTEM' | 'USER' | 'AI';
 export type Severity = 'INFO' | 'WARNING' | 'ALERT';

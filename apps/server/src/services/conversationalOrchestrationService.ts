@@ -12,6 +12,7 @@ import { omegaMemoryService } from './omegaMemoryService';
 import { perspectiveService } from './perspectiveService';
 import { insightReflectionService } from './insightReflectionService';
 import { memoryReviewQueueService } from './memoryReviewQueueService';
+import { decisionMemoryService } from './decisionMemoryService';
 import type {
   ChatContext,
   ChatMessage,
@@ -230,7 +231,12 @@ Return JSON:
   private async supportDecision(context: ChatContext): Promise<ChatResponse> {
     try {
       const relevantInsights = await this.getDecisionRelevantInsights(context);
-      const pastDecisions = await this.getRelatedDecisionMemory(context);
+      const pastDecisions = await decisionMemoryService.getSimilarPastDecisions(
+        context.user_id,
+        {
+          entity_ids: context.active_entity_ids,
+        }
+      );
 
       const synthesized = await this.synthesizeDecisionContext(
         relevantInsights,
@@ -566,16 +572,17 @@ Return JSON:
   }
 
   /**
-   * Get related decision memory
+   * Get related decision memory (now uses decisionMemoryService)
+   * Kept for backward compatibility
    */
   private async getRelatedDecisionMemory(context: ChatContext): Promise<any[]> {
-    // Get claims related to active entities that might inform decisions
-    const allClaims: any[] = [];
-    for (const entityId of context.active_entity_ids) {
-      const claims = await omegaMemoryService.getClaimsForEntity(context.user_id, entityId, true);
-      allClaims.push(...claims);
-    }
-    return allClaims.slice(0, 10);
+    const decisions = await decisionMemoryService.getSimilarPastDecisions(
+      context.user_id,
+      {
+        entity_ids: context.active_entity_ids,
+      }
+    );
+    return decisions;
   }
 
   /**
