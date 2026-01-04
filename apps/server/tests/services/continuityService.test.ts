@@ -307,37 +307,39 @@ describe('ContinuityService', () => {
         eq: vi.fn().mockReturnThis(),
         single: vi.fn().mockResolvedValue({ data: mockEvent, error: null })
       };
-      vi.mocked(supabaseAdmin.from).mockReturnValueOnce(mockEventChain as any);
 
-      // Mock snapshot creation (claims fetch)
-      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-        select: vi.fn().mockReturnValue({
-          in: vi.fn().mockResolvedValue({ data: [], error: null })
-        })
-      } as any);
+      // Mock snapshot creation (claims fetch - called twice for before/after)
+      const mockSnapshotChain = {
+        select: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({ data: [], error: null })
+      };
 
       // Mock claim update (reversal)
-      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-        update: vi.fn().mockReturnValue({
-          in: vi.fn().mockResolvedValue({ data: null, error: null })
-        })
-      } as any);
+      const mockUpdateChain = {
+        update: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({ data: null, error: null })
+      };
 
       // Mock reversal log creation
-      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockReversalLog, error: null })
-          })
-        })
-      } as any);
+      const mockInsertChain = {
+        insert: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: mockReversalLog, error: null })
+      };
 
       // Mock event update (mark as reversed)
-      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: null, error: null })
-        })
-      } as any);
+      const mockEventUpdateChain = {
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: null, error: null })
+      };
+
+      vi.mocked(supabaseAdmin.from)
+        .mockReturnValueOnce(mockEventChain as any) // Event fetch
+        .mockReturnValueOnce(mockSnapshotChain as any) // Before snapshot (claims)
+        .mockReturnValueOnce(mockUpdateChain as any) // Claim update
+        .mockReturnValueOnce(mockSnapshotChain as any) // After snapshot (claims)
+        .mockReturnValueOnce(mockInsertChain as any) // Reversal log
+        .mockReturnValueOnce(mockEventUpdateChain as any); // Event update
 
       const result = await continuityService.revertEvent(
         'user-123',
