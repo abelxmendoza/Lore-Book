@@ -178,5 +178,50 @@ router.post('/entities/merge', requireAuth, async (req: AuthenticatedRequest, re
   }
 });
 
+/**
+ * PATCH /api/omega-memory/claims/:id
+ * Update a claim
+ */
+router.patch('/claims/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    // Get the claim first to verify ownership
+    const { data: claim, error: fetchError } = await supabaseAdmin
+      .from('omega_claims')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', req.user!.id)
+      .single();
+
+    if (fetchError || !claim) {
+      return res.status(404).json({ error: 'Claim not found' });
+    }
+
+    // Update the claim
+    const { data: updated, error: updateError } = await supabaseAdmin
+      .from('omega_claims')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('user_id', req.user!.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      logger.error({ err: updateError }, 'Failed to update claim');
+      return res.status(500).json({ error: 'Failed to update claim' });
+    }
+
+    res.json({ claim: updated });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to update claim');
+    res.status(500).json({ error: 'Failed to update claim' });
+  }
+});
+
 export const omegaMemoryRouter = router;
 

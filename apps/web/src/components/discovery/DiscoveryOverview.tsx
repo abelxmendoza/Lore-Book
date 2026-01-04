@@ -13,7 +13,8 @@ import {
   ClipboardCheck,
   Clock,
   TrendingUp,
-  Target
+  Target,
+  Database
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
@@ -27,6 +28,7 @@ import { MemoryReviewQueuePanel } from './MemoryReviewQueuePanel';
 import { DecisionMemoryPanel } from './DecisionMemoryPanel';
 import { InsightsAndPredictionsPanel } from './InsightsAndPredictionsPanel';
 import { GoalsAndValuesPanel } from './GoalsAndValuesPanel';
+import { MemoryManagementPanel } from './MemoryManagementPanel';
 import { fetchJson } from '../../lib/api';
 
 // Wrapper component for InsightsPanel that fetches data
@@ -65,6 +67,13 @@ interface PanelConfig {
 // Core analytics panels that answer human questions
 // Each panel provides unique insights not available elsewhere
 const PANEL_CONFIGS: PanelConfig[] = [
+  {
+    id: 'memory-management',
+    title: 'Memory Management',
+    description: 'Better than ChatGPT\'s memory: time-aware, evidence-based, with confidence scores. View, edit, and manage all memories.',
+    icon: Database,
+    component: MemoryManagementPanel
+  },
   {
     id: 'memory-review',
     title: 'Memory Review Queue',
