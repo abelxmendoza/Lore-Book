@@ -15,7 +15,6 @@ import {
   ChevronUp
 } from 'lucide-react';
 import { useMemoryReviewQueue, type MemoryProposal } from '../../hooks/useMemoryReviewQueue';
-import { fetchJson } from '../../lib/api';
 
 const RiskBadge = ({ riskLevel }: { riskLevel: string }) => {
   const colors = {
@@ -46,18 +45,26 @@ const ConfidenceBar = ({ confidence }: { confidence: number }) => {
   );
 };
 
-const ProposalCard = ({ proposal, onAction }: { proposal: MemoryProposal; onAction: () => void }) => {
+interface ProposalCardProps {
+  proposal: MemoryProposal;
+  onAction: () => void;
+  onApprove: (id: string) => Promise<void>;
+  onReject: (id: string, reason?: string) => Promise<void>;
+  onEdit: (id: string, newText: string, newConfidence?: number) => Promise<void>;
+  onDefer: (id: string) => Promise<void>;
+}
+
+const ProposalCard = ({ proposal, onAction, onApprove, onReject, onEdit, onDefer }: ProposalCardProps) => {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(proposal.claim_text);
   const [editConfidence, setEditConfidence] = useState(proposal.confidence);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const { approveProposal, rejectProposal, editProposal, deferProposal } = useMemoryReviewQueue();
 
   const handleApprove = async () => {
     setActionLoading('approve');
     try {
-      await approveProposal(proposal.id);
+      await onApprove(proposal.id);
       onAction();
     } catch (error) {
       console.error('Failed to approve:', error);
@@ -70,7 +77,7 @@ const ProposalCard = ({ proposal, onAction }: { proposal: MemoryProposal; onActi
     const reason = prompt('Why are you rejecting this? (optional)');
     setActionLoading('reject');
     try {
-      await rejectProposal(proposal.id, reason || undefined);
+      await onReject(proposal.id, reason || undefined);
       onAction();
     } catch (error) {
       console.error('Failed to reject:', error);
@@ -83,7 +90,7 @@ const ProposalCard = ({ proposal, onAction }: { proposal: MemoryProposal; onActi
     if (!editText.trim()) return;
     setActionLoading('edit');
     try {
-      await editProposal(proposal.id, editText, editConfidence);
+      await onEdit(proposal.id, editText, editConfidence);
       setEditing(false);
       onAction();
     } catch (error) {
@@ -96,7 +103,7 @@ const ProposalCard = ({ proposal, onAction }: { proposal: MemoryProposal; onActi
   const handleDefer = async () => {
     setActionLoading('defer');
     try {
-      await deferProposal(proposal.id);
+      await onDefer(proposal.id);
       onAction();
     } catch (error) {
       console.error('Failed to defer:', error);
