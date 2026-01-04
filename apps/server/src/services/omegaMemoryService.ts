@@ -11,6 +11,7 @@ import { config } from '../config';
 import { embeddingService } from './embeddingService';
 import { continuityService } from './continuityService';
 import { perspectiveService } from './perspectiveService';
+import { memoryReviewQueueService } from './memoryReviewQueueService';
 import type {
   Entity,
   Claim,
