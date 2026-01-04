@@ -4,6 +4,7 @@ import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { ChatMemoryIndicator, type MemoryIndicator } from './ChatMemoryIndicator';
 
 export type ChatSource = {
   type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
@@ -25,6 +26,7 @@ export type Message = {
   extractedDates?: Array<{ date: string; context: string }>;
   sources?: ChatSource[];
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
+  memories?: MemoryIndicator[]; // Memories used in this response
   isStreaming?: boolean;
   feedback?: 'positive' | 'negative' | null;
   isSystemMessage?: boolean;
@@ -38,6 +40,7 @@ type ChatMessageProps = {
   onDelete?: () => void;
   onSourceClick?: (source: ChatSource) => void;
   onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void;
+  onEditMemory?: (claimId: string) => void;
 };
 
 export const ChatMessage = ({
@@ -47,7 +50,8 @@ export const ChatMessage = ({
   onEdit,
   onDelete,
   onSourceClick,
-  onFeedback
+  onFeedback,
+  onEditMemory
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -213,6 +217,14 @@ export const ChatMessage = ({
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Memory Indicators - Better than ChatGPT */}
+            {!isUser && message.memories && message.memories.length > 0 && (
+              <ChatMemoryIndicator
+                memories={message.memories}
+                onEdit={onEditMemory}
+              />
             )}
           </div>
 

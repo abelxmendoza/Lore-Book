@@ -627,6 +627,10 @@ export const ChatFirstInterface = () => {
                   onDelete={() => handleDelete(message.id)}
                   onSourceClick={handleSourceClick}
                   onFeedback={handleFeedback}
+                  onEditMemory={(claimId) => {
+                    // Navigate to Memory Management panel with claim selected
+                    navigate('/discovery?memory=' + claimId);
+                  }}
                 />
               </div>
             ))}

@@ -20,6 +20,7 @@ import { supabaseAdmin } from './supabaseClient';
 import { ragPacketCacheService } from './ragPacketCacheService';
 import { essenceProfileService } from './essenceProfileService';
 import { essenceRefinementEngine } from './essenceRefinement';
+import { omegaMemoryService } from './omegaMemoryService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
@@ -29,6 +30,15 @@ export type ChatSource = {
   title: string;
   snippet?: string;
   date?: string;
+};
+
+export type MemoryClaim = {
+  claim_id: string;
+  entity_name: string;
+  claim_text: string;
+  confidence: number;
+  source: 'USER' | 'AI' | 'EXTERNAL';
+  sentiment?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'MIXED';
 };
 
 export type OmegaChatResponse = {
@@ -42,6 +52,7 @@ export type OmegaChatResponse = {
   extractedDates?: Array<{ date: string; context: string }>;
   sources?: ChatSource[];
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
+  memories?: MemoryClaim[]; // Memory claims used in this response
 };
 
 export type StreamingChatResponse = {
@@ -934,6 +945,24 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
 
     // Generate citations
     const citations = this.generateCitations(sources, answer);
+
+    // Extract memory claims used in response (from omega memory)
+    const memories: MemoryClaim[] = [];
+    try {
+      // Get entities mentioned in the response
+      const entities = await omegaMemoryService.getEntities(userId);
+      
+      // For each source, try to find related memory claims
+      for (const source of sources.slice(0, 5)) {
+        if (source.type === 'entry' || source.type === 'character') {
+          // Try to find claims related to this source
+          // This is a simplified version - in production, you'd query omega_claims
+          // based on the source content or entity relationships
+        }
+      }
+    } catch (error) {
+      logger.debug({ error }, 'Failed to extract memory claims from response');
+    }
 
     // Save entry if needed
     let entryId: string | undefined;
