@@ -12,7 +12,8 @@ import {
   AlertCircle,
   ClipboardCheck,
   Clock,
-  TrendingUp
+  TrendingUp,
+  Target
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
@@ -25,6 +26,7 @@ import { ShadowAnalyticsPanel } from './ShadowAnalyticsPanel';
 import { MemoryReviewQueuePanel } from './MemoryReviewQueuePanel';
 import { DecisionMemoryPanel } from './DecisionMemoryPanel';
 import { InsightsAndPredictionsPanel } from './InsightsAndPredictionsPanel';
+import { GoalsAndValuesPanel } from './GoalsAndValuesPanel';
 import { fetchJson } from '../../lib/api';
 
 // Wrapper component for InsightsPanel that fetches data
@@ -83,6 +85,13 @@ const PANEL_CONFIGS: PanelConfig[] = [
     description: 'Observations and probabilistic projections. These are not facts and never write to memory.',
     icon: TrendingUp,
     component: InsightsAndPredictionsPanel
+  },
+  {
+    id: 'goals-values',
+    title: 'Goals & Values',
+    description: 'Your declared values and goals anchor the system. Alignment is observational, drift is surfaced neutrally.',
+    icon: Target,
+    component: GoalsAndValuesPanel
   },
   {
     id: 'identity',
