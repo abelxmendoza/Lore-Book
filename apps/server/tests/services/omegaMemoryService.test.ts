@@ -194,13 +194,10 @@ describe('OmegaMemoryService', () => {
         })
       } as any);
 
-      // Mock evidence counts
+      // Mock evidence counts - need to return count for each claim
       vi.mocked(supabaseAdmin.from).mockReturnValue({
         select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            count: 'exact',
-            head: true
-          })
+          eq: vi.fn().mockResolvedValue({ count: 0 })
         })
       } as any);
 
