@@ -74,19 +74,28 @@ export class OmegaMemoryService {
             entity
           );
 
-          // Create perspective claim with default SELF perspective
+          // Create perspective claim with default SELF perspective and use MRQ
           try {
             const defaultPerspectives = await perspectiveService.getOrCreateDefaultPerspectives(userId);
             const selfPerspective = defaultPerspectives.find(p => p.type === 'SELF');
+            
             if (selfPerspective) {
-              await perspectiveService.ingestClaimWithPerspective(
+              // Use MRQ for memory ingestion
+              const { proposal, auto_approved } = await memoryReviewQueueService.ingestMemory(
                 userId,
                 storedClaim,
-                selfPerspective.id
+                entity,
+                selfPerspective.id,
+                inputText
               );
+
+              // If not auto-approved, the proposal is queued for review
+              if (!auto_approved) {
+                logger.info({ proposalId: proposal.id, userId }, 'Memory proposal queued for review');
+              }
             }
           } catch (error) {
-            logger.debug({ err: error, userId }, 'Failed to create perspective claim, continuing');
+            logger.debug({ err: error, userId }, 'Failed to create perspective claim or MRQ proposal, continuing');
           }
         }
       }
