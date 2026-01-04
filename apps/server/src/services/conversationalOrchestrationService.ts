@@ -480,6 +480,17 @@ Answer the question using ONLY the information from these claims.`
   }
 
   /**
+   * Format predictions for display
+   */
+  private async formatPredictions(predictions: any[]): Promise<string> {
+    const formatted = predictions.map(prediction => {
+      return `**${prediction.title}**\n${prediction.description}\n(Probability: ${(prediction.probability * 100).toFixed(0)}%, Confidence: ${(prediction.confidence * 100).toFixed(0)}%)`;
+    }).join('\n\n');
+
+    return `Here are some possible trajectories based on past patterns:\n\n${formatted}`;
+  }
+
+  /**
    * Format MRQ items
    */
   private async formatMRQItems(items: any[]): Promise<string> {
