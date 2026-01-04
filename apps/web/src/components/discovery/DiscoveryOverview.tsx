@@ -11,7 +11,8 @@ import {
   Activity,
   AlertCircle,
   ClipboardCheck,
-  Clock
+  Clock,
+  TrendingUp
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
@@ -23,6 +24,7 @@ import { ContinuityDashboard } from '../continuity/ContinuityDashboard';
 import { ShadowAnalyticsPanel } from './ShadowAnalyticsPanel';
 import { MemoryReviewQueuePanel } from './MemoryReviewQueuePanel';
 import { DecisionMemoryPanel } from './DecisionMemoryPanel';
+import { InsightsAndPredictionsPanel } from './InsightsAndPredictionsPanel';
 import { fetchJson } from '../../lib/api';
 
 // Wrapper component for InsightsPanel that fetches data
@@ -74,6 +76,13 @@ const PANEL_CONFIGS: PanelConfig[] = [
     description: 'Snapshots of decisions you\'ve made, preserving context, options, and reasoning from that moment.',
     icon: Clock,
     component: DecisionMemoryPanel
+  },
+  {
+    id: 'insights-predictions',
+    title: 'Insights & Predictions',
+    description: 'Observations and probabilistic projections. These are not facts and never write to memory.',
+    icon: TrendingUp,
+    component: InsightsAndPredictionsPanel
   },
   {
     id: 'identity',
