@@ -10,6 +10,7 @@ import { logger } from '../logger';
 import { config } from '../config';
 import { embeddingService } from './embeddingService';
 import { continuityService } from './continuityService';
+import { perspectiveService } from './perspectiveService';
 import type {
   Entity,
   Claim,
@@ -71,6 +72,21 @@ export class OmegaMemoryService {
             inputText,
             entity
           );
+
+          // Create perspective claim with default SELF perspective
+          try {
+            const defaultPerspectives = await perspectiveService.getOrCreateDefaultPerspectives(userId);
+            const selfPerspective = defaultPerspectives.find(p => p.type === 'SELF');
+            if (selfPerspective) {
+              await perspectiveService.ingestClaimWithPerspective(
+                userId,
+                storedClaim,
+                selfPerspective.id
+              );
+            }
+          } catch (error) {
+            logger.debug({ err: error, userId }, 'Failed to create perspective claim, continuing');
+          }
         }
       }
       
