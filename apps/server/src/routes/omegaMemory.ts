@@ -109,12 +109,12 @@ router.get('/entities/:id/summary', requireAuth, async (req: AuthenticatedReques
 
 /**
  * POST /api/omega-memory/claims/:id/evidence
- * Add evidence to a claim
+ * Add evidence to a claim with reliability scoring
  */
 router.post('/claims/:id/evidence', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const { content, source } = req.body;
+    const { content, source, source_type } = req.body;
 
     if (!content || !source) {
       return res.status(400).json({ error: 'Content and source are required' });
@@ -124,7 +124,8 @@ router.post('/claims/:id/evidence', requireAuth, async (req: AuthenticatedReques
       req.user!.id,
       id,
       content,
-      source
+      source,
+      source_type || 'journal_entry'
     );
 
     res.json({ evidence });

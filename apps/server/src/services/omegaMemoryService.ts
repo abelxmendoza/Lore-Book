@@ -1,10 +1,14 @@
 /**
  * OMEGA MEMORY ENGINE — Core Service
  * Time-aware, truth-seeking knowledge system
+ * Enhanced with LLM, semantic similarity, evidence scoring, and temporal reasoning
  */
 
+import OpenAI from 'openai';
 import { supabaseAdmin } from './supabaseClient';
 import { logger } from '../logger';
+import { config } from '../config';
+import { embeddingService } from './embeddingService';
 import type {
   Entity,
   Claim,
@@ -17,6 +21,8 @@ import type {
   UpdateSuggestion,
   IngestionResult,
 } from '../types/omegaMemory';
+
+const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export class OmegaMemoryService {
   /**
@@ -70,12 +76,52 @@ export class OmegaMemoryService {
   }
 
   /**
-   * Extract entities from text using LLM or rule-based extraction
+   * Extract entities from text using LLM
    */
   private async extractEntities(text: string): Promise<Array<{ name: string; type: EntityType }>> {
-    // TODO: Implement LLM-based NER or rule-based extraction
-    // For now, return empty array - will be implemented with OpenAI
-    return [];
+    try {
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-4o-mini',
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `You are an entity extraction system. Extract entities (people, characters, locations, organizations, events) from text.
+
+Return JSON:
+{
+  "entities": [
+    {
+      "name": "entity name",
+      "type": "PERSON" | "CHARACTER" | "LOCATION" | "ORG" | "EVENT",
+      "aliases": ["alternative names"],
+      "confidence": 0.0-1.0
+    }
+  ]
+}
+
+Only extract entities that are clearly mentioned. Be conservative with confidence scores.`
+          },
+          {
+            role: 'user',
+            content: `Extract entities from this text:\n\n${text.slice(0, 4000)}`
+          }
+        ]
+      });
+
+      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+      const entities = (response.entities || []).filter((e: any) => e.confidence >= 0.5);
+      
+      return entities.map((e: any) => ({
+        name: e.name,
+        type: e.type as EntityType,
+      }));
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to extract entities with LLM');
+      // Fallback to empty array
+      return [];
+    }
   }
 
   /**
@@ -103,14 +149,15 @@ export class OmegaMemoryService {
   }
 
   /**
-   * Find entity by name or alias
+   * Find entity by name or alias, with semantic similarity fallback
    */
   async findEntityByNameOrAlias(
     userId: string,
     name: string,
     type: EntityType
   ): Promise<Entity | null> {
-    const { data, error } = await supabaseAdmin
+    // First try exact/alias match
+    const { data: exactMatch, error: exactError } = await supabaseAdmin
       .from('omega_entities')
       .select('*')
       .eq('user_id', userId)
@@ -119,16 +166,39 @@ export class OmegaMemoryService {
       .limit(1)
       .single();
 
-    if (error && error.code !== 'PGRST116') {
-      logger.error({ err: error, userId, name, type }, 'Failed to find entity');
-      throw error;
+    if (exactMatch && !exactError) {
+      return exactMatch;
     }
 
-    return data || null;
+    // If no exact match, try semantic similarity search
+    try {
+      const nameEmbedding = await embeddingService.embedText(name);
+      
+      // Find similar entities using vector similarity
+      const { data: similarEntities, error: similarError } = await supabaseAdmin.rpc(
+        'match_omega_entities',
+        {
+          query_embedding: `[${nameEmbedding.join(',')}]`,
+          match_threshold: 0.7,
+          match_count: 5,
+          user_id_param: userId,
+          type_param: type,
+        }
+      );
+
+      if (similarEntities && similarEntities.length > 0) {
+        // Return the most similar
+        return similarEntities[0];
+      }
+    } catch (error) {
+      logger.debug({ err: error, userId, name, type }, 'Semantic search failed, using exact match only');
+    }
+
+    return null;
   }
 
   /**
-   * Create new entity
+   * Create new entity with embedding
    */
   async createEntity(
     userId: string,
@@ -136,6 +206,9 @@ export class OmegaMemoryService {
     type: EntityType,
     aliases: string[] = []
   ): Promise<Entity> {
+    // Generate embedding for entity name
+    const embedding = await embeddingService.embedText(name);
+
     const { data, error } = await supabaseAdmin
       .from('omega_entities')
       .insert({
@@ -143,6 +216,7 @@ export class OmegaMemoryService {
         primary_name: name,
         type,
         aliases,
+        embedding: `[${embedding.join(',')}]`,
       })
       .select()
       .single();
@@ -156,7 +230,7 @@ export class OmegaMemoryService {
   }
 
   /**
-   * Extract claims about entities from text
+   * Extract claims about entities from text using LLM
    */
   private async extractClaims(
     userId: string,
@@ -164,45 +238,197 @@ export class OmegaMemoryService {
     entities: Entity[],
     source: ClaimSource
   ): Promise<Claim[]> {
-    const claims: Claim[] = [];
+    if (entities.length === 0) {
+      return [];
+    }
 
-    // TODO: Use LLM to extract statements about each entity
-    // For now, create placeholder claims
-    for (const entity of entities) {
-      // TODO: Extract actual claim text about entity
-      const claimText = `Mentioned: ${entity.primary_name}`;
+    try {
+      const entityNames = entities.map(e => e.primary_name).join(', ');
       
-      claims.push({
-        id: '', // Will be set by storeClaim
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-4o-mini',
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `You are a claim extraction system. Extract factual claims about entities from text.
+
+Return JSON:
+{
+  "claims": [
+    {
+      "entity_name": "name of entity",
+      "text": "the claim statement",
+      "sentiment": "POSITIVE" | "NEGATIVE" | "NEUTRAL" | "MIXED",
+      "confidence": 0.0-1.0,
+      "temporal_context": {
+        "start_time": "ISO timestamp or null",
+        "end_time": "ISO timestamp or null",
+        "is_ongoing": boolean
+      }
+    }
+  ]
+}
+
+Only extract clear factual claims. Include temporal context when available.`
+          },
+          {
+            role: 'user',
+            content: `Extract claims about these entities: ${entityNames}\n\nFrom this text:\n\n${text.slice(0, 4000)}`
+          }
+        ]
+      });
+
+      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+      const extractedClaims = response.claims || [];
+
+      const claims: Claim[] = [];
+      const now = new Date().toISOString();
+
+      for (const extracted of extractedClaims) {
+        // Find matching entity
+        const entity = entities.find(e => 
+          e.primary_name === extracted.entity_name || 
+          e.aliases.includes(extracted.entity_name)
+        );
+
+        if (!entity || extracted.confidence < 0.5) continue;
+
+        // Generate embedding for semantic similarity
+        const embedding = await embeddingService.embedText(extracted.text);
+
+        const temporalContext = extracted.temporal_context || {};
+        const startTime = temporalContext.start_time || now;
+        const endTime = temporalContext.end_time || null;
+
+        claims.push({
+          id: '', // Will be set by storeClaim
+          user_id: userId,
+          entity_id: entity.id,
+          text: extracted.text,
+          source,
+          confidence: extracted.confidence || 0.6,
+          sentiment: extracted.sentiment,
+          start_time: startTime,
+          end_time: endTime,
+          is_active: true,
+          created_at: now,
+          updated_at: now,
+          metadata: {
+            temporal_context: temporalContext,
+            temporal_confidence: temporalContext.temporal_confidence || 0.8,
+          },
+        } as Claim & { embedding?: number[] });
+
+        // Store embedding separately (will be added to claim in storeClaim)
+        (claims[claims.length - 1] as any).embedding = embedding;
+      }
+
+      return claims;
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to extract claims with LLM');
+      // Fallback to simple claims
+      return entities.map(entity => ({
+        id: '',
         user_id: userId,
         entity_id: entity.id,
-        text: claimText,
+        text: `Mentioned: ${entity.primary_name}`,
         source,
-        confidence: 0.6,
+        confidence: 0.5,
         start_time: new Date().toISOString(),
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      } as Claim);
+      } as Claim));
     }
-
-    return claims;
   }
 
   /**
-   * Extract relationships between entities
+   * Extract relationships between entities using LLM
    */
   private async extractRelationships(
     userId: string,
     text: string,
     entities: Entity[]
   ): Promise<Relationship[]> {
-    const relationships: Relationship[] = [];
+    if (entities.length < 2) {
+      return [];
+    }
 
-    // TODO: Use LLM to extract relationships
-    // For now, return empty array
+    try {
+      const entityNames = entities.map(e => e.primary_name).join(', ');
+      
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-4o-mini',
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `You are a relationship extraction system. Extract relationships between entities from text.
 
-    return relationships;
+Return JSON:
+{
+  "relationships": [
+    {
+      "from_entity": "entity name",
+      "to_entity": "entity name",
+      "type": "relationship type (e.g., 'coach_of', 'friend_of', 'located_at', 'works_at')",
+      "confidence": 0.0-1.0,
+      "start_time": "ISO timestamp or null",
+      "end_time": "ISO timestamp or null"
+    }
+  ]
+}
+
+Only extract clear relationships. Include temporal context when available.`
+          },
+          {
+            role: 'user',
+            content: `Extract relationships between these entities: ${entityNames}\n\nFrom this text:\n\n${text.slice(0, 4000)}`
+          }
+        ]
+      });
+
+      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+      const extracted = response.relationships || [];
+
+      const relationships: Relationship[] = [];
+      const now = new Date().toISOString();
+
+      for (const rel of extracted) {
+        if (rel.confidence < 0.5) continue;
+
+        const fromEntity = entities.find(e => 
+          e.primary_name === rel.from_entity || e.aliases.includes(rel.from_entity)
+        );
+        const toEntity = entities.find(e => 
+          e.primary_name === rel.to_entity || e.aliases.includes(rel.to_entity)
+        );
+
+        if (!fromEntity || !toEntity) continue;
+
+        relationships.push({
+          id: '',
+          user_id: userId,
+          from_entity_id: fromEntity.id,
+          to_entity_id: toEntity.id,
+          type: rel.type,
+          confidence: rel.confidence || 0.6,
+          start_time: rel.start_time || now,
+          end_time: rel.end_time || null,
+          is_active: true,
+          created_at: now,
+          updated_at: now,
+        } as Relationship);
+      }
+
+      return relationships;
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to extract relationships with LLM');
+      return [];
+    }
   }
 
   /**
@@ -226,25 +452,139 @@ export class OmegaMemoryService {
   }
 
   /**
-   * Detect if new claim conflicts with existing claims
+   * Detect if new claim conflicts with existing claims using semantic similarity
    */
   async conflictDetected(newClaim: Claim, existingClaims: Claim[]): Promise<boolean> {
-    // TODO: Use semantic similarity to detect opposites
-    // For now, simple text-based check
-    for (const oldClaim of existingClaims) {
-      if (this.semanticOpposite(newClaim.text, oldClaim.text)) {
-        return true;
+    if (existingClaims.length === 0) return false;
+
+    try {
+      // Get embedding for new claim
+      const newEmbedding = await embeddingService.embedText(newClaim.text);
+
+      // Check temporal overlap and semantic similarity
+      for (const oldClaim of existingClaims) {
+        // Check temporal overlap first (only conflicts matter if they overlap in time)
+        if (this.temporalOverlap(
+          new Date(newClaim.start_time),
+          newClaim.end_time ? new Date(newClaim.end_time) : null,
+          new Date(oldClaim.start_time),
+          oldClaim.end_time ? new Date(oldClaim.end_time) : null
+        )) {
+          // Get old claim embedding if not cached
+          let oldEmbedding: number[];
+          if ((oldClaim as any).embedding) {
+            oldEmbedding = (oldClaim as any).embedding;
+          } else {
+            oldEmbedding = await embeddingService.embedText(oldClaim.text);
+            // Cache it
+            (oldClaim as any).embedding = oldEmbedding;
+          }
+
+          // Calculate cosine similarity
+          const similarity = this.cosineSimilarity(newEmbedding, oldEmbedding);
+          
+          // Low similarity + temporal overlap might indicate contradiction
+          // Use LLM to verify if it's actually a contradiction
+          if (similarity < 0.3) {
+            const isContradiction = await this.llmDetectContradiction(newClaim.text, oldClaim.text);
+            if (isContradiction) {
+              return true;
+            }
+          }
+        }
       }
+
+      return false;
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to detect conflict with semantic similarity');
+      // Fallback to simple text check
+      return this.semanticOpposite(newClaim.text, existingClaims[0]?.text || '');
     }
-    return false;
   }
 
   /**
-   * Check if two texts are semantically opposite
-   * TODO: Implement with LLM or better semantic analysis
+   * Check temporal overlap between two time ranges
+   */
+  private temporalOverlap(
+    start1: Date,
+    end1: Date | null,
+    start2: Date,
+    end2: Date | null
+  ): boolean {
+    // If either is ongoing (no end), check if they overlap
+    if (!end1) {
+      return start2 <= start1 || (end2 !== null && end2 >= start1);
+    }
+    if (!end2) {
+      return start1 <= start2 || end1 >= start2;
+    }
+    
+    // Both have end times - check for overlap
+    return start1 <= end2 && end1 >= start2;
+  }
+
+  /**
+   * Calculate cosine similarity between two vectors
+   */
+  private cosineSimilarity(vec1: number[], vec2: number[]): number {
+    if (vec1.length !== vec2.length) return 0;
+
+    let dotProduct = 0;
+    let norm1 = 0;
+    let norm2 = 0;
+
+    for (let i = 0; i < vec1.length; i++) {
+      dotProduct += vec1[i] * vec2[i];
+      norm1 += vec1[i] * vec1[i];
+      norm2 += vec2[i] * vec2[i];
+    }
+
+    const denominator = Math.sqrt(norm1) * Math.sqrt(norm2);
+    return denominator === 0 ? 0 : dotProduct / denominator;
+  }
+
+  /**
+   * Use LLM to detect if two claims are contradictory
+   */
+  private async llmDetectContradiction(text1: string, text2: string): Promise<boolean> {
+    try {
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-4o-mini',
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `You are a contradiction detection system. Determine if two claims contradict each other.
+
+Return JSON:
+{
+  "is_contradiction": boolean,
+  "confidence": 0.0-1.0,
+  "reason": "brief explanation"
+}
+
+A contradiction means the claims cannot both be true at the same time.`
+          },
+          {
+            role: 'user',
+            content: `Claim 1: ${text1}\n\nClaim 2: ${text2}\n\nAre these contradictory?`
+          }
+        ]
+      });
+
+      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+      return response.is_contradiction === true && (response.confidence || 0) >= 0.7;
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to detect contradiction with LLM');
+      return false;
+    }
+  }
+
+  /**
+   * Check if two texts are semantically opposite (fallback)
    */
   private semanticOpposite(text1: string, text2: string): boolean {
-    // Simple keyword-based check for now
     const opposites = [
       ['is', 'is not'],
       ['was', 'was not'],
@@ -310,22 +650,35 @@ export class OmegaMemoryService {
   }
 
   /**
-   * Store a claim in the database
+   * Store a claim in the database with embedding
    */
-  async storeClaim(claim: Partial<Claim>): Promise<Claim> {
+  async storeClaim(claim: Partial<Claim> & { embedding?: number[] }): Promise<Claim> {
+    const claimData: any = {
+      user_id: claim.user_id!,
+      entity_id: claim.entity_id!,
+      text: claim.text!,
+      source: claim.source!,
+      confidence: claim.confidence ?? 0.6,
+      sentiment: claim.sentiment,
+      start_time: claim.start_time || new Date().toISOString(),
+      end_time: claim.end_time,
+      is_active: claim.is_active ?? true,
+    };
+
+    // Add embedding if provided
+    if (claim.embedding) {
+      claimData.embedding = `[${claim.embedding.join(',')}]`;
+    }
+
+    // Add temporal context from metadata
+    if (claim.metadata?.temporal_context) {
+      claimData.temporal_context = claim.metadata.temporal_context;
+      claimData.temporal_confidence = claim.metadata.temporal_confidence || 0.8;
+    }
+
     const { data, error } = await supabaseAdmin
       .from('omega_claims')
-      .insert({
-        user_id: claim.user_id!,
-        entity_id: claim.entity_id!,
-        text: claim.text!,
-        source: claim.source!,
-        confidence: claim.confidence ?? 0.6,
-        sentiment: claim.sentiment,
-        start_time: claim.start_time || new Date().toISOString(),
-        end_time: claim.end_time,
-        is_active: claim.is_active ?? true,
-      })
+      .insert(claimData)
       .select()
       .single();
 
@@ -416,7 +769,7 @@ export class OmegaMemoryService {
   }
 
   /**
-   * Summarize entity with ranked claims
+   * Summarize entity with ranked claims using LLM
    */
   async summarizeEntity(entityId: string): Promise<EntitySummary> {
     const { data: entity, error: entityError } = await supabaseAdmin
@@ -438,21 +791,90 @@ export class OmegaMemoryService {
       .eq('from_entity_id', entityId)
       .eq('is_active', true);
 
-    // TODO: Use LLM to generate summary
-    // For now, create a simple summary
-    const summary = `Entity ${entity.primary_name} has ${rankedClaims.length} active claims. ` +
-      `Most recent: ${rankedClaims[0]?.text || 'None'}`;
+    // Use LLM to generate comprehensive summary
+    try {
+      const topClaims = rankedClaims.slice(0, 10).map(c => ({
+        text: c.text,
+        confidence: c.confidence,
+        score: c.score,
+        start_time: c.start_time,
+        end_time: c.end_time,
+        evidence_count: c.evidence_count,
+      }));
 
-    return {
-      entity,
-      summary,
-      ranked_claims: rankedClaims,
-      active_relationships: relationships || [],
-    };
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-4o-mini',
+        temperature: 0.3,
+        messages: [
+          {
+            role: 'system',
+            content: `You are a narrative summarization system. Create a comprehensive summary of an entity based on ranked claims.
+
+Consider:
+- Temporal evolution (how the entity changed over time)
+- Confidence levels and evidence
+- Uncertainty when claims conflict or have low confidence
+- Most reliable and recent information
+
+Write a natural, narrative summary that captures the entity's story while noting any uncertainty or contradictions.`
+          },
+          {
+            role: 'user',
+            content: `Entity: ${entity.primary_name} (${entity.type})
+            
+Top Claims (ranked by truth score):
+${JSON.stringify(topClaims, null, 2)}
+
+Active Relationships: ${relationships?.length || 0}
+
+Generate a comprehensive summary that:
+1. Describes the entity's evolution over time
+2. Highlights the most reliable information
+3. Notes any uncertainty or contradictions
+4. Incorporates temporal context`
+          }
+        ]
+      });
+
+      const summary = completion.choices[0]?.message?.content || 
+        `Entity ${entity.primary_name} has ${rankedClaims.length} active claims.`;
+
+      // Detect uncertainty notes
+      const uncertaintyNotes: string[] = [];
+      const lowConfidenceClaims = rankedClaims.filter(c => c.confidence < 0.6);
+      if (lowConfidenceClaims.length > 0) {
+        uncertaintyNotes.push(`${lowConfidenceClaims.length} claims have low confidence`);
+      }
+
+      const conflictingClaims = rankedClaims.filter(c => c.evidence_count === 0 && c.confidence < 0.7);
+      if (conflictingClaims.length > 0) {
+        uncertaintyNotes.push(`${conflictingClaims.length} claims lack supporting evidence`);
+      }
+
+      return {
+        entity,
+        summary,
+        ranked_claims: rankedClaims,
+        active_relationships: relationships || [],
+        uncertainty_notes: uncertaintyNotes.length > 0 ? uncertaintyNotes : undefined,
+      };
+    } catch (error) {
+      logger.error({ err: error, entityId }, 'Failed to generate LLM summary');
+      // Fallback to simple summary
+      const summary = `Entity ${entity.primary_name} has ${rankedClaims.length} active claims. ` +
+        `Most recent: ${rankedClaims[0]?.text || 'None'}`;
+      
+      return {
+        entity,
+        summary,
+        ranked_claims: rankedClaims,
+        active_relationships: relationships || [],
+      };
+    }
   }
 
   /**
-   * Suggest updates (AI analyzes, human approves)
+   * Suggest updates (AI analyzes, human approves) using LLM
    */
   async suggestUpdates(
     userId: string,
@@ -461,9 +883,54 @@ export class OmegaMemoryService {
     claims: Claim[],
     relationships: Relationship[]
   ): Promise<UpdateSuggestion[]> {
-    // TODO: Use LLM to analyze and suggest updates
-    // For now, return empty array
-    return [];
+    try {
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-4o-mini',
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `You are an update suggestion system. Analyze text and propose updates to the knowledge base.
+
+Return JSON:
+{
+  "suggestions": [
+    {
+      "type": "new_claim" | "end_claim" | "relationship_change" | "entity_update",
+      "entity_id": "entity ID if applicable",
+      "claim_id": "claim ID if applicable",
+      "relationship_id": "relationship ID if applicable",
+      "description": "human-readable description of the suggestion",
+      "confidence": 0.0-1.0,
+      "proposed_data": { ... } // Relevant data for the update
+    }
+  ]
+}
+
+Only suggest high-confidence updates. Be conservative.`
+          },
+          {
+            role: 'user',
+            content: `Analyze this text and suggest updates:
+
+Text: ${inputText.slice(0, 2000)}
+
+Existing Entities: ${entities.map(e => e.primary_name).join(', ')}
+New Claims: ${claims.length}
+New Relationships: ${relationships.length}
+
+Propose updates that should be reviewed before applying.`
+          }
+        ]
+      });
+
+      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+      return (response.suggestions || []).filter((s: any) => s.confidence >= 0.7);
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to generate update suggestions');
+      return [];
+    }
   }
 
   /**
@@ -510,9 +977,26 @@ export class OmegaMemoryService {
   }
 
   /**
-   * Add evidence to a claim
+   * Add evidence to a claim with reliability scoring
    */
-  async addEvidence(userId: string, claimId: string, content: string, source: string): Promise<Evidence> {
+  async addEvidence(
+    userId: string, 
+    claimId: string, 
+    content: string, 
+    source: string,
+    sourceType: 'journal_entry' | 'chat' | 'external' | 'user_verified' | 'ai_inferred' = 'journal_entry'
+  ): Promise<Evidence> {
+    // Calculate reliability score based on source type
+    const reliabilityScores: Record<string, number> = {
+      'user_verified': 1.0,
+      'journal_entry': 0.9,
+      'chat': 0.7,
+      'external': 0.5,
+      'ai_inferred': 0.6,
+    };
+
+    const reliabilityScore = reliabilityScores[sourceType] || 0.5;
+
     const { data, error } = await supabaseAdmin
       .from('omega_evidence')
       .insert({
@@ -520,6 +1004,8 @@ export class OmegaMemoryService {
         claim_id: claimId,
         content,
         source,
+        source_type: sourceType,
+        reliability_score: reliabilityScore,
       })
       .select()
       .single();
