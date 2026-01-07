@@ -1,6 +1,6 @@
 import * as cron from 'node-cron';
 import { logger } from '../logger';
-import { supabaseAdmin } from '../supabaseClient';
+import { supabaseAdmin } from '../services/supabaseClient';
 import { EngineOrchestrator } from './orchestrator';
 
 /**

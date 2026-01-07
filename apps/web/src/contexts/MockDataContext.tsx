@@ -42,8 +42,19 @@ export function subscribeToMockDataState(listener: (enabled: boolean) => void) {
 
 export function MockDataProvider({ children }: { children: ReactNode }) {
   const [useMockData, setUseMockDataState] = useState(() => {
-    // Check localStorage first
+    // Check URL parameter first (for easy enabling: ?mockData=true)
     if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlMockData = urlParams.get('mockData');
+      if (urlMockData === 'true') {
+        setGlobalMockDataEnabled(true);
+        return true;
+      } else if (urlMockData === 'false') {
+        setGlobalMockDataEnabled(false);
+        return false;
+      }
+      
+      // Check localStorage second
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved !== null) {
         const value = saved === 'true';
@@ -51,8 +62,8 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
         return value;
       }
     }
-    // Default: use env var or dev mode
-    const defaultValue = config.dev.allowMockData;
+    // Default: use env var or dev mode (default to true in dev for showcasing)
+    const defaultValue = config.dev.allowMockData ?? config.env.isDevelopment;
     setGlobalMockDataEnabled(defaultValue);
     return defaultValue;
   });

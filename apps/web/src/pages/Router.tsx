@@ -120,6 +120,46 @@ export const Router = () => {
         } 
       />
       <Route 
+        path="/memories" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="memories" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/perceptions" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="perceptions" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/events" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="events" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/entities" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="entities" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/organizations" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="organizations" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
         path="/discovery" 
         element={
           <LazyRoute>
@@ -216,14 +256,6 @@ export const Router = () => {
         element={
           <LazyRoute>
             <AuthGate><UserGuide /></AuthGate>
-          </LazyRoute>
-        } 
-      />
-      <Route 
-        path="/perceptions" 
-        element={
-          <LazyRoute>
-            <AuthGate><App defaultSurface="perceptions" /></AuthGate>
           </LazyRoute>
         } 
       />

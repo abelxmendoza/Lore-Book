@@ -23,6 +23,10 @@ import { essenceRefinementEngine } from './essenceRefinement';
 import { omegaMemoryService } from './omegaMemoryService';
 import { memoryReviewQueueService } from './memoryReviewQueueService';
 import { perspectiveService } from './perspectiveService';
+import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
+import { entityAmbiguityService } from './entityAmbiguityService';
+import { intentDetectionService } from './intentDetectionService';
+import { entityMeaningDriftService } from './entityMeaningDriftService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
@@ -69,6 +73,7 @@ export type MemorySuggestion = {
 };
 
 export type StreamingChatResponse = {
+  content?: string; // For non-streaming responses (like recall)
   stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
   metadata: {
     entryId?: string;
@@ -78,6 +83,34 @@ export type StreamingChatResponse = {
     continuityWarnings?: string[];
     timelineUpdates?: string[];
     memorySuggestion?: MemorySuggestion;
+    disambiguationPrompt?: {
+      type: 'ENTITY_CLARIFICATION';
+      mention_text: string;
+      options: Array<{
+        label: string;
+        subtitle?: string;
+        entity_id: string;
+        entity_type: string;
+      }>;
+      skippable: boolean;
+      explanation: string;
+    };
+    // Memory Recall fields
+    response_mode?: 'RECALL' | 'SILENCE' | string;
+    recall_sources?: Array<{
+      entry_id: string;
+      timestamp: string;
+      summary?: string;
+      emotions?: string[];
+      themes?: string[];
+      entities?: string[];
+    }>;
+    recall_meta?: {
+      persona?: string;
+      recall_type?: string;
+    };
+    confidence_label?: string;
+    disclaimer?: string;
   };
 };
 
@@ -507,7 +540,11 @@ class OmegaChatService {
       timelineHierarchy?: any;
       allPeoplePlaces?: any[];
       essenceProfile?: any;
-    }
+    },
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
+    entityAnalytics?: any,
+    entityConfidence?: number | null,
+    analyticsGate?: any
   ): string {
     const timelineSummary = orchestratorSummary.timeline.events
       .slice(0, 20)
@@ -584,9 +621,90 @@ class OmegaChatService {
     // Build essence profile context
     const essenceContext = loreData?.essenceProfile ? this.buildEssenceContext(loreData.essenceProfile) : '';
 
-    return `You are a multi-faceted AI companion integrated into Lore Keeper. You seamlessly blend five personas based on context:
+    // Build entity analytics context if provided (with confidence gating)
+    let entityAnalyticsContext = '';
+    if (entityContext && entityAnalytics) {
+      const confidenceNote = entityConfidence !== null 
+        ? ` (Confidence: ${(entityConfidence * 100).toFixed(0)}%)`
+        : '';
+      const disclaimer = analyticsGate?.disclaimer 
+        ? `\n\n⚠️ ${analyticsGate.disclaimer}`
+        : '';
+      
+      if (analyticsGate?.mode === 'UNCERTAIN') {
+        entityAnalyticsContext = `\n**NOTE**: The analytics below are tentative due to limited data clarity.${disclaimer}\n\n`;
+      } else if (analyticsGate?.mode === 'SOFT') {
+        entityAnalyticsContext = `\n**NOTE**: ${analyticsGate.disclaimer}\n\n`;
+      }
+      
+      if (entityContext.type === 'CHARACTER' && entityAnalytics) {
+        entityAnalyticsContext += `
+**CURRENT CHARACTER ANALYTICS**${confidenceNote} (for the character being discussed):${disclaimer}
+You have access to comprehensive relationship analytics calculated from conversations, journal entries, and shared memories. When the user asks about analytics, explain what they mean:
+
+- Closeness: ${entityAnalytics.closeness_score}/100 - ${entityAnalytics.closeness_score >= 70 ? 'Very close relationship' : entityAnalytics.closeness_score >= 40 ? 'Moderate closeness' : 'Developing relationship'}
+- Relationship Depth: ${entityAnalytics.relationship_depth}/100 - ${entityAnalytics.relationship_depth >= 70 ? 'Deep emotional connection' : entityAnalytics.relationship_depth >= 40 ? 'Moderate depth' : 'Surface level'}
+- Interaction Frequency: ${entityAnalytics.interaction_frequency}/100 - ${entityAnalytics.interaction_frequency >= 70 ? 'Very frequent interactions' : entityAnalytics.interaction_frequency >= 40 ? 'Moderate frequency' : 'Occasional interactions'}
+- Importance: ${entityAnalytics.importance_score}/100 - ${entityAnalytics.importance_score >= 70 ? 'Very important to the user' : entityAnalytics.importance_score >= 40 ? 'Moderately important' : 'Developing importance'}
+- Value: ${entityAnalytics.value_score}/100 - ${entityAnalytics.value_score >= 70 ? 'High value relationship' : entityAnalytics.value_score >= 40 ? 'Moderate value' : 'Developing value'}
+- Sentiment: ${entityAnalytics.sentiment_score} (${entityAnalytics.sentiment_score >= 50 ? 'Very positive' : entityAnalytics.sentiment_score >= 0 ? 'Positive' : 'Negative'})
+- Trust: ${entityAnalytics.trust_score}/100
+- Support: ${entityAnalytics.support_score}/100
+- Trend: ${entityAnalytics.trend} (${entityAnalytics.trend === 'deepening' ? 'relationship is growing stronger' : entityAnalytics.trend === 'weakening' ? 'relationship may be fading' : 'relationship is stable'})
+- Shared Experiences: ${entityAnalytics.shared_experiences} memories/events
+- Relationship Duration: ${entityAnalytics.relationship_duration_days} days
+
+When explaining analytics, provide context about what these scores mean and why they might be at that level based on interaction patterns.
+`;
+      } else if (entityContext.type === 'LOCATION' && entityAnalytics) {
+        entityAnalyticsContext += `
+**CURRENT LOCATION ANALYTICS**${confidenceNote} (for the location being discussed):${disclaimer}
+You have access to comprehensive location analytics calculated from visits, journal entries, and conversations. When the user asks about analytics, explain what they mean:
+
+- Importance: ${entityAnalytics.importance_score}/100 - ${entityAnalytics.importance_score >= 70 ? 'Very important location' : entityAnalytics.importance_score >= 40 ? 'Moderately important' : 'Developing importance'}
+- Visit Frequency: ${entityAnalytics.visit_frequency}/100 - ${entityAnalytics.visit_frequency >= 70 ? 'Very frequent visits' : entityAnalytics.visit_frequency >= 40 ? 'Moderate frequency' : 'Occasional visits'}
+- Recency: ${entityAnalytics.recency_score}/100 - ${entityAnalytics.recency_score >= 70 ? 'Visited very recently' : entityAnalytics.recency_score >= 40 ? 'Visited recently' : 'Not visited recently'}
+- Value: ${entityAnalytics.value_score}/100 - ${entityAnalytics.value_score >= 70 ? 'High value location' : entityAnalytics.value_score >= 40 ? 'Moderate value' : 'Developing value'}
+- Comfort: ${entityAnalytics.comfort_score}/100 - ${entityAnalytics.comfort_score >= 70 ? 'Very comfortable there' : entityAnalytics.comfort_score >= 40 ? 'Moderately comfortable' : 'Less comfortable'}
+- Productivity: ${entityAnalytics.productivity_score}/100
+- Social: ${entityAnalytics.social_score}/100
+- Trend: ${entityAnalytics.trend} (${entityAnalytics.trend === 'increasing' ? 'visits are increasing' : entityAnalytics.trend === 'decreasing' ? 'visits may be declining' : 'visit pattern is stable'})
+- Total Visits: ${entityAnalytics.total_visits}
+- First Visited: ${entityAnalytics.first_visited_days_ago} days ago
+
+When explaining analytics, provide context about what these scores mean and why they might be at that level based on visit patterns.
+`;
+      } else if (entityContext.type === 'ENTITY' && entityAnalytics) {
+        entityAnalyticsContext += `
+**CURRENT GROUP ANALYTICS**${confidenceNote} (for the group being discussed):${disclaimer}
+You have access to comprehensive group analytics calculated from conversations, journal entries, and events. When the user asks about analytics, explain what they mean:
+
+- User Involvement: ${entityAnalytics.user_involvement_score}/100 - ${entityAnalytics.user_involvement_score >= 70 ? 'Very actively involved' : entityAnalytics.user_involvement_score >= 40 ? 'Moderately involved' : 'Developing involvement'}
+- User Ranking: #${entityAnalytics.user_ranking} in the group
+- Importance: ${entityAnalytics.importance_score}/100 - ${entityAnalytics.importance_score >= 70 ? 'Very important group' : entityAnalytics.importance_score >= 40 ? 'Moderately important' : 'Developing importance'}
+- Value: ${entityAnalytics.value_score}/100
+- Cohesion: ${entityAnalytics.cohesion_score}/100 - ${entityAnalytics.cohesion_score >= 70 ? 'Very tight-knit group' : entityAnalytics.cohesion_score >= 40 ? 'Moderate cohesion' : 'Lower cohesion'}
+- Activity Level: ${entityAnalytics.activity_level}/100
+- Trend: ${entityAnalytics.trend} (${entityAnalytics.trend === 'increasing' ? 'group is becoming more active' : entityAnalytics.trend === 'decreasing' ? 'group activity may be declining' : 'group activity is stable'})
+
+When explaining analytics, provide context about what these scores mean and why they might be at that level based on involvement patterns.
+`;
+      }
+    }
+
+    return `You are a multi-faceted AI companion integrated into Lore Keeper. You seamlessly blend personas based on context:
 
 **YOUR PERSONAS** (adapt naturally based on conversation):
+
+0. **Archivist** (when user requests factual recall only):
+   - Can ONLY retrieve, summarize, and reference past data
+   - Must respect confidence modes (UNCERTAIN/SOFT/NORMAL)
+   - Must explain uncertainty when present
+   - NO advice, NO interpretation beyond evidence
+   - NO predictions, NO suggestions
+   - Format: "According to your entries on [date]..." or "I found [X] mentions of [Y]"
+   - If confidence < 0.5: "The data suggests [X], though this is tentative due to limited clarity"
+   - Example: "When did I last feel like this?" → "According to your entries, you mentioned similar feelings on [date]. However, this is tentative due to limited clarity in the data."
 
 1. **Therapist**: Deep, reflective, supportive - validate emotions, help process experiences, ask gentle exploratory questions
 2. **Strategist**: Goal-oriented, actionable - provide strategic guidance, help with planning, offer actionable insights
@@ -614,6 +732,7 @@ ${timelineHierarchyKnowledge ? `**TIMELINE HIERARCHY:**\n${timelineHierarchyKnow
 ${identityKnowledge ? `**IDENTITY:**\n${identityKnowledge}\n\n` : ''}
 ${continuityKnowledge ? `**CONTINUITY:**\n${continuityKnowledge}\n\n` : ''}
 ${essenceContext ? `**ESSENCE PROFILE - WHAT YOU KNOW ABOUT THEIR CORE SELF:**\n${essenceContext}\n\n` : ''}
+${entityAnalyticsContext ? `**CURRENT ENTITY ANALYTICS:**\n${entityAnalyticsContext}\n\n` : ''}
 
 **Your Role**:
 1. **Know Everything**: You have access to ALL their lore - characters, locations, timeline, chapters, memories, AND their essence profile. Reference specific details when relevant.
@@ -648,6 +767,16 @@ ${timelineSummary || 'No previous entries yet.'}
 
 **Available Sources** (${sources.length} total - reference these in your response):
 ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ? ` (${new Date(s.date).toLocaleDateString()})` : ''}${s.snippet ? ` - ${s.snippet.substring(0, 50)}` : ''}`).join('\n')}
+
+**NARRATIVE INTEGRITY RULES (CRITICAL)**:
+- LoreKeeper tracks SUBJECTIVE narratives, not objective truth
+- Entries represent what the user believed at the time they wrote them
+- NEVER say: "You are lying", "This is false", "You should admit", "The truth is"
+- ALWAYS say: "Earlier entries suggest...", "Your descriptions have varied over time", "There is limited consistency here"
+- When narratives conflict, surface multiple versions with timestamps
+- Uncertainty is surfaced, not resolved
+- Do NOT evaluate objective truth - observe coherence and consistency
+- Preserve user dignity - reflect change without shame
 
 **IMPORTANT**: You know ALL their lore AND their essence. Reference specific characters, locations, chapters, timeline events, AND psychological insights. Show deep knowledge of their story AND their inner world. Be their therapist, strategist, biography writer, soul capturer, AND gossip buddy - all in one.`;
   }
@@ -695,8 +824,63 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
   async chatStream(
     userId: string,
     message: string,
-    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
   ): Promise<StreamingChatResponse> {
+    // ---- RECALL GATE: Check if this is a recall query (non-streaming, immediate response) ----
+    try {
+      const { isRecallQuery, shouldForceArchivist } = await import('./memoryRecall/recallDetector');
+      if (isRecallQuery(message)) {
+        const { memoryRecallEngine } = await import('./memoryRecall/memoryRecallEngine');
+        const { formatRecallChatResponse } = await import('./memoryRecall/recallChatFormatter');
+        
+        const forcedPersona = shouldForceArchivist(message) ? 'ARCHIVIST' : undefined;
+        const recallResult = await memoryRecallEngine.executeRecall({
+          raw_text: message,
+          user_id: userId,
+          persona: forcedPersona || 'DEFAULT',
+        });
+
+        // Handle silence
+        if (recallResult.silence) {
+          const silenceContent = recallResult.silence.message;
+          return {
+            content: silenceContent,
+            metadata: {
+              response_mode: 'SILENCE',
+              confidence: 1.0,
+              disclaimer: recallResult.silence.reason,
+            },
+            stream: (async function* () {
+              yield { choices: [{ delta: { content: silenceContent } }] };
+            })(),
+          };
+        }
+
+        // Format recall response
+        const recallResponse = formatRecallChatResponse(recallResult, forcedPersona);
+        
+        // Return recall response as immediate stream (single chunk)
+        return {
+          content: recallResponse.content,
+          metadata: {
+            ...recallResponse,
+            response_mode: recallResponse.response_mode,
+            recall_sources: recallResponse.recall_sources,
+            recall_meta: recallResponse.recall_meta,
+            confidence_label: recallResponse.confidence_label,
+            disclaimer: recallResponse.disclaimer,
+          },
+          stream: (async function* () {
+            yield { choices: [{ delta: { content: recallResponse.content } }] };
+          })(),
+        };
+      }
+    } catch (error) {
+      logger.warn({ error, userId, message }, 'Failed to check recall query, falling back to normal chat');
+      // Fall through to normal chat flow
+    }
+
     // Build RAG packet with error handling
     let ragPacket;
     try {
@@ -746,6 +930,27 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       logger.debug({ err, userId }, 'Essence refinement check failed, continuing');
     });
 
+    // Detect groups in conversation (fire-and-forget)
+    import('./groupDetectionService').then(({ groupDetectionService }) => {
+      const conversationTexts = conversationHistory.map(m => m.content);
+      groupDetectionService.detectGroupsInMessage(userId, message, conversationTexts)
+        .then(async (detectedGroups) => {
+          if (detectedGroups.length > 0) {
+            try {
+              await groupDetectionService.processDetectedGroups(userId, detectedGroups);
+              logger.info({ userId, groupCount: detectedGroups.length }, 'Detected and processed groups from conversation');
+            } catch (error) {
+              logger.debug({ error, userId }, 'Failed to process detected groups');
+            }
+          }
+        })
+        .catch(err => {
+          logger.debug({ err }, 'Failed to detect groups from conversation');
+        });
+    }).catch(err => {
+      logger.debug({ err }, 'Failed to import group detection service');
+    });
+
     // Check continuity with error handling
     let continuityWarnings: string[] = [];
     try {
@@ -770,8 +975,127 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       logger.debug({ error }, 'Failed to get strategic guidance, continuing without');
     }
 
+    // =====================================================
+    // MEMORY RECALL DETECTION
+    // =====================================================
+    const isRecallQuery = this.isRecallQuery(message);
+    let recallResult: any = null;
+    
+    if (isRecallQuery) {
+      try {
+        const { memoryRecallEngine } = await import('./memoryRecall/recallEngine');
+        const { personaController } = await import('./personaController');
+        
+        // Determine persona (Archivist for recall, or user preference)
+        const recallPersona = this.detectArchivistIntent(message) ? 'ARCHIVIST' : 'DEFAULT';
+        
+        recallResult = await memoryRecallEngine.recallMemory(userId, {
+          text: message,
+          persona: recallPersona,
+        });
+
+        // If silence response, return early with simple message
+        if ('message' in recallResult && recallResult.message.includes("don't see")) {
+          // Create a simple non-streaming response for silence
+          const silenceMessage = recallResult.message;
+          return {
+            stream: this.createTextStream(silenceMessage),
+            metadata: {
+              recallResult,
+              activePersona: recallPersona,
+            },
+          };
+        }
+
+        // Format recall for chat
+        const formatted = memoryRecallEngine.formatRecallForChat(recallResult);
+        
+        // Apply persona rules
+        const personaResponse = personaController.applyPersona(
+          { text: formatted.text },
+          recallPersona
+        );
+
+        // Build recall response text with moments
+        const momentsText = formatted.moments
+          .slice(0, 3)
+          .map(
+            (m, i) =>
+              `${i + 1}. ${new Date(m.timestamp).toLocaleDateString()}: ${m.summary.substring(0, 100)}${m.summary.length > 100 ? '...' : ''}`
+          )
+          .join('\n');
+
+        const recallText = `${personaResponse.text}\n\n${momentsText}${personaResponse.footer ? `\n\n${personaResponse.footer}` : ''}`;
+
+        // Create response with recall moments
+        return {
+          stream: this.createTextStream(recallText),
+          metadata: {
+            recallResult,
+            activePersona: recallPersona,
+          },
+        };
+      } catch (error) {
+        logger.warn({ error }, 'Memory recall failed, falling back to normal chat');
+        // Fall through to normal chat
+      }
+    }
+
+    // =====================================================
+    // PERSONA DETECTION (Archivist mode)
+    // =====================================================
+    const isArchivistQuery = this.detectArchivistIntent(message);
+    const activePersona = isArchivistQuery ? 'ARCHIVIST' : 'AUTO_BLEND';
+
+    // =====================================================
+    // INLINE ENTITY AMBIGUITY DETECTION (IADE)
+    // =====================================================
+    let disambiguationPrompt: any = null;
+    try {
+      // Detect intent (for skipping venting/support requests)
+      const detectedIntent = intentDetectionService.detectUserIntent(message);
+      
+      // Extract entity mentions
+      const mentions = entityAmbiguityService.extractEntityMentions(message);
+      
+      if (mentions.length > 0) {
+        // Build context from recent messages
+        const recentMessages = conversationHistory.slice(-5).map(m => m.content);
+        const context = {
+          recent_entities: [], // TODO: Extract from recent messages
+          recent_messages: recentMessages,
+          session_id: '', // TODO: Get from session if available
+        };
+
+        // Detect ambiguities
+        const ambiguities = await entityAmbiguityService.detectEntityAmbiguity(
+          userId,
+          mentions,
+          context
+        );
+
+        // If we found an ambiguity and should prompt, build the prompt
+        if (ambiguities.length > 0) {
+          const firstAmbiguity = ambiguities[0];
+          
+          // Check if we should prompt (skip for venting)
+          if (
+            entityAmbiguityService.shouldPromptDisambiguation(
+              firstAmbiguity,
+              detectedIntent === 'VENTING' ? 'VENTING' : 'QUESTION' // Map to UserIntent
+            )
+          ) {
+            disambiguationPrompt = entityAmbiguityService.buildDisambiguationPrompt(firstAmbiguity);
+          }
+        }
+      }
+    } catch (error) {
+      // Fail silently - never interrupt chat flow
+      logger.debug({ error, userId }, 'Entity ambiguity detection failed, continuing without');
+    }
+
     // Build system prompt with comprehensive lore and essence profile
-    const systemPrompt = this.buildSystemPrompt(
+    let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
       connections,
       continuityWarnings,
@@ -784,8 +1108,26 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
         timelineHierarchy: ragPacket.timelineHierarchy,
         allPeoplePlaces: ragPacket.allPeoplePlaces,
         essenceProfile: essenceProfile
-      }
+      },
+      entityContext,
+      entityAnalytics,
+      entityConfidence,
+      analyticsGate
     );
+
+    // NEW: Enforce Archivist persona if detected
+    if (activePersona === 'ARCHIVIST') {
+      systemPrompt += `
+
+**ACTIVE PERSONA: ARCHIVIST**
+- You are in READ-ONLY mode
+- Retrieve facts only, no advice
+- Surface uncertainty explicitly
+- If confidence is low, say so: "This is tentative due to limited clarity"
+- Format responses as: "According to your entries..." or "I found..."
+- Do NOT provide suggestions, predictions, or interpretations beyond evidence
+`;
+    }
 
     // Prepare messages
     const messages = [
@@ -891,6 +1233,13 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       logger.debug({ error }, 'Failed to detect memory suggestion, continuing');
     }
 
+    // Ingest message with entity context (fire-and-forget)
+    if (entityContext) {
+      this.ingestMessageWithContext(userId, message, conversationHistory, entityContext).catch(err => {
+        logger.warn({ err, userId, entityContext }, 'Failed to ingest message with entity context (non-blocking)');
+      });
+    }
+
     return {
       stream,
       metadata: {
@@ -900,9 +1249,32 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
         connections,
         continuityWarnings,
         timelineUpdates,
-        memorySuggestion: memorySuggestion || undefined
+        memorySuggestion: memorySuggestion || undefined,
+        disambiguationPrompt: disambiguationPrompt || undefined,
+        meaningDriftPrompt: meaningDriftPrompt || undefined,
+        activePersona: activePersona || undefined
       }
     };
+  }
+
+  /**
+   * Detect if user query requires Archivist persona (factual recall only)
+   */
+  private detectArchivistIntent(message: string): boolean {
+    const archivistKeywords = [
+      'when did', 'when was', 'have i', 'did i', 'what did',
+      'tell me about', 'show me', 'find', 'search', 'recall',
+      'what happened', 'what was', 'when did i', 'how many times',
+      'how often', 'last time', 'first time'
+    ];
+    const adviceKeywords = ['should', 'advice', 'recommend', 'suggest', 'what should'];
+    
+    const lowerMessage = message.toLowerCase();
+    const hasArchivistKeyword = archivistKeywords.some(keyword => lowerMessage.includes(keyword));
+    const hasAdviceKeyword = adviceKeywords.some(keyword => lowerMessage.includes(keyword));
+    
+    // Archivist if has archivist keywords AND no advice keywords
+    return hasArchivistKeyword && !hasAdviceKeyword;
   }
 
   /**
@@ -911,7 +1283,8 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
   async chat(
     userId: string,
     message: string,
-    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
   ): Promise<OmegaChatResponse> {
     // Build RAG packet
     const ragPacket = await this.buildRAGPacket(userId, message);
@@ -934,6 +1307,72 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
     // Get strategic guidance
     const strategicGuidance = await this.getStrategicGuidance(userId, message);
 
+    // Load entity analytics and confidence if entityContext is provided
+    let entityAnalytics: any = null;
+    let entityConfidence: number | null = null;
+    let analyticsGate: any = null;
+    
+    if (entityContext) {
+      try {
+        // Get confidence gate first
+        const { entityConfidenceService } = await import('./entityConfidenceService');
+        analyticsGate = await entityConfidenceService.shouldSurfaceAnalytics(
+          userId,
+          entityContext.id,
+          entityContext.type === 'ENTITY' ? 'ORG' : entityContext.type
+        );
+        
+        entityConfidence = await entityConfidenceService['getCurrentEntityConfidence'](
+          userId,
+          entityContext.id,
+          entityContext.type === 'ENTITY' ? 'ORG' : entityContext.type
+        );
+
+        if (entityContext.type === 'CHARACTER') {
+          const { data: character } = await supabaseAdmin
+            .from('characters')
+            .select('*')
+            .eq('id', entityContext.id)
+            .eq('user_id', userId)
+            .single();
+          if (character) {
+            const { characterAnalyticsService } = await import('./characterAnalyticsService');
+            entityAnalytics = await characterAnalyticsService.calculateAnalytics(userId, entityContext.id, character);
+            
+            // Soften language if confidence is low
+            if (entityConfidence !== null && entityConfidence < 0.5) {
+              entityAnalytics = entityConfidenceService['softenAnalyticsLanguage'](entityAnalytics, entityConfidence);
+            }
+          }
+        } else if (entityContext.type === 'LOCATION') {
+          const location = await locationService.getLocationProfile(userId, entityContext.id);
+          if (location) {
+            const { locationAnalyticsService } = await import('./locationAnalyticsService');
+            entityAnalytics = await locationAnalyticsService.calculateAnalytics(userId, entityContext.id, location);
+            
+            // Soften language if confidence is low
+            if (entityConfidence !== null && entityConfidence < 0.5) {
+              entityAnalytics = entityConfidenceService['softenAnalyticsLanguage'](entityAnalytics, entityConfidence);
+            }
+          }
+        } else if (entityContext.type === 'ENTITY') {
+          const { organizationService } = await import('./organizationService');
+          const org = await organizationService.getOrganization(userId, entityContext.id);
+          if (org) {
+            const { groupAnalyticsService } = await import('./groupAnalyticsService');
+            entityAnalytics = await groupAnalyticsService.calculateAnalytics(userId, entityContext.id, org);
+            
+            // Soften language if confidence is low
+            if (entityConfidence !== null && entityConfidence < 0.5) {
+              entityAnalytics = entityConfidenceService['softenAnalyticsLanguage'](entityAnalytics, entityConfidence);
+            }
+          }
+        }
+      } catch (error) {
+        logger.debug({ error, entityContext }, 'Failed to load entity analytics, continuing without');
+      }
+    }
+
     // Build system prompt with comprehensive lore and essence profile
     const systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -948,7 +1387,13 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
         timelineHierarchy: ragPacket.timelineHierarchy,
         allPeoplePlaces: ragPacket.allPeoplePlaces,
         essenceProfile: essenceProfile
-      }
+      },
+      entityContext,
+      entityAnalytics,
+      entityConfidence,
+      analyticsGate
+      entityConfidence,
+      analyticsGate
     );
 
     // Generate response
@@ -1071,6 +1516,34 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       memorySuggestion = await this.detectMemorySuggestion(userId, message);
     } catch (error) {
       logger.debug({ error }, 'Failed to detect memory suggestion, continuing');
+    }
+
+    // Detect groups in conversation (fire-and-forget)
+    import('./groupDetectionService').then(({ groupDetectionService }) => {
+      const conversationTexts = conversationHistory.map(m => m.content);
+      groupDetectionService.detectGroupsInMessage(userId, message, conversationTexts)
+        .then(async (detectedGroups) => {
+          if (detectedGroups.length > 0) {
+            try {
+              await groupDetectionService.processDetectedGroups(userId, detectedGroups);
+              logger.info({ userId, groupCount: detectedGroups.length }, 'Detected and processed groups from conversation');
+            } catch (error) {
+              logger.debug({ error, userId }, 'Failed to process detected groups');
+            }
+          }
+        })
+        .catch(err => {
+          logger.debug({ err }, 'Failed to detect groups from conversation');
+        });
+    }).catch(err => {
+      logger.debug({ err }, 'Failed to import group detection service');
+    });
+
+    // Ingest message with entity context (fire-and-forget)
+    if (entityContext) {
+      this.ingestMessageWithContext(userId, message, conversationHistory, entityContext).catch(err => {
+        logger.warn({ err, userId, entityContext }, 'Failed to ingest message with entity context (non-blocking)');
+      });
     }
 
     return {
@@ -1252,6 +1725,67 @@ Examples of NOT memory-worthy:
     return insights
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, 10);
+  }
+
+  /**
+   * Ingest message with entity context (fire-and-forget)
+   */
+  private async ingestMessageWithContext(
+    userId: string,
+    message: string,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+    entityContext: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
+  ): Promise<void> {
+    try {
+      // Get or create a conversation session for entity-scoped chat
+      // Use metadata to mark it as entity-scoped
+      const { data: existingSession } = await supabaseAdmin
+        .from('conversation_sessions')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('metadata->>entity_type', entityContext.type)
+        .eq('metadata->>entity_id', entityContext.id)
+        .single();
+
+      let sessionId: string;
+      if (existingSession) {
+        sessionId = existingSession.id;
+      } else {
+        const { data: newSession, error: sessionError } = await supabaseAdmin
+          .from('conversation_sessions')
+          .insert({
+            user_id: userId,
+            scope: 'PRIVATE',
+            metadata: {
+              entity_type: entityContext.type,
+              entity_id: entityContext.id,
+              is_entity_scoped: true,
+            },
+          })
+          .select('id')
+          .single();
+
+        if (sessionError || !newSession) {
+          throw sessionError || new Error('Failed to create entity-scoped session');
+        }
+
+        sessionId = newSession.id;
+      }
+
+      // Ingest message with entity context
+      await conversationIngestionPipeline.ingestMessage(
+        userId,
+        sessionId,
+        'USER',
+        message,
+        conversationHistory,
+        undefined, // eventContext
+        entityContext
+      );
+    } catch (error) {
+      logger.warn({ error, userId, entityContext }, 'Failed to ingest message with entity context');
+      throw error;
+    }
   }
 }
 

@@ -10,6 +10,7 @@ import { config } from '../config';
 import { embeddingService } from './embeddingService';
 import { omegaMemoryService } from './omegaMemoryService';
 import { perspectiveService } from './perspectiveService';
+import { epistemicTypeChecker } from './compiler/epistemicTypeChecker';
 import type {
   Insight,
   InsightEvidence,
@@ -81,7 +82,8 @@ export class InsightReflectionService {
   }
 
   /**
-   * Detect patterns in entity claims
+   * Detect patterns in entity claims with confidence inheritance
+   * Phase 2: Filters by epistemic eligibility
    */
   async detectPatterns(userId: string, entityId: string): Promise<Insight[]> {
     try {
@@ -90,38 +92,81 @@ export class InsightReflectionService {
         return []; // Need at least 3 claims for patterns
       }
 
-      // Group claims by attributes
-      const sentimentGroups = this.groupClaimsByAttribute(rankedClaims, 'sentiment');
-      const relationshipGroups = this.groupClaimsByAttribute(rankedClaims, 'relationship');
-      const topicGroups = await this.groupClaimsByTopic(rankedClaims);
+      // Phase 2: Filter by epistemic eligibility (only EXPERIENCE entries)
+      // Phase 3.6: Canon gating handled by contract layer (only CANON entries)
+      const eligibleClaims = await this.filterEligibleClaims(userId, rankedClaims);
+      if (eligibleClaims.length < 3) {
+        logger.debug({ userId, entityId, totalClaims: rankedClaims.length, eligibleClaims: eligibleClaims.length }, 'Not enough eligible claims for pattern detection');
+        return [];
+      }
+
+      // NEW: Get entity confidence
+      let entityConfidence = 0.5;
+      let confidenceMode: 'UNCERTAIN' | 'NORMAL' = 'NORMAL';
+      try {
+        const { entityConfidenceService } = await import('./entityConfidenceService');
+        entityConfidence = await entityConfidenceService['getCurrentEntityConfidence'](
+          userId,
+          entityId,
+          'CHARACTER'
+        ) || 0.5;
+        confidenceMode = entityConfidence < 0.5 ? 'UNCERTAIN' : 'NORMAL';
+      } catch (error) {
+        logger.debug({ error, userId, entityId }, 'Failed to load entity confidence, using default');
+      }
+
+      // Group claims by attributes (use eligible claims)
+      const sentimentGroups = this.groupClaimsByAttribute(eligibleClaims, 'sentiment');
+      const relationshipGroups = this.groupClaimsByAttribute(eligibleClaims, 'relationship');
+      const topicGroups = await this.groupClaimsByTopic(eligibleClaims);
 
       const patterns: Insight[] = [];
 
       // Check sentiment patterns
       for (const group of sentimentGroups) {
-        if (this.occursRepeatedly(group, rankedClaims.length)) {
+        if (this.occursRepeatedly(group, eligibleClaims.length)) {
           const insight = await this.createPatternInsight(
             userId,
             entityId,
             'sentiment',
             group,
-            rankedClaims
+            eligibleClaims
           );
-          if (insight) patterns.push(insight);
+          if (insight) {
+            // NEW: Attach confidence metadata
+            patterns.push({
+              ...insight,
+              avg_confidence: entityConfidence,
+              confidence_mode: confidenceMode,
+              description: confidenceMode === 'UNCERTAIN'
+                ? `[Tentative] ${insight.description || ''}`
+                : insight.description,
+            });
+          }
         }
       }
 
       // Check topic patterns
       for (const group of topicGroups) {
-        if (this.occursRepeatedly(group, rankedClaims.length)) {
+        if (this.occursRepeatedly(group, eligibleClaims.length)) {
           const insight = await this.createPatternInsight(
             userId,
             entityId,
             'topic',
             group,
-            rankedClaims
+            eligibleClaims
           );
-          if (insight) patterns.push(insight);
+          if (insight) {
+            // NEW: Attach confidence metadata
+            patterns.push({
+              ...insight,
+              avg_confidence: entityConfidence,
+              confidence_mode: confidenceMode,
+              description: confidenceMode === 'UNCERTAIN'
+                ? `[Tentative] ${insight.description || ''}`
+                : insight.description,
+            });
+          }
         }
       }
 
@@ -902,6 +947,99 @@ Return JSON:
 
     const denominator = Math.sqrt(norm1) * Math.sqrt(norm2);
     return denominator === 0 ? 0 : dotProduct / denominator;
+  }
+
+  /**
+   * Filter claims by epistemic eligibility (Phase 2)
+   * Now includes BRRE: filters out contradicted/abandoned beliefs
+   */
+  private async filterEligibleClaims(userId: string, claims: any[]): Promise<any[]> {
+    const eligible: any[] = [];
+    const { beliefRealityReconciliationService } = await import('./beliefRealityReconciliationService');
+
+    for (const claim of claims) {
+      try {
+        // Get entry IR for this claim
+        const { data: ir } = await supabaseAdmin
+          .from('entry_ir')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('source_utterance_id', claim.utterance_id || claim.id)
+          .limit(1)
+          .single();
+
+        if (ir) {
+          // Phase 4: Only CANON entries for pattern detection
+          if (ir.canon_status !== 'CANON') {
+            continue; // Skip non-canon entries
+          }
+
+          // Check if pattern eligible (epistemic type)
+          if (!epistemicTypeChecker.isPatternEligible(ir as any)) {
+            continue; // Skip if not epistemically eligible
+          }
+
+          // BRRE: Check if this is a belief and if it's pattern-eligible
+          const knowledgeType = ir.metadata?.knowledge_type;
+          if (knowledgeType === 'BELIEF') {
+            const knowledgeUnitId = ir.metadata?.knowledge_unit_id;
+            if (knowledgeUnitId) {
+              const isEligible = await beliefRealityReconciliationService.isPatternEligible(
+                userId,
+                knowledgeUnitId
+              );
+              if (!isEligible) {
+                continue; // Skip contradicted/abandoned beliefs
+              }
+            }
+          }
+
+          eligible.push(claim);
+        } else {
+          // If no IR, check if claim has entry_id and look it up
+          if (claim.entry_id) {
+            const { data: irByEntry } = await supabaseAdmin
+              .from('entry_ir')
+              .select('*')
+              .eq('user_id', userId)
+              .eq('id', claim.entry_id)
+              .limit(1)
+              .single();
+
+            if (irByEntry) {
+              if (!epistemicTypeChecker.isPatternEligible(irByEntry as any)) {
+                continue;
+              }
+
+              // BRRE: Check belief eligibility
+              const knowledgeType = irByEntry.metadata?.knowledge_type;
+              if (knowledgeType === 'BELIEF') {
+                const knowledgeUnitId = irByEntry.metadata?.knowledge_unit_id;
+                if (knowledgeUnitId) {
+                  const isEligible = await beliefRealityReconciliationService.isPatternEligible(
+                    userId,
+                    knowledgeUnitId
+                  );
+                  if (!isEligible) {
+                    continue;
+                  }
+                }
+              }
+
+              eligible.push(claim);
+            }
+          } else {
+            // Fallback: include if we can't check (backward compatibility)
+            eligible.push(claim);
+          }
+        }
+      } catch (error) {
+        logger.debug({ error, claimId: claim.id }, 'Failed to check claim eligibility, including by default');
+        eligible.push(claim);
+      }
+    }
+
+    return eligible;
   }
 }
 

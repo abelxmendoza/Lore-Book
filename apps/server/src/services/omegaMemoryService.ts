@@ -42,17 +42,18 @@ export class OmegaMemoryService {
       // Step 3: Extract claims
       const claims = await this.extractClaims(userId, inputText, resolvedEntities, source);
       
-      // Step 4: Detect conflicts and mark inactive
-      let conflictsDetected = 0;
+      // Step 4: Detect narrative divergence (observational, non-destructive)
+      let divergencesDetected = 0;
       for (const claim of claims) {
         const existingClaims = await this.findSimilarClaims(userId, claim);
         
         if (await this.conflictDetected(claim, existingClaims)) {
-          await this.markClaimsInactive(existingClaims);
-          await this.lowerConfidence(existingClaims);
-          conflictsDetected++;
+          // NEW: Flag as narrative divergence instead of marking inactive
+          // Keep all claims active - entries are never retroactively invalidated
+          await this.flagNarrativeDivergence(claim, existingClaims);
+          divergencesDetected++;
           
-          // Record contradiction event
+          // Record narrative divergence event (not contradiction)
           if (existingClaims.length > 0) {
             await continuityService.recordContradiction(
               userId,
@@ -657,7 +658,53 @@ A contradiction means the claims cannot both be true at the same time.`
   }
 
   /**
-   * Mark claims as inactive
+   * Flag narrative divergence (non-destructive)
+   * Keeps all claims active - entries are never retroactively invalidated
+   */
+  async flagNarrativeDivergence(newClaim: Claim, existingClaims: Claim[]): Promise<void> {
+    try {
+      // Update metadata to flag divergence, but keep claims active
+      for (const claim of existingClaims) {
+        await supabaseAdmin
+          .from('omega_claims')
+          .update({
+            metadata: {
+              ...(claim.metadata || {}),
+              narrative_divergence: true,
+              diverged_with: newClaim.id,
+              diverged_at: new Date().toISOString(),
+            },
+          })
+          .eq('id', claim.id);
+      }
+      
+      // Also flag the new claim (if it has an id)
+      if (newClaim.id) {
+        await supabaseAdmin
+          .from('omega_claims')
+          .update({
+            metadata: {
+              ...(newClaim.metadata || {}),
+              narrative_divergence: true,
+              diverged_with: existingClaims.map(c => c.id),
+              diverged_at: new Date().toISOString(),
+            },
+          })
+          .eq('id', newClaim.id);
+      }
+      
+      logger.info(
+        { newClaimId: newClaim.id, existingCount: existingClaims.length },
+        'Flagged narrative divergence (non-destructive)'
+      );
+    } catch (error) {
+      logger.error({ error }, 'Failed to flag narrative divergence');
+    }
+  }
+
+  /**
+   * Mark claims as inactive when conflicts detected
+   * @deprecated Use flagNarrativeDivergence instead - entries are never retroactively invalidated
    */
   async markClaimsInactive(claims: Claim[]): Promise<void> {
     const now = new Date().toISOString();

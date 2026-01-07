@@ -7,6 +7,7 @@ interface MetricCardProps {
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
   tooltip?: string;
+  className?: string;
 }
 
 export const MetricCard = ({ 
@@ -14,7 +15,8 @@ export const MetricCard = ({
   value, 
   trend, 
   trendValue,
-  tooltip 
+  tooltip,
+  className = ''
 }: MetricCardProps) => {
   const formatValue = (val: string | number): string => {
     if (typeof val === 'number') {
@@ -38,7 +40,7 @@ export const MetricCard = ({
 
   return (
     <Card 
-      className="bg-black/40 border-border/60 hover:border-primary/50 transition-colors"
+      className={`bg-black/40 border-border/60 hover:border-primary/50 transition-colors ${className}`}
       title={tooltip}
     >
       <CardContent className="p-4">

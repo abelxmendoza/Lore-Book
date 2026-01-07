@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
 import { useLoreKeeper } from './useLoreKeeper';
+import { useMockData } from '../contexts/MockDataContext';
+import { mockDataService } from '../services/mockDataService';
 
 export type BiographySection = {
   id: string;
@@ -119,6 +121,7 @@ const dummyChapters: Chapter[] = [
 ];
 
 export const useLoreNavigatorData = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [data, setData] = useState<LoreNavigatorData>({
     biography: [],
     characters: [],
@@ -128,6 +131,8 @@ export const useLoreNavigatorData = () => {
   const [loading, setLoading] = useState(true);
   const { chapters: loreChapters } = useLoreKeeper();
 
+  // Note: Biography sections are handled directly in loadData based on toggle
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -136,8 +141,8 @@ export const useLoreNavigatorData = () => {
       try {
         const bioData = await fetchJson<{ sections: BiographySection[] }>('/api/biography/sections');
         biography = bioData.sections || [];
-      } catch {
-        biography = dummyBiographySections;
+      } catch (error) {
+        console.warn('Failed to load biography sections:', error);
       }
 
       // Load characters
@@ -145,8 +150,8 @@ export const useLoreNavigatorData = () => {
       try {
         const charData = await fetchJson<{ characters: Character[] }>('/api/characters/list');
         characters = charData.characters || [];
-      } catch {
-        characters = dummyCharacters;
+      } catch (error) {
+        console.warn('Failed to load characters:', error);
       }
 
       // Load locations
@@ -154,11 +159,11 @@ export const useLoreNavigatorData = () => {
       try {
         const locData = await fetchJson<{ locations: Location[] }>('/api/locations');
         locations = locData.locations || [];
-      } catch {
-        locations = dummyLocations;
+      } catch (error) {
+        console.warn('Failed to load locations:', error);
       }
 
-      // Use chapters from useLoreKeeper or dummy data
+      // Use chapters from useLoreKeeper
       const chapters: Chapter[] = loreChapters.length > 0 
         ? loreChapters.map(ch => ({
             id: ch.id,
@@ -167,23 +172,49 @@ export const useLoreNavigatorData = () => {
             end_date: ch.end_date,
             summary: ch.summary
           }))
-        : dummyChapters;
+        : [];
+
+      // Use mock data service to determine what to show
+      const finalBiography = biography.length > 0 
+        ? biography 
+        : (isMockDataEnabled ? dummyBiographySections : []);
+      
+      const finalCharacters = characters.length > 0 
+        ? characters 
+        : (isMockDataEnabled ? dummyCharacters : []);
+      
+      const finalLocations = locations.length > 0 
+        ? locations 
+        : (isMockDataEnabled ? dummyLocations : []);
+      
+      const finalChapters = chapters.length > 0 
+        ? chapters 
+        : (isMockDataEnabled ? dummyChapters : []);
 
       setData({
-        biography: biography.length > 0 ? biography : dummyBiographySections,
-        characters: characters.length > 0 ? characters : dummyCharacters,
-        locations: locations.length > 0 ? locations : dummyLocations,
-        chapters: chapters.length > 0 ? chapters : dummyChapters
+        biography: finalBiography,
+        characters: finalCharacters,
+        locations: finalLocations,
+        chapters: finalChapters
       });
     } catch (error) {
       console.error('Failed to load lore navigator data:', error);
-      // Use dummy data on error
-      setData({
-        biography: dummyBiographySections,
-        characters: dummyCharacters,
-        locations: dummyLocations,
-        chapters: dummyChapters
-      });
+      // Use mock data on error only if toggle is enabled
+      if (isMockDataEnabled) {
+        setData({
+          biography: dummyBiographySections,
+          characters: dummyCharacters,
+          locations: dummyLocations,
+          chapters: dummyChapters
+        });
+      } else {
+        setData({
+          biography: [],
+          characters: [],
+          locations: [],
+          chapters: []
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -191,7 +222,7 @@ export const useLoreNavigatorData = () => {
 
   useEffect(() => {
     void loadData();
-  }, [loadData]);
+  }, [loadData, isMockDataEnabled]);
 
   return { data, loading, refresh: loadData };
 };

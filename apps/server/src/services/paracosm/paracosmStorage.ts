@@ -1,5 +1,5 @@
 import { logger } from '../../logger';
-import { supabase } from '../../supabase';
+import { supabaseAdmin } from '../supabaseClient';
 import type { ParacosmElement, ParacosmCluster, ParacosmWorld } from './paracosmTypes';
 
 /**
@@ -74,7 +74,7 @@ export class ParacosmStorage {
         // Link elements to cluster
         for (const element of cluster.elements) {
           if (element.id) {
-            await supabase.from('paracosm_cluster_elements').insert({
+            await supabaseAdmin.from('paracosm_cluster_elements').insert({
               cluster_id: clusterRow.id,
               element_id: element.id,
             });
@@ -116,7 +116,7 @@ export class ParacosmStorage {
       // Link clusters to world
       for (const cluster of world.clusters) {
         if (cluster.id) {
-          await supabase.from('paracosm_world_clusters').insert({
+          await supabaseAdmin.from('paracosm_world_clusters').insert({
             world_id: worldRow.id,
             cluster_id: cluster.id,
           });

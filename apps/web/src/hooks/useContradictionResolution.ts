@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
 import { mockContradictions, mockContradictionDetails } from '../mocks/contradictionData';
-import { shouldUseMockData } from './useShouldUseMockData';
+import { useMockData } from '../contexts/MockDataContext';
 import type { ContinuityEvent, ContradictionDetails, MemoryComponent } from '../types/continuity';
 
 export const useContradictionResolution = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [contradictions, setContradictions] = useState<ContinuityEvent[]>([]);
   const [selectedContradiction, setSelectedContradiction] = useState<ContinuityEvent | null>(null);
   const [contradictionDetails, setContradictionDetails] = useState<ContradictionDetails | null>(null);
@@ -21,11 +22,12 @@ export const useContradictionResolution = () => {
       setContradictions(response.contradictions || []);
     } catch (err) {
       // Use mock data when API fails if toggle is enabled
-      if (shouldUseMockData()) {
+      if (isMockDataEnabled) {
         console.warn('API failed, using mock data:', err);
         setContradictions(mockContradictions);
         setError(null); // Don't show error when using mock data
       } else {
+        setContradictions([]);
         setError(err instanceof Error ? err.message : 'Failed to fetch contradictions');
       }
     } finally {
@@ -43,16 +45,18 @@ export const useContradictionResolution = () => {
       setContradictionDetails(response);
     } catch (err) {
       // Use mock data when API fails if toggle is enabled
-      if (shouldUseMockData()) {
+      if (isMockDataEnabled) {
         console.warn('API failed, using mock data:', err);
         const mockDetails = mockContradictionDetails[eventId];
         if (mockDetails) {
           setContradictionDetails(mockDetails);
           setError(null); // Don't show error when using mock data
         } else {
+          setContradictionDetails(null);
           setError(err instanceof Error ? err.message : 'Failed to fetch contradiction details');
         }
       } else {
+        setContradictionDetails(null);
         setError(err instanceof Error ? err.message : 'Failed to fetch contradiction details');
       }
     } finally {
@@ -105,7 +109,7 @@ export const useContradictionResolution = () => {
 
   useEffect(() => {
     void fetchContradictions();
-  }, [fetchContradictions]);
+  }, [fetchContradictions, isMockDataEnabled]);
 
   useEffect(() => {
     if (selectedContradiction) {

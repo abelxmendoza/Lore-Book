@@ -82,7 +82,125 @@ export class GoalValueAlignmentService {
   }
 
   /**
-   * Get values for user
+   * Extract values from user conversations and claims
+   */
+  async extractValuesFromConversations(userId: string): Promise<Value[]> {
+    try {
+      const textSources: string[] = [];
+
+      // Get recent claims about the user (self-claims)
+      try {
+        const selfEntity = await supabaseAdmin
+          .from('entities')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('type', 'PERSON')
+          .limit(1)
+          .single();
+
+        if (selfEntity.data) {
+          const { data: claims } = await supabaseAdmin
+            .from('claims')
+            .select('text, sentiment, confidence, recorded_at')
+            .eq('user_id', userId)
+            .eq('entity_id', selfEntity.data.id)
+            .order('recorded_at', { ascending: false })
+            .limit(100);
+
+          if (claims && claims.length > 0) {
+            textSources.push(...claims.map(c => c.text));
+          }
+        }
+      } catch (error) {
+        logger.debug({ err: error }, 'No self entity or claims found');
+      }
+
+      // Get recent chat messages
+      try {
+        const { data: messages } = await supabaseAdmin
+          .from('chat_messages')
+          .select('content, role, created_at')
+          .eq('user_id', userId)
+          .eq('role', 'user')
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (messages && messages.length > 0) {
+          textSources.push(...messages.map(m => m.content));
+        }
+      } catch (error) {
+        logger.debug({ err: error }, 'No chat messages found');
+      }
+
+      // Combine text for analysis
+      const combinedText = textSources.join('\n\n').substring(0, 8000);
+
+      if (!combinedText.trim()) {
+        logger.debug({ userId }, 'No text sources found for value extraction');
+        return [];
+      }
+
+      // Use OpenAI to extract values
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-4o-mini',
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `Analyze the user's conversations and statements to extract their core values. 
+Return JSON with:
+{
+  "values": [
+    {
+      "name": "Value name (e.g., 'Freedom', 'Growth', 'Family')",
+      "description": "Brief description of what this value means to the user based on their statements",
+      "priority": 0.0-1.0,
+      "confidence": 0.0-1.0,
+      "evidence": ["quote 1", "quote 2"]
+    }
+  ]
+}
+
+Extract 3-8 unique values based on what the user talks about. Be specific and evidence-based. 
+Only include values with confidence > 0.6. Priority should reflect how often/strongly the value appears.`
+          },
+          {
+            role: 'user',
+            content: `Analyze these statements and conversations to extract core values:\n\n${combinedText}`
+          }
+        ]
+      });
+
+      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+      const extractedValues = response.values || [];
+
+      // Convert to Value format and save
+      const values: Value[] = [];
+      for (const extracted of extractedValues) {
+        if (extracted.confidence >= 0.6) {
+          try {
+            const value = await this.declareValue(userId, {
+              name: extracted.name,
+              description: extracted.description || `${extracted.name} is important to this user`,
+              priority: extracted.priority || 0.7,
+            });
+            values.push(value);
+          } catch (error) {
+            logger.error({ err: error, value: extracted.name }, 'Failed to save extracted value');
+          }
+        }
+      }
+
+      return values;
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to extract values from conversations');
+      return [];
+    }
+  }
+
+  /**
+   * Get values for user (with auto-extraction if none exist)
    */
   async getValues(userId: string, activeOnly: boolean = true): Promise<Value[]> {
     try {
@@ -101,6 +219,29 @@ export class GoalValueAlignmentService {
       if (error) {
         logger.error({ err: error, userId }, 'Failed to get values');
         throw error;
+      }
+
+      // If no values exist, try to extract from conversations
+      if ((!data || data.length === 0) && activeOnly) {
+        logger.info({ userId }, 'No values found, attempting to extract from conversations');
+        const extracted = await this.extractValuesFromConversations(userId);
+        if (extracted.length > 0) {
+          // After extraction, evolve values to rank them
+          await this.updateValueRankings(userId);
+          return extracted;
+        }
+      } else if (data && data.length > 0) {
+        // Periodically evolve existing values (every 24 hours)
+        const lastEvolution = data[0]?.metadata?.last_evolution_at;
+        const shouldEvolve = !lastEvolution || 
+          (Date.now() - new Date(lastEvolution).getTime()) > 24 * 60 * 60 * 1000;
+
+        if (shouldEvolve) {
+          // Run evolution in background (don't block response)
+          this.evolveValues(userId).catch(err => {
+            logger.error({ err, userId }, 'Background value evolution failed');
+          });
+        }
       }
 
       return data || [];
@@ -924,6 +1065,413 @@ Describe the drift neutrally.`
     };
 
     return mapping[goalType] || 'OTHER';
+  }
+
+  /**
+   * Analyze conversations and calculate value scores for evolution
+   */
+  async calculateValueScores(userId: string, timeWindowDays: number = 30): Promise<Map<string, {
+    frequencyScore: number;
+    recencyScore: number;
+    sentimentScore: number;
+    totalScore: number;
+    evidence: string[];
+  }>> {
+    try {
+      const scores = new Map<string, {
+        frequencyScore: number;
+        recencyScore: number;
+        sentimentScore: number;
+        totalScore: number;
+        evidence: string[];
+      }>();
+
+      // Get existing values
+      const values = await this.getValues(userId, true);
+      const valueNames = new Set(values.map(v => v.name.toLowerCase()));
+
+      // Get recent claims and messages
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - timeWindowDays);
+
+      const textSources: Array<{ text: string; sentiment: number; timestamp: Date }> = [];
+
+      // Get claims
+      try {
+        const selfEntity = await supabaseAdmin
+          .from('entities')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('type', 'PERSON')
+          .limit(1)
+          .single();
+
+        if (selfEntity.data) {
+          const { data: claims } = await supabaseAdmin
+            .from('claims')
+            .select('text, sentiment, confidence, recorded_at')
+            .eq('user_id', userId)
+            .eq('entity_id', selfEntity.data.id)
+            .gte('recorded_at', cutoffDate.toISOString())
+            .limit(200);
+
+          if (claims) {
+            textSources.push(...claims.map(c => ({
+              text: c.text,
+              sentiment: c.sentiment || 0,
+              timestamp: new Date(c.recorded_at),
+            })));
+          }
+        }
+      } catch (error) {
+        logger.debug({ err: error }, 'No claims found for value scoring');
+      }
+
+      // Get chat messages
+      try {
+        const { data: messages } = await supabaseAdmin
+          .from('chat_messages')
+          .select('content, role, created_at')
+          .eq('user_id', userId)
+          .eq('role', 'user')
+          .gte('created_at', cutoffDate.toISOString())
+          .limit(100);
+
+        if (messages) {
+          textSources.push(...messages.map(m => ({
+            text: m.content,
+            sentiment: 0, // Neutral for now
+            timestamp: new Date(m.created_at),
+          })));
+        }
+      } catch (error) {
+        logger.debug({ err: error }, 'No messages found for value scoring');
+      }
+
+      if (textSources.length === 0) {
+        return scores;
+      }
+
+      // Use AI to analyze value mentions and calculate scores
+      const combinedText = textSources.map(s => s.text).join('\n\n').substring(0, 8000);
+
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-4o-mini',
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `Analyze conversations to calculate value scores. For each value mentioned, calculate:
+- frequency_score: 0.0-1.0 (how often it's mentioned)
+- recency_score: 0.0-1.0 (how recently it was mentioned, more recent = higher)
+- sentiment_score: -1.0 to 1.0 (sentiment when value is discussed)
+- evidence: array of quotes showing the value
+
+Return JSON:
+{
+  "value_scores": [
+    {
+      "value_name": "Value name",
+      "frequency_score": 0.0-1.0,
+      "recency_score": 0.0-1.0,
+      "sentiment_score": -1.0 to 1.0,
+      "evidence": ["quote 1", "quote 2"]
+    }
+  ]
+}
+
+Include both existing values and new values that emerge from conversations.`
+          },
+          {
+            role: 'user',
+            content: `Analyze these conversations for value mentions:\n\n${combinedText}\n\nExisting values: ${Array.from(valueNames).join(', ')}`
+          }
+        ]
+      });
+
+      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+      const valueScores = response.value_scores || [];
+
+      const now = Date.now();
+      for (const scoreData of valueScores) {
+        const totalScore = (
+          scoreData.frequency_score * 0.4 +
+          scoreData.recency_score * 0.3 +
+          (scoreData.sentiment_score + 1) / 2 * 0.3 // Normalize sentiment to 0-1
+        );
+
+        scores.set(scoreData.value_name.toLowerCase(), {
+          frequencyScore: scoreData.frequency_score || 0,
+          recencyScore: scoreData.recency_score || 0,
+          sentimentScore: scoreData.sentiment_score || 0,
+          totalScore,
+          evidence: scoreData.evidence || [],
+        });
+      }
+
+      return scores;
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to calculate value scores');
+      return new Map();
+    }
+  }
+
+  /**
+   * Re-rank values based on conversation analysis
+   */
+  async evolveValues(userId: string): Promise<{
+    updated: Value[];
+    newValues: Value[];
+    events: number;
+  }> {
+    try {
+      logger.info({ userId }, 'Starting value evolution');
+
+      // Calculate scores for all values
+      const scores = await this.calculateValueScores(userId, 30);
+
+      // Get existing values
+      const existingValues = await this.getValues(userId, true);
+      const existingValuesMap = new Map(
+        existingValues.map(v => [v.name.toLowerCase(), v])
+      );
+
+      const updated: Value[] = [];
+      const newValues: Value[] = [];
+      let eventsCreated = 0;
+
+      // Update existing values
+      for (const [valueName, scoreData] of scores.entries()) {
+        const existingValue = existingValuesMap.get(valueName);
+
+        if (existingValue) {
+          // Calculate new priority based on total score
+          const newPriority = Math.max(0.1, Math.min(1.0, scoreData.totalScore));
+
+          // Only update if priority changed significantly (> 0.05)
+          if (Math.abs(existingValue.priority - newPriority) > 0.05) {
+            const oldPriority = existingValue.priority;
+
+            // Update priority
+            const updatedValue = await this.updateValuePriority(
+              userId,
+              existingValue.id,
+              newPriority
+            );
+
+            // Record priority history
+            await supabaseAdmin
+              .from('value_priority_history')
+              .insert({
+                value_id: existingValue.id,
+                user_id: userId,
+                priority: newPriority,
+                reason: `Priority ${newPriority > oldPriority ? 'increased' : 'decreased'} based on conversation analysis`,
+                source: 'evolution',
+                metadata: {
+                  old_priority: oldPriority,
+                  frequency_score: scoreData.frequencyScore,
+                  recency_score: scoreData.recencyScore,
+                  sentiment_score: scoreData.sentimentScore,
+                  evidence: scoreData.evidence.slice(0, 3),
+                },
+              });
+
+            // Record evolution event
+            await supabaseAdmin
+              .from('value_evolution_events')
+              .insert({
+                user_id: userId,
+                value_id: existingValue.id,
+                event_type: newPriority > oldPriority ? 'value_priority_increased' : 'value_priority_decreased',
+                old_priority: oldPriority,
+                new_priority: newPriority,
+                description: `Value priority ${newPriority > oldPriority ? 'increased' : 'decreased'} from ${oldPriority.toFixed(2)} to ${newPriority.toFixed(2)}`,
+                evidence: { quotes: scoreData.evidence.slice(0, 3) },
+              });
+
+            eventsCreated++;
+            updated.push(updatedValue);
+          }
+        } else {
+          // New value detected
+          if (scoreData.totalScore > 0.4) { // Threshold for new value creation
+            try {
+              const newValue = await this.declareValue(userId, {
+                name: valueName.charAt(0).toUpperCase() + valueName.slice(1),
+                description: `Value identified from conversations: ${scoreData.evidence[0] || 'Emerging value'}`,
+                priority: scoreData.totalScore,
+              });
+
+              // Record evolution event
+              await supabaseAdmin
+                .from('value_evolution_events')
+                .insert({
+                  user_id: userId,
+                  value_id: newValue.id,
+                  event_type: 'new_value_detected',
+                  new_priority: newValue.priority,
+                  description: `New value "${newValue.name}" detected from conversations`,
+                  evidence: { quotes: scoreData.evidence.slice(0, 3) },
+                });
+
+              eventsCreated++;
+              newValues.push(newValue);
+            } catch (error) {
+              logger.error({ err: error, valueName }, 'Failed to create new value');
+            }
+          }
+        }
+      }
+
+      // Re-rank all values
+      await this.updateValueRankings(userId);
+
+      logger.info(
+        { userId, updated: updated.length, newValues: newValues.length, events: eventsCreated },
+        'Value evolution completed'
+      );
+
+      return { updated, newValues, events: eventsCreated };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to evolve values');
+      return { updated: [], newValues: [], events: 0 };
+    }
+  }
+
+  /**
+   * Update value rankings based on current priorities
+   */
+  async updateValueRankings(userId: string): Promise<void> {
+    try {
+      const values = await this.getValues(userId, true);
+      const scores = await this.calculateValueScores(userId, 30);
+
+      // Sort by priority (descending)
+      const sortedValues = [...values].sort((a, b) => b.priority - a.priority);
+
+      const now = new Date().toISOString();
+
+      // Clear old rankings for this calculation time
+      await supabaseAdmin
+        .from('value_rankings')
+        .delete()
+        .eq('user_id', userId)
+        .eq('calculated_at', now);
+
+      // Insert new rankings
+      for (let i = 0; i < sortedValues.length; i++) {
+        const value = sortedValues[i];
+        const scoreData = scores.get(value.name.toLowerCase());
+
+        const rank = i + 1;
+        const oldRank = value.metadata?.last_rank;
+
+        // Record ranking
+        await supabaseAdmin
+          .from('value_rankings')
+          .insert({
+            user_id: userId,
+            value_id: value.id,
+            rank,
+            score: scoreData?.totalScore || value.priority,
+            frequency_score: scoreData?.frequencyScore || 0,
+            recency_score: scoreData?.recencyScore || 0,
+            sentiment_score: scoreData?.sentimentScore || 0,
+            calculated_at: now,
+          });
+
+        // Record rank change event if rank changed
+        if (oldRank && oldRank !== rank) {
+          await supabaseAdmin
+            .from('value_evolution_events')
+            .insert({
+              user_id: userId,
+              value_id: value.id,
+              event_type: 'value_rank_changed',
+              old_rank: oldRank,
+              new_rank: rank,
+              description: `Value rank changed from ${oldRank} to ${rank}`,
+            });
+        }
+
+        // Update value metadata with current rank
+        await supabaseAdmin
+          .from('values')
+          .update({
+            metadata: {
+              ...value.metadata,
+              last_rank: rank,
+              last_ranked_at: now,
+            },
+          })
+          .eq('id', value.id);
+      }
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to update value rankings');
+    }
+  }
+
+  /**
+   * Get value evolution history
+   */
+  async getValueEvolutionHistory(
+    userId: string,
+    valueId?: string,
+    limit: number = 50
+  ): Promise<any[]> {
+    try {
+      let query = supabaseAdmin
+        .from('value_evolution_events')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (valueId) {
+        query = query.eq('value_id', valueId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to get value evolution history');
+      return [];
+    }
+  }
+
+  /**
+   * Get value priority history
+   */
+  async getValuePriorityHistory(
+    userId: string,
+    valueId: string,
+    limit: number = 100
+  ): Promise<any[]> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('value_priority_history')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('value_id', valueId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      logger.error({ err: error, userId, valueId }, 'Failed to get value priority history');
+      return [];
+    }
   }
 }
 

@@ -6,6 +6,7 @@ import { Textarea } from '../ui/textarea';
 import { Input } from '../ui/input';
 import { fetchJson } from '../../lib/api';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
+import { useMockData } from '../../contexts/MockDataContext';
 import { MemoirOutlineEditor } from './MemoirOutlineEditor';
 import { ContinuityPanel } from '../ContinuityPanel';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
@@ -178,6 +179,7 @@ The weight of destiny settled on her shoulders, heavy but not crushing. She had 
 };
 
 export const MemoirEditor = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [outline, setOutline] = useState<MemoirOutline | null>(null);
   const [loading, setLoading] = useState(false);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
@@ -211,7 +213,7 @@ export const MemoirEditor = () => {
 
   useEffect(() => {
     loadMemoir();
-  }, []);
+  }, [isMockDataEnabled]);
 
   // Auto-generate outline from chats/entries (like timeline)
   useEffect(() => {
@@ -378,19 +380,41 @@ export const MemoirEditor = () => {
   const loadMemoir = async () => {
     setLoading(true);
     try {
-      // Use dummy data for demonstration
-      const memoir = dummyMemoir;
-      setOutline(memoir);
-      // Expand all sections by default
-      const allIds = new Set<string>();
-      const collectIds = (sections: MemoirSection[]) => {
-        sections.forEach(s => {
-          allIds.add(s.id);
-          if (s.children) collectIds(s.children);
-        });
-      };
-      collectIds(memoir.sections);
-      setExpandedSections(allIds);
+      // Try to fetch real memoir data
+      let memoir: MemoirOutline | null = null;
+      try {
+        const response = await fetchJson<{ outline: MemoirOutline }>('/api/memoir/outline');
+        memoir = response.outline;
+      } catch (error) {
+        console.warn('Failed to load memoir from API:', error);
+      }
+
+      // Use mock data only if toggle is enabled and no real data
+      if (!memoir && isMockDataEnabled) {
+        memoir = dummyMemoir;
+      } else if (!memoir) {
+        memoir = {
+          id: 'default',
+          title: 'My Memoir',
+          sections: [],
+          lastUpdated: new Date().toISOString(),
+          autoUpdate: false
+        };
+      }
+
+      if (memoir) {
+        setOutline(memoir);
+        // Expand all sections by default
+        const allIds = new Set<string>();
+        const collectIds = (sections: MemoirSection[]) => {
+          sections.forEach(s => {
+            allIds.add(s.id);
+            if (s.children) collectIds(s.children);
+          });
+        };
+        collectIds(memoir.sections);
+        setExpandedSections(allIds);
+      }
     } catch (error) {
       console.error('Failed to load memoir:', error);
       setOutline({

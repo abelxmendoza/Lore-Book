@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Heart, RefreshCw, Loader2, Sparkles, Target, Shield, Zap, TrendingUp, Brain } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -350,27 +350,32 @@ const MOCK_ESSENCE_PROFILE: EssenceProfile = {
  * All refinement happens through chat, not UI controls.
  */
 export const SoulProfilePanel = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [profile, setProfile] = useState<EssenceProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetchJson<{ profile: EssenceProfile }>('/api/essence/profile');
       setProfile(response.profile);
     } catch (error) {
       console.error('Failed to load essence profile:', error);
-      // Use mock data if API fails
-      setProfile(MOCK_ESSENCE_PROFILE);
+      // Use mock data only if toggle is enabled
+      if (isMockDataEnabled) {
+        setProfile(MOCK_ESSENCE_PROFILE);
+      } else {
+        setProfile(null);
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [isMockDataEnabled]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   const handleExtract = async () => {
     setExtracting(true);
@@ -395,9 +400,9 @@ export const SoulProfilePanel = () => {
     );
   }
 
-  // Use mock data if no real profile available
-  const displayProfile = profile || MOCK_ESSENCE_PROFILE;
-  const isMockData = !profile;
+  // Use mock data only if toggle is enabled and no real profile
+  const displayProfile = profile || (isMockDataEnabled ? MOCK_ESSENCE_PROFILE : null);
+  const isMockData = !profile && isMockDataEnabled;
 
   if (!profile && !loading) {
     return (

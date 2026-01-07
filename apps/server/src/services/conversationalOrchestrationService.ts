@@ -16,6 +16,13 @@ import { decisionMemoryService } from './decisionMemoryService';
 import { predictiveContinuityService } from './predictiveContinuityService';
 import { goalValueAlignmentService } from './goalValueAlignmentService';
 import { privacyScopeService } from './privacyScopeService';
+import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
+import { intentDetectionService } from './intentDetectionService';
+import { expressionRoutingService } from './expressionRoutingService';
+import { responseShapingService } from './responseShapingService';
+import { memoryRecallEngine } from './memoryRecall/memoryRecallEngine';
+import { isRecallQuery, shouldForceArchivist } from './memoryRecall/recallDetector';
+import { formatRecallChatResponse } from './memoryRecall/recallChatFormatter';
 import type {
   ChatContext,
   ChatMessage,
@@ -46,7 +53,78 @@ export class ConversationalOrchestrationService {
       const context = await this.getOrCreateContext(userId, session.session_id);
 
       // Save user message
-      await this.saveMessage(userId, session.session_id, 'user', message);
+      const userMessageId = await this.saveMessage(userId, session.session_id, 'user', message);
+
+      // Fire-and-forget: Ingest message into conversation-centered pipeline
+      // This is async and non-blocking - failures are logged but don't affect chat UX
+      this.ingestUserMessageAsync(userId, userMessageId, session.session_id, message).catch(
+        err => {
+          logger.warn(
+            { error: err, userId, messageId: userMessageId },
+            'Conversation ingestion failed (non-blocking)'
+          );
+        }
+      );
+
+      // ---- RECALL GATE: Check if this is a recall query ----
+      if (isRecallQuery(message)) {
+        const forcedPersona = shouldForceArchivist(message) ? 'ARCHIVIST' : undefined;
+
+        try {
+          const recallResult = await memoryRecallEngine.executeRecall({
+            raw_text: message,
+            user_id: userId,
+            persona: forcedPersona || 'DEFAULT',
+          });
+
+          // Handle silence response
+          if (recallResult.silence) {
+            const silenceResponse: ChatResponse = {
+              content: recallResult.silence.message,
+              response_mode: 'SILENCE',
+              confidence: 1.0,
+              disclaimer: recallResult.silence.reason,
+            };
+
+            // Save assistant message
+            await this.saveMessage(
+              userId,
+              session.session_id,
+              'assistant',
+              silenceResponse.content,
+              silenceResponse.response_mode,
+              silenceResponse.citations,
+              silenceResponse.confidence
+            );
+
+            return silenceResponse;
+          }
+
+          // Format recall response
+          const recallResponse = formatRecallChatResponse(recallResult, forcedPersona);
+
+          // Save assistant message
+          await this.saveMessage(
+            userId,
+            session.session_id,
+            'assistant',
+            recallResponse.content,
+            recallResponse.response_mode,
+            recallResponse.citations,
+            recallResponse.confidence
+          );
+
+          logger.debug(
+            { userId, recallType: recallResult.entries.length, confidence: recallResult.confidence },
+            'Memory recall executed in chat'
+          );
+
+          return recallResponse;
+        } catch (error) {
+          logger.error({ error, userId, message }, 'Failed to execute memory recall, falling back to normal chat');
+          // Fall through to normal chat flow
+        }
+      }
 
       // Classify intent
       const intent = await this.classifyIntent(message);
@@ -91,7 +169,7 @@ export class ConversationalOrchestrationService {
       }
 
       // Save assistant response
-      await this.saveMessage(
+      const assistantMessageId = await this.saveMessage(
         userId,
         session.session_id,
         'assistant',
@@ -100,6 +178,19 @@ export class ConversationalOrchestrationService {
         response.citations,
         response.confidence
       );
+
+      // Fire-and-forget: Ingest AI response (lower priority, but still useful)
+      this.ingestUserMessageAsync(
+        userId,
+        assistantMessageId,
+        session.session_id,
+        response.content
+      ).catch(err => {
+        logger.warn(
+          { error: err, userId, messageId: assistantMessageId },
+          'AI message ingestion failed (non-blocking)'
+        );
+      });
 
       return response;
     } catch (error) {
@@ -194,6 +285,47 @@ Return JSON:
     } catch (error) {
       logger.error({ err: error }, 'Failed to answer question');
       return this.respondWithUncertainty();
+    }
+  }
+
+  /**
+   * Check stability and gate response if needed
+   */
+  private async checkStabilityAndGate(userId: string): Promise<ChatResponse | null> {
+    try {
+      // Get recent events for stability check
+      const { data: recentEvents } = await supabaseAdmin
+        .from('resolved_events')
+        .select('confidence')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      const stabilityContext = {
+        events: (recentEvents || []).map(e => ({ confidence: e.confidence || 0.5 })),
+        hasContradictions: false, // Could check for contradictions here
+        newEntities: [],
+        patternStrength: 0, // Could calculate pattern strength here
+      };
+
+      const silenceResponse = stabilityDetectionService.gateResponse(stabilityContext);
+
+      if (silenceResponse) {
+        return {
+          content: silenceResponse.message,
+          response_mode: 'SILENCE',
+          confidence: 1.0, // High confidence in silence
+          metadata: {
+            why: silenceResponse.why,
+            stability_state: silenceResponse.stability_state,
+          },
+        };
+      }
+
+      return null; // Allow normal response
+    } catch (error) {
+      logger.warn({ error, userId }, 'Failed to check stability, allowing normal response');
+      return null; // Fail open - allow normal response
     }
   }
 
@@ -857,7 +989,7 @@ Return JSON:
   }
 
   /**
-   * Save message
+   * Save message and return message ID
    */
   private async saveMessage(
     userId: string,
@@ -867,8 +999,8 @@ Return JSON:
     responseMode?: ResponseMode,
     citations?: string[],
     confidence?: number
-  ): Promise<void> {
-    await supabaseAdmin
+  ): Promise<string> {
+    const { data: message, error } = await supabaseAdmin
       .from('chat_messages')
       .insert({
         user_id: userId,
@@ -878,7 +1010,69 @@ Return JSON:
         response_mode: responseMode,
         citations: citations || [],
         confidence,
-      });
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return message.id;
+  }
+
+  /**
+   * Ingest user message asynchronously (fire-and-forget)
+   */
+  private async ingestUserMessageAsync(
+    userId: string,
+    messageId: string,
+    sessionId: string,
+    messageText: string
+  ): Promise<void> {
+    // Get recent conversation history for context
+    const recentMessages = await this.getRecentMessages(userId, sessionId, 10);
+
+    // Ingest through pipeline
+    await conversationIngestionPipeline.ingestFromChatMessage(
+      userId,
+      messageId,
+      sessionId,
+      recentMessages
+    );
+  }
+
+  /**
+   * Get recent messages for conversation context
+   */
+  private async getRecentMessages(
+    userId: string,
+    sessionId: string,
+    limit: number = 10
+  ): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
+    try {
+      const { data: messages } = await supabaseAdmin
+        .from('chat_messages')
+        .select('role, content')
+        .eq('user_id', userId)
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (!messages) {
+        return [];
+      }
+
+      return messages
+        .reverse()
+        .map(msg => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+        }));
+    } catch (error) {
+      logger.warn({ error, userId, sessionId }, 'Failed to get recent messages for context');
+      return [];
+    }
   }
 
   /**

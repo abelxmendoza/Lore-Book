@@ -1,5 +1,5 @@
 import { logger } from '../../logger';
-import { supabase } from '../../supabase';
+import { supabaseAdmin } from '../supabaseClient';
 import type {
   IdentitySignal,
   IdentityDimension,
@@ -78,7 +78,7 @@ export class IdentityStorage {
         // Link signals to dimension
         for (const signal of dimension.signals) {
           if (signal.id) {
-            await supabase.from('identity_dimension_signals').insert({
+            await supabaseAdmin.from('identity_dimension_signals').insert({
               dimension_id: dimRow.id,
               signal_id: signal.id,
             });

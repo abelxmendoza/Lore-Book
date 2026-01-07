@@ -75,8 +75,8 @@ export class AspirationExtractor {
 
     // Higher confidence indicators
     const highConfidenceMarkers = [
-      'i will', "i'm going to", 'i plan to', 'definitely', 'for sure', 'absolutely',
-      'i know', 'i'm certain', 'i'm sure',
+      'i will', 'i am going to', 'i plan to', 'definitely', 'for sure', 'absolutely',
+      'i know', 'i am certain', 'i am sure',
     ];
     const highConfidenceCount = highConfidenceMarkers.filter(m => textLower.includes(m)).length;
 
@@ -117,7 +117,7 @@ export class AspirationExtractor {
     // Negative indicators
     const negativeMarkers = [
       'doubt', 'uncertain', 'unsure', 'worried', 'anxious', 'fear', 'scared',
-      'impossible', 'never', "can't", "won't", 'difficult', 'unlikely',
+      'impossible', 'never', 'cannot', 'will not', 'difficult', 'unlikely',
     ];
     const negativeCount = negativeMarkers.filter(m => textLower.includes(m)).length;
 

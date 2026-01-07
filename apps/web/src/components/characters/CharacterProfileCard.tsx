@@ -45,6 +45,32 @@ export type Character = {
   mentioned_by_character_ids?: string[] | null;
   context_of_mention?: string | null;
   likelihood_to_meet?: 'likely' | 'possible' | 'unlikely' | 'never' | null;
+  // Analytics
+  analytics?: {
+    closeness_score: number;
+    relationship_depth: number;
+    interaction_frequency: number;
+    recency_score: number;
+    character_influence_on_user: number;
+    user_influence_over_character: number;
+    importance_score: number;
+    priority_score: number;
+    relevance_score: number;
+    value_score: number;
+    sentiment_score: number;
+    trust_score: number;
+    support_score: number;
+    conflict_score: number;
+    engagement_score: number;
+    activity_level: number;
+    shared_experiences: number;
+    relationship_duration_days: number;
+    trend: 'deepening' | 'stable' | 'weakening';
+    strengths?: string[];
+    weaknesses?: string[];
+    opportunities?: string[];
+    risks?: string[];
+  };
 };
 
 type CharacterProfileCardProps = {
@@ -204,6 +230,29 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
             >
               {character.status}
             </Badge>
+          )}
+          {character.analytics && (
+            <>
+              {/* Importance Badge */}
+              <Badge 
+                variant="outline"
+                className={`${character.analytics.importance_score >= 70 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : character.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
+                title={`Importance: ${character.analytics.importance_score}/100`}
+              >
+                {character.analytics.importance_score >= 70 ? <Star className="h-2.5 w-2.5" /> : character.analytics.importance_score >= 40 ? <Award className="h-2.5 w-2.5" /> : null}
+                {character.analytics.importance_score}
+              </Badge>
+              {/* Trend Indicator */}
+              {character.analytics.trend === 'deepening' && (
+                <TrendingUp className="h-3 w-3 text-green-400" title="Relationship deepening" />
+              )}
+              {character.analytics.trend === 'weakening' && (
+                <TrendingDown className="h-3 w-3 text-red-400" title="Relationship weakening" />
+              )}
+              {character.analytics.trend === 'stable' && (
+                <Minus className="h-3 w-3 text-gray-400" title="Stable relationship" />
+              )}
+            </>
           )}
         </div>
       </div>

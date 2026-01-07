@@ -6,31 +6,146 @@ import { LazyImage } from '../ui/LazyImage';
 import { Badge } from '../ui/badge';
 import { fetchJson } from '../../lib/api';
 import { useEntityModal } from '../../contexts/EntityModalContext';
+import { mockDataService, type PhotoEntry } from '../../services/mockDataService';
+import { useMockData } from '../../contexts/MockDataContext';
 
-interface PhotoEntry {
-  id: string;
-  date: string;
-  content: string;
-  summary?: string | null;
-  tags: string[];
-  metadata?: {
-    photoUrl?: string;
-    photoId?: string;
-    locationName?: string;
-    dateTime?: string;
-    people?: string[];
-    latitude?: number;
-    longitude?: number;
-  };
-}
+// Mock photo data
+const dummyPhotos: PhotoEntry[] = [
+  {
+    id: 'photo-1',
+    date: new Date().toISOString(),
+    content: 'Beautiful mountain landscape captured during a hike. The view was breathtaking with snow-capped peaks in the distance.',
+    summary: 'Mountain hike',
+    tags: ['nature', 'hiking', 'mountains', 'adventure'],
+    metadata: {
+      photoUrl: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',
+      photoId: 'photo-1',
+      locationName: 'Mountain View Trail',
+      dateTime: new Date().toISOString(),
+      latitude: 37.4219,
+      longitude: -122.0840,
+      people: ['Sarah Chen']
+    }
+  },
+  {
+    id: 'photo-2',
+    date: new Date(Date.now() - 86400000).toISOString(),
+    content: 'Stunning sunset at the beach. Perfect end to a wonderful day spent with friends.',
+    summary: 'Beach sunset',
+    tags: ['beach', 'sunset', 'vacation', 'friends'],
+    metadata: {
+      photoUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=800',
+      photoId: 'photo-2',
+      locationName: 'Sunset Beach',
+      dateTime: new Date(Date.now() - 86400000).toISOString(),
+      latitude: 34.0522,
+      longitude: -118.2437,
+      people: ['Marcus Johnson', 'Alex Rivera']
+    }
+  },
+  {
+    id: 'photo-3',
+    date: new Date(Date.now() - 2 * 86400000).toISOString(),
+    content: 'City skyline at night. The lights create a mesmerizing pattern against the dark sky.',
+    summary: 'City lights',
+    tags: ['city', 'night', 'urban', 'photography'],
+    metadata: {
+      photoUrl: 'https://images.unsplash.com/photo-1514565131-fce0801e5785?w=800',
+      photoId: 'photo-3',
+      locationName: 'Downtown',
+      dateTime: new Date(Date.now() - 2 * 86400000).toISOString(),
+      latitude: 40.7128,
+      longitude: -74.0060
+    }
+  },
+  {
+    id: 'photo-4',
+    date: new Date(Date.now() - 3 * 86400000).toISOString(),
+    content: 'Coffee shop morning. The perfect start to a productive day with a warm cup and good company.',
+    summary: 'Morning coffee',
+    tags: ['coffee', 'morning', 'cafe', 'lifestyle'],
+    metadata: {
+      photoUrl: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=800',
+      photoId: 'photo-4',
+      locationName: 'Local Coffee Shop',
+      dateTime: new Date(Date.now() - 3 * 86400000).toISOString(),
+      latitude: 37.7749,
+      longitude: -122.4194,
+      people: ['Kai']
+    }
+  },
+  {
+    id: 'photo-5',
+    date: new Date(Date.now() - 5 * 86400000).toISOString(),
+    content: 'Forest trail during autumn. The colors were absolutely vibrant, a true feast for the eyes.',
+    summary: 'Autumn hike',
+    tags: ['forest', 'autumn', 'hiking', 'nature'],
+    metadata: {
+      photoUrl: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800',
+      photoId: 'photo-5',
+      locationName: 'Autumn Trail',
+      dateTime: new Date(Date.now() - 5 * 86400000).toISOString(),
+      latitude: 45.5017,
+      longitude: -73.5673
+    }
+  },
+  {
+    id: 'photo-6',
+    date: new Date(Date.now() - 7 * 86400000).toISOString(),
+    content: 'Workspace setup. A clean, organized desk that inspires creativity and focus.',
+    summary: 'Workspace',
+    tags: ['workspace', 'productivity', 'setup', 'design'],
+    metadata: {
+      photoUrl: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800',
+      photoId: 'photo-6',
+      locationName: 'Home Office',
+      dateTime: new Date(Date.now() - 7 * 86400000).toISOString()
+    }
+  },
+  {
+    id: 'photo-7',
+    date: new Date(Date.now() - 10 * 86400000).toISOString(),
+    content: 'Concert night. The energy was incredible, and the music was unforgettable.',
+    summary: 'Concert',
+    tags: ['music', 'concert', 'night', 'entertainment'],
+    metadata: {
+      photoUrl: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafdc?w=800',
+      photoId: 'photo-7',
+      locationName: 'Concert Hall',
+      dateTime: new Date(Date.now() - 10 * 86400000).toISOString(),
+      people: ['Emma', 'Mike']
+    }
+  },
+  {
+    id: 'photo-8',
+    date: new Date(Date.now() - 14 * 86400000).toISOString(),
+    content: 'Garden flowers in full bloom. Spring has arrived with all its beauty and colors.',
+    summary: 'Spring garden',
+    tags: ['garden', 'flowers', 'spring', 'nature'],
+    metadata: {
+      photoUrl: 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=800',
+      photoId: 'photo-8',
+      locationName: 'Botanical Garden',
+      dateTime: new Date(Date.now() - 14 * 86400000).toISOString(),
+      latitude: 37.5665,
+      longitude: -122.3259
+    }
+  }
+];
 
 export const PhotoAlbum: React.FC = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoEntry | null>(null);
   const [filterBy, setFilterBy] = useState<'all' | 'recent' | 'by-location' | 'by-date'>('all');
   const { openMemory } = useEntityModal();
+
+  // Register mock data with service on mount
+  useEffect(() => {
+    mockDataService.register.photos(dummyPhotos);
+  }, []);
 
   const fetchPhotos = useCallback(async () => {
     setLoading(true);
@@ -51,14 +166,22 @@ export const PhotoAlbum: React.FC = () => {
         return dateB - dateA;
       });
 
-      setPhotos(photoEntries);
+      // Use mock data service to determine what to show
+      const result = mockDataService.getWithFallback.photos(
+        photoEntries.length > 0 ? photoEntries : null,
+        isMockDataEnabled
+      );
+
+      setPhotos(result.data);
     } catch (error) {
       console.error('Failed to fetch photos:', error);
-      setPhotos([]);
+      // On error, use mock data if enabled
+      const result = mockDataService.getWithFallback.photos(null, isMockDataEnabled);
+      setPhotos(result.data);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isMockDataEnabled]);
 
   useEffect(() => {
     fetchPhotos();
@@ -142,7 +265,21 @@ export const PhotoAlbum: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Photo Album</h1>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-white">Photo Album</h1>
+            {isMockDataEnabled && (
+              <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
+                Demo Data
+              </Badge>
+            )}
+          </div>
+            {isMockDataEnabled && (
+              <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
+                Demo Data
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-white/60 mt-1">
             {filteredPhotos.length} photo{filteredPhotos.length !== 1 ? 's' : ''} 
             {searchQuery && ` matching "${searchQuery}"`}

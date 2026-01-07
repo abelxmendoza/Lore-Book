@@ -1,5 +1,5 @@
 import { logger } from '../../logger';
-import { supabase } from '../../supabase';
+import { supabaseAdmin } from '../supabaseClient';
 import type { BehaviorLoop, NormalizedBehavior, RawBehaviorSignal } from './types';
 
 /**
@@ -46,7 +46,7 @@ export class BehaviorStorage {
         if (!row) continue;
 
         // Insert behavior mention
-        const { error: mentionError } = await supabase.from('behavior_mentions').insert({
+        const { error: mentionError } = await supabaseAdmin.from('behavior_mentions').insert({
           behavior_id: row.id,
           memory_id: rawSignal.memoryId,
           evidence: rawSignal.text,
@@ -73,7 +73,7 @@ export class BehaviorStorage {
   async saveLoops(userId: string, loops: BehaviorLoop[]): Promise<void> {
     try {
       for (const loop of loops) {
-        const { error } = await supabase.from('behavior_loops').insert({
+        const { error } = await supabaseAdmin.from('behavior_loops').insert({
           user_id: userId,
           loop_name: loop.loopName,
           category: loop.category,

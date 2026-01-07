@@ -8,14 +8,18 @@ export type UserIntent =
   | 'QUESTION'
   | 'CLARIFICATION'
   | 'DECISION_SUPPORT'
-  | 'MEMORY_REVIEW';
+  | 'MEMORY_REVIEW'
+  | 'VENTING'
+  | 'SUPPORT_REQUEST';
 
 export type ResponseMode =
   | 'FACTUAL_SUMMARY'
   | 'PERSPECTIVE_SUMMARY'
   | 'INSIGHT_REFLECTION'
   | 'UNCERTAINTY_NOTICE'
-  | 'MRQ_PROMPT';
+  | 'MRQ_PROMPT'
+  | 'RECALL'
+  | 'SILENCE';
 
 export interface ChatContext {
   id: string;
@@ -44,6 +48,19 @@ export interface ChatMessage {
   metadata?: Record<string, any>;
 }
 
+export interface DisambiguationPrompt {
+  type: 'ENTITY_CLARIFICATION';
+  mention_text: string;
+  options: Array<{
+    label: string;
+    subtitle?: string;
+    entity_id: string;
+    entity_type: string;
+  }>;
+  skippable: boolean;
+  explanation: string;
+}
+
 export interface ChatResponse {
   content: string;
   response_mode: ResponseMode;
@@ -52,6 +69,21 @@ export interface ChatResponse {
   disclaimer?: string;
   related_insights?: string[];
   mrq_proposal_id?: string;
+  disambiguation_prompt?: DisambiguationPrompt;
+  // Recall-specific fields
+  recall_sources?: Array<{
+    entry_id: string;
+    timestamp: string;
+    summary?: string;
+    emotions?: string[];
+    themes?: string[];
+    entities?: string[];
+  }>;
+  confidence_label?: string;
+  recall_meta?: {
+    persona?: string;
+    recall_type?: string;
+  };
 }
 
 export interface ChatSession {

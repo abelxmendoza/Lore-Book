@@ -1,5 +1,5 @@
 import { logger } from '../../logger';
-import { supabase } from '../../supabase';
+import { supabaseAdmin } from '../supabaseClient';
 import type { MythElement, MythMotif, MythArchetype, InnerMyth } from './mythTypes';
 
 /**
@@ -73,7 +73,7 @@ export class MythStorage {
         // Link elements to motif
         for (const element of motif.elements) {
           if (element.id) {
-            await supabase.from('myth_motif_elements').insert({
+            await supabaseAdmin.from('myth_motif_elements').insert({
               motif_id: motifRow.id,
               element_id: element.id,
             });
@@ -97,7 +97,7 @@ export class MythStorage {
   async saveArchetypes(userId: string, mythId: string, archetypes: MythArchetype[]): Promise<void> {
     try {
       for (const archetype of archetypes) {
-        await supabase.from('myth_archetypes').insert({
+        await supabaseAdmin.from('myth_archetypes').insert({
           user_id: userId,
           myth_id: mythId,
           archetype: archetype.archetype,
@@ -136,7 +136,7 @@ export class MythStorage {
       // Link motifs to myth
       for (const motif of myth.motifs) {
         if (motif.id) {
-          await supabase.from('inner_myth_motifs').insert({
+          await supabaseAdmin.from('inner_myth_motifs').insert({
             myth_id: mythRow.id,
             motif_id: motif.id,
           });

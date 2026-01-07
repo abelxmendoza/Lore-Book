@@ -45,6 +45,9 @@ mockDataService.initialize().catch((error) => {
   console.error('[Main] Failed to initialize mock data service:', error);
 });
 
+// Import mock data utilities (exposes console helpers)
+import './utils/enableMockData';
+
 // Ensure root element exists
 const rootElement = document.getElementById('root');
 if (!rootElement) {

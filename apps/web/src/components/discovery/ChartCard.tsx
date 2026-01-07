@@ -18,6 +18,7 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import type { ReactElement } from 'react';
 
 interface ChartCardProps {
   title: string;
@@ -27,6 +28,8 @@ interface ChartCardProps {
   xAxis?: string;
   yAxis?: string;
   series?: string[];
+  customTooltip?: ReactElement;
+  yAxisDomain?: [number, number];
 }
 
 const COLORS = [
@@ -47,7 +50,9 @@ export const ChartCard = ({
   description,
   xAxis = 'x',
   yAxis = 'y',
-  series = []
+  series = [],
+  customTooltip,
+  yAxisDomain
 }: ChartCardProps) => {
   if (!data || data.length === 0) {
     return (
@@ -80,15 +85,20 @@ export const ChartCard = ({
               <YAxis 
                 stroke="#ffffff60"
                 tick={{ fill: '#ffffff60' }}
+                domain={yAxisDomain || ['auto', 'auto']}
               />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#000000dd', 
-                  border: '1px solid #a855f7',
-                  borderRadius: '8px',
-                  color: '#ffffff'
-                }}
-              />
+              {customTooltip ? (
+                <Tooltip content={customTooltip} />
+              ) : (
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: '#000000dd', 
+                    border: '1px solid #a855f7',
+                    borderRadius: '8px',
+                    color: '#ffffff'
+                  }}
+                />
+              )}
               <Legend wrapperStyle={{ color: '#ffffff80' }} />
               {series.length > 0 ? (
                 series.map((s, i) => (

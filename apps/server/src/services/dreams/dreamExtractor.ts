@@ -74,7 +74,7 @@ export class DreamExtractor {
     const textLower = text.toLowerCase();
     const clarityWords = [
       'exactly', 'specifically', 'clearly', 'for sure', 'my plan', 'definitely',
-      'i will', 'i'm going to', 'i plan to', 'my goal is', 'i aim to',
+      'i will', 'i am going to', 'i plan to', 'my goal is', 'i aim to',
       'concrete', 'specific', 'detailed', 'precise',
     ];
     const matches = clarityWords.filter(w => textLower.includes(w)).length;

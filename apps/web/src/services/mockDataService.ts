@@ -16,6 +16,10 @@ import type { Character } from '../components/characters/CharacterProfileCard';
 import type { LocationProfile } from '../components/locations/LocationProfileCard';
 import type { MemoryCard } from '../types/memory';
 import type { ChronologyEntry, Timeline } from '../types/timelineV2';
+import type { Achievement, AchievementStatistics } from '../types/achievement';
+import type { ReactionPatterns } from '../types/reaction';
+import type { PatternInsight, StabilityMetrics } from '../api/perceptionReactionEngine';
+import type { MemoryProposal } from '../hooks/useMemoryReviewQueue';
 import { generateMockTimelines, generateMockChronologyEntries } from '../mocks/timelineMockData';
 
 /**
@@ -43,6 +47,69 @@ export interface DataWithMetadata<T> {
 // Import perception type
 import type { PerceptionEntry } from '../types/perception';
 
+// Photo entry type for mock data
+export interface PhotoEntry {
+  id: string;
+  date: string;
+  content: string;
+  summary?: string | null;
+  tags: string[];
+  metadata?: {
+    photoUrl?: string;
+    photoId?: string;
+    locationName?: string;
+    dateTime?: string;
+    people?: string[];
+    latitude?: number;
+    longitude?: number;
+  };
+}
+
+// Goals & Values types for mock data
+export interface GoalsValuesMockData {
+  goals: Array<{
+    id: string;
+    user_id: string;
+    title: string;
+    description: string;
+    goal_type: 'PERSONAL' | 'CAREER' | 'RELATIONSHIP' | 'HEALTH' | 'FINANCIAL' | 'CREATIVE';
+    related_value_ids: string[];
+    target_timeframe: 'SHORT' | 'MEDIUM' | 'LONG';
+    confidence: number;
+    status: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ABANDONED';
+    created_at: string;
+    ended_at?: string | null;
+    metadata?: Record<string, any>;
+  }>;
+  values: Array<{
+    id: string;
+    user_id: string;
+    name: string;
+    description: string;
+    priority: number;
+    created_at: string;
+    ended_at?: string | null;
+    metadata?: Record<string, any>;
+  }>;
+  alignmentSnapshots: Array<{
+    id: string;
+    user_id: string;
+    goal_id: string;
+    alignment_score: number;
+    confidence: number;
+    time_window: { start: string; end: string };
+    generated_at: string;
+    metadata?: Record<string, any>;
+  }>;
+  driftObservations: Array<{
+    title: string;
+    description: string;
+    disclaimer: string;
+    goal_id: string;
+    trend: 'downward' | 'upward' | 'stable';
+  }>;
+}
+
 class MockDataRegistry {
   private characters: Character[] = [];
   private locations: LocationProfile[] = [];
@@ -50,6 +117,15 @@ class MockDataRegistry {
   private chronologyEntries: ChronologyEntry[] = [];
   private timelines: Timeline[] = [];
   private perceptions: PerceptionEntry[] = [];
+  private photos: PhotoEntry[] = [];
+  private goalsValues: GoalsValuesMockData | null = null;
+  private achievements: Achievement[] = [];
+  private achievementStatistics: AchievementStatistics | null = null;
+  private reactionPatterns: ReactionPatterns | null = null;
+  private patternInsights: PatternInsight[] = [];
+  private stabilityMetrics: StabilityMetrics | null = null;
+  private recoveryTimeData: Array<{ date: string; recovery_time: number; intensity: number }> = [];
+  private memoryProposals: MemoryProposal[] = [];
   private isInitialized = false;
 
   /**
@@ -99,6 +175,39 @@ class MockDataRegistry {
     this.perceptions = perceptions;
   }
 
+  registerPhotos(photos: PhotoEntry[]) {
+    this.photos = photos;
+  }
+
+  registerGoalsValues(data: GoalsValuesMockData) {
+    this.goalsValues = data;
+  }
+
+  registerAchievements(achievements: Achievement[], statistics?: AchievementStatistics) {
+    this.achievements = achievements;
+    if (statistics) {
+      this.achievementStatistics = statistics;
+    }
+  }
+
+  registerReactions(
+    patterns: ReactionPatterns,
+    insights: PatternInsight[],
+    metrics: StabilityMetrics,
+    recoveryData?: Array<{ date: string; recovery_time: number; intensity: number }>
+  ) {
+    this.reactionPatterns = patterns;
+    this.patternInsights = insights;
+    this.stabilityMetrics = metrics;
+    if (recoveryData) {
+      this.recoveryTimeData = recoveryData;
+    }
+  }
+
+  registerMemoryProposals(proposals: MemoryProposal[]) {
+    this.memoryProposals = proposals;
+  }
+
   /**
    * Get mock data
    */
@@ -124,6 +233,42 @@ class MockDataRegistry {
 
   getPerceptions(): PerceptionEntry[] {
     return [...this.perceptions];
+  }
+
+  getPhotos(): PhotoEntry[] {
+    return [...this.photos];
+  }
+
+  getGoalsValues(): GoalsValuesMockData | null {
+    return this.goalsValues ? { ...this.goalsValues } : null;
+  }
+
+  getAchievements(): Achievement[] {
+    return [...this.achievements];
+  }
+
+  getAchievementStatistics(): AchievementStatistics | null {
+    return this.achievementStatistics ? { ...this.achievementStatistics } : null;
+  }
+
+  getReactionPatterns(): ReactionPatterns | null {
+    return this.reactionPatterns ? { ...this.reactionPatterns } : null;
+  }
+
+  getPatternInsights(): PatternInsight[] {
+    return [...this.patternInsights];
+  }
+
+  getStabilityMetrics(): StabilityMetrics | null {
+    return this.stabilityMetrics ? { ...this.stabilityMetrics } : null;
+  }
+
+  getRecoveryTimeData(): Array<{ date: string; recovery_time: number; intensity: number }> {
+    return [...this.recoveryTimeData];
+  }
+
+  getMemoryProposals(): MemoryProposal[] {
+    return [...this.memoryProposals];
   }
 }
 
@@ -237,6 +382,17 @@ export const mockDataService = {
     chronologyEntries: (data: ChronologyEntry[]) => mockDataRegistry.registerChronologyEntries(data),
     timelines: (data: Timeline[]) => mockDataRegistry.registerTimelines(data),
     perceptions: (data: PerceptionEntry[]) => mockDataRegistry.registerPerceptions(data),
+    photos: (data: PhotoEntry[]) => mockDataRegistry.registerPhotos(data),
+    goalsValues: (data: GoalsValuesMockData) => mockDataRegistry.registerGoalsValues(data),
+    achievements: (achievements: Achievement[], statistics?: AchievementStatistics) => 
+      mockDataRegistry.registerAchievements(achievements, statistics),
+    reactions: (
+      patterns: ReactionPatterns,
+      insights: PatternInsight[],
+      metrics: StabilityMetrics,
+      recoveryData?: Array<{ date: string; recovery_time: number; intensity: number }>
+    ) => mockDataRegistry.registerReactions(patterns, insights, metrics, recoveryData),
+    memoryProposals: (data: MemoryProposal[]) => mockDataRegistry.registerMemoryProposals(data),
   },
 
   /**
@@ -248,6 +404,15 @@ export const mockDataService = {
     memories: () => mockDataRegistry.getMemories(),
     chronologyEntries: () => mockDataRegistry.getChronologyEntries(),
     timelines: () => mockDataRegistry.getTimelines(),
+    photos: () => mockDataRegistry.getPhotos(),
+    goalsValues: () => mockDataRegistry.getGoalsValues(),
+    achievements: () => mockDataRegistry.getAchievements(),
+    achievementStatistics: () => mockDataRegistry.getAchievementStatistics(),
+    reactionPatterns: () => mockDataRegistry.getReactionPatterns(),
+    patternInsights: () => mockDataRegistry.getPatternInsights(),
+    stabilityMetrics: () => mockDataRegistry.getStabilityMetrics(),
+    recoveryTimeData: () => mockDataRegistry.getRecoveryTimeData(),
+    memoryProposals: () => mockDataRegistry.getMemoryProposals(),
   },
 
   /**
@@ -267,6 +432,76 @@ export const mockDataService = {
       getDataWithFallback(realData, mockDataRegistry.getTimelines(), useMock),
     perceptions: (realData?: any[] | null, useMock?: boolean) => 
       getDataWithFallback(realData, mockDataRegistry.getPerceptions(), useMock),
+    photos: (realData?: PhotoEntry[] | null, useMock?: boolean) => 
+      getDataWithFallback(realData, mockDataRegistry.getPhotos(), useMock),
+    goalsValues: (realData?: GoalsValuesMockData | null, useMock?: boolean) => {
+      const mock = mockDataRegistry.getGoalsValues();
+      if (useMock !== undefined ? useMock : getGlobalMockDataEnabled()) {
+        const data = mock || realData;
+        return {
+          data: data || { goals: [], values: [], alignmentSnapshots: [], driftObservations: [] },
+          metadata: createDataMetadata(!!mock, mock ? 'mock' : (realData ? 'real' : 'mock'))
+        };
+      } else {
+        return {
+          data: realData || { goals: [], values: [], alignmentSnapshots: [], driftObservations: [] },
+          metadata: createDataMetadata(false, realData ? 'real' : 'mock')
+        };
+      }
+    },
+    achievements: (realData?: Achievement[] | null, useMock?: boolean) => 
+      getDataWithFallback(realData, mockDataRegistry.getAchievements(), useMock),
+    achievementStatistics: (realData?: AchievementStatistics | null, useMock?: boolean) => {
+      const mock = mockDataRegistry.getAchievementStatistics();
+      if (useMock !== undefined ? useMock : getGlobalMockDataEnabled()) {
+        const data = mock || realData;
+        return {
+          data: data || { total: 0, byType: {} as any, byRarity: {} as any, recent: [] },
+          metadata: createDataMetadata(!!mock, mock ? 'mock' : (realData ? 'real' : 'mock'))
+        };
+      } else {
+        return {
+          data: realData || { total: 0, byType: {} as any, byRarity: {} as any, recent: [] },
+          metadata: createDataMetadata(false, realData ? 'real' : 'mock')
+        };
+      }
+    },
+    reactionPatterns: (realData?: ReactionPatterns | null, useMock?: boolean) => {
+      const mock = mockDataRegistry.getReactionPatterns();
+      if (useMock !== undefined ? useMock : getGlobalMockDataEnabled()) {
+        const data = mock || realData;
+        return {
+          data: data || { byTrigger: {}, byLabel: {}, byType: {} as any, intensityAverages: {}, commonPatterns: [] },
+          metadata: createDataMetadata(!!mock, mock ? 'mock' : (realData ? 'real' : 'mock'))
+        };
+      } else {
+        return {
+          data: realData || { byTrigger: {}, byLabel: {}, byType: {} as any, intensityAverages: {}, commonPatterns: [] },
+          metadata: createDataMetadata(false, realData ? 'real' : 'mock')
+        };
+      }
+    },
+    patternInsights: (realData?: PatternInsight[] | null, useMock?: boolean) => 
+      getDataWithFallback(realData, mockDataRegistry.getPatternInsights(), useMock),
+    stabilityMetrics: (realData?: StabilityMetrics | null, useMock?: boolean) => {
+      const mock = mockDataRegistry.getStabilityMetrics();
+      if (useMock !== undefined ? useMock : getGlobalMockDataEnabled()) {
+        const data = mock || realData;
+        return {
+          data: data || { avg_recovery_time_minutes: null, recovery_trend: 'unknown', recurrence_rate: 0, intensity_trend: 'unknown', resilience_score: null },
+          metadata: createDataMetadata(!!mock, mock ? 'mock' : (realData ? 'real' : 'mock'))
+        };
+      } else {
+        return {
+          data: realData || { avg_recovery_time_minutes: null, recovery_trend: 'unknown', recurrence_rate: 0, intensity_trend: 'unknown', resilience_score: null },
+          metadata: createDataMetadata(false, realData ? 'real' : 'mock')
+        };
+      }
+    },
+    recoveryTimeData: (realData?: Array<{ date: string; recovery_time: number; intensity: number }> | null, useMock?: boolean) => 
+      getDataWithFallback(realData, mockDataRegistry.getRecoveryTimeData(), useMock),
+    memoryProposals: (realData?: MemoryProposal[] | null, useMock?: boolean) => 
+      getDataWithFallback(realData, mockDataRegistry.getMemoryProposals(), useMock),
   },
 
   /**

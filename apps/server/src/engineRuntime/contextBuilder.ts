@@ -1,5 +1,5 @@
 import { logger } from '../logger';
-import { supabaseAdmin } from '../supabaseClient';
+import { supabaseAdmin } from '../services/supabaseClient';
 import type { EngineContext } from './types';
 
 /**

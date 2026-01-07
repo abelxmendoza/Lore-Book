@@ -18,11 +18,15 @@ import {
   updatePrivacySettings,
   fetchActivityLogs,
   fetchStorageUsage,
+  fetchPaymentMethods,
+  fetchBillingHistory,
   exportUserData,
   deleteUserAccount,
   changePassword,
   type ActivityLog,
   type StorageUsage,
+  type PaymentMethod,
+  type BillingInvoice,
 } from '../api/user';
 
 type Tab = 'profile' | 'subscription' | 'billing' | 'privacy' | 'activity' | 'data';
@@ -58,6 +62,8 @@ export default function AccountCenter() {
   // Activity logs and storage
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [billingHistory, setBillingHistory] = useState<BillingInvoice[]>([]);
   const [changingPassword, setChangingPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -85,11 +91,13 @@ export default function AccountCenter() {
     setLoading(true);
     setError(null);
     try {
-      const [profileData, privacyData, activityData, storageData] = await Promise.all([
+      const [profileData, privacyData, activityData, storageData, paymentData, billingData] = await Promise.all([
         fetchUserProfile().catch(() => null),
         fetchPrivacySettings().catch(() => null),
         fetchActivityLogs().catch(() => null),
         fetchStorageUsage().catch(() => null),
+        fetchPaymentMethods().catch(() => []),
+        fetchBillingHistory().catch(() => []),
       ]);
 
       if (profileData) {
@@ -110,6 +118,14 @@ export default function AccountCenter() {
 
       if (storageData) {
         setStorageUsage(storageData);
+      }
+
+      if (paymentData) {
+        setPaymentMethods(paymentData);
+      }
+
+      if (billingData) {
+        setBillingHistory(billingData);
       }
     } catch (err: any) {
       console.error('Failed to load account data:', err);
@@ -483,7 +499,11 @@ export default function AccountCenter() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between text-white/70">
                     <span>Member since</span>
-                    <span className="text-white">Jan 2024</span>
+                    <span className="text-white">
+                      {user.created_at 
+                        ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                        : 'N/A'}
+                    </span>
                   </div>
                   <div className="flex justify-between text-white/70">
                     <span>Status</span>
@@ -646,46 +666,120 @@ export default function AccountCenter() {
                       Update
                     </Button>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-8 rounded bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
-                      <CreditCard className="h-5 w-5 text-white" />
+                  {loading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     </div>
-                    <div>
-                      <p className="text-white font-medium">•••• •••• •••• 4242</p>
-                      <p className="text-sm text-white/60">Expires 12/25</p>
+                  ) : paymentMethods.length === 0 ? (
+                    <div className="text-center py-8 text-white/60">
+                      <CreditCard className="h-12 w-12 mx-auto mb-4 text-white/40" />
+                      <p>No payment methods on file</p>
+                      {isMockDataEnabled && (
+                        <p className="text-xs text-yellow-400/80 mt-2">Mock data toggle is enabled</p>
+                      )}
                     </div>
-                  </div>
+                  ) : (
+                    paymentMethods.map((method) => (
+                      <div key={method.id} className="flex items-center gap-4">
+                        <div className="w-12 h-8 rounded bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+                          <CreditCard className="h-5 w-5 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-white font-medium">
+                            •••• •••• •••• {method.last4}
+                            {isMockDataEnabled && (
+                              <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-yellow-500/20 text-yellow-400 rounded border border-yellow-500/30">
+                                Demo
+                              </span>
+                            )}
+                          </p>
+                          {method.expiryMonth && method.expiryYear && (
+                            <p className="text-sm text-white/60">
+                              Expires {method.expiryMonth.toString().padStart(2, '0')}/{method.expiryYear.toString().slice(-2)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 {/* Billing History */}
                 <div className="rounded-xl border border-border/60 bg-white/5 p-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">Billing History</h3>
-                  <div className="space-y-3">
-                    {[
-                      { date: 'Jan 15, 2024', amount: '$29.99', status: 'Paid' },
-                      { date: 'Dec 15, 2023', amount: '$29.99', status: 'Paid' },
-                      { date: 'Nov 15, 2023', amount: '$29.99', status: 'Paid' },
-                    ].map((invoice, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-black/40 border border-border/60">
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-5 w-5 text-white/60" />
-                          <div>
-                            <p className="text-white font-medium">{invoice.date}</p>
-                            <p className="text-xs text-white/60">Monthly Subscription</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="text-white font-semibold">{invoice.amount}</span>
-                          <span className="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
-                            {invoice.status}
-                          </span>
-                          <Button variant="ghost" size="sm">
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-white">Billing History</h3>
+                    {isMockDataEnabled && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-yellow-500/20 text-yellow-400 rounded border border-yellow-500/30">
+                        Demo Data
+                      </span>
+                    )}
                   </div>
+                  {loading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    </div>
+                  ) : billingHistory.length === 0 ? (
+                    <div className="text-center py-8 text-white/60">
+                      <FileText className="h-12 w-12 mx-auto mb-4 text-white/40" />
+                      <p>No billing history available</p>
+                      {isMockDataEnabled && (
+                        <p className="text-xs text-yellow-400/80 mt-2">Mock data toggle is enabled</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {billingHistory.map((invoice) => {
+                        const invoiceDate = new Date(invoice.date);
+                        const formattedDate = invoiceDate.toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        });
+                        const formattedAmount = new Intl.NumberFormat('en-US', {
+                          style: 'currency',
+                          currency: invoice.currency.toUpperCase(),
+                        }).format(invoice.amount);
+
+                        const getStatusColor = (status: string) => {
+                          switch (status) {
+                            case 'paid':
+                              return 'bg-green-500/20 text-green-400';
+                            case 'pending':
+                              return 'bg-yellow-500/20 text-yellow-400';
+                            case 'failed':
+                              return 'bg-red-500/20 text-red-400';
+                            case 'refunded':
+                              return 'bg-blue-500/20 text-blue-400';
+                            default:
+                              return 'bg-white/10 text-white/60';
+                          }
+                        };
+
+                        return (
+                          <div key={invoice.id} className="flex items-center justify-between p-3 rounded-lg bg-black/40 border border-border/60">
+                            <div className="flex items-center gap-3">
+                              <FileText className="h-5 w-5 text-white/60" />
+                              <div>
+                                <p className="text-white font-medium">{formattedDate}</p>
+                                <p className="text-xs text-white/60">{invoice.description}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="text-white font-semibold">{formattedAmount}</span>
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${getStatusColor(invoice.status)}`}>
+                                {invoice.status}
+                              </span>
+                              {invoice.invoiceUrl && (
+                                <Button variant="ghost" size="sm" onClick={() => window.open(invoice.invoiceUrl, '_blank')}>
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

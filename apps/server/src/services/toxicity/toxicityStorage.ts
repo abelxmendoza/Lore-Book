@@ -1,5 +1,5 @@
 import { logger } from '../../logger';
-import { supabase } from '../../supabase';
+import { supabaseAdmin } from '../supabaseClient';
 import type { ToxicityEvent } from './types';
 
 /**

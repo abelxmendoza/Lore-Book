@@ -10,6 +10,8 @@ import { ListTimelineView } from './ListTimelineView';
 import { VerticalTimelineView } from './VerticalTimelineView';
 import { useEntityModal } from '../../contexts/EntityModalContext';
 import { LayerDefinitions, type TimelineLayer } from './LayerDefinitions';
+import { useMockData } from '../../contexts/MockDataContext';
+import { MockDataIndicator } from '../MockDataIndicator';
 import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
 
 type ViewMode = 'chronology' | 'hierarchy' | 'graph' | 'list' | 'vertical';
@@ -48,6 +50,7 @@ const getAISuggestions = (entries: ChronologyEntry[], timelines: Timeline[]) => 
 };
 
 export const OmniTimelinePanel = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [searchQuery, setSearchQuery] = useState('');
   const [timelineSearchQuery, setTimelineSearchQuery] = useState('');
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
@@ -69,6 +72,10 @@ export const OmniTimelinePanel = () => {
     undefined,
     timelineIds
   );
+
+  // Show mock data indicator when toggle is enabled
+  // This helps users understand when they're viewing demo/mock data
+  const isUsingMockData = isMockDataEnabled;
 
   // AI suggestions
   const suggestions = useMemo(() => getAISuggestions(chronologyEntries, timelines), [chronologyEntries, timelines]);
@@ -193,9 +200,14 @@ export const OmniTimelinePanel = () => {
         <div className="p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h1 className="text-xl font-semibold text-white">
-                Timeline
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-semibold text-white">
+                  Timeline
+                </h1>
+                {isUsingMockData && (
+                  <MockDataIndicator />
+                )}
+              </div>
               <p className="text-xs text-white/60 mt-0.5">
                 {filteredEntries.length} {filteredEntries.length === 1 ? 'memory' : 'memories'}
                 {selectedTimeline && ` • ${selectedTimeline.title}`}

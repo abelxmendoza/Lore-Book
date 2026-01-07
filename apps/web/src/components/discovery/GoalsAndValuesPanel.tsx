@@ -1,232 +1,131 @@
 /**
- * Goals & Values Dashboard
- * Gives the system meaning and anchors everything else
+ * Goals & Values Panel - Alignment-Centered UI
+ * Single-panel UI where alignment over time is the primary narrative.
+ * All other sections support interpretation, not analytics overload.
  */
 
-import { useState } from 'react';
-import { 
-  Target, 
-  Heart,
-  TrendingDown,
-  TrendingUp,
-  Minus,
-  AlertCircle,
-  Info
-} from 'lucide-react';
-import { 
-  useGoalsAndValues, 
-  type Value, 
-  type Goal,
-  type GoalType,
-  type AlignmentSnapshot,
-  type DriftObservation
-} from '../../hooks/useGoalsAndValues';
-
-const GoalTypeIcon = ({ type }: { type: GoalType }) => {
-  const icons = {
-    PERSONAL: Heart,
-    CAREER: Target,
-    RELATIONSHIP: Heart,
-    HEALTH: Heart,
-    FINANCIAL: Target,
-    CREATIVE: Target,
-  };
-  const Icon = icons[type] || Target;
-  return <Icon className="h-4 w-4" />;
-};
-
-const AlignmentScoreBar = ({ score }: { score: number }) => {
-  // Score ranges from -1.0 (misaligned) to +1.0 (aligned)
-  const percentage = Math.round((score + 1) * 50); // Convert -1..1 to 0..100
-  const color = score >= 0.3 ? 'bg-green-500' : score >= -0.3 ? 'bg-yellow-500' : 'bg-red-500';
-  
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-3 bg-white/10 rounded-full overflow-hidden">
-        <div 
-          className={`h-full ${color} transition-all`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-      <span className="text-xs text-white/60 w-16 text-right">
-        {score >= 0.3 ? 'Aligned' : score >= -0.3 ? 'Neutral' : 'Misaligned'}
-      </span>
-    </div>
-  );
-};
-
-const ValueCard = ({ value, onPriorityChange }: { 
-  value: Value; 
-  onPriorityChange: (id: string, priority: number) => Promise<void>;
-}) => {
-  const [priority, setPriority] = useState(value.priority);
-  const [updating, setUpdating] = useState(false);
-
-  const handlePriorityChange = async (newPriority: number) => {
-    setPriority(newPriority);
-    setUpdating(true);
-    try {
-      await onPriorityChange(value.id, newPriority);
-    } catch (error) {
-      console.error('Failed to update priority:', error);
-      setPriority(value.priority); // Revert on error
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  return (
-    <div className="border border-border/60 rounded-lg bg-black/40 p-4">
-      <div className="flex items-start justify-between gap-4 mb-3">
-        <div className="flex-1">
-          <h3 className="text-base font-semibold text-white mb-1">{value.name}</h3>
-          <p className="text-sm text-white/70">{value.description}</p>
-        </div>
-      </div>
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-medium text-white/60">Priority</label>
-          <span className="text-xs text-white/60">{Math.round(priority * 100)}%</span>
-        </div>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.05"
-          value={priority}
-          onChange={(e) => {
-            const newPriority = parseFloat(e.target.value);
-            setPriority(newPriority);
-          }}
-          onMouseUp={(e) => {
-            const newPriority = parseFloat((e.target as HTMLInputElement).value);
-            void handlePriorityChange(newPriority);
-          }}
-          disabled={updating}
-          className="w-full"
-        />
-      </div>
-    </div>
-  );
-};
-
-const GoalCard = ({ goal, onComputeAlignment, onDetectDrift }: { 
-  goal: Goal;
-  onComputeAlignment: (goalId: string) => Promise<AlignmentSnapshot>;
-  onDetectDrift: (goalId: string) => Promise<DriftObservation | null>;
-}) => {
-  const [expanded, setExpanded] = useState(false);
-  const [alignment, setAlignment] = useState<AlignmentSnapshot | null>(null);
-  const [drift, setDrift] = useState<DriftObservation | null>(null);
-  const [loadingAlignment, setLoadingAlignment] = useState(false);
-  const [loadingDrift, setLoadingDrift] = useState(false);
-
-  const handleComputeAlignment = async () => {
-    setLoadingAlignment(true);
-    try {
-      const snapshot = await onComputeAlignment(goal.id);
-      setAlignment(snapshot);
-    } catch (error) {
-      console.error('Failed to compute alignment:', error);
-    } finally {
-      setLoadingAlignment(false);
-    }
-  };
-
-  const handleDetectDrift = async () => {
-    setLoadingDrift(true);
-    try {
-      const driftObs = await onDetectDrift(goal.id);
-      setDrift(driftObs);
-    } catch (error) {
-      console.error('Failed to detect drift:', error);
-    } finally {
-      setLoadingDrift(false);
-    }
-  };
-
-  return (
-    <div className="border border-border/60 rounded-lg bg-black/40 p-4 space-y-3">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <GoalTypeIcon type={goal.goal_type} />
-            <span className="text-xs text-white/60">{goal.goal_type}</span>
-            <span className="text-xs text-white/40">•</span>
-            <span className="text-xs text-white/60">{goal.target_timeframe}</span>
-          </div>
-          <h3 className="text-base font-semibold text-white mb-1">{goal.title}</h3>
-          <p className="text-sm text-white/70">{goal.description}</p>
-        </div>
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="p-1 rounded hover:bg-white/10 transition-colors"
-        >
-          {expanded ? '−' : '+'}
-        </button>
-      </div>
-
-      {expanded && (
-        <div className="pt-3 border-t border-white/10 space-y-3">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleComputeAlignment}
-              disabled={loadingAlignment}
-              className="px-3 py-1 bg-primary/20 text-primary border border-primary/50 rounded text-xs hover:bg-primary/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loadingAlignment ? 'Computing...' : 'Compute Alignment'}
-            </button>
-            <button
-              onClick={handleDetectDrift}
-              disabled={loadingDrift}
-              className="px-3 py-1 bg-yellow-500/20 text-yellow-400 border border-yellow-500/50 rounded text-xs hover:bg-yellow-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loadingDrift ? 'Checking...' : 'Check Drift'}
-            </button>
-          </div>
-
-          {alignment && (
-            <div>
-              <h4 className="text-xs font-semibold text-white/60 mb-2">Alignment Score</h4>
-              <AlignmentScoreBar score={alignment.alignment_score} />
-              <p className="text-xs text-white/60 mt-1">
-                Confidence: {Math.round(alignment.confidence * 100)}%
-              </p>
-            </div>
-          )}
-
-          {drift && (
-            <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded">
-              <div className="flex items-start gap-2 mb-1">
-                {drift.trend === 'downward' && <TrendingDown className="h-4 w-4 text-yellow-400 flex-shrink-0 mt-0.5" />}
-                {drift.trend === 'upward' && <TrendingUp className="h-4 w-4 text-green-400 flex-shrink-0 mt-0.5" />}
-                {drift.trend === 'stable' && <Minus className="h-4 w-4 text-white/60 flex-shrink-0 mt-0.5" />}
-                <div>
-                  <h4 className="text-xs font-semibold text-white mb-1">{drift.title}</h4>
-                  <p className="text-xs text-white/80 mb-1">{drift.description}</p>
-                  <p className="text-xs text-yellow-400 italic">{drift.disclaimer}</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
+import { useState, useMemo, useEffect } from 'react';
+import { Target, Heart, AlertCircle } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Badge } from '../ui/badge';
+import { MetricCard } from './MetricCard';
+import { LoadingSkeleton } from './LoadingSkeleton';
+import { EmptyState } from './EmptyState';
+import { useGoalsAndValues } from '../../hooks/useGoalsAndValues';
+import { AlignmentTimelineSection } from './goals/AlignmentTimelineSection';
+import { GoalRow } from './goals/GoalRow';
+import { ValuesPrioritySection } from './goals/ValuesPrioritySection';
+import { DriftSection } from './goals/DriftSection';
+import { useMockData } from '../../contexts/MockDataContext';
+import { mockDataService } from '../../services/mockDataService';
+import { MOCK_GOALS_VALUES_DATA } from '../../mocks/goalsValues';
 
 export const GoalsAndValuesPanel = () => {
-  const { values, goals, loading, error, refetch, updateValuePriority, computeAlignment, detectDrift } = useGoalsAndValues();
+  const { isMockDataEnabled } = useMockData();
+  const {
+    values,
+    goals,
+    alignmentSnapshots,
+    driftObservations,
+    loading,
+    error,
+    dataSource,
+    refetch,
+    updateValuePriority,
+  } = useGoalsAndValues();
 
+  // Selected goal IDs for timeline filtering (default: all goals)
+  const [selectedGoalIds, setSelectedGoalIds] = useState<string[]>([]);
+
+  // Filter to only active goals (must be declared before useEffects that use it)
+  const activeGoals = useMemo(() => {
+    return goals.filter(g => g.status === 'ACTIVE');
+  }, [goals]);
+
+  // Initialize selectedGoalIds to all active goals when goals load
+  useEffect(() => {
+    if (activeGoals.length > 0 && selectedGoalIds.length === 0) {
+      setSelectedGoalIds(activeGoals.map(g => g.id));
+    }
+  }, [activeGoals, selectedGoalIds.length]);
+
+  // Mock data is already registered when module loads (see mocks/goalsValues.ts)
+  // This useEffect ensures it's registered if the module hasn't loaded yet
+  useEffect(() => {
+    const existing = mockDataService.get.goalsValues();
+    if (!existing) {
+      mockDataService.register.goalsValues(MOCK_GOALS_VALUES_DATA);
+      console.log('[GoalsAndValuesPanel] Mock data registered (fallback)');
+    }
+  }, []);
+
+  // Toggle goal selection
+  const toggleGoalSelection = (goalId: string) => {
+    setSelectedGoalIds(prev => {
+      if (prev.includes(goalId)) {
+        return prev.filter(id => id !== goalId);
+      } else {
+        return [...prev, goalId];
+      }
+    });
+  };
+
+  // Get latest alignment for a goal
+  const getLatestAlignment = (goalId: string) => {
+    const goalSnapshots = alignmentSnapshots
+      .filter(s => s.goal_id === goalId)
+      .sort((a, b) => new Date(b.generated_at).getTime() - new Date(a.generated_at).getTime());
+    return goalSnapshots[0] || null;
+  };
+
+  // Count active goals
+  const activeGoalsCount = useMemo(() => {
+    return activeGoals.length;
+  }, [activeGoals]);
+
+  // Sort values by priority (highest first)
+  const sortedValues = useMemo(() => {
+    return [...values].sort((a, b) => b.priority - a.priority);
+  }, [values]);
+
+  // Calculate average alignment
+  const averageAlignment = useMemo(() => {
+    if (alignmentSnapshots.length === 0) return 0;
+    const sum = alignmentSnapshots.reduce((acc, s) => acc + s.alignment_score, 0);
+    return sum / alignmentSnapshots.length;
+  }, [alignmentSnapshots]);
+
+
+  // Debug: Log current state and force load mock data if needed - MUST be before any early returns
+  useEffect(() => {
+    console.log('[GoalsAndValuesPanel] Current state:', {
+      loading,
+      error,
+      valuesCount: values.length,
+      goalsCount: goals.length,
+      activeGoalsCount: activeGoals.length,
+      alignmentSnapshotsCount: alignmentSnapshots.length,
+      driftObservationsCount: driftObservations.length,
+      dataSource,
+      isMockDataEnabled,
+      values: values.map(v => ({ id: v.id, name: v.name, priority: v.priority })),
+      goals: goals.map(g => ({ id: g.id, title: g.title, status: g.status })),
+    });
+    
+    // If no data and mock is enabled, force register and refetch
+    if (values.length === 0 && goals.length === 0 && !loading && isMockDataEnabled) {
+      console.warn('[GoalsAndValuesPanel] No data but mock enabled, forcing refetch...');
+      mockDataService.register.goalsValues(MOCK_GOALS_VALUES_DATA);
+      void refetch();
+    }
+  }, [loading, error, values.length, goals.length, activeGoals.length, alignmentSnapshots.length, driftObservations.length, dataSource, isMockDataEnabled, refetch, values, goals]);
+
+  // Show loading state (early return AFTER all hooks)
   if (loading) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        <p className="mt-4 text-white/60">Loading goals and values...</p>
-      </div>
-    );
+    return <LoadingSkeleton />;
   }
 
+  // Show error state (early return AFTER all hooks)
   if (error) {
     return (
       <div className="text-center py-12">
@@ -243,77 +142,106 @@ export const GoalsAndValuesPanel = () => {
     );
   }
 
+  // Always render the UI, even if data is empty
   return (
     <div className="space-y-6">
-      {/* Header Info */}
-      <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <Target className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+      {/* Debug info - remove in production */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="p-2 bg-yellow-500/20 border border-yellow-500/50 rounded text-xs text-yellow-400">
+          Debug: loading={String(loading)}, values={values.length}, goals={goals.length}, activeGoals={activeGoals.length}, dataSource={dataSource}, mockEnabled={String(isMockDataEnabled)}
+        </div>
+      )}
+      
+      {/* Panel Header */}
+      <Card className="bg-gradient-to-r from-red-900/30 to-pink-900/30 border-red-500/50">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-500/20 rounded-lg">
+                <Target className="h-6 w-6 text-red-400" />
+              </div>
           <div>
-            <h3 className="text-sm font-semibold text-white mb-1">Goals & Values</h3>
-            <p className="text-sm text-white/70">
-              Your declared values and goals anchor the system's understanding of what matters to you. 
-              Alignment is observational, not evaluative. Drift is surfaced neutrally, not criticized.
-            </p>
+                <CardTitle className="text-2xl text-white">Goals & Values</CardTitle>
+                <CardDescription className="text-white/70">
+                  Alignment between intent and action over time
+                </CardDescription>
           </div>
         </div>
-      </div>
-
-      {/* Values Section */}
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-          <Heart className="h-5 w-5 text-red-400" />
-          Values ({values.length})
-        </h3>
-        {values.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {values.map((value) => (
-              <ValueCard
-                key={value.id}
-                value={value}
-                onPriorityChange={updateValuePriority}
-              />
-            ))}
+            {dataSource === 'MOCK' && (
+              <Badge variant="outline" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50">
+                Demo Data
+              </Badge>
+            )}
           </div>
-        ) : (
-          <div className="text-center py-8 border border-border/60 rounded-lg bg-black/20">
-            <Heart className="h-8 w-8 mx-auto mb-2 text-white/40" />
-            <p className="text-sm text-white/60">No values declared yet</p>
-            <p className="text-xs text-white/40 mt-1">
-              Declare your core values to help the system understand what matters to you.
-            </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <MetricCard
+              label="Values"
+              value={values.length || 0}
+            />
+            <MetricCard
+              label="Active Goals"
+              value={activeGoalsCount || 0}
+            />
+            <MetricCard
+              label="Avg Alignment"
+              value={alignmentSnapshots.length > 0 ? `${Math.round(averageAlignment * 100)}%` : '0%'}
+            />
           </div>
-        )}
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Goals Section */}
-      <div>
-        <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-          <Target className="h-5 w-5 text-blue-400" />
-          Active Goals ({goals.length})
-        </h3>
-        {goals.length > 0 ? (
+      {/* Primary: Alignment Timeline */}
+      <AlignmentTimelineSection
+        alignmentSnapshots={alignmentSnapshots}
+        goals={activeGoals}
+        selectedGoalIds={selectedGoalIds}
+      />
+
+      {/* Context: Goals + Values */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Goals List */}
+        <Card className="bg-black/40 border-border/60">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-white">Active Goals</CardTitle>
+            <CardDescription className="text-white/60">
+              Select goals to view in the alignment timeline
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {activeGoals.length > 0 ? (
           <div className="space-y-3">
-            {goals.map((goal) => (
-              <GoalCard
+                {activeGoals.map((goal) => (
+                  <GoalRow
                 key={goal.id}
                 goal={goal}
-                onComputeAlignment={computeAlignment}
-                onDetectDrift={detectDrift}
+                    isSelected={selectedGoalIds.includes(goal.id)}
+                    onToggle={() => toggleGoalSelection(goal.id)}
+                    latestAlignment={getLatestAlignment(goal.id)}
               />
             ))}
           </div>
         ) : (
-          <div className="text-center py-8 border border-border/60 rounded-lg bg-black/20">
-            <Target className="h-8 w-8 mx-auto mb-2 text-white/40" />
-            <p className="text-sm text-white/60">No active goals yet</p>
-            <p className="text-xs text-white/40 mt-1">
-              Declare goals to track your progress and alignment over time.
-            </p>
-          </div>
-        )}
+              <EmptyState
+                title="No Active Goals"
+                description="Declare goals to track your progress and alignment over time"
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Values Priority */}
+        <ValuesPrioritySection
+          values={sortedValues}
+          onPriorityChange={updateValuePriority}
+        />
       </div>
+
+      {/* Drift Observations */}
+      {driftObservations.length > 0 && (
+        <DriftSection driftObservations={driftObservations} />
+      )}
     </div>
   );
 };
-

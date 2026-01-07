@@ -3,6 +3,7 @@
 
 export type AchievementType = 'milestone' | 'streak' | 'skill_level' | 'xp_milestone' | 'consistency' | 'exploration' | 'reflection' | 'growth' | 'other';
 export type AchievementRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+export type AchievementCategory = 'app_usage' | 'real_life';
 
 export interface Achievement {
   id: string;
@@ -16,8 +17,26 @@ export interface Achievement {
   xp_reward: number;
   skill_xp_rewards: Record<string, number>;
   rarity: AchievementRarity;
+  category?: AchievementCategory; // 'app_usage' or 'real_life'
   metadata: Record<string, unknown>;
   created_at: string;
+}
+
+// Real Life Achievement (extends Achievement with life-specific fields)
+export interface RealLifeAchievement extends Achievement {
+  category: 'real_life';
+  achievement_date: string; // When it actually happened in real life
+  life_category?: 'career' | 'education' | 'health' | 'relationships' | 'creative' | 'financial' | 'personal_growth' | 'travel' | 'hobby' | 'other';
+  evidence?: {
+    quotes?: string[];
+    linked_memories?: string[];
+    linked_characters?: string[];
+    linked_locations?: string[];
+    photos?: string[];
+  };
+  verified?: boolean;
+  significance_score?: number; // 0.0 - 1.0
+  impact_description?: string;
 }
 
 export interface AchievementTemplate {

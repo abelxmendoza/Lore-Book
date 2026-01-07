@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import { chapterService } from './chapterService';
 import { supabaseAdmin } from './supabaseClient';
+import { locationAnalyticsService } from './locationAnalyticsService';
 
 const stringFields = ['location', 'place', 'city', 'venue', 'location_tag'];
 
@@ -238,7 +239,7 @@ class LocationService {
           source: entry.source
         }));
 
-      return {
+      const locationProfile: LocationProfile = {
         id: location.id,
         name: location.name,
         visitCount,
@@ -262,7 +263,21 @@ class LocationService {
           .sort((a, b) => b.count - a.count),
         entries: simplifiedEntries,
         sources: Array.from(location.sources)
-      } satisfies LocationProfile;
+      };
+
+      // Calculate analytics (async, don't block)
+      try {
+        const analytics = await locationAnalyticsService.calculateAnalytics(
+          userId,
+          location.id,
+          locationProfile
+        );
+        (locationProfile as any).analytics = analytics;
+      } catch (error) {
+        logger.debug({ error, locationId: location.id }, 'Failed to calculate location analytics, continuing without');
+      }
+
+      return locationProfile;
     });
 
     return locations.sort((a, b) => (b.lastVisited ?? '').localeCompare(a.lastVisited ?? ''));

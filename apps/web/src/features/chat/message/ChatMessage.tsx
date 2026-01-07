@@ -5,6 +5,18 @@ import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 
+const humanizeExpressionMode = (mode: string): string => {
+  const modeMap: Record<string, string> = {
+    SUPPORTIVE: 'Supportive',
+    SOCIAL_FOCUS: 'Social',
+    FACTUAL: 'Factual',
+    ANALYTICAL: 'Analytical',
+    STRATEGIC: 'Strategic',
+    MINIMAL: 'Minimal',
+  };
+  return modeMap[mode] || mode;
+};
+
 export type ChatSource = {
   type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
   id: string;
@@ -12,6 +24,9 @@ export type ChatSource = {
   snippet?: string;
   date?: string;
 };
+
+import type { RecallChatPayload } from './recallTypes';
+import { EntityClarificationChip, type EntityAmbiguity } from './EntityClarificationChip';
 
 export type Message = {
   id: string;
@@ -28,6 +43,41 @@ export type Message = {
   isStreaming?: boolean;
   feedback?: 'positive' | 'negative' | null;
   isSystemMessage?: boolean;
+  metadata?: {
+    intent?: string;
+    expression_mode?: string;
+    why?: string;
+  };
+  // Memory Recall fields
+  recall?: RecallChatPayload;
+  response_mode?: 'RECALL' | 'SILENCE' | string;
+  recall_sources?: Array<{
+    entry_id: string;
+    timestamp: string;
+    summary?: string;
+    emotions?: string[];
+    themes?: string[];
+    entities?: string[];
+  }>;
+  recall_meta?: {
+    persona?: string;
+    recall_type?: string;
+  };
+  confidence_label?: string;
+  disclaimer?: string;
+  ambiguities?: EntityAmbiguity[];
+  disambiguation_prompt?: {
+    type: 'ENTITY_CLARIFICATION';
+    mention_text: string;
+    options: Array<{
+      label: string;
+      subtitle?: string;
+      entity_id: string;
+      entity_type: string;
+    }>;
+    skippable: boolean;
+    explanation: string;
+  };
 };
 
 type ChatMessageProps = {
@@ -80,6 +130,27 @@ export const ChatMessage = ({
         </Card>
       </div>
     );
+  }
+
+  // Memory Recall messages - check both response_mode and metadata
+  const responseMode = message.response_mode || message.metadata?.response_mode;
+  if (!isUser && (responseMode === 'SILENCE' || responseMode === 'RECALL')) {
+    if (responseMode === 'SILENCE') {
+      return <SilenceMessage message={message} />;
+    }
+    if (responseMode === 'RECALL') {
+      return <RecallMessage message={message} />;
+    }
+  }
+
+  // Memory Recall messages
+  if (!isUser && (message.response_mode === 'SILENCE' || message.response_mode === 'RECALL')) {
+    if (message.response_mode === 'SILENCE') {
+      return <SilenceMessage message={message} />;
+    }
+    if (message.response_mode === 'RECALL') {
+      return <RecallMessage message={message} />;
+    }
   }
 
   return (
@@ -306,8 +377,57 @@ export const ChatMessage = ({
           <p className="text-xs text-white/40 mt-2">
             {message.timestamp.toLocaleTimeString()}
           </p>
+
+          {/* Expression Mode Transparency Footer */}
+          {!isUser && message.metadata && (
+            <div className="mt-2 pt-2 border-t border-border/20">
+              <p className="text-xs text-white/40">
+                {message.metadata.expression_mode && (
+                  <span>Mode: {humanizeExpressionMode(message.metadata.expression_mode)}</span>
+                )}
+                {message.metadata.why && (
+                  <>
+                    {message.metadata.expression_mode && <span> · </span>}
+                    <span>{message.metadata.why}</span>
+                  </>
+                )}
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Entity Ambiguity Clarification Chips - shown below user messages */}
+      {isUser && (message.ambiguities || message.disambiguation_prompt) && (
+        <div className="mt-3 space-y-2">
+          {message.ambiguities?.map((ambiguity, idx) => (
+            <EntityClarificationChip
+              key={idx}
+              ambiguity={ambiguity}
+              messageId={message.id}
+            />
+          ))}
+          {message.disambiguation_prompt && (
+            <EntityClarificationChip
+              ambiguity={{
+                surface_text: message.disambiguation_prompt.mention_text,
+                candidates: message.disambiguation_prompt.options
+                  .filter(opt => opt.entity_id && opt.label !== 'Someone else') // Filter out "Someone else" option
+                  .map(opt => ({
+                    entity_id: opt.entity_id,
+                    name: opt.label,
+                    type: (opt.entity_type || 'CHARACTER') as 'CHARACTER' | 'LOCATION' | 'ORG' | 'PERSON',
+                    confidence: 0.8,
+                    last_seen: new Date().toISOString(),
+                    context_hint: opt.subtitle,
+                  })),
+              }}
+              messageId={message.id}
+              hasCreateNewOption={message.disambiguation_prompt.options.some(opt => opt.label === 'Someone else')}
+            />
+          )}
+        </div>
+      )}
       {isUser && (
         <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
           <UserIcon className="h-4 w-4 text-primary" />

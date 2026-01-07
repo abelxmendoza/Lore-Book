@@ -3,6 +3,23 @@
 ## Overview
 This guide helps you explore all the features we've built in Lore Keeper. After populating dummy data, you'll have a rich dataset to demonstrate the app's capabilities.
 
+## 🧠 LoreKeeper Narrative Compiler (LNC) - Behind the Scenes
+
+**What You Need to Know**: The LNC works automatically in the background to ensure your memories are accurate and reliable. You never see it directly, but you experience its benefits:
+
+- ✅ **Fewer Wrong Memories**: When you ask questions, you get accurate answers
+- ✅ **Better Disambiguation**: "Sarah" always refers to the same person
+- ✅ **Cleaner Timelines**: Only valid experiences are used for patterns
+- ✅ **Honest Uncertainty**: Low-confidence information is marked appropriately
+
+**How It Works**: Every journal entry is automatically classified (EXPERIENCE, FEELING, BELIEF, FACT, DECISION, QUESTION) and processed with epistemic integrity. This means:
+- Your beliefs stay as beliefs (never become facts)
+- Your feelings stay as feelings (never become claims)
+- Low-confidence facts are automatically downgraded
+- Pattern detection only uses actual experiences
+
+**See Also**: Check out `LNC_USER_GUIDE.md` for detailed information about the compiler system.
+
 ## Quick Start
 
 1. **Populate Dummy Data**

@@ -14,16 +14,13 @@ import { skillsApi } from '../../api/skills';
 import type { Skill } from '../../types/skill';
 
 export const XpAnalyticsPanel = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const analyticsModule = getModuleByKey('xp');
   const { data, loading, error } = useAnalytics('xp');
   const [skills, setSkills] = useState<Skill[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
 
-  useEffect(() => {
-    void loadSkills();
-  }, []);
-
-  const loadSkills = async () => {
+  const loadSkills = useCallback(async () => {
     setSkillsLoading(true);
     try {
       const skillsData = await skillsApi.getSkills({ active_only: true }).catch(() => []);
@@ -33,7 +30,11 @@ export const XpAnalyticsPanel = () => {
     } finally {
       setSkillsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadSkills();
+  }, [loadSkills, isMockDataEnabled]);
 
   if (!analyticsModule) {
     return (
@@ -114,12 +115,22 @@ export const XpAnalyticsPanel = () => {
     summary: "You're at Level 5 with 1250 total XP. You're earning 42.5 XP per day on average. Your most active domain is \"work\" (28% of XP). 150 XP needed to reach Level 6."
   };
 
-  const displayData = data || mockData;
-  const displaySkills = skills.length > 0 ? skills : [
+  // Use mock data only if toggle is enabled and no real data
+  const displayData = data || (isMockDataEnabled ? mockData : null);
+  const displaySkills = skills.length > 0 ? skills : (isMockDataEnabled ? [
     { id: '1', user_id: 'user', skill_name: 'Python Programming', skill_category: 'technical' as const, current_level: 5, total_xp: 450, xp_to_next_level: 50, description: null, first_mentioned_at: new Date().toISOString(), last_practiced_at: new Date().toISOString(), practice_count: 12, auto_detected: true, confidence_score: 0.8, is_active: true, metadata: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
     { id: '2', user_id: 'user', skill_name: 'Guitar Playing', skill_category: 'creative' as const, current_level: 3, total_xp: 180, xp_to_next_level: 70, description: null, first_mentioned_at: new Date().toISOString(), last_practiced_at: new Date().toISOString(), practice_count: 8, auto_detected: true, confidence_score: 0.7, is_active: true, metadata: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
     { id: '3', user_id: 'user', skill_name: 'Public Speaking', skill_category: 'professional' as const, current_level: 4, total_xp: 320, xp_to_next_level: 80, description: null, first_mentioned_at: new Date().toISOString(), last_practiced_at: new Date().toISOString(), practice_count: 15, auto_detected: true, confidence_score: 0.9, is_active: true, metadata: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
-  ] as Skill[];
+  ] as Skill[] : []);
+
+  if (!displayData && !isMockDataEnabled) {
+    return (
+      <EmptyState
+        title="No XP Data Available"
+        description="Start journaling to track your experience points and level up!"
+      />
+    );
+  }
 
   return <XpDashboardContent data={displayData} skills={displaySkills} skillsLoading={skillsLoading} />;
 };

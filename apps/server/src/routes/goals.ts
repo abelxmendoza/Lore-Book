@@ -54,6 +54,20 @@ router.get('/values', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 /**
+ * POST /api/goals/values/extract
+ * Extract values from user conversations
+ */
+router.post('/values/extract', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const values = await goalValueAlignmentService.extractValuesFromConversations(req.user!.id);
+    res.json({ values, count: values.length });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to extract values');
+    res.status(500).json({ error: 'Failed to extract values' });
+  }
+});
+
+/**
  * PATCH /api/values/:id/priority
  * Update value priority
  */
@@ -227,6 +241,64 @@ router.get('/goals/:id/drift', requireAuth, async (req: AuthenticatedRequest, re
   } catch (error) {
     logger.error({ err: error }, 'Failed to detect goal drift');
     res.status(500).json({ error: 'Failed to detect goal drift' });
+  }
+});
+
+/**
+ * POST /api/goals/values/evolve
+ * Evolve values based on conversations (re-rank, update priorities, detect new values)
+ */
+router.post('/values/evolve', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const result = await goalValueAlignmentService.evolveValues(req.user!.id);
+    res.json(result);
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to evolve values');
+    res.status(500).json({ error: 'Failed to evolve values' });
+  }
+});
+
+/**
+ * GET /api/goals/values/:id/evolution
+ * Get evolution history for a value
+ */
+router.get('/values/:id/evolution', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { limit } = req.query;
+
+    const history = await goalValueAlignmentService.getValueEvolutionHistory(
+      req.user!.id,
+      id,
+      limit ? parseInt(limit as string, 10) : 50
+    );
+
+    res.json({ history });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get value evolution history');
+    res.status(500).json({ error: 'Failed to get value evolution history' });
+  }
+});
+
+/**
+ * GET /api/goals/values/:id/priority-history
+ * Get priority history for a value
+ */
+router.get('/values/:id/priority-history', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { limit } = req.query;
+
+    const history = await goalValueAlignmentService.getValuePriorityHistory(
+      req.user!.id,
+      id,
+      limit ? parseInt(limit as string, 10) : 100
+    );
+
+    res.json({ history });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get value priority history');
+    res.status(500).json({ error: 'Failed to get value priority history' });
   }
 });
 

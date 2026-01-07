@@ -37,6 +37,26 @@ export type StorageUsage = {
   attachments: number;
 };
 
+export type PaymentMethod = {
+  id: string;
+  type: 'card' | 'bank_account';
+  last4: string;
+  brand?: string;
+  expiryMonth?: number;
+  expiryYear?: number;
+  isDefault: boolean;
+};
+
+export type BillingInvoice = {
+  id: string;
+  date: string;
+  amount: number;
+  currency: string;
+  status: 'paid' | 'pending' | 'failed' | 'refunded';
+  description: string;
+  invoiceUrl?: string;
+};
+
 // Fetch user profile
 export const fetchUserProfile = async (): Promise<UserProfile> => {
   const { data: { user } } = await supabase.auth.getUser();
@@ -239,6 +259,93 @@ export const fetchStorageUsage = async (): Promise<StorageUsage> => {
       memories: 0,
       attachments: 0,
     };
+  }
+};
+
+// Fetch payment methods
+export const fetchPaymentMethods = async (): Promise<PaymentMethod[]> => {
+  const mockPaymentMethods: PaymentMethod[] = [
+    {
+      id: 'pm_mock_1',
+      type: 'card',
+      last4: '4242',
+      brand: 'visa',
+      expiryMonth: 12,
+      expiryYear: 2025,
+      isDefault: true,
+    },
+  ];
+
+  try {
+    const response = await fetchJson<{ paymentMethods: PaymentMethod[] }>(
+      '/api/user/payment-methods',
+      undefined,
+      {
+        useMockData: getGlobalMockDataEnabled() || config.dev.allowMockData,
+        mockData: { paymentMethods: mockPaymentMethods },
+      }
+    );
+    return response.paymentMethods;
+  } catch (error) {
+    const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
+    if (shouldUseMock) {
+      if (config.isDevelopment) {
+        console.warn('Failed to fetch payment methods, using mock data:', error);
+      }
+      return mockPaymentMethods;
+    }
+    return [];
+  }
+};
+
+// Fetch billing history
+export const fetchBillingHistory = async (limit: number = 50): Promise<BillingInvoice[]> => {
+  const mockInvoices: BillingInvoice[] = [
+    {
+      id: 'inv_mock_1',
+      date: '2024-01-15',
+      amount: 29.99,
+      currency: 'usd',
+      status: 'paid',
+      description: 'Monthly Subscription',
+    },
+    {
+      id: 'inv_mock_2',
+      date: '2023-12-15',
+      amount: 29.99,
+      currency: 'usd',
+      status: 'paid',
+      description: 'Monthly Subscription',
+    },
+    {
+      id: 'inv_mock_3',
+      date: '2023-11-15',
+      amount: 29.99,
+      currency: 'usd',
+      status: 'paid',
+      description: 'Monthly Subscription',
+    },
+  ];
+
+  try {
+    const response = await fetchJson<{ invoices: BillingInvoice[] }>(
+      `/api/user/billing-history?limit=${limit}`,
+      undefined,
+      {
+        useMockData: getGlobalMockDataEnabled() || config.dev.allowMockData,
+        mockData: { invoices: mockInvoices },
+      }
+    );
+    return response.invoices;
+  } catch (error) {
+    const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
+    if (shouldUseMock) {
+      if (config.isDevelopment) {
+        console.warn('Failed to fetch billing history, using mock data:', error);
+      }
+      return mockInvoices;
+    }
+    return [];
   }
 };
 

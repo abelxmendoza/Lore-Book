@@ -18,7 +18,8 @@ export const useChatStream = () => {
     onChunk: (content: string) => void,
     onMetadata: (metadata: any) => void,
     onComplete: () => void,
-    onError: (error: string) => void
+    onError: (error: string) => void,
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -37,7 +38,8 @@ export const useChatStream = () => {
         credentials: 'include',
         body: JSON.stringify({
           message,
-          conversationHistory
+          conversationHistory,
+          ...(entityContext ? { entityContext } : {})
         }),
         signal: abortController.signal
       });

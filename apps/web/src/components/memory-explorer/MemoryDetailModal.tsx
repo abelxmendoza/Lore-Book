@@ -338,8 +338,12 @@ The user can ask questions about this memory, request to add details, update tag
       const response = await fetchJson<{ answer: string; metadata?: any }>('/api/chat', {
         method: 'POST',
         body: JSON.stringify({
-          message: `[Memory Context: ${memory.title}] ${message}`,
-          conversationHistory
+          message,
+          conversationHistory,
+          entityContext: {
+            type: 'MEMORY',
+            id: memory.id
+          }
         })
       });
 

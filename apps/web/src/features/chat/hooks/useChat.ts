@@ -162,8 +162,22 @@ export const useChat = () => {
             connections: metadata?.connections,
             continuityWarnings: metadata?.continuityWarnings,
             timelineUpdates: metadata?.timelineUpdates,
-            citations: metadata?.citations || []
+            citations: metadata?.citations || [],
+            // Memory Recall fields
+            response_mode: metadata?.response_mode,
+            recall_sources: metadata?.recall_sources,
+            recall_meta: metadata?.recall_meta,
+            recall: metadata?.recall,
+            confidence_label: metadata?.confidence_label,
+            disclaimer: metadata?.disclaimer
           });
+
+          // If there's a disambiguation prompt, attach it to the user message
+          if (metadata?.disambiguationPrompt) {
+            updateMessage(userMessage.id, {
+              disambiguation_prompt: metadata.disambiguationPrompt
+            });
+          }
 
           setTimeout(() => {
             setLoading(false);

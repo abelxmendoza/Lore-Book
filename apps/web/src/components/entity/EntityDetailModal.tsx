@@ -217,6 +217,10 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
         (error: string) => {
           console.error('Chat error:', error);
           setIsLoading(false);
+        },
+        {
+          type: 'ENTITY',
+          id: entityData.id
         }
       );
     } catch (error) {

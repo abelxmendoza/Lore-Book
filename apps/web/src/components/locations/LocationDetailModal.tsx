@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, Link2 } from 'lucide-react';
+import { X, Calendar, MapPin, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, Link2, TrendingUp, TrendingDown, Minus, Star, Award } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -297,6 +297,56 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
     setChatLoading(true);
 
     try {
+      // Pre-compute ternary values to avoid nested ternary parsing issues
+      const importanceExplanation = location.analytics.importance_score >= 70
+        ? 'this location is very important to you'
+        : location.analytics.importance_score >= 40
+        ? 'this location has moderate importance'
+        : 'this location is developing in importance';
+
+      const trendExplanation = location.analytics.trend === 'increasing'
+        ? 'you are visiting more frequently over time'
+        : location.analytics.trend === 'decreasing'
+        ? 'your visits may be declining'
+        : 'your visit pattern is stable';
+
+      const comfortExplanation = location.analytics.comfort_score >= 70
+        ? 'feels very comfortable and familiar'
+        : location.analytics.comfort_score >= 40
+        ? 'has moderate comfort'
+        : 'may feel less comfortable';
+
+      const analyticsContext = location.analytics ? `
+LOCATION ANALYTICS (calculated from visits, journal entries, and conversations):
+- Importance Score: ${location.analytics.importance_score}/100 (overall importance to you)
+- Visit Frequency: ${location.analytics.visit_frequency}/100 (how often you visit)
+- Recency Score: ${location.analytics.recency_score}/100 (how recently visited)
+- Total Visits: ${location.analytics.total_visits} (all-time visit count)
+- Priority Score: ${location.analytics.priority_score}/100 (urgency/priority level)
+- Relevance Score: ${location.analytics.relevance_score}/100 (current relevance)
+- Value Score: ${location.analytics.value_score}/100 (value this location provides)
+- Sentiment Score: ${location.analytics.sentiment_score} (positive to negative, -100 to +100)
+- Comfort Score: ${location.analytics.comfort_score}/100 (how comfortable you feel there)
+- Productivity Score: ${location.analytics.productivity_score}/100 (productivity at this location)
+- Social Score: ${location.analytics.social_score}/100 (social value)
+- Activity Diversity: ${location.analytics.activity_diversity}/100 (variety of activities)
+- Engagement Score: ${location.analytics.engagement_score}/100
+- Associated People: ${location.analytics.associated_people_count} people
+- First Visited: ${location.analytics.first_visited_days_ago} days ago
+- Visit Trend: ${location.analytics.trend} (increasing/stable/decreasing)
+${location.analytics.primary_purpose && location.analytics.primary_purpose.length > 0 ? `- Primary Purpose: ${location.analytics.primary_purpose.join(', ')}` : ''}
+${location.analytics.associated_activities && location.analytics.associated_activities.length > 0 ? `- Associated Activities: ${location.analytics.associated_activities.join(', ')}` : ''}
+${location.analytics.strengths && location.analytics.strengths.length > 0 ? `- Strengths: ${location.analytics.strengths.join(', ')}` : ''}
+${location.analytics.weaknesses && location.analytics.weaknesses.length > 0 ? `- Weaknesses: ${location.analytics.weaknesses.join(', ')}` : ''}
+${location.analytics.opportunities && location.analytics.opportunities.length > 0 ? `- Opportunities: ${location.analytics.opportunities.join(', ')}` : ''}
+${location.analytics.considerations && location.analytics.considerations.length > 0 ? `- Considerations: ${location.analytics.considerations.join(', ')}` : ''}
+
+You can explain these analytics to the user when asked. For example:
+- "Your importance score of ${location.analytics.importance_score}% indicates ${importanceExplanation}"
+- "The visit trend is ${location.analytics.trend}, meaning ${trendExplanation}"
+- "With a comfort score of ${location.analytics.comfort_score}%, this location ${comfortExplanation}"
+` : '';
+
       const locationContext = `You are helping the user with a specific location. Here's the context:
 
 Location: ${location.name}
@@ -306,7 +356,14 @@ First Visited: ${location.firstVisited || 'Unknown'}
 Last Visited: ${location.lastVisited || 'Unknown'}
 People Who Visited: ${location.relatedPeople.map(p => p.name).join(', ')}
 Top Tags: ${location.tagCounts.map(t => t.tag).join(', ')}
-Chapters: ${location.chapters.map(c => c.title).join(', ')}`;
+Chapters: ${location.chapters.map(c => c.title).join(', ')}
+${analyticsContext}
+INSTRUCTIONS:
+1. Answer questions about this location based on the context above
+2. If the user asks about analytics, explain what the scores mean and why they might be at that level
+3. If the user shares new information about the location, acknowledge it and offer to update the location profile
+4. Be conversational and helpful
+5. Use analytics to provide insights about visit patterns, importance, and value`;
 
       const conversationHistory = [
         { role: 'assistant' as const, content: locationContext },
@@ -316,8 +373,12 @@ Chapters: ${location.chapters.map(c => c.title).join(', ')}`;
       const response = await fetchJson<{ answer: string }>('/api/chat', {
         method: 'POST',
         body: JSON.stringify({
-          message: `[Location Context: ${location.name}] ${message}`,
-          conversationHistory
+          message,
+          conversationHistory,
+          entityContext: {
+            type: 'LOCATION',
+            id: location.id
+          }
         })
       });
 
@@ -761,69 +822,218 @@ Chapters: ${location.chapters.map(c => c.title).join(', ')}`;
 
             {activeTab === 'insights' && (
               <div className="space-y-6">
-                {loadingInsights ? (
-                  <div className="text-center py-12 text-white/60">
-                    <Brain className="h-12 w-12 mx-auto mb-3 animate-pulse opacity-50" />
-                    <p>Analyzing location...</p>
-                  </div>
-                ) : insights ? (
+                {location.analytics ? (
                   <>
-                    <div>
-                      <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                        <Brain className="h-5 w-5 text-primary" />
-                        Visit Patterns
-                      </h3>
-                      <div className="grid grid-cols-2 gap-4">
-                        <Card className="bg-black/40 border-border/50">
-                          <CardContent className="p-4">
-                            <div className="text-sm text-white/60 mb-1">Total Visits</div>
-                            <div className="text-2xl font-bold text-white">{insights.totalVisits}</div>
-                          </CardContent>
-                        </Card>
-                        <Card className="bg-black/40 border-border/50">
-                          <CardContent className="p-4">
-                            <div className="text-sm text-white/60 mb-1">Unique People</div>
-                            <div className="text-2xl font-bold text-white">{insights.uniquePeople}</div>
-                          </CardContent>
-                        </Card>
-                        {insights.visitFrequency && (
-                          <>
-                            <Card className="bg-black/40 border-border/50">
-                              <CardContent className="p-4">
-                                <div className="text-sm text-white/60 mb-1">Days Between First & Last</div>
-                                <div className="text-2xl font-bold text-white">{insights.visitFrequency.daysBetween}</div>
-                              </CardContent>
-                            </Card>
-                            <Card className="bg-black/40 border-border/50">
-                              <CardContent className="p-4">
-                                <div className="text-sm text-white/60 mb-1">Avg Days Between Visits</div>
-                                <div className="text-2xl font-bold text-white">{insights.visitFrequency.avgDaysBetween}</div>
-                              </CardContent>
-                            </Card>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    {insights.topTags && insights.topTags.length > 0 && (
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                          <Tag className="h-5 w-5 text-primary" />
-                          Top Tags
+                    {/* Analytics Dashboard */}
+                    <Card className="bg-gradient-to-br from-green-500/10 via-emerald-500/10 to-teal-500/10 border-green-500/30">
+                      <CardHeader>
+                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                          <TrendingUp className="h-5 w-5 text-green-400" />
+                          Location Analytics & Insights
                         </h3>
-                        <div className="flex flex-wrap gap-2">
-                          {insights.topTags.map((tagCount: { tag: string; count: number }) => (
-                            <Badge key={tagCount.tag} variant="outline" className="px-3 py-1 text-sm">
-                              {tagCount.tag} ({tagCount.count})
-                            </Badge>
-                          ))}
+                      </CardHeader>
+                      <CardContent className="space-y-6">
+                        {/* Key Metrics Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Importance</div>
+                            <div className="text-2xl font-bold text-amber-400">{location.analytics.importance_score}%</div>
+                            <div className="text-xs text-white/50 mt-1">to you</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Visit Frequency</div>
+                            <div className="text-2xl font-bold text-blue-400">{location.analytics.visit_frequency}%</div>
+                            <div className="text-xs text-white/50 mt-1">how often</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Priority</div>
+                            <div className="text-2xl font-bold text-green-400">{location.analytics.priority_score}%</div>
+                            <div className="text-xs text-white/50 mt-1">urgency level</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Total Visits</div>
+                            <div className="text-2xl font-bold text-purple-400">{location.analytics.total_visits}</div>
+                            <div className="text-xs text-white/50 mt-1">all time</div>
+                          </div>
                         </div>
-                      </div>
-                    )}
+
+                        {/* Visit Metrics */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-sm text-white/70 mb-2">Recency Score</div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-black/60 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-green-500 to-emerald-600 transition-all"
+                                  style={{ width: `${location.analytics.recency_score}%` }}
+                                />
+                              </div>
+                              <span className="text-sm font-semibold text-white">{location.analytics.recency_score}%</span>
+                            </div>
+                            <div className="text-xs text-white/50 mt-2">How recently visited</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-sm text-white/70 mb-2">Engagement</div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-black/60 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all"
+                                  style={{ width: `${location.analytics.engagement_score}%` }}
+                                />
+                              </div>
+                              <span className="text-sm font-semibold text-white">{location.analytics.engagement_score}%</span>
+                            </div>
+                            <div className="text-xs text-white/50 mt-2">Your engagement level</div>
+                          </div>
+                        </div>
+
+                        {/* Sentiment & Experience Metrics */}
+                        <div className="grid grid-cols-4 gap-4">
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Sentiment</div>
+                            <div className={`text-lg font-semibold ${location.analytics.sentiment_score >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {location.analytics.sentiment_score > 0 ? '+' : ''}{location.analytics.sentiment_score}
+                            </div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Comfort</div>
+                            <div className="text-lg font-semibold text-blue-400">{location.analytics.comfort_score}%</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Productivity</div>
+                            <div className="text-lg font-semibold text-yellow-400">{location.analytics.productivity_score}%</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Social</div>
+                            <div className="text-lg font-semibold text-pink-400">{location.analytics.social_score}%</div>
+                          </div>
+                        </div>
+
+                        {/* Additional Metrics */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Value</div>
+                            <div className="text-lg font-semibold text-yellow-400">{location.analytics.value_score}%</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Relevance</div>
+                            <div className="text-lg font-semibold text-cyan-400">{location.analytics.relevance_score}%</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Activity Diversity</div>
+                            <div className="text-lg font-semibold text-purple-400">{location.analytics.activity_diversity}%</div>
+                          </div>
+                        </div>
+
+                        {/* Context Information */}
+                        {location.analytics.primary_purpose && location.analytics.primary_purpose.length > 0 && (
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-sm font-semibold text-white mb-2">Primary Purpose</div>
+                            <div className="flex flex-wrap gap-2">
+                              {location.analytics.primary_purpose.map((purpose, i) => (
+                                <Badge key={i} variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                                  {purpose}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {location.analytics.associated_activities && location.analytics.associated_activities.length > 0 && (
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-sm font-semibold text-white mb-2">Associated Activities</div>
+                            <div className="flex flex-wrap gap-2">
+                              {location.analytics.associated_activities.map((activity, i) => (
+                                <Badge key={i} variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
+                                  {activity}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Trend */}
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-white/70">Visit Trend:</span>
+                          {location.analytics.trend === 'increasing' && (
+                            <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30">
+                              <TrendingUp className="h-3 w-3 mr-1" />
+                              Increasing
+                            </Badge>
+                          )}
+                          {location.analytics.trend === 'decreasing' && (
+                            <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/30">
+                              <TrendingDown className="h-3 w-3 mr-1" />
+                              Decreasing
+                            </Badge>
+                          )}
+                          {location.analytics.trend === 'stable' && (
+                            <Badge variant="outline" className="bg-gray-500/20 text-gray-400 border-gray-500/30">
+                              <Minus className="h-3 w-3 mr-1" />
+                              Stable
+                            </Badge>
+                          )}
+                          <span className="text-white/50 text-xs ml-2">
+                            First visited {location.analytics.first_visited_days_ago} days ago
+                          </span>
+                        </div>
+
+                        {/* SWOT Analysis */}
+                        {(location.analytics.strengths?.length > 0 || 
+                          location.analytics.weaknesses?.length > 0 || 
+                          location.analytics.opportunities?.length > 0 || 
+                          location.analytics.considerations?.length > 0) && (
+                          <div className="grid grid-cols-2 gap-4 mt-4">
+                            {location.analytics.strengths && location.analytics.strengths.length > 0 && (
+                              <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
+                                <div className="text-sm font-semibold text-green-400 mb-2">Strengths</div>
+                                <ul className="space-y-1">
+                                  {location.analytics.strengths.map((strength, i) => (
+                                    <li key={i} className="text-xs text-white/70">• {strength}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {location.analytics.weaknesses && location.analytics.weaknesses.length > 0 && (
+                              <div className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
+                                <div className="text-sm font-semibold text-red-400 mb-2">Weaknesses</div>
+                                <ul className="space-y-1">
+                                  {location.analytics.weaknesses.map((weakness, i) => (
+                                    <li key={i} className="text-xs text-white/70">• {weakness}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {location.analytics.opportunities && location.analytics.opportunities.length > 0 && (
+                              <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
+                                <div className="text-sm font-semibold text-blue-400 mb-2">Opportunities</div>
+                                <ul className="space-y-1">
+                                  {location.analytics.opportunities.map((opp, i) => (
+                                    <li key={i} className="text-xs text-white/70">• {opp}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {location.analytics.considerations && location.analytics.considerations.length > 0 && (
+                              <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
+                                <div className="text-sm font-semibold text-orange-400 mb-2">Considerations</div>
+                                <ul className="space-y-1">
+                                  {location.analytics.considerations.map((consideration, i) => (
+                                    <li key={i} className="text-xs text-white/70">• {consideration}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                   </>
                 ) : (
                   <div className="text-center py-12 text-white/60">
                     <Brain className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>No insights available</p>
+                    <p>Analytics not available</p>
+                    <p className="text-sm mt-2">Analytics will appear here once calculated</p>
                   </div>
                 )}
               </div>

@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ChronologyEntry, ChronologyOverlap, TimeBucket, Timeline } from '../types/timelineV2';
 import { fetchChronology, fetchChronologyOverlaps, fetchTimeBuckets } from '../api/timelineV2';
-import { generateMockChronologyEntries, generateMockTimelines } from '../mocks/timelineMockData';
-import { shouldUseMockData } from './useShouldUseMockData';
+import { mockDataService } from '../services/mockDataService';
 import { subscribeToMockDataState } from '../contexts/MockDataContext';
 
 export const useChronology = (startTime?: string, endTime?: string, timelineIds?: string[]) => {
@@ -14,65 +13,50 @@ export const useChronology = (startTime?: string, endTime?: string, timelineIds?
     try {
       setLoading(true);
       setError(null);
-      const response = await fetchChronology(startTime, endTime, timelineIds);
+      let response;
+      try {
+        response = await fetchChronology(startTime, endTime, timelineIds);
+      } catch (err) {
+        // If API fails, use mock data if enabled
+        const mockData = mockDataService.getWithFallback.chronologyEntries(null);
+        if (mockData.metadata.isMock) {
+          console.warn('Chronology API failed, using mock data:', err);
+          response = { entries: mockData.data };
+        } else {
+          throw err;
+        }
+      }
       
-      // Use mock data if response is empty and mock data is enabled
-      if ((!response.entries || response.entries.length === 0) && shouldUseMockData()) {
-        // Generate timelines first, then entries linked to them
-        const mockTimelines = generateMockTimelines();
-        const mockEntries = generateMockChronologyEntries(mockTimelines);
-        
-        // Filter by timeline if specified
-        let filteredEntries = mockEntries;
-        if (timelineIds && timelineIds.length > 0) {
-          filteredEntries = mockEntries.filter(e => 
-            e.timeline_memberships?.some(id => timelineIds.includes(id))
-          );
-        }
-        
-        // Filter by time range if specified
-        if (startTime || endTime) {
-          filteredEntries = filteredEntries.filter(e => {
-            const entryTime = new Date(e.start_time).getTime();
-            const start = startTime ? new Date(startTime).getTime() : -Infinity;
-            const end = endTime ? new Date(endTime).getTime() : Infinity;
-            return entryTime >= start && entryTime <= end;
-          });
-        }
-        
-        setEntries(filteredEntries);
-      } else {
-        setEntries(response.entries);
+      // Use centralized mock data service
+      const result = mockDataService.getWithFallback.chronologyEntries(response.entries || []);
+      
+      // Filter by timeline if specified
+      let filteredEntries = result.data;
+      if (timelineIds && timelineIds.length > 0) {
+        filteredEntries = filteredEntries.filter(e => 
+          e.timeline_memberships?.some(id => timelineIds.includes(id))
+        );
+      }
+      
+      // Filter by time range if specified
+      if (startTime || endTime) {
+        filteredEntries = filteredEntries.filter(e => {
+          const entryTime = new Date(e.start_time).getTime();
+          const start = startTime ? new Date(startTime).getTime() : -Infinity;
+          const end = endTime ? new Date(endTime).getTime() : Infinity;
+          return entryTime >= start && entryTime <= end;
+        });
+      }
+      
+      setEntries(filteredEntries);
+      
+      // Clear error if using mock data
+      if (result.metadata.isMock) {
+        setError(null);
       }
     } catch (err) {
-      // Use mock data on error if enabled
-      if (shouldUseMockData()) {
-        console.warn('Chronology API failed, using mock data:', err);
-        // Generate timelines first, then entries linked to them
-        const mockTimelines = generateMockTimelines();
-        const mockEntries = generateMockChronologyEntries(mockTimelines);
-        
-        // Apply filters
-        let filteredEntries = mockEntries;
-        if (timelineIds && timelineIds.length > 0) {
-          filteredEntries = mockEntries.filter(e => 
-            e.timeline_memberships?.some(id => timelineIds.includes(id))
-          );
-        }
-        if (startTime || endTime) {
-          filteredEntries = filteredEntries.filter(e => {
-            const entryTime = new Date(e.start_time).getTime();
-            const start = startTime ? new Date(startTime).getTime() : -Infinity;
-            const end = endTime ? new Date(endTime).getTime() : Infinity;
-            return entryTime >= start && entryTime <= end;
-          });
-        }
-        
-        setEntries(filteredEntries);
-        setError(null); // Don't show error when using mock data
-      } else {
-        setError(err instanceof Error ? err : new Error('Failed to load chronology'));
-      }
+      setError(err instanceof Error ? err : new Error('Failed to load chronology'));
+      setEntries([]);
     } finally {
       setLoading(false);
     }

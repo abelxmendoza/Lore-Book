@@ -10,8 +10,7 @@ import {
   addMemoryToTimeline as addMemoryToTimelineApi,
   removeMemoryFromTimeline as removeMemoryFromTimelineApi
 } from '../api/timelineV2';
-import { generateMockTimelines } from '../mocks/timelineMockData';
-import { shouldUseMockData } from './useShouldUseMockData';
+import { mockDataService } from '../services/mockDataService';
 import { subscribeToMockDataState } from '../contexts/MockDataContext';
 
 export const useTimelineV2 = (filters?: { timeline_type?: string; parent_id?: string | null }) => {
@@ -23,49 +22,43 @@ export const useTimelineV2 = (filters?: { timeline_type?: string; parent_id?: st
     try {
       setLoading(true);
       setError(null);
-      const response = await fetchTimelines(filters);
+      let response;
+      try {
+        response = await fetchTimelines(filters);
+      } catch (err) {
+        // If API fails, use mock data if enabled
+        const mockData = mockDataService.getWithFallback.timelines(null);
+        if (mockData.metadata.isMock) {
+          console.warn('Timelines API failed, using mock data:', err);
+          response = { timelines: mockData.data };
+        } else {
+          throw err;
+        }
+      }
       
-      // Use mock data if response is empty and mock data is enabled
-      if ((!response.timelines || response.timelines.length === 0) && shouldUseMockData()) {
-        const mockTimelines = generateMockTimelines();
-        
-        // Apply filters
-        let filteredTimelines = mockTimelines;
-        if (filters?.timeline_type) {
-          filteredTimelines = filteredTimelines.filter(t => t.timeline_type === filters.timeline_type);
-        }
-        if (filters?.parent_id !== undefined) {
-          filteredTimelines = filteredTimelines.filter(t => 
-            filters.parent_id === null ? t.parent_id === null : t.parent_id === filters.parent_id
-          );
-        }
-        
-        setTimelines(filteredTimelines);
-      } else {
-        setTimelines(response.timelines);
+      // Use centralized mock data service
+      const result = mockDataService.getWithFallback.timelines(response.timelines || []);
+      
+      // Apply filters
+      let filteredTimelines = result.data;
+      if (filters?.timeline_type) {
+        filteredTimelines = filteredTimelines.filter(t => t.timeline_type === filters.timeline_type);
+      }
+      if (filters?.parent_id !== undefined) {
+        filteredTimelines = filteredTimelines.filter(t => 
+          filters.parent_id === null ? t.parent_id === null : t.parent_id === filters.parent_id
+        );
+      }
+      
+      setTimelines(filteredTimelines);
+      
+      // Clear error if using mock data
+      if (result.metadata.isMock) {
+        setError(null);
       }
     } catch (err) {
-      // Use mock data on error if enabled
-      if (shouldUseMockData()) {
-        console.warn('Timelines API failed, using mock data:', err);
-        const mockTimelines = generateMockTimelines();
-        
-        // Apply filters
-        let filteredTimelines = mockTimelines;
-        if (filters?.timeline_type) {
-          filteredTimelines = filteredTimelines.filter(t => t.timeline_type === filters.timeline_type);
-        }
-        if (filters?.parent_id !== undefined) {
-          filteredTimelines = filteredTimelines.filter(t => 
-            filters.parent_id === null ? t.parent_id === null : t.parent_id === filters.parent_id
-          );
-        }
-        
-        setTimelines(filteredTimelines);
-        setError(null); // Don't show error when using mock data
-      } else {
-        setError(err instanceof Error ? err : new Error('Failed to load timelines'));
-      }
+      setError(err instanceof Error ? err : new Error('Failed to load timelines'));
+      setTimelines([]);
     } finally {
       setLoading(false);
     }

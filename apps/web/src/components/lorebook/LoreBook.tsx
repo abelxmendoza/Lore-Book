@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, ChevronUp, ChevronDown, Type, AlignJustify, Search, Sparkles, Loader2, Download } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -10,6 +10,8 @@ import { BiographyRecommendations } from './BiographyRecommendations';
 import { SavedBiographies } from './SavedBiographies';
 import { CoreLorebooks } from './CoreLorebooks';
 import { fetchJson } from '../../lib/api';
+import { useMockData } from '../../contexts/MockDataContext';
+import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import type { Biography, BiographySpec } from '../../../server/src/services/biographyGeneration/types';
 
 type MemoirSection = {
@@ -188,10 +190,11 @@ const dummyChapters: Chapter[] = [
 ];
 
 export const LoreBook = () => {
-  // Use dummy data for demonstration (read-only mode)
-  const [outline, setOutline] = useState<MemoirOutline>(dummyBook);
-  const [chapters, setChapters] = useState<Chapter[]>(dummyChapters);
-  const [loading] = useState(false);
+  const { useMockData: isMockDataEnabled } = useMockData();
+  const { chapters: loreChapters } = useLoreKeeper();
+  const [outline, setOutline] = useState<MemoirOutline | null>(null);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('base');
   const [lineHeight, setLineHeight] = useState<'normal' | 'relaxed' | 'loose'>('relaxed');
@@ -206,6 +209,95 @@ export const LoreBook = () => {
   const [availableBiographies, setAvailableBiographies] = useState<Biography[]>([]);
   const [downloading, setDownloading] = useState(false);
 
+  // Load memoir outline and chapters
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        // Try to load real memoir outline
+        let loadedOutline: MemoirOutline | null = null;
+        try {
+          const response = await fetchJson<{ outline: MemoirOutline }>('/api/memoir/outline');
+          loadedOutline = response.outline;
+        } catch (error) {
+          console.warn('Failed to load memoir outline:', error);
+        }
+
+        // Use mock data only if toggle is enabled and no real data
+        if (!loadedOutline && isMockDataEnabled) {
+          loadedOutline = dummyBook;
+        } else if (!loadedOutline) {
+          loadedOutline = {
+            id: 'default',
+            title: 'My Lore Book',
+            sections: [],
+            lastUpdated: new Date().toISOString(),
+            autoUpdate: false
+          };
+        }
+
+        setOutline(loadedOutline);
+
+        // Use chapters from useLoreKeeper or mock data
+        if (loreChapters.length > 0) {
+          setChapters(loreChapters.map(ch => ({
+            id: ch.id,
+            title: ch.title,
+            start_date: ch.start_date,
+            end_date: ch.end_date,
+            description: ch.summary || '',
+            summary: ch.summary || ''
+          })));
+        } else if (isMockDataEnabled) {
+          setChapters(dummyChapters);
+        } else {
+          setChapters([]);
+        }
+      } catch (error) {
+        console.error('Failed to load lore book data:', error);
+        if (isMockDataEnabled) {
+          setOutline(dummyBook);
+          setChapters(dummyChapters);
+        } else {
+          setOutline({
+            id: 'default',
+            title: 'My Lore Book',
+            sections: [],
+            lastUpdated: new Date().toISOString(),
+            autoUpdate: false
+          });
+          setChapters([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadData();
+  }, [isMockDataEnabled, loreChapters]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!outline) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center text-white/60">
+          <BookOpen className="h-12 w-12 mx-auto mb-4 text-white/40" />
+          <p>No lore book available</p>
+          {isMockDataEnabled && (
+            <p className="text-xs text-yellow-400/80 mt-2">Mock data toggle is enabled</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const flattenSections = (sections: MemoirSection[]): MemoirSection[] => {
     const result: MemoirSection[] = [];
     const sorted = [...sections].sort((a, b) => a.order - b.order);
@@ -218,6 +310,28 @@ export const LoreBook = () => {
     }
     return result;
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!outline) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center text-white/60">
+          <BookOpen className="h-12 w-12 mx-auto mb-4 text-white/40" />
+          <p>No lore book available</p>
+          {isMockDataEnabled && (
+            <p className="text-xs text-yellow-400/80 mt-2">Mock data toggle is enabled</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const flatSections = outline ? flattenSections(outline.sections) : [];
   const currentSection = flatSections[currentSectionIndex];
@@ -582,6 +696,12 @@ export const LoreBook = () => {
               <SavedBiographies onLoadBiography={handleLoadBiography} />
             </div>
           )}
+          {/* Instructions */}
+          <div className="mb-3">
+            <p className="text-sm text-white/70 leading-relaxed">
+              <span className="font-medium text-white/90">Generate or search for a biography:</span> Type a topic like "my fighting career", "robotics journey", or "full life story" to generate a new biography, or search for an existing one. Press Enter or click Generate to create your book.
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/40" />
@@ -593,7 +713,7 @@ export const LoreBook = () => {
                     handleGenerateFromSearch();
                   }
                 }}
-                placeholder="Generate biography: 'my fighting career', 'robotics journey', 'full life story'..."
+                placeholder="e.g., 'my fighting career', 'robotics journey', 'full life story'..."
                 className="pl-10 bg-black/60 border-white/20 text-white placeholder:text-white/40"
               />
             </div>

@@ -1,4 +1,4 @@
-import { Calendar, MapPin, Users, Tag, Sparkles, ChevronRight } from 'lucide-react';
+import { Calendar, MapPin, Users, Tag, Sparkles, ChevronRight, TrendingUp, TrendingDown, Minus, Star, Award } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 
@@ -23,6 +23,31 @@ export type LocationProfile = {
     source: string;
   }>;
   sources: string[];
+  // Analytics
+  analytics?: {
+    visit_frequency: number;
+    recency_score: number;
+    total_visits: number;
+    importance_score: number;
+    priority_score: number;
+    relevance_score: number;
+    value_score: number;
+    sentiment_score: number;
+    comfort_score: number;
+    productivity_score: number;
+    social_score: number;
+    activity_diversity: number;
+    engagement_score: number;
+    associated_people_count: number;
+    first_visited_days_ago: number;
+    trend: 'increasing' | 'stable' | 'decreasing';
+    primary_purpose?: string[];
+    associated_activities?: string[];
+    strengths?: string[];
+    weaknesses?: string[];
+    opportunities?: string[];
+    considerations?: string[];
+  };
 };
 
 type LocationProfileCardProps = {
@@ -40,16 +65,39 @@ export const LocationProfileCard = ({ location, onClick }: LocationProfileCardPr
       <div className="relative h-16 bg-gradient-to-br from-green-500/20 via-emerald-500/20 to-teal-500/20 flex items-center justify-center">
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
         <MapPin className="h-10 w-10 text-white/40 group-hover:text-primary/60 transition-colors relative z-10" />
-        {location.coordinates && (
-          <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+          {location.analytics && (
+            <>
+              {/* Importance Badge */}
+              <Badge 
+                variant="outline"
+                className={`${location.analytics.importance_score >= 70 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : location.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
+                title={`Importance: ${location.analytics.importance_score}/100`}
+              >
+                {location.analytics.importance_score >= 70 ? <Star className="h-2.5 w-2.5" /> : location.analytics.importance_score >= 40 ? <Award className="h-2.5 w-2.5" /> : null}
+                {location.analytics.importance_score}
+              </Badge>
+              {/* Trend Indicator */}
+              {location.analytics.trend === 'increasing' && (
+                <TrendingUp className="h-3 w-3 text-green-400" title="Increasing visits" />
+              )}
+              {location.analytics.trend === 'decreasing' && (
+                <TrendingDown className="h-3 w-3 text-red-400" title="Decreasing visits" />
+              )}
+              {location.analytics.trend === 'stable' && (
+                <Minus className="h-3 w-3 text-gray-400" title="Stable visits" />
+              )}
+            </>
+          )}
+          {location.coordinates && (
             <Badge 
               variant="outline"
               className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs"
             >
               📍 GPS
             </Badge>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <CardHeader className="pb-1.5 pt-2.5 px-4">
@@ -69,10 +117,18 @@ export const LocationProfileCard = ({ location, onClick }: LocationProfileCardPr
       </CardHeader>
       
       <CardContent className="space-y-2 pt-0 px-4 pb-3">
-        {/* Visit Count */}
+        {/* Visit Count and Analytics */}
         <div className="flex items-center gap-2 text-xs text-white/70">
           <Calendar className="h-3.5 w-3.5 text-primary" />
           <span>{location.visitCount} {location.visitCount === 1 ? 'visit' : 'visits'}</span>
+          {location.analytics && (
+            <>
+              <span className="text-white/40">•</span>
+              <span className="text-green-400" title={`Visit frequency: ${location.analytics.visit_frequency}%`}>
+                {location.analytics.visit_frequency}% frequent
+              </span>
+            </>
+          )}
         </div>
 
         {/* Date Range */}

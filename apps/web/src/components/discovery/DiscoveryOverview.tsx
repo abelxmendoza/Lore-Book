@@ -14,7 +14,8 @@ import {
   Clock,
   TrendingUp,
   Target,
-  Database
+  Database,
+  HeartPulse
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
@@ -29,6 +30,10 @@ import { DecisionMemoryPanel } from './DecisionMemoryPanel';
 import { InsightsAndPredictionsPanel } from './InsightsAndPredictionsPanel';
 import { GoalsAndValuesPanel } from './GoalsAndValuesPanel';
 import { MemoryManagementPanel } from './MemoryManagementPanel';
+import { ReactionsResiliencePanel } from './ReactionsResiliencePanel';
+import { LifeArcPanel } from './LifeArcPanel';
+import { CorrectionDashboard } from '../correction-dashboard/CorrectionDashboard';
+import { EntityResolutionDashboard } from '../entity-resolution/EntityResolutionDashboard';
 import { fetchJson } from '../../lib/api';
 
 // Wrapper component for InsightsPanel that fetches data
@@ -157,6 +162,34 @@ const PANEL_CONFIGS: PanelConfig[] = [
     description: 'Unlocked milestones and accomplishments in your journey.',
     icon: Award,
     component: AchievementsPanel
+  },
+  {
+    id: 'reactions-resilience',
+    title: 'Reactions & Resilience',
+    description: 'Patterns in how you respond to experiences and beliefs. Recovery, resilience, and therapeutic reflection.',
+    icon: HeartPulse,
+    component: ReactionsResiliencePanel
+  },
+  {
+    id: 'life-arc',
+    title: 'Recent Moments',
+    description: 'A narrative, human-understandable view of what\'s been going on in your life lately, using events as the atomic units.',
+    icon: Compass,
+    component: LifeArcPanel
+  },
+  {
+    id: 'correction-dashboard',
+    title: 'Correction & Pruning',
+    description: 'View and manage corrections, deprecated knowledge, and contradictions. Everything is transparent, reversible, and traceable.',
+    icon: AlertCircle,
+    component: CorrectionDashboard
+  },
+  {
+    id: 'entity-resolution',
+    title: 'Entity Resolution',
+    description: 'Give explicit control over people, places, orgs, and concepts the system has inferred. No silent merges or splits.',
+    icon: Users,
+    component: EntityResolutionDashboard
   }
 ];
 

@@ -14,6 +14,9 @@ export type SurfaceKey =
   | 'lorebook'
   | 'photos'
   | 'perceptions'
+  | 'events'
+  | 'entities'
+  | 'organizations'
   | 'discovery'
   | 'continuity'
   | 'subscription'
@@ -35,7 +38,11 @@ export const routeToSurface: Record<string, SurfaceKey> = {
   '/memoir': 'memoir',
   '/lorebook': 'lorebook',
   '/photos': 'photos',
+  '/memories': 'search', // Redirect /memories to search (Memory Explorer)
   '/perceptions': 'perceptions',
+  '/events': 'events',
+  '/entities': 'entities',
+  '/organizations': 'organizations',
   '/discovery': 'discovery',
   '/continuity': 'continuity',
   '/subscription': 'subscription',
@@ -58,6 +65,9 @@ export const surfaceToRoute: Record<SurfaceKey, string> = {
   'lorebook': '/lorebook',
   'photos': '/photos',
   'perceptions': '/perceptions',
+  'events': '/events',
+  'entities': '/entities',
+  'organizations': '/organizations',
   'discovery': '/discovery',
   'continuity': '/continuity',
   'subscription': '/subscription',

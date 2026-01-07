@@ -81,6 +81,12 @@ LoreBook helps you:
 - ✅ **Comprehensive Testing** - Unit tests, integration tests, E2E tests (Playwright), security test suite (100% coverage)
 - ✅ **CI/CD Pipeline** - Automated testing, code quality checks, duplicate detection, unused code analysis
 - ✅ **Code Quality** - ESLint rules, import order enforcement, automated code cleanup
+- ✅ **LoreKeeper Narrative Compiler (LNC)** ⭐ - Compiler-inspired system for epistemic integrity and incremental optimization
+  - **Phase 1**: Entry Intermediate Representation (IR) with epistemic classification, dependency graph, and incremental compilation
+  - **Phase 2**: Entity Symbol Table with scope resolution and epistemic type checking
+  - **Epistemic Safety**: Beliefs never become facts, feelings never become claims, low-confidence facts are downgraded
+  - **Incremental Compilation**: Only recompiles affected entries when dependencies change
+  - **Symbol Resolution**: Deterministic entity resolution with scope chain walking
 - ✅ **Memory Explorer** - Semantic search with HQI integration, memory cards, linked memories, filters
 - ✅ **Timeline System** - 9-layer hierarchical timeline (Mythos → MicroActions), visual timeline page, emotion heatmap, highlights
 - ✅ **Character System** - Relationship tracking, knowledge base, auto-generated avatars, relationship graphs, character modals, main character display
@@ -929,6 +935,13 @@ lorekeeper/
 - **Character Service**: Relationship tracking with optimized batch queries
 - **Omega Chat Service**: Multi-persona AI chat with streaming (Gossip Buddy, Therapist, Biography Writer, Soul Capturer, Strategist, Memory Bank)
 - **Chat Service**: Simple chat service for summaries and reflections (used in chapters and summary routes)
+- **LoreKeeper Narrative Compiler (LNC)** ⭐: Compiler-inspired system for epistemic integrity
+  - **IR Compiler**: Compiles utterances to EntryIR with epistemic classification
+  - **Dependency Graph Service**: Tracks entry dependencies for incremental compilation
+  - **Incremental Compiler**: Recompiles only affected entries when dependencies change
+  - **Entity Symbol Table**: Compiler-style symbol resolution with scope chains
+  - **Epistemic Type Checker**: Validates entity usage based on knowledge types
+  - **Symbol Resolver**: Resolves entities using symbol table with type checking
 - **Essence Profile Service**: Automatic extraction and tracking of psychological essence (hopes, dreams, fears, strengths, weaknesses, skills, values, traits, relationship patterns) with evolution tracking
 - **HQI Service**: Semantic search with embeddings (cached)
 - **Timeline Manager**: Hierarchical timeline management (9-layer hierarchy)
@@ -965,7 +978,11 @@ lorekeeper/
 - `essence_profiles`: Dynamic psychological essence profiles (hopes, dreams, fears, strengths, weaknesses, skills, values, traits, relationship patterns, evolution)
 - `fact_claims`: Extracted factual claims (for Truth Seeker)
 - `entry_verifications`: Verification status and reports
-- **Optimized Indexes**: Composite indexes for fast fact lookups, contradiction detection, and verification queries
+- `entry_ir`: Entry Intermediate Representation (LNC Phase 1) - Epistemic classification, confidence, entities, emotions, themes
+- `entry_dependencies`: Dependency graph for incremental compilation (LNC Phase 1)
+- `symbol_scopes`: Symbol scopes for entity resolution (LNC Phase 2)
+- `entity_symbols`: Entity symbols with canonical names and aliases (LNC Phase 2)
+- **Optimized Indexes**: Composite indexes for fast fact lookups, contradiction detection, verification queries, and IR lookups
 
 **Security:**
 - Row Level Security (RLS) on all tables
@@ -1183,13 +1200,55 @@ The Continuity Engine is the core intelligence of LoreBook—the "Jarvis of your
 - Maintains timeline accuracy and prevents factual drift
 - Runs automatically after every journal entry
 
+### LoreKeeper Narrative Compiler (LNC)
+
+The LoreKeeper Narrative Compiler is a compiler-inspired system that ensures epistemic integrity and optimizes memory processing:
+
+**Phase 1: Entry IR + Incremental Compilation**
+- **Entry Intermediate Representation (IR)**: Every journal entry is compiled into a structured IR with:
+  - **Epistemic Classification**: EXPERIENCE, FEELING, BELIEF, FACT, DECISION, QUESTION
+  - **Normalized Semantic Payload**: Content, entities, emotions, themes
+  - **Confidence & Certainty Source**: Tracks reliability and origin of information
+  - **Narrative Links**: Connects related entries
+  - **Compiler Flags**: Tracks compilation state (dirty, deprecated, version)
+- **Dependency Graph**: Tracks relationships between entries and entities
+- **Incremental Compilation**: Only recompiles affected entries when dependencies change (no recomputation storms)
+
+**Phase 2: Entity Symbol Table + Epistemic Type Checking**
+- **Entity Symbol Table**: Compiler-style symbol resolution with:
+  - **Symbol Scopes**: GLOBAL, ERA, EVENT, THREAD scopes
+  - **Scope Chain Walking**: Resolves symbols by walking up parent scopes
+  - **Deterministic Resolution**: Same name always resolves to same symbol
+- **Epistemic Type Checking**: Validates entity usage based on knowledge types:
+  - **EXPERIENCE**: Can reference any entity
+  - **FEELING**: Entities allowed but marked as subjective context
+  - **BELIEF**: Entities allowed but restricted (never promoted to fact)
+  - **FACT**: Requires confidence ≥ 0.6 (low confidence facts are downgraded to BELIEF)
+  - **QUESTION**: Query-only, no assertions
+  - **DECISION**: Entities used as context, not truth
+- **Safety Guarantees**:
+  - Beliefs never become facts
+  - Feelings never become claims
+  - Low-confidence facts are automatically downgraded
+  - Pattern detection only uses EXPERIENCE entries
+  - Memory recall prioritizes high-confidence facts
+
+**Benefits:**
+- **Epistemic Integrity**: Knowledge types are strictly enforced
+- **Better Disambiguation**: Deterministic symbol resolution prevents confusion
+- **Cleaner Timelines**: Only valid entries are used for patterns and analytics
+- **Honest Uncertainty**: Low confidence is tracked, not hidden
+- **Compiler-Style Guarantees**: Deterministic behavior like variable lookup in programming languages
+
 ---
 
 ## Documentation
 
 ### Getting Started
 - **[Quick Start Guide](QUICK_START.md)** - Get up and running fast
+- **[UI User Guide](UI_USER_GUIDE.md)** - Complete guide to the user interface
 - **[Demo Guide](DEMO_GUIDE.md)** - Explore all features
+- **[LNC User Guide](LNC_USER_GUIDE.md)** - Understanding the Narrative Compiler
 
 ### Technical Documentation
 - **[Backend API Mapping](BACKEND_FRONTEND_MAPPING.md)** - Complete API reference

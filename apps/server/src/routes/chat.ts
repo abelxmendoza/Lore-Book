@@ -15,7 +15,11 @@ const chatSchema = z.object({
     role: z.enum(['user', 'assistant']),
     content: z.string()
   })).optional(),
-  stream: z.boolean().optional().default(false)
+  stream: z.boolean().optional().default(false),
+  entityContext: z.object({
+    type: z.enum(['CHARACTER', 'LOCATION', 'PERCEPTION', 'MEMORY', 'ENTITY', 'GOSSIP']),
+    id: z.string().uuid()
+  }).optional()
 });
 
 // Streaming endpoint
@@ -26,7 +30,7 @@ router.post('/stream', requireAuth, checkAiRequestLimit, async (req: Authenticat
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
-    const { message, conversationHistory = [] } = parsed.data;
+    const { message, conversationHistory = [], entityContext } = parsed.data;
     const userId = req.user!.id;
 
     // Set up SSE headers
@@ -34,7 +38,7 @@ router.post('/stream', requireAuth, checkAiRequestLimit, async (req: Authenticat
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const result = await omegaChatService.chatStream(userId, message, conversationHistory);
+    const result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext);
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err => 
@@ -76,7 +80,7 @@ router.post('/', requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequ
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
-    const { message, conversationHistory = [], stream } = parsed.data;
+    const { message, conversationHistory = [], stream, entityContext } = parsed.data;
     const userId = req.user!.id;
 
     // If streaming requested but endpoint is /, redirect to /stream
@@ -84,7 +88,7 @@ router.post('/', requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequ
       return res.status(400).json({ error: 'Use /api/chat/stream for streaming' });
     }
 
-    const result = await omegaChatService.chat(userId, message, conversationHistory);
+    const result = await omegaChatService.chat(userId, message, conversationHistory, entityContext);
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err => 

@@ -10,6 +10,7 @@ import { logger } from '../logger';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
 import { config } from '../config';
+import { characterAnalyticsService } from '../services/characterAnalyticsService';
 
 const router = Router();
 
@@ -369,7 +370,7 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
       });
 
       // Map results back to characters (in-memory operation - FAST)
-      const charactersWithStats = charactersData.map((char) => {
+      const charactersWithStats = await Promise.all(charactersData.map(async (char) => {
         // Extract social_media from metadata if it exists
         const metadata = (char.metadata || {}) as Record<string, unknown>;
         const social_media = metadata.social_media as Record<string, string> | undefined;
@@ -377,7 +378,7 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
         const relationships = relationshipsByCharacter.get(char.id) || [];
         const memories = memoriesByCharacter.get(char.id) || [];
 
-        return {
+        const characterData = {
           id: char.id,
           name: char.name,
           alias: char.alias || [],
@@ -414,7 +415,21 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
             summary: mem.summary || undefined
           }))
         };
-      });
+
+        // Calculate analytics (async, don't block)
+        try {
+          const analytics = await characterAnalyticsService.calculateAnalytics(
+            req.user!.id,
+            char.id,
+            characterData
+          );
+          (characterData as any).analytics = analytics;
+        } catch (error) {
+          logger.debug({ error, characterId: char.id }, 'Failed to calculate character analytics, continuing without');
+        }
+
+        return characterData;
+      }));
 
       return res.json({ characters: charactersWithStats });
     }

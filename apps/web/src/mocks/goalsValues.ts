@@ -1,0 +1,423 @@
+/**
+ * Mock Goals & Values Data
+ * For development and demonstration
+ */
+
+import type { GoalsValuesMockData } from '../services/mockDataService';
+import { mockDataService } from '../services/mockDataService';
+
+export const MOCK_GOALS_VALUES_DATA: GoalsValuesMockData = {
+  values: [
+    {
+      id: 'value-1',
+      user_id: 'user-1',
+      name: 'Freedom',
+      description: 'Value freedom and independence in all aspects of life',
+      priority: 0.9,
+      created_at: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+      ended_at: null,
+    },
+    {
+      id: 'value-2',
+      user_id: 'user-1',
+      name: 'Growth',
+      description: 'Continuous personal and professional development',
+      priority: 0.85,
+      created_at: new Date(Date.now() - 85 * 24 * 60 * 60 * 1000).toISOString(),
+      ended_at: null,
+    },
+    {
+      id: 'value-3',
+      user_id: 'user-1',
+      name: 'Family',
+      description: 'Strong relationships with family members',
+      priority: 0.8,
+      created_at: new Date(Date.now() - 80 * 24 * 60 * 60 * 1000).toISOString(),
+      ended_at: null,
+    },
+    {
+      id: 'value-4',
+      user_id: 'user-1',
+      name: 'Creativity',
+      description: 'Expressing creativity through work and hobbies',
+      priority: 0.75,
+      created_at: new Date(Date.now() - 75 * 24 * 60 * 60 * 1000).toISOString(),
+      ended_at: null,
+    },
+    {
+      id: 'value-5',
+      user_id: 'user-1',
+      name: 'Health',
+      description: 'Physical and mental well-being',
+      priority: 0.7,
+      created_at: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString(),
+      ended_at: null,
+    },
+  ],
+  goals: [
+    {
+      id: 'goal-1',
+      user_id: 'user-1',
+      title: 'Advance in Career',
+      description: 'Get promoted to senior role and take on more leadership responsibilities',
+      goal_type: 'CAREER',
+      related_value_ids: ['value-1', 'value-2'],
+      target_timeframe: 'MEDIUM',
+      confidence: 0.8,
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+      ended_at: null,
+    },
+    {
+      id: 'goal-2',
+      user_id: 'user-1',
+      title: 'Build Stronger Family Relationships',
+      description: 'Spend more quality time with family and improve communication',
+      goal_type: 'RELATIONSHIP',
+      related_value_ids: ['value-3'],
+      target_timeframe: 'LONG',
+      confidence: 0.75,
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 55 * 24 * 60 * 60 * 1000).toISOString(),
+      ended_at: null,
+    },
+    {
+      id: 'goal-3',
+      user_id: 'user-1',
+      title: 'Launch Creative Project',
+      description: 'Complete and publish my creative writing project',
+      goal_type: 'CREATIVE',
+      related_value_ids: ['value-4', 'value-1'],
+      target_timeframe: 'SHORT',
+      confidence: 0.7,
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+      ended_at: null,
+    },
+    {
+      id: 'goal-4',
+      user_id: 'user-1',
+      title: 'Improve Physical Fitness',
+      description: 'Establish consistent exercise routine and reach fitness milestones',
+      goal_type: 'HEALTH',
+      related_value_ids: ['value-5', 'value-2'],
+      target_timeframe: 'MEDIUM',
+      confidence: 0.65,
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+      ended_at: null,
+    },
+    {
+      id: 'goal-5',
+      user_id: 'user-1',
+      title: 'Achieve Financial Independence',
+      description: 'Build savings and investments to achieve financial security',
+      goal_type: 'FINANCIAL',
+      related_value_ids: ['value-1', 'value-2'],
+      target_timeframe: 'LONG',
+      confidence: 0.6,
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+      ended_at: null,
+    },
+  ],
+  alignmentSnapshots: [
+    // Goal 1 (Career) - improving alignment
+    {
+      id: 'snapshot-1-1',
+      user_id: 'user-1',
+      goal_id: 'goal-1',
+      alignment_score: 0.4,
+      confidence: 0.6,
+      time_window: {
+        start: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-1-2',
+      user_id: 'user-1',
+      goal_id: 'goal-1',
+      alignment_score: 0.55,
+      confidence: 0.65,
+      time_window: {
+        start: new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-1-3',
+      user_id: 'user-1',
+      goal_id: 'goal-1',
+      alignment_score: 0.7,
+      confidence: 0.7,
+      time_window: {
+        start: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-1-4',
+      user_id: 'user-1',
+      goal_id: 'goal-1',
+      alignment_score: 0.75,
+      confidence: 0.75,
+      time_window: {
+        start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-1-5',
+      user_id: 'user-1',
+      goal_id: 'goal-1',
+      alignment_score: 0.8,
+      confidence: 0.8,
+      time_window: {
+        start: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-1-6',
+      user_id: 'user-1',
+      goal_id: 'goal-1',
+      alignment_score: 0.82,
+      confidence: 0.8,
+      time_window: {
+        start: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date().toISOString(),
+      },
+      generated_at: new Date().toISOString(),
+    },
+    // Goal 2 (Family) - stable alignment
+    {
+      id: 'snapshot-2-1',
+      user_id: 'user-1',
+      goal_id: 'goal-2',
+      alignment_score: 0.65,
+      confidence: 0.6,
+      time_window: {
+        start: new Date(Date.now() - 55 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-2-2',
+      user_id: 'user-1',
+      goal_id: 'goal-2',
+      alignment_score: 0.68,
+      confidence: 0.65,
+      time_window: {
+        start: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-2-3',
+      user_id: 'user-1',
+      goal_id: 'goal-2',
+      alignment_score: 0.66,
+      confidence: 0.7,
+      time_window: {
+        start: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-2-4',
+      user_id: 'user-1',
+      goal_id: 'goal-2',
+      alignment_score: 0.67,
+      confidence: 0.7,
+      time_window: {
+        start: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-2-5',
+      user_id: 'user-1',
+      goal_id: 'goal-2',
+      alignment_score: 0.65,
+      confidence: 0.75,
+      time_window: {
+        start: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date().toISOString(),
+      },
+      generated_at: new Date().toISOString(),
+    },
+    // Goal 3 (Creative) - declining alignment
+    {
+      id: 'snapshot-3-1',
+      user_id: 'user-1',
+      goal_id: 'goal-3',
+      alignment_score: 0.7,
+      confidence: 0.65,
+      time_window: {
+        start: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-3-2',
+      user_id: 'user-1',
+      goal_id: 'goal-3',
+      alignment_score: 0.6,
+      confidence: 0.7,
+      time_window: {
+        start: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-3-3',
+      user_id: 'user-1',
+      goal_id: 'goal-3',
+      alignment_score: 0.5,
+      confidence: 0.7,
+      time_window: {
+        start: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-3-4',
+      user_id: 'user-1',
+      goal_id: 'goal-3',
+      alignment_score: 0.4,
+      confidence: 0.75,
+      time_window: {
+        start: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date().toISOString(),
+      },
+      generated_at: new Date().toISOString(),
+    },
+    // Goal 4 (Health) - improving
+    {
+      id: 'snapshot-4-1',
+      user_id: 'user-1',
+      goal_id: 'goal-4',
+      alignment_score: 0.3,
+      confidence: 0.6,
+      time_window: {
+        start: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-4-2',
+      user_id: 'user-1',
+      goal_id: 'goal-4',
+      alignment_score: 0.45,
+      confidence: 0.65,
+      time_window: {
+        start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-4-3',
+      user_id: 'user-1',
+      goal_id: 'goal-4',
+      alignment_score: 0.55,
+      confidence: 0.7,
+      time_window: {
+        start: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-4-4',
+      user_id: 'user-1',
+      goal_id: 'goal-4',
+      alignment_score: 0.6,
+      confidence: 0.75,
+      time_window: {
+        start: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date().toISOString(),
+      },
+      generated_at: new Date().toISOString(),
+    },
+    // Goal 5 (Financial) - stable
+    {
+      id: 'snapshot-5-1',
+      user_id: 'user-1',
+      goal_id: 'goal-5',
+      alignment_score: 0.5,
+      confidence: 0.6,
+      time_window: {
+        start: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-5-2',
+      user_id: 'user-1',
+      goal_id: 'goal-5',
+      alignment_score: 0.52,
+      confidence: 0.65,
+      time_window: {
+        start: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      generated_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'snapshot-5-3',
+      user_id: 'user-1',
+      goal_id: 'goal-5',
+      alignment_score: 0.51,
+      confidence: 0.7,
+      time_window: {
+        start: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+        end: new Date().toISOString(),
+      },
+      generated_at: new Date().toISOString(),
+    },
+  ],
+  driftObservations: [
+    {
+      title: 'Creative project alignment decreased',
+      description: 'Alignment with creative project goal has decreased from 0.7 to 0.4 over the past month. This may indicate shifting priorities or challenges in maintaining focus on this goal.',
+      disclaimer: 'This is an observation, not a judgment. Alignment changes can reflect natural shifts in priorities or circumstances.',
+      goal_id: 'goal-3',
+      trend: 'downward',
+    },
+    {
+      title: 'Career goal alignment improved',
+      description: 'Alignment with career advancement goal has steadily improved from 0.4 to 0.82 over the past two months. Actions and decisions appear increasingly aligned with this goal.',
+      disclaimer: 'This is an observation, not a judgment. Improved alignment may reflect increased focus or favorable circumstances.',
+      goal_id: 'goal-1',
+      trend: 'upward',
+    },
+  ],
+};
+
+// Register mock data immediately when module loads
+if (typeof window !== 'undefined') {
+  mockDataService.register.goalsValues(MOCK_GOALS_VALUES_DATA);
+  console.log('[goalsValues mock] Registered mock data:', {
+    values: MOCK_GOALS_VALUES_DATA.values.length,
+    goals: MOCK_GOALS_VALUES_DATA.goals.length,
+    snapshots: MOCK_GOALS_VALUES_DATA.alignmentSnapshots.length,
+    drift: MOCK_GOALS_VALUES_DATA.driftObservations.length,
+  });
+}
+

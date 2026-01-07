@@ -17,6 +17,19 @@ export interface Achievement {
   xp_reward: number;
   skill_xp_rewards: Record<string, number>;
   rarity: AchievementRarity;
+  category?: 'app_usage' | 'real_life';
+  achievement_date?: string;
+  life_category?: 'career' | 'education' | 'health' | 'relationships' | 'creative' | 'financial' | 'personal_growth' | 'travel' | 'hobby' | 'other';
+  evidence?: {
+    quotes?: string[];
+    linked_memories?: string[];
+    linked_characters?: string[];
+    linked_locations?: string[];
+    photos?: string[];
+  };
+  verified?: boolean;
+  significance_score?: number;
+  impact_description?: string;
   metadata: Record<string, unknown>;
   created_at: string;
 }
@@ -43,7 +56,16 @@ class AchievementService {
   /**
    * Get all achievements for a user
    */
-  async getAchievements(userId: string, filters?: { type?: AchievementType; rarity?: AchievementRarity }): Promise<Achievement[]> {
+  async getAchievements(
+    userId: string, 
+    filters?: { 
+      type?: AchievementType; 
+      rarity?: AchievementRarity;
+      category?: 'app_usage' | 'real_life';
+      life_category?: string;
+      verified?: boolean;
+    }
+  ): Promise<Achievement[]> {
     try {
       let query = supabaseAdmin
         .from('achievements')
@@ -57,6 +79,18 @@ class AchievementService {
 
       if (filters?.rarity) {
         query = query.eq('rarity', filters.rarity);
+      }
+
+      if (filters?.category) {
+        query = query.eq('category', filters.category);
+      }
+
+      if (filters?.life_category) {
+        query = query.eq('life_category', filters.life_category);
+      }
+
+      if (filters?.verified !== undefined) {
+        query = query.eq('verified', filters.verified);
       }
 
       const { data, error } = await query;
@@ -324,6 +358,244 @@ class AchievementService {
         recent: []
       };
     }
+  }
+
+  /**
+   * Calculate rarity for a real-life achievement
+   * Uses comprehensive factors: impact, research, difficulty, consensus, data quality
+   */
+  private calculateRarityForRealLife(achievement: {
+    life_category?: string;
+    achievement_name?: string;
+    significance_score?: number;
+    xp_reward?: number;
+    verified?: boolean;
+    impact_description?: string;
+    evidence?: any;
+  }): AchievementRarity {
+    let score = 0;
+
+    // Real life impact (25% weight)
+    const impact = achievement.significance_score || 0.5;
+    score += impact * 0.25;
+
+    // Research significance (20% weight) - based on life_category
+    const researchScores: Record<string, number> = {
+      'health': 0.95,
+      'education': 0.90,
+      'financial': 0.85,
+      'relationships': 0.80,
+      'personal_growth': 0.75,
+      'career': 0.70,
+      'creative': 0.65,
+      'travel': 0.55,
+      'hobby': 0.50,
+      'other': 0.60
+    };
+    score += (researchScores[achievement.life_category || 'other'] || 0.60) * 0.20;
+
+    // Real life difficulty (18% weight)
+    const difficultyScores: Record<string, number> = {
+      'health': 0.85,
+      'education': 0.80,
+      'financial': 0.75,
+      'career': 0.70,
+      'relationships': 0.65,
+      'personal_growth': 0.70,
+      'creative': 0.60,
+      'travel': 0.40,
+      'hobby': 0.50,
+      'other': 0.55
+    };
+    let difficulty = difficultyScores[achievement.life_category || 'other'] || 0.55;
+    
+    // Adjust based on achievement name
+    if (achievement.achievement_name) {
+      const lowerName = achievement.achievement_name.toLowerCase();
+      if (lowerName.includes('quit') || lowerName.includes('addiction') || 
+          lowerName.includes('marathon') || lowerName.includes('degree') ||
+          lowerName.includes('therapy') || lowerName.includes('debt')) {
+        difficulty = Math.min(1.0, difficulty + 0.15);
+      }
+    }
+    
+    // XP reward correlates with difficulty
+    if (achievement.xp_reward) {
+      const xpDifficulty = Math.min(1.0, achievement.xp_reward / 1000);
+      difficulty = (difficulty + xpDifficulty) / 2;
+    }
+    
+    score += difficulty * 0.18;
+
+    // General consensus (15% weight)
+    const consensusScores: Record<string, number> = {
+      'health': 0.95,
+      'education': 0.90,
+      'financial': 0.85,
+      'career': 0.80,
+      'relationships': 0.75,
+      'personal_growth': 0.70,
+      'creative': 0.65,
+      'travel': 0.55,
+      'hobby': 0.50,
+      'other': 0.60
+    };
+    let consensus = consensusScores[achievement.life_category || 'other'] || 0.60;
+    
+    // Boost for high-consensus achievements
+    if (achievement.achievement_name) {
+      const lowerName = achievement.achievement_name.toLowerCase();
+      const highConsensusKeywords = [
+        'graduated', 'degree', 'promotion', 'quit smoking', 'marathon',
+        'therapy', 'debt', 'loan', 'meditation', 'exercise'
+      ];
+      if (highConsensusKeywords.some(keyword => lowerName.includes(keyword))) {
+        consensus = Math.min(1.0, consensus + 0.1);
+      }
+    }
+    
+    score += consensus * 0.15;
+
+    // Data quality (12% weight)
+    let evidenceQuality = 0;
+    if (achievement.evidence) {
+      const evidenceTypes = [
+        achievement.evidence.quotes?.length || 0,
+        achievement.evidence.linked_memories?.length || 0,
+        achievement.evidence.linked_characters?.length || 0,
+        achievement.evidence.linked_locations?.length || 0,
+        achievement.evidence.photos?.length || 0
+      ].filter(count => count > 0).length;
+      evidenceQuality = Math.min(1.0, evidenceTypes * 0.2);
+    }
+    
+    const verified = achievement.verified ? 0.3 : 0;
+    const dataQuality = Math.min(1.0, evidenceQuality + verified);
+    score += dataQuality * 0.12;
+
+    // User-provided significance (10% weight)
+    score += (achievement.significance_score || 0.5) * 0.10;
+
+    // Convert to rarity
+    if (score >= 0.85) return 'legendary';
+    if (score >= 0.70) return 'epic';
+    if (score >= 0.50) return 'rare';
+    if (score >= 0.30) return 'uncommon';
+    return 'common';
+  }
+
+  /**
+   * Calculate XP reward for real-life achievements
+   */
+  private calculateXPForRealLife(achievement: {
+    life_category?: string;
+    significance_score?: number;
+  }): number {
+    const baseXP: Record<string, number> = {
+      'health': 750,
+      'education': 800,
+      'financial': 1000,
+      'career': 500,
+      'relationships': 500,
+      'personal_growth': 250,
+      'creative': 300,
+      'travel': 600,
+      'hobby': 400,
+      'other': 300
+    };
+    
+    const base = baseXP[achievement.life_category || 'other'] || 300;
+    const significanceMultiplier = achievement.significance_score || 0.5;
+    
+    return Math.round(base * (0.5 + significanceMultiplier));
+  }
+
+  /**
+   * Create a real-life achievement
+   */
+  async createRealLifeAchievement(
+    userId: string,
+    achievement: {
+      achievement_name: string;
+      description: string;
+      achievement_date: string;
+      life_category: string;
+      significance_score?: number;
+      impact_description?: string;
+      evidence?: any;
+      verified?: boolean;
+      xp_reward?: number;
+      icon_name?: string;
+    }
+  ): Promise<Achievement> {
+    try {
+      // Auto-calculate rarity
+      const rarity = this.calculateRarityForRealLife({
+        life_category: achievement.life_category,
+        achievement_name: achievement.achievement_name,
+        significance_score: achievement.significance_score,
+        xp_reward: achievement.xp_reward,
+        verified: achievement.verified,
+        impact_description: achievement.impact_description,
+        evidence: achievement.evidence
+      });
+
+      // Auto-calculate XP if not provided
+      const xpReward = achievement.xp_reward || this.calculateXPForRealLife({
+        life_category: achievement.life_category,
+        significance_score: achievement.significance_score
+      });
+
+      const { data, error } = await supabaseAdmin
+        .from('achievements')
+        .insert({
+          user_id: userId,
+          achievement_name: achievement.achievement_name,
+          achievement_type: 'milestone',
+          description: achievement.description,
+          icon_name: achievement.icon_name || 'award',
+          category: 'real_life',
+          achievement_date: achievement.achievement_date,
+          life_category: achievement.life_category,
+          significance_score: achievement.significance_score || 0.5,
+          impact_description: achievement.impact_description,
+          evidence: achievement.evidence || {},
+          verified: achievement.verified || false,
+          unlocked_at: achievement.achievement_date,
+          xp_reward: xpReward,
+          rarity: rarity,
+          criteria_met: { type: 'real_life_achievement' },
+          skill_xp_rewards: {},
+          metadata: {}
+        })
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, userId, achievement }, 'Failed to create real-life achievement');
+        throw error;
+      }
+
+      return data as Achievement;
+    } catch (error) {
+      logger.error({ error, userId, achievement }, 'Failed to create real-life achievement');
+      throw error;
+    }
+  }
+
+  /**
+   * Calculate rarity for a real-life achievement (preview)
+   */
+  async calculateRarityPreview(achievement: {
+    life_category?: string;
+    achievement_name?: string;
+    significance_score?: number;
+    xp_reward?: number;
+    verified?: boolean;
+    impact_description?: string;
+    evidence?: any;
+  }): Promise<AchievementRarity> {
+    return this.calculateRarityForRealLife(achievement);
   }
 }
 

@@ -5,6 +5,9 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { fetchJson } from '../lib/api';
+import { useMockData } from '../contexts/MockDataContext';
+import { mockDataService } from '../services/mockDataService';
+import { subscribeToMockDataState } from '../contexts/MockDataContext';
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 export type ProposalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EDITED' | 'DEFERRED';
@@ -39,6 +42,7 @@ export interface MemoryReviewQueueState {
 }
 
 export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
+  const { isMockDataEnabled } = useMockData();
   const [proposals, setProposals] = useState<MemoryProposal[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,15 +51,30 @@ export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchJson<{ items: MemoryProposal[] }>('/api/mrq/pending');
-      setProposals(result.items || []);
+      if (isMockDataEnabled) {
+        // Use mock data if toggle is enabled
+        const result = mockDataService.getWithFallback.memoryProposals(null, true);
+        setProposals(result.data);
+      } else {
+        // Try to fetch real data
+        try {
+          const result = await fetchJson<{ items: MemoryProposal[] }>('/api/mrq/pending');
+          setProposals(result.items || []);
+        } catch (apiErr) {
+          // If API fails and mock is available, use mock as fallback
+          const result = mockDataService.getWithFallback.memoryProposals(null, true);
+          setProposals(result.data);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load memory proposals');
-      setProposals([]);
+      // Fallback to mock data if available
+      const result = mockDataService.getWithFallback.memoryProposals(null, true);
+      setProposals(result.data);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isMockDataEnabled]);
 
   const approveProposal = useCallback(async (id: string) => {
     try {
@@ -120,6 +139,14 @@ export const useMemoryReviewQueue = (): MemoryReviewQueueState => {
 
   useEffect(() => {
     void fetchProposals();
+  }, [fetchProposals]);
+
+  // Subscribe to mock data toggle changes
+  useEffect(() => {
+    const unsubscribe = subscribeToMockDataState(() => {
+      void fetchProposals();
+    });
+    return unsubscribe;
   }, [fetchProposals]);
 
   return {

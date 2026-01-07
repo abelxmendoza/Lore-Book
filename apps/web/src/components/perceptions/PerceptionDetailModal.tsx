@@ -12,6 +12,7 @@ import type { PerceptionEntry, PerceptionStatus } from '../../types/perception';
 import { formatDistanceToNow } from 'date-fns';
 import { Textarea } from '../ui/textarea';
 import { ReactionList } from '../reactions/ReactionList';
+import { PerceptionEvolutionTimeline } from './PerceptionEvolutionTimeline';
 
 interface PerceptionDetailModalProps {
   perception: PerceptionEntry;
@@ -120,6 +121,10 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
         (error: string) => {
           console.error('Chat error:', error);
           setIsLoading(false);
+        },
+        {
+          type: 'PERCEPTION',
+          id: perception.id
         }
       );
     } catch (error) {
@@ -515,64 +520,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
             </div>
           ) : activeTab === 'evolution' ? (
             <div className="space-y-4">
-              <Card className="bg-black/40 border-border/60">
-                <CardHeader>
-                  <h3 className="text-lg font-semibold text-white">Belief Evolution</h3>
-                  <p className="text-sm text-white/60 mt-1">
-                    Track how your belief changed over time
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Original Content */}
-                  {perception.original_content && perception.original_content !== perception.content && (
-                    <div>
-                      <label className="text-xs text-white/60 mb-1 block">Original Belief</label>
-                      <p className="text-sm text-white/60 italic line-through opacity-70">{perception.original_content}</p>
-                    </div>
-                  )}
-
-                  {/* Current Content */}
-                  <div>
-                    <label className="text-xs text-white/60 mb-1 block">Current Belief</label>
-                    <p className="text-sm text-white/80">{perception.content}</p>
-                  </div>
-
-                  {/* Evolution Notes */}
-                  {perception.evolution_notes && perception.evolution_notes.length > 0 ? (
-                    <div>
-                      <label className="text-xs text-white/60 mb-2 block">Evolution Timeline</label>
-                      <div className="space-y-2">
-                        {perception.evolution_notes.map((note, idx) => (
-                          <div key={idx} className="text-sm text-white/70 pl-4 border-l-2 border-orange-500/30">
-                            {note}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-white/40">
-                      <Eye className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">No evolution notes yet</p>
-                      <p className="text-xs text-white/30 mt-1">Add notes as your understanding changes</p>
-                    </div>
-                  )}
-
-                  {/* Status Changes */}
-                  <div>
-                    <label className="text-xs text-white/60 mb-2 block">Status History</label>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Badge variant="outline" className={getStatusColor(perception.status)}>
-                          {perception.status}
-                        </Badge>
-                        <span className="text-white/50 text-xs">
-                          Current status
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <PerceptionEvolutionTimeline perception={perception} />
             </div>
           ) : null}
         </div>

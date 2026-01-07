@@ -191,6 +191,10 @@ Respond naturally and conversationally. Be friendly, curious, and encourage them
           console.error('Chat error:', error);
           setIsLoading(false);
           setIsExtracting(false);
+        },
+        {
+          type: 'GOSSIP',
+          id: 'gossip-session' // Special ID for gossip chat sessions
         }
       );
     } catch (error) {

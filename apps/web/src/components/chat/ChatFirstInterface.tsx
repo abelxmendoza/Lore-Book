@@ -199,6 +199,17 @@ export const ChatFirstInterface = () => {
         (meta) => {
           metadata = meta;
           
+          // Update message with disambiguation prompt if present
+          if (meta.disambiguationPrompt) {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId
+                  ? { ...msg, disambiguationPrompt: meta.disambiguationPrompt }
+                  : msg
+              )
+            );
+          }
+          
           // Progress through stages based on metadata
           if (meta.sources && meta.sources.length > 0) {
             setLoadingStage('searching');
@@ -658,6 +669,30 @@ export const ChatFirstInterface = () => {
                   onEditMemory={(claimId) => {
                     // Navigate to Memory Management panel with claim selected
                     navigate('/discovery?memory=' + claimId);
+                  }}
+                  onDisambiguationSelect={async (mentionText, option) => {
+                    try {
+                      // Send disambiguation response to API
+                      await fetchJson('/api/entity-resolution/disambiguate', {
+                        method: 'POST',
+                        body: {
+                          mention_text: mentionText,
+                          action: option === 'CREATE_NEW' ? 'CREATE_NEW_ENTITY' : option === 'SKIP' ? 'SKIP' : 'SELECT_ENTITY',
+                          entity_id: typeof option === 'object' ? option.entity_id : undefined,
+                        },
+                      });
+
+                      // Remove disambiguation prompt from message
+                      setMessages((prev) =>
+                        prev.map((msg) =>
+                          msg.id === message.id
+                            ? { ...msg, disambiguationPrompt: undefined }
+                            : msg
+                        )
+                      );
+                    } catch (error) {
+                      console.error('Failed to handle disambiguation:', error);
+                    }
                   }}
                 />
               </div>

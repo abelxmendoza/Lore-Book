@@ -4,8 +4,21 @@ import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { MarkdownRenderer } from './MarkdownRenderer';
+
+const humanizeExpressionMode = (mode: string): string => {
+  const modeMap: Record<string, string> = {
+    SUPPORTIVE: 'Supportive',
+    SOCIAL_FOCUS: 'Social',
+    FACTUAL: 'Factual',
+    ANALYTICAL: 'Analytical',
+    STRATEGIC: 'Strategic',
+    MINIMAL: 'Minimal',
+  };
+  return modeMap[mode] || mode;
+};
 import { ChatMemoryIndicator, type MemoryIndicator } from './ChatMemoryIndicator';
 import { ChatMemorySuggestion } from './ChatMemorySuggestion';
+import { DisambiguationPrompt, type DisambiguationOption } from './DisambiguationPrompt';
 
 export type ChatSource = {
   type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
@@ -39,6 +52,12 @@ export type Message = {
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   memories?: MemoryIndicator[]; // Memories used in this response
   memorySuggestion?: MemorySuggestion; // Proactive memory suggestion
+  disambiguationPrompt?: {
+    mention_text: string;
+    options: DisambiguationOption[];
+    skippable: boolean;
+    explanation: string;
+  };
   isStreaming?: boolean;
   feedback?: 'positive' | 'negative' | null;
   isSystemMessage?: boolean;
@@ -53,6 +72,7 @@ type ChatMessageProps = {
   onSourceClick?: (source: ChatSource) => void;
   onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void;
   onEditMemory?: (claimId: string) => void;
+  onDisambiguationSelect?: (mentionText: string, option: DisambiguationOption | 'CREATE_NEW' | 'SKIP') => void;
 };
 
 export const ChatMessage = ({
@@ -65,7 +85,8 @@ export const ChatMessage = ({
   onFeedback,
   onEditMemory,
   onApproveMemorySuggestion,
-  onDismissMemorySuggestion
+  onDismissMemorySuggestion,
+  onDisambiguationSelect
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { logger } from '../logger';
 import { emotionalIntelligenceEngine } from '../services/emotionalIntelligence/emotionalEngine';
 import { getAllEvents } from '../services/emotionalIntelligence/storeEvent';
-import { supabaseAdmin } from '../supabaseClient';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
 

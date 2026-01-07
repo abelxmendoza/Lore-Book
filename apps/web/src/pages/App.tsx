@@ -32,6 +32,9 @@ import { PerceptionsView } from '../components/perceptions/PerceptionsView';
 import { TrialBanner } from '../components/subscription/TrialBanner';
 import { PricingPage } from '../components/subscription/PricingPage';
 import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage';
+import { EventsBook } from '../components/events/EventsBook';
+import { EntityResolutionBook } from '../components/entities/EntityResolutionBook';
+import { OrganizationsBook } from '../components/organizations/OrganizationsBook';
 import { PrivacySettings } from '../components/security/PrivacySettings';
 import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
 import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
@@ -39,7 +42,7 @@ import { GuestBanner } from '../components/guest/GuestBanner';
 import { getSurfaceFromRoute } from '../utils/routeMapping';
 
 
-type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide';
+type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'memories' | 'events' | 'entities' | 'organizations' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide';
 
 interface AppContentProps {
   defaultSurface?: SurfaceKey;
@@ -254,11 +257,16 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                             <PhotoAlbum />
                           </div>
                         )}
+                        {/* 'memories' surface removed - use 'search' for Memory Explorer */}
                         {activeSurface === 'perceptions' && (
                           <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
                             <PerceptionsView showCreateButton={true} />
                           </div>
                         )}
+
+                        {activeSurface === 'events' && <EventsBook />}
+                        {activeSurface === 'entities' && <EntityResolutionBook />}
+                        {activeSurface === 'organizations' && <OrganizationsBook />}
                         {activeSurface === 'subscription' && (
           <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] p-6">
             <TrialBanner />

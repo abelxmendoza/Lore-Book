@@ -1,4 +1,4 @@
-import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp, Settings, UserCog, HelpCircle, Images, Eye } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -8,8 +8,8 @@ import { useAuth } from '../lib/supabase';
 import { isAdmin } from '../middleware/roleGuard';
 
 interface SidebarProps {
-  activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions';
-  onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions') => void;
+  activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations';
+  onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations') => void;
   onCreateChapter?: () => void;
   onToggleDevMode?: () => void;
   devModeEnabled?: boolean;
@@ -91,6 +91,19 @@ export const Sidebar = ({
         Locations
       </button>
       <button
+        onClick={() => handleSurfaceChange('organizations')}
+        aria-label="Open groups view"
+        aria-current={activeSurface === 'organizations' ? 'page' : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+          activeSurface === 'organizations'
+            ? 'border-primary bg-primary/10 text-white'
+            : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+        }`}
+      >
+        <Building2 className="h-4 w-4 text-primary" aria-hidden="true" />
+        Groups
+      </button>
+      <button
         onClick={() => handleSurfaceChange('timeline')}
         aria-label="Open timeline view"
         aria-current={activeSurface === 'timeline' ? 'page' : undefined}
@@ -167,6 +180,32 @@ export const Sidebar = ({
       >
         <Eye className="h-4 w-4 text-primary" aria-hidden="true" />
         Perceptions
+      </button>
+      <button
+        onClick={() => handleSurfaceChange('events')}
+        aria-label="Open events view"
+        aria-current={activeSurface === 'events' ? 'page' : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+          activeSurface === 'events'
+            ? 'border-primary bg-primary/10 text-white'
+            : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+        }`}
+      >
+        <Calendar className="h-4 w-4 text-primary" aria-hidden="true" />
+        Events
+      </button>
+      <button
+        onClick={() => handleSurfaceChange('entities')}
+        aria-label="Open entity resolution"
+        aria-current={activeSurface === 'entities' ? 'page' : undefined}
+        className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+          activeSurface === 'entities'
+            ? 'border-primary bg-primary/10 text-white'
+            : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+        }`}
+      >
+        <Hash className="h-4 w-4 text-primary" aria-hidden="true" />
+        Entities
       </button>
       <button
         onClick={() => handleSurfaceChange('discovery')}

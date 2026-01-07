@@ -1,7 +1,8 @@
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../../supabaseClient';
+import { supabaseAdmin } from '../supabaseClient';
 import { getEngineResults } from '../../engineRuntime/storage';
 import { embeddingService } from '../embeddingService';
+import { entityConfidenceService } from '../entityConfidenceService';
 import type { MemoryContext } from './chatTypes';
 import type { MemoryEntry } from '../../types';
 
@@ -162,7 +163,7 @@ export class MemoryRetriever {
   }
 
   /**
-   * Semantic search for relevant entries
+   * Semantic search for relevant entries with confidence weighting
    */
   async searchRelevantEntries(
     userId: string,
@@ -173,12 +174,12 @@ export class MemoryRetriever {
       // Get query embedding
       const queryEmbedding = await embeddingService.embedText(query);
 
-      // Search using vector similarity
+      // Search using vector similarity (get more results for re-ranking)
       const { data, error } = await supabaseAdmin.rpc('match_journal_entries', {
         user_uuid: userId,
         query_embedding: queryEmbedding,
         match_threshold: 0.7,
-        match_count: limit,
+        match_count: limit * 2, // Get more for confidence re-ranking
       });
 
       if (error) {
@@ -193,11 +194,222 @@ export class MemoryRetriever {
         return (textData || []) as MemoryEntry[];
       }
 
-      return (data || []) as MemoryEntry[];
+      const entries = (data || []) as MemoryEntry[];
+
+      // NEW: Attach entity confidence and re-rank
+      const entriesWithConfidence = await this.attachConfidenceAndRank(
+        userId,
+        entries,
+        limit
+      );
+
+      return entriesWithConfidence;
     } catch (error) {
       logger.error({ error }, 'Error searching relevant entries');
       return [];
     }
+  }
+
+  /**
+   * Attach entity confidence to entries and re-rank by confidence-weighted score
+   */
+  private async attachConfidenceAndRank(
+    userId: string,
+    entries: MemoryEntry[],
+    limit: number
+  ): Promise<MemoryEntry[]> {
+    try {
+      // Get entity mentions for all entries
+      const entryIds = entries.map(e => e.id).filter(Boolean);
+      if (entryIds.length === 0) return entries;
+
+      const { data: mentions } = await supabaseAdmin
+        .from('entity_mentions')
+        .select('memory_id, entity_id')
+        .in('memory_id', entryIds)
+        .eq('user_id', userId);
+
+      // Group entity IDs by entry
+      const entryEntityMap = new Map<string, string[]>();
+      (mentions || []).forEach(m => {
+        const existing = entryEntityMap.get(m.memory_id) || [];
+        if (!existing.includes(m.entity_id)) {
+          existing.push(m.entity_id);
+        }
+        entryEntityMap.set(m.memory_id, existing);
+      });
+
+      // Load confidence for each entry's entities
+      const entriesWithConfidence = await Promise.all(
+        entries.map(async (entry) => {
+          const entityIds = entryEntityMap.get(entry.id) || [];
+          
+          if (entityIds.length === 0) {
+            // No entities, default confidence
+            return {
+              ...entry,
+              _confidence: 0.5,
+              _confidence_mode: 'NORMAL' as const,
+            };
+          }
+
+          // Get confidence for each entity (try CHARACTER first, fallback to generic)
+          const confidences = await Promise.all(
+            entityIds.map(async (entityId) => {
+              try {
+                // Try to get from entities table
+                const { data: entity } = await supabaseAdmin
+                  .from('entities')
+                  .select('confidence, type')
+                  .eq('id', entityId)
+                  .eq('user_id', userId)
+                  .single();
+
+                if (entity) {
+                  return entity.confidence || 0.5;
+                }
+
+                // Fallback: try entity confidence service
+                const entityType = entity?.type === 'person' ? 'CHARACTER' : 'LOCATION';
+                const confidence = await entityConfidenceService['getCurrentEntityConfidence'](
+                  userId,
+                  entityId,
+                  entityType
+                );
+                return confidence || 0.5;
+              } catch (error) {
+                logger.debug({ error, entityId }, 'Failed to get entity confidence');
+                return 0.5; // Default
+              }
+            })
+          );
+
+          // Calculate average confidence
+          const avgConfidence = confidences.reduce((a, b) => a + b, 0) / confidences.length;
+          const confidenceMode = avgConfidence < 0.5 ? 'UNCERTAIN' : 'NORMAL';
+
+          return {
+            ...entry,
+            _confidence: avgConfidence,
+            _confidence_mode: confidenceMode,
+          };
+        })
+      );
+
+      // Calculate recency weight (entries from last 30 days get boost)
+      const now = Date.now();
+      const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+
+      const recencyWeight = (dateStr: string): number => {
+        const entryDate = new Date(dateStr).getTime();
+        const daysAgo = (now - entryDate) / (24 * 60 * 60 * 1000);
+        if (daysAgo <= 30) return 1.2; // Recent boost
+        if (daysAgo <= 90) return 1.0; // Normal
+        return 0.8; // Older entries slightly downweighted
+      };
+
+      // Re-rank by: similarity * recency * confidence
+      const ranked = entriesWithConfidence
+        .map(entry => {
+          const similarity = (entry as any).similarity || 0.5;
+          const recency = recencyWeight(entry.date || entry.created_at || new Date().toISOString());
+          const confidence = entry._confidence || 0.5;
+          const rankScore = similarity * recency * confidence;
+
+          return {
+            ...entry,
+            _rank_score: rankScore,
+          };
+        })
+        .sort((a, b) => b._rank_score - a._rank_score)
+        .slice(0, limit);
+
+      return ranked;
+    } catch (error) {
+      logger.error({ error }, 'Failed to attach confidence, returning original entries');
+      return entries;
+    }
+  }
+
+  /**
+   * Check for narrative divergence when retrieving entries
+   * Surfaces multiple versions if narratives conflict
+   */
+  async checkNarrativeDivergence(
+    userId: string,
+    entries: MemoryEntry[]
+  ): Promise<Array<MemoryEntry & { narrative_divergence?: { conflicting_entry_ids: string[]; note: string } }>> {
+    try {
+      // Group entries by entity mentions to detect conflicts
+      const entryEntityMap = new Map<string, string[]>();
+      
+      for (const entry of entries) {
+        const { data: mentions } = await supabaseAdmin
+          .from('entity_mentions')
+          .select('entity_id')
+          .eq('memory_id', entry.id)
+          .eq('user_id', userId);
+        
+        const entityIds = (mentions || []).map(m => m.entity_id);
+        entryEntityMap.set(entry.id, entityIds);
+      }
+
+      // Check for entries mentioning same entities with conflicting descriptions
+      const entriesWithDivergence = entries.map(entry => {
+        const entryEntities = entryEntityMap.get(entry.id) || [];
+        const conflictingEntries: string[] = [];
+        
+        // Find other entries mentioning same entities
+        for (const otherEntry of entries) {
+          if (otherEntry.id === entry.id) continue;
+          
+          const otherEntities = entryEntityMap.get(otherEntry.id) || [];
+          const sharedEntities = entryEntities.filter(e => otherEntities.includes(e));
+          
+          if (sharedEntities.length > 0) {
+            // Check if descriptions conflict (simple semantic check)
+            // In production, this would use embeddings for better accuracy
+            const contentSimilarity = this.simpleContentSimilarity(entry.content, otherEntry.content);
+            
+            // Low similarity + same entities = potential divergence
+            if (contentSimilarity < 0.3 && sharedEntities.length > 0) {
+              conflictingEntries.push(otherEntry.id);
+            }
+          }
+        }
+        
+        if (conflictingEntries.length > 0) {
+          return {
+            ...entry,
+            narrative_divergence: {
+              conflicting_entry_ids: conflictingEntries,
+              note: 'Earlier entries describe this differently',
+            },
+          };
+        }
+        
+        return entry;
+      });
+
+      return entriesWithDivergence;
+    } catch (error) {
+      logger.error({ error }, 'Failed to check narrative divergence');
+      return entries;
+    }
+  }
+
+  /**
+   * Simple content similarity check (word overlap)
+   * In production, use embeddings for better accuracy
+   */
+  private simpleContentSimilarity(text1: string, text2: string): number {
+    const words1 = new Set(text1.toLowerCase().split(/\s+/));
+    const words2 = new Set(text2.toLowerCase().split(/\s+/));
+    
+    const intersection = new Set([...words1].filter(w => words2.has(w)));
+    const union = new Set([...words1, ...words2]);
+    
+    return intersection.size / union.size;
   }
 }
 

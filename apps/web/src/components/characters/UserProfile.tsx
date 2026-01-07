@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Calendar, BookOpen, Users, Tag, TrendingUp, Sparkles, Clock, FileText, Heart, MapPin, Award, BarChart3, Activity, Brain, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -7,6 +7,7 @@ import { fetchJson } from '../../lib/api';
 import { IdentityPulseModal } from '../identity/IdentityPulseModal';
 import { InsightsModal } from '../InsightsModal';
 import { AIInsightModal } from './AIInsightModal';
+import { useMockData } from '../../contexts/MockDataContext';
 
 const DEBUG = true; // Set to false in production
 
@@ -46,6 +47,7 @@ type UserStats = {
 
 export const UserProfile = () => {
   const navigate = useNavigate();
+  const { useMockData: isMockDataEnabled } = useMockData();
   const { entries = [], chapters = [], tags = [], timeline } = useLoreKeeper();
   const [characters, setCharacters] = useState<any[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -60,14 +62,6 @@ export const UserProfile = () => {
   const [engineResults, setEngineResults] = useState<Record<string, any> | null>(null);
   const [engineResultsLoading, setEngineResultsLoading] = useState(false);
   const [aiInsightModal, setAiInsightModal] = useState<{ type: string; data: any } | null>(null);
-
-  useEffect(() => {
-    debugLog('useEffect', 'Component mounted, loading initial data');
-    loadCharacters();
-    loadLanguageStyle();
-    loadInsights();
-    loadEngineResults();
-  }, []);
 
   // Mock engine results for UI preview
   const getMockEngineResults = (): Record<string, any> => ({
@@ -148,7 +142,7 @@ export const UserProfile = () => {
     }
   });
 
-  const loadEngineResults = async () => {
+  const loadEngineResults = useCallback(async () => {
     debugLog('loadEngineResults', 'Starting to load engine results');
     setEngineResultsLoading(true);
     setErrors(prev => ({ ...prev, engineResults: '' }));
@@ -157,20 +151,42 @@ export const UserProfile = () => {
       debugLog('loadEngineResults', 'Engine results loaded successfully', { 
         engines: result ? Object.keys(result) : [] 
       });
-      // Use mock data if no results from API (for UI preview)
-      setEngineResults(result && Object.keys(result).length > 0 ? result : getMockEngineResults());
+      // Use mock data only if toggle is enabled and no real data
+      if (result && Object.keys(result).length > 0) {
+        setEngineResults(result);
+      } else if (isMockDataEnabled) {
+        setEngineResults(getMockEngineResults());
+      } else {
+        setEngineResults(null);
+      }
     } catch (error: any) {
       debugError('loadEngineResults', 'Failed to load engine results', error);
-      // Use mock data on error for UI preview
-      setEngineResults(getMockEngineResults());
-      setErrors(prev => ({ 
-        ...prev, 
-        engineResults: error?.message || 'Using mock data for preview' 
-      }));
+      // Use mock data on error only if toggle is enabled
+      if (isMockDataEnabled) {
+        setEngineResults(getMockEngineResults());
+        setErrors(prev => ({ 
+          ...prev, 
+          engineResults: error?.message || 'Using mock data for preview' 
+        }));
+      } else {
+        setEngineResults(null);
+        setErrors(prev => ({ 
+          ...prev, 
+          engineResults: error?.message || 'Failed to load engine results' 
+        }));
+      }
     } finally {
       setEngineResultsLoading(false);
     }
-  };
+  }, [isMockDataEnabled]);
+
+  useEffect(() => {
+    debugLog('useEffect', 'Component mounted, loading initial data', { isMockDataEnabled });
+    loadCharacters();
+    loadLanguageStyle();
+    loadInsights();
+    loadEngineResults();
+  }, [isMockDataEnabled, loadEngineResults]);
 
   const loadInsights = async () => {
     debugLog('loadInsights', 'Starting to load insights');

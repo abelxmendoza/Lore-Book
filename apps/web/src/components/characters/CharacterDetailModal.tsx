@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { PerceptionsView } from '../perceptions/PerceptionsView';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye } from 'lucide-react';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -15,6 +15,7 @@ import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { Character } from './CharacterProfileCard';
 import { CharacterAvatar } from './CharacterAvatar';
+import { useMockData } from '../../contexts/MockDataContext';
 
 type SocialMedia = {
   instagram?: string;
@@ -310,7 +311,39 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
     setChatLoading(true);
 
     try {
-      // Build comprehensive character context
+      // Build comprehensive character context with analytics
+      const analyticsContext = editedCharacter.analytics ? `
+RELATIONSHIP ANALYTICS (calculated from conversations, journal entries, and shared memories):
+- Closeness Score: ${editedCharacter.analytics.closeness_score}/100 (how close the relationship is)
+- Relationship Depth: ${editedCharacter.analytics.relationship_depth}/100 (depth of emotional connection)
+- Interaction Frequency: ${editedCharacter.analytics.interaction_frequency}/100 (how often you interact)
+- Recency Score: ${editedCharacter.analytics.recency_score}/100 (how recently you interacted)
+- Importance Score: ${editedCharacter.analytics.importance_score}/100 (overall importance to you)
+- Priority Score: ${editedCharacter.analytics.priority_score}/100 (urgency/priority level)
+- Relevance Score: ${editedCharacter.analytics.relevance_score}/100 (current relevance in your life)
+- Value Score: ${editedCharacter.analytics.value_score}/100 (value they provide to you)
+- Their Influence on You: ${editedCharacter.analytics.character_influence_on_user}/100
+- Your Influence Over Them: ${editedCharacter.analytics.user_influence_over_character}/100
+- Sentiment Score: ${editedCharacter.analytics.sentiment_score} (positive to negative, -100 to +100)
+- Trust Score: ${editedCharacter.analytics.trust_score}/100
+- Support Score: ${editedCharacter.analytics.support_score}/100
+- Conflict Score: ${editedCharacter.analytics.conflict_score}/100
+- Engagement Score: ${editedCharacter.analytics.engagement_score}/100
+- Activity Level: ${editedCharacter.analytics.activity_level}/100
+- Shared Experiences: ${editedCharacter.analytics.shared_experiences} memories/events
+- Relationship Duration: ${editedCharacter.analytics.relationship_duration_days} days
+- Relationship Trend: ${editedCharacter.analytics.trend} (deepening/stable/weakening)
+${editedCharacter.analytics.strengths && editedCharacter.analytics.strengths.length > 0 ? `- Strengths: ${editedCharacter.analytics.strengths.join(', ')}` : ''}
+${editedCharacter.analytics.weaknesses && editedCharacter.analytics.weaknesses.length > 0 ? `- Weaknesses: ${editedCharacter.analytics.weaknesses.join(', ')}` : ''}
+${editedCharacter.analytics.opportunities && editedCharacter.analytics.opportunities.length > 0 ? `- Opportunities: ${editedCharacter.analytics.opportunities.join(', ')}` : ''}
+${editedCharacter.analytics.risks && editedCharacter.analytics.risks.length > 0 ? `- Risks: ${editedCharacter.analytics.risks.join(', ')}` : ''}
+
+You can explain these analytics to the user when asked. For example:
+- "Your closeness score of ${editedCharacter.analytics.closeness_score}% indicates ${editedCharacter.analytics.closeness_score >= 70 ? 'a very close relationship' : editedCharacter.analytics.closeness_score >= 40 ? 'a moderate closeness' : 'a developing relationship'}"
+- "The relationship trend is ${editedCharacter.analytics.trend}, meaning ${editedCharacter.analytics.trend === 'deepening' ? 'your connection is growing stronger over time' : editedCharacter.analytics.trend === 'weakening' ? 'your connection may be fading' : 'your relationship is stable'}"
+- "With ${editedCharacter.analytics.shared_experiences} shared experiences, this relationship has ${editedCharacter.analytics.shared_experiences >= 10 ? 'significant depth' : editedCharacter.analytics.shared_experiences >= 5 ? 'moderate depth' : 'developing depth'}"
+` : '';
+
       const characterContext = `You are helping the user discuss and update information about a specific character in their personal journal system.
 
 CHARACTER CONTEXT:
@@ -324,14 +357,15 @@ CHARACTER CONTEXT:
 - Tags: ${editedCharacter.tags?.join(', ') || 'None'}
 - Shared Memories: ${editedCharacter.shared_memories?.length || 0}
 - Relationships: ${editedCharacter.relationships?.length || 0}
-- Closeness Score: ${editedCharacter.metadata?.closeness_score || 0}/100
-
+${analyticsContext}
 INSTRUCTIONS:
 1. Answer questions about this character based on the context above
-2. If the user shares new information or stories about the character, acknowledge it and offer to update the character profile
-3. If the user asks to update something (role, summary, tags, etc.), extract the update and respond naturally
-4. Be conversational and helpful
-5. When updates are needed, format them as JSON in your response like: {"updates": {"summary": "new summary", "tags": ["tag1", "tag2"]}}
+2. If the user asks about analytics, explain what the scores mean and why they might be at that level
+3. If the user shares new information or stories about the character, acknowledge it and offer to update the character profile
+4. If the user asks to update something (role, summary, tags, etc.), extract the update and respond naturally
+5. Be conversational and helpful
+6. When updates are needed, format them as JSON in your response like: {"updates": {"summary": "new summary", "tags": ["tag1", "tag2"]}}
+7. Use analytics to provide insights based on the scores provided above
 
 User's message: ${message}`;
 
@@ -344,16 +378,9 @@ User's message: ${message}`;
         body: JSON.stringify({
           message: message,
           conversationHistory,
-          context: {
-            character: {
-              id: character.id,
-              name: editedCharacter.name,
-              summary: editedCharacter.summary,
-              role: editedCharacter.role,
-              archetype: editedCharacter.archetype,
-              tags: editedCharacter.tags,
-              metadata: editedCharacter.metadata
-            }
+          entityContext: {
+            type: 'CHARACTER',
+            id: character.id
           }
         })
       });
@@ -1435,163 +1462,222 @@ User's message: ${message}`;
               </div>
             )}
 
-            {/* Insights Tab */}
+            {/* Insights Tab - Analytics Dashboard */}
             {!loadingDetails && activeTab === 'insights' && (
               <div className="space-y-8">
-                {loadingInsights ? (
-                  <div className="text-center py-16 text-white/60">
-                    <Brain className="h-16 w-16 mx-auto mb-4 animate-pulse opacity-50 text-primary" />
-                    <p className="text-lg">Analyzing character...</p>
-                  </div>
-                ) : insights ? (
+                {editedCharacter.analytics ? (
                   <>
-                    {/* Key Stats Grid */}
-                    <div>
-                      <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <BarChart3 className="h-6 w-6 text-primary" />
-                        Key Statistics
-                      </h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <Card className="bg-gradient-to-br from-primary/20 to-primary/10 border-primary/30 hover:border-primary/50 transition-colors">
-                          <CardContent className="p-5">
-                            <div className="flex items-center gap-2 mb-2">
-                              <FileText className="h-5 w-5 text-primary" />
-                              <div className="text-sm text-white/60">Memories</div>
-                            </div>
-                            <div className="text-3xl font-bold text-white">{insights.totalMemories}</div>
-                          </CardContent>
-                        </Card>
-                        <Card className="bg-gradient-to-br from-purple-500/20 to-purple-500/10 border-purple-500/30 hover:border-purple-500/50 transition-colors">
-                          <CardContent className="p-5">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Network className="h-5 w-5 text-purple-400" />
-                              <div className="text-sm text-white/60">Connections</div>
-                            </div>
-                            <div className="text-3xl font-bold text-white">{insights.relationships}</div>
-                          </CardContent>
-                        </Card>
-                        <Card className="bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 border-cyan-500/30 hover:border-cyan-500/50 transition-colors">
-                          <CardContent className="p-5">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Tag className="h-5 w-5 text-cyan-400" />
-                              <div className="text-sm text-white/60">Tags</div>
-                            </div>
-                            <div className="text-3xl font-bold text-white">{insights.tags}</div>
-                          </CardContent>
-                        </Card>
-                        <Card className="bg-gradient-to-br from-green-500/20 to-green-500/10 border-green-500/30 hover:border-green-500/50 transition-colors">
-                          <CardContent className="p-5">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Heart className="h-5 w-5 text-green-400" />
-                              <div className="text-sm text-white/60">Closeness</div>
-                            </div>
-                            <div className="text-3xl font-bold text-white">{insights.closenessScore || 0}</div>
-                            <div className="text-xs text-white/50 mt-1">/ 100</div>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </div>
-
-                    {/* AI-Generated Insights */}
-                    {insights.insights && insights.insights.length > 0 && (
-                      <div>
-                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                          <Lightbulb className="h-6 w-6 text-yellow-400" />
-                          AI Insights
+                    {/* Analytics Dashboard Header */}
+                    <Card className="bg-gradient-to-br from-purple-500/10 via-purple-600/10 to-purple-500/10 border-purple-500/30">
+                      <CardHeader>
+                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                          <TrendingUp className="h-5 w-5 text-purple-400" />
+                          Relationship Analytics & Insights
                         </h3>
-                        <div className="space-y-3">
-                          {insights.insights.map((insight: string, idx: number) => (
-                            <Card key={idx} className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-yellow-500/30">
-                              <CardContent className="p-4">
-                                <div className="flex items-start gap-3">
-                                  <Sparkles className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-                                  <p className="text-white/90 text-base leading-relaxed">{insight}</p>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
+                      </CardHeader>
+                      <CardContent className="space-y-6">
+                        {/* Key Metrics Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Closeness</div>
+                            <div className="text-2xl font-bold text-pink-400">{editedCharacter.analytics.closeness_score}%</div>
+                            <div className="text-xs text-white/50 mt-1">relationship depth</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Importance</div>
+                            <div className="text-2xl font-bold text-amber-400">{editedCharacter.analytics.importance_score}%</div>
+                            <div className="text-xs text-white/50 mt-1">to you</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Priority</div>
+                            <div className="text-2xl font-bold text-green-400">{editedCharacter.analytics.priority_score}%</div>
+                            <div className="text-xs text-white/50 mt-1">urgency level</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Engagement</div>
+                            <div className="text-2xl font-bold text-blue-400">{editedCharacter.analytics.engagement_score}%</div>
+                            <div className="text-xs text-white/50 mt-1">interaction level</div>
+                          </div>
                         </div>
-                      </div>
-                    )}
 
-                    {/* Relationship Analysis */}
-                    <div>
-                      <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <TrendingUp className="h-6 w-6 text-primary" />
-                        Relationship Analysis
-                      </h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Card className="bg-black/60 border-border/50">
-                          <CardContent className="p-5">
-                            <div className="text-sm text-white/60 mb-2">Relationship Strength</div>
-                            <div className="text-xl font-bold text-white mb-2">{insights.relationshipStrength}</div>
-                            <div className="w-full bg-black/40 rounded-full h-2">
-                              <div 
-                                className="bg-primary h-2 rounded-full transition-all"
-                                style={{ width: `${insights.closenessScore || 0}%` }}
-                              />
-                            </div>
-                          </CardContent>
-                        </Card>
-                        <Card className="bg-black/60 border-border/50">
-                          <CardContent className="p-5">
-                            <div className="text-sm text-white/60 mb-2">Interaction Frequency</div>
-                            <div className="text-xl font-bold text-white">{insights.interactionFrequency}</div>
-                            <div className="text-xs text-white/50 mt-2">{insights.totalMemories} memories recorded</div>
-                          </CardContent>
-                        </Card>
-                        <Card className="bg-black/60 border-border/50">
-                          <CardContent className="p-5">
-                            <div className="text-sm text-white/60 mb-2">Network Size</div>
-                            <div className="text-xl font-bold text-white">{insights.networkSize}</div>
-                            <div className="text-xs text-white/50 mt-2">{insights.relationships} connections</div>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </div>
-
-                    {/* Timeline Info */}
-                    {insights.firstAppearance && (
-                      <div>
-                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                          <Calendar className="h-6 w-6 text-primary" />
-                          Timeline
-                        </h3>
-                        <Card className="bg-black/60 border-border/50">
-                          <CardContent className="p-5">
-                            <div className="space-y-3">
-                              <div>
-                                <div className="text-sm text-white/60 mb-1">First Appearance</div>
-                                <div className="text-lg font-semibold text-white">
-                                  {new Date(insights.firstAppearance).toLocaleDateString('en-US', {
-                                    month: 'long',
-                                    day: 'numeric',
-                                    year: 'numeric'
-                                  })}
-                                </div>
+                        {/* Relationship Depth & Frequency */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-sm text-white/70 mb-2">Relationship Depth</div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-black/60 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-purple-500 to-purple-600 transition-all"
+                                  style={{ width: `${editedCharacter.analytics.relationship_depth}%` }}
+                                />
                               </div>
-                              {insights.lastInteraction && (
-                                <div>
-                                  <div className="text-sm text-white/60 mb-1">Last Interaction</div>
-                                  <div className="text-lg font-semibold text-white">
-                                    {new Date(insights.lastInteraction).toLocaleDateString('en-US', {
-                                      month: 'long',
-                                      day: 'numeric',
-                                      year: 'numeric'
-                                    })}
-                                  </div>
-                                </div>
-                              )}
+                              <span className="text-sm font-semibold text-white">{editedCharacter.analytics.relationship_depth}%</span>
                             </div>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    )}
+                            <div className="text-xs text-white/50 mt-2">{editedCharacter.analytics.shared_experiences} shared experiences</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-sm text-white/70 mb-2">Interaction Frequency</div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-black/60 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all"
+                                  style={{ width: `${editedCharacter.analytics.interaction_frequency}%` }}
+                                />
+                              </div>
+                              <span className="text-sm font-semibold text-white">{editedCharacter.analytics.interaction_frequency}%</span>
+                            </div>
+                            <div className="text-xs text-white/50 mt-2">Based on last 90 days</div>
+                          </div>
+                        </div>
+
+                        {/* Influence Metrics */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-sm text-white/70 mb-2">Their Influence on You</div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-black/60 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-purple-500 to-purple-600 transition-all"
+                                  style={{ width: `${editedCharacter.analytics.character_influence_on_user}%` }}
+                                />
+                              </div>
+                              <span className="text-sm font-semibold text-white">{editedCharacter.analytics.character_influence_on_user}%</span>
+                            </div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-4 border border-border/30">
+                            <div className="text-sm text-white/70 mb-2">Your Influence Over Them</div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-2 bg-black/60 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all"
+                                  style={{ width: `${editedCharacter.analytics.user_influence_over_character}%` }}
+                                />
+                              </div>
+                              <span className="text-sm font-semibold text-white">{editedCharacter.analytics.user_influence_over_character}%</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Social Metrics */}
+                        <div className="grid grid-cols-4 gap-4">
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Sentiment</div>
+                            <div className={`text-lg font-semibold ${editedCharacter.analytics.sentiment_score >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {editedCharacter.analytics.sentiment_score > 0 ? '+' : ''}{editedCharacter.analytics.sentiment_score}
+                            </div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Trust</div>
+                            <div className="text-lg font-semibold text-blue-400">{editedCharacter.analytics.trust_score}%</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Support</div>
+                            <div className="text-lg font-semibold text-green-400">{editedCharacter.analytics.support_score}%</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Conflict</div>
+                            <div className="text-lg font-semibold text-red-400">{editedCharacter.analytics.conflict_score}%</div>
+                          </div>
+                        </div>
+
+                        {/* Additional Metrics */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Value</div>
+                            <div className="text-lg font-semibold text-yellow-400">{editedCharacter.analytics.value_score}%</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Relevance</div>
+                            <div className="text-lg font-semibold text-cyan-400">{editedCharacter.analytics.relevance_score}%</div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-3 border border-border/30">
+                            <div className="text-xs text-white/60 mb-1">Activity</div>
+                            <div className="text-lg font-semibold text-purple-400">{editedCharacter.analytics.activity_level}%</div>
+                          </div>
+                        </div>
+
+                        {/* Trend */}
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-white/70">Relationship Trend:</span>
+                          {editedCharacter.analytics.trend === 'deepening' && (
+                            <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30">
+                              <TrendingUp className="h-3 w-3 mr-1" />
+                              Deepening
+                            </Badge>
+                          )}
+                          {editedCharacter.analytics.trend === 'weakening' && (
+                            <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/30">
+                              <TrendingDown className="h-3 w-3 mr-1" />
+                              Weakening
+                            </Badge>
+                          )}
+                          {editedCharacter.analytics.trend === 'stable' && (
+                            <Badge variant="outline" className="bg-gray-500/20 text-gray-400 border-gray-500/30">
+                              <Minus className="h-3 w-3 mr-1" />
+                              Stable
+                            </Badge>
+                          )}
+                          <span className="text-white/50 text-xs ml-2">
+                            Known for {editedCharacter.analytics.relationship_duration_days} days
+                          </span>
+                        </div>
+
+                        {/* SWOT Analysis */}
+                        {(editedCharacter.analytics.strengths?.length > 0 || 
+                          editedCharacter.analytics.weaknesses?.length > 0 || 
+                          editedCharacter.analytics.opportunities?.length > 0 || 
+                          editedCharacter.analytics.risks?.length > 0) && (
+                          <div className="grid grid-cols-2 gap-4 mt-4">
+                            {editedCharacter.analytics.strengths && editedCharacter.analytics.strengths.length > 0 && (
+                              <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
+                                <div className="text-sm font-semibold text-green-400 mb-2">Strengths</div>
+                                <ul className="space-y-1">
+                                  {editedCharacter.analytics.strengths.map((strength, i) => (
+                                    <li key={i} className="text-xs text-white/70">• {strength}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {editedCharacter.analytics.weaknesses && editedCharacter.analytics.weaknesses.length > 0 && (
+                              <div className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
+                                <div className="text-sm font-semibold text-red-400 mb-2">Weaknesses</div>
+                                <ul className="space-y-1">
+                                  {editedCharacter.analytics.weaknesses.map((weakness, i) => (
+                                    <li key={i} className="text-xs text-white/70">• {weakness}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {editedCharacter.analytics.opportunities && editedCharacter.analytics.opportunities.length > 0 && (
+                              <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
+                                <div className="text-sm font-semibold text-blue-400 mb-2">Opportunities</div>
+                                <ul className="space-y-1">
+                                  {editedCharacter.analytics.opportunities.map((opp, i) => (
+                                    <li key={i} className="text-xs text-white/70">• {opp}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {editedCharacter.analytics.risks && editedCharacter.analytics.risks.length > 0 && (
+                              <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
+                                <div className="text-sm font-semibold text-orange-400 mb-2">Risks</div>
+                                <ul className="space-y-1">
+                                  {editedCharacter.analytics.risks.map((risk, i) => (
+                                    <li key={i} className="text-xs text-white/70">• {risk}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                   </>
                 ) : (
                   <div className="text-center py-16 text-white/60">
                     <Brain className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg">No insights available</p>
+                    <p className="text-lg">Analytics not available</p>
+                    <p className="text-sm mt-2">Analytics will appear here once calculated</p>
                   </div>
                 )}
               </div>
