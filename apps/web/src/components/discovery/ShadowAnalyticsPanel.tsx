@@ -9,7 +9,7 @@ import { LoadingSkeleton } from './LoadingSkeleton';
 import { EmptyState } from './EmptyState';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { AlertCircle } from 'lucide-react';
-import { useMockData } from '../../contexts/MockDataContext';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import type { AnalyticsPayload } from '../../../server/src/services/analytics/types';
 
 // Mock data for development
@@ -54,10 +54,10 @@ const MOCK_SHADOW_DATA: AnalyticsPayload = {
 export const ShadowAnalyticsPanel = () => {
   const analyticsModule = getModuleByKey('shadow');
   const { data: realData, loading, error } = useAnalytics('shadow');
-  const { useMockData: isMockDataEnabled } = useMockData();
+  const isMockDataEnabled = useShouldUseMockData();
   
   // Use mock data if toggle is on AND (no real data OR error)
-  const useMockData = isMockDataEnabled && (!realData || error);
+  const shouldUseMockData = isMockDataEnabled && (!realData || error);
 
   if (!analyticsModule) {
     return (
@@ -68,11 +68,11 @@ export const ShadowAnalyticsPanel = () => {
     );
   }
 
-  if (loading && !useMockData) {
+  if (loading && !shouldUseMockData) {
     return <LoadingSkeleton />;
   }
 
-  const data = useMockData ? MOCK_SHADOW_DATA : realData;
+  const data = shouldUseMockData ? MOCK_SHADOW_DATA : realData;
 
   if (!data) {
     return (
@@ -83,7 +83,7 @@ export const ShadowAnalyticsPanel = () => {
     );
   }
 
-  const isMockData = useMockData;
+  const isMockData = shouldUseMockData;
   const metadata = data.metadata || {};
   const shadowArchetypes = Array.isArray(metadata.shadowArchetypes) ? metadata.shadowArchetypes : [];
   const shadowLoops = Array.isArray(metadata.shadowLoops) ? metadata.shadowLoops : [];

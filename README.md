@@ -94,6 +94,7 @@ LoreBook helps you:
 - ✅ **Automatic Biography & Lorebooks** - Multi-version biography generation engine with PDF export, chapter navigation, and recommendations
 - ✅ **Resume Upload** - Upload resumes to populate memory bank, profile info, and verify skills with AI
 - ✅ **Multi-Persona Chat** - Gossip Buddy, Therapist, Historian, Strategist, Memory Bank personas
+- ✅ **Grok-Style Transition Detection** ⭐ - Advanced conversation flow tracking that detects tangents, emotional transitions, thought process changes, and intent evolution. The AI naturally follows where your mind wants to go, just like Grok.
 - ✅ **Continuity Engine** ⭐ - The Jarvis of your life. Detects contradictions, emotional arcs, identity drift, abandoned goals, repeating loops, and thematic changes. Automatically runs after every journal entry.
 - ✅ **Truth Seeker** - Automatic fact checking and contradiction detection
 - ✅ **Task Engine** - Task management with Microsoft To-Do integration

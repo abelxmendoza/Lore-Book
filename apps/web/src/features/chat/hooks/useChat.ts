@@ -22,6 +22,7 @@ export const useChat = () => {
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [sources, setSources] = useState<ChatSource[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -111,8 +112,29 @@ export const useChat = () => {
 
     addMessage(assistantMessage);
     setStreamingMessageId(assistantMessageId);
+    
+    // Enhanced loading stages with progress
     setLoadingStage('analyzing');
-    setLoadingProgress(10);
+    setLoadingProgress(5);
+    
+    // Simulate progress through stages
+    progressIntervalRef.current = setInterval(() => {
+      setLoadingProgress(prev => {
+        if (prev < 30) {
+          setLoadingStage('analyzing');
+          return Math.min(prev + 2, 30);
+        } else if (prev < 50) {
+          setLoadingStage('searching');
+          return Math.min(prev + 2, 50);
+        } else if (prev < 70) {
+          setLoadingStage('connecting');
+          return Math.min(prev + 2, 70);
+        } else {
+          setLoadingStage('reasoning');
+          return Math.min(prev + 1, 85);
+        }
+      });
+    }, 200);
 
     let accumulatedContent = '';
     let metadata: any = null;
@@ -137,20 +159,28 @@ export const useChat = () => {
         },
         (meta) => {
           metadata = meta;
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+          }
           
           if (meta.sources && meta.sources.length > 0) {
             setLoadingStage('searching');
-            setLoadingProgress(30);
+            setLoadingProgress(40);
             setSources(prev => [...prev, ...meta.sources]);
           } else if (meta.connections && meta.connections.length > 0) {
             setLoadingStage('connecting');
-            setLoadingProgress(50);
+            setLoadingProgress(60);
           } else {
             setLoadingStage('reasoning');
-            setLoadingProgress(60);
+            setLoadingProgress(70);
           }
         },
         () => {
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+          }
           setLoadingStage('generating');
           setLoadingProgress(100);
           
@@ -193,6 +223,10 @@ export const useChat = () => {
           ]).catch(console.error);
         },
         (error) => {
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+          }
           setLoading(false);
           setStreamingMessageId(null);
           updateMessage(assistantMessageId, {
@@ -202,6 +236,10 @@ export const useChat = () => {
         }
       );
     } catch (error) {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
       setLoading(false);
       setStreamingMessageId(null);
       removeMessage(assistantMessageId);

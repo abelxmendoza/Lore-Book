@@ -11,6 +11,7 @@ import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
 import { config } from '../config';
 import { characterAnalyticsService } from '../services/characterAnalyticsService';
+import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 
 const router = Router();
 
@@ -900,6 +901,64 @@ If no characters are found, return {"namedCharacters": [], "unnamedCharacters": 
   } catch (error) {
     logger.error({ err: error }, 'Failed to extract characters from chat');
     res.status(500).json({ error: 'Failed to extract characters' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/characters/{id}/attributes:
+ *   get:
+ *     summary: Get attributes for a character
+ *     tags: [Characters]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Character ID
+ *       - in: query
+ *         name: currentOnly
+ *         schema:
+ *           type: boolean
+ *         description: Only return current attributes
+ *     responses:
+ *       200:
+ *         description: Character attributes
+ *       404:
+ *         description: Character not found
+ */
+router.get('/:id/attributes', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const currentOnly = req.query.currentOnly === 'true';
+
+    // Verify character exists and belongs to user
+    const { data: character, error: charError } = await supabaseAdmin
+      .from('characters')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', req.user!.id)
+      .single();
+
+    if (charError || !character) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Get attributes
+    const attributes = await entityAttributeDetector.getEntityAttributes(
+      req.user!.id,
+      id,
+      'character',
+      currentOnly
+    );
+
+    res.json({ attributes });
+  } catch (error) {
+    logger.error({ error, characterId: req.params.id }, 'Failed to get character attributes');
+    res.status(500).json({ error: 'Failed to get character attributes' });
   }
 });
 

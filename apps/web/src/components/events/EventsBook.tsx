@@ -134,6 +134,7 @@ export const EventsBook: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<EventCategory>('all');
+  const [impactFilter, setImpactFilter] = useState<ImpactFilter>('all');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
@@ -300,6 +301,14 @@ export const EventsBook: React.FC = () => {
       );
     }
 
+    // Impact type filter
+    if (impactFilter !== 'all') {
+      filtered = filtered.filter(event => {
+        if (!event.impact) return false;
+        return event.impact.type === impactFilter;
+      });
+    }
+
     // Legacy category filter (for backward compatibility)
     if (activeCategory !== 'all') {
       filtered = filtered.filter(event => {
@@ -358,7 +367,7 @@ export const EventsBook: React.FC = () => {
     });
 
     return filtered;
-  }, [events, searchTerm, activeCategory, filters, sortBy]);
+  }, [events, searchTerm, activeCategory, filters, sortBy, impactFilter]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -423,6 +432,7 @@ export const EventsBook: React.FC = () => {
     });
     setSearchTerm('');
     setActiveCategory('all');
+    setImpactFilter('all');
   };
 
   const activeFilterCount = useMemo(() => {
@@ -436,8 +446,9 @@ export const EventsBook: React.FC = () => {
     if (filters.hasPeople !== null) count++;
     if (searchTerm.trim()) count++;
     if (activeCategory !== 'all') count++;
+    if (impactFilter !== 'all') count++;
     return count;
-  }, [filters, searchTerm, activeCategory]);
+  }, [filters, searchTerm, activeCategory, impactFilter]);
 
   if (error) {
     return (
@@ -559,6 +570,61 @@ export const EventsBook: React.FC = () => {
               disabled={loading}
             >
               {loading ? 'Loading...' : 'Refresh'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Impact Type Filter */}
+        <div className="mb-4">
+          <label className="text-sm font-medium text-white/80 mb-2 block">Filter by Impact</label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={impactFilter === 'all' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setImpactFilter('all')}
+              className={impactFilter === 'all' ? 'bg-primary/20 text-primary border-primary/30' : ''}
+            >
+              All Events
+            </Button>
+            <Button
+              variant={impactFilter === 'direct_participant' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setImpactFilter('direct_participant')}
+              className={impactFilter === 'direct_participant' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' : ''}
+            >
+              I Was There
+            </Button>
+            <Button
+              variant={impactFilter === 'indirect_affected' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setImpactFilter('indirect_affected')}
+              className={impactFilter === 'indirect_affected' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : ''}
+            >
+              Affects Me
+            </Button>
+            <Button
+              variant={impactFilter === 'related_person_affected' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setImpactFilter('related_person_affected')}
+              className={impactFilter === 'related_person_affected' ? 'bg-orange-500/20 text-orange-300 border-orange-500/30' : ''}
+            >
+              Affects Someone Close
+            </Button>
+            <Button
+              variant={impactFilter === 'observer' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setImpactFilter('observer')}
+              className={impactFilter === 'observer' ? 'bg-gray-500/20 text-gray-300 border-gray-500/30' : ''}
+            >
+              I Observed/Mentioned
+            </Button>
+            <Button
+              variant={impactFilter === 'ripple_effect' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setImpactFilter('ripple_effect')}
+              className={impactFilter === 'ripple_effect' ? 'bg-pink-500/20 text-pink-300 border-pink-500/30' : ''}
+            >
+              Ripple Effects
             </Button>
           </div>
         </div>

@@ -8,12 +8,20 @@
 - Date extraction and strategic guidance
 - Timeline auto-updates
 - Mood/tag/character detection while typing
+- ✅ **Streaming Responses** - IMPLEMENTED (word-by-word display via SSE)
+  - **File**: `apps/web/src/hooks/useChatStream.ts`
+  - **Endpoint**: `/api/chat/stream`
+  - **Status**: Fully functional with real-time token streaming
+- ✅ **Slash Commands** - IMPLEMENTED (quick commands available)
+  - **File**: `apps/web/src/utils/chatCommands.ts`
+  - **Commands**: `/recent`, `/search`, `/characters`, `/arcs` (and more)
+  - **Status**: Fully functional with command parsing and execution
+- ✅ **Message Actions** - IMPLEMENTED (edit, delete, copy, regenerate)
+  - **File**: `apps/web/src/features/chat/message/ChatMessage.tsx`
+  - **Actions**: Copy, regenerate, edit, delete buttons available
+  - **Status**: Message actions menu implemented
 
 ### ❌ Missing ChatGPT Features
-
-1. **Streaming Responses** - Currently waits for full response (feels slow)
-2. **Slash Commands** - No quick commands (`/recent`, `/search`, `/characters`)
-3. **Message Actions** - Can't edit, delete, copy, or regenerate messages
 4. **Clickable Sources** - Connections shown but not clickable to view entries
 5. **Full Orchestrator Context** - Not using orchestratorService.getSummary() fully
 6. **HQI Integration** - Not leveraging HQI search for better context
@@ -28,9 +36,9 @@
 ## Recommended Improvements (Priority Order)
 
 ### Phase 1: Core UX Improvements (High Impact)
-1. **Streaming Responses** - Use OpenAI streaming API for word-by-word display
-2. **Slash Commands** - Quick actions (`/recent`, `/search`, `/characters`, `/arcs`)
-3. **Message Actions** - Copy, regenerate, edit buttons
+1. ✅ **Streaming Responses** - ✅ IMPLEMENTED (OpenAI streaming API with word-by-word display)
+2. ✅ **Slash Commands** - ✅ IMPLEMENTED (Quick actions: `/recent`, `/search`, `/characters`, `/arcs`)
+3. ✅ **Message Actions** - ✅ IMPLEMENTED (Copy, regenerate, edit buttons)
 4. **Clickable Sources** - Make connections clickable to view entries/chapters
 
 ### Phase 2: Enhanced Intelligence (Medium Impact)
@@ -45,17 +53,35 @@
 11. **Message Grouping** - Group by date like ChatGPT
 12. **Export Feature** - Download conversation as markdown
 
-## Implementation Suggestions
+## Implementation Status
 
-### 1. Streaming Responses
-- Use OpenAI `stream: true` option
-- Implement Server-Sent Events (SSE) or ReadableStream
-- Update UI incrementally as tokens arrive
+### ✅ Implemented Features
 
-### 2. Slash Commands
-- Parse input starting with `/`
-- Show command suggestions dropdown
-- Execute commands client-side or server-side
+#### 1. Streaming Responses ✅
+- **Status**: Fully implemented
+- **Implementation**: OpenAI `stream: true` with Server-Sent Events (SSE)
+- **Files**: 
+  - `apps/web/src/hooks/useChatStream.ts` - Client-side streaming hook
+  - `apps/server/src/routes/chat.ts` - Streaming endpoint
+  - `apps/server/src/services/chat/chatEngine.ts` - Streaming handler
+- **UI**: Real-time token-by-token display with streaming indicators
+
+#### 2. Slash Commands ✅
+- **Status**: Fully implemented
+- **Implementation**: Command parsing and execution system
+- **Files**:
+  - `apps/web/src/utils/chatCommands.ts` - Command parser and handler
+  - `apps/web/src/features/chat/hooks/useChat.ts` - Integration in chat hook
+- **Commands**: `/recent`, `/search`, `/characters`, `/arcs`, and more
+
+#### 3. Message Actions ✅
+- **Status**: Fully implemented
+- **Implementation**: Message actions menu with hover interactions
+- **Files**:
+  - `apps/web/src/features/chat/message/ChatMessage.tsx` - Message component with actions
+- **Actions**: Copy, regenerate, edit, delete available
+
+## Remaining Implementation Suggestions
 
 ### 3. Enhanced Context Retrieval
 - Replace simple memory search with orchestratorService.getSummary()

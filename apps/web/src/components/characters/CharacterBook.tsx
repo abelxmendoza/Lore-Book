@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, Star } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, Star, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag } from 'lucide-react';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
@@ -9,6 +9,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent } from '../ui/card';
 import { CharacterCardSkeleton } from '../ui/skeleton';
+import { Badge } from '../ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
@@ -1665,6 +1666,140 @@ const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows
 
 type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professional' | 'creative' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
 
+type CharacterAttribute = {
+  id: string;
+  attributeType: string;
+  attributeValue: string;
+  confidence: number;
+  isCurrent: boolean;
+  evidence?: string;
+};
+
+// Main Character Section Component
+const MainCharacterSection = ({ user }: { user: any }) => {
+  const [userCharacterId, setUserCharacterId] = useState<string | null>(null);
+  const [attributes, setAttributes] = useState<CharacterAttribute[]>([]);
+  const [loadingAttributes, setLoadingAttributes] = useState(false);
+
+  // Find user character
+  useEffect(() => {
+    const findUserCharacter = async () => {
+      try {
+        const response = await fetchJson<{ characters: Character[] }>('/api/characters/list');
+        const userChar = response.characters?.find(
+          c => c.metadata?.is_self === true || 
+               c.metadata?.is_user === true ||
+               c.name.toLowerCase() === 'me' ||
+               c.name.toLowerCase() === 'myself' ||
+               c.name.toLowerCase() === 'self'
+        );
+        if (userChar) {
+          setUserCharacterId(userChar.id);
+        }
+      } catch (error) {
+        console.error('Failed to find user character:', error);
+      }
+    };
+    void findUserCharacter();
+  }, []);
+
+  // Load attributes for user character
+  useEffect(() => {
+    const loadAttributes = async () => {
+      if (!userCharacterId) return;
+      setLoadingAttributes(true);
+      try {
+        const response = await fetchJson<{ attributes: CharacterAttribute[] }>(
+          `/api/characters/${userCharacterId}/attributes?currentOnly=true`
+        );
+        setAttributes(response.attributes || []);
+      } catch (error) {
+        console.error('Failed to load user attributes:', error);
+        setAttributes([]);
+      } finally {
+        setLoadingAttributes(false);
+      }
+    };
+    void loadAttributes();
+  }, [userCharacterId]);
+
+  const getAttributeIcon = (type: string) => {
+    switch (type) {
+      case 'employment_status':
+      case 'occupation':
+      case 'workplace':
+        return <Briefcase className="h-3 w-3" />;
+      case 'financial_status':
+        return <DollarSign className="h-3 w-3" />;
+      case 'lifestyle_pattern':
+        return <Activity className="h-3 w-3" />;
+      case 'personality_trait':
+        return <Smile className="h-3 w-3" />;
+      case 'relationship_status':
+        return <HeartIcon className="h-3 w-3" />;
+      case 'living_situation':
+        return <Home className="h-3 w-3" />;
+      default:
+        return <Tag className="h-3 w-3" />;
+    }
+  };
+
+  const getAttributeColor = (type: string) => {
+    switch (type) {
+      case 'employment_status':
+      case 'occupation':
+      case 'workplace':
+        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      case 'financial_status':
+        return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'lifestyle_pattern':
+        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+      case 'personality_trait':
+        return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
+      case 'relationship_status':
+        return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'living_situation':
+        return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+      default:
+        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+    }
+  };
+
+  return (
+    <div className="mb-6 pb-4 border-b border-amber-800/20">
+      <div className="flex items-center gap-3 mb-3">
+        <Star className="h-5 w-5 text-amber-600/80" />
+        <div>
+          <p className="text-sm font-semibold text-amber-900/60">
+            Main Character: <span className="text-amber-900/80">{user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'You'}</span>
+          </p>
+        </div>
+      </div>
+      
+      {/* Attributes */}
+      {loadingAttributes ? (
+        <p className="text-xs text-amber-700/50 ml-8">Loading attributes...</p>
+      ) : attributes.length > 0 ? (
+        <div className="ml-8 flex flex-wrap gap-2">
+          {attributes.map((attr) => (
+            <Badge
+              key={attr.id}
+              variant="outline"
+              className={`${getAttributeColor(attr.attributeType)} text-xs px-2 py-1 flex items-center gap-1.5`}
+              title={`${attr.attributeType}: ${attr.attributeValue} (${Math.round(attr.confidence * 100)}% confidence)`}
+            >
+              {getAttributeIcon(attr.attributeType)}
+              <span className="font-medium">{attr.attributeValue}</span>
+            </Badge>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-amber-700/50 ml-8 italic">No attributes detected yet. Attributes are automatically extracted from your conversations.</p>
+      )}
+    </div>
+  );
+};
+
 export const CharacterBook = () => {
   const { user } = useAuth();
   const { useMockData: isMockDataEnabled } = useMockData();
@@ -2015,16 +2150,7 @@ export const CharacterBook = () => {
               </div>
 
               {/* Main Character Section */}
-              <div className="mb-6 pb-4 border-b border-amber-800/20">
-                <div className="flex items-center gap-3">
-                  <Star className="h-5 w-5 text-amber-600/80" />
-                  <div>
-                    <p className="text-sm font-semibold text-amber-900/60">
-                      Main Character: <span className="text-amber-900/80">{user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'You'}</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <MainCharacterSection user={user} />
 
               {/* Character Grid */}
               <div className="flex-1 grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-6">

@@ -35,6 +35,7 @@ import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage'
 import { EventsBook } from '../components/events/EventsBook';
 import { EntityResolutionBook } from '../components/entities/EntityResolutionBook';
 import { OrganizationsBook } from '../components/organizations/OrganizationsBook';
+import { SkillsBook } from '../components/skills/SkillsBook';
 import { PrivacySettings } from '../components/security/PrivacySettings';
 import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
 import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
@@ -42,7 +43,7 @@ import { GuestBanner } from '../components/guest/GuestBanner';
 import { getSurfaceFromRoute } from '../utils/routeMapping';
 
 
-type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'memories' | 'events' | 'entities' | 'organizations' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide';
+type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'memories' | 'events' | 'entities' | 'organizations' | 'skills' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide';
 
 interface AppContentProps {
   defaultSurface?: SurfaceKey;
@@ -267,6 +268,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                         {activeSurface === 'events' && <EventsBook />}
                         {activeSurface === 'entities' && <EntityResolutionBook />}
                         {activeSurface === 'organizations' && <OrganizationsBook />}
+                        {activeSurface === 'skills' && <SkillsBook />}
                         {activeSurface === 'subscription' && (
           <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] p-6">
             <TrialBanner />

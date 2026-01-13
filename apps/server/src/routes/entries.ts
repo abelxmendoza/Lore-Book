@@ -264,6 +264,24 @@ router.post('/', requireAuth, checkEntryLimit, validateBody(entrySchema), async 
       })
       .catch(err => logger.warn({ error: err, userId: req.user!.id }, 'Failed to run continuity analysis after entry creation'));
 
+    // Extract actions from entry for Personal Strategy Engine (fire and forget)
+    import('../services/personalStrategy/actionSpace').then(({ ActionSpace }) => {
+      const actionSpace = new ActionSpace();
+      return actionSpace.extractActionsFromEntry(req.user!.id, entry.id);
+    }).then(actions => {
+      if (actions.length > 0) {
+        return import('../services/personalStrategy/decisionRL').then(({ DecisionRL }) => {
+          const decisionRL = new DecisionRL();
+          return Promise.all(
+            actions.map(action => 
+              decisionRL.recordActionOutcome(req.user!.id, action, 'unknown')
+                .catch(err => logger.debug({ err, action: action.type }, 'RL: Failed to record action outcome'))
+            )
+          );
+        });
+      }
+    }).catch(err => logger.debug({ err, entryId: entry.id }, 'RL: Failed to extract actions from entry'));
+
     void emitDelta('timeline.add', { entry }, req.user!.id);
 
     res.status(201).json({ entry });

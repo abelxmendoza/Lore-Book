@@ -284,7 +284,7 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6 pb-32">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -327,15 +327,6 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
                   ))
                 )}
                 <div ref={chatMessagesEndRef} />
-              </div>
-
-              {/* Chat Input */}
-              <div className="border-t border-border/60 pt-4">
-                <ChatComposer
-                  onSubmit={handleChatMessage}
-                  loading={isLoading}
-                  disabled={isLoading}
-                />
               </div>
             </div>
           ) : activeTab === 'details' ? (
@@ -523,6 +514,15 @@ export const PerceptionDetailModal: React.FC<PerceptionDetailModalProps> = ({
               <PerceptionEvolutionTimeline perception={perception} />
             </div>
           ) : null}
+        </div>
+
+        {/* Sticky Chatbox - Always visible at bottom */}
+        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-black/90 border-t border-primary/30 p-4 z-10 backdrop-blur-sm shadow-lg shadow-black/50">
+          <ChatComposer
+            onSubmit={handleChatMessage}
+            loading={isLoading}
+            disabled={isLoading}
+          />
         </div>
       </div>
     </div>

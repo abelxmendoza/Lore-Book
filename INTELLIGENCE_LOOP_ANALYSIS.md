@@ -425,10 +425,18 @@ const highConfidenceEvents = events.filter(e => {
 
 ## TESTING CHECKLIST
 
-- [ ] Recall results show confidence-weighted ranking
+- [x] ✅ Recall results show confidence-weighted ranking
+  - **Implemented**: `apps/server/src/services/memoryRecall/rankingService.ts`
+  - **Status**: Confidence weight (15%) included in rank score calculation
 - [ ] Low-confidence entries surface uncertainty disclaimers
-- [ ] Archivist persona only retrieves facts, no advice
+  - **Status**: Confidence tracking exists, UI disclaimers need verification
+- [x] ✅ Archivist persona only retrieves facts, no advice
+  - **Implemented**: `apps/server/src/services/omegaChatService.ts` (lines 699-707)
+  - **Status**: Archivist persona defined with strict read-only rules
 - [ ] Patterns inherit uncertainty from entities
+  - **Status**: Needs verification in pattern detection services
 - [ ] Arc summaries include confidence metadata
-- [ ] No breaking changes to existing APIs
+  - **Status**: Needs verification in arc generation services
+- [x] ✅ No breaking changes to existing APIs
+  - **Status**: Confirmed - all changes are additive
 

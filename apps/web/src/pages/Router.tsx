@@ -160,6 +160,14 @@ export const Router = () => {
         } 
       />
       <Route 
+        path="/skills" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="skills" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
         path="/discovery" 
         element={
           <LazyRoute>

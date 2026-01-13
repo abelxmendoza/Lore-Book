@@ -89,6 +89,26 @@ LoreBook adapts to be exactly what you need:
 
 ### Chat Features
 
+#### Natural Conversation Flow (Grok-Style)
+
+LoreBook's AI is designed to naturally follow your conversation flow, just like Grok. It detects:
+
+- **Tangents**: When you shift topics, the AI follows naturally without forcing you back
+- **Emotional Transitions**: When your mood changes, the AI adapts its tone and approach
+- **Thought Process Evolution**: When your thinking evolves, the AI tracks and engages with the journey
+- **Intent Changes**: When you move from venting to reflection to planning, the AI adapts
+
+**Example:**
+```
+You: "everyone's out here starting the year a winner but me"
+AI: [Validates your feeling, provides perspective]
+
+You: "i'm building Lore Book right now and it sounds good..."
+AI: [Detects topic shift from self-doubt to project excitement, follows the tangent naturally]
+```
+
+The AI doesn't force you back to old topics—it follows where your mind wants to go, making conversations feel natural and engaging.
+
 #### Slash Commands
 
 Type these commands for quick actions:

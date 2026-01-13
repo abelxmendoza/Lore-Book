@@ -26,11 +26,16 @@ class SkillExtractionService {
       const prompt = `Analyze this journal entry and identify any skills, abilities, or learning activities mentioned. 
 
 Return a JSON object with a "skills" array. Each skill should have:
-- skill_name: The name of the skill (e.g., "Python Programming", "Guitar Playing", "Public Speaking")
+- skill_name: The name of the skill (e.g., "Python Programming", "Guitar Playing", "Public Speaking", "Weightlifting", "Social Skills", "Making Friends", "Romantic Approach")
 - skill_category: One of: professional, creative, physical, social, intellectual, emotional, practical, artistic, technical, other
 - confidence: 0.0-1.0 (how confident you are this is actually a skill being practiced/learned)
 - description: Brief description of the skill context
 - evidence: Array of 1-2 short quotes from the text that show this skill
+
+Special attention to:
+- Physical skills: weightlifting, fitness, exercise, sports
+- Social skills: making friends, picking up girls, romantic approach, networking, conversation skills, building relationships
+- Gym-related: weightlifting, strength training, cardio, fitness
 
 Only include skills that are:
 1. Actually being practiced, learned, or improved

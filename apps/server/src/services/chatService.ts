@@ -38,13 +38,17 @@ class ChatService {
 
     const answer = completion.choices[0]?.message?.content ?? 'I am not sure yet.';
 
+    // Auto-save message as journal entry (all chat messages are automatically saved)
     if (shouldPersistMessage(message)) {
       await memoryService.saveEntry({
         userId,
         content: message,
         tags: extractTags(message),
         source: 'chat',
-        metadata: { autoCaptured: true }
+        metadata: { 
+          autoCaptured: true,
+          fromLegacyChat: true
+        }
       });
     }
 

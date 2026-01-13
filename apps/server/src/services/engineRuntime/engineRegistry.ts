@@ -27,6 +27,7 @@ import { LegacyEngine } from '../legacy';
 import { ValuesEngine } from '../values';
 import { DreamsEngine } from '../dreams';
 import { RecommendationEngine } from '../recommendation';
+import { WillEngine } from '../will';
 
 export type EngineFunction = (userId: string, ctx: EngineContext) => Promise<any>;
 
@@ -161,6 +162,69 @@ export const ENGINE_REGISTRY: Record<string, EngineFunction> = {
   recommendation: async (userId, ctx) => {
     const engine = new RecommendationEngine();
     return await engine.generateRecommendations(userId);
+  },
+
+  will: async (userId, ctx) => {
+    const engine = new WillEngine();
+    // Process latest entry with context from emotion and identity
+    if (ctx.entries.length === 0) {
+      return { will_events: [] };
+    }
+    
+    const latestEntry = ctx.entries[0]; // Most recent entry
+    
+    try {
+      // Fetch emotion and identity context
+      const { EmotionResolver } = await import('../emotion/emotionResolver');
+      const { IdentityCoreEngine } = await import('../identityCore');
+      const emotionResolver = new EmotionResolver();
+      const identityEngine = new IdentityCoreEngine();
+      
+      // Get emotion events for recent entries
+      const recentEntries = ctx.entries.slice(0, 10);
+      const emotionEvents = await emotionResolver.process({
+        entries: recentEntries,
+        user: { id: userId },
+      }).catch(() => []);
+      
+      // Get identity statements (simplified - can be enhanced)
+      const identityData = await identityEngine.process(userId).catch(() => null);
+      const identityStatements = identityData?.identity_statements || [];
+      
+      // Get follow-up entries (next few entries after latest)
+      const followUpEntries = ctx.entries.slice(1, 4).map(e => ({
+        content: e.content,
+        date: e.date,
+      }));
+      
+      const willEvents = await engine.process(
+        {
+          id: latestEntry.id,
+          content: latestEntry.content,
+          date: latestEntry.date,
+          user_id: userId,
+        },
+        {
+          entry: latestEntry,
+          emotion_events: emotionEvents.map(e => ({
+            emotion: e.emotion,
+            intensity: e.intensity,
+            polarity: e.polarity,
+          })),
+          identity_statements: identityStatements.map((s: any) => ({
+            claim: s.text || s.claim || s,
+            confidence: s.confidence || 0.7,
+          })),
+          past_patterns: [],
+          follow_up_entries: followUpEntries,
+        }
+      );
+      
+      return { will_events: willEvents };
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to process will events');
+      return { will_events: [] };
+    }
   },
 };
 

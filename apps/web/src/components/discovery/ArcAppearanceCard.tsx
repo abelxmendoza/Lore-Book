@@ -41,7 +41,10 @@ export const ArcAppearanceCard = ({ arcData }: ArcAppearanceCardProps) => {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {arcData.map((item) => {
+          {arcData
+            .filter((item) => item.arcs && Array.isArray(item.arcs) && item.arcs.length > 0)
+            .map((item) => {
+
             // Create sparkline data from arc counts
             const sparklineData = item.arcs.map((arc, index) => ({
               arc: arc.arcName.substring(0, 10),

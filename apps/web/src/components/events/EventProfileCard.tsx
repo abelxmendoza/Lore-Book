@@ -18,6 +18,14 @@ export type Event = {
   source_count: number;
   created_at: string;
   updated_at: string;
+  impact?: {
+    type: 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
+    connectionCharacter?: string;
+    connectionType?: string;
+    emotionalImpact?: 'positive' | 'negative' | 'neutral' | 'mixed';
+    impactIntensity: number;
+    impactDescription?: string;
+  };
 };
 
 type EventProfileCardProps = {
@@ -36,6 +44,57 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
     if (confidence >= 0.7) return 'High';
     if (confidence >= 0.4) return 'Mixed';
     return 'Low';
+  };
+
+  const getImpactVariant = (type: string): 'default' | 'secondary' | 'outline' | 'destructive' => {
+    switch (type) {
+      case 'direct_participant':
+        return 'default';
+      case 'indirect_affected':
+        return 'secondary';
+      case 'related_person_affected':
+        return 'outline';
+      case 'observer':
+        return 'outline';
+      case 'ripple_effect':
+        return 'secondary';
+      default:
+        return 'outline';
+    }
+  };
+
+  const getImpactLabel = (type: string): string => {
+    switch (type) {
+      case 'direct_participant':
+        return 'You were there';
+      case 'indirect_affected':
+        return 'Affects you';
+      case 'related_person_affected':
+        return 'Affects someone close';
+      case 'observer':
+        return 'You mentioned this';
+      case 'ripple_effect':
+        return 'Ripple effect';
+      default:
+        return 'Related event';
+    }
+  };
+
+  const getImpactColor = (type: string): string => {
+    switch (type) {
+      case 'direct_participant':
+        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      case 'indirect_affected':
+        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+      case 'related_person_affected':
+        return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
+      case 'observer':
+        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+      case 'ripple_effect':
+        return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
+      default:
+        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -93,6 +152,25 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
                 <p className="text-xs text-white/50 mt-0.5 truncate cursor-help">
                   {event.type}
                 </p>
+              </Tooltip>
+            )}
+            {/* Impact Badge */}
+            {event.impact && (
+              <Tooltip 
+                content={event.impact.impactDescription || getImpactLabel(event.impact.type)}
+                side="top"
+              >
+                <Badge
+                  variant={getImpactVariant(event.impact.type)}
+                  className={`${getImpactColor(event.impact.type)} text-[10px] px-1.5 py-0.5 mt-1.5 inline-flex items-center gap-1 cursor-help`}
+                >
+                  {getImpactLabel(event.impact.type)}
+                  {event.impact.connectionCharacter && (
+                    <span className="text-white/60 text-[9px]">
+                      (via {event.impact.connectionCharacter})
+                    </span>
+                  )}
+                </Badge>
               </Tooltip>
             )}
           </div>

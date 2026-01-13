@@ -35,10 +35,12 @@ export class EventAssemblyService {
       }
 
       // Filter out deprecated and pruned units
+      // Also filter out AI interpretations (they shouldn't create events)
       const experienceUnits = (allUnits || []).filter(
         unit =>
           !unit.metadata?.deprecated &&
           !unit.metadata?.pruned &&
+          unit.metadata?.source !== 'ai_interpretation' &&
           unit.confidence > 0.2 // Also filter very low confidence units
       );
 

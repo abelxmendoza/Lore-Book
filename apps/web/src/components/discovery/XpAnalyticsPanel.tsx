@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Zap, TrendingUp, Flame, Target, Award, Calendar, Activity, Trophy, Star } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -9,12 +9,13 @@ import { AISummaryCard } from './AISummaryCard';
 import { LoadingSkeleton } from './LoadingSkeleton';
 import { EmptyState } from './EmptyState';
 import { useAnalytics } from '../../hooks/useAnalytics';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { getModuleByKey } from '../../config/analyticsModules';
 import { skillsApi } from '../../api/skills';
 import type { Skill } from '../../types/skill';
 
 export const XpAnalyticsPanel = () => {
-  const { useMockData: isMockDataEnabled } = useMockData();
+  const isMockDataEnabled = useShouldUseMockData();
   const analyticsModule = getModuleByKey('xp');
   const { data, loading, error } = useAnalytics('xp');
   const [skills, setSkills] = useState<Skill[]>([]);

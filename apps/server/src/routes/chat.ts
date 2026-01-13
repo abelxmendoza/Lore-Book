@@ -5,7 +5,10 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { checkAiRequestLimit } from '../middleware/subscription';
 import { incrementAiRequestCount } from '../services/usageTracking';
 import { omegaChatService } from '../services/omegaChatService';
+import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
 import { logger } from '../logger';
+
+const personaRL = new ChatPersonaRL();
 
 const router = Router();
 
@@ -130,7 +133,6 @@ router.post('/feedback', requireAuth, async (req: AuthenticatedRequest, res) => 
     const userId = req.user!.id;
 
     // Store feedback for model improvement
-    // In the future, this could be stored in a database for training
     logger.info({
       userId,
       messageId,
@@ -139,15 +141,15 @@ router.post('/feedback', requireAuth, async (req: AuthenticatedRequest, res) => 
       contextLength: conversationContext?.length || 0
     }, 'Chat message feedback received');
 
-    // TODO: Store in database for model fine-tuning
-    // await feedbackService.saveFeedback({
-    //   userId,
-    //   messageId,
-    //   feedback,
-    //   message,
-    //   conversationContext,
-    //   timestamp: new Date()
-    // });
+    // RL: Record feedback reward (this is the KEY learning signal)
+    personaRL.recordFeedbackReward(
+      userId,
+      messageId,
+      feedback,
+      conversationContext
+    ).catch(err => {
+      logger.warn({ err, userId, messageId }, 'RL: Failed to record feedback reward (non-critical)');
+    });
 
     res.json({
       success: true,
@@ -157,6 +159,46 @@ router.post('/feedback', requireAuth, async (req: AuthenticatedRequest, res) => 
     logger.error({ err: error }, 'Feedback endpoint error');
     res.status(500).json({
       error: 'Failed to record feedback',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Action tracking endpoint (for implicit rewards)
+const actionSchema = z.object({
+  messageId: z.string().min(1),
+  actionType: z.enum(['copy', 'source_click', 'regenerate', 'save_entry']),
+  metadata: z.record(z.any()).optional()
+});
+
+router.post('/action', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = actionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+
+    const { messageId, actionType, metadata } = parsed.data;
+    const userId = req.user!.id;
+
+    // RL: Record action-based reward (automatic learning from user behavior)
+    personaRL.recordActionReward(
+      userId,
+      messageId,
+      actionType,
+      metadata
+    ).catch(err => {
+      logger.warn({ err, userId, messageId }, 'RL: Failed to record action reward (non-critical)');
+    });
+
+    res.json({
+      success: true,
+      message: 'Action recorded'
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Action tracking endpoint error');
+    res.status(500).json({
+      error: 'Failed to record action',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }

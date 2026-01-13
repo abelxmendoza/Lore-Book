@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Calendar, BookOpen, Users, Tag, TrendingUp, Sparkles, Clock, FileText, Heart, MapPin, Award, BarChart3, Activity, Brain, AlertCircle } from 'lucide-react';
+import { User, Calendar, BookOpen, Users, Tag, TrendingUp, Sparkles, Clock, FileText, Heart, MapPin, Award, BarChart3, Activity, Brain, AlertCircle, Briefcase, DollarSign, Smile, Home, Heart as HeartIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Badge } from '../ui/badge';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { fetchJson } from '../../lib/api';
 import { IdentityPulseModal } from '../identity/IdentityPulseModal';
@@ -62,6 +63,16 @@ export const UserProfile = () => {
   const [engineResults, setEngineResults] = useState<Record<string, any> | null>(null);
   const [engineResultsLoading, setEngineResultsLoading] = useState(false);
   const [aiInsightModal, setAiInsightModal] = useState<{ type: string; data: any } | null>(null);
+  const [userCharacterId, setUserCharacterId] = useState<string | null>(null);
+  const [attributes, setAttributes] = useState<Array<{
+    id: string;
+    attributeType: string;
+    attributeValue: string;
+    confidence: number;
+    isCurrent: boolean;
+    evidence?: string;
+  }>>([]);
+  const [loadingAttributes, setLoadingAttributes] = useState(false);
 
   // Mock engine results for UI preview
   const getMockEngineResults = (): Record<string, any> => ({
@@ -179,6 +190,53 @@ export const UserProfile = () => {
       setEngineResultsLoading(false);
     }
   }, [isMockDataEnabled]);
+
+  // Find user character
+  useEffect(() => {
+    const findUserCharacter = async () => {
+      try {
+        const response = await fetchJson<{ characters: any[] }>('/api/characters/list');
+        const userChar = response.characters?.find(
+          c => c.metadata?.is_self === true || 
+               c.metadata?.is_user === true ||
+               c.name.toLowerCase() === 'me' ||
+               c.name.toLowerCase() === 'myself' ||
+               c.name.toLowerCase() === 'self'
+        );
+        if (userChar) {
+          setUserCharacterId(userChar.id);
+        }
+      } catch (error) {
+        console.error('Failed to find user character:', error);
+      }
+    };
+    void findUserCharacter();
+  }, []);
+
+  // Load attributes for user character
+  useEffect(() => {
+    const loadAttributes = async () => {
+      if (!userCharacterId) return;
+      setLoadingAttributes(true);
+      try {
+        const response = await fetchJson<{ attributes: Array<{
+          id: string;
+          attributeType: string;
+          attributeValue: string;
+          confidence: number;
+          isCurrent: boolean;
+          evidence?: string;
+        }> }>(`/api/characters/${userCharacterId}/attributes?currentOnly=true`);
+        setAttributes(response.attributes || []);
+      } catch (error) {
+        console.error('Failed to load user attributes:', error);
+        setAttributes([]);
+      } finally {
+        setLoadingAttributes(false);
+      }
+    };
+    void loadAttributes();
+  }, [userCharacterId]);
 
   useEffect(() => {
     debugLog('useEffect', 'Component mounted, loading initial data', { isMockDataEnabled });
@@ -533,6 +591,81 @@ export const UserProfile = () => {
               <div className="text-xs text-white/50 mt-0.5">entries</div>
             </div>
           </div>
+
+          {/* Character Attributes */}
+          {loadingAttributes ? (
+            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
+              <div className="flex items-center gap-2 text-white/70 mb-2">
+                <Tag className="h-4 w-4" />
+                <span className="text-sm font-semibold">Attributes</span>
+              </div>
+              <p className="text-xs text-white/50">Loading attributes...</p>
+            </div>
+          ) : attributes.length > 0 ? (
+            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
+              <div className="flex items-center gap-2 text-white/70 mb-3">
+                <Tag className="h-4 w-4" />
+                <span className="text-sm font-semibold">Detected Attributes</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {attributes.map((attr) => {
+                  const getAttributeIcon = (type: string) => {
+                    switch (type) {
+                      case 'employment_status':
+                      case 'occupation':
+                      case 'workplace':
+                        return <Briefcase className="h-3 w-3" />;
+                      case 'financial_status':
+                        return <DollarSign className="h-3 w-3" />;
+                      case 'lifestyle_pattern':
+                        return <Activity className="h-3 w-3" />;
+                      case 'personality_trait':
+                        return <Smile className="h-3 w-3" />;
+                      case 'relationship_status':
+                        return <HeartIcon className="h-3 w-3" />;
+                      case 'living_situation':
+                        return <Home className="h-3 w-3" />;
+                      default:
+                        return <Tag className="h-3 w-3" />;
+                    }
+                  };
+
+                  const getAttributeColor = (type: string) => {
+                    switch (type) {
+                      case 'employment_status':
+                      case 'occupation':
+                      case 'workplace':
+                        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+                      case 'financial_status':
+                        return 'bg-green-500/20 text-green-400 border-green-500/30';
+                      case 'lifestyle_pattern':
+                        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+                      case 'personality_trait':
+                        return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
+                      case 'relationship_status':
+                        return 'bg-red-500/20 text-red-400 border-red-500/30';
+                      case 'living_situation':
+                        return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+                      default:
+                        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+                    }
+                  };
+
+                  return (
+                    <Badge
+                      key={attr.id}
+                      variant="outline"
+                      className={`${getAttributeColor(attr.attributeType)} text-xs px-2 py-1 flex items-center gap-1.5`}
+                      title={`${attr.attributeType}: ${attr.attributeValue} (${Math.round(attr.confidence * 100)}% confidence)`}
+                    >
+                      {getAttributeIcon(attr.attributeType)}
+                      <span className="font-medium">{attr.attributeValue}</span>
+                    </Badge>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
 
           {/* Most Active Period */}
           {stats.mostActivePeriod.count > 0 && (

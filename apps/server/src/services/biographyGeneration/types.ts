@@ -91,6 +91,10 @@ export interface BiographySpec {
   includeIntrospection: boolean;
   themes?: string[]; // Optional theme filters
   peopleIds?: string[]; // Optional people filters
+  characterIds?: string[]; // Character-based lorebooks
+  locationIds?: string[]; // Location-based lorebooks
+  eventIds?: string[]; // Event-based lorebooks
+  skillIds?: string[]; // Skill-based lorebooks
 }
 
 /**
@@ -110,20 +114,41 @@ export interface ChapterCluster {
     peak: number;
   };
   significance: number; // Average significance of atoms
+  timelineChapterId?: string; // Optional reference to source timeline chapter
+  timelineChapter?: TimelineChapter; // Optional full timeline chapter data
+}
+
+/**
+ * Timeline Chapter - Source structure from timeline hierarchy
+ */
+export interface TimelineChapter {
+  id: string;
+  title: string;
+  start_date: string;
+  end_date: string | null;
+  description: string | null;
+  summary: string | null;
+  parent_id: string | null; // References timeline_arcs
+  user_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
 /**
  * BiographyChapter - Final chapter structure
+ * Generated from timeline chapters - links source structure to narrative output
  */
 export interface BiographyChapter {
   id: string;
-  title: string;
-  text: string;
+  title: string; // Auto-generated from timeline chapter content
+  text: string; // Generated narrative prose
   timeSpan: {
     start: string;
     end: string;
   };
-  atoms: NarrativeAtom[]; // Source atoms
+  timelineChapterIds: string[]; // References to source timeline chapters
+  timelineChapters?: TimelineChapter[]; // Full timeline chapter data (optional)
+  atoms: NarrativeAtom[]; // Source atoms from timeline chapters
   themes: string[];
 }
 

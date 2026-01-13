@@ -3,6 +3,7 @@ import { Heart, RefreshCw, Loader2, Sparkles, Target, Shield, Zap, TrendingUp, B
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import type { EssenceProfile } from '../../types/essence';
 import {
   EssenceSnapshot,
@@ -350,7 +351,7 @@ const MOCK_ESSENCE_PROFILE: EssenceProfile = {
  * All refinement happens through chat, not UI controls.
  */
 export const SoulProfilePanel = () => {
-  const { useMockData: isMockDataEnabled } = useMockData();
+  const isMockDataEnabled = useShouldUseMockData();
   const [profile, setProfile] = useState<EssenceProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);

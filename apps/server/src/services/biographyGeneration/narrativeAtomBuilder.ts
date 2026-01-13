@@ -20,6 +20,67 @@ export async function buildAtomsFromTimeline(userId: string): Promise<NarrativeA
     
     const atoms: NarrativeAtom[] = [];
     
+    // Batch fetch all relationships for efficiency
+    const entryIds = entries.map(e => e.id);
+    
+    // Fetch all character memories
+    const { data: allCharacterMemories } = await supabaseAdmin
+      .from('character_memories')
+      .select('character_id, journal_entry_id')
+      .in('journal_entry_id', entryIds);
+    
+    // Fetch all location mentions
+    const { data: allLocationMentions } = await supabaseAdmin
+      .from('location_mentions')
+      .select('location_id, memory_id')
+      .in('memory_id', entryIds);
+    
+    // Fetch all event mentions
+    const { data: allEventMentions } = await supabaseAdmin
+      .from('event_mentions')
+      .select('event_id, memory_id')
+      .in('memory_id', entryIds);
+    
+    // Fetch all skill progress
+    const { data: allSkillProgress } = await supabaseAdmin
+      .from('skill_progress')
+      .select('skill_id, source_id')
+      .in('source_id', entryIds);
+    
+    // Create lookup maps
+    const characterMap = new Map<string, string[]>();
+    const locationMap = new Map<string, string[]>();
+    const eventMap = new Map<string, string[]>();
+    const skillMap = new Map<string, string[]>();
+    
+    (allCharacterMemories || []).forEach(cm => {
+      if (!characterMap.has(cm.journal_entry_id)) {
+        characterMap.set(cm.journal_entry_id, []);
+      }
+      characterMap.get(cm.journal_entry_id)!.push(cm.character_id);
+    });
+    
+    (allLocationMentions || []).forEach(lm => {
+      if (!locationMap.has(lm.memory_id)) {
+        locationMap.set(lm.memory_id, []);
+      }
+      locationMap.get(lm.memory_id)!.push(lm.location_id);
+    });
+    
+    (allEventMentions || []).forEach(em => {
+      if (!eventMap.has(em.memory_id)) {
+        eventMap.set(em.memory_id, []);
+      }
+      eventMap.get(em.memory_id)!.push(em.event_id);
+    });
+    
+    (allSkillProgress || []).forEach(sp => {
+      if (!skillMap.has(sp.source_id)) {
+        skillMap.set(sp.source_id, []);
+      }
+      skillMap.get(sp.source_id)!.push(sp.skill_id);
+    });
+    
     for (const entry of entries) {
       // Determine atom type from entry metadata
       const atomType = determineAtomType(entry);
@@ -28,9 +89,11 @@ export async function buildAtomsFromTimeline(userId: string): Promise<NarrativeA
       // Extract domains from entry tags/content
       const domains = extractDomains(entry);
       
-      // Extract people and locations (would need entity resolution)
-      const peopleIds: string[] = [];
-      const locationIds: string[] = [];
+      // Get relationships from maps
+      const peopleIds = characterMap.get(entry.id) || [];
+      const locationIds = locationMap.get(entry.id) || [];
+      const eventIds = eventMap.get(entry.id) || [];
+      const skillIds = skillMap.get(entry.id) || [];
       
       // Calculate emotional weight, significance, and sensitivity
       const emotionalWeight = calculateEmotionalWeight(entry);
@@ -53,7 +116,10 @@ export async function buildAtomsFromTimeline(userId: string): Promise<NarrativeA
         sourceRefs: [entry.id],
         metadata: {
           source: 'timeline',
-          entryId: entry.id
+          entryId: entry.id,
+          locationIds,
+          eventIds,
+          skillIds,
         }
       };
       

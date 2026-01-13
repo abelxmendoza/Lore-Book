@@ -443,7 +443,7 @@ INSTRUCTIONS:
             })}
           </div>
 
-          <div ref={contentRef} className="p-6 space-y-8 custom-scrollbar flex-1 min-h-0">
+          <div ref={contentRef} className="p-6 space-y-8 custom-scrollbar flex-1 min-h-0 pb-32">
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 {/* Stats Grid */}
@@ -774,7 +774,7 @@ INSTRUCTIONS:
             )}
 
             {activeTab === 'chat' && (
-              <div className="space-y-6 flex flex-col h-full min-h-0">
+              <div className="space-y-6">
                 <div>
                   <h3 className="text-xl font-semibold text-white mb-2 flex items-center gap-3">
                     <MessageSquare className="h-6 w-6 text-primary" />
@@ -784,7 +784,8 @@ INSTRUCTIONS:
                     Ask questions, share stories, or update information about {location.name} through conversation.
                   </p>
                 </div>
-                <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar p-2 rounded-lg border border-border/50 bg-black/30">
+                {/* Messages Area - Chat composer moved to sticky area */}
+                <div className="space-y-4">
                   {chatMessages.length === 0 ? (
                     <div className="text-center py-8 text-white/60 text-base">
                       <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -808,14 +809,6 @@ INSTRUCTIONS:
                     ))
                   )}
                   <div ref={chatMessagesEndRef} />
-                </div>
-                <div className="border-t border-border/60 pt-4 flex-shrink-0">
-                  <ChatComposer
-                    input={chatInput}
-                    onInputChange={setChatInput}
-                    onSubmit={handleChatSubmit}
-                    loading={chatLoading}
-                  />
                 </div>
               </div>
             )}
@@ -1192,6 +1185,16 @@ INSTRUCTIONS:
               </div>
             )}
           </div>
+        </div>
+
+        {/* Sticky Chatbox - Always visible at bottom */}
+        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-black/90 border-t border-primary/30 p-4 z-10 backdrop-blur-sm shadow-lg shadow-black/50">
+          <ChatComposer
+            input={chatInput}
+            onInputChange={setChatInput}
+            onSubmit={handleChatSubmit}
+            loading={chatLoading}
+          />
         </div>
       </div>
 

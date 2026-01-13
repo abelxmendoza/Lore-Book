@@ -17,6 +17,16 @@ export type ExtractedUnitType =
 export type Participant = 'USER' | 'AI';
 
 /**
+ * Refinement level for text normalization
+ * Controls how aggressively text is cleaned/normalized
+ */
+export type RefinementLevel = 
+  | 'preserve'      // Keep original, minimal changes (only critical errors)
+  | 'light'         // Fix critical errors only (run-ons, major grammar)
+  | 'standard'      // Current behavior (abbreviations, slang, grammar)
+  | 'aggressive';   // Full cleanup and refinement
+
+/**
  * ConversationThread: Primary user-facing structure
  */
 export interface ConversationThread {
@@ -82,6 +92,9 @@ export interface NormalizationResult {
     type: 'spelling' | 'abbreviation' | 'slang' | 'grammar';
   }>;
   language: string;
+  spanish_terms?: string[];
+  refinement_level?: RefinementLevel;
+  original_preserved: boolean; // Whether original text was preserved
 }
 
 /**

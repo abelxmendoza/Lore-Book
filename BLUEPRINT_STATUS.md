@@ -56,7 +56,12 @@
 - ✅ Daily insight generation (2:30 AM)
 - ✅ Weekly graph updates (Sunday 3:00 AM)
 - ✅ Memory extraction worker (every 1 minute)
-- ❌ Missing: Continuity Engine Check (contradictions, abandoned goals, new arcs)
+- ✅ **Continuity Engine Check** (contradictions, abandoned goals, arc shifts) - IMPLEMENTED
+  - **File**: `apps/server/src/jobs/continuityEngineJob.ts`
+  - **Services**: `apps/server/src/services/continuity/`
+  - **Migration**: `migrations/20250127_continuity_engine.sql`
+  - **Runs**: Daily at 3:00 AM
+  - **Detects**: Contradictions, abandoned goals, arc shifts, identity drift, emotional transitions, thematic drift
 
 ### 5. ML/AI Models
 - ⚠️ Using OpenAI embeddings (not local sentence-transformers)
@@ -73,11 +78,17 @@
 - Need to add `/api/timeline/nodes` endpoint (or document that `/api/timeline-hierarchy/*` covers this)
 - Need to add `/api/timeline/link` endpoint (currently automatic)
 
-### 2. Continuity Engine
-- ❌ Detect contradictions
-- ❌ Detect abandoned goals
-- ❌ Detect new arcs forming
-- Note: We have `truthVerificationService` but it's separate from continuity checks
+### 2. Continuity Engine ✅ **IMPLEMENTED**
+- ✅ Detect contradictions (`contradictionDetection.ts`)
+- ✅ Detect abandoned goals (`abandonedGoalDetection.ts`)
+- ✅ Detect arc shifts (`arcShiftDetection.ts`)
+- ✅ Detect identity drift (`identityDriftDetection.ts`)
+- ✅ Detect emotional transitions (`emotionalArcDetection.ts`)
+- ✅ Detect thematic drift (`thematicDriftDetection.ts`)
+- **Implementation**: `apps/server/src/services/continuity/`
+- **Background Job**: `apps/server/src/jobs/continuityEngineJob.ts` (runs daily at 3:00 AM)
+- **API Endpoints**: `/api/continuity/*` (events, goals, contradictions)
+- **Note**: `truthVerificationService` is separate and handles fact verification, while Continuity Engine handles narrative continuity
 
 ### 3. Local ML Models
 - ❌ sentence-transformers/all-MiniLM (using OpenAI embeddings)
@@ -125,8 +136,7 @@ Add wrapper endpoints that match blueprint exactly:
 
 ## Next Steps
 
-1. **Immediate**: Add Continuity Engine Check job
-2. **Short-term**: Align API endpoints with blueprint (or document differences)
-3. **Medium-term**: Add local ML models if cost becomes concern
-4. **Long-term**: Build frontend components
+1. **Short-term**: Align API endpoints with blueprint (or document differences)
+2. **Medium-term**: Add local ML models if cost becomes concern
+3. **Long-term**: Build frontend components (Memory Explorer UI, Insight Dashboard, Graph visualization)
 

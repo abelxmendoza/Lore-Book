@@ -68,13 +68,27 @@ const MOCK_RELATIONSHIPS_DATA: AnalyticsPayload = {
       { character: 'Emma', prediction: 'Potential new friendship', confidence: 0.6 }
     ],
     arcAppearances: [
-      { character: 'Sarah', arc: 'Growth Arc', appearances: 15 },
-      { character: 'Mike', arc: 'Friendship Arc', appearances: 8 }
+      {
+        character: 'Sarah',
+        arcs: [
+          { arcName: 'Growth Arc', count: 15 },
+          { arcName: 'Rebirth Arc', count: 8 },
+          { arcName: 'Conflict Arc', count: 5 }
+        ]
+      },
+      {
+        character: 'Mike',
+        arcs: [
+          { arcName: 'Friendship Arc', count: 8 },
+          { arcName: 'Growth Arc', count: 3 }
+        ]
+      }
     ],
     heatmap: [
-      { character: 'Sarah', month: '2025-01', intensity: 0.9 },
-      { character: 'Mike', month: '2025-01', intensity: 0.6 },
-      { character: 'Dad', month: '2025-01', intensity: 0.7 }
+      { character: 'Sarah', values: [8, 9, 7, 10, 9, 8, 9, 10, 8, 9, 7, 8] },
+      { character: 'Mike', values: [5, 6, 4, 7, 6, 5, 6, 5, 4, 6, 5, 4] },
+      { character: 'Dad', values: [6, 7, 6, 8, 7, 6, 7, 6, 7, 8, 6, 7] },
+      { character: 'Mom', values: [7, 8, 7, 9, 8, 7, 8, 7, 8, 9, 7, 8] }
     ]
   },
   insights: [
@@ -91,7 +105,7 @@ export const RelationshipsAnalyticsPanel = () => {
   const { useMockData: isMockDataEnabled } = useMockData();
   
   // Use mock data if toggle is on AND (no real data OR error)
-  const useMockData = isMockDataEnabled && (!realData || error);
+  const shouldUseMockData = isMockDataEnabled && (!realData || error);
 
   if (!analyticsModule) {
     return (
@@ -102,11 +116,11 @@ export const RelationshipsAnalyticsPanel = () => {
     );
   }
 
-  if (loading && !useMockData) {
+  if (loading && !shouldUseMockData) {
     return <LoadingSkeleton />;
   }
 
-  const data = useMockData ? MOCK_RELATIONSHIPS_DATA : realData;
+  const data = shouldUseMockData ? MOCK_RELATIONSHIPS_DATA : realData;
 
   if (!data) {
     return (
@@ -117,7 +131,7 @@ export const RelationshipsAnalyticsPanel = () => {
     );
   }
 
-  const isMockData = useMockData;
+  const isMockData = shouldUseMockData;
 
   const metadata = data.metadata || {};
   const sentimentTimeline = Array.isArray(metadata.sentimentTimeline) ? metadata.sentimentTimeline : [];

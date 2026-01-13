@@ -1,8 +1,10 @@
-import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff } from 'lucide-react';
+import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff, Briefcase, DollarSign, Activity, Smile, Home, Heart as HeartIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { CharacterAvatar } from './CharacterAvatar';
+import { useState, useEffect } from 'react';
+import { fetchJson } from '../../lib/api';
 
 export type SocialMedia = {
   instagram?: string;
@@ -73,12 +75,43 @@ export type Character = {
   };
 };
 
+type CharacterAttribute = {
+  id: string;
+  attributeType: string;
+  attributeValue: string;
+  confidence: number;
+  isCurrent: boolean;
+  evidence?: string;
+};
+
 type CharacterProfileCardProps = {
   character: Character;
   onClick?: () => void;
 };
 
 export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCardProps) => {
+  const [attributes, setAttributes] = useState<CharacterAttribute[]>([]);
+  const [loadingAttributes, setLoadingAttributes] = useState(false);
+
+  // Load attributes for this character
+  useEffect(() => {
+    const loadAttributes = async () => {
+      if (!character.id) return;
+      setLoadingAttributes(true);
+      try {
+        const response = await fetchJson<{ attributes: CharacterAttribute[] }>(
+          `/api/characters/${character.id}/attributes?currentOnly=true`
+        );
+        setAttributes(response.attributes || []);
+      } catch (error) {
+        console.error('Failed to load character attributes:', error);
+        setAttributes([]);
+      } finally {
+        setLoadingAttributes(false);
+      }
+    };
+    void loadAttributes();
+  }, [character.id]);
   const getArchetypeColor = (archetype?: string) => {
     const colors: Record<string, string> = {
       'ally': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -460,6 +493,74 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
                 <Phone className="h-4 w-4" />
               </a>
             )}
+          </div>
+        )}
+
+        {/* Character Attributes */}
+        {attributes.length > 0 && (
+          <div className="pt-1.5 border-t border-border/30">
+            <div className="flex flex-wrap gap-1">
+              {attributes.slice(0, 3).map((attr) => {
+                const getAttributeIcon = (type: string) => {
+                  switch (type) {
+                    case 'employment_status':
+                    case 'occupation':
+                    case 'workplace':
+                      return <Briefcase className="h-2.5 w-2.5" />;
+                    case 'financial_status':
+                      return <DollarSign className="h-2.5 w-2.5" />;
+                    case 'lifestyle_pattern':
+                      return <Activity className="h-2.5 w-2.5" />;
+                    case 'personality_trait':
+                      return <Smile className="h-2.5 w-2.5" />;
+                    case 'relationship_status':
+                      return <HeartIcon className="h-2.5 w-2.5" />;
+                    case 'living_situation':
+                      return <Home className="h-2.5 w-2.5" />;
+                    default:
+                      return <Tag className="h-2.5 w-2.5" />;
+                  }
+                };
+
+                const getAttributeColor = (type: string) => {
+                  switch (type) {
+                    case 'employment_status':
+                    case 'occupation':
+                    case 'workplace':
+                      return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+                    case 'financial_status':
+                      return 'bg-green-500/20 text-green-400 border-green-500/30';
+                    case 'lifestyle_pattern':
+                      return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+                    case 'personality_trait':
+                      return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
+                    case 'relationship_status':
+                      return 'bg-red-500/20 text-red-400 border-red-500/30';
+                    case 'living_situation':
+                      return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+                    default:
+                      return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+                  }
+                };
+
+                return (
+                  <Badge
+                    key={attr.id}
+                    variant="outline"
+                    className={`${getAttributeColor(attr.attributeType)} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
+                    title={`${attr.attributeType}: ${attr.attributeValue} (${Math.round(attr.confidence * 100)}% confidence)`}
+                  >
+                    {getAttributeIcon(attr.attributeType)}
+                    <span className="truncate max-w-[60px]">{attr.attributeValue}</span>
+                  </Badge>
+                );
+              })}
+              {attributes.length > 3 && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 text-white/40 border-border/30">
+                  +{attributes.length - 3}
+                </Badge>
+              )}
+            </div>
           </div>
         )}
 

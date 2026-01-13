@@ -5,7 +5,7 @@
 // =====================================================
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star } from 'lucide-react';
+import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -13,12 +13,16 @@ import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Modal } from '../ui/modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { CharacterDetailModal } from '../characters/CharacterDetailModal';
+import { LocationDetailModal } from '../locations/LocationDetailModal';
 import { fetchJson } from '../../lib/api';
 import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import type { Organization, OrganizationMember, OrganizationStory, OrganizationEvent, OrganizationLocation } from './OrganizationProfileCard';
+import type { Character } from '../characters/CharacterProfileCard';
+import type { LocationProfile } from '../locations/LocationProfileCard';
 
 type OrganizationDetailModalProps = {
   organization: Organization;
@@ -73,7 +77,11 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
 
   // Locations state
   const [locations, setLocations] = useState<OrganizationLocation[]>(organization.locations || []);
-
+  
+  // Modal states for nested entities
+  const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<LocationProfile | null>(null);
+  
   useEffect(() => {
     if (activeTab === 'chat' && chatMessages.length === 0) {
       const welcomeMessage: ChatMessage = {
@@ -324,6 +332,7 @@ User's message: ${currentInput}`;
   };
 
   return (
+    <>
     <Modal isOpen={true} onClose={onClose} size="xl">
       <div className="flex flex-col h-full max-h-[90vh]">
         {/* Header */}
@@ -364,80 +373,119 @@ User's message: ${currentInput}`;
 
           <div className="flex-1 overflow-y-auto p-6">
             {/* Info Tab */}
-            <TabsContent value="info" className="space-y-4 mt-4">
-              <Card>
-                <CardHeader>
-                  <h3 className="text-lg font-semibold text-white">Basic Information</h3>
+            <TabsContent value="info" className="space-y-6 mt-4">
+              {/* Read-Only Notice */}
+              <Card className="bg-gradient-to-r from-purple-500/20 via-purple-600/15 to-purple-500/20 border-2 border-purple-500/40 shadow-lg shadow-purple-500/10">
+                <CardContent className="p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="p-2 rounded-lg bg-purple-500/20 border border-purple-500/40">
+                      <Info className="h-6 w-6 text-purple-300 flex-shrink-0" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-base font-bold text-purple-200 mb-2">Organization Information is Read-Only</p>
+                      <p className="text-sm text-purple-100/90 leading-relaxed">
+                        Organization information is automatically updated through conversations. To update this organization's information, use the Chat tab to tell the system about them.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Basic Information - Enhanced Read-Only Display */}
+              <Card className="bg-gradient-to-br from-black/80 via-black/60 to-black/80 border-2 border-primary/30 shadow-xl">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/20 border border-primary/40">
+                      <Building2 className="h-6 w-6 text-primary" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-white">Basic Information</h3>
+                  </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6">
+                  {/* Name Section */}
                   <div>
-                    <label className="text-sm text-white/70 mb-1 block">Name</label>
-                    <Input
-                      value={editedOrg.name}
-                      onChange={(e) => setEditedOrg(prev => ({ ...prev, name: e.target.value }))}
-                      className="bg-black/40 border-border/50 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-white/70 mb-1 block">Type</label>
-                    <select
-                      value={editedOrg.type}
-                      onChange={(e) => setEditedOrg(prev => ({ ...prev, type: e.target.value as Organization['type'] }))}
-                      className="w-full h-10 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm"
-                    >
-                      <option value="friend_group">Friend Group</option>
-                      <option value="company">Company</option>
-                      <option value="sports_team">Sports Team</option>
-                      <option value="club">Club</option>
-                      <option value="nonprofit">Nonprofit</option>
-                      <option value="affiliation">Affiliation</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm text-white/70 mb-1 block">Description</label>
-                    <Textarea
-                      value={editedOrg.description || ''}
-                      onChange={(e) => setEditedOrg(prev => ({ ...prev, description: e.target.value }))}
-                      className="bg-black/40 border-border/50 text-white min-h-[100px]"
-                      placeholder="Describe this organization..."
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm text-white/70 mb-1 block">Location</label>
-                      <Input
-                        value={editedOrg.location || ''}
-                        onChange={(e) => setEditedOrg(prev => ({ ...prev, location: e.target.value }))}
-                        className="bg-black/40 border-border/50 text-white"
-                        placeholder="City, State"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-white/70 mb-1 block">Founded Date</label>
-                      <Input
-                        type="date"
-                        value={editedOrg.founded_date || ''}
-                        onChange={(e) => setEditedOrg(prev => ({ ...prev, founded_date: e.target.value }))}
-                        className="bg-black/40 border-border/50 text-white"
-                      />
+                    <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Organization Name</label>
+                    <div className="bg-gradient-to-r from-primary/20 to-primary/10 border-2 border-primary/40 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-lg">
+                      {editedOrg.name}
                     </div>
                   </div>
-                  <div>
-                    <label className="text-sm text-white/70 mb-1 block">Status</label>
-                    <select
-                      value={editedOrg.status}
-                      onChange={(e) => setEditedOrg(prev => ({ ...prev, status: e.target.value as Organization['status'] }))}
-                      className="w-full h-10 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm"
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                      <option value="dissolved">Dissolved</option>
-                    </select>
+
+                  {/* Type and Status */}
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Type</label>
+                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 min-h-[52px] flex items-center shadow-inner">
+                        <Badge variant="outline" className={getTypeColor(editedOrg.type)}>
+                          {getTypeLabel(editedOrg.type)}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Status</label>
+                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 min-h-[52px] flex items-center shadow-inner">
+                        <Badge 
+                          variant="outline" 
+                          className={editedOrg.status === 'active' 
+                            ? 'bg-green-500/20 text-green-300 border-green-500/40 text-sm px-4 py-2 font-semibold shadow-md' 
+                            : editedOrg.status === 'inactive'
+                            ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40 text-sm px-4 py-2 font-semibold shadow-md'
+                            : 'bg-gray-500/20 text-gray-300 border-gray-500/40 text-sm px-4 py-2 font-semibold shadow-md'
+                          }
+                        >
+                          {editedOrg.status === 'active' ? 'Active' : editedOrg.status === 'inactive' ? 'Inactive' : 'Dissolved'}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                  <Button onClick={handleSave} disabled={saving} className="w-full">
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </Button>
+
+                  {/* Description Section */}
+                  <div>
+                    <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Description</label>
+                    <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-4 text-white text-base min-h-[120px] flex items-start font-medium shadow-inner">
+                      {editedOrg.description ? (
+                        <p className="whitespace-pre-wrap leading-relaxed">{editedOrg.description}</p>
+                      ) : (
+                        <span className="text-white/40 italic">No description available yet. Information will appear here as you talk about this organization.</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Location and Founded Date */}
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Location</label>
+                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-base min-h-[48px] flex items-center font-medium shadow-inner">
+                        {editedOrg.location || <span className="text-white/40 italic">Not specified</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Founded Date</label>
+                      <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-base min-h-[48px] flex items-center font-medium shadow-inner">
+                        {editedOrg.founded_date 
+                          ? new Date(editedOrg.founded_date).toLocaleDateString('en-US', {
+                              month: 'long',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })
+                          : <span className="text-white/40 italic">Not specified</span>
+                        }
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Aliases */}
+                  {editedOrg.aliases && editedOrg.aliases.length > 0 && (
+                    <div>
+                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Aliases</label>
+                      <div className="flex flex-wrap gap-3">
+                        {editedOrg.aliases.map((alias) => (
+                          <Badge key={alias} variant="outline" className="bg-primary/20 text-primary border-primary/40 text-sm px-4 py-2 font-semibold shadow-md">
+                            {alias}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -636,8 +684,9 @@ User's message: ${currentInput}`;
             </TabsContent>
 
             {/* Chat Tab */}
-            <TabsContent value="chat" className="mt-4 h-full flex flex-col">
-              <div className="flex-1 overflow-y-auto space-y-4 mb-4">
+            <TabsContent value="chat" className="mt-4">
+              {/* Chat messages only - input moved to sticky area */}
+              <div className="space-y-4">
                 {chatMessages.map((msg) => (
                   <div
                     key={msg.id}
@@ -666,29 +715,6 @@ User's message: ${currentInput}`;
                   </div>
                 )}
                 <div ref={messagesEndRef} />
-              </div>
-              <div className="flex gap-2">
-                <Textarea
-                  ref={chatInputRef}
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleChatSubmit();
-                    }
-                  }}
-                  placeholder="Ask about the organization, add members, record stories..."
-                  className="flex-1 bg-black/40 border-border/50 text-white resize-none"
-                  rows={3}
-                />
-                <Button
-                  onClick={handleChatSubmit}
-                  disabled={!chatInput.trim() || chatLoading || isStreaming}
-                  className="self-end"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </Button>
               </div>
             </TabsContent>
 
@@ -742,10 +768,43 @@ User's message: ${currentInput}`;
                   </Card>
                 ) : (
                   members.map((member) => (
-                    <Card key={member.id} className="bg-black/40 border-border/50">
+                    <Card 
+                      key={member.id} 
+                      className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all"
+                      onClick={async () => {
+                        if (member.character_id) {
+                          try {
+                            const char = await fetchJson<Character>(`/api/characters/${member.character_id}`);
+                            setSelectedCharacter(char);
+                          } catch (error) {
+                            setSelectedCharacter({
+                              id: member.character_id,
+                              name: member.character_name,
+                            } as Character);
+                          }
+                        } else if (member.character_name) {
+                          try {
+                            const chars = await fetchJson<Character[]>(`/api/characters/search?name=${encodeURIComponent(member.character_name)}`);
+                            if (chars && chars.length > 0) {
+                              setSelectedCharacter(chars[0]);
+                            } else {
+                              setSelectedCharacter({
+                                id: `temp-${member.character_name}`,
+                                name: member.character_name,
+                              } as Character);
+                            }
+                          } catch (error) {
+                            setSelectedCharacter({
+                              id: `temp-${member.character_name}`,
+                              name: member.character_name,
+                            } as Character);
+                          }
+                        }
+                      }}
+                    >
                       <CardContent className="pt-6">
                         <div className="flex items-center justify-between">
-                          <div>
+                          <div className="flex-1">
                             <div className="font-semibold text-white">{member.character_name}</div>
                             {member.role && (
                               <div className="text-sm text-white/60">{member.role}</div>
@@ -757,7 +816,10 @@ User's message: ${currentInput}`;
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleRemoveMember(member.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveMember(member.id);
+                            }}
                           >
                             <Trash2 className="h-4 w-4 text-red-400" />
                           </Button>
@@ -833,7 +895,40 @@ User's message: ${currentInput}`;
               ) : (
                 <div className="space-y-4">
                   {locations.map((location) => (
-                    <Card key={location.id} className="bg-black/40 border-border/50">
+                    <Card 
+                      key={location.id} 
+                      className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all"
+                      onClick={async () => {
+                        if (location.location_id) {
+                          try {
+                            const loc = await fetchJson<LocationProfile>(`/api/locations/${location.location_id}`);
+                            setSelectedLocation(loc);
+                          } catch (error) {
+                            setSelectedLocation({
+                              id: location.location_id,
+                              name: location.location_name,
+                            } as LocationProfile);
+                          }
+                        } else if (location.location_name) {
+                          try {
+                            const locs = await fetchJson<LocationProfile[]>(`/api/locations/search?name=${encodeURIComponent(location.location_name)}`);
+                            if (locs && locs.length > 0) {
+                              setSelectedLocation(locs[0]);
+                            } else {
+                              setSelectedLocation({
+                                id: `temp-${location.location_name}`,
+                                name: location.location_name,
+                              } as LocationProfile);
+                            }
+                          } catch (error) {
+                            setSelectedLocation({
+                              id: `temp-${location.location_name}`,
+                              name: location.location_name,
+                            } as LocationProfile);
+                          }
+                        }
+                      }}
+                    >
                       <CardContent className="pt-6">
                         <div className="flex items-center justify-between">
                           <div>
@@ -861,8 +956,59 @@ User's message: ${currentInput}`;
             </TabsContent>
           </div>
         </Tabs>
+
+        {/* Sticky Chatbox - Always visible at bottom */}
+        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-black/90 border-t border-primary/30 p-4 z-10 backdrop-blur-sm shadow-lg shadow-black/50">
+          <div className="flex gap-2 items-end">
+            <Textarea
+              ref={chatInputRef}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleChatSubmit();
+                }
+              }}
+              placeholder={`Ask about ${editedOrg.name}...`}
+              className="flex-1 bg-black/60 border-white/20 text-white resize-none min-h-[60px] max-h-[120px]"
+              rows={2}
+            />
+            <Button
+              onClick={handleChatSubmit}
+              disabled={!chatInput.trim() || chatLoading || isStreaming}
+              className="h-[60px] px-6"
+            >
+              {chatLoading || isStreaming ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MessageSquare className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
     </Modal>
+    
+    {/* Nested Character Modal */}
+    {selectedCharacter && (
+      <CharacterDetailModal
+        character={selectedCharacter}
+        onClose={() => setSelectedCharacter(null)}
+        onUpdate={() => {
+          // Refresh if needed
+        }}
+      />
+    )}
+    
+    {/* Nested Location Modal */}
+    {selectedLocation && (
+      <LocationDetailModal
+        location={selectedLocation}
+        onClose={() => setSelectedLocation(null)}
+      />
+    )}
+  </>
   );
 };
 

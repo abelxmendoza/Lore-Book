@@ -28,6 +28,14 @@ interface Event {
   source_count: number;
   created_at: string;
   updated_at: string;
+  impact?: {
+    type: 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
+    connectionCharacter?: string;
+    connectionType?: string;
+    emotionalImpact?: 'positive' | 'negative' | 'neutral' | 'mixed';
+    impactIntensity: number;
+    impactDescription?: string;
+  };
 }
 
 export const EventsView: React.FC = () => {

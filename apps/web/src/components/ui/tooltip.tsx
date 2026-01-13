@@ -96,16 +96,17 @@ export const Tooltip: React.FC<TooltipProps> = ({
 
   return (
     <>
-      <div
+      <span
         ref={triggerRef}
         onMouseEnter={showTooltip}
         onMouseLeave={hideTooltip}
         onFocus={showTooltip}
         onBlur={hideTooltip}
-        className="inline-block"
+        className="inline-flex items-center"
+        style={{ display: 'inline-flex' }}
       >
         {children}
-      </div>
+      </span>
       {isVisible && (
         <div
           ref={tooltipRef}

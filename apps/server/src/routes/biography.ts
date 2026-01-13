@@ -2,46 +2,113 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { memoirService } from '../services/memoirService';
 import { logger } from '../logger';
 import { omegaChatService } from '../services/omegaChatService';
 import { dateAssignmentService } from '../services/dateAssignmentService';
 import { timeEngine } from '../services/timeEngine';
 import { biographyGenerationEngine, biographyRecommendationEngine, BIOGRAPHY_VERSIONS } from '../services/biographyGeneration';
 import type { BiographySpec } from '../services/biographyGeneration';
+import { mainLifestoryService } from '../services/mainLifestoryService';
+import { lorebookSearchParser } from '../services/lorebook/lorebookSearchParser';
+import { lorebookRecommendationEngine } from '../services/lorebook/lorebookRecommendationEngine';
 
 const router = Router();
 
-// Get biography sections (maps to memoir outline)
+/**
+ * GET /api/biography/main-lifestory
+ * Get the main lifestory biography (always available)
+ */
+router.get('/main-lifestory', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const lifestory = await mainLifestoryService.getMainLifestory(req.user!.id);
+    if (!lifestory) {
+      return res.status(404).json({ error: 'Main lifestory not found' });
+    }
+    res.json({ biography: lifestory });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to get main lifestory');
+    res.status(500).json({ error: 'Failed to get main lifestory' });
+  }
+});
+
+/**
+ * POST /api/biography/main-lifestory/regenerate
+ * Force regenerate the main lifestory
+ */
+router.post('/main-lifestory/regenerate', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    await mainLifestoryService.ensureMainLifestory(req.user!.id, true);
+    const lifestory = await mainLifestoryService.getMainLifestory(req.user!.id);
+    res.json({ biography: lifestory, message: 'Main lifestory regenerated' });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to regenerate main lifestory');
+    res.status(500).json({ error: 'Failed to regenerate main lifestory' });
+  }
+});
+
+/**
+ * POST /api/biography/main-lifestory/alternative
+ * Generate alternative version from main lifestory
+ */
+const alternativeVersionSchema = z.object({
+  version: z.enum(['safe', 'explicit', 'private']),
+  tone: z.enum(['neutral', 'dramatic', 'reflective', 'mythic', 'professional']).optional(),
+  depth: z.enum(['summary', 'detailed', 'epic']).optional(),
+  audience: z.enum(['self', 'public', 'professional']).optional()
+});
+
+router.post('/main-lifestory/alternative', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = alternativeVersionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+    }
+
+    const { version, tone, depth, audience } = parsed.data;
+    const alternative = await mainLifestoryService.generateAlternativeVersion(
+      req.user!.id,
+      version,
+      { tone, depth, audience }
+    );
+
+    res.json({ biography: alternative });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to generate alternative version');
+    res.status(500).json({ error: 'Failed to generate alternative version' });
+  }
+});
+
+/**
+ * GET /api/biography/sections
+ * Get biography sections (chapters from main lifestory)
+ * NOTE: This replaces the old memoir sections endpoint
+ */
 router.get('/sections', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const outline = await memoirService.getOutline(req.user!.id);
+    // Get main lifestory biography
+    const lifestory = await mainLifestoryService.getMainLifestory(req.user!.id);
     
-    // Handle different possible outline formats
-    let sections: any[] = [];
-    
-    if (outline && typeof outline === 'object') {
-      if (Array.isArray(outline.sections)) {
-        sections = outline.sections;
-      } else if (Array.isArray(outline)) {
-        sections = outline;
-      }
+    if (!lifestory || !lifestory.biography_data) {
+      return res.json({ sections: [] });
     }
+
+    const biography = lifestory.biography_data as any;
     
-    // Transform memoir sections to biography sections format
-    const biographySections = sections.map((section: any) => ({
-      id: section.id || section.section_id || `section-${Date.now()}-${Math.random()}`,
-      title: section.title || section.section_title || 'Untitled Section',
-      content: section.content || section.section_content || '',
-      order: section.order || section.section_order || 0,
-      period: section.period || (section.period_from && section.period_to ? {
-        from: section.period_from,
-        to: section.period_to
-      } : undefined),
-      lastUpdated: section.lastUpdated || section.last_updated || section.updated_at || new Date().toISOString()
+    // Transform biography chapters to sections format (for backward compatibility)
+    const sections = (biography.chapters || []).map((chapter: any, index: number) => ({
+      id: chapter.id || `chapter-${index}`,
+      title: chapter.title || `Chapter ${index + 1}`,
+      content: chapter.text || '',
+      order: index,
+      period: chapter.timeSpan ? {
+        from: chapter.timeSpan.start,
+        to: chapter.timeSpan.end || new Date().toISOString()
+      } : undefined,
+      themes: chapter.themes || [],
+      lastUpdated: lifestory.updated_at || lifestory.created_at || new Date().toISOString()
     }));
     
-    res.json({ sections: biographySections });
+    res.json({ sections });
   } catch (error) {
     logger.error({ err: error }, 'Failed to get biography sections');
     // Return empty sections instead of error - allows the UI to work
@@ -58,6 +125,12 @@ const chatSchema = z.object({
   })).optional()
 });
 
+/**
+ * POST /api/biography/chat
+ * Chat endpoint for biography editing
+ * NOTE: This replaces the old memoir chat endpoint
+ * After chat, the biography will be regenerated automatically
+ */
 router.post('/chat', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = chatSchema.safeParse(req.body);
@@ -67,75 +140,36 @@ router.post('/chat', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     const { message, conversationHistory = [] } = parsed.data;
     
-    // Extract dates from the message for biography sections
+    // Extract dates from the message
     const extractedDates = await omegaChatService.extractDatesAndTimes(message);
     
     // Use the chat service to generate a response
-    // The chat service will handle biography-specific context
     const response = await omegaChatService.chat(req.user!.id, message, conversationHistory);
     
-    // Get updated sections after chat
-    const outline = await memoirService.getOutline(req.user!.id);
+    // Trigger biography regeneration in background (non-blocking)
+    // The ingestion pipeline will handle updating the narrative graph
+    mainLifestoryService.updateAfterChatEntry(req.user!.id).catch(err => {
+      logger.warn({ err, userId: req.user!.id }, 'Background biography update failed');
+    });
     
-    // Enhance sections with extracted dates
-    const sections = outline.sections?.map((section: any) => {
-      // Try to extract dates from section content if not already present
-      let period = section.period;
-      let dateMetadata: any = section.dateMetadata || {};
-      
-      if (!period && extractedDates.length > 0) {
-        // Use extracted dates to create period
-        const dates = extractedDates
-          .map(d => ({ date: new Date(d.date), confidence: d.confidence || 0 }))
-          .sort((a, b) => a.date.getTime() - b.date.getTime());
-        
-        if (dates.length >= 2) {
-          period = {
-            from: dates[0].date.toISOString(),
-            to: dates[dates.length - 1].date.toISOString()
-          };
-          dateMetadata = {
-            precision: extractedDates[0]?.precision || 'day',
-            confidence: dates[0].confidence,
-            source: 'extracted',
-            extractedAt: new Date().toISOString()
-          };
-        } else if (dates.length === 1) {
-          period = {
-            from: dates[0].date.toISOString(),
-            to: dates[0].date.toISOString()
-          };
-          dateMetadata = {
-            precision: extractedDates[0]?.precision || 'day',
-            confidence: dates[0].confidence,
-            source: 'extracted',
-            extractedAt: new Date().toISOString()
-          };
-        }
-      }
-      
-      return {
-        id: section.id,
-        title: section.title,
-        content: section.content || '',
-        order: section.order || 0,
-        period: period || section.period,
-        dateMetadata,
-        lastUpdated: section.lastUpdated || section.last_updated || new Date().toISOString()
-      };
-    }) || [];
+    // Get current sections (chapters) from main lifestory
+    const lifestory = await mainLifestoryService.getMainLifestory(req.user!.id);
+    let sections: any[] = [];
     
-    // Update outline with enhanced sections if dates were extracted
-    if (extractedDates.length > 0 && sections.length > 0) {
-      const updatedOutline = {
-        ...outline,
-        sections: sections.map((s: any) => ({
-          ...s,
-          period: s.period,
-          dateMetadata: s.dateMetadata
-        }))
-      };
-      await memoirService.saveOutline(req.user!.id, updatedOutline as any);
+    if (lifestory && lifestory.biography_data) {
+      const biography = lifestory.biography_data as any;
+      sections = (biography.chapters || []).map((chapter: any, index: number) => ({
+        id: chapter.id || `chapter-${index}`,
+        title: chapter.title || `Chapter ${index + 1}`,
+        content: chapter.text || '',
+        order: index,
+        period: chapter.timeSpan ? {
+          from: chapter.timeSpan.start,
+          to: chapter.timeSpan.end || new Date().toISOString()
+        } : undefined,
+        themes: chapter.themes || [],
+        lastUpdated: lifestory.updated_at || lifestory.created_at || new Date().toISOString()
+      }));
     }
     
     res.json({
@@ -363,6 +397,52 @@ router.get('/recommendations', requireAuth, async (req: AuthenticatedRequest, re
     res.json({ recommendations, versions: BIOGRAPHY_VERSIONS });
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Failed to get recommendations');
+    res.status(500).json({ error: 'Failed to get recommendations' });
+  }
+});
+
+/**
+ * POST /api/biography/search
+ * Intelligent search for lorebooks - parses natural language query
+ */
+const searchSchema = z.object({
+  query: z.string().min(1),
+});
+
+router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = searchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+    }
+
+    const { query } = parsed.data;
+    const parsedQuery = await lorebookSearchParser.parseQuery(req.user!.id, query);
+
+    // Generate biography from parsed query
+    const biography = await biographyGenerationEngine.generateBiography(req.user!.id, parsedQuery as BiographySpec);
+
+    res.json({ biography, parsedQuery });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to search lorebooks');
+    res.status(500).json({ 
+      error: 'Failed to search lorebooks',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * GET /api/biography/lorebook-recommendations
+ * Get recommended lorebooks based on user's data (characters, locations, events, skills, timelines)
+ */
+router.get('/lorebook-recommendations', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const recommendations = await lorebookRecommendationEngine.getRecommendations(req.user!.id, limit);
+    res.json({ recommendations });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to get lorebook recommendations');
     res.status(500).json({ error: 'Failed to get recommendations' });
   }
 });

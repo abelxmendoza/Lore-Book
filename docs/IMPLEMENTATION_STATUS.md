@@ -68,9 +68,10 @@ All 10 analytics modules implemented:
 - Background jobs (daily insights, weekly graph updates, memory extraction worker)
 
 **Missing/Incomplete**:
-- Continuity Engine Check job (contradictions, abandoned goals, new arcs)
-- Local ML models (using OpenAI embeddings instead)
-- Frontend components (Memory Explorer UI, Insight Dashboard)
+- ✅ Continuity Engine Check job - **IMPLEMENTED** (contradictions, abandoned goals, arc shifts)
+  - See `CONTINUITY_ENGINE_IMPLEMENTATION.md` for details
+- Local ML models (using OpenAI embeddings instead - intentional cost optimization)
+- Frontend components (Memory Explorer UI, Insight Dashboard - in progress)
 
 **See**: `BLUEPRINT_STATUS.md` for detailed status
 

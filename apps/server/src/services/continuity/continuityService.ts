@@ -8,6 +8,9 @@ import { identityDriftDetectionService } from './identityDriftDetection';
 import { emotionalArcDetectionService } from './emotionalArcDetection';
 import { thematicDriftDetectionService } from './thematicDriftDetection';
 import { insightStorageService } from '../insightStorageService';
+import { ContinuityAggregator } from './continuityAggregator';
+import { ContinuityProfileStorage } from './continuityProfileStorage';
+import type { ContinuityProfile } from './continuityTypes';
 
 /**
  * Continuity Service - Main orchestrator
@@ -151,10 +154,35 @@ class ContinuityService {
       logger.error({ error, userId }, 'Failed to detect thematic drift');
     }
 
-    // 8. Generate insights from events
+    // 8. Check for agency drift (NEW)
+    try {
+      const { WillStorage } = await import('../will');
+      const willStorage = new WillStorage();
+      const willEvents = await willStorage.getWillEvents(userId, { limit: 100 });
+      const agencyFrequency = await willStorage.getAgencyFrequency(userId, 30);
+      
+      if (agencyFrequency < 0.1) {
+        // Agency frequency below threshold
+        const driftEvent = {
+          event_type: 'agency_drift',
+          description: `Agency frequency below threshold (${agencyFrequency.toFixed(3)} events per day in last 30 days)`,
+          source_components: [],
+          severity: agencyFrequency < 0.05 ? 0.8 : 0.6,
+          metadata: { agency_frequency: agencyFrequency, threshold: 0.1 },
+          user_id: userId,
+        };
+        const saved = await this.saveContinuityEvents([driftEvent]);
+        allEvents.push(...saved);
+        logger.info({ userId, agencyFrequency }, 'Agency drift detected');
+      }
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to check agency drift');
+    }
+
+    // 9. Generate insights from events
     await this.generateInsightsFromEvents(allEvents, userId);
 
-    // 9. Summary
+    // 10. Summary
     const summary = {
       contradictions: allEvents.filter(e => e.event_type === 'contradiction').length,
       abandonedGoals: allEvents.filter(e => e.event_type === 'abandoned_goal').length,
@@ -162,6 +190,7 @@ class ContinuityService {
       identityDrifts: allEvents.filter(e => e.event_type === 'identity_drift').length,
       emotionalTransitions: allEvents.filter(e => e.event_type === 'emotional_transition').length,
       thematicDrifts: allEvents.filter(e => e.event_type === 'thematic_drift').length,
+      agencyDrifts: allEvents.filter(e => e.event_type === 'agency_drift').length,
     };
 
     logger.info({ userId, summary }, 'Continuity analysis completed');
@@ -392,6 +421,55 @@ class ContinuityService {
    */
   async getContradictions(userId: string): Promise<ContinuityEvent[]> {
     return this.getContinuityEvents(userId, 'contradiction');
+  }
+
+  /**
+   * Compute continuity profile (soul patterns)
+   * This is expensive, so should be called periodically, not on every entry
+   */
+  async computeContinuityProfile(userId: string, timeWindowDays: number = 365): Promise<ContinuityProfile> {
+    try {
+      logger.info({ userId, timeWindowDays }, 'Computing continuity profile');
+      
+      const aggregator = new ContinuityAggregator();
+      const profile = await aggregator.computeProfile(userId, timeWindowDays);
+      
+      // Save profile
+      const storage = new ContinuityProfileStorage();
+      await storage.saveProfile(userId, profile);
+      
+      logger.info({ userId, persistentValues: profile.persistent_values.length }, 'Continuity profile computed and saved');
+      return profile;
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to compute continuity profile');
+      throw error;
+    }
+  }
+
+  /**
+   * Get latest continuity profile
+   */
+  async getContinuityProfile(userId: string): Promise<ContinuityProfile | null> {
+    try {
+      const storage = new ContinuityProfileStorage();
+      return await storage.getProfile(userId);
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to get continuity profile');
+      return null;
+    }
+  }
+
+  /**
+   * Get continuity profile history
+   */
+  async getContinuityProfileHistory(userId: string, limit: number = 10): Promise<ContinuityProfile[]> {
+    try {
+      const storage = new ContinuityProfileStorage();
+      return await storage.getProfileHistory(userId, limit);
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to get continuity profile history');
+      return [];
+    }
   }
 }
 

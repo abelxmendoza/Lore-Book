@@ -9,6 +9,9 @@ import { BiographyGenerator } from '../biography/BiographyGenerator';
 import { BiographyRecommendations } from './BiographyRecommendations';
 import { SavedBiographies } from './SavedBiographies';
 import { CoreLorebooks } from './CoreLorebooks';
+import { KnowledgeBaseCreator } from './KnowledgeBaseCreator';
+import { LorebookRecommendations } from './LorebookRecommendations';
+import { QuerySuggestions } from './QuerySuggestions';
 import { fetchJson } from '../../lib/api';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
@@ -206,8 +209,35 @@ export const LoreBook = () => {
   const [showRecommendations, setShowRecommendations] = useState(true);
   const [showSaved, setShowSaved] = useState(false);
   const [showCoreLorebooks, setShowCoreLorebooks] = useState(false);
+  const [showKnowledgeBaseCreator, setShowKnowledgeBaseCreator] = useState(false);
   const [availableBiographies, setAvailableBiographies] = useState<Biography[]>([]);
   const [downloading, setDownloading] = useState(false);
+  const [showQuerySuggestions, setShowQuerySuggestions] = useState(false);
+  const [characters, setCharacters] = useState<Array<{ id: string; name: string }>>([]);
+  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
+  const [skills, setSkills] = useState<Array<{ id: string; name: string }>>([]);
+
+  // Load entities for query suggestions
+  useEffect(() => {
+    const loadEntities = async () => {
+      try {
+        // Load characters
+        const charData = await fetchJson<{ characters: Array<{ id: string; name: string }> }>('/api/characters/list');
+        setCharacters(charData.characters || []);
+
+        // Load locations
+        const locData = await fetchJson<{ locations: Array<{ id: string; name: string }> }>('/api/locations');
+        setLocations(locData.locations || []);
+
+        // Load skills
+        const skillData = await fetchJson<{ skills: Array<{ id: string; name: string; skill_name: string }> }>('/api/skills');
+        setSkills((skillData.skills || []).map(s => ({ id: s.id, name: s.skill_name || s.name })));
+      } catch (error) {
+        console.warn('Failed to load entities for suggestions:', error);
+      }
+    };
+    loadEntities();
+  }, []);
 
   // Load memoir outline and chapters
   useEffect(() => {
@@ -409,38 +439,10 @@ export const LoreBook = () => {
     
     setGenerating(true);
     try {
-      // Parse search query to determine biography spec
-      const lowerQuery = searchQuery.toLowerCase();
-      
-      let scope: 'full_life' | 'domain' | 'time_range' | 'thematic' = 'thematic';
-      let domain: any = undefined;
-      
-      if (lowerQuery.includes('fight') || lowerQuery.includes('bjj')) {
-        scope = 'domain';
-        domain = 'fighting';
-      } else if (lowerQuery.includes('robot') || lowerQuery.includes('code')) {
-        scope = 'domain';
-        domain = 'robotics';
-      } else if (lowerQuery.includes('relationship') || lowerQuery.includes('love')) {
-        scope = 'domain';
-        domain = 'relationships';
-      } else if (lowerQuery.includes('full') || lowerQuery.includes('life')) {
-        scope = 'full_life';
-      }
-
-      const spec = {
-        scope,
-        domain,
-        tone: 'neutral' as const,
-        depth: 'detailed' as const,
-        audience: 'self' as const,
-        includeIntrospection: true,
-        themes: searchQuery.split(/\s+/).filter(w => w.length > 4)
-      };
-
-      const result = await fetchJson<{ biography: Biography }>('/api/biography/generate', {
+      // Use intelligent search parser
+      const result = await fetchJson<{ biography: Biography; parsedQuery: any }>('/api/biography/search', {
         method: 'POST',
-        body: JSON.stringify(spec)
+        body: JSON.stringify({ query: searchQuery.trim() })
       });
 
       if (result.biography) {
@@ -592,6 +594,11 @@ export const LoreBook = () => {
     }
   };
 
+  const handleKnowledgeBaseGenerated = (biography: Biography) => {
+    handleLoadBiography(biography);
+    setShowKnowledgeBaseCreator(false);
+  };
+
   const handleLoadBiography = (biography: Biography) => {
     const newOutline: MemoirOutline = {
       id: biography.id,
@@ -617,7 +624,7 @@ export const LoreBook = () => {
     setShowRecommendations(false);
   };
 
-  const handleGenerateFromRecommendation = async (spec: BiographySpec, version?: string) => {
+  const handleGenerateFromRecommendation = async (spec: BiographySpec & { characterIds?: string[]; locationIds?: string[]; eventIds?: string[]; skillIds?: string[] }, version?: string) => {
     setGenerating(true);
     setShowRecommendations(false);
     try {
@@ -636,6 +643,20 @@ export const LoreBook = () => {
     }
   };
 
+  // Load lorebook recommendations
+  useEffect(() => {
+    const loadRecommendations = async () => {
+      try {
+        const result = await fetchJson<{ recommendations: any[] }>('/api/biography/lorebook-recommendations?limit=10');
+        // Store recommendations for display
+        // You can add a state variable to show these
+      } catch (error) {
+        console.warn('Failed to load lorebook recommendations:', error);
+      }
+    };
+    loadRecommendations();
+  }, []);
+
   // Show recommendations if no book is loaded
   if (showRecommendations && (!outline || outline.sections.length === 0)) {
     return (
@@ -643,7 +664,7 @@ export const LoreBook = () => {
         <div className="max-w-6xl mx-auto w-full">
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-white mb-2">Your Lorebook</h1>
-            <p className="text-white/60">Choose a biography to generate or view your recommendations</p>
+            <p className="text-white/60">Choose a lorebook to generate or view your recommendations</p>
           </div>
           <BiographyRecommendations onGenerate={handleGenerateFromRecommendation} />
         </div>
@@ -659,9 +680,22 @@ export const LoreBook = () => {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-primary" />
-              <h3 className="text-lg font-semibold text-white">Generate Biography</h3>
+              <h3 className="text-lg font-semibold text-white">Search & Generate Lorebook</h3>
             </div>
             <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowKnowledgeBaseCreator(true);
+                  setShowRecommendations(false);
+                  setShowSaved(false);
+                }}
+                className="text-white/60 hover:text-white bg-primary/10 hover:bg-primary/20"
+                leftIcon={<Sparkles className="h-4 w-4" />}
+              >
+                Create Lorebook
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -687,8 +721,11 @@ export const LoreBook = () => {
             </div>
           </div>
           {showRecommendations && (
-            <div className="mb-4">
-              <BiographyRecommendations onGenerate={handleGenerateFromRecommendation} />
+            <div className="mb-4 space-y-6">
+              <LorebookRecommendations onGenerate={handleGenerateFromRecommendation} />
+              <div className="border-t border-border/50 pt-6">
+                <BiographyRecommendations onGenerate={handleGenerateFromRecommendation} />
+              </div>
             </div>
           )}
           {showSaved && (
@@ -699,7 +736,7 @@ export const LoreBook = () => {
           {/* Instructions */}
           <div className="mb-3">
             <p className="text-sm text-white/70 leading-relaxed">
-              <span className="font-medium text-white/90">Generate or search for a biography:</span> Type a topic like "my fighting career", "robotics journey", or "full life story" to generate a new biography, or search for an existing one. Press Enter or click Generate to create your book.
+              <span className="font-medium text-white/90">Intelligent Lorebook Search:</span> Search by timeline ("my 2020 story"), characters ("my story with Sarah"), locations ("everything at the gym"), events ("the wedding"), skills ("my fighting journey"), or topics ("robotics", "relationships"). The system understands natural language and will generate the perfect lorebook for you.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -707,15 +744,33 @@ export const LoreBook = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/40" />
               <Input
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowQuerySuggestions(true);
+                }}
+                onFocus={() => setShowQuerySuggestions(true)}
+                onBlur={() => setTimeout(() => setShowQuerySuggestions(false), 200)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !generating) {
                     handleGenerateFromSearch();
+                    setShowQuerySuggestions(false);
                   }
                 }}
-                placeholder="e.g., 'my fighting career', 'robotics journey', 'full life story'..."
+                placeholder="e.g., 'my story with Sarah', 'everything at the gym', 'my 2020 story', 'my fighting journey'..."
                 className="pl-10 bg-black/60 border-white/20 text-white placeholder:text-white/40"
               />
+              {showQuerySuggestions && (
+                <QuerySuggestions
+                  query={searchQuery}
+                  onSelect={(query) => {
+                    setSearchQuery(query);
+                    setShowQuerySuggestions(false);
+                  }}
+                  characters={characters}
+                  locations={locations}
+                  skills={skills}
+                />
+              )}
             </div>
             <Button
               onClick={handleGenerateFromSearch}
@@ -977,6 +1032,14 @@ export const LoreBook = () => {
           sectionIndexMap={new Map(flatSections.map((s, idx) => [s.id, idx]))}
         />
       </div>
+
+      {/* Knowledge Base Creator Modal */}
+      {showKnowledgeBaseCreator && (
+        <KnowledgeBaseCreator
+          onGenerated={handleKnowledgeBaseGenerated}
+          onClose={() => setShowKnowledgeBaseCreator(false)}
+        />
+      )}
     </div>
   );
 };

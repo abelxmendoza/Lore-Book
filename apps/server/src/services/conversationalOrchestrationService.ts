@@ -180,17 +180,21 @@ export class ConversationalOrchestrationService {
       );
 
       // Fire-and-forget: Ingest AI response (lower priority, but still useful)
-      this.ingestUserMessageAsync(
-        userId,
-        assistantMessageId,
-        session.session_id,
-        response.content
-      ).catch(err => {
-        logger.warn(
-          { error: err, userId, messageId: assistantMessageId },
-          'AI message ingestion failed (non-blocking)'
-        );
-      });
+      // AI responses are processed with lower confidence and marked as interpretations
+      const { conversationIngestionPipeline } = await import('./conversationCentered/ingestionPipeline');
+      conversationIngestionPipeline
+        .ingestFromChatMessage(
+          userId,
+          assistantMessageId,
+          session.session_id,
+          await this.getRecentMessages(userId, session.session_id, 10)
+        )
+        .catch(err => {
+          logger.warn(
+            { error: err, userId, messageId: assistantMessageId },
+            'AI message ingestion failed (non-blocking)'
+          );
+        });
 
       return response;
     } catch (error) {

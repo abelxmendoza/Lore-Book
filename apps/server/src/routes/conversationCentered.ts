@@ -11,12 +11,28 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { conversationIngestionPipeline } from '../services/conversationCentered/ingestionPipeline';
 import { eventAssemblyService } from '../services/conversationCentered/eventAssemblyService';
 import { correctionResolutionService } from '../services/conversationCentered/correctionResolutionService';
+import { memoryTraceService } from '../services/conversationCentered/memoryTraceService';
 import { omegaChatService } from '../services/omegaChatService';
 import { confidenceTrackingService } from '../services/confidenceTrackingService';
 import { selfAwarenessService } from '../services/selfAwarenessService';
 import { metaControlService } from '../services/metaControlService';
 import { narrativeContinuityService } from '../services/narrativeContinuityService';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { eventImpactDetector } from '../services/conversationCentered/eventImpactDetector';
+import { eventCausalDetector } from '../services/conversationCentered/eventCausalDetector';
+import { entityRelationshipDetector } from '../services/conversationCentered/entityRelationshipDetector';
+import { entityScopeService } from '../services/conversationCentered/entityScopeService';
+import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
+import { relationshipTreeBuilder } from '../services/conversationCentered/relationshipTreeBuilder';
+import { skillNetworkBuilder } from '../services/conversationCentered/skillNetworkBuilder';
+import { groupNetworkBuilder } from '../services/conversationCentered/groupNetworkBuilder';
+import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
+import { affectionCalculator } from '../services/conversationCentered/affectionCalculator';
+import { romanticRelationshipAnalytics } from '../services/conversationCentered/romanticRelationshipAnalytics';
+import { relationshipDriftDetector } from '../services/conversationCentered/relationshipDriftDetector';
+import { relationshipCycleDetector } from '../services/conversationCentered/relationshipCycleDetector';
+import { breakupDetector } from '../services/conversationCentered/breakupDetector';
+import { characterTimelineBuilder } from '../services/conversationCentered/characterTimelineBuilder';
 
 const router = Router();
 
@@ -424,7 +440,7 @@ router.get(
       throw error;
     }
 
-    // Get source unit counts for each event
+    // Get source unit counts and impacts for each event
     const eventsWithCounts = await Promise.all(
       filteredEvents.map(async event => {
         const { count } = await supabaseAdmin
@@ -432,9 +448,34 @@ router.get(
           .select('*', { count: 'exact', head: true })
           .eq('event_id', event.id);
 
+        // Get impacts for this event
+        const impacts = await eventImpactDetector.getEventImpacts(userId, event.id);
+        const primaryImpact = impacts[0]; // Get the primary impact
+
+        // Get connection character name if exists
+        let connectionCharacterName: string | undefined;
+        if (primaryImpact?.connectionCharacterId) {
+          const { data: character } = await supabaseAdmin
+            .from('characters')
+            .select('name')
+            .eq('id', primaryImpact.connectionCharacterId)
+            .single();
+          connectionCharacterName = character?.name;
+        }
+
         return {
           ...event,
           source_count: count || 0,
+          impact: primaryImpact
+            ? {
+                type: primaryImpact.impactType,
+                connectionCharacter: connectionCharacterName,
+                connectionType: primaryImpact.connectionType,
+                emotionalImpact: primaryImpact.emotionalImpact,
+                impactIntensity: primaryImpact.impactIntensity,
+                impactDescription: primaryImpact.impactDescription,
+              }
+            : undefined,
         };
       })
     );
@@ -583,6 +624,41 @@ router.get(
         confidence_history: confidenceHistory,
         continuity_notes: continuityNotes,
       },
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/events/:id/causal-links
+ * Get causal relationships for an event (both causes and effects)
+ */
+router.get(
+  '/events/:id/causal-links',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id: eventId } = req.params;
+    const userId = req.user!.id;
+
+    // Verify event exists and belongs to user
+    const { data: event } = await supabaseAdmin
+      .from('resolved_events')
+      .select('id')
+      .eq('id', eventId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    // Get causal links
+    const causalLinks = await eventCausalDetector.getEventCausalLinks(userId, eventId);
+
+    res.json({
+      success: true,
+      eventId,
+      causes: causalLinks.causes,
+      effects: causalLinks.effects,
     });
   })
 );
@@ -809,6 +885,862 @@ router.post(
       },
       thread_id: threadId,
       event_id: eventId,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/trace/chat/:chatMessageId
+ * Trace full lineage from a chat message
+ * Shows: chat → conversation → utterance → unit → memory → event
+ */
+router.get(
+  '/trace/chat/:chatMessageId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { chatMessageId } = req.params;
+    const userId = req.user!.id;
+
+    const trace = await memoryTraceService.traceFromChatMessage(userId, chatMessageId);
+
+    if (!trace) {
+      return res.status(404).json({
+        error: 'Trace not found',
+        message: 'Chat message not found or not yet processed',
+      });
+    }
+
+    res.json({
+      success: true,
+      trace,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/trace/memory/:artifactType/:artifactId
+ * Reverse trace from a memory artifact
+ * Shows: memory → unit → utterance → conversation → chat
+ */
+router.get(
+  '/trace/memory/:artifactType/:artifactId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { artifactType, artifactId } = req.params;
+    const userId = req.user!.id;
+
+    if (!['perception_entry', 'journal_entry', 'insight'].includes(artifactType)) {
+      return res.status(400).json({
+        error: 'Invalid artifact type',
+        message: 'Must be one of: perception_entry, journal_entry, insight',
+      });
+    }
+
+    const trace = await memoryTraceService.traceFromMemoryArtifact(
+      userId,
+      artifactType as 'perception_entry' | 'journal_entry' | 'insight',
+      artifactId
+    );
+
+    if (!trace) {
+      return res.status(404).json({
+        error: 'Trace not found',
+        message: 'Memory artifact not found or has no trace',
+      });
+    }
+
+    res.json({
+      success: true,
+      trace,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/trace/unit/:unitId
+ * Trace from an extracted unit
+ * Shows: unit → memory artifacts + backward to utterance/conversation
+ */
+router.get(
+  '/trace/unit/:unitId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { unitId } = req.params;
+    const userId = req.user!.id;
+
+    const trace = await memoryTraceService.traceFromExtractedUnit(userId, unitId);
+
+    if (!trace) {
+      return res.status(404).json({
+        error: 'Trace not found',
+        message: 'Extracted unit not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      trace,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/entities/:entityId/relationships
+ * Get all relationships for an entity
+ */
+router.get(
+  '/entities/:entityId/relationships',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { entityId } = req.params;
+    const { entityType } = req.query;
+    const userId = req.user!.id;
+
+    if (!entityType || (entityType !== 'omega_entity' && entityType !== 'character')) {
+      return res.status(400).json({ error: 'entityType must be omega_entity or character' });
+    }
+
+    const relationships = await entityRelationshipDetector.getEntityRelationships(
+      userId,
+      entityId,
+      entityType as 'omega_entity' | 'character'
+    );
+
+    // Enrich with entity names
+    const enriched = await Promise.all(
+      relationships.map(async (rel) => {
+        let fromName = '';
+        let toName = '';
+
+        if (rel.fromEntityType === 'character') {
+          const { data: char } = await supabaseAdmin
+            .from('characters')
+            .select('name')
+            .eq('id', rel.fromEntityId)
+            .single();
+          fromName = char?.name || '';
+        } else {
+          const { data: entity } = await supabaseAdmin
+            .from('omega_entities')
+            .select('primary_name')
+            .eq('id', rel.fromEntityId)
+            .single();
+          fromName = entity?.primary_name || '';
+        }
+
+        if (rel.toEntityType === 'character') {
+          const { data: char } = await supabaseAdmin
+            .from('characters')
+            .select('name')
+            .eq('id', rel.toEntityId)
+            .single();
+          toName = char?.name || '';
+        } else {
+          const { data: entity } = await supabaseAdmin
+            .from('omega_entities')
+            .select('primary_name')
+            .eq('id', rel.toEntityId)
+            .single();
+          toName = entity?.primary_name || '';
+        }
+
+        return {
+          ...rel,
+          fromEntityName: fromName,
+          toEntityName: toName,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      relationships: enriched,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/entities/:entityId/scopes
+ * Get all scopes for an entity
+ */
+router.get(
+  '/entities/:entityId/scopes',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { entityId } = req.params;
+    const { entityType } = req.query;
+    const userId = req.user!.id;
+
+    if (!entityType || (entityType !== 'omega_entity' && entityType !== 'character')) {
+      return res.status(400).json({ error: 'entityType must be omega_entity or character' });
+    }
+
+    const scopes = await entityRelationshipDetector.getEntityScopes(
+      userId,
+      entityId,
+      entityType as 'omega_entity' | 'character'
+    );
+
+    res.json({
+      success: true,
+      scopes,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/scopes/:scope/entities
+ * Get all entities in a scope
+ */
+router.get(
+  '/scopes/:scope/entities',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { scope } = req.params;
+    const { scopeContext } = req.query;
+    const userId = req.user!.id;
+
+    const entities = await entityScopeService.getEntitiesInScope(
+      userId,
+      scope,
+      scopeContext as string | undefined
+    );
+
+    // Enrich with entity names
+    const enriched = await Promise.all(
+      entities.map(async (e) => {
+        let name = '';
+        if (e.type === 'character') {
+          const { data: char } = await supabaseAdmin
+            .from('characters')
+            .select('name')
+            .eq('id', e.id)
+            .single();
+          name = char?.name || '';
+        } else {
+          const { data: entity } = await supabaseAdmin
+            .from('omega_entities')
+            .select('primary_name')
+            .eq('id', e.id)
+            .single();
+          name = entity?.primary_name || '';
+        }
+
+        return {
+          ...e,
+          name,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      entities: enriched,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/entities/:entityId/relationship-chain
+ * Get relationship chain for an entity (e.g., Sam → works_for → Strativ Group → recruits_for → Mach Industries)
+ */
+router.get(
+  '/entities/:entityId/relationship-chain',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { entityId } = req.params;
+    const { entityType } = req.query;
+    const userId = req.user!.id;
+
+    if (!entityType || (entityType !== 'omega_entity' && entityType !== 'character')) {
+      return res.status(400).json({ error: 'entityType must be omega_entity or character' });
+    }
+
+    const chain = await entityScopeService.buildRelationshipChain(
+      userId,
+      entityId,
+      entityType as 'omega_entity' | 'character'
+    );
+
+    // Enrich with entity names
+    const enriched = await Promise.all(
+      chain.map(async (link) => {
+        let entityName = '';
+        let nextEntityName = '';
+
+        if (link.entityType === 'character') {
+          const { data: char } = await supabaseAdmin
+            .from('characters')
+            .select('name')
+            .eq('id', link.entityId)
+            .single();
+          entityName = char?.name || '';
+        } else {
+          const { data: entity } = await supabaseAdmin
+            .from('omega_entities')
+            .select('primary_name')
+            .eq('id', link.entityId)
+            .single();
+          entityName = entity?.primary_name || '';
+        }
+
+        if (link.nextEntityType === 'character') {
+          const { data: char } = await supabaseAdmin
+            .from('characters')
+            .select('name')
+            .eq('id', link.nextEntityId)
+            .single();
+          nextEntityName = char?.name || '';
+        } else {
+          const { data: entity } = await supabaseAdmin
+            .from('omega_entities')
+            .select('primary_name')
+            .eq('id', link.nextEntityId)
+            .single();
+          nextEntityName = entity?.primary_name || '';
+        }
+
+        return {
+          ...link,
+          entityName,
+          nextEntityName,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      chain: enriched,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/relationship-trees/:entityId
+ * Get relationship tree for a specific entity
+ */
+router.get(
+  '/relationship-trees/:entityId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { entityId } = req.params;
+    const userId = req.user!.id;
+    const category = (req.query.category as RelationshipCategory) || 'all';
+    const depth = parseInt(req.query.depth as string) || 3;
+    const entityType = (req.query.entityType as 'omega_entity' | 'character') || 'character';
+
+    // Try to get saved tree first
+    let tree = await relationshipTreeBuilder.getSavedTree(userId, entityId, entityType);
+
+    // If no saved tree or needs rebuild, build it
+    if (!tree) {
+      tree = await relationshipTreeBuilder.buildTree(userId, entityId, entityType, category, depth);
+      if (tree) {
+        await relationshipTreeBuilder.saveTree(userId, tree);
+      }
+    }
+
+    if (!tree) {
+      return res.status(404).json({ error: 'Entity not found or no relationships' });
+    }
+
+    res.json({
+      success: true,
+      tree: {
+        rootNode: tree.rootNode,
+        nodes: Array.from(tree.nodes.values()),
+        relationships: tree.relationships,
+        memberCount: tree.memberCount,
+        relationshipCount: tree.relationshipCount,
+        categories: tree.categories,
+      },
+    });
+  })
+);
+
+/**
+ * POST /api/conversation/relationship-trees/:entityId/rebuild
+ * Rebuild relationship tree for an entity
+ */
+router.post(
+  '/relationship-trees/:entityId/rebuild',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { entityId } = req.params;
+    const userId = req.user!.id;
+    const category = (req.body.category as RelationshipCategory) || 'all';
+    const depth = parseInt(req.body.depth as string) || 3;
+    const entityType = (req.body.entityType as 'omega_entity' | 'character') || 'character';
+
+    const tree = await relationshipTreeBuilder.buildTree(userId, entityId, entityType, category, depth);
+
+    if (!tree) {
+      return res.status(404).json({ error: 'Entity not found or no relationships' });
+    }
+
+    await relationshipTreeBuilder.saveTree(userId, tree);
+
+    res.json({
+      success: true,
+      tree: {
+        rootNode: tree.rootNode,
+        nodes: Array.from(tree.nodes.values()),
+        relationships: tree.relationships,
+        memberCount: tree.memberCount,
+        relationshipCount: tree.relationshipCount,
+        categories: tree.categories,
+      },
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/relationship-trees
+ * Get all relationship trees (list of root entities with trees)
+ */
+router.get(
+  '/relationship-trees',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    const { data: trees } = await supabaseAdmin
+      .from('relationship_trees')
+      .select('root_entity_id, root_entity_type, member_count, relationship_count, categories, last_updated')
+      .eq('user_id', userId)
+      .order('last_updated', { ascending: false });
+
+    res.json({
+      success: true,
+      trees: trees || [],
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/entities/:entityId/attributes
+ * Get attributes for an entity
+ */
+router.get(
+  '/entities/:entityId/attributes',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { entityId } = req.params;
+    const userId = req.user!.id;
+    const entityType = (req.query.entityType as 'omega_entity' | 'character') || 'character';
+    const currentOnly = req.query.currentOnly === 'true';
+
+    const attributes = await entityAttributeDetector.getEntityAttributes(
+      userId,
+      entityId,
+      entityType,
+      currentOnly
+    );
+
+    res.json({
+      success: true,
+      attributes,
+    });
+  })
+);
+
+import type { RelationshipCategory } from '../services/conversationCentered/relationshipTreeBuilder';
+
+/**
+ * GET /api/conversation/skill-network
+ * Get skill network for user
+ */
+router.get(
+  '/skill-network',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const rootSkillId = req.query.rootSkillId as string | undefined;
+    const depth = parseInt(req.query.depth as string) || 3;
+
+    const network = await skillNetworkBuilder.buildNetwork(userId, rootSkillId, depth);
+
+    res.json({
+      success: true,
+      network: {
+        rootSkill: network.rootSkill,
+        skills: Array.from(network.skills.values()),
+        relationships: network.relationships,
+        clusters: network.clusters,
+        skillCount: network.skillCount,
+        relationshipCount: network.relationshipCount,
+      },
+    });
+  })
+);
+
+/**
+ * POST /api/conversation/skill-network/detect-clusters
+ * Detect and create skill clusters
+ */
+router.post(
+  '/skill-network/detect-clusters',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    await skillNetworkBuilder.detectSkillClusters(userId);
+
+    res.json({
+      success: true,
+      message: 'Skill clusters detected',
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/group-network
+ * Get group network for user
+ */
+router.get(
+  '/group-network',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const rootGroupId = req.query.rootGroupId as string | undefined;
+    const depth = parseInt(req.query.depth as string) || 3;
+
+    const network = await groupNetworkBuilder.buildNetwork(userId, rootGroupId, depth);
+
+    res.json({
+      success: true,
+      network: {
+        rootGroup: network.rootGroup,
+        groups: Array.from(network.groups.values()),
+        relationships: network.relationships,
+        evolution: network.evolution,
+        groupCount: network.groupCount,
+        relationshipCount: network.relationshipCount,
+      },
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/romantic-relationships
+ * Get all romantic relationships
+ */
+router.get(
+  '/romantic-relationships',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const status = req.query.status as string | undefined;
+    const isCurrent = req.query.isCurrent === 'true';
+
+    const query = supabaseAdmin
+      .from('romantic_relationships')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (status) {
+      query.eq('status', status);
+    }
+    if (isCurrent) {
+      query.eq('is_current', true);
+    }
+
+    const { data: relationships, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({
+      success: true,
+      relationships: relationships || [],
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/romantic-relationships/top-affections
+ * Get who you like most
+ */
+router.get(
+  '/romantic-relationships/top-affections',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const limit = parseInt(req.query.limit as string) || 5;
+
+    const topAffections = await affectionCalculator.getTopAffections(userId, limit);
+
+    res.json({
+      success: true,
+      affections: topAffections,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/romantic-relationships/:id/analytics
+ * Get analytics for a relationship
+ */
+router.get(
+  '/romantic-relationships/:id/analytics',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const analytics = await romanticRelationshipAnalytics.generateAnalytics(userId, id);
+
+    if (!analytics) {
+      return res.status(404).json({
+        success: false,
+        error: 'Relationship not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      analytics,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/romantic-relationships/:id/dates
+ * Get dates and milestones for a relationship
+ */
+router.get(
+  '/romantic-relationships/:id/dates',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const { data: dates, error } = await supabaseAdmin
+      .from('romantic_dates')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('relationship_id', id)
+      .order('date_time', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({
+      success: true,
+      dates: dates || [],
+    });
+  })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships/calculate-affection
+ * Recalculate affection scores
+ */
+router.post(
+  '/romantic-relationships/calculate-affection',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    const scores = await affectionCalculator.calculateAffectionScores(userId);
+
+    res.json({
+      success: true,
+      scores,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/romantic-relationships/:id/drift
+ * Get relationship drift detection
+ */
+router.get(
+  '/romantic-relationships/:id/drift',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const { data: relationship } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('person_id, person_type')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (!relationship) {
+      return res.status(404).json({
+        success: false,
+        error: 'Relationship not found',
+      });
+    }
+
+    const drift = await relationshipDriftDetector.detectDrift(
+      userId,
+      id,
+      relationship.person_id,
+      relationship.person_type
+    );
+
+    // Get drift history
+    const { data: driftHistory } = await supabaseAdmin
+      .from('relationship_drift')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('relationship_id', id)
+      .order('detected_at', { ascending: false })
+      .limit(10);
+
+    res.json({
+      success: true,
+      currentDrift: drift,
+      driftHistory: driftHistory || [],
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/romantic-relationships/:id/cycles
+ * Get relationship cycles/loops
+ */
+router.get(
+  '/romantic-relationships/:id/cycles',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const { data: relationship } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('person_id, person_type')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (!relationship) {
+      return res.status(404).json({
+        success: false,
+        error: 'Relationship not found',
+      });
+    }
+
+    // Detect cycles
+    const cycles = await relationshipCycleDetector.detectCycles(
+      userId,
+      id,
+      relationship.person_id,
+      relationship.person_type
+    );
+
+    // Get cycle history
+    const { data: cycleHistory } = await supabaseAdmin
+      .from('relationship_cycles')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('relationship_id', id)
+      .order('last_observed_at', { ascending: false });
+
+    res.json({
+      success: true,
+      cycles,
+      cycleHistory: cycleHistory || [],
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/romantic-relationships/:id/breakup
+ * Get breakup information
+ */
+router.get(
+  '/romantic-relationships/:id/breakup',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const { data: breakup } = await supabaseAdmin
+      .from('relationship_breakups')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('relationship_id', id)
+      .order('breakup_date', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!breakup) {
+      return res.json({
+        success: true,
+        breakup: null,
+      });
+    }
+
+    res.json({
+      success: true,
+      breakup,
+    });
+  })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships/detect-drift-all
+ * Detect drift for all relationships
+ */
+router.post(
+  '/romantic-relationships/detect-drift-all',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    const detections = await relationshipDriftDetector.detectDriftForAll(userId);
+
+    res.json({
+      success: true,
+      detections,
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/characters/:id/timelines
+ * Get character timelines (shared experiences and lore)
+ */
+router.get(
+  '/characters/:id/timelines',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const timelines = await characterTimelineBuilder.buildTimelines(userId, id);
+
+    res.json({
+      success: true,
+      timelines,
+    });
+  })
+);
+
+/**
+ * POST /api/conversation/characters/:id/rebuild-timelines
+ * Rebuild timelines for a character
+ */
+router.post(
+  '/characters/:id/rebuild-timelines',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    await characterTimelineBuilder.rebuildTimelinesForCharacter(userId, id);
+
+    res.json({
+      success: true,
+      message: 'Timelines rebuilt',
     });
   })
 );

@@ -25,11 +25,29 @@ export const RelationshipHeatmapCard = ({ heatmap }: RelationshipHeatmapCardProp
     );
   }
 
+  // Filter out entries without valid values arrays
+  const validHeatmap = heatmap.filter(h => h.values && Array.isArray(h.values) && h.values.length > 0);
+  
+  if (validHeatmap.length === 0) {
+    return (
+      <Card className="bg-black/40 border-border/60">
+        <CardHeader>
+          <CardTitle className="text-white">Relationship Activity Heatmap</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-64 flex items-center justify-center text-white/40">
+            No heatmap data available
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Find max value for normalization
-  const maxValue = Math.max(...heatmap.flatMap(h => h.values), 1);
+  const maxValue = Math.max(...validHeatmap.flatMap(h => h.values), 1);
 
   // Get number of weeks/columns
-  const maxWeeks = Math.max(...heatmap.map(h => h.values.length), 0);
+  const maxWeeks = Math.max(...validHeatmap.map(h => h.values.length), 0);
 
   const getIntensityColor = (value: number): string => {
     if (value === 0) return 'bg-black/20';
@@ -70,7 +88,7 @@ export const RelationshipHeatmapCard = ({ heatmap }: RelationshipHeatmapCardProp
 
             {/* Character rows */}
             <div className="space-y-1">
-              {heatmap.slice(0, 20).map((entry) => (
+              {validHeatmap.slice(0, 20).map((entry) => (
                 <div key={entry.character} className="flex items-center gap-2">
                   <div className="w-32 flex-shrink-0 text-sm text-white/80 truncate" title={entry.character}>
                     {entry.character}

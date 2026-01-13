@@ -4,7 +4,7 @@
 // =====================================================
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Clock, MapPin, Users, MessageSquare, Send, Sparkles, AlertCircle, FileText, Brain, Calendar, MessageCircle } from 'lucide-react';
+import { X, Clock, MapPin, Users, MessageSquare, Send, Sparkles, AlertCircle, FileText, Brain, Calendar, MessageCircle, ArrowRight, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -62,6 +62,38 @@ interface Event {
     };
   }>;
   continuity_notes?: string[];
+  causal_links?: {
+    causes: Array<{
+      causeEventId: string;
+      effectEventId: string;
+      causalType: string;
+      confidence: number;
+      causalStrength?: number;
+      timeLagDays?: number;
+      evidence: string;
+      causeEvent: {
+        id: string;
+        title: string;
+        summary: string | null;
+        start_time: string;
+      };
+    }>;
+    effects: Array<{
+      causeEventId: string;
+      effectEventId: string;
+      causalType: string;
+      confidence: number;
+      causalStrength?: number;
+      timeLagDays?: number;
+      evidence: string;
+      effectEvent: {
+        id: string;
+        title: string;
+        summary: string | null;
+        start_time: string;
+      };
+    }>;
+  };
 }
 
 interface EventDetailModalProps {
@@ -98,12 +130,30 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
         setLoading(false);
         return;
       }
-      
+
+      // Load event data
       const result = await fetchJson<{ success: boolean; event: Event }>(
         `/api/conversation/events/${event.id}`
       );
       if (result.success) {
         setEventData(result.event);
+      }
+
+      // Load causal links (optional, don't fail if endpoint doesn't exist yet)
+      try {
+        const causalData = await fetchJson(`/api/conversation/events/${event.id}/causal-links`);
+        if (causalData.success) {
+          setEventData(prev => ({
+            ...prev,
+            causal_links: {
+              causes: causalData.causes || [],
+              effects: causalData.effects || [],
+            },
+          }));
+        }
+      } catch (error) {
+        // Causal links are optional, don't fail if they don't exist
+        console.debug('Failed to load causal links (optional):', error);
       }
     } catch (err: any) {
       console.error('Failed to load event:', err);
@@ -248,7 +298,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
             </TabsList>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6 pb-32">
             <TabsContent value="chat" className="mt-0 h-full flex flex-col">
               <div className="flex-1 space-y-4 mb-4 overflow-y-auto">
                 {chatMessages.length === 0 ? (
@@ -288,28 +338,6 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                 )}
                 <div ref={chatEndRef} />
               </div>
-              <div className="flex gap-2">
-                <Input
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleChatMessage();
-                    }
-                  }}
-                  placeholder="Talk about this event..."
-                  className="flex-1"
-                  disabled={sending}
-                />
-                <Button onClick={handleChatMessage} disabled={!chatInput.trim() || sending}>
-                  {sending ? (
-                    <Sparkles className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                </Button>
-              </div>
             </TabsContent>
 
             <TabsContent value="details" className="mt-0 space-y-4">
@@ -338,6 +366,115 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                         </p>
                       ))}
                     </div>
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {/* Causal Relationships Section */}
+              {eventData.causal_links && (eventData.causal_links.causes.length > 0 || eventData.causal_links.effects.length > 0) ? (
+                <Card className="border-border/60 bg-black/40">
+                  <CardHeader>
+                    <CardTitle className="text-sm">Causal Relationships</CardTitle>
+                    <CardDescription className="text-xs text-white/50">
+                      Events that caused this event, and events this event caused
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Causes */}
+                    {eventData.causal_links.causes.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold text-white/60 mb-2 flex items-center gap-2">
+                          <ArrowLeft className="w-3 h-3" />
+                          Caused By
+                        </h4>
+                        <div className="space-y-3">
+                          {eventData.causal_links.causes.map((link, idx) => (
+                            <div key={idx} className="pl-4 border-l-2 border-blue-500/30 bg-blue-500/5 rounded p-3">
+                              <div className="flex items-start justify-between mb-1">
+                                <Badge variant="outline" className="text-xs">
+                                  {link.causalType.replace('_', ' ')}
+                                </Badge>
+                                <span className="text-xs text-white/40">
+                                  {link.timeLagDays !== undefined && link.timeLagDays > 0
+                                    ? `${link.timeLagDays} days later`
+                                    : 'same time'}
+                                </span>
+                              </div>
+                              <p className="text-sm font-medium text-white/90 mb-1">
+                                {link.causeEvent.title}
+                              </p>
+                              {link.causeEvent.summary && (
+                                <p className="text-xs text-white/60 mb-2">
+                                  {link.causeEvent.summary}
+                                </p>
+                              )}
+                              {link.evidence && (
+                                <p className="text-xs text-white/50 italic">
+                                  "{link.evidence}"
+                                </p>
+                              )}
+                              <div className="mt-2 flex items-center gap-2 text-xs text-white/40">
+                                <span>Confidence: {Math.round(link.confidence * 100)}%</span>
+                                {link.causalStrength && (
+                                  <>
+                                    <span>·</span>
+                                    <span>Strength: {Math.round(link.causalStrength * 100)}%</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Effects */}
+                    {eventData.causal_links.effects.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold text-white/60 mb-2 flex items-center gap-2">
+                          <ArrowRight className="w-3 h-3" />
+                          Caused
+                        </h4>
+                        <div className="space-y-3">
+                          {eventData.causal_links.effects.map((link, idx) => (
+                            <div key={idx} className="pl-4 border-l-2 border-green-500/30 bg-green-500/5 rounded p-3">
+                              <div className="flex items-start justify-between mb-1">
+                                <Badge variant="outline" className="text-xs">
+                                  {link.causalType.replace('_', ' ')}
+                                </Badge>
+                                <span className="text-xs text-white/40">
+                                  {link.timeLagDays !== undefined && link.timeLagDays > 0
+                                    ? `${link.timeLagDays} days later`
+                                    : 'same time'}
+                                </span>
+                              </div>
+                              <p className="text-sm font-medium text-white/90 mb-1">
+                                {link.effectEvent.title}
+                              </p>
+                              {link.effectEvent.summary && (
+                                <p className="text-xs text-white/60 mb-2">
+                                  {link.effectEvent.summary}
+                                </p>
+                              )}
+                              {link.evidence && (
+                                <p className="text-xs text-white/50 italic">
+                                  "{link.evidence}"
+                                </p>
+                              )}
+                              <div className="mt-2 flex items-center gap-2 text-xs text-white/40">
+                                <span>Confidence: {Math.round(link.confidence * 100)}%</span>
+                                {link.causalStrength && (
+                                  <>
+                                    <span>·</span>
+                                    <span>Strength: {Math.round(link.causalStrength * 100)}%</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ) : null}
@@ -530,6 +667,32 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
             </TabsContent>
           </div>
         </Tabs>
+
+        {/* Sticky Chatbox - Always visible at bottom */}
+        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-black/90 border-t border-primary/30 p-4 z-10 backdrop-blur-sm shadow-lg shadow-black/50">
+          <div className="flex gap-2">
+            <Input
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleChatMessage();
+                }
+              }}
+              placeholder="Talk about this event..."
+              className="flex-1"
+              disabled={sending}
+            />
+            <Button onClick={handleChatMessage} disabled={!chatInput.trim() || sending}>
+              {sending ? (
+                <Sparkles className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

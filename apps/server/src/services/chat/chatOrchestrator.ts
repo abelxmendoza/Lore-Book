@@ -139,7 +139,7 @@ export class ChatOrchestrator {
       // 5. Build sources
       const sources = this.buildSources(ctx);
 
-      // 6. Auto-save message if needed (fire and forget)
+      // 6. Auto-save message as journal entry (all chat messages are automatically saved)
       let entryId: string | undefined;
       if (shouldPersistMessage(message)) {
         memoryService.saveEntry({
@@ -150,14 +150,15 @@ export class ChatOrchestrator {
           metadata: {
             autoCaptured: true,
             conversationContext: true,
+            fromStreamingChat: true,
           },
         })
           .then((savedEntry) => {
             entryId = savedEntry.id;
-            logger.debug({ userId, entryId }, 'Auto-saved chat message as entry');
+            logger.debug({ userId, entryId }, 'Auto-saved chat message as journal entry');
           })
           .catch((error) => {
-            logger.warn({ error, userId }, 'Failed to auto-save chat message');
+            logger.warn({ error, userId }, 'Failed to auto-save chat message as journal entry');
           });
       }
 

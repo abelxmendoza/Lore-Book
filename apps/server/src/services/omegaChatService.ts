@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { randomUUID } from 'crypto';
 
 import { config } from '../config';
 import { logger } from '../logger';
@@ -12,7 +13,7 @@ import { peoplePlacesService } from './peoplePlacesService';
 import { orchestratorService } from './orchestratorService';
 import { hqiService } from './hqiService';
 import { memoryGraphService } from './memoryGraphService';
-import { extractTags, shouldPersistMessage } from '../utils/keywordDetector';
+import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/keywordDetector';
 import { correctionService } from './correctionService';
 import { timeEngine } from './timeEngine';
 import { locationService } from './locationService';
@@ -24,9 +25,20 @@ import { omegaMemoryService } from './omegaMemoryService';
 import { memoryReviewQueueService } from './memoryReviewQueueService';
 import { perspectiveService } from './perspectiveService';
 import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
+import { responseSafetyService } from './conversationCentered/responseSafetyService';
+import {
+  isBeliefChallengeAllowed,
+  evaluateBelief,
+  generateBeliefChallenge,
+} from './conversationCentered/beliefChallenge';
+import { processChallengeResponse } from './conversationCentered/beliefChallenge/beliefChallengeResponseDetector';
+import { perceptionService } from './perceptionService';
 import { entityAmbiguityService } from './entityAmbiguityService';
 import { intentDetectionService } from './intentDetectionService';
 import { entityMeaningDriftService } from './entityMeaningDriftService';
+import { ChatPersonaRL } from './reinforcementLearning/chatPersonaRL';
+import { entityAttributeDetector } from './conversationCentered/entityAttributeDetector';
+import { tangentTransitionDetector, type TransitionAnalysis, type EmotionalState } from './conversationCentered/tangentTransitionDetector';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
@@ -115,6 +127,12 @@ export type StreamingChatResponse = {
 };
 
 class OmegaChatService {
+  private personaRL: ChatPersonaRL;
+
+  constructor() {
+    this.personaRL = new ChatPersonaRL();
+  }
+
   /**
    * Build comprehensive RAG packet with ALL lore knowledge
    */
@@ -200,6 +218,94 @@ class OmegaChatService {
       allPeoplePlaces = await peoplePlacesService.listEntities(userId);
     } catch (error) {
       logger.debug({ error }, 'Failed to fetch people/places, continuing');
+    }
+
+    // Fetch character attributes for all characters (comprehensive knowledge)
+    let characterAttributesMap: Map<string, any[]> = new Map();
+    try {
+      for (const char of allCharacters) {
+        const attributes = await entityAttributeDetector.getEntityAttributes(
+          userId,
+          char.id,
+          'character',
+          true // current only
+        );
+        if (attributes.length > 0) {
+          characterAttributesMap.set(char.id, attributes);
+        }
+      }
+    } catch (error) {
+      logger.debug({ error }, 'Failed to fetch character attributes, continuing');
+    }
+
+    // Fetch romantic relationships (comprehensive knowledge)
+    let romanticRelationships: any[] = [];
+    try {
+      const { data: relationships } = await supabaseAdmin
+        .from('romantic_relationships')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      romanticRelationships = relationships || [];
+    } catch (error) {
+      logger.debug({ error }, 'Failed to fetch romantic relationships, continuing');
+    }
+
+    // Fetch corrections and deprecated units (so chatbot knows what's wrong)
+    let corrections: any[] = [];
+    let deprecatedUnits: any[] = [];
+    try {
+      // Get recent corrections
+      const { data: correctionRecords } = await supabaseAdmin
+        .from('correction_records')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      corrections = correctionRecords || [];
+
+      // Get deprecated units (recent ones)
+      const { data: deprecated } = await supabaseAdmin
+        .from('extracted_units')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('metadata->>deprecated', 'true')
+        .order('created_at', { ascending: false })
+        .limit(30);
+      deprecatedUnits = deprecated || [];
+    } catch (error) {
+      logger.debug({ error }, 'Failed to fetch corrections/deprecated units, continuing');
+    }
+
+    // Fetch workout events and biometrics (fitness knowledge)
+    let workoutEvents: any[] = [];
+    let recentBiometrics: any[] = [];
+    try {
+      const { workoutEventDetector } = await import('./conversationCentered/workoutEventDetector');
+      const { biometricExtractor } = await import('./conversationCentered/biometricExtractor');
+      
+      workoutEvents = await workoutEventDetector.getWorkoutEvents(userId, 20, 0);
+      
+      // Get recent biometric measurements
+      const { data: biometrics } = await supabaseAdmin
+        .from('biometric_measurements')
+        .select('*')
+        .eq('user_id', userId)
+        .order('measurement_date', { ascending: false })
+        .limit(10);
+      recentBiometrics = biometrics || [];
+    } catch (error) {
+      logger.debug({ error }, 'Failed to fetch workout events/biometrics, continuing');
+    }
+
+    // Fetch interests (comprehensive knowledge)
+    let topInterests: any[] = [];
+    try {
+      const { interestTracker } = await import('./conversationCentered/interestTracker');
+      topInterests = await interestTracker.getTopInterests(userId, 30);
+    } catch (error) {
+      logger.debug({ error }, 'Failed to fetch interests, continuing');
     }
 
     // Get HQI semantic search results with error handling
@@ -344,7 +450,15 @@ class OmegaChatService {
       allLocations,
       allChapters,
       timelineHierarchy,
-      allPeoplePlaces
+      allPeoplePlaces,
+      // Enhanced knowledge
+      characterAttributesMap: Object.fromEntries(characterAttributesMap),
+      romanticRelationships,
+      corrections,
+      deprecatedUnits,
+      workoutEvents,
+      recentBiometrics,
+      topInterests
     };
 
     // Cache the RAG packet for future use
@@ -540,27 +654,48 @@ class OmegaChatService {
       timelineHierarchy?: any;
       allPeoplePlaces?: any[];
       essenceProfile?: any;
+      characterAttributesMap?: Record<string, any[]>;
+      romanticRelationships?: any[];
+      corrections?: any[];
+      deprecatedUnits?: any[];
+      workoutEvents?: any[];
+      recentBiometrics?: any[];
+      topInterests?: any[];
     },
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
     entityAnalytics?: any,
     entityConfidence?: number | null,
-    analyticsGate?: any
+    analyticsGate?: any,
+    personaBlend?: { primary: string; secondary: string[]; weights: Record<string, number> },
+    transitionAnalysis?: TransitionAnalysis | null,
+    currentEmotionalState?: EmotionalState | null
   ): string {
     const timelineSummary = orchestratorSummary.timeline.events
       .slice(0, 20)
       .map((e: any) => `Date: ${e.date}\n${e.summary || e.content?.substring(0, 100)}`)
       .join('\n---\n');
 
-    // Build comprehensive character knowledge (including nicknames/aliases)
+    // Build comprehensive character knowledge (including nicknames/aliases and attributes)
     const charactersKnowledge = loreData?.allCharacters?.length
       ? loreData.allCharacters.map((char: any) => {
           const aliases = char.alias && Array.isArray(char.alias) && char.alias.length > 0 
             ? ` (also known as: ${char.alias.join(', ')})` 
             : '';
+          
+          // Get character attributes
+          const attributes = loreData?.characterAttributesMap?.[char.id] || [];
+          const attributesText = attributes.length > 0
+            ? attributes.map((attr: any) => {
+                const typeLabel = attr.attributeType.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+                return `${typeLabel}: ${attr.attributeValue}${attr.confidence < 0.8 ? ' (tentative)' : ''}`;
+              }).join(', ')
+            : '';
+          
           const details = [
             `${char.name}${aliases}`,
             char.role ? `Role: ${char.role}` : '',
             char.archetype ? `Archetype: ${char.archetype}` : '',
+            attributesText ? `Attributes: ${attributesText}` : '',
             char.summary ? `Summary: ${char.summary.substring(0, 100)}` : '',
             char.first_appearance ? `First appeared: ${char.first_appearance}` : '',
             char.tags?.length ? `Tags: ${char.tags.join(', ')}` : '',
@@ -719,6 +854,13 @@ When explaining analytics, provide context about what these scores mean and why 
 - Deep reflection → Emphasize Soul Capturer
 - Character/relationship talk → Emphasize Gossip Buddy
 
+${personaBlend ? `
+**ACTIVE PERSONA CONFIGURATION** (RL-optimized):
+- Primary Persona: ${personaBlend.primary} (${(personaBlend.weights[personaBlend.primary] * 100).toFixed(0)}% weight)
+${personaBlend.secondary.length > 0 ? `- Secondary Personas: ${personaBlend.secondary.map(p => `${p} (${(personaBlend.weights[p] * 100).toFixed(0)}%)`).join(', ')}` : ''}
+- Blend these personas naturally based on their weights. The primary persona should dominate the response style.
+` : ''}
+
 **YOUR KNOWLEDGE BASE - YOU KNOW EVERYTHING ABOUT THE USER'S LORE:**
 
 **CHARACTERS (${loreData?.allCharacters?.length || orchestratorSummary.characters.length} total):**
@@ -733,6 +875,88 @@ ${identityKnowledge ? `**IDENTITY:**\n${identityKnowledge}\n\n` : ''}
 ${continuityKnowledge ? `**CONTINUITY:**\n${continuityKnowledge}\n\n` : ''}
 ${essenceContext ? `**ESSENCE PROFILE - WHAT YOU KNOW ABOUT THEIR CORE SELF:**\n${essenceContext}\n\n` : ''}
 ${entityAnalyticsContext ? `**CURRENT ENTITY ANALYTICS:**\n${entityAnalyticsContext}\n\n` : ''}
+
+${loreData?.romanticRelationships && loreData.romanticRelationships.length > 0 ? `**ROMANTIC RELATIONSHIPS (${loreData.romanticRelationships.length} total):**
+${loreData.romanticRelationships.map((rel: any) => {
+  const status = rel.is_current ? 'Current' : 'Past';
+  const type = rel.relationship_type || 'relationship';
+  const partner = rel.partner_name || 'Unknown';
+  const startDate = rel.start_date ? new Date(rel.start_date).toLocaleDateString() : '';
+  const endDate = rel.end_date ? new Date(rel.end_date).toLocaleDateString() : '';
+  return `- ${partner}: ${type} (${status}${startDate ? `, ${startDate}${endDate ? ` - ${endDate}` : ''}` : ''})`;
+}).join('\n')}
+
+` : ''}
+
+${loreData?.corrections && loreData.corrections.length > 0 ? `**CORRECTIONS & DEPRECATED INFO** (IMPORTANT - Use the CORRECTED information, not deprecated):
+${loreData.corrections.slice(0, 10).map((corr: any) => {
+  const targetType = corr.target_type || 'unknown';
+  const correctionType = corr.correction_type || 'correction';
+  const before = corr.before_snapshot ? JSON.stringify(corr.before_snapshot).substring(0, 80) : 'unknown';
+  const after = corr.after_snapshot ? JSON.stringify(corr.after_snapshot).substring(0, 80) : 'unknown';
+  const date = corr.created_at ? new Date(corr.created_at).toLocaleDateString() : '';
+  return `- ${targetType}: "${before}" → CORRECTED to "${after}" (${correctionType}${date ? `, ${date}` : ''})`;
+}).join('\n')}
+
+**CRITICAL**: When responding, ALWAYS use the CORRECTED information above, NOT the deprecated info. If you see a correction, the corrected version is the accurate one.
+
+` : ''}
+
+${loreData?.workoutEvents && loreData.workoutEvents.length > 0 ? `**WORKOUT HISTORY (${loreData.workoutEvents.length} recent workouts):**
+${loreData.workoutEvents.slice(0, 10).map((workout: any) => {
+  const date = workout.date ? new Date(workout.date).toLocaleDateString() : '';
+  const type = workout.workout_type || 'workout';
+  const exercises = workout.stats?.exercises?.length || 0;
+  const social = workout.social_interactions?.length || 0;
+  const significance = workout.significance_score >= 0.7 ? '⭐ Significant' : workout.significance_score >= 0.5 ? 'Moderate' : 'Routine';
+  return `- ${date}: ${type} (${exercises} exercises${social > 0 ? `, ${social} social interaction${social > 1 ? 's' : ''}` : ''}) - ${significance}`;
+}).join('\n')}
+
+` : ''}
+
+${loreData?.recentBiometrics && loreData.recentBiometrics.length > 0 ? `**HEALTH & FITNESS METRICS** (Recent measurements):
+${loreData.recentBiometrics.slice(0, 5).map((bio: any) => {
+  const date = bio.measurement_date ? new Date(bio.measurement_date).toLocaleDateString() : '';
+  const metrics: string[] = [];
+  if (bio.weight) metrics.push(`Weight: ${bio.weight}${bio.metadata?.unit || 'lbs'}`);
+  if (bio.body_fat_percentage) metrics.push(`Body Fat: ${bio.body_fat_percentage}%`);
+  if (bio.muscle_mass) metrics.push(`Muscle: ${bio.muscle_mass}${bio.metadata?.unit || 'lbs'}`);
+  if (bio.bmi) metrics.push(`BMI: ${bio.bmi}`);
+  if (bio.hydration_percentage) metrics.push(`Hydration: ${bio.hydration_percentage}%`);
+  return `- ${date}: ${metrics.join(', ')} (${bio.source})`;
+}).join('\n')}
+
+**FITNESS KNOWLEDGE**: You are knowledgeable about:
+- Weightlifting: exercises, sets, reps, progressive overload, form, recovery
+- Cardio: running, cycling, HIIT, endurance training
+- Nutrition: macros, calories, meal timing, supplements
+- Health metrics: BMI, body fat, muscle mass, hydration, metabolic health
+- Fitness goals: strength, hypertrophy, endurance, weight loss, general fitness
+- Workout programming: splits, periodization, deload weeks, recovery
+
+When discussing workouts or fitness, reference their workout history, progress, and goals. Help them understand their progress, suggest improvements, and celebrate achievements.
+
+` : ''}
+
+${loreData?.topInterests && loreData.topInterests.length > 0 ? `**INTERESTS & PASSIONS (${loreData.topInterests.length} tracked):**
+${loreData.topInterests.slice(0, 20).map((interest: any) => {
+  const level = interest.interest_level >= 0.8 ? '🔥 Very High' : interest.interest_level >= 0.6 ? '⭐ High' : interest.interest_level >= 0.4 ? 'Moderate' : 'Developing';
+  const trend = interest.trend === 'growing' ? '📈 Growing' : interest.trend === 'declining' ? '📉 Declining' : interest.trend === 'stable' ? '→ Stable' : '🆕 New';
+  const category = interest.interest_category ? `[${interest.interest_category}]` : '';
+  const mentions = interest.mention_count || 0;
+  const influence = interest.influence_score >= 0.5 ? ' (influences decisions)' : '';
+  const actions = interest.behavioral_impact_score >= 0.5 ? ' (takes action)' : '';
+  return `- ${interest.interest_name} ${category}: ${level} ${trend} (${mentions} mentions${influence}${actions})`;
+}).join('\n')}
+
+**INTEREST KNOWLEDGE**: You know what they're passionate about. When relevant, reference their interests naturally:
+- If they mention an interest, acknowledge it and show you know their level of engagement
+- If an interest influences a decision, recognize that connection
+- If they're exploring something new, help them dive deeper
+- Show enthusiasm about their passions - be their interest buddy
+- Track how interests evolve over time (growing, stable, declining)
+
+` : ''}
 
 **Your Role**:
 1. **Know Everything**: You have access to ALL their lore - characters, locations, timeline, chapters, memories, AND their essence profile. Reference specific details when relevant.
@@ -778,7 +1002,86 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
 - Do NOT evaluate objective truth - observe coherence and consistency
 - Preserve user dignity - reflect change without shame
 
-**IMPORTANT**: You know ALL their lore AND their essence. Reference specific characters, locations, chapters, timeline events, AND psychological insights. Show deep knowledge of their story AND their inner world. Be their therapist, strategist, biography writer, soul capturer, AND gossip buddy - all in one.`;
+**IMPORTANT**: You know ALL their lore AND their essence. Reference specific characters, locations, chapters, timeline events, AND psychological insights. Show deep knowledge of their story AND their inner world. Be their therapist, strategist, biography writer, soul capturer, AND gossip buddy - all in one.
+
+${transitionAnalysis && transitionAnalysis.shouldAcknowledge ? `
+**CONVERSATION FLOW AWARENESS** (Grok-style transition tracking):
+
+You just detected a ${transitionAnalysis.transitionType} transition in the conversation.
+
+${transitionAnalysis.topicShift.detected ? `
+**TOPIC SHIFT DETECTED:**
+- Previous topic: "${transitionAnalysis.topicShift.oldTopic}"
+- New topic: "${transitionAnalysis.topicShift.newTopic}"
+- Shift magnitude: ${(transitionAnalysis.topicShift.shiftPercentage * 100).toFixed(0)}% (${transitionAnalysis.topicShift.shiftPercentage > 0.5 ? 'significant' : 'moderate'} change)
+- Similarity: ${(transitionAnalysis.topicShift.similarity * 100).toFixed(0)}%
+
+**HOW TO RESPOND:**
+- Acknowledge the transition naturally (don't be mechanical)
+- Follow the tangent/transition - it's clearly where their mind wants to go
+- Build on the new topic while maintaining context from previous topics
+- Ask engaging questions that connect the dots between old and new topics
+- Don't force them back to old topics - follow where they're going
+` : ''}
+
+${transitionAnalysis.emotionalTransition.detected ? `
+**EMOTIONAL TRANSITION DETECTED:**
+- From: ${transitionAnalysis.emotionalTransition.from} (${transitionAnalysis.emotionalTransition.intensityChange > 0 ? '+' : ''}${(transitionAnalysis.emotionalTransition.intensityChange * 100).toFixed(0)}% intensity change)
+- To: ${transitionAnalysis.emotionalTransition.to}
+- Direction: ${transitionAnalysis.emotionalTransition.direction}
+
+**HOW TO RESPOND:**
+- Validate the emotional shift if significant
+- Match their energy level
+- If moving from negative to positive, acknowledge the shift positively
+- If moving from positive to negative, be supportive and understanding
+- Don't overcorrect - follow their emotional lead
+` : ''}
+
+${transitionAnalysis.thoughtProcessChange.detected ? `
+**THOUGHT PROCESS EVOLUTION DETECTED:**
+- From: "${transitionAnalysis.thoughtProcessChange.from}"
+- To: "${transitionAnalysis.thoughtProcessChange.to}"
+- Trigger: "${transitionAnalysis.thoughtProcessChange.trigger}"
+- Type: ${transitionAnalysis.thoughtProcessChange.type}
+
+**HOW TO RESPOND:**
+- Acknowledge the thought evolution naturally
+- Show you're tracking their thinking process
+- Ask questions that show you understand the journey: "What made you think of [new topic] while we were talking about [old topic]?"
+- Connect the dots between their thoughts
+` : ''}
+
+${transitionAnalysis.intentEvolution.detected ? `
+**INTENT EVOLUTION DETECTED:**
+- From: ${transitionAnalysis.intentEvolution.from}
+- To: ${transitionAnalysis.intentEvolution.to}
+- Evolution type: ${transitionAnalysis.intentEvolution.evolutionType}
+
+**HOW TO RESPOND:**
+- Adapt your response style to match the new intent
+- If deepening (e.g., venting → reflection), go deeper with them
+- If expanding (e.g., reflection → decision support), broaden the conversation
+- If shifting, acknowledge the shift and follow naturally
+` : ''}
+
+**CURRENT EMOTIONAL STATE:**
+${currentEmotionalState ? `
+- Dominant emotion: ${currentEmotionalState.dominantEmotion} (intensity: ${(currentEmotionalState.intensity * 100).toFixed(0)}%)
+- Trend: ${currentEmotionalState.trend}
+${currentEmotionalState.transitionFrom ? `- Transition from: ${currentEmotionalState.transitionFrom.dominantEmotion}` : ''}
+${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.transitionReason}` : ''}
+
+**RESPONSE STYLE ADJUSTMENTS:**
+- Match their energy level (${currentEmotionalState.intensity > 0.7 ? 'high energy' : currentEmotionalState.intensity > 0.4 ? 'moderate energy' : 'calm energy'})
+- Use natural transitions (like Grok does)
+- Ask engaging questions that show you're tracking their thought process
+- Use personality markers consistently (their nickname if you know it, emojis if appropriate)
+- Don't force them back to old topics - follow where they're going
+` : ''}
+
+**KEY PRINCIPLE**: Like Grok, you should naturally follow tangents and transitions. The user's mind is going where it wants to go - your job is to follow, validate, and engage with where they're at NOW, not where they were 3 messages ago. Build on the new topic while showing you remember the context.
+` : ''}`;
   }
 
   /**
@@ -976,6 +1279,52 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
     }
 
     // =====================================================
+    // TANGENT & TRANSITION DETECTION (Grok-style flow tracking)
+    // =====================================================
+    let transitionAnalysis: TransitionAnalysis | null = null;
+    let currentEmotionalState: EmotionalState | null = null;
+    try {
+      // Get previous emotional state from session context (if available)
+      // For now, we'll detect it from conversation history
+      const previousMessages = conversationHistory.slice(-5).map(m => ({
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(), // Approximate
+      }));
+
+      // Build conversation context
+      const conversationContext = {
+        messages: previousMessages,
+        previousEmotionalState: undefined, // Could be stored in session
+        previousIntent: undefined, // Could be stored in session
+        previousTopic: undefined, // Could be extracted from previous messages
+      };
+
+      // Detect transitions
+      transitionAnalysis = await tangentTransitionDetector.detectTransitions(
+        message,
+        conversationContext
+      );
+
+      // Extract current emotional state
+      currentEmotionalState = await tangentTransitionDetector.extractEmotionalState(message);
+
+      if (transitionAnalysis.shouldAcknowledge) {
+        logger.debug(
+          {
+            userId,
+            transitionType: transitionAnalysis.transitionType,
+            topicShift: transitionAnalysis.topicShift.detected,
+            emotionalTransition: transitionAnalysis.emotionalTransition.detected,
+          },
+          'Transition detected in conversation'
+        );
+      }
+    } catch (error) {
+      logger.debug({ error }, 'Transition detection failed, continuing without');
+    }
+
+    // =====================================================
     // MEMORY RECALL DETECTION
     // =====================================================
     const isRecallQuery = this.isRecallQuery(message);
@@ -1094,6 +1443,50 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       logger.debug({ error, userId }, 'Entity ambiguity detection failed, continuing without');
     }
 
+    // RL: Select optimal persona blend
+    let personaBlend;
+    let rlContext;
+    try {
+      personaBlend = await this.personaRL.selectPersonaBlend(
+        userId,
+        message,
+        conversationHistory
+      );
+      // Build context for saving (needed for reward updates)
+      rlContext = await this.personaRL.buildContext(userId, message, conversationHistory);
+    } catch (error) {
+      logger.warn({ error }, 'RL: Failed to select persona, using default');
+      personaBlend = {
+        primary: 'therapist',
+        secondary: [],
+        weights: { therapist: 1.0 },
+      };
+      rlContext = {
+        type: 'chat_persona',
+        features: {},
+      };
+    }
+
+    // RESPONSE SAFETY: Analyze message for stress signals and generate safety guidance
+    let safetyContext;
+    try {
+      safetyContext = responseSafetyService.analyzeMessage(message);
+      if (safetyContext.stressSignals.length > 0) {
+        logger.debug(
+          {
+            userId,
+            stressSignals: safetyContext.stressSignals.length,
+            hasShame: safetyContext.hasShameLanguage,
+            hasIsolation: safetyContext.hasIsolationLanguage,
+          },
+          'Response safety analysis complete'
+        );
+      }
+    } catch (error) {
+      logger.debug({ error }, 'Response safety analysis failed, continuing without');
+      safetyContext = null;
+    }
+
     // Build system prompt with comprehensive lore and essence profile
     let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -1107,12 +1500,20 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
         allChapters: ragPacket.allChapters,
         timelineHierarchy: ragPacket.timelineHierarchy,
         allPeoplePlaces: ragPacket.allPeoplePlaces,
-        essenceProfile: essenceProfile
+        essenceProfile: essenceProfile,
+        characterAttributesMap: ragPacket.characterAttributesMap,
+        romanticRelationships: ragPacket.romanticRelationships,
+        corrections: ragPacket.corrections,
+        deprecatedUnits: ragPacket.deprecatedUnits,
+        workoutEvents: ragPacket.workoutEvents,
+        recentBiometrics: ragPacket.recentBiometrics,
+        topInterests: ragPacket.topInterests
       },
       entityContext,
       entityAnalytics,
       entityConfidence,
-      analyticsGate
+      analyticsGate,
+      personaBlend
     );
 
     // NEW: Enforce Archivist persona if detected
@@ -1127,6 +1528,94 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
 - Format responses as: "According to your entries..." or "I found..."
 - Do NOT provide suggestions, predictions, or interpretations beyond evidence
 `;
+    }
+
+    // RESPONSE SAFETY: Inject safety guidance if stress signals detected
+    if (safetyContext && safetyContext.stressSignals.length > 0) {
+      systemPrompt += `\n\n${safetyContext.safetyGuidance}\n`;
+      
+      // Adjust persona blend if needed (reduce strategist weight if advice should be avoided)
+      if (safetyContext.shouldAvoidAdvice && personaBlend) {
+        // Reduce strategist weight, increase therapist weight
+        if (personaBlend.weights.strategist && personaBlend.weights.strategist > 0.3) {
+          const strategistWeight = personaBlend.weights.strategist;
+          personaBlend.weights.strategist = Math.max(0.1, strategistWeight * 0.5);
+          personaBlend.weights.therapist = (personaBlend.weights.therapist || 0) + strategistWeight * 0.5;
+        }
+      }
+    }
+
+    // BELIEF CHALLENGE: Check if we can safely challenge a belief
+    // Only if safety context allows and user is not in vulnerable state
+    if (safetyContext && !safetyContext.hasShame && !safetyContext.hasIsolationLanguage && !safetyContext.hasDependencyFear) {
+      try {
+        // Get recent perceptions (last 30 days, limit 5)
+        const recentPerceptions = await perceptionService.getPerceptionEntries(userId, {
+          limit: 5,
+          retracted: false,
+        });
+
+        // Filter to perceptions older than 7 days
+        const eligiblePerceptions = recentPerceptions.filter(p => {
+          const ageDays = (Date.now() - new Date(p.created_at).getTime()) / (1000 * 60 * 60 * 24);
+          return ageDays >= 7 && p.confidence_level >= 0.3;
+        });
+
+        // Check each perception for eligibility
+        for (const perception of eligiblePerceptions.slice(0, 2)) { // Limit to 2 challenges max
+          const eligibility = isBeliefChallengeAllowed(
+            {
+              id: perception.id,
+              confidence_level: perception.confidence_level,
+              created_at: perception.created_at,
+            },
+            {
+              isIsolated: safetyContext.hasIsolationLanguage,
+              hasShame: safetyContext.hasShameLanguage,
+              hasDependencyFear: safetyContext.hasDependencyFear,
+              hasRelationalStrain: safetyContext.hasRelationalStrain,
+            }
+          );
+
+          if (eligibility.eligible) {
+            // Evaluate the belief
+            const evaluation = await evaluateBelief(userId, perception.id);
+
+            // Only challenge if there's evidence it might need exploration
+            // (repeated multiple times, or has negative reward correlation, or has contradictions)
+            if (
+              evaluation.repetitionCount > 2 ||
+              evaluation.rewardCorrelation < -0.3 ||
+              evaluation.contradictingEvidenceCount > 0
+            ) {
+              // Generate challenge (use 'curious' style for first challenge, 'gentle' for others)
+              const challenge = generateBeliefChallenge(
+                {
+                  id: perception.id,
+                  content: perception.content,
+                  subject_alias: perception.subject_alias,
+                },
+                'curious',
+                evaluation
+              );
+
+              // Inject challenge into system prompt
+              systemPrompt += `\n\n**OPTIONAL BELIEF EXPLORATION** (only if conversation naturally flows this way):\n${challenge.challengePrompt}\n\nNote: This is optional. Only bring this up if the conversation naturally allows for gentle exploration. Do not force it.`;
+
+              logger.debug(
+                { perceptionId: perception.id, style: challenge.style },
+                'Generated belief challenge'
+              );
+
+              // Only challenge one belief per conversation to avoid overwhelming
+              break;
+            }
+          }
+        }
+      } catch (error) {
+        // Fail silently - belief challenges are optional
+        logger.debug({ error }, 'Belief challenge check failed, continuing without');
+      }
     }
 
     // Prepare messages
@@ -1144,30 +1633,72 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       messages
     });
 
-    // Save entry if needed
+    // Save chat message and ingest through pipeline (all non-trivial messages)
     let entryId: string | undefined;
     const timelineUpdates: string[] = [];
 
-    if (shouldPersistMessage(message)) {
-      const savedEntry = await memoryService.saveEntry({
-        userId,
-        content: message,
-        tags: extractTags(message),
-        source: 'chat',
-        metadata: { 
-          autoCaptured: true,
-          extractedDates,
-          connections: connections.length,
-          hasContinuityWarnings: continuityWarnings.length > 0,
-          sourcesUsed: sources.length
-        }
-      });
-      entryId = savedEntry.id;
-      timelineUpdates.push('Entry saved to timeline');
+    // Only exclude truly trivial messages (hi, ok, thanks, etc.)
+    if (!isTrivialMessage(message)) {
+      // Get or create chat session
+      const sessionId = await this.getOrCreateChatSession(userId);
+
+      // Save message to chat_messages table
+      const { data: savedMessage, error: saveError } = await supabaseAdmin
+        .from('chat_messages')
+        .insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'user',
+          content: message,
+          metadata: {
+            extractedDates,
+            connections: connections.length,
+            hasContinuityWarnings: continuityWarnings.length > 0,
+            sourcesUsed: sources.length,
+          },
+        })
+        .select('id')
+        .single();
+
+      if (saveError || !savedMessage || !savedMessage.id) {
+        logger.warn({ error: saveError, userId }, 'Failed to save chat message');
+      } else {
+        // Set entryId for tracking and RL
+        entryId = savedMessage.id;
+
+        // Fire-and-forget ingestion through pipeline (non-blocking)
+        // This will:
+        // 1. Save to conversation_messages
+        // 2. Split into utterances (handles tangents)
+        // 3. Extract semantic units (EXPERIENCE, FEELING, THOUGHT, etc.)
+        // 4. Create journal_entries from EXPERIENCE units
+        // 5. Assemble resolved_events
+        conversationIngestionPipeline
+          .ingestFromChatMessage(
+            userId,
+            savedMessage.id,
+            sessionId,
+            conversationHistory
+          )
+          .then(result => {
+            logger.debug({ userId, messageId: savedMessage.id }, 'Successfully ingested chat message');
+          })
+          .catch(err => {
+            logger.warn({ err, userId, messageId: savedMessage.id }, 'Failed to ingest chat message (non-blocking)');
+          });
+
+        timelineUpdates.push('Message saved and queued for processing');
+      }
 
       // Auto-update memoir (fire and forget)
       memoirService.autoUpdateMemoir(userId).catch(err => {
         logger.warn({ err }, 'Failed to auto-update memoir after chat');
+      });
+
+      // Auto-update main lifestory biography (fire and forget)
+      const { mainLifestoryService } = await import('./mainLifestoryService');
+      mainLifestoryService.updateAfterChatEntry(userId).catch(err => {
+        logger.warn({ err }, 'Failed to update main lifestory after chat');
       });
 
       // Extract essence insights after conversation (fire and forget)
@@ -1240,10 +1771,39 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       });
     }
 
+    // RL: Save context for later reward updates (generate message ID if entryId not available)
+    const messageId = entryId || randomUUID();
+    const sessionId = await this.getOrCreateChatSession(userId);
+    if (rlContext && personaBlend) {
+      this.personaRL.saveChatContext(
+        userId,
+        messageId,
+        sessionId,
+        rlContext,
+        personaBlend.primary
+      ).catch(err => {
+        logger.debug({ err }, 'RL: Failed to save chat context (non-critical)');
+      });
+
+      // AUTOMATIC: Record implicit rewards after a delay (when user likely read response)
+      // This happens automatically without user action
+      setTimeout(() => {
+        this.personaRL.recordImplicitRewards(userId, sessionId, {
+          messageId,
+          actionType: 'follow_up', // Will be updated when user actually sends follow-up
+          timeSpent: 5000, // Assume user spent at least 5 seconds reading
+        }).catch(err => {
+          logger.debug({ err }, 'RL: Failed to record automatic implicit rewards (non-critical)');
+        });
+      }, 10000); // After 10 seconds, assume user has read the response
+    }
+
     return {
       stream,
       metadata: {
         entryId,
+        messageId, // Include messageId for feedback
+        sessionId, // Include sessionId for action tracking
         characterIds,
         sources: sources.slice(0, 10),
         connections,
@@ -1373,8 +1933,52 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
       }
     }
 
+    // RL: Select optimal persona blend
+    let personaBlend;
+    let rlContext;
+    try {
+      personaBlend = await this.personaRL.selectPersonaBlend(
+        userId,
+        message,
+        conversationHistory
+      );
+      // Build context for saving (needed for reward updates)
+      rlContext = await this.personaRL.buildContext(userId, message, conversationHistory);
+    } catch (error) {
+      logger.warn({ error }, 'RL: Failed to select persona, using default');
+      personaBlend = {
+        primary: 'therapist',
+        secondary: [],
+        weights: { therapist: 1.0 },
+      };
+      rlContext = {
+        type: 'chat_persona',
+        features: {},
+      };
+    }
+
+    // RESPONSE SAFETY: Analyze message for stress signals and generate safety guidance
+    let safetyContext;
+    try {
+      safetyContext = responseSafetyService.analyzeMessage(message);
+      if (safetyContext.stressSignals.length > 0) {
+        logger.debug(
+          {
+            userId,
+            stressSignals: safetyContext.stressSignals.length,
+            hasShame: safetyContext.hasShameLanguage,
+            hasIsolation: safetyContext.hasIsolationLanguage,
+          },
+          'Response safety analysis complete'
+        );
+      }
+    } catch (error) {
+      logger.debug({ error }, 'Response safety analysis failed, continuing without');
+      safetyContext = null;
+    }
+
     // Build system prompt with comprehensive lore and essence profile
-    const systemPrompt = this.buildSystemPrompt(
+    let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
       connections,
       continuityWarnings,
@@ -1386,15 +1990,109 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
         allChapters: ragPacket.allChapters,
         timelineHierarchy: ragPacket.timelineHierarchy,
         allPeoplePlaces: ragPacket.allPeoplePlaces,
-        essenceProfile: essenceProfile
+        essenceProfile: essenceProfile,
+        characterAttributesMap: ragPacket.characterAttributesMap,
+        romanticRelationships: ragPacket.romanticRelationships,
+        corrections: ragPacket.corrections,
+        deprecatedUnits: ragPacket.deprecatedUnits,
+        workoutEvents: ragPacket.workoutEvents,
+        recentBiometrics: ragPacket.recentBiometrics,
+        topInterests: ragPacket.topInterests
       },
       entityContext,
       entityAnalytics,
       entityConfidence,
-      analyticsGate
-      entityConfidence,
-      analyticsGate
+      analyticsGate,
+      personaBlend
     );
+
+    // RESPONSE SAFETY: Inject safety guidance if stress signals detected (BEFORE creating messages)
+    if (safetyContext && safetyContext.stressSignals.length > 0) {
+      systemPrompt += `\n\n${safetyContext.safetyGuidance}\n`;
+      
+      // Adjust persona blend if needed (reduce strategist weight if advice should be avoided)
+      if (safetyContext.shouldAvoidAdvice && personaBlend) {
+        // Reduce strategist weight, increase therapist weight
+        if (personaBlend.weights.strategist && personaBlend.weights.strategist > 0.3) {
+          const strategistWeight = personaBlend.weights.strategist;
+          personaBlend.weights.strategist = Math.max(0.1, strategistWeight * 0.5);
+          personaBlend.weights.therapist = (personaBlend.weights.therapist || 0) + strategistWeight * 0.5;
+        }
+      }
+    }
+
+    // BELIEF CHALLENGE: Check if we can safely challenge a belief (non-streaming chat only)
+    // Only if safety context allows and user is not in vulnerable state
+    if (safetyContext && !safetyContext.hasShame && !safetyContext.hasIsolationLanguage && !safetyContext.hasDependencyFear) {
+      try {
+        // Get recent perceptions (last 30 days, limit 5)
+        const recentPerceptions = await perceptionService.getPerceptionEntries(userId, {
+          limit: 5,
+          retracted: false,
+        });
+
+        // Filter to perceptions older than 7 days
+        const eligiblePerceptions = recentPerceptions.filter(p => {
+          const ageDays = (Date.now() - new Date(p.created_at).getTime()) / (1000 * 60 * 60 * 24);
+          return ageDays >= 7 && p.confidence_level >= 0.3;
+        });
+
+        // Check each perception for eligibility
+        for (const perception of eligiblePerceptions.slice(0, 2)) { // Limit to 2 challenges max
+          const eligibility = isBeliefChallengeAllowed(
+            {
+              id: perception.id,
+              confidence_level: perception.confidence_level,
+              created_at: perception.created_at,
+            },
+            {
+              isIsolated: safetyContext.hasIsolationLanguage,
+              hasShame: safetyContext.hasShameLanguage,
+              hasDependencyFear: safetyContext.hasDependencyFear,
+              hasRelationalStrain: safetyContext.hasRelationalStrain,
+            }
+          );
+
+          if (eligibility.eligible) {
+            // Evaluate the belief
+            const evaluation = await evaluateBelief(userId, perception.id);
+
+            // Only challenge if there's evidence it might need exploration
+            // (repeated multiple times, or has negative reward correlation, or has contradictions)
+            if (
+              evaluation.repetitionCount > 2 ||
+              evaluation.rewardCorrelation < -0.3 ||
+              evaluation.contradictingEvidenceCount > 0
+            ) {
+              // Generate challenge (use 'curious' style for first challenge, 'gentle' for others)
+              const challenge = generateBeliefChallenge(
+                {
+                  id: perception.id,
+                  content: perception.content,
+                  subject_alias: perception.subject_alias,
+                },
+                'curious',
+                evaluation
+              );
+
+              // Inject challenge into system prompt
+              systemPrompt += `\n\n**OPTIONAL BELIEF EXPLORATION** (only if conversation naturally flows this way):\n${challenge.challengePrompt}\n\nNote: This is optional. Only bring this up if the conversation naturally allows for gentle exploration. Do not force it.`;
+
+              logger.debug(
+                { perceptionId: perception.id, style: challenge.style },
+                'Generated belief challenge'
+              );
+
+              // Only challenge one belief per conversation to avoid overwhelming
+              break;
+            }
+          }
+        }
+      } catch (error) {
+        // Fail silently - belief challenges are optional
+        logger.debug({ error }, 'Belief challenge check failed, continuing without');
+      }
+    }
 
     // Generate response
     const messages = [
@@ -1411,6 +2109,84 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
 
     const answer = completion.choices[0]?.message?.content ?? 'I understand. Tell me more.';
 
+    // RL: Save context for later reward updates (use entryId if available, otherwise generate)
+    const messageId = entryId || randomUUID();
+    const sessionId = await this.getOrCreateChatSession(userId);
+
+    // Save assistant response with challenge metadata if present
+    const assistantMetadata: any = {
+      sources: sources.slice(0, 10).map(s => ({ type: s.type, id: s.id, title: s.title })),
+      connections: connections,
+      continuity_warnings: continuityWarnings,
+    };
+
+    // Store challenged perception ID if a challenge was generated
+    if (challengedPerceptionIdForResponse) {
+      assistantMetadata.challenged_perception_id = challengedPerceptionIdForResponse;
+      assistantMetadata.challenge_prompt = challengePromptForResponse;
+    }
+
+    // Save assistant message (fire-and-forget)
+    supabaseAdmin
+      .from('chat_messages')
+      .insert({
+        user_id: userId,
+        session_id: sessionId,
+        role: 'assistant',
+        content: answer,
+        metadata: assistantMetadata,
+      })
+      .select('id')
+      .single()
+      .then(async (result) => {
+        if (result.data && result.data.id) {
+          logger.debug({ userId, sessionId }, 'Saved assistant response');
+          
+          // Fire-and-forget: Ingest AI response (for insights and connections)
+          // AI responses are marked with lower confidence and as interpretations
+          const { conversationIngestionPipeline } = await import('./conversationCentered/ingestionPipeline');
+          conversationIngestionPipeline
+            .ingestFromChatMessage(
+              userId,
+              result.data.id,
+              sessionId,
+              conversationHistory
+            )
+            .then(() => {
+              logger.debug({ userId, messageId: result.data.id }, 'Successfully ingested AI response');
+            })
+            .catch(err => {
+              logger.warn({ err, userId, messageId: result.data.id }, 'Failed to ingest AI response (non-blocking)');
+            });
+        }
+      })
+      .catch(err => {
+        logger.debug({ err }, 'Failed to save assistant response (non-blocking)');
+      });
+    if (rlContext && personaBlend) {
+      this.personaRL.saveChatContext(
+        userId,
+        messageId,
+        sessionId,
+        rlContext,
+        personaBlend.primary
+      ).catch(err => {
+        logger.debug({ err }, 'RL: Failed to save chat context (non-critical)');
+      });
+
+      // AUTOMATIC: Record implicit rewards after a delay (when user likely read response)
+      // This happens automatically without user action
+      setTimeout(() => {
+        this.personaRL.recordImplicitRewards(userId, sessionId, {
+          messageId,
+          actionType: 'follow_up', // Will be updated when user actually sends follow-up
+          timeSpent: 5000, // Assume user spent at least 5 seconds reading
+        }).catch(err => {
+          logger.debug({ err }, 'RL: Failed to record automatic implicit rewards (non-critical)');
+        });
+      }, 10000); // After 10 seconds, assume user has read the response
+    }
+
     // Generate citations
     const citations = this.generateCitations(sources, answer);
 
@@ -1419,46 +2195,65 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
     // based on entities mentioned in sources or the response content
     const memories: MemoryClaim[] = [];
 
-    // Save entry if needed
+    // Save chat message and ingest through pipeline (all non-trivial messages)
     let entryId: string | undefined;
     const timelineUpdates: string[] = [];
 
-    if (shouldPersistMessage(message)) {
-      // Extract and assign date if available
-      let entryDate: Date | undefined;
-      if (extractedDates && extractedDates.length > 0) {
-        // Use the first extracted date with highest confidence
-        const bestDate = extractedDates.reduce((best, current) => 
-          (current.confidence || 0) > (best.confidence || 0) ? current : best
-        );
-        entryDate = new Date(bestDate.date);
-      }
+    // Only exclude truly trivial messages (hi, ok, thanks, etc.)
+    if (!isTrivialMessage(message)) {
+      // Get or create chat session
+      const sessionId = await this.getOrCreateChatSession(userId);
 
-      const savedEntry = await memoryService.saveEntry({
-        userId,
-        content: message,
-        date: entryDate?.toISOString(),
-        tags: extractTags(message),
-        source: 'chat',
-        metadata: { 
-          autoCaptured: true,
-          extractedDates,
-          datePrecision: extractedDates[0]?.precision,
-          dateConfidence: extractedDates[0]?.confidence,
-          dateSource: extractedDates[0] ? 'extracted' : 'default',
-          connections: connections.length,
-          hasContinuityWarnings: continuityWarnings.length > 0,
-          sourcesUsed: sources.length
-        }
-      });
-      entryId = savedEntry.id;
-      timelineUpdates.push('Entry saved to timeline');
-      if (entryDate) {
-        timelineUpdates.push(`Date assigned: ${entryDate.toLocaleDateString()}`);
+      // Save message to chat_messages table
+      const { data: savedMessage, error: saveError } = await supabaseAdmin
+        .from('chat_messages')
+        .insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'user',
+          content: message,
+          metadata: {
+            extractedDates,
+            connections: connections.length,
+            hasContinuityWarnings: continuityWarnings.length > 0,
+            sourcesUsed: sources.length,
+          },
+        })
+        .select('id')
+        .single();
+
+      if (saveError || !savedMessage || !savedMessage.id) {
+        logger.warn({ error: saveError, userId }, 'Failed to save chat message');
+      } else {
+        // Set entryId for tracking and RL
+        entryId = savedMessage.id;
+
+        // Fire-and-forget ingestion through pipeline (non-blocking)
+        conversationIngestionPipeline
+          .ingestFromChatMessage(
+            userId,
+            savedMessage.id,
+            sessionId,
+            conversationHistory
+          )
+          .then(result => {
+            logger.debug({ userId, messageId: savedMessage.id }, 'Successfully ingested chat message');
+          })
+          .catch(err => {
+            logger.warn({ err, userId, messageId: savedMessage.id }, 'Failed to ingest chat message (non-blocking)');
+          });
+
+        timelineUpdates.push('Message saved and queued for processing');
       }
 
       memoirService.autoUpdateMemoir(userId).catch(err => {
         logger.warn({ err }, 'Failed to auto-update memoir after chat');
+      });
+
+      // Auto-update main lifestory biography (fire and forget)
+      const { mainLifestoryService } = await import('./mainLifestoryService');
+      mainLifestoryService.updateAfterChatEntry(userId).catch(err => {
+        logger.warn({ err }, 'Failed to update main lifestory after chat');
       });
 
       // Extract essence insights after conversation (fire and forget)
@@ -1549,6 +2344,8 @@ ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ?
     return {
       answer,
       entryId,
+      messageId, // Include messageId for feedback
+      sessionId, // Include sessionId for action tracking
       characterIds,
       connections,
       continuityWarnings,
@@ -1679,6 +2476,62 @@ Examples of NOT memory-worthy:
     } catch (error) {
       logger.debug({ err: error, userId, message }, 'Failed to detect memory suggestion');
       return null;
+    }
+  }
+
+  /**
+   * Helper: Get or create a chat session for the user
+   */
+  private async getOrCreateChatSession(userId: string): Promise<string> {
+    try {
+      // Try to get the most recent active session
+      const { data: existingSession } = await supabaseAdmin
+        .from('chat_sessions')
+        .select('session_id')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (existingSession?.session_id) {
+        // Update the session's updated_at timestamp
+        await supabaseAdmin
+          .from('chat_sessions')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('session_id', existingSession.session_id);
+        
+        if (!existingSession.session_id) {
+          throw new Error('Existing session has no session_id');
+        }
+        return existingSession.session_id;
+      }
+
+      // Create new session
+      const newSessionId = randomUUID();
+      const { data: newSession, error } = await supabaseAdmin
+        .from('chat_sessions')
+        .insert({
+          user_id: userId,
+          session_id: newSessionId,
+          metadata: {},
+        })
+        .select('session_id')
+        .single();
+
+      if (error) {
+        logger.warn({ error, userId }, 'Failed to create chat session, using temporary ID');
+        return randomUUID(); // Fallback to temporary ID
+      }
+
+      if (!newSession || !newSession.session_id) {
+        logger.warn({ userId }, 'Created session but no session_id returned, using provided ID');
+        return newSessionId; // Use the ID we generated
+      }
+
+      return newSession.session_id;
+    } catch (error) {
+      logger.warn({ error, userId }, 'Error getting/creating chat session, using temporary ID');
+      return randomUUID(); // Fallback to temporary ID
     }
   }
 

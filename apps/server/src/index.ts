@@ -173,11 +173,13 @@ try {
   const { graphUpdateJob } = await import('./jobs/graphUpdateJob');
   const { continuityEngineJob } = await import('./jobs/continuityEngineJob');
   const { valueEvolutionJob } = await import('./jobs/valueEvolutionJob');
+  const { registerPersonalStrategyTrainingJob } = await import('./jobs/personalStrategyTrainingJob');
   
   insightGenerationJob.register();
   graphUpdateJob.register();
   continuityEngineJob.register();
   valueEvolutionJob.register();
+  registerPersonalStrategyTrainingJob();
 } catch (error) {
   logger.warn({ error }, 'Failed to register background jobs, continuing anyway');
 }

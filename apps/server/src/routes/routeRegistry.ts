@@ -139,6 +139,9 @@ import knowledgeTypeEngineRouter from './knowledgeTypeEngine';
 import beliefRealityReconciliationRouter from './beliefRealityReconciliation';
 import narrativeDiffRouter from './narrativeDiff';
 import contradictionAlertsRouter from './contradictionAlerts';
+import willRouter from './will';
+import continuityProfileRouter from './continuityProfile';
+import { personalStrategyRouter } from './personalStrategy';
 
 export interface RouteEntry {
   path: string;
@@ -292,6 +295,9 @@ export const routeRegistry: RouteEntry[] = [
   { path: '/api/belief-reconciliation', router: beliefRealityReconciliationRouter },
   { path: '/api/narrative-diff', router: narrativeDiffRouter },
   { path: '/api/contradiction-alerts', router: contradictionAlertsRouter },
+  { path: '/api/will', router: willRouter },
+  { path: '/api/continuity-profile', router: continuityProfileRouter },
+  { path: '/api/strategy', router: personalStrategyRouter },
 ];
 
 /**

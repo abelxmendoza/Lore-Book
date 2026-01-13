@@ -16,14 +16,23 @@ const openai = new OpenAI({ apiKey: config.openAiKey });
 export class SemanticExtractionService {
   /**
    * Extract semantic units from normalized text
+   * @param isAIMessage - Whether this text is from an AI response
    */
   async extractSemanticUnits(
     normalizedText: string,
-    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    isAIMessage: boolean = false
   ): Promise<ExtractionResult> {
     try {
       // Try rule-based extraction first (free, fast)
       const ruleBasedUnits = this.ruleBasedExtraction(normalizedText);
+      
+      // For AI messages, reduce confidence
+      if (isAIMessage && ruleBasedUnits.units.length > 0) {
+        ruleBasedUnits.units.forEach(unit => {
+          unit.confidence = Math.max(0.3, unit.confidence * 0.7);
+        });
+      }
       
       // If we got good results, use them
       if (ruleBasedUnits.units.length > 0 && ruleBasedUnits.units.some(u => u.confidence >= 0.7)) {
@@ -31,11 +40,17 @@ export class SemanticExtractionService {
       }
 
       // Otherwise, use LLM for complex cases
-      return await this.llmExtraction(normalizedText, conversationHistory);
+      return await this.llmExtraction(normalizedText, conversationHistory, isAIMessage);
     } catch (error) {
       logger.error({ error, text: normalizedText }, 'Failed to extract semantic units');
       // Fallback to rule-based
-      return this.ruleBasedExtraction(normalizedText);
+      const fallback = this.ruleBasedExtraction(normalizedText);
+      if (isAIMessage && fallback.units.length > 0) {
+        fallback.units.forEach(unit => {
+          unit.confidence = Math.max(0.3, unit.confidence * 0.7);
+        });
+      }
+      return fallback;
     }
   }
 
@@ -152,15 +167,29 @@ export class SemanticExtractionService {
 
   /**
    * LLM-based extraction (for complex cases)
+   * @param isAIMessage - Whether this text is from an AI response (affects extraction strategy)
    */
   private async llmExtraction(
     text: string,
-    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    isAIMessage: boolean = false
   ): Promise<ExtractionResult> {
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       {
         role: 'system',
         content: `You are analyzing text to extract semantic units. Extract one or more units from the text.
+
+${isAIMessage ? `IMPORTANT: This text is from an AI assistant response. AI responses are interpretations, not facts.
+- Extract insights, connections, and questions (THOUGHT, PERCEPTION types)
+- Do NOT extract EXPERIENCE units from AI responses (AI didn't experience anything)
+- Mark confidence lower (0.4-0.6 range) since these are interpretations
+- Note uncertainty markers (might, seems, appears, etc.)
+- Extract connections and insights the AI is making` : `IMPORTANT: A single text may contain MULTIPLE distinct events or experiences. Split them when:`}
+- Different activities occur (eating, watching, working, cleaning, etc.)
+- Different character groups are involved
+- Different locations or contexts
+- Temporal markers indicate sequence (then, after, while, meanwhile)
+- Different emotional contexts
 
 Unit types:
 - EXPERIENCE: Something that happened (past tense actions, events)
@@ -171,6 +200,21 @@ Unit types:
 - DECISION: Choices, commitments, intentions, plans
 - CORRECTION: Revisions, retractions, corrections of previous statements
 
+LANGUAGE HANDLING:
+- Preserve Spanish words and phrases (pozole, tia, mugroso, nadien, ayuden, etc.)
+- Recognize Spanish names (Gabriel, Chava, Lourdes, etc.)
+- Understand mixed English-Spanish text
+- Extract Spanish terms as metadata
+
+CHARACTER ATTRIBUTES:
+- When text describes character traits (e.g., "Gabriel is a drunk", "always drinking"), extract as:
+  - EXPERIENCE unit for the observation
+  - Include character attributes in metadata (e.g., "drinking_problem", "between_jobs", "debt", "unemployed")
+- When user mentions their own status (e.g., "I'm unemployed", "I don't have a job"), extract:
+  - FEELING or THOUGHT unit for the emotional/mental state
+  - Include employment_status: "unemployed" in metadata for the user entity
+- Extract concerns and anxieties (e.g., "don't want to let them know" → FEELING unit with anxiety/concern)
+
 Return JSON:
 {
   "units": [
@@ -179,12 +223,17 @@ Return JSON:
       "content": "extracted content",
       "confidence": 0.0-1.0,
       "temporal_context": {},
-      "entity_ids": []
+      "entity_ids": [],
+      "metadata": {
+        "spanish_terms": ["pozole", "tia", "mugroso"],
+        "characters": ["Gabriel", "Chava", "Tia Lourdes"],
+        "character_attributes": {"Gabriel": ["drinking_problem", "between_jobs", "debt"]}
+      }
     }
   ]
 }
 
-Be precise. Only extract what is clearly present. If uncertain, lower confidence.`,
+Be precise. Split multiple events when appropriate. Preserve Spanish terms. Extract character attributes.`,
       },
     ];
 

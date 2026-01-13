@@ -21,6 +21,16 @@ export type PhotoAnalysisResult = {
     locations?: string[];
     dates?: string[];
   };
+  detectedSkills?: Array<{
+    skill_name: string;
+    confidence: number;
+    reason: string;
+  }>;
+  detectedGroups?: Array<{
+    group_name: string;
+    confidence: number;
+    reason: string;
+  }>;
   summary?: string;
   metadata?: {
     date?: string;
@@ -53,6 +63,12 @@ class PhotoAnalysisService {
       
       const base64Image = imageBuffer.toString('base64');
 
+      // Get user's existing skills for context
+      const { skillService } = await import('./skills/skillService');
+      const userSkills = await skillService.getSkills(userId, { active_only: true }).catch(() => []);
+      const skillNames = userSkills.map(s => s.skill_name).join(', ');
+      const skillsContext = skillNames ? `\n\nUser's confirmed skills: ${skillNames}\nOnly match detected skills to these confirmed skills.` : '';
+
       // Use OpenAI Vision API to analyze the photo
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o', // Use vision-capable model
@@ -64,7 +80,14 @@ class PhotoAnalysisService {
 2. If it's a document, extract all text using OCR
 3. Suggest where it should go in the user's lore book (timeline, character, location, memoir section, or specific entry)
 4. Detect entities: people, locations, dates mentioned
-5. Generate a brief summary
+5. Detect skills being practiced (e.g., martial arts, cooking, photography, sports, music, etc.) - only if clearly visible/obvious
+6. Detect groups/organizations (e.g., gym, club, team, organization) - only if clearly visible/obvious
+7. Generate a brief summary
+
+IMPORTANT: 
+- For skills: Only include skills that match the user's CONFIRMED skills list (provided below). If a skill is detected in the photo but NOT in the user's confirmed skills, do NOT include it.
+- For groups: Only include groups if clearly visible (e.g., gym logo, club name, organization sign, etc.)
+- For locations: Include if location is visible or can be inferred from context${skillsContext}
 
 Return JSON:
 {
@@ -81,6 +104,20 @@ Return JSON:
     "locations": ["location1"],
     "dates": ["date1"]
   },
+  "detectedSkills": [
+    {
+      "skill_name": "skill name (e.g., 'Martial Arts', 'Cooking', 'Photography')",
+      "confidence": 0.0-1.0,
+      "reason": "why this skill is detected"
+    }
+  ],
+  "detectedGroups": [
+    {
+      "group_name": "group name (e.g., 'Local Gym', 'Photography Club')",
+      "confidence": 0.0-1.0,
+      "reason": "why this group is detected"
+    }
+  ],
   "summary": "brief description of photo"
 }`
           },
@@ -89,7 +126,7 @@ Return JSON:
             content: [
               {
                 type: 'text',
-                text: `Analyze this photo. Filename: ${filename}. Metadata: ${JSON.stringify(metadata)}`
+                text: `Analyze this photo. Filename: ${filename}. Metadata: ${JSON.stringify(metadata)}${skillsContext ? `\n\nUser's confirmed skills: ${skillNames}` : ''}`
               },
               {
                 type: 'image_url',
@@ -226,6 +263,141 @@ Return JSON:
     }
     
     return null;
+  }
+
+  /**
+   * Automatically link photo to skills, locations, and groups based on analysis
+   */
+  private async autoLinkPhotoToEntities(
+    userId: string,
+    entryId: string,
+    metadata: PhotoMetadata
+  ): Promise<void> {
+    try {
+      // Analyze photo to detect skills, locations, and groups
+      // Note: This requires the photo buffer, which we may not have here
+      // For now, we'll link based on metadata and location
+      
+      // Link to location if available
+      if (metadata.locationName) {
+        const { data: location } = await supabaseAdmin
+          .from('locations')
+          .select('id')
+          .eq('user_id', userId)
+          .ilike('name', `%${metadata.locationName}%`)
+          .limit(1)
+          .single();
+        
+        if (location) {
+          await supabaseAdmin
+            .from('photo_location_links')
+            .upsert({
+              user_id: userId,
+              journal_entry_id: entryId,
+              location_id: location.id,
+              confidence: 0.8,
+              detection_reason: `Photo taken at ${metadata.locationName}`,
+              auto_detected: true
+            })
+            .catch(err => logger.debug({ error: err }, 'Failed to auto-link photo to location'));
+        }
+      }
+
+      // Note: Skill and group detection requires full photo analysis
+      // This will be handled in the photo upload route after analysis
+    } catch (error) {
+      logger.debug({ error, entryId }, 'Failed to auto-link photo to entities');
+    }
+  }
+
+  /**
+   * Link photo to detected skills after analysis
+   */
+  async linkPhotoToSkills(
+    userId: string,
+    entryId: string,
+    detectedSkills: Array<{ skill_name: string; confidence: number; reason: string }>
+  ): Promise<void> {
+    try {
+      const { skillService } = await import('./skills/skillService');
+      const userSkills = await skillService.getSkills(userId, { active_only: true });
+
+      for (const detected of detectedSkills) {
+        if (detected.confidence < 0.6) continue; // Only high-confidence matches
+
+        // Find matching skill
+        const matchingSkill = userSkills.find(s =>
+          s.skill_name.toLowerCase().includes(detected.skill_name.toLowerCase()) ||
+          detected.skill_name.toLowerCase().includes(s.skill_name.toLowerCase())
+        );
+
+        if (matchingSkill) {
+          await supabaseAdmin
+            .from('photo_skill_links')
+            .upsert({
+              user_id: userId,
+              journal_entry_id: entryId,
+              skill_id: matchingSkill.id,
+              confidence: detected.confidence,
+              detection_reason: detected.reason,
+              auto_detected: true
+            })
+            .catch(err => logger.debug({ error: err, skillId: matchingSkill.id }, 'Failed to link photo to skill'));
+
+          // Add XP to skill for photo practice
+          await skillService.addXP(
+            userId,
+            matchingSkill.id,
+            5, // Small XP for photo evidence
+            'memory',
+            entryId,
+            `Photo evidence: ${detected.reason}`
+          ).catch(err => logger.debug({ error: err }, 'Failed to add XP for photo'));
+        }
+      }
+    } catch (error) {
+      logger.error({ error, entryId }, 'Failed to link photo to skills');
+    }
+  }
+
+  /**
+   * Link photo to detected groups/organizations after analysis
+   */
+  async linkPhotoToGroups(
+    userId: string,
+    entryId: string,
+    detectedGroups: Array<{ group_name: string; confidence: number; reason: string }>
+  ): Promise<void> {
+    try {
+      for (const detected of detectedGroups) {
+        if (detected.confidence < 0.6) continue; // Only high-confidence matches
+
+        // Try to find matching organization
+        const { data: org } = await supabaseAdmin
+          .from('entity_resolution')
+          .select('entity_id')
+          .eq('user_id', userId)
+          .eq('entity_type', 'ORG')
+          .ilike('primary_name', `%${detected.group_name}%`)
+          .limit(1)
+          .single();
+
+        await supabaseAdmin
+          .from('photo_group_links')
+          .upsert({
+            user_id: userId,
+            journal_entry_id: entryId,
+            organization_id: org?.entity_id || null,
+            organization_name: detected.group_name,
+            confidence: detected.confidence,
+            detection_reason: detected.reason,
+            auto_detected: true
+          })
+          .catch(err => logger.debug({ error: err }, 'Failed to link photo to group'));
+      }
+    } catch (error) {
+      logger.error({ error, entryId }, 'Failed to link photo to groups');
+    }
   }
 
   /**

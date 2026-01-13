@@ -60,6 +60,18 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
   const [activeTab, setActiveTab] = useState<TabKey>('chat');
   const [entityData, setEntityData] = useState<EntityData>(entity);
   const [connections, setConnections] = useState<Array<{ type: EntityType; id: string; name: string; relation: string }>>([]);
+  const [entityRelationships, setEntityRelationships] = useState<Array<{
+    fromEntityName: string;
+    toEntityName: string;
+    relationshipType: string;
+    scope?: string;
+    confidence: number;
+  }>>([]);
+  const [entityScopes, setEntityScopes] = useState<Array<{
+    scope: string;
+    scopeContext?: string;
+    confidence: number;
+  }>>([]);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -83,7 +95,7 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
           const character = await fetchJson<Character>(`/api/characters/${entity.id}`);
           setEntityData(prev => ({ ...prev, character }));
           
-          // Load relationships
+          // Load character relationships (old format)
           const relationships = await fetchJson<Array<{ character_id: string; character_name: string; relationship_type: string }>>(
             `/api/characters/${entity.id}/relationships`
           ).catch(() => []);
@@ -94,6 +106,36 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
             name: rel.character_name,
             relation: rel.relationship_type
           })));
+
+          // Load entity relationships (new format with scopes)
+          const entityRels = await fetchJson<{
+            success: boolean;
+            relationships: Array<{
+              fromEntityName: string;
+              toEntityName: string;
+              relationshipType: string;
+              scope?: string;
+              confidence: number;
+            }>;
+          }>(`/api/conversation/entities/${entity.id}/relationships?entityType=character`).catch(() => ({ success: false, relationships: [] }));
+          
+          if (entityRels.success) {
+            setEntityRelationships(entityRels.relationships);
+          }
+
+          // Load entity scopes
+          const scopes = await fetchJson<{
+            success: boolean;
+            scopes: Array<{
+              scope: string;
+              scopeContext?: string;
+              confidence: number;
+            }>;
+          }>(`/api/conversation/entities/${entity.id}/scopes?entityType=character`).catch(() => ({ success: false, scopes: [] }));
+          
+          if (scopes.success) {
+            setEntityScopes(scopes.scopes);
+          }
         } else if (entity.type === 'location' && entity.id) {
           const location = await fetchJson<LocationProfile>(`/api/locations/${entity.id}`);
           setEntityData(prev => ({ ...prev, location }));
@@ -696,40 +738,120 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
               )}
             </div>
           ) : activeTab === 'connections' ? (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                   <Network className="w-5 h-5 text-primary" />
                   Connections
                 </h3>
               </div>
-              {connections.length === 0 ? (
+
+              {/* Entity Scopes */}
+              {entityScopes.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-white/80">Scopes</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {entityScopes.map((scope, idx) => (
+                      <Badge
+                        key={idx}
+                        variant="outline"
+                        className="bg-purple-500/20 text-purple-400 border-purple-500/30"
+                        title={`Confidence: ${Math.round(scope.confidence * 100)}%`}
+                      >
+                        {scope.scope}
+                        {scope.scopeContext && (
+                          <span className="ml-1 text-xs opacity-75">({scope.scopeContext})</span>
+                        )}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Entity Relationships */}
+              {entityRelationships.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-white/80">Relationships</h4>
+                  <div className="space-y-2">
+                    {entityRelationships.map((rel, idx) => (
+                      <Card
+                        key={idx}
+                        className="bg-black/40 border-border/60"
+                      >
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="text-sm text-white">
+                                <span className="font-medium">{rel.fromEntityName}</span>
+                                <span className="text-white/60 mx-2">
+                                  {rel.relationshipType === 'works_for' && 'works for'}
+                                  {rel.relationshipType === 'recruits_for' && 'recruits for'}
+                                  {rel.relationshipType === 'vendor_for' && 'is vendor for'}
+                                  {rel.relationshipType === 'contractor_for' && 'contracts for'}
+                                  {rel.relationshipType === 'hires_for' && 'hires for'}
+                                  {rel.relationshipType === 'part_of' && 'is part of'}
+                                  {rel.relationshipType === 'owns' && 'owns'}
+                                  {rel.relationshipType === 'manages' && 'manages'}
+                                  {rel.relationshipType === 'represents' && 'represents'}
+                                  {rel.relationshipType === 'associated_with' && 'associated with'}
+                                  {!['works_for', 'recruits_for', 'vendor_for', 'contractor_for', 'hires_for', 'part_of', 'owns', 'manages', 'represents', 'associated_with'].includes(rel.relationshipType) && rel.relationshipType}
+                                </span>
+                                <span className="font-medium">{rel.toEntityName}</span>
+                              </p>
+                              {rel.scope && (
+                                <p className="text-xs text-white/50 mt-1">
+                                  Scope: <span className="text-purple-400">{rel.scope}</span>
+                                </p>
+                              )}
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30"
+                              title={`Confidence: ${Math.round(rel.confidence * 100)}%`}
+                            >
+                              {Math.round(rel.confidence * 100)}%
+                            </Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Legacy Connections (character relationships) */}
+              {connections.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-white/80">Character Connections</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {connections.map((connection, idx) => (
+                      <Card
+                        key={idx}
+                        className="bg-black/40 border-border/60 cursor-pointer hover:border-primary/40 transition-colors"
+                        onClick={() => handleConnectionClick(connection)}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            {connection.type === 'character' && <User className="w-4 h-4 text-primary" />}
+                            {connection.type === 'location' && <MapPin className="w-4 h-4 text-primary" />}
+                            {connection.type === 'memory' && <FileText className="w-4 h-4 text-primary" />}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-white truncate">{connection.name}</p>
+                              <p className="text-xs text-white/60 capitalize">{connection.relation}</p>
+                            </div>
+                            <Link2 className="w-4 h-4 text-white/40" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {connections.length === 0 && entityRelationships.length === 0 && entityScopes.length === 0 && (
                 <div className="text-center py-12">
                   <Network className="w-12 h-12 text-white/30 mx-auto mb-4" />
                   <p className="text-sm text-white/60">No connections found</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {connections.map((connection, idx) => (
-                    <Card
-                      key={idx}
-                      className="bg-black/40 border-border/60 cursor-pointer hover:border-primary/40 transition-colors"
-                      onClick={() => handleConnectionClick(connection)}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
-                          {connection.type === 'character' && <User className="w-4 h-4 text-primary" />}
-                          {connection.type === 'location' && <MapPin className="w-4 h-4 text-primary" />}
-                          {connection.type === 'memory' && <FileText className="w-4 h-4 text-primary" />}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-white truncate">{connection.name}</p>
-                            <p className="text-xs text-white/60 capitalize">{connection.relation}</p>
-                          </div>
-                          <Link2 className="w-4 h-4 text-white/40" />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
                 </div>
               )}
             </div>

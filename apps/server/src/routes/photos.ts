@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../logger';
 import { photoService } from '../services/photoService';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
 
@@ -44,6 +45,15 @@ router.post('/upload', requireAuth, upload.single('photo'), async (req: Authenti
       metadata.locationName = await photoService.reverseGeocode(metadata.latitude, metadata.longitude);
     }
 
+    // Analyze photo for skills, locations, and groups
+    const { photoAnalysisService } = await import('../services/photoAnalysisService');
+    const analysis = await photoAnalysisService.analyzePhoto(
+      req.user!.id,
+      req.file.buffer,
+      filename,
+      metadata
+    );
+
     // Generate journal entry from metadata (no photo URL needed)
     const autoEntry = await photoService.generateEntryFromPhoto(
       req.user!.id,
@@ -51,12 +61,79 @@ router.post('/upload', requireAuth, upload.single('photo'), async (req: Authenti
       metadata
     );
 
+    // Auto-link photo to skills, locations, and groups
+    if (autoEntry?.id) {
+      // Link to skills
+      if (analysis.detectedSkills && analysis.detectedSkills.length > 0) {
+        await photoAnalysisService.linkPhotoToSkills(
+          req.user!.id,
+          autoEntry.id,
+          analysis.detectedSkills
+        );
+      }
+
+      // Link to groups
+      if (analysis.detectedGroups && analysis.detectedGroups.length > 0) {
+        await photoAnalysisService.linkPhotoToGroups(
+          req.user!.id,
+          autoEntry.id,
+          analysis.detectedGroups
+        );
+      }
+
+      // Link to location if detected
+      if (analysis.suggestedLocation?.type === 'location' && analysis.suggestedLocation.id) {
+        // Link location directly
+        await supabaseAdmin
+          .from('photo_location_links')
+          .upsert({
+            user_id: req.user!.id,
+            journal_entry_id: autoEntry.id,
+            location_id: analysis.suggestedLocation.id,
+            confidence: 0.8,
+            detection_reason: analysis.suggestedLocation.reason,
+            auto_detected: true
+          })
+          .catch(err => logger.debug({ error: err }, 'Failed to link photo to location'));
+      }
+
+      // Also link to location from metadata if available
+      if (metadata.locationName) {
+        const { data: location } = await supabaseAdmin
+          .from('locations')
+          .select('id')
+          .eq('user_id', req.user!.id)
+          .ilike('name', `%${metadata.locationName}%`)
+          .limit(1)
+          .single();
+        
+        if (location) {
+          await supabaseAdmin
+            .from('photo_location_links')
+            .upsert({
+              user_id: req.user!.id,
+              journal_entry_id: autoEntry.id,
+              location_id: location.id,
+              confidence: 0.9,
+              detection_reason: `Photo taken at ${metadata.locationName}`,
+              auto_detected: true
+            })
+            .catch(err => logger.debug({ error: err }, 'Failed to link photo to location from metadata'));
+        }
+      }
+    }
+
     logger.info({ entryId: autoEntry?.id, userId: req.user!.id }, 'Photo processed and entry created');
 
     res.status(201).json({ 
       success: true,
       entry: autoEntry,
-      metadata 
+      metadata,
+      analysis: {
+        detectedSkills: analysis.detectedSkills,
+        detectedGroups: analysis.detectedGroups,
+        suggestedLocation: analysis.suggestedLocation
+      }
     });
   } catch (error: any) {
     logger.error({ error }, 'Failed to process photo');

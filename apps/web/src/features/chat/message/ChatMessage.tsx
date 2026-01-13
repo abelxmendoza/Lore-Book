@@ -4,6 +4,7 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
+import { parseConnections } from '../../../utils/parseConnections';
 
 const humanizeExpressionMode = (mode: string): string => {
   const modeMap: Record<string, string> = {
@@ -323,16 +324,123 @@ export const ChatMessage = ({
             </div>
           )}
 
-          {/* Connections */}
+          {/* Connections - Clickable */}
           {message.connections && message.connections.length > 0 && (
             <div className="pt-2 border-t border-border/30">
-              <div className="flex items-center gap-1 mb-1">
+              <div className="flex items-center gap-1 mb-2">
                 <Sparkles className="h-3 w-3 text-primary/70" />
                 <span className="text-xs font-semibold text-primary/70">Connections</span>
               </div>
-              {message.connections.map((conn, idx) => (
-                <p key={idx} className="text-xs text-white/60 ml-4">{conn}</p>
-              ))}
+              <div className="flex flex-wrap gap-2">
+                {message.connections.map((conn, idx) => {
+                  // Try to parse connection for clickable entities
+                  const parsed = parseConnections([conn])[0];
+                  
+                  if (parsed.type === 'character' && parsed.names) {
+                    return (
+                      <div key={idx} className="flex flex-wrap gap-1.5">
+                        <span className="text-xs text-white/60">{parsed.text}:</span>
+                        {parsed.names.map((name, nameIdx) => (
+                          <button
+                            key={nameIdx}
+                            onClick={() => {
+                              // Try to find character in sources or navigate
+                              const charSource = message.sources?.find(s => 
+                                s.type === 'character' && s.title.toLowerCase().includes(name.toLowerCase())
+                              );
+                              if (charSource && onSourceClick) {
+                                onSourceClick(charSource);
+                              }
+                            }}
+                            className="text-xs text-primary/70 hover:text-primary hover:underline cursor-pointer px-1.5 py-0.5 rounded border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors"
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  }
+                  
+                  if (parsed.type === 'chapter' && parsed.names) {
+                    return (
+                      <div key={idx} className="flex flex-wrap gap-1.5">
+                        <span className="text-xs text-white/60">{parsed.text}:</span>
+                        {parsed.names.map((name, nameIdx) => (
+                          <button
+                            key={nameIdx}
+                            onClick={() => {
+                              const chapterSource = message.sources?.find(s => 
+                                s.type === 'chapter' && s.title.toLowerCase().includes(name.toLowerCase())
+                              );
+                              if (chapterSource && onSourceClick) {
+                                onSourceClick(chapterSource);
+                              }
+                            }}
+                            className="text-xs text-primary/70 hover:text-primary hover:underline cursor-pointer px-1.5 py-0.5 rounded border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors"
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  }
+                  
+                  if (parsed.type === 'location' && parsed.names) {
+                    return (
+                      <div key={idx} className="flex flex-wrap gap-1.5">
+                        <span className="text-xs text-white/60">{parsed.text}:</span>
+                        {parsed.names.map((name, nameIdx) => (
+                          <button
+                            key={nameIdx}
+                            onClick={() => {
+                              const locationSource = message.sources?.find(s => 
+                                s.type === 'location' && s.title.toLowerCase().includes(name.toLowerCase())
+                              );
+                              if (locationSource && onSourceClick) {
+                                onSourceClick(locationSource);
+                              }
+                            }}
+                            className="text-xs text-primary/70 hover:text-primary hover:underline cursor-pointer px-1.5 py-0.5 rounded border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors"
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  }
+                  
+                  // Generic connection or HQI/Fabric (show as clickable badge)
+                  if (parsed.type === 'hqi' || parsed.type === 'fabric') {
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          // Show sources of this type
+                          const relevantSources = message.sources?.filter(s => 
+                            s.type === parsed.type || 
+                            (parsed.type === 'hqi' && s.type === 'hqi') ||
+                            (parsed.type === 'fabric' && s.type === 'fabric')
+                          );
+                          if (relevantSources && relevantSources.length > 0 && onSourceClick) {
+                            onSourceClick(relevantSources[0]);
+                          }
+                        }}
+                        className="text-xs text-primary/70 hover:text-primary hover:underline cursor-pointer px-2 py-1 rounded border border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors"
+                      >
+                        {parsed.text}
+                        <ExternalLink className="h-3 w-3 inline ml-1" />
+                      </button>
+                    );
+                  }
+                  
+                  // Fallback: plain text
+                  return (
+                    <p key={idx} className="text-xs text-white/60">
+                      {conn}
+                    </p>
+                  );
+                })}
+              </div>
             </div>
           )}
 
