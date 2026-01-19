@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Layers, Star, Users, MapPin, Calendar, Tag } from 'lucide-react';
+import { Layers, Star, Users, MapPin, Calendar, Tag, Loader2 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Card, CardContent } from '../ui/card';
 import { fetchJson } from '../../lib/api';
-import { Loader2 } from 'lucide-react';
 
 type MemoryComponent = {
   id: string;

@@ -48,7 +48,7 @@ describe('ErrorBoundary Integration Tests', () => {
       return <div>No error</div>;
     };
 
-    const { rerender } = render(
+    const { rerender, unmount } = render(
       <ErrorBoundary>
         <ThrowError shouldThrow={true} />
       </ErrorBoundary>
@@ -60,9 +60,11 @@ describe('ErrorBoundary Integration Tests', () => {
     const tryAgainButton = screen.getByText(/Try Again/i);
     await user.click(tryAgainButton);
 
-    // After reset, rerender with non-throwing component
-    rerender(
-      <ErrorBoundary>
+    // Unmount and remount with new component to fully reset
+    unmount();
+    
+    render(
+      <ErrorBoundary key="reset">
         <ThrowError shouldThrow={false} />
       </ErrorBoundary>
     );

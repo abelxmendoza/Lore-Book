@@ -10,11 +10,10 @@ import { LoadingSkeleton } from './LoadingSkeleton';
 import { EmptyState } from './EmptyState';
 import { useMockData, subscribeToMockDataState } from '../../contexts/MockDataContext';
 import { reactionApi } from '../../api/reactions';
-import { perceptionReactionEngineApi } from '../../api/perceptionReactionEngine';
+import { perceptionReactionEngineApi, type PatternInsight, type StabilityMetrics } from '../../api/perceptionReactionEngine';
 import { mockDataService } from '../../services/mockDataService';
 import { MOCK_REACTION_PATTERNS, MOCK_PATTERN_INSIGHTS, MOCK_STABILITY_METRICS, MOCK_RECOVERY_TIME_DATA } from '../../mocks/reactions';
 import type { ReactionPatterns } from '../../types/reaction';
-import type { PatternInsight, StabilityMetrics } from '../../api/perceptionReactionEngine';
 
 /**
  * Reactions & Resilience Panel

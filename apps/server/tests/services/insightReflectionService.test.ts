@@ -106,14 +106,13 @@ describe('InsightReflectionService', () => {
         }
       ];
 
+      const mockOrder = vi.fn().mockResolvedValue({ data: mockInsights, error: null });
+      const mockEq2 = vi.fn().mockReturnValue({ order: mockOrder });
+      const mockEq1 = vi.fn().mockReturnValue({ eq: mockEq2 });
+      const mockSelect = vi.fn().mockReturnValue({ eq: mockEq1 });
+      
       vi.mocked(supabaseAdmin.from).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockResolvedValue({ data: mockInsights, error: null })
-            })
-          })
-        })
+        select: mockSelect,
       } as any);
 
       const insights = await insightReflectionService.getInsights('user-123', {

@@ -1,8 +1,7 @@
 import React from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 
-import type { Insight } from './InsightCard';
-import { InsightCard } from './InsightCard';
+import { InsightCard, type Insight } from './InsightCard';
 import { Button } from './ui/button';
 
 export type InsightPayload = {

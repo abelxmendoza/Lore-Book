@@ -11,9 +11,8 @@ import { Button } from '../ui/button';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { useLifeArc, type Timeframe } from '../../hooks/useLifeArc';
 import { format, parseISO } from 'date-fns';
-import { EventDetailModal } from '../events/EventDetailModal';
+import { EventDetailModal, type Event } from '../events/EventDetailModal';
 import { StabilityCard } from './StabilityCard';
-import type { Event } from '../events/EventDetailModal';
 
 export const LifeArcPanel: React.FC = () => {
   const [timeframe, setTimeframe] = useState<Timeframe>('LAST_30_DAYS');
