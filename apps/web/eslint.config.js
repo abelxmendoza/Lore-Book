@@ -5,6 +5,7 @@ import cypress from 'eslint-plugin-cypress';
 import tseslint from 'typescript-eslint';
 import importPlugin from 'eslint-plugin-import';
 import tsParser from '@typescript-eslint/parser';
+import tsPlugin from '@typescript-eslint/eslint-plugin';
 
 export default tseslint.config(
   {
@@ -21,6 +22,7 @@ export default tseslint.config(
       },
     },
     plugins: {
+      '@typescript-eslint': tsPlugin,
       'react-hooks': reactHooks,
       'jsx-a11y': jsxA11y,
       import: importPlugin,
