@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc --project tsconfig.json",
     "start": "node dist/index.js",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
     "test": "vitest run",
     "check-env": "tsx scripts/check-env.ts"
   },
@@ -24,13 +24,9 @@
     "openai": "^4.52.2",
     "pino": "^9.1.0",
     "pino-pretty": "^11.2.2",
-    "@supabase/supabase-js": "^2.46.1",
-    "stripe": "^16.5.0",
-
     "stripe": "^20.0.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-
     "uuid": "^9.0.1",
     "zod": "^3.23.8"
   },
@@ -44,6 +40,8 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.53.1",
+    "@typescript-eslint/parser": "^8.53.1",
     "eslint": "^9.9.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
@@ -51,6 +49,7 @@
     "supertest": "^7.1.4",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4",
+    "typescript-eslint": "^8.53.1",
     "vitest": "^2.0.5"
   }
 }

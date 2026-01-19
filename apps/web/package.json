@@ -13,7 +13,7 @@
     "postbuild": "node scripts/post-build-validation.js",
     "build:verbose": "vite build --logLevel verbose",
     "preview": "vite preview",
-    "lint": "eslint src --ext ts,tsx",
+    "lint": "eslint src",
     "format": "prettier --write src",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -80,6 +80,8 @@
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@typescript-eslint/eslint-plugin": "^8.53.1",
+    "@typescript-eslint/parser": "^8.53.1",
     "@vitest/coverage-v8": "^2.1.8",
     "@vitest/ui": "^2.1.8",
     "autoprefixer": "^10.4.20",
@@ -95,6 +97,7 @@
     "prettier": "^3.4.2",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.53.1",
     "vitest": "^2.1.8",
     "wait-on": "^9.0.3"
   }
