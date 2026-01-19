@@ -17,16 +17,18 @@ vi.mock('../lib/supabase', () => ({
 }));
 
 describe('useTaskEngine Error Handling', () => {
-  const { fetchJson } = await import('../lib/api');
+  let fetchJson: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const apiModule = await import('../lib/api');
+    fetchJson = vi.mocked(apiModule.fetchJson);
     // Default mock - return empty data
-    vi.mocked(fetchJson).mockResolvedValue({ tasks: [], events: [] } as any);
+    fetchJson.mockResolvedValue({ tasks: [], events: [] } as any);
   });
 
   it('should handle network errors gracefully', async () => {
-    vi.mocked(fetchJson).mockRejectedValue(new Error('Network error'));
+    fetchJson.mockRejectedValue(new Error('Network error'));
 
     const { result } = renderHook(() => useTaskEngine());
 
@@ -41,7 +43,7 @@ describe('useTaskEngine Error Handling', () => {
   });
 
   it('should handle 500 errors', async () => {
-    vi.mocked(fetchJson).mockRejectedValue(new Error('Server error'));
+    fetchJson.mockRejectedValue(new Error('Server error'));
 
     const { result } = renderHook(() => useTaskEngine());
 
@@ -50,7 +52,7 @@ describe('useTaskEngine Error Handling', () => {
     }, { timeout: 2000 });
 
     // Should handle error without crashing
-    vi.mocked(fetchJson).mockRejectedValueOnce(new Error('Server error'));
+    fetchJson.mockRejectedValueOnce(new Error('Server error'));
     try {
       await result.current.createTask({ title: 'Test', category: 'general' });
     } catch (error) {
@@ -59,7 +61,7 @@ describe('useTaskEngine Error Handling', () => {
   });
 
   it('should handle 401 authentication errors', async () => {
-    vi.mocked(fetchJson).mockRejectedValue(new Error('Unauthorized'));
+    fetchJson.mockRejectedValue(new Error('Unauthorized'));
 
     const { result } = renderHook(() => useTaskEngine());
 
@@ -68,7 +70,7 @@ describe('useTaskEngine Error Handling', () => {
     }, { timeout: 2000 });
 
     // Should handle auth error
-    vi.mocked(fetchJson).mockRejectedValueOnce(new Error('Unauthorized'));
+    fetchJson.mockRejectedValueOnce(new Error('Unauthorized'));
     try {
       await result.current.refreshTasks();
     } catch (error) {
@@ -77,7 +79,7 @@ describe('useTaskEngine Error Handling', () => {
   });
 
   it('should handle malformed JSON responses', async () => {
-    vi.mocked(fetchJson).mockRejectedValue(new Error('Invalid JSON'));
+    fetchJson.mockRejectedValue(new Error('Invalid JSON'));
 
     const { result } = renderHook(() => useTaskEngine());
 

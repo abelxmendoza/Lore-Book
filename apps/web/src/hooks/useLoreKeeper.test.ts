@@ -25,21 +25,22 @@ global.fetch = mockFetch;
 describe('useLoreKeeper', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Setup default fetch mock
-    mockFetch.mockImplementation((url: string) => {
-      if (url.includes('/api/entries') && !url.includes('?')) {
+    // Setup default fetch mock - useLoreKeeper has its own fetchJson that uses fetch
+    mockFetch.mockImplementation((url: string | Request) => {
+      const urlString = typeof url === 'string' ? url : url.url;
+      if (urlString.includes('/api/entries') && !urlString.includes('?')) {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ entries: [] })
         });
       }
-      if (url.includes('/api/timeline') && !url.includes('tags')) {
+      if (urlString.includes('/api/timeline') && !urlString.includes('tags')) {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
         });
       }
-      if (url.includes('/api/timeline/tags')) {
+      if (urlString.includes('/api/timeline/tags')) {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ tags: [] })
