@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import { EntityNormalizer } from './entityNormalizer';
 import { FuzzyMatcher } from './fuzzyMatcher';
 import type { ExtractedEntity, ResolvedEntity } from './types';

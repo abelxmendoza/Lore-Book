@@ -1,11 +1,12 @@
 import type { MemoryEntry } from '../../types';
-import { extractShadowSignals } from './shadowSignals';
+
 import { computeShadowArchetypes } from './shadowArchetypes';
 import { detectShadowLoops } from './shadowLoops';
-import { detectShadowTriggers } from './shadowTriggers';
 import { projectShadowTrajectory } from './shadowProjection';
-import { buildShadowSummary } from './shadowSummary';
+import { extractShadowSignals } from './shadowSignals';
 import { saveShadowProfile } from './shadowStorage';
+import { buildShadowSummary } from './shadowSummary';
+import { detectShadowTriggers } from './shadowTriggers';
 import type { ShadowProfile } from './shadowTypes';
 
 export class ShadowEngine {

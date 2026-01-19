@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { ClassifiedEvent } from './githubClassifier';
 
 export type IngestableEvent = {

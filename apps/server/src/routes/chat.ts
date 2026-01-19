@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { checkAiRequestLimit } from '../middleware/subscription';
-import { incrementAiRequestCount } from '../services/usageTracking';
 import { omegaChatService } from '../services/omegaChatService';
 import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
-import { logger } from '../logger';
+import { incrementAiRequestCount } from '../services/usageTracking';
 
 const personaRL = new ChatPersonaRL();
 

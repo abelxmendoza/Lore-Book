@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { AnalyticsModuleType, AnalyticsPayload, MemoryData } from './types';
 
 export abstract class BaseAnalyticsModule {

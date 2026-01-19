@@ -2,9 +2,9 @@ import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { documentService } from '../services/documentService';
-import { logger } from '../logger';
 
 const router = Router();
 

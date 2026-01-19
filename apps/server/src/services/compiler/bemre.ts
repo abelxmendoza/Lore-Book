@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { EntryIR, KnowledgeType } from './types';
 
 export type BeliefResolutionStatus =

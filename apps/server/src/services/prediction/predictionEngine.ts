@@ -1,8 +1,9 @@
 import { logger } from '../../logger';
-import type { Forecast, Prediction, PatternAnalysis } from './types';
-import { PatternAnalyzer } from './patternAnalyzer';
+
 import { ForecastGenerator } from './forecastGenerator';
+import { PatternAnalyzer } from './patternAnalyzer';
 import { PredictionStorage } from './predictionStorage';
+import type { Forecast, Prediction, PatternAnalysis } from './types';
 
 /**
  * Main Prediction Engine

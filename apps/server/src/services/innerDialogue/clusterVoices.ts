@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 
 import { embeddingService } from '../embeddingService';
+
 import type { InnerVoice, VoiceCluster } from './types';
 
 export class VoiceClusterer {

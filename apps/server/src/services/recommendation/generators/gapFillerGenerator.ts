@@ -1,9 +1,9 @@
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../../logger';
-import type { Recommendation, RecommendationContext } from '../types';
 import { ChronologyEngine, EventMapper } from '../../chronology';
 import { supabaseAdmin } from '../../supabaseClient';
+import type { Recommendation, RecommendationContext } from '../types';
 
 /**
  * Generates gap filler recommendations

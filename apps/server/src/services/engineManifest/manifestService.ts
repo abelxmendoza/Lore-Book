@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { EngineManifestRecord, EngineBlueprint, EngineEmbedding } from './manifestTypes';
 
 /**

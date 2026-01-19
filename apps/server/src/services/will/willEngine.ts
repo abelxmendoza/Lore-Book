@@ -1,9 +1,11 @@
 import OpenAI from 'openai';
-import { logger } from '../../logger';
+
 import { config } from '../../config';
-import { WillStorage } from './willStorage';
+import { logger } from '../../logger';
 import { memoryService } from '../memoryService';
+
 import type { WillEvent, WillProcessingContext } from './types';
+import { WillStorage } from './willStorage';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

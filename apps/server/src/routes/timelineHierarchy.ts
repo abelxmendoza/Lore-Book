@@ -5,11 +5,12 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { validateRequest } from '../middleware/validateRequest';
 import { timelineManager } from '../services/timelineManager';
 import { TimelineLayer, LAYER_TABLE_MAP } from '../types/timeline';
-import { validateRequest } from '../middleware/validateRequest';
-import { logger } from '../logger';
 
 const router = Router();
 

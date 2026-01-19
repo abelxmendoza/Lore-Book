@@ -1,12 +1,13 @@
 import { logger } from '../../logger';
-import type { Event, ChronologyResult } from './types';
-import { TemporalGraphBuilder } from './temporalGraph';
+
+import { AmbiguityResolver } from './ambiguityResolver';
 import { CausalInference } from './causalInference';
 import { GapDetector } from './gapDetector';
-import { AmbiguityResolver } from './ambiguityResolver';
 import { NarrativeBuilder } from './narrativeBuilder';
 import { PatternDetector } from './patternDetector';
 import { PythonAnalyticsClient } from './pythonClient';
+import { TemporalGraphBuilder } from './temporalGraph';
+import type { Event, ChronologyResult } from './types';
 
 /**
  * Main Chronology Engine orchestrator

@@ -1,7 +1,8 @@
 import { logger } from '../../logger';
-import type { Narrative, NarrativeType, NarrativeStyle, NarrativeQuery } from './types';
+
 import { NarrativeBuilder } from './narrativeBuilder';
 import { NarrativeStorage } from './narrativeStorage';
+import type { Narrative, NarrativeType, NarrativeStyle, NarrativeQuery } from './types';
 
 /**
  * Main Narrative Engine

@@ -5,9 +5,10 @@
 // =====================================================
 
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import { entityResolutionService } from './entityResolutionService';
 import type { EntityType } from './entityResolutionService';
+import { supabaseAdmin } from './supabaseClient';
 
 export type DominantContext = 
   | 'Work' 

@@ -4,9 +4,10 @@
 // =====================================================
 
 import { logger } from '../../logger';
+
 import { epistemicLatticeService } from './epistemicLattice';
-import type { EntryIR, KnowledgeType } from './types';
 import type { EntitySymbol } from './symbolTable';
+import type { EntryIR, KnowledgeType } from './types';
 
 export type TypeCheckResult = 
   | 'VALID'

@@ -3,12 +3,14 @@
 // Symbol Resolver - Resolves entities for entries
 // =====================================================
 
-import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
-import { entitySymbolTable, type EntitySymbol, type EntityType, type CertaintySource } from './symbolTable';
-import { epistemicTypeChecker } from './epistemicTypeChecker';
-import { omegaMemoryService } from '../omegaMemoryService';
 import { randomUUID } from 'crypto';
+
+import { logger } from '../../logger';
+import { omegaMemoryService } from '../omegaMemoryService';
+import { supabaseAdmin } from '../supabaseClient';
+
+import { epistemicTypeChecker } from './epistemicTypeChecker';
+import { entitySymbolTable, type EntitySymbol, type EntityType, type CertaintySource } from './symbolTable';
 import type { EntryIR } from './types';
 
 export class SymbolResolver {

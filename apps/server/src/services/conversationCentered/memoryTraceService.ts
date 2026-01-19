@@ -5,8 +5,8 @@
 // =====================================================
 
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import type { ExtractedUnit } from '../../types/conversationCentered';
+import { supabaseAdmin } from '../supabaseClient';
 
 export type TraceNode = {
   id: string;

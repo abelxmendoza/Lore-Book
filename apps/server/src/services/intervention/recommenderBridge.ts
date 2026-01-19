@@ -1,5 +1,6 @@
-import type { Intervention } from './types';
 import type { Recommendation } from '../recommendation/types';
+
+import type { Intervention } from './types';
 
 /**
  * Bridges interventions to recommendations

@@ -1,10 +1,10 @@
 import { Router } from 'express';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { logger } from '../logger';
-import { WisdomEngine } from '../services/wisdom/wisdomEngine';
 import type { WisdomCategory } from '../services/wisdom/types';
+import { WisdomEngine } from '../services/wisdom/wisdomEngine';
 
 const router = Router();
 const wisdomEngine = new WisdomEngine();

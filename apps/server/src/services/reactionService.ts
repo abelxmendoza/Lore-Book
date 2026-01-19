@@ -1,6 +1,8 @@
-import { supabaseAdmin } from './supabaseClient';
-import { logger } from '../logger';
 import { v4 as uuid } from 'uuid';
+
+import { logger } from '../logger';
+
+import { supabaseAdmin } from './supabaseClient';
 
 // Reaction types and labels
 export type ReactionTriggerType = 'memory' | 'perception';

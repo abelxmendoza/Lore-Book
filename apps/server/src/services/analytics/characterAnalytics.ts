@@ -4,6 +4,7 @@
  */
 
 import { logger } from '../../logger';
+
 import { BaseAnalyticsModule } from './base';
 import type { AnalyticsPayload, MemoryData } from './types';
 

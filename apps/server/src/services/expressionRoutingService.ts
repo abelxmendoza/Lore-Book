@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../logger';
+
 import type { UserIntent } from './intentDetectionService';
 
 export type ExpressionMode =

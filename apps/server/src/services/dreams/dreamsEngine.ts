@@ -1,18 +1,19 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { AspirationExtractor } from './aspirationExtractor';
+import { DreamClarityScorer } from './dreamClarityScorer';
+import { DreamClassifier } from './dreamClassifier';
+import { DreamConflictDetector } from './dreamConflictDetector';
+import { DreamEvolution } from './dreamEvolution';
+import { DreamExtractor } from './dreamExtractor';
+import { DreamTrajectory } from './dreamTrajectory';
 import type {
   DreamsOutput,
   DreamsContext,
   DreamInsight,
   DreamCategory,
 } from './types';
-import { DreamExtractor } from './dreamExtractor';
-import { AspirationExtractor } from './aspirationExtractor';
-import { DreamClassifier } from './dreamClassifier';
-import { DreamClarityScorer } from './dreamClarityScorer';
-import { DreamConflictDetector } from './dreamConflictDetector';
-import { DreamTrajectory } from './dreamTrajectory';
-import { DreamEvolution } from './dreamEvolution';
 
 /**
  * Main Dreams & Aspirations Engine

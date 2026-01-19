@@ -1,8 +1,9 @@
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 
 import type { ChapterCandidate, ChapterFacet, ChapterProfile, MemoryEntry, MonthGroup } from '../types';
-import { correctionService } from './correctionService';
+
 import { chapterService } from './chapterService';
+import { correctionService } from './correctionService';
 import { memoryService } from './memoryService';
 
 const TRAIT_MAP: Record<string, string> = {

@@ -4,6 +4,7 @@
 // =====================================================
 
 import { describe, it, expect, beforeEach } from 'vitest';
+
 import { symbolResolver } from './symbolResolver';
 import { entitySymbolTable } from './symbolTable';
 import type { EntryIR, EntityRef } from './types';

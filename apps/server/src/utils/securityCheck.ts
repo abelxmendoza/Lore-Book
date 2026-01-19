@@ -1,5 +1,5 @@
-import { logger } from '../logger';
 import { config } from '../config';
+import { logger } from '../logger';
 
 /**
  * Security startup check

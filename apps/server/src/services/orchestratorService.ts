@@ -1,10 +1,12 @@
+import { integrationAggregationService } from '../integrations/integration.service';
 import { logger } from '../logger';
+import { spawnPython } from "../utils/pythonBridge";
+
+import { githubSyncManager } from './github/githubSyncManager';
+import { hqiService } from './hqiService';
 import { memoryService } from './memoryService';
 import { personaService } from './personaService';
 import { taskEngineService } from './taskEngineService';
-import { hqiService } from './hqiService';
-import { integrationAggregationService } from '../integrations/integration.service';
-import { githubSyncManager } from './github/githubSyncManager';
 
 type TimelineContext = {
   events: any[];
@@ -264,7 +266,6 @@ class OrchestratorService {
 }
 
 export const orchestratorService = new OrchestratorService();
-import { spawnPython } from "../utils/pythonBridge";
 
 export const runOrchestrator =
   (mode: string) =>

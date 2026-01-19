@@ -3,8 +3,9 @@ import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import { memoirCacheService } from './memoirCacheService';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

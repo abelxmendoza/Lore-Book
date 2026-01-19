@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
+
 import type { ExtractedEvent } from './types';
 
 /**

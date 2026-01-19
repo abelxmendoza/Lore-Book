@@ -1,6 +1,8 @@
+import { v4 as uuid } from 'uuid';
+
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import { v4 as uuid } from 'uuid';
+
 import type { WisdomStatement, WisdomPattern } from './types';
 
 /**

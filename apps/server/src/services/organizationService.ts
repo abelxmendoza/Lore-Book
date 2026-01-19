@@ -3,9 +3,10 @@
 // Purpose: Manage organizations with members, stories, events, locations
 // =====================================================
 
-import { supabaseAdmin } from './supabaseClient';
 import { logger } from '../logger';
+
 import { groupAnalyticsService, type GroupAnalytics } from './groupAnalyticsService';
+import { supabaseAdmin } from './supabaseClient';
 
 export type OrganizationType = 'friend_group' | 'company' | 'sports_team' | 'club' | 'nonprofit' | 'affiliation' | 'other';
 export type OrganizationStatus = 'active' | 'inactive' | 'dissolved';

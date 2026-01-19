@@ -1,6 +1,6 @@
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import type { ContinuityEvent } from '../../types';
+import { supabaseAdmin } from '../supabaseClient';
 
 /**
  * Resolution Service

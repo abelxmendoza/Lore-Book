@@ -1,9 +1,10 @@
 import { logger } from '../../logger';
+
+import { ConflictClassifier } from './conflictClassifier';
+import { ConflictEmbedding } from './conflictEmbedding';
 import { ConflictExtractor } from './conflictExtractor';
 import { ConflictParser } from './conflictParser';
-import { ConflictClassifier } from './conflictClassifier';
 import { ConflictScorer } from './conflictScorer';
-import { ConflictEmbedding } from './conflictEmbedding';
 import { ConflictStorage } from './storageService';
 import type { Conflict } from './types';
 

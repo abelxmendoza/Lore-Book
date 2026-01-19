@@ -1,7 +1,7 @@
-import { DialogueExtractor } from './extractVoices';
 import { ToneClassifier } from './classifyTone';
-import { RoleMapping } from './roleMapping';
 import { VoiceClusterer } from './clusterVoices';
+import { DialogueExtractor } from './extractVoices';
+import { RoleMapping } from './roleMapping';
 import type { InnerDialogueModel } from './types';
 
 export class InnerDialogueEngine {

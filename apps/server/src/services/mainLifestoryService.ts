@@ -7,9 +7,10 @@
  */
 
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import { biographyGenerationEngine } from './biographyGeneration';
 import type { BiographySpec } from './biographyGeneration';
+import { supabaseAdmin } from './supabaseClient';
 
 const MAIN_LIFESTORY_NAME = 'My Full Life Story';
 const MAIN_LIFESTORY_ID = 'main-lifestory';

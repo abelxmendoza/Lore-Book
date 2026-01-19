@@ -1,8 +1,9 @@
 import { logger } from '../../../../logger';
 import { supabaseAdmin } from '../../../supabaseClient';
-import { MultiClassLogisticRegression } from './simpleModel';
 import { EntryDataset } from '../datasets/entryDataset';
 import type { PatternType, PatternPrediction, ModelMetadata } from '../types';
+
+import { MultiClassLogisticRegression } from './simpleModel';
 
 /**
  * Pattern Classifier Model

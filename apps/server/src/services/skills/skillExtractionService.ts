@@ -1,7 +1,9 @@
-import { logger } from '../../logger';
-import { skillService, type SkillCategory } from './skillService';
 import OpenAI from 'openai';
+
 import { config } from '../../config';
+import { logger } from '../../logger';
+
+import { skillService, type SkillCategory } from './skillService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

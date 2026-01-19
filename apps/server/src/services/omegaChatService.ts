@@ -1,22 +1,14 @@
-import OpenAI from 'openai';
 import { randomUUID } from 'crypto';
+
+import OpenAI from 'openai';
 
 import { config } from '../config';
 import { logger } from '../logger';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
-import { memoryService } from './memoryService';
-import { chapterService } from './chapterService';
-import { memoirService } from './memoirService';
-import { autopilotService } from './autopilotService';
-import { taskEngineService } from './taskEngineService';
-import { peoplePlacesService } from './peoplePlacesService';
-import { orchestratorService } from './orchestratorService';
-import { hqiService } from './hqiService';
-import { memoryGraphService } from './memoryGraphService';
 import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/keywordDetector';
-import { correctionService } from './correctionService';
-import { timeEngine } from './timeEngine';
-import { locationService } from './locationService';
+
+import { autopilotService } from './autopilotService';
+import { chapterService } from './chapterService';
 import { supabaseAdmin } from './supabaseClient';
 import { ragPacketCacheService } from './ragPacketCacheService';
 import { essenceProfileService } from './essenceProfileService';
@@ -39,6 +31,16 @@ import { entityMeaningDriftService } from './entityMeaningDriftService';
 import { ChatPersonaRL } from './reinforcementLearning/chatPersonaRL';
 import { entityAttributeDetector } from './conversationCentered/entityAttributeDetector';
 import { tangentTransitionDetector, type TransitionAnalysis, type EmotionalState } from './conversationCentered/tangentTransitionDetector';
+import { correctionService } from './correctionService';
+import { hqiService } from './hqiService';
+import { locationService } from './locationService';
+import { memoirService } from './memoirService';
+import { memoryGraphService } from './memoryGraphService';
+import { memoryService } from './memoryService';
+import { orchestratorService } from './orchestratorService';
+import { peoplePlacesService } from './peoplePlacesService';
+import { taskEngineService } from './taskEngineService';
+import { timeEngine } from './timeEngine';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
@@ -221,7 +223,7 @@ class OmegaChatService {
     }
 
     // Fetch character attributes for all characters (comprehensive knowledge)
-    let characterAttributesMap: Map<string, any[]> = new Map();
+    const characterAttributesMap: Map<string, any[]> = new Map();
     try {
       for (const char of allCharacters) {
         const attributes = await entityAttributeDetector.getEntityAttributes(

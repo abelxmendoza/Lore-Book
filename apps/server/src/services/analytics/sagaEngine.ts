@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { BaseAnalyticsModule } from './base';
 import type { AnalyticsPayload, MemoryData, ArcData } from './types';
 

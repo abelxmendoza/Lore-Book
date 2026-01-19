@@ -5,18 +5,9 @@
 // =====================================================
 
 import express, { Router } from 'express';
-import { logger } from '../logger';
+
 
 // Import all routers
-import healthRouter from './health';
-import diagnosticsRouter from './diagnostics';
-import { entriesRouter } from './entries';
-import { photosRouter } from './photos';
-import { calendarRouter } from './calendar';
-import { chatRouter } from './chat';
-import { timelineRouter } from './timeline';
-import { timelineHierarchyRouter } from './timelineHierarchy';
-import { summaryRouter } from './summary';
 import { chaptersRouter } from './chapters';
 import { evolutionRouter } from './evolution';
 import { correctionsRouter } from './corrections';
@@ -52,8 +43,8 @@ import { notebookRouter } from './notebook';
 import { identityRouter } from './identity';
 import { externalHubRouter } from '../external/external_hub.router';
 import { harmonizationRouter } from '../harmonization/harmonization.router';
+import { logger } from '../logger';
 import { namingRouter } from './naming';
-import { memoirRouter } from './memoir';
 import { biographyRouter } from './biography';
 import { documentsRouter } from './documents';
 import { devRouter } from './dev';
@@ -137,11 +128,21 @@ import entityAmbiguityRouter from './entityAmbiguity';
 import entityMeaningDriftRouter from './entityMeaningDrift';
 import knowledgeTypeEngineRouter from './knowledgeTypeEngine';
 import beliefRealityReconciliationRouter from './beliefRealityReconciliation';
+import { calendarRouter } from './calendar';
+import { chatRouter } from './chat';
 import narrativeDiffRouter from './narrativeDiff';
-import contradictionAlertsRouter from './contradictionAlerts';
-import willRouter from './will';
 import continuityProfileRouter from './continuityProfile';
+import contradictionAlertsRouter from './contradictionAlerts';
+import diagnosticsRouter from './diagnostics';
+import { entriesRouter } from './entries';
+import healthRouter from './health';
+import { memoirRouter } from './memoir';
 import { personalStrategyRouter } from './personalStrategy';
+import { photosRouter } from './photos';
+import { summaryRouter } from './summary';
+import { timelineRouter } from './timeline';
+import { timelineHierarchyRouter } from './timelineHierarchy';
+import willRouter from './will';
 
 export interface RouteEntry {
   path: string;

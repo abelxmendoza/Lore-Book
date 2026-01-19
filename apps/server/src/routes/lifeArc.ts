@@ -5,10 +5,11 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { asyncHandler } from '../utils/asyncHandler';
 import { lifeArcService, type Timeframe } from '../services/lifeArcService';
+import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 

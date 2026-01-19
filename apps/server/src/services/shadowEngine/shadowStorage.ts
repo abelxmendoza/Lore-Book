@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { ShadowProfile } from './shadowTypes';
 
 export const saveShadowProfile = async (userId: string, profile: ShadowProfile): Promise<void> => {

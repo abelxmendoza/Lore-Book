@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import { EventExtractor } from './eventExtractor';
 import { FuzzyEventMatcher } from './fuzzyEventMatcher';
 import { EventStorage } from './storageService';

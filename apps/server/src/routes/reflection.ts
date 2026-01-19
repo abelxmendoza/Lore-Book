@@ -1,8 +1,8 @@
 import { Router } from 'express';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { logger } from '../logger';
 import { ReflectionEngine } from '../services/reflection/reflectionEngine';
 import { ReflectionStorage } from '../services/reflection/reflectionStorage';
 

@@ -4,6 +4,7 @@
 // =====================================================
 
 import { describe, it, expect, beforeEach } from 'vitest';
+
 import { dependencyGraph } from './dependencyGraph';
 import { incrementalCompiler } from './incrementalCompiler';
 import type { EntryIR } from './types';

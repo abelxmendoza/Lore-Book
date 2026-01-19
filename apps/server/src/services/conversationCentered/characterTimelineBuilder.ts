@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { eventImpactDetector } from './eventImpactDetector';
 
 export type TimelineType = 'shared_experience' | 'lore' | 'mentioned_in';

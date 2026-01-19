@@ -1,8 +1,8 @@
 import { Router } from 'express';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { logger } from '../logger';
 import { ArchetypeEngine } from '../services/archetype/archetypeEngine';
 import { ArchetypeStorage } from '../services/archetype/archetypeStorage';
 

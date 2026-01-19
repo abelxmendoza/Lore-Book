@@ -1,4 +1,5 @@
 import { Router } from 'express';
+
 import { logger } from '../logger';
 import { knowledgeTypeEngineService } from '../services/knowledgeTypeEngineService';
 import type { KnowledgeType } from '../services/knowledgeTypeEngineService';

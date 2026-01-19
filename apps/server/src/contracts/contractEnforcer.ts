@@ -4,8 +4,9 @@
 // =====================================================
 
 import { logger } from '../logger';
-import type { SensemakingContract, ContradictionPolicy } from './sensemakingContract';
 import type { EntryIR, CanonStatus } from '../services/compiler/types';
+
+import type { SensemakingContract, ContradictionPolicy } from './sensemakingContract';
 
 /**
  * Constrained Memory View

@@ -1,7 +1,8 @@
 import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
-import { ProjectionExtractor } from './projectionExtractor';
+
 import { ProjectionClassifier } from './projectionClassifier';
+import { ProjectionExtractor } from './projectionExtractor';
 import { ProjectionLinker } from './projectionLinker';
 import { ProjectionScore } from './projectionScore';
 import { ProjectionStorage } from './projectionStorage';

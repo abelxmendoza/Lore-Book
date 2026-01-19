@@ -1,7 +1,8 @@
 import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
-import { EventExtractor } from './eventExtractor';
+
 import { EventAssembler } from './eventAssembler';
+import { EventExtractor } from './eventExtractor';
 import { FuzzyEventMatcher } from './fuzzyEventMatcher';
 import { EventStorage } from './storageService';
 import type { ResolvedEvent, TemporalSignal } from './types';

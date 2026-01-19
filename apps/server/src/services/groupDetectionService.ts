@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../logger';
+
 import { organizationService, type Organization, type OrganizationMember } from './organizationService';
 import { supabaseAdmin } from './supabaseClient';
 

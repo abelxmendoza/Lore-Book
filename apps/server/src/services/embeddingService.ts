@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 
 import { config } from '../config';
 import { logger } from '../logger';
+
 import { embeddingCacheService } from './embeddingCacheService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });

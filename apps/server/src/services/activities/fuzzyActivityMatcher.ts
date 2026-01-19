@@ -1,6 +1,7 @@
 import { logger } from '../../logger';
-import { LocationVectorizer } from '../locations/locationVectorizer';
 import { FuzzyMatcher } from '../entities/fuzzyMatcher';
+import { LocationVectorizer } from '../locations/locationVectorizer';
+
 import type { ExtractedActivity, ResolvedActivity } from './types';
 
 /**

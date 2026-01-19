@@ -1,6 +1,6 @@
-import { supabaseAdmin } from '../supabaseClient';
 import { logger } from '../../logger';
 import { skillService } from '../skills/skillService';
+import { supabaseAdmin } from '../supabaseClient';
 
 export type AchievementType = 'milestone' | 'streak' | 'skill_level' | 'xp_milestone' | 'consistency' | 'exploration' | 'reflection' | 'growth' | 'other';
 export type AchievementRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';

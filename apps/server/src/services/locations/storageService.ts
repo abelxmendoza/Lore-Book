@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { ResolvedLocation, ExtractedLocation, LocationMention } from './types';
 
 /**

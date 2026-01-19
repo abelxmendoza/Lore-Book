@@ -8,8 +8,6 @@ import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
-import { titleGenerationService } from './titleGenerationService';
 import {
   TimelineLayer,
   TimelineNode,
@@ -23,6 +21,9 @@ import {
   PARENT_LAYER_MAP,
   LAYER_HIERARCHY
 } from '../types/timeline';
+
+import { supabaseAdmin } from './supabaseClient';
+import { titleGenerationService } from './titleGenerationService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

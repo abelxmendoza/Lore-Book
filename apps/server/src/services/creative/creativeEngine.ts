@@ -1,19 +1,20 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { BlockDetector } from './blockDetector';
+import { CreativeExtractor } from './creativeExtractor';
+import { CreativeScoreService } from './creativeScore';
+import { CreativeCycleDetector } from './cycleDetector';
+import { FlowDetector } from './flowDetector';
+import { InspirationSourceExtractor } from './inspirationSources';
+import { MediumClassifier } from './mediumClassifier';
+import { ProjectLifecycleEngine } from './projectLifecycle';
 import type {
   CreativeOutput,
   CreativeContext,
   CreativeInsight,
   CreativeMedium,
 } from './types';
-import { CreativeExtractor } from './creativeExtractor';
-import { MediumClassifier } from './mediumClassifier';
-import { FlowDetector } from './flowDetector';
-import { BlockDetector } from './blockDetector';
-import { InspirationSourceExtractor } from './inspirationSources';
-import { CreativeCycleDetector } from './cycleDetector';
-import { ProjectLifecycleEngine } from './projectLifecycle';
-import { CreativeScoreService } from './creativeScore';
 
 /**
  * Main Creative Output Engine

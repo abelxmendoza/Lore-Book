@@ -1,8 +1,8 @@
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../../logger';
-import type { Recommendation, RecommendationContext } from '../types';
 import { identityPulseModule, insightEngineModule } from '../../analytics';
+import type { Recommendation, RecommendationContext } from '../types';
 
 /**
  * Generates growth opportunity recommendations

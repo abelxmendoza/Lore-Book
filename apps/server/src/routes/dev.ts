@@ -4,10 +4,11 @@
  */
 
 import { Router } from 'express';
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { requireDevAccess } from '../middleware/rbac';
+
 import { config } from '../config';
 import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { requireDevAccess } from '../middleware/rbac';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();

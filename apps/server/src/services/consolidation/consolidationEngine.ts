@@ -1,12 +1,13 @@
 import { logger } from '../../logger';
+
+import { ConsolidationStrategyService } from './consolidationStrategy';
+import { SimilarityDetector } from './similarityDetector';
 import type {
   ConsolidationCandidate,
   ConsolidationPayload,
   ConsolidationStats,
   SimilarityType,
 } from './types';
-import { SimilarityDetector } from './similarityDetector';
-import { ConsolidationStrategyService } from './consolidationStrategy';
 
 /**
  * Main Memory Consolidation Engine

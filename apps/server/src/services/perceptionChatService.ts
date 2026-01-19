@@ -1,8 +1,9 @@
-import { logger } from '../logger';
-import { perceptionService, type CreatePerceptionEntryInput } from './perceptionService';
-import { peoplePlacesService } from './peoplePlacesService';
-import { openai } from './openaiClient';
 import { config } from '../config';
+import { logger } from '../logger';
+
+import { openai } from './openaiClient';
+import { peoplePlacesService } from './peoplePlacesService';
+import { perceptionService, type CreatePerceptionEntryInput } from './perceptionService';
 
 export type PerceptionExtractionResult = {
   perceptions: Array<{

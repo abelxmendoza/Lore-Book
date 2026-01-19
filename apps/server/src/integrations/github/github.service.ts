@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { appendToInbox, distillInbox, runIntegrationPipeline } from '../integration.utils';
+
 import type { GithubEvent, GithubSyncResult } from './github.types';
 
 const fetchGithubActivity = async (_userId: string): Promise<GithubEvent[]> => {

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+
 import { logger } from '../logger';
 import { ToxicityResolver } from '../services/toxicity';
 import { ToxicityStorage } from '../services/toxicity/toxicityStorage';

@@ -11,9 +11,9 @@
  */
 
 import { logger } from '../../logger';
+import type { BiographySpec, Domain } from '../biographyGeneration/types';
 import { memoryService } from '../memoryService';
 import { supabaseAdmin } from '../supabaseClient';
-import type { BiographySpec, Domain } from '../biographyGeneration/types';
 
 export interface ParsedLorebookQuery {
   scope: 'full_life' | 'domain' | 'time_range' | 'thematic' | 'character' | 'location' | 'event' | 'skill';

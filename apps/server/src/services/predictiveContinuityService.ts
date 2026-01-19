@@ -4,13 +4,9 @@
  */
 
 import OpenAI from 'openai';
-import { supabaseAdmin } from './supabaseClient';
-import { logger } from '../logger';
+
 import { config } from '../config';
-import { embeddingService } from './embeddingService';
-import { decisionMemoryService } from './decisionMemoryService';
-import { insightReflectionService } from './insightReflectionService';
-import { omegaMemoryService } from './omegaMemoryService';
+import { logger } from '../logger';
 import type {
   Prediction,
   PredictionEvidence,
@@ -23,6 +19,12 @@ import type {
   PredictionEvidenceSourceType,
   MIN_SAMPLE_SIZE,
 } from '../types/predictiveContinuity';
+
+import { decisionMemoryService } from './decisionMemoryService';
+import { embeddingService } from './embeddingService';
+import { insightReflectionService } from './insightReflectionService';
+import { omegaMemoryService } from './omegaMemoryService';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 const MIN_SAMPLE = 3;

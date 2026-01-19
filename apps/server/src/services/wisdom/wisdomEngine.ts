@@ -1,14 +1,15 @@
 import { logger } from '../../logger';
+
 import type {
   WisdomStatement,
   WisdomPayload,
   WisdomStats,
   WisdomCategory,
 } from './types';
+import { WisdomConnector } from './wisdomConnector';
 import { WisdomExtractor } from './wisdomExtractor';
 import { wisdomStorageService } from './wisdomStorage';
 import { WisdomTracker } from './wisdomTracker';
-import { WisdomConnector } from './wisdomConnector';
 
 /**
  * Main Wisdom Engine

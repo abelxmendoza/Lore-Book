@@ -1,5 +1,12 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { LegacyClusterer } from './legacyCluster';
+import { LegacyExtractor } from './legacyExtractor';
+import { LegacyNarrative } from './legacyNarrative';
+import { LegacyScorer } from './legacyScorer';
+import { LegacySignalService } from './legacySignal';
+import { LegacyTrajectory } from './legacyTrajectory';
 import type {
   LegacySignal,
   LegacyInsight,
@@ -8,12 +15,6 @@ import type {
   LegacyContext,
   LegacyDomain,
 } from './types';
-import { LegacyExtractor } from './legacyExtractor';
-import { LegacySignalService } from './legacySignal';
-import { LegacyTrajectory } from './legacyTrajectory';
-import { LegacyClusterer } from './legacyCluster';
-import { LegacyScorer } from './legacyScorer';
-import { LegacyNarrative } from './legacyNarrative';
 
 /**
  * Main Legacy Engine

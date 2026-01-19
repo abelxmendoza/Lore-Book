@@ -5,8 +5,9 @@
 // =====================================================
 
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import { correctionDashboardService } from './correctionDashboardService';
+import { supabaseAdmin } from './supabaseClient';
 
 export type EntityType = 'CHARACTER' | 'LOCATION' | 'ENTITY' | 'ORG' | 'CONCEPT' | 'PERSON';
 export type ConflictReason =

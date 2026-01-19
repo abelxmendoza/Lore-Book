@@ -4,11 +4,13 @@
  * Uses AI to extract unique identity signals from user's journal entries
  */
 
+import OpenAI from 'openai';
+
+import { config } from '../../config';
 import { logger } from '../../logger';
+
 import { BaseAnalyticsModule } from './base';
 import type { AnalyticsPayload, MemoryData } from './types';
-import OpenAI from 'openai';
-import { config } from '../../config';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

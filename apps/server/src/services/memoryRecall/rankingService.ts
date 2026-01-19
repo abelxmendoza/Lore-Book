@@ -5,9 +5,10 @@
  */
 
 import { logger } from '../../logger';
+import { beliefRealityReconciliationService } from '../beliefRealityReconciliationService';
 import { embeddingService } from '../embeddingService';
 import { knowledgeTypeEngineService } from '../knowledgeTypeEngineService';
-import { beliefRealityReconciliationService } from '../beliefRealityReconciliationService';
+
 import type { RecallIntent, RecallEntry, RecallEvent } from './types';
 
 export class RankingService {

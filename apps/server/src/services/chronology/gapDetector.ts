@@ -1,5 +1,7 @@
 import { parseISO, differenceInDays } from 'date-fns';
+
 import { timeEngine } from '../timeEngine';
+
 import type { Event, Gap } from './types';
 
 /**

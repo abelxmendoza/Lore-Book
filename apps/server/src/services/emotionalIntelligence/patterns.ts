@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import type { EmotionType, EmotionalEvent, EmotionalPatternSummary } from './types';
 
 /**

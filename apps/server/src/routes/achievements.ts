@@ -1,7 +1,8 @@
 import { Router } from 'express';
+
+import { logger } from '../logger';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { achievementService } from '../services/achievements/achievementService';
-import { logger } from '../logger';
 
 const router = Router();
 

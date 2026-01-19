@@ -1,8 +1,9 @@
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
-import { timelineService, type Timeline } from './timelineService';
-import { memoryService } from '../memoryService';
 import type { MemoryEntry } from '../../types';
+import { memoryService } from '../memoryService';
+import { supabaseAdmin } from '../supabaseClient';
+
+import { timelineService, type Timeline } from './timelineService';
 
 export type SearchMode = 'natural' | 'faceted' | 'semantic';
 

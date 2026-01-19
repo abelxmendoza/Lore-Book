@@ -1,5 +1,7 @@
-import { logger } from '../../logger';
 import { parseISO, differenceInDays } from 'date-fns';
+
+import { logger } from '../../logger';
+
 import type {
   RelationshipInteraction,
   RelationshipMetrics,
@@ -206,7 +208,7 @@ export class RelationshipLifecycleDetector {
     }
 
     // Use last stage, but adjust based on current metrics
-    let currentStage = lastStage.stage;
+    const currentStage = lastStage.stage;
 
     // Check for recent decline
     if (metrics.sentiment_trend === 'declining' && metrics.average_sentiment < -0.2) {

@@ -3,9 +3,11 @@
 // Entity Symbol Table - Compiler-style symbol resolution
 // =====================================================
 
+import { randomUUID } from 'crypto';
+
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import { randomUUID } from 'crypto';
+
 import type { EntryIR } from './types';
 
 export type EntityType = 'PERSON' | 'CHARACTER' | 'LOCATION' | 'ORG' | 'EVENT' | 'CONCEPT';

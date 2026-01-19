@@ -4,13 +4,13 @@
 // =====================================================
 
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
-import { omegaMemoryService } from '../omegaMemoryService';
-import { confidenceTrackingService } from '../confidenceTrackingService';
-import { metaControlService } from '../metaControlService';
-import { knowledgeTypeEngineService } from '../knowledgeTypeEngineService';
-import { beliefRealityReconciliationService } from '../beliefRealityReconciliationService';
 import type { ExtractedUnit, EventAssemblyResult } from '../../types/conversationCentered';
+import { beliefRealityReconciliationService } from '../beliefRealityReconciliationService';
+import { confidenceTrackingService } from '../confidenceTrackingService';
+import { knowledgeTypeEngineService } from '../knowledgeTypeEngineService';
+import { metaControlService } from '../metaControlService';
+import { omegaMemoryService } from '../omegaMemoryService';
+import { supabaseAdmin } from '../supabaseClient';
 
 /**
  * Assembles structured events from EXPERIENCE units

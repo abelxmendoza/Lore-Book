@@ -12,6 +12,7 @@ import type {
   TaskStatus,
   TaskSuggestion
 } from '../types';
+
 import { supabaseAdmin } from './supabaseClient';
 import { taskTimelineService } from './taskTimelineService';
 

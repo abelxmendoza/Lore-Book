@@ -1,12 +1,13 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import type { Habit, HabitInsight, HabitContext } from './types';
-import { HabitExtractor } from './habitExtractor';
-import { HabitLoopDetector } from './habitLoopDetector';
-import { StreakCalculator } from './streakCalculator';
+
 import { HabitDecayDetector } from './decayDetector';
 import { HabitClusterer } from './habitClusterer';
+import { HabitExtractor } from './habitExtractor';
+import { HabitLoopDetector } from './habitLoopDetector';
 import { ReinforcementGenerator } from './reinforcementGenerator';
+import { StreakCalculator } from './streakCalculator';
+import type { Habit, HabitInsight, HabitContext } from './types';
 
 /**
  * Main Habit Formation Engine

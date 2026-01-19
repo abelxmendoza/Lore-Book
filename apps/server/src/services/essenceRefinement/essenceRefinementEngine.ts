@@ -6,8 +6,9 @@
  */
 
 import OpenAI from 'openai';
-import { logger } from '../../logger';
+
 import { config } from '../../config';
+import { logger } from '../../logger';
 import { essenceProfileService, type EssenceProfile, type EssenceInsight, type SkillInsight } from '../essenceProfileService';
 import { supabaseAdmin } from '../supabaseClient';
 
@@ -266,7 +267,7 @@ Be conservative. Only return high confidence if intent is clear.`
     const profile = await essenceProfileService.getProfile(userId);
     const now = new Date().toISOString();
 
-    let metadata: any = {
+    const metadata: any = {
       reason: 'chat_refinement',
       originalText: insight.text,
       confidenceChange: 0

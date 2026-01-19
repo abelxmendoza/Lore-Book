@@ -4,9 +4,10 @@
  */
 
 import { Router } from 'express';
+
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { perspectiveService } from '../services/perspectiveService';
-import { logger } from '../logger';
 
 const router = Router();
 

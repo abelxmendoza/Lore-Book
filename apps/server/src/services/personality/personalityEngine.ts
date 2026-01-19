@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { TraitExtractor } from './traitExtractor';
 import type { PersonalityOutput, PersonalityProfile, PersonalityInsight } from './types';
 

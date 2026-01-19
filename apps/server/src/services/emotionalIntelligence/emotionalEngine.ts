@@ -1,11 +1,12 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import { extractEmotionalSignals } from './extractSignals';
+
 import { detectTriggers } from './detectTriggers';
+import { extractEmotionalSignals } from './extractSignals';
 import { mapBehaviorResponse } from './mapResponses';
+import { analyzePatterns } from './patterns';
 import { detectRegulation } from './regulation';
 import { storeEmotionalEvent, getAllEvents } from './storeEvent';
-import { analyzePatterns } from './patterns';
 import type { EmotionalEvent, EmotionalPatternSummary } from './types';
 
 /**

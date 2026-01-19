@@ -1,5 +1,7 @@
-import type { Request, Response, NextFunction } from 'express';
 import crypto from 'node:crypto';
+
+import type { Request, Response, NextFunction } from 'express';
+
 import { logSecurityEvent } from '../services/securityLog';
 
 // Store CSRF tokens in memory (in production, use Redis or similar)

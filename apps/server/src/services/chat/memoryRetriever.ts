@@ -1,10 +1,12 @@
-import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import { getEngineResults } from '../../engineRuntime/storage';
+import { logger } from '../../logger';
+import type { MemoryEntry } from '../../types';
 import { embeddingService } from '../embeddingService';
 import { entityConfidenceService } from '../entityConfidenceService';
+import { supabaseAdmin } from '../supabaseClient';
+
 import type { MemoryContext } from './chatTypes';
-import type { MemoryEntry } from '../../types';
+
 
 /**
  * Memory Retriever

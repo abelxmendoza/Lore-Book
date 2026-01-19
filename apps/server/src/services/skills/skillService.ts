@@ -1,5 +1,5 @@
-import { supabaseAdmin } from '../supabaseClient';
 import { logger } from '../../logger';
+import { supabaseAdmin } from '../supabaseClient';
 
 export type SkillCategory = 'professional' | 'creative' | 'physical' | 'social' | 'intellectual' | 'emotional' | 'practical' | 'artistic' | 'technical' | 'other';
 

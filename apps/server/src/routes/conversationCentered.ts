@@ -5,21 +5,12 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
-import { conversationIngestionPipeline } from '../services/conversationCentered/ingestionPipeline';
-import { eventAssemblyService } from '../services/conversationCentered/eventAssemblyService';
-import { correctionResolutionService } from '../services/conversationCentered/correctionResolutionService';
-import { memoryTraceService } from '../services/conversationCentered/memoryTraceService';
 import { omegaChatService } from '../services/omegaChatService';
 import { confidenceTrackingService } from '../services/confidenceTrackingService';
-import { selfAwarenessService } from '../services/selfAwarenessService';
-import { metaControlService } from '../services/metaControlService';
-import { narrativeContinuityService } from '../services/narrativeContinuityService';
-import { supabaseAdmin } from '../services/supabaseClient';
-import { eventImpactDetector } from '../services/conversationCentered/eventImpactDetector';
-import { eventCausalDetector } from '../services/conversationCentered/eventCausalDetector';
 import { entityRelationshipDetector } from '../services/conversationCentered/entityRelationshipDetector';
 import { entityScopeService } from '../services/conversationCentered/entityScopeService';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
@@ -33,6 +24,12 @@ import { relationshipDriftDetector } from '../services/conversationCentered/rela
 import { relationshipCycleDetector } from '../services/conversationCentered/relationshipCycleDetector';
 import { breakupDetector } from '../services/conversationCentered/breakupDetector';
 import { characterTimelineBuilder } from '../services/conversationCentered/characterTimelineBuilder';
+import { correctionResolutionService } from '../services/conversationCentered/correctionResolutionService';
+import { eventAssemblyService } from '../services/conversationCentered/eventAssemblyService';
+import { eventCausalDetector } from '../services/conversationCentered/eventCausalDetector';
+import { eventImpactDetector } from '../services/conversationCentered/eventImpactDetector';
+import { conversationIngestionPipeline } from '../services/conversationCentered/ingestionPipeline';
+import { memoryTraceService } from '../services/conversationCentered/memoryTraceService';
 
 const router = Router();
 
@@ -1345,6 +1342,10 @@ router.get(
 );
 
 import type { RelationshipCategory } from '../services/conversationCentered/relationshipTreeBuilder';
+import { metaControlService } from '../services/metaControlService';
+import { narrativeContinuityService } from '../services/narrativeContinuityService';
+import { selfAwarenessService } from '../services/selfAwarenessService';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 /**
  * GET /api/conversation/skill-network

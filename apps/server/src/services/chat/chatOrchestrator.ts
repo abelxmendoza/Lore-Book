@@ -1,13 +1,15 @@
-import { logger } from '../../logger';
+import type OpenAI from 'openai';
+
 import { config } from '../../config';
 import { openai } from '../../lib/openai';
-import type OpenAI from 'openai';
-import { MemoryRetriever } from './memoryRetriever';
-import { MemoryContextBuilder } from './memoryContextBuilder';
-import { chatPersona } from './chatPersona';
-import { memoryService } from '../memoryService';
+import { logger } from '../../logger';
 import { extractTags, shouldPersistMessage } from '../../utils/keywordDetector';
+import { memoryService } from '../memoryService';
+
+import { chatPersona } from './chatPersona';
 import type { ChatRequest, ChatResponse, StreamingChatResponse, ChatSource } from './chatTypes';
+import { MemoryContextBuilder } from './memoryContextBuilder';
+import { MemoryRetriever } from './memoryRetriever';
 
 /**
  * Chat Orchestrator

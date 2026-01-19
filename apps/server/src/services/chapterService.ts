@@ -1,6 +1,7 @@
-import { supabaseAdmin } from './supabaseClient';
 import { logger } from '../logger';
 import type { Chapter, ChapterInput } from '../types';
+
+import { supabaseAdmin } from './supabaseClient';
 
 class ChapterService {
   async createChapter(userId: string, data: ChapterInput): Promise<Chapter> {

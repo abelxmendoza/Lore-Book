@@ -3,14 +3,7 @@
  * Service for enforcing ownership, visibility, retention, and access boundaries
  */
 
-import { supabaseAdmin } from './supabaseClient';
 import { logger } from '../logger';
-import { continuityService } from './continuityService';
-import { omegaMemoryService } from './omegaMemoryService';
-import { insightReflectionService } from './insightReflectionService';
-import { decisionMemoryService } from './decisionMemoryService';
-import { predictiveContinuityService } from './predictiveContinuityService';
-import { goalValueAlignmentService } from './goalValueAlignmentService';
 import type {
   ScopeType,
   ResourceType,
@@ -21,6 +14,14 @@ import type {
   ChatVisibleState,
   ExportData,
 } from '../types/privacyScope';
+
+import { continuityService } from './continuityService';
+import { decisionMemoryService } from './decisionMemoryService';
+import { goalValueAlignmentService } from './goalValueAlignmentService';
+import { insightReflectionService } from './insightReflectionService';
+import { omegaMemoryService } from './omegaMemoryService';
+import { predictiveContinuityService } from './predictiveContinuityService';
+import { supabaseAdmin } from './supabaseClient';
 
 export class PrivacyScopeService {
   /**

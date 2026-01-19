@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { z } from 'zod';
 import OpenAI from 'openai';
+import { z } from 'zod';
 
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { onboardingService } from '../services/onboardingService';
+import { config } from '../config';
 import { supabaseAdmin } from '../lib/supabase';
 import { logger } from '../logger';
-import { config } from '../config';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { onboardingService } from '../services/onboardingService';
 
 const router = Router();
 

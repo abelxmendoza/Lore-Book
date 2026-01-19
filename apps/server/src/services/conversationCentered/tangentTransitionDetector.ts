@@ -1,5 +1,5 @@
-import { openai } from '../openaiClient';
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 
 export interface EmotionalState {
   dominantEmotion: string;

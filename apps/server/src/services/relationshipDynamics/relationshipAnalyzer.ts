@@ -1,6 +1,8 @@
+import { parseISO, differenceInDays, differenceInMonths } from 'date-fns';
+
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import { parseISO, differenceInDays, differenceInMonths } from 'date-fns';
+
 import type {
   RelationshipInteraction,
   RelationshipMetrics,

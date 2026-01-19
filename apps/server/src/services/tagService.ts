@@ -1,10 +1,12 @@
-import OpenAI from 'openai';
 import crypto from 'crypto';
+
+import OpenAI from 'openai';
 
 import { config } from '../config';
 import { logger } from '../logger';
-import { ruleBasedTagExtractionService } from './ruleBasedTagExtraction';
+
 import { memoryService } from './memoryService';
+import { ruleBasedTagExtractionService } from './ruleBasedTagExtraction';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

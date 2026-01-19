@@ -1,4 +1,5 @@
 import { embeddingService } from '../embeddingService';
+
 import type { SelfStatement } from './types';
 
 /**

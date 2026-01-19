@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { timeEngine } from '../timeEngine';
+
 import type { Event } from './types';
 
 /**

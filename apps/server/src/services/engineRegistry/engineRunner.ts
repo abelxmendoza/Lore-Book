@@ -1,7 +1,8 @@
 import { logger } from '../../logger';
-import { RegistryLoader } from './registryLoader';
+
 import { DependencyGraph } from './dependencyGraph';
 import { EngineHealth } from './engineHealth';
+import { RegistryLoader } from './registryLoader';
 import type { EngineManifestEntry } from './types';
 
 /**

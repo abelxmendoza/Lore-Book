@@ -4,13 +4,16 @@
  */
 
 import OpenAI from 'openai';
-import { logger } from '../logger';
+
 import { config } from '../config';
+import { logger } from '../logger';
+import type { MemoryEntry } from '../types';
+
 import { memoryService } from './memoryService';
-import { timelineManager } from './timelineManager';
 import { peoplePlacesService } from './peoplePlacesService';
 import { ruleBasedTagExtractionService } from './ruleBasedTagExtraction';
-import type { MemoryEntry } from '../types';
+import { timelineManager } from './timelineManager';
+
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

@@ -4,13 +4,14 @@
 // =====================================================
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { irCompiler } from './irCompiler';
-import { epistemicLatticeService } from './epistemicLattice';
+
 import { contractLayer, CONTRACTS } from './contractLayer';
-import { epistemicInvariants } from './epistemicInvariants';
-import { symbolResolver } from './symbolResolver';
 import { dependencyGraph } from './dependencyGraph';
+import { epistemicInvariants } from './epistemicInvariants';
+import { epistemicLatticeService } from './epistemicLattice';
 import { incrementalCompiler } from './incrementalCompiler';
+import { irCompiler } from './irCompiler';
+import { symbolResolver } from './symbolResolver';
 import type { EntryIR, KnowledgeType } from './types';
 
 describe('LNC Edge Cases', () => {

@@ -1,6 +1,8 @@
+import { differenceInHours, parseISO } from 'date-fns';
+
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import { differenceInHours, parseISO } from 'date-fns';
+
 import type { SimilarityScore, SimilarityType } from './types';
 
 /**

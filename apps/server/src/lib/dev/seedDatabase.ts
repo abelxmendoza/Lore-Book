@@ -3,9 +3,9 @@
  * Seeds database with test data (dev only)
  */
 
-import { supabaseAdmin } from '../../services/supabaseClient';
-import { logger } from '../../logger';
 import { config } from '../../config';
+import { logger } from '../../logger';
+import { supabaseAdmin } from '../../services/supabaseClient';
 
 export async function seedDatabase(): Promise<void> {
   if (config.apiEnv !== 'dev') {

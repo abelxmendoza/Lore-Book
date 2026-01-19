@@ -1,6 +1,6 @@
 import { logger } from '../../logger';
-import { memoryService } from '../memoryService';
 import type { MemoryEntry } from '../../types';
+import { memoryService } from '../memoryService';
 
 export interface EngineContext {
   entries: MemoryEntry[];

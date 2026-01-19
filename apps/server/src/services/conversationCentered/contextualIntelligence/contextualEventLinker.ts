@@ -6,6 +6,7 @@
 
 import { logger } from '../../../logger';
 import { supabaseAdmin } from '../../../supabaseClient';
+
 import type { EventContinuityLink, ContextLinkType, ConfidenceScore } from './types';
 
 /**

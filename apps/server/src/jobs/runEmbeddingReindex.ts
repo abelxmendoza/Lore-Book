@@ -3,9 +3,9 @@
  * Re-processes all journal entries to generate embeddings
  */
 
-import { supabaseAdmin } from '../services/supabaseClient';
-import { embeddingService } from '../services/embeddingService';
 import { logger } from '../logger';
+import { embeddingService } from '../services/embeddingService';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 export async function runEmbeddingReindex(): Promise<{ processed: number; errors: number }> {
   logger.info('Starting embedding reindex job');

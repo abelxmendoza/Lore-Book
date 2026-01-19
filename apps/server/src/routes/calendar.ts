@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { calendarService } from '../services/calendarService';
 
 const router = Router();

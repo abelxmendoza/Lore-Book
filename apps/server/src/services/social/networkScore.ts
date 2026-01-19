@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import type { NetworkScore, Community, DriftEvent, InfluenceScore, ToxicitySignal } from './types';
 
 /**

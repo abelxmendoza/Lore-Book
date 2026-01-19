@@ -4,8 +4,8 @@
 // =====================================================
 
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import type { ExtractedUnit } from '../../types/conversationCentered';
+import { supabaseAdmin } from '../supabaseClient';
 
 export interface WorkoutStats {
   exercises: Array<{

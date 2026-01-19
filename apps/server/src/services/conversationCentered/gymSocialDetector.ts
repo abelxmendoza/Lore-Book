@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { characterTimelineBuilder } from './characterTimelineBuilder';
 import { romanticRelationshipDetector } from './romanticRelationshipDetector';
 

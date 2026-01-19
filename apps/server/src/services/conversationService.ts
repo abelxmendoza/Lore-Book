@@ -7,8 +7,9 @@ import type {
   CreateSessionInput,
   SaveMessageInput
 } from '../types';
-import { supabaseAdmin } from './supabaseClient';
+
 import { embeddingService } from './embeddingService';
+import { supabaseAdmin } from './supabaseClient';
 
 class ConversationService {
   /**

@@ -1,10 +1,12 @@
-import { logger } from '../../logger';
 import { randomUUID } from 'crypto';
+
+import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
-import { MythExtractor } from './mythExtractor';
+
 import { MythArchetypeMapper } from './mythArchetypeMapper';
-import { MythPatternDetector } from './mythPatternDetector';
+import { MythExtractor } from './mythExtractor';
 import { MythNarrativeBuilder } from './mythNarrativeBuilder';
+import { MythPatternDetector } from './mythPatternDetector';
 import { MythStorage } from './mythStorage';
 import type { MythElement, InnerMyth } from './mythTypes';
 

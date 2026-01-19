@@ -4,11 +4,12 @@
 // =====================================================
 
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
-import { dependencyGraph } from './dependencyGraph';
-import { irCompiler } from './irCompiler';
 import { entryEnrichmentService } from '../entryEnrichmentService';
 import { omegaMemoryService } from '../omegaMemoryService';
+import { supabaseAdmin } from '../supabaseClient';
+
+import { dependencyGraph } from './dependencyGraph';
+import { irCompiler } from './irCompiler';
 import type { EntryIR } from './types';
 
 export class IncrementalCompiler {

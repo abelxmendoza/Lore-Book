@@ -3,9 +3,9 @@
  * Clears test data from database (dev only)
  */
 
-import { supabaseAdmin } from '../../services/supabaseClient';
-import { logger } from '../../logger';
 import { config } from '../../config';
+import { logger } from '../../logger';
+import { supabaseAdmin } from '../../services/supabaseClient';
 
 export async function clearDatabase(): Promise<void> {
   if (config.apiEnv !== 'dev') {

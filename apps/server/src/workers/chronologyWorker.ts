@@ -1,6 +1,6 @@
 import { logger } from '../logger';
-import { supabaseAdmin } from '../services/supabaseClient';
 import { ChronologyEngine, EventMapper, ChronologyStorageService } from '../services/chronology';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 const chronologyEngine = new ChronologyEngine();
 const eventMapper = new EventMapper();

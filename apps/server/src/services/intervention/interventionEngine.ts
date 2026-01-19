@@ -1,14 +1,5 @@
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
-import type { Intervention, InterventionContext } from './types';
-import { MoodSpiralDetector } from './detectors/moodSpiralDetector';
-import { GoalAbandonmentDetector } from './detectors/goalAbandonmentDetector';
-import { RelationshipDriftDetector } from './detectors/relationshipDriftDetector';
-import { IdentityDriftDetector } from './detectors/identityDriftDetector';
-import { ContradictionDetector } from './detectors/contradictionDetector';
-import { NegativeLoopDetector } from './detectors/negativeLoopDetector';
-import { InterventionPrioritizer } from './prioritizer';
-import { PythonInterventionClient } from './pythonClient';
+
 import { InterventionStorage } from './interventionStorage';
 import { RecommenderBridge } from './recommenderBridge';
 import { identityPulseModule } from '../analytics';
@@ -16,6 +7,16 @@ import { relationshipAnalyticsModule } from '../analytics';
 import { insightEngineModule } from '../analytics';
 import { continuityService } from '../continuity/continuityService';
 import { RelationshipDynamicsEngine } from '../relationshipDynamics';
+import { supabaseAdmin } from '../supabaseClient';
+import { ContradictionDetector } from './detectors/contradictionDetector';
+import { GoalAbandonmentDetector } from './detectors/goalAbandonmentDetector';
+import { IdentityDriftDetector } from './detectors/identityDriftDetector';
+import { MoodSpiralDetector } from './detectors/moodSpiralDetector';
+import { NegativeLoopDetector } from './detectors/negativeLoopDetector';
+import { RelationshipDriftDetector } from './detectors/relationshipDriftDetector';
+import { InterventionPrioritizer } from './prioritizer';
+import { PythonInterventionClient } from './pythonClient';
+import type { Intervention, InterventionContext } from './types';
 
 /**
  * Main Intervention Engine

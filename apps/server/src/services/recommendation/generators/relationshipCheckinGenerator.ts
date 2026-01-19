@@ -1,10 +1,10 @@
-import { v4 as uuid } from 'uuid';
 import { differenceInDays, parseISO } from 'date-fns';
+import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../../logger';
+import { relationshipAnalyticsModule } from '../../analytics';
 import { supabaseAdmin } from '../../supabaseClient';
 import type { Recommendation, RecommendationContext } from '../types';
-import { relationshipAnalyticsModule } from '../../analytics';
 
 /**
  * Generates relationship check-in recommendations

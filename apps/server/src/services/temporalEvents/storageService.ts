@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { ResolvedEvent, TemporalSignal, EventMention } from './types';
 
 /**

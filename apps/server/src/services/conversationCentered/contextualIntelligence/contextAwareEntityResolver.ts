@@ -6,6 +6,7 @@
 
 import { logger } from '../../../logger';
 import { supabaseAdmin } from '../../../supabaseClient';
+
 import type { EntityResolutionCandidate, ConfidenceScore } from './types';
 
 const MIN_CONFIDENCE_THRESHOLD = 0.7;

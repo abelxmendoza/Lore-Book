@@ -4,8 +4,9 @@
 // =====================================================
 
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import { entityConfidenceService } from './entityConfidenceService';
+import { supabaseAdmin } from './supabaseClient';
 
 export interface LocationAnalytics {
   // Visit metrics
@@ -438,7 +439,7 @@ export class LocationAnalyticsService {
     let valueScore = 40; // Base value
 
     const allItems = [...journalMentions, ...conversations];
-    let totalMentions = allItems.length;
+    const totalMentions = allItems.length;
 
     // 1. Positive sentiment analysis (weighted)
     const positiveWords = {
@@ -544,7 +545,7 @@ export class LocationAnalyticsService {
   ): number {
     const comfortIndicators = ['comfortable', 'relaxed', 'peaceful', 'safe', 'cozy', 'homey'];
     let comfortCount = 0;
-    let total = journalMentions.length + conversations.length;
+    const total = journalMentions.length + conversations.length;
 
     [...journalMentions, ...conversations].forEach(item => {
       const content = item.content.toLowerCase();
@@ -571,7 +572,7 @@ export class LocationAnalyticsService {
   ): number {
     const productivityIndicators = ['work', 'productive', 'focused', 'efficient', 'office', 'study'];
     let productivityCount = 0;
-    let total = journalMentions.length + conversations.length;
+    const total = journalMentions.length + conversations.length;
 
     [...journalMentions, ...conversations].forEach(item => {
       const content = item.content.toLowerCase();

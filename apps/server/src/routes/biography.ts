@@ -1,16 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../logger';
-import { omegaChatService } from '../services/omegaChatService';
-import { dateAssignmentService } from '../services/dateAssignmentService';
-import { timeEngine } from '../services/timeEngine';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { biographyGenerationEngine, biographyRecommendationEngine, BIOGRAPHY_VERSIONS } from '../services/biographyGeneration';
 import type { BiographySpec } from '../services/biographyGeneration';
-import { mainLifestoryService } from '../services/mainLifestoryService';
-import { lorebookSearchParser } from '../services/lorebook/lorebookSearchParser';
+import { dateAssignmentService } from '../services/dateAssignmentService';
 import { lorebookRecommendationEngine } from '../services/lorebook/lorebookRecommendationEngine';
+import { lorebookSearchParser } from '../services/lorebook/lorebookSearchParser';
+import { mainLifestoryService } from '../services/mainLifestoryService';
+import { omegaChatService } from '../services/omegaChatService';
+import { timeEngine } from '../services/timeEngine';
 
 const router = Router();
 

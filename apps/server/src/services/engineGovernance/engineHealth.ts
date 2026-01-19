@@ -6,8 +6,9 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import type { EngineHealth } from './types';
+
 import { ENGINE_DESCRIPTORS } from './engineRegistry';
+import type { EngineHealth } from './types';
 
 interface EngineRunRecord {
   engineName: string;

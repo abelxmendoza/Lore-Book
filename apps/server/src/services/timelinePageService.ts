@@ -4,11 +4,12 @@
  */
 
 import { logger } from '../logger';
-import { memoryService } from './memoryService';
-import { timelineManager } from './timelineManager';
-import { supabaseAdmin } from './supabaseClient';
 import type { MemoryEntry } from '../types';
 import type { TimelineLayer } from '../types/timeline';
+
+import { memoryService } from './memoryService';
+import { supabaseAdmin } from './supabaseClient';
+import { timelineManager } from './timelineManager';
 
 export type TimelineEntry = {
   id: string;

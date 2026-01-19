@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
+
 import { config } from '../config';
+
 import { getUserSubscription, type SubscriptionData } from './stripeService';
 
 const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {

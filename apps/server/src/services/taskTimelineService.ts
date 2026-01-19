@@ -2,6 +2,7 @@ import { v4 as uuid } from 'uuid';
 
 import { logger } from '../logger';
 import type { TaskMemoryBridge, TaskRecord, TimelineEvent } from '../types';
+
 import { supabaseAdmin } from './supabaseClient';
 
 export type TimelineEventInput = {

@@ -3,12 +3,13 @@ import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
-import { memoryService } from './memoryService';
-import { memoirService } from './memoirService';
-import { peoplePlacesService } from './peoplePlacesService';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
+
+import { memoirService } from './memoirService';
+import { memoryService } from './memoryService';
+import { peoplePlacesService } from './peoplePlacesService';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

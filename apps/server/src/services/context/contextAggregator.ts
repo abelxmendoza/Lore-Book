@@ -1,6 +1,13 @@
-import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import { parseISO, differenceInDays, isBefore, isAfter, isEqual } from 'date-fns';
+
+import { logger } from '../../logger';
+import { relationshipAnalyticsModule , identityPulseModule , insightEngineModule } from '../analytics';
+import { ChronologyEngine, EventMapper } from '../chronology';
+import { learningStorageService } from '../learning';
+import { recommendationStorageService } from '../recommendation';
+import { supabaseAdmin } from '../supabaseClient';
+import { wisdomStorageService } from '../wisdom';
+
 import type {
   TemporalContext,
   EmotionalContext,
@@ -12,13 +19,6 @@ import type {
   RecommendationContext,
   ContextScope,
 } from './types';
-import { ChronologyEngine, EventMapper } from '../chronology';
-import { relationshipAnalyticsModule } from '../analytics';
-import { identityPulseModule } from '../analytics';
-import { learningStorageService } from '../learning';
-import { wisdomStorageService } from '../wisdom';
-import { insightEngineModule } from '../analytics';
-import { recommendationStorageService } from '../recommendation';
 
 /**
  * Aggregates context from all engines

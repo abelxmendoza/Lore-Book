@@ -3,9 +3,10 @@
 // Purpose: Split single entries into multiple distinct events
 // =====================================================
 
-import { logger } from '../../logger';
-import { config } from '../../config';
 import OpenAI from 'openai';
+
+import { config } from '../../config';
+import { logger } from '../../logger';
 import type { ExtractedUnit } from '../../types/conversationCentered';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });

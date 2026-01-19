@@ -1,4 +1,5 @@
 import type { MemoryEntry, MemoryComponent } from '../../types';
+
 import type { Event } from './types';
 
 /**

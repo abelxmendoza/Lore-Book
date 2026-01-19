@@ -4,9 +4,9 @@
 // Now uses Sensemaking Contracts (Phase 3)
 // =====================================================
 
-import { logger } from '../logger';
 import type { SensemakingContract } from '../contracts/sensemakingContract';
 import { ARCHIVIST_CONTRACT, ANALYST_CONTRACT, REFLECTOR_CONTRACT } from '../contracts/sensemakingContract';
+import { logger } from '../logger';
 
 export type Persona = 'DEFAULT' | 'ARCHIVIST' | 'REFLECTOR';
 

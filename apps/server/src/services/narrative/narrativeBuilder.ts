@@ -1,8 +1,10 @@
-import { logger } from '../../logger';
 import { parseISO, format } from 'date-fns';
-import type { Narrative, NarrativeType, NarrativeStyle, NarrativeQuery } from './types';
-import { NarrativeSegmenter } from './narrativeSegmenter';
+
+import { logger } from '../../logger';
+
 import { NarrativeConnector } from './narrativeConnector';
+import { NarrativeSegmenter } from './narrativeSegmenter';
+import type { Narrative, NarrativeType, NarrativeStyle, NarrativeQuery } from './types';
 
 /**
  * Builds coherent narratives from memories

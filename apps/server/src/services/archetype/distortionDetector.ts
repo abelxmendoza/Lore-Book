@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import type { ArchetypeProfile, ArchetypeDistortion } from './types';
 
 /**

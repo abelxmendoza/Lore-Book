@@ -4,6 +4,7 @@
 // =====================================================
 
 import { describe, it, expect } from 'vitest';
+
 import type { EntryIR } from './types';
 
 describe('Confidence Decay Tests', () => {

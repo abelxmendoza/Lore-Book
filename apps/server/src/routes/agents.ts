@@ -1,8 +1,8 @@
 import { Router } from 'express';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { agentService } from '../services/agentService';
 import { emitDelta } from '../realtime/orchestratorEmitter';
+import { agentService } from '../services/agentService';
 
 const router = Router();
 

@@ -1,6 +1,6 @@
 import { logger } from '../logger';
-import { WisdomEngine } from '../services/wisdom/wisdomEngine';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { WisdomEngine } from '../services/wisdom/wisdomEngine';
 
 const wisdomEngine = new WisdomEngine();
 

@@ -1,6 +1,7 @@
 import { logger } from '../../logger';
-import { LocationExtractor } from './locationExtractor';
+
 import { FuzzyLocationMatcher } from './fuzzyLocationMatcher';
+import { LocationExtractor } from './locationExtractor';
 import { LocationStorage } from './storageService';
 import type { ResolvedLocation, ExtractedLocation } from './types';
 

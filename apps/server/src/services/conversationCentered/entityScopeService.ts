@@ -6,6 +6,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { EntityType } from './entityRelationshipDetector';
 
 export type EntityScopeGroup = {

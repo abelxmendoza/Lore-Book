@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { namingService } from '../services/namingService';
 import { supabaseAdmin } from '../services/supabaseClient';
-import { logger } from '../logger';
 
 const router = Router();
 

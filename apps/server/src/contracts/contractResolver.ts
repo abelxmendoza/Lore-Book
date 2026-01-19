@@ -4,8 +4,8 @@
 // =====================================================
 
 import { logger } from '../logger';
-import type { KnowledgeType } from '../services/knowledgeTypeEngineService';
-import type { KnowledgeUnit } from '../services/knowledgeTypeEngineService';
+import type { KnowledgeType , KnowledgeUnit } from '../services/knowledgeTypeEngineService';
+
 import type { SensemakingContract, ContradictionPolicy } from './sensemakingContract';
 import { getContract } from './sensemakingContract';
 

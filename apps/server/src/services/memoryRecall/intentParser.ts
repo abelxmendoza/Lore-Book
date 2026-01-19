@@ -5,6 +5,7 @@
  */
 
 import { logger } from '../../logger';
+
 import type { RecallQuery, RecallIntent, ConfidenceLevel } from './types';
 
 export class IntentParser {

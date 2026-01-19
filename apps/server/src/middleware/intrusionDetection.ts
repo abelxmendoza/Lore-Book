@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
-import { logSecurityEvent } from '../services/securityLog';
+
 import { logger } from '../logger';
+import { logSecurityEvent } from '../services/securityLog';
 
 interface SuspiciousActivity {
   ip: string;

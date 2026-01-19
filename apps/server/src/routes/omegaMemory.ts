@@ -3,9 +3,10 @@
  */
 
 import { Router } from 'express';
+
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { omegaMemoryService } from '../services/omegaMemoryService';
-import { logger } from '../logger';
 
 const router = Router();
 

@@ -5,11 +5,11 @@
 // =====================================================
 
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
-import { perceptionService } from '../perceptionService';
+import type { ExtractedUnit } from '../../types/conversationCentered';
 import { memoryService } from '../memoryService';
 import { omegaMemoryService } from '../omegaMemoryService';
-import type { ExtractedUnit } from '../../types/conversationCentered';
+import { perceptionService } from '../perceptionService';
+import { supabaseAdmin } from '../supabaseClient';
 
 export type ConversionContext = {
   userId: string;

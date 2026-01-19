@@ -1,17 +1,18 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { CycleDetector } from './cycleDetector';
+import { EnergyExtractor } from './energyExtractor';
+import { RecoveryPredictor } from './recoveryPredictor';
+import { SleepExtractor } from './sleepExtractor';
+import { StressCorrelation } from './stressCorrelation';
+import { SymptomExtractor } from './symptomExtractor';
 import type {
   HealthOutput,
   HealthContext,
   HealthInsight,
   SymptomType,
 } from './types';
-import { SymptomExtractor } from './symptomExtractor';
-import { SleepExtractor } from './sleepExtractor';
-import { EnergyExtractor } from './energyExtractor';
-import { StressCorrelation } from './stressCorrelation';
-import { CycleDetector } from './cycleDetector';
-import { RecoveryPredictor } from './recoveryPredictor';
 import { WellnessScoreService } from './wellnessScore';
 
 /**

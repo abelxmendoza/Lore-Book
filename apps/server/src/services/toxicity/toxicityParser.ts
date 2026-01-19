@@ -1,5 +1,7 @@
 import OpenAI from 'openai';
+
 import { logger } from '../../logger';
+
 import type { ToxicityEvent } from './types';
 
 /**

@@ -1,5 +1,7 @@
-import { logger } from '../../logger';
 import { randomUUID } from 'crypto';
+
+import { logger } from '../../logger';
+
 import type { IdentitySignal, IdentityDimension } from './identityTypes';
 
 /**

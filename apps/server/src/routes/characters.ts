@@ -1,17 +1,18 @@
-import { Router } from 'express';
-import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import OpenAI from 'openai';
 
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { peoplePlacesService } from '../services/peoplePlacesService';
-import { supabaseAdmin } from '../services/supabaseClient';
-import { logger } from '../logger';
-import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
-import { cacheAvatar } from '../utils/cacheAvatar';
+import { Router } from 'express';
+import OpenAI from 'openai';
+import { z } from 'zod';
+
 import { config } from '../config';
+import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { characterAnalyticsService } from '../services/characterAnalyticsService';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
+import { peoplePlacesService } from '../services/peoplePlacesService';
+import { supabaseAdmin } from '../services/supabaseClient';
+import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
+import { cacheAvatar } from '../utils/cacheAvatar';
 
 const router = Router();
 

@@ -4,11 +4,9 @@
  */
 
 import OpenAI from 'openai';
-import { supabaseAdmin } from './supabaseClient';
-import { logger } from '../logger';
+
 import { config } from '../config';
-import { embeddingService } from './embeddingService';
-import { continuityService } from './continuityService';
+import { logger } from '../logger';
 import type {
   Perspective,
   PerspectiveClaim,
@@ -21,6 +19,10 @@ import type {
   PerspectiveType,
   Sentiment,
 } from '../types/perspective';
+
+import { continuityService } from './continuityService';
+import { embeddingService } from './embeddingService';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

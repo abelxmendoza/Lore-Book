@@ -1,23 +1,24 @@
 import { logger } from '../../logger';
+
+import { deduplicateRecommendations } from './deduplication';
+import { ActionGenerator } from './generators/actionGenerator';
+import { PatternExplorationGenerator } from './generators/patternExplorationGenerator';
+import { GapFillerGenerator } from './generators/gapFillerGenerator';
+import { ContinuityFollowupGenerator } from './generators/continuityFollowupGenerator';
+import { GoalReminderGenerator } from './generators/goalReminderGenerator';
+import { GrowthOpportunityGenerator } from './generators/growthOpportunityGenerator';
+import { JournalPromptGenerator } from './generators/journalPromptGenerator';
+import { LegacyGenerator } from './generators/legacyGenerator';
+import { ReflectionQuestionGenerator } from './generators/reflectionQuestionGenerator';
+import { RelationshipCheckinGenerator } from './generators/relationshipCheckinGenerator';
+import { PriorityScorer } from './prioritization/priorityScorer';
+import { recommendationStorageService } from './storageService';
 import type {
   Recommendation,
   RecommendationType,
   RecommendationStatus,
   RecommendationPayload,
 } from './types';
-import { recommendationStorageService } from './storageService';
-import { JournalPromptGenerator } from './generators/journalPromptGenerator';
-import { ReflectionQuestionGenerator } from './generators/reflectionQuestionGenerator';
-import { ActionGenerator } from './generators/actionGenerator';
-import { RelationshipCheckinGenerator } from './generators/relationshipCheckinGenerator';
-import { GoalReminderGenerator } from './generators/goalReminderGenerator';
-import { PatternExplorationGenerator } from './generators/patternExplorationGenerator';
-import { GapFillerGenerator } from './generators/gapFillerGenerator';
-import { ContinuityFollowupGenerator } from './generators/continuityFollowupGenerator';
-import { GrowthOpportunityGenerator } from './generators/growthOpportunityGenerator';
-import { LegacyGenerator } from './generators/legacyGenerator';
-import { PriorityScorer } from './prioritization/priorityScorer';
-import { deduplicateRecommendations } from './deduplication';
 
 /**
  * Main Recommendation Engine

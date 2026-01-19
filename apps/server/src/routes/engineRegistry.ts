@@ -1,11 +1,11 @@
 import { Router } from 'express';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { logger } from '../logger';
-import { RegistryLoader } from '../services/engineRegistry/registryLoader';
-import { EngineRunner } from '../services/engineRegistry/engineRunner';
 import { EngineHealth } from '../services/engineRegistry/engineHealth';
+import { EngineRunner } from '../services/engineRegistry/engineRunner';
+import { RegistryLoader } from '../services/engineRegistry/registryLoader';
 
 const router = Router();
 const runner = new EngineRunner();

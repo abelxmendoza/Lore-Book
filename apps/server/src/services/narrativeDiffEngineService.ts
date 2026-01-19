@@ -5,7 +5,7 @@
 // =====================================================
 
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import { beliefRealityReconciliationService } from './beliefRealityReconciliationService';
 import type { 
   EntryIR, 
@@ -17,6 +17,7 @@ import type {
   NarrativeLinks,
   CompilerFlags
 } from './compiler/types';
+import { supabaseAdmin } from './supabaseClient';
 
 export type DiffType = 
   | 'BELIEF_STRENGTHENED'

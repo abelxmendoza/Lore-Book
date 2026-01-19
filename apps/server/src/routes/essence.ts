@@ -5,9 +5,10 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { essenceProfileService } from '../services/essenceProfileService';
-import { logger } from '../logger';
 import { memoryService } from '../services/memoryService';
 
 const router = Router();

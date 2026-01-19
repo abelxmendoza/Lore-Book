@@ -1,8 +1,8 @@
-import { BiasExtractor } from './biasExtractor';
 import { BiasClassifier } from './biasClassifier';
-import { BiasWeighting } from './biasWeighting';
+import { BiasExtractor } from './biasExtractor';
 import { BiasImpact } from './biasImpact';
 import { BiasSummary } from './biasSummary';
+import { BiasWeighting } from './biasWeighting';
 import type { BiasProfile, BiasSignal, BiasType } from './types';
 
 export class CognitiveBiasEngine {

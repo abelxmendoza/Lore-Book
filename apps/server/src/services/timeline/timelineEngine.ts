@@ -4,8 +4,10 @@
  */
 
 import { randomUUID } from 'crypto';
-import { supabaseAdmin } from '../supabaseClient';
+
 import { logger } from '../../logger';
+import { supabaseAdmin } from '../supabaseClient';
+
 import type { NormalizedTimelineEvent, TimelineEvent } from './normalizers/base';
 
 export interface TimelineFilter {

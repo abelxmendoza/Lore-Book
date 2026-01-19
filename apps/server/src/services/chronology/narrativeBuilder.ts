@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 
 import { config } from '../../config';
 import { logger } from '../../logger';
+
 import type { Event, NarrativeSequence } from './types';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });

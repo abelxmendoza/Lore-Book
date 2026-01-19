@@ -3,7 +3,6 @@
  * Service for tracking, explaining, and reversing system actions
  */
 
-import { supabaseAdmin } from './supabaseClient';
 import { logger } from '../logger';
 import type {
   ContinuityEvent,
@@ -16,6 +15,8 @@ import type {
   InitiatedBy,
   Severity,
 } from '../types/continuity';
+
+import { supabaseAdmin } from './supabaseClient';
 
 export class ContinuityService {
   /**

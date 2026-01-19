@@ -4,10 +4,12 @@
  */
 
 import OpenAI from 'openai';
-import { logger } from '../logger';
+
 import { config } from '../config';
-import { supabaseAdmin } from './supabaseClient';
+import { logger } from '../logger';
+
 import { memoryService } from './memoryService';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

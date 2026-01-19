@@ -6,6 +6,7 @@
 
 import { logger } from '../../../logger';
 import { supabaseAdmin } from '../../../supabaseClient';
+
 import type { HouseholdHypothesis, ConfidenceScore } from './types';
 
 const INITIAL_CONFIDENCE = 0.4;

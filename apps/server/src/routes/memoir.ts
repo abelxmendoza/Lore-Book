@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { memoirService } from '../services/memoirService';
-import { logger } from '../logger';
 
 const router = Router();
 

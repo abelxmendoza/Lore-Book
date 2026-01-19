@@ -4,17 +4,9 @@
  */
 
 import OpenAI from 'openai';
-import { supabaseAdmin } from './supabaseClient';
-import { logger } from '../logger';
+
 import { config } from '../config';
-import { embeddingService } from './embeddingService';
-import { continuityService } from './continuityService';
-import { omegaMemoryService } from './omegaMemoryService';
-import { memoryService } from './memoryService';
-import { peoplePlacesService } from './peoplePlacesService';
-import { essenceProfileService } from './essenceProfileService';
-import { memoirService } from './memoirService';
-import { extractTags } from '../utils/keywordDetector';
+import { logger } from '../logger';
 import type {
   MemoryProposal,
   MemoryDecision,
@@ -25,6 +17,16 @@ import type {
   ProposalStatus,
   DecisionType,
 } from '../types/memoryReviewQueue';
+import { extractTags } from '../utils/keywordDetector';
+
+import { continuityService } from './continuityService';
+import { embeddingService } from './embeddingService';
+import { essenceProfileService } from './essenceProfileService';
+import { memoirService } from './memoirService';
+import { memoryService } from './memoryService';
+import { omegaMemoryService } from './omegaMemoryService';
+import { peoplePlacesService } from './peoplePlacesService';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

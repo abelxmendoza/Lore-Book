@@ -1,27 +1,29 @@
 import { logger } from '../logger';
-import type { EngineFunction, EngineContext } from './types';
+
 
 // Import engines
-import { emotionalIntelligenceEngine } from '../services/emotionalIntelligence/emotionalEngine';
-import { CreativeEngine } from '../services/creative/creativeEngine';
-import { ParacosmEngine } from '../services/paracosm/paracosmEngine';
-import { IdentityCoreEngine } from '../services/identityCore/identityCoreEngine';
-import { ArchetypeEngine } from '../services/archetype/archetypeEngine';
-import { ReflectionEngine } from '../services/reflection/reflectionEngine';
-import { SocialProjectionEngine } from '../services/socialProjection/projectionEngine';
-import { EntityResolver } from '../services/entities/entityResolver';
-import { TemporalEventResolver } from '../services/temporalEvents/eventResolver';
-import { LocationResolver } from '../services/locations/locationResolver';
 import { ActivityResolver } from '../services/activities/activityResolver';
-import { EmotionResolver } from '../services/emotion/emotionResolver';
+import { ArchetypeEngine } from '../services/archetype/archetypeEngine';
 import { BehaviorResolver } from '../services/behavior/behaviorResolver';
-import { SceneResolver } from '../services/scenes/sceneResolver';
 import { ConflictResolver } from '../services/conflict/conflictResolver';
+import { CreativeEngine } from '../services/creative/creativeEngine';
+import { EmotionResolver } from '../services/emotion/emotionResolver';
+import { emotionalIntelligenceEngine } from '../services/emotionalIntelligence/emotionalEngine';
+import { EntityResolver } from '../services/entities/entityResolver';
+import { IdentityCoreEngine } from '../services/identityCore/identityCoreEngine';
+import { LocationResolver } from '../services/locations/locationResolver';
+import { ParacosmEngine } from '../services/paracosm/paracosmEngine';
+import { PersonalityEngine } from '../services/personality/personalityEngine';
+import { ReflectionEngine } from '../services/reflection/reflectionEngine';
+import { SceneResolver } from '../services/scenes/sceneResolver';
+import { SocialNetworkEngine } from '../services/social/socialNetworkEngine';
+import { SocialProjectionEngine } from '../services/socialProjection/projectionEngine';
+import { TemporalEventResolver } from '../services/temporalEvents/eventResolver';
+import { TimeEngine } from '../services/time/timeEngine';
 import { ToxicityResolver } from '../services/toxicity';
 import { InnerMythologyEngine } from '../services/innerMythology/innerMythologyEngine';
-import { TimeEngine } from '../services/time/timeEngine';
-import { SocialNetworkEngine } from '../services/social/socialNetworkEngine';
-import { PersonalityEngine } from '../services/personality/personalityEngine';
+
+import type { EngineFunction, EngineContext } from './types';
 
 /**
  * Engine Registry

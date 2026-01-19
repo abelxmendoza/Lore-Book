@@ -1,6 +1,7 @@
 import { parseISO, isBefore, isAfter, isEqual } from 'date-fns';
-import type { Event, TemporalEdge, TemporalRelation } from '../types';
+
 import { timeEngine } from '../../timeEngine';
+import type { Event, TemporalEdge, TemporalRelation } from '../types';
 
 /**
  * Allen's Interval Algebra - 13 possible relationships between two intervals

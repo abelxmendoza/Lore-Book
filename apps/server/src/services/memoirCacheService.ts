@@ -1,5 +1,6 @@
-import { supabaseAdmin } from './supabaseClient';
 import { logger } from '../logger';
+
+import { supabaseAdmin } from './supabaseClient';
 
 /**
  * Cache for memoir outlines - expensive to generate, cache aggressively

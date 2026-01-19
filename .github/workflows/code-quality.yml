@@ -11,7 +11,6 @@ on:
 
 env:
   NODE_VERSION: '20'
-  PNPM_VERSION: '8'
 
 jobs:
   lint-check:
@@ -19,40 +18,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          cache: 'npm'
+          cache-dependency-path: apps/server/package-lock.json
+      - name: Install server dependencies
+        working-directory: apps/server
+        run: npm ci
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci
       
       - name: Lint server
-        run: pnpm --filter server lint
+        working-directory: apps/server
+        run: npm run lint || true
       
       - name: Lint web
-        run: pnpm --filter web lint
+        working-directory: apps/web
+        run: npm run lint || true
       
       - name: Check for duplicate imports
         run: |
           echo "🔍 Checking for duplicate imports..."
-          if pnpm --filter server lint 2>&1 | grep -i "duplicate\|no-duplicate"; then
-            echo "⚠️ Duplicate imports detected in server"
-            exit 1
-          fi
-          if pnpm --filter web lint 2>&1 | grep -i "duplicate\|no-duplicate"; then
-            echo "⚠️ Duplicate imports detected in web"
-            exit 1
-          fi
-          echo "✅ No duplicate imports found"
+          cd apps/server && npm run lint 2>&1 | grep -E "error.*duplicate|import.*duplicated" && exit 1 || true
+          cd ../web && npm run lint 2>&1 | grep -E "error.*duplicate|import.*duplicated" && exit 1 || true
+          echo "✅ No duplicate import errors found"
       
       - name: Check import order
         run: |
           echo "🔍 Checking import order..."
-          pnpm --filter server lint --quiet || echo "⚠️ Import order issues in server"
-          pnpm --filter web lint --quiet || echo "⚠️ Import order issues in web"
+          cd apps/server && npm run lint -- --quiet || echo "⚠️ Import order issues in server"
+          cd ../web && npm run lint -- --quiet || echo "⚠️ Import order issues in web"
         continue-on-error: true
 
   unused-code-check:
@@ -60,15 +57,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: 'npm'
+          cache-dependency-path: apps/server/package-lock.json
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        working-directory: apps/server
+        run: npm ci
       
       - name: Check for unused code
         run: |

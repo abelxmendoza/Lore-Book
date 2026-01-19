@@ -1,8 +1,9 @@
 import { Router } from 'express';
+import { z } from 'zod';
+
+import { logger } from '../logger';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { perceptionReactionEngine } from '../services/perceptionReactionEngine';
-import { logger } from '../logger';
-import { z } from 'zod';
 
 const router = Router();
 

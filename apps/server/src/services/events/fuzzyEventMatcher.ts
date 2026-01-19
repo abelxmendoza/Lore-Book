@@ -1,6 +1,7 @@
 import { logger } from '../../logger';
-import { EventVectorizer } from './eventVectorizer';
 import { FuzzyMatcher } from '../entities/fuzzyMatcher';
+
+import { EventVectorizer } from './eventVectorizer';
 import type { ExtractedEvent, ResolvedEvent } from './types';
 
 /**

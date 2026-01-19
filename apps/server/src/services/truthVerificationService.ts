@@ -1,12 +1,14 @@
 import { logger } from '../logger';
-import { memoryService } from './memoryService';
-import { factExtractionService, type ExtractedFact } from './factExtractionService';
-import { ruleBasedFactExtractionService } from './ruleBasedFactExtraction';
-import { factCacheService } from './factCacheService';
 import { BooleanContradiction } from '../math/booleanContradiction';
 import { FactSetTheory } from '../math/factSetTheory';
-import { supabaseAdmin } from './supabaseClient';
 import type { MemoryEntry } from '../types';
+
+import { factCacheService } from './factCacheService';
+import { factExtractionService, type ExtractedFact } from './factExtractionService';
+import { memoryService } from './memoryService';
+import { ruleBasedFactExtractionService } from './ruleBasedFactExtraction';
+import { supabaseAdmin } from './supabaseClient';
+
 
 export type VerificationStatus = 'verified' | 'unverified' | 'contradicted' | 'ambiguous';
 

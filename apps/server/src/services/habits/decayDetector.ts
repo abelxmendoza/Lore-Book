@@ -1,5 +1,7 @@
-import { logger } from '../../logger';
 import { differenceInDays, parseISO } from 'date-fns';
+
+import { logger } from '../../logger';
+
 import type { Habit, HabitInsight } from './types';
 
 /**

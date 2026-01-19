@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { interestDetector, type DetectedInterest, type InterestMention } from './interestDetector';
 
 export interface Interest {

@@ -6,10 +6,11 @@
  */
 
 import { logger } from '../../logger';
-import type { EngineDescriptor, OrchestrationRule, OrchestrationDecision } from './types';
-import { ENGINE_DESCRIPTORS, getEngineDescriptor } from './engineRegistry';
 import { essenceProfileService } from '../essenceProfileService';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { ENGINE_DESCRIPTORS, getEngineDescriptor } from './engineRegistry';
+import type { EngineDescriptor, OrchestrationRule, OrchestrationDecision } from './types';
 
 export interface OrchestrationContext {
   userId: string;
@@ -216,7 +217,7 @@ export class SensemakingOrchestrator {
       // Supports: >, <, ===, !==, &&, ||
       
       // Replace variables with actual values
-      let evalString = condition
+      const evalString = condition
         .replace(/volatility/g, String(context.recentActivity?.volatility || 0))
         .replace(/identityPulseConfidence/g, String(currentState?.identityPulseConfidence || 0))
         .replace(/essenceProfileConfidence/g, String(currentState?.essenceProfileConfidence || 0))

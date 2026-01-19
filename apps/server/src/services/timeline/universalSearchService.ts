@@ -3,8 +3,9 @@
  * Searches across all timeline sources: people, locations, skills, jobs, projects, eras, etc.
  */
 
-import { supabaseAdmin } from '../supabaseClient';
 import { logger } from '../../logger';
+import { supabaseAdmin } from '../supabaseClient';
+
 import { TimelineEngine } from './timelineEngine';
 
 export interface UniversalSearchResult {

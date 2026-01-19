@@ -1,9 +1,10 @@
 import { logger } from '../../logger';
+
+import { SceneEmbedding } from './sceneEmbedding';
 import { SceneExtractor } from './sceneExtractor';
+import { SceneNormalizer } from './sceneNormalizer';
 import { SceneParser } from './sceneParser';
 import { SceneSegmenter } from './sceneSegmenter';
-import { SceneNormalizer } from './sceneNormalizer';
-import { SceneEmbedding } from './sceneEmbedding';
 import { SceneStorage } from './storageService';
 import type { Scene } from './types';
 

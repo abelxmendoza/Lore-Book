@@ -1,5 +1,13 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { BreakthroughDetector } from './breakthroughDetector';
+import { GrowthExtractor } from './growthExtractor';
+import { GrowthScorer } from './growthScorer';
+import { GrowthSignals } from './growthSignals';
+import { GrowthTimeline } from './growthTimeline';
+import { GrowthVelocity } from './growthVelocity';
+import { PlateauDetector } from './plateauDetector';
 import type {
   GrowthSignal,
   GrowthInsight,
@@ -7,13 +15,6 @@ import type {
   GrowthContext,
   GrowthDomain,
 } from './types';
-import { GrowthExtractor } from './growthExtractor';
-import { GrowthSignals } from './growthSignals';
-import { GrowthVelocity } from './growthVelocity';
-import { PlateauDetector } from './plateauDetector';
-import { BreakthroughDetector } from './breakthroughDetector';
-import { GrowthScorer } from './growthScorer';
-import { GrowthTimeline } from './growthTimeline';
 
 /**
  * Main Growth Trajectory Engine

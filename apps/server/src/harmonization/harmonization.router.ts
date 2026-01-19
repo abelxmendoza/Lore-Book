@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+
 import { harmonizationService } from './harmonization.service';
 
 const router = Router();

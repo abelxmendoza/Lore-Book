@@ -1,7 +1,9 @@
 import crypto from 'crypto';
+
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import type { ExtractedFact, FactExtractionResult } from './factExtractionService';
+import { supabaseAdmin } from './supabaseClient';
 
 /**
  * Aggressive caching service for fact extractions

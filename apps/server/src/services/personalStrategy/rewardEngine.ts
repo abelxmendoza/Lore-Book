@@ -1,8 +1,9 @@
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
+import { goalsEngine } from '../goals/goalEngine';
 import { goalValueAlignmentService } from '../goalValueAlignmentService';
 import { habitsEngine } from '../habits/habitEngine';
-import { goalsEngine } from '../goals/goalEngine';
+import { supabaseAdmin } from '../supabaseClient';
+
 import type { RLStateVector, Action, RewardWeights } from './types';
 
 export class RewardEngine {

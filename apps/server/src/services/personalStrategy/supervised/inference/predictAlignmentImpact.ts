@@ -1,7 +1,7 @@
 import { logger } from '../../../logger';
+import type { RLStateVector, ActionType } from '../../types';
 import { AlignmentRegressor } from '../models/alignmentRegressor';
 import type { AlignmentImpactPrediction } from '../types';
-import type { RLStateVector, ActionType } from '../../types';
 
 /**
  * Inference service for alignment impact prediction

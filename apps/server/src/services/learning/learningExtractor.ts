@@ -1,6 +1,8 @@
-import { logger } from '../../logger';
-import { config } from '../../config';
 import OpenAI from 'openai';
+
+import { config } from '../../config';
+import { logger } from '../../logger';
+
 import type {
   LearningRecord,
   LearningType,

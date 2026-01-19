@@ -1,9 +1,10 @@
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import { emotionalIntelligenceEngine } from '../emotionalIntelligence/emotionalEngine';
+import { goalsEngine } from '../goals/goalEngine';
 import { goalValueAlignmentService } from '../goalValueAlignmentService';
 import { habitsEngine } from '../habits/habitEngine';
-import { goalsEngine } from '../goals/goalEngine';
+import { supabaseAdmin } from '../supabaseClient';
+
 import { PatternPredictor } from './supervised/inference/predictPattern';
 import type { RLStateVector, PatternType } from './types';
 

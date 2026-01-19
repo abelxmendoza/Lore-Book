@@ -1,7 +1,8 @@
 import { logger } from '../../logger';
+
+import { DuplicateDetector } from './duplicateDetector';
 import { EntityExtractor } from './entityExtractor';
 import { EntityNormalizer } from './entityNormalizer';
-import { DuplicateDetector } from './duplicateDetector';
 import { EntityStorage } from './storageService';
 import type { ResolvedEntity, ExtractedEntity } from './types';
 

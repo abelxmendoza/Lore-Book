@@ -4,14 +4,9 @@
  */
 
 import OpenAI from 'openai';
-import { supabaseAdmin } from './supabaseClient';
-import { logger } from '../logger';
+
 import { config } from '../config';
-import { embeddingService } from './embeddingService';
-import { omegaMemoryService } from './omegaMemoryService';
-import { insightReflectionService } from './insightReflectionService';
-import { perspectiveService } from './perspectiveService';
-import { continuityService } from './continuityService';
+import { logger } from '../logger';
 import type {
   Decision,
   DecisionOption,
@@ -24,6 +19,13 @@ import type {
   DecisionOutcomeInput,
   DecisionType,
 } from '../types/decisionMemory';
+
+import { continuityService } from './continuityService';
+import { embeddingService } from './embeddingService';
+import { insightReflectionService } from './insightReflectionService';
+import { omegaMemoryService } from './omegaMemoryService';
+import { perspectiveService } from './perspectiveService';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

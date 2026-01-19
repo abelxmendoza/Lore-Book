@@ -1,33 +1,35 @@
 import { logger } from '../../logger';
-import type { EngineContext } from './contextBuilder';
+
 
 // Import all engines
-import { StoryOfSelfEngine } from '../storyOfSelf';
-import { ParacosmEngine } from '../paracosm';
-import { InnerDialogueEngine } from '../innerDialogue';
 import { AlternateSelfEngine } from '../alternateSelf';
-import { CognitiveBiasEngine } from '../cognitiveBias';
-import { DistortionEngine } from '../distortion';
-import { ShadowEngine } from '../shadowEngine';
 import { ArchetypeEngine } from '../archetype';
 import { ChronologyEngine } from '../chronology';
-import { IdentityCoreEngine } from '../identityCore';
-import { SocialProjectionEngine } from '../socialProjection';
-import { ReflectionEngine } from '../reflection';
-import { EQEngine } from '../emotionalIntelligence';
+import { CognitiveBiasEngine } from '../cognitiveBias';
 import { CreativeEngine } from '../creative';
 import { HealthEngine } from '../health';
 import { FinancialEngine } from '../financial';
 import { HabitsEngine } from '../habits';
 import { DecisionEngine } from '../decisions';
+import { DistortionEngine } from '../distortion';
 import { ResilienceEngine } from '../resilience';
-import { InfluenceEngine } from '../influence';
 import { GrowthEngine } from '../growth';
 import { LegacyEngine } from '../legacy';
 import { ValuesEngine } from '../values';
 import { DreamsEngine } from '../dreams';
+import { EQEngine } from '../emotionalIntelligence';
+import { IdentityCoreEngine } from '../identityCore';
+import { InfluenceEngine } from '../influence';
+import { InnerDialogueEngine } from '../innerDialogue';
+import { ParacosmEngine } from '../paracosm';
 import { RecommendationEngine } from '../recommendation';
+import { ReflectionEngine } from '../reflection';
+import { ShadowEngine } from '../shadowEngine';
+import { SocialProjectionEngine } from '../socialProjection';
+import { StoryOfSelfEngine } from '../storyOfSelf';
 import { WillEngine } from '../will';
+
+import type { EngineContext } from './contextBuilder';
 
 export type EngineFunction = (userId: string, ctx: EngineContext) => Promise<any>;
 

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+
 import type { ExtractedFact } from '../services/factExtractionService';
 
 /**

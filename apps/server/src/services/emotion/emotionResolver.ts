@@ -1,11 +1,12 @@
 import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
-import { EmotionExtractor } from './emotionExtractor';
+
 import { EmotionClassifier } from './emotionClassifier';
-import { EmotionIntensity } from './emotionIntensity';
 import { EmotionClusterizer } from './emotionClusterizer';
-import { TriggerExtractor } from './triggerExtractor';
+import { EmotionExtractor } from './emotionExtractor';
+import { EmotionIntensity } from './emotionIntensity';
 import { EmotionStorage } from './storageService';
+import { TriggerExtractor } from './triggerExtractor';
 import type { EmotionEventResolved, RawEmotionSignal } from './types';
 
 /**

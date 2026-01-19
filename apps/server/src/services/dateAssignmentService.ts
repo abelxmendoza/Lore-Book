@@ -1,8 +1,9 @@
-import { logger } from '../logger';
-import { timeEngine } from './timeEngine';
-import { supabaseAdmin } from './supabaseClient';
-import { openai } from '../lib/openai';
 import { config } from '../config';
+import { openai } from '../lib/openai';
+import { logger } from '../logger';
+
+import { supabaseAdmin } from './supabaseClient';
+import { timeEngine } from './timeEngine';
 
 export type DateSuggestion = {
   date: Date;

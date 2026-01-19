@@ -3,8 +3,8 @@
  * Rebuilds memory clusters from embeddings
  */
 
-import { supabaseAdmin } from '../services/supabaseClient';
 import { logger } from '../logger';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 interface Cluster {
   id: string;

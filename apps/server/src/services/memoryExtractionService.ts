@@ -8,16 +8,17 @@ import type {
   ComponentExtractionResult,
   ExtractMemoryInput
 } from '../types';
-import { conversationService } from './conversationService';
-import { memoryService } from './memoryService';
-import { ruleBasedMemoryDetectionService } from './ruleBasedMemoryDetection';
-import { memoryDetectionCacheService } from './memoryDetectionCacheService';
+
 import { componentExtractionCacheService } from './componentExtractionCacheService';
-import { timelineAssignmentService } from './timelineAssignmentService';
+import { conversationService } from './conversationService';
+import { embeddingService } from './embeddingService';
 import { knowledgeGraphService } from './knowledgeGraphService';
 import { llmMemoryExtractionService } from './llmMemoryExtraction';
-import { embeddingService } from './embeddingService';
+import { memoryDetectionCacheService } from './memoryDetectionCacheService';
+import { memoryService } from './memoryService';
+import { ruleBasedMemoryDetectionService } from './ruleBasedMemoryDetection';
 import { supabaseAdmin } from './supabaseClient';
+import { timelineAssignmentService } from './timelineAssignmentService';
 
 class MemoryExtractionService {
   /**

@@ -4,6 +4,7 @@ import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
 import { logger } from '../logger';
+
 import { memoryService } from './memoryService';
 
 const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {

@@ -1,5 +1,6 @@
 import { logger } from '../logger';
 import type { Insight, InsightType } from '../types';
+
 import { supabaseAdmin } from './supabaseClient';
 
 /**

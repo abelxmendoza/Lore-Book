@@ -11,9 +11,9 @@
  */
 
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
-import { memoryService } from '../memoryService';
 import type { BiographySpec, Domain } from '../biographyGeneration/types';
+import { memoryService } from '../memoryService';
+import { supabaseAdmin } from '../supabaseClient';
 
 export interface LorebookRecommendation {
   id: string;

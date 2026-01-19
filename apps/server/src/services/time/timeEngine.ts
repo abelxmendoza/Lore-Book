@@ -1,18 +1,19 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { ActivityClassifier } from './activityClassifier';
+import { TimeCycleDetector } from './cycleDetector';
+import { EnergyCurveEstimator } from './energyCurveEstimator';
+import { ProcrastinationDetector } from './procrastinationDetector';
+import { TimeBlockParser } from './timeBlocks';
+import { TimeExtractor } from './timeExtractor';
+import { TimeScoreService } from './timeScore';
 import type {
   TimeOutput,
   TimeContext,
   TimeInsight,
   TimeCategory,
 } from './types';
-import { TimeExtractor } from './timeExtractor';
-import { ActivityClassifier } from './activityClassifier';
-import { TimeBlockParser } from './timeBlocks';
-import { ProcrastinationDetector } from './procrastinationDetector';
-import { EnergyCurveEstimator } from './energyCurveEstimator';
-import { TimeCycleDetector } from './cycleDetector';
-import { TimeScoreService } from './timeScore';
 
 /**
  * Main Time Management Engine

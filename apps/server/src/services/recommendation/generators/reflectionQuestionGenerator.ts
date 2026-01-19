@@ -1,9 +1,9 @@
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../../logger';
+import { insightEngineModule } from '../../analytics';
 import { supabaseAdmin } from '../../supabaseClient';
 import type { Recommendation, RecommendationContext } from '../types';
-import { insightEngineModule } from '../../analytics';
 
 /**
  * Generates reflection questions based on patterns and changes

@@ -1,8 +1,8 @@
 import { logger } from '../logger';
-import { supabaseAdmin } from '../services/supabaseClient';
-import { PatternClassifierTrainer } from '../services/personalStrategy/supervised/trainers/trainPatternClassifier';
-import { OutcomePredictorTrainer } from '../services/personalStrategy/supervised/trainers/trainOutcomePredictor';
 import { AlignmentRegressorTrainer } from '../services/personalStrategy/supervised/trainers/trainAlignmentRegressor';
+import { OutcomePredictorTrainer } from '../services/personalStrategy/supervised/trainers/trainOutcomePredictor';
+import { PatternClassifierTrainer } from '../services/personalStrategy/supervised/trainers/trainPatternClassifier';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 /**
  * Background job: Auto-train Personal Strategy Engine models

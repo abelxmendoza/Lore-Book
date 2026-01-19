@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 
 import type { MemoryEntry } from '../../types';
+
 import type { ParacosmSignal } from './types';
 
 export class ParacosmSignalExtractor {

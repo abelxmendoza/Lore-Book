@@ -1,4 +1,5 @@
 import { Router } from 'express';
+
 import { logger } from '../logger';
 import { entityMeaningDriftService } from '../services/entityMeaningDriftService';
 import type { EntityType } from '../services/entityResolutionService';

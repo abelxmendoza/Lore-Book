@@ -1,14 +1,15 @@
 import { logger } from '../../logger';
+
+import { RelationshipAnalyzer } from './relationshipAnalyzer';
+import { RelationshipHealthTracker } from './relationshipHealth';
+import { RelationshipLifecycleDetector } from './relationshipLifecycle';
+import { RelationshipStorage } from './relationshipStorage';
 import type {
   RelationshipDynamics,
   RelationshipInsight,
   RelationshipHealth,
   RelationshipStage,
 } from './types';
-import { RelationshipAnalyzer } from './relationshipAnalyzer';
-import { RelationshipHealthTracker } from './relationshipHealth';
-import { RelationshipLifecycleDetector } from './relationshipLifecycle';
-import { RelationshipStorage } from './relationshipStorage';
 
 /**
  * Main Relationship Dynamics Engine

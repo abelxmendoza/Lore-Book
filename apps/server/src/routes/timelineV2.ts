@@ -1,15 +1,15 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { supabaseAdmin } from '../services/supabaseClient';
 import {
   timelineService,
   timelineMembershipService,
   timelineSearchService,
   timelineRelationshipService
 } from '../services/timelineV2';
-import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
 

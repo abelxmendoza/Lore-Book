@@ -5,6 +5,7 @@
 // =====================================================
 
 import { logger } from '../logger';
+
 import type { CanonStatus, CanonMetadata } from './compiler/types';
 
 export class CanonDetectionService {

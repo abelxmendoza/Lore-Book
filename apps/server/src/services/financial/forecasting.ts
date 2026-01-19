@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import type { FinancialTransaction, ForecastResult, IncomeTrend, SpendingPattern } from './types';
 
 /**

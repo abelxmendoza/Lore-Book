@@ -2,9 +2,9 @@ import type { Response } from 'express';
 import { z } from 'zod';
 
 import type { AuthenticatedRequest } from '../middleware/auth';
+import { chapterInsightsService } from '../services/chapterInsightsService';
 import { chapterService } from '../services/chapterService';
 import { chatService } from '../services/chatService';
-import { chapterInsightsService } from '../services/chapterInsightsService';
 import { correctionService } from '../services/correctionService';
 import { memoryService } from '../services/memoryService';
 import { namingService } from '../services/namingService';

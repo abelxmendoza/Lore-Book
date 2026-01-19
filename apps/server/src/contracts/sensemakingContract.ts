@@ -6,8 +6,8 @@
 // declaring how it interprets truth."
 // =====================================================
 
-import type { KnowledgeType } from '../services/knowledgeTypeEngineService';
 import type { CanonStatus } from '../services/compiler/types';
+import type { KnowledgeType } from '../services/knowledgeTypeEngineService';
 
 /**
  * Contradiction handling policy

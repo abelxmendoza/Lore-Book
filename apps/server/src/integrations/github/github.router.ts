@@ -1,7 +1,8 @@
 import { Router } from 'express';
 
-import { requireAuth, type AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../logger';
+import { requireAuth, type AuthenticatedRequest } from '../../middleware/auth';
+
 import { githubIntegrationService } from './github.service';
 
 const router = Router();

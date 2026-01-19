@@ -7,8 +7,9 @@
 
 import { logger } from '../../logger';
 import { stabilityDetectionService } from '../stabilityDetectionService';
-import { IntentParser } from './intentParser';
+
 import { CandidateRetriever } from './candidateRetriever';
+import { IntentParser } from './intentParser';
 import { RankingService } from './rankingService';
 import { ResponseBuilder } from './responseBuilder';
 import type {

@@ -5,6 +5,7 @@
 // =====================================================
 
 import { logger } from '../../../logger';
+
 import type { BeliefChallenge, BeliefChallengeStyle } from './types';
 
 export type PerceptionForChallenge = {

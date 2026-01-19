@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { appendToInbox, distillInbox, runIntegrationPipeline } from '../integration.utils';
+
 import type { InstagramMedia, InstagramSyncResult } from './instagram.types';
 
 const fetchInstagramMedia = async (_userId: string): Promise<InstagramMedia[]> => {

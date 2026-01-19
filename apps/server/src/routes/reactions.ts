@@ -1,8 +1,9 @@
 import { Router } from 'express';
+import { z } from 'zod';
+
+import { logger } from '../logger';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { reactionService, type CreateReactionInput, type UpdateReactionInput } from '../services/reactionService';
-import { logger } from '../logger';
-import { z } from 'zod';
 
 const router = Router();
 

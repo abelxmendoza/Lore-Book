@@ -1,18 +1,19 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { CentralityCalculator } from './centralityCalculator';
+import { CommunityDetector } from './communityDetector';
+import { DriftDetector } from './driftDetector';
+import { InfluenceAnalyzer } from './influenceAnalyzer';
+import { NetworkScoreService } from './networkScore';
+import { RelationshipEdgeExtractor } from './relationshipEdgeExtractor';
+import { SocialGraphBuilder } from './socialGraphBuilder';
+import { ToxicityAnalyzer } from './toxicityAnalyzer';
 import type {
   SocialNetworkOutput,
   SocialContext,
   SocialInsight,
 } from './types';
-import { RelationshipEdgeExtractor } from './relationshipEdgeExtractor';
-import { SocialGraphBuilder } from './socialGraphBuilder';
-import { InfluenceAnalyzer } from './influenceAnalyzer';
-import { CommunityDetector } from './communityDetector';
-import { ToxicityAnalyzer } from './toxicityAnalyzer';
-import { CentralityCalculator } from './centralityCalculator';
-import { DriftDetector } from './driftDetector';
-import { NetworkScoreService } from './networkScore';
 
 /**
  * Main Social Network Engine

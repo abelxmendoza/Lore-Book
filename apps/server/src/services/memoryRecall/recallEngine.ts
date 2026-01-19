@@ -4,14 +4,14 @@
 // =====================================================
 
 import { logger } from '../../logger';
-import { memoryService } from '../memoryService';
+import type { MemoryEntry } from '../../types';
+import { contractLayer, CONTRACTS } from '../compiler/contractLayer';
+import { epistemicTypeChecker } from '../compiler/epistemicTypeChecker';
 import { embeddingService } from '../embeddingService';
 import { entityConfidenceService } from '../entityConfidenceService';
-import { supabaseAdmin } from '../supabaseClient';
-import { epistemicTypeChecker } from '../compiler/epistemicTypeChecker';
-import { contractLayer, CONTRACTS } from '../compiler/contractLayer';
-import type { MemoryEntry } from '../../types';
+import { memoryService } from '../memoryService';
 import type { Persona } from '../personaController';
+import { supabaseAdmin } from '../supabaseClient';
 
 export type RecallIntent = 'EMOTIONAL_RECALL' | 'TEMPORAL_RECALL' | 'PATTERN_LOOKBACK' | 'GENERAL_RECALL';
 export type Phrasing = 'STRONG' | 'TENTATIVE';

@@ -4,8 +4,9 @@
 // =====================================================
 
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import { canonDetectionService } from '../canonDetectionService';
+import { supabaseAdmin } from '../supabaseClient';
+
 import type { CanonStatus, CanonMetadata } from './types';
 
 export class CanonService {

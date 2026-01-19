@@ -1,9 +1,13 @@
-import { logger } from '../../logger';
-import { profileClaimsService, type CreateClaimInput, type ClaimType } from './profileClaimsService';
-import OpenAI from 'openai';
-import { config } from '../../config';
-import { supabaseAdmin } from '../supabaseClient';
 import { randomUUID } from 'crypto';
+
+import OpenAI from 'openai';
+
+import { config } from '../../config';
+import { logger } from '../../logger';
+import { supabaseAdmin } from '../supabaseClient';
+
+import { profileClaimsService, type CreateClaimInput, type ClaimType } from './profileClaimsService';
+
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

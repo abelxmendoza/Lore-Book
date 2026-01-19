@@ -1,14 +1,15 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { taskEngineService } from '../taskEngineService';
-import type { Goal, GoalInsight, GoalContext } from './types';
+
+import { DependencyAnalyzer } from './dependencyAnalyzer';
 import { GoalExtractor } from './goalExtractor';
+import { GoalRecommender } from './goalRecommender';
 import { GoalStateCalculator } from './goalStateCalculator';
 import { MilestoneDetector } from './milestoneDetector';
 import { StagnationDetector } from './stagnationDetector';
-import { DependencyAnalyzer } from './dependencyAnalyzer';
 import { SuccessPredictor } from './successPredictor';
-import { GoalRecommender } from './goalRecommender';
+import type { Goal, GoalInsight, GoalContext } from './types';
 
 /**
  * Main Goal Tracking Engine

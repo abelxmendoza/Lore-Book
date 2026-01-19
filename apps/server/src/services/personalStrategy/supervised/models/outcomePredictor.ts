@@ -1,9 +1,10 @@
 import { logger } from '../../../../logger';
 import { supabaseAdmin } from '../../../supabaseClient';
-import { MultiClassLogisticRegression } from './simpleModel';
+import type { RLStateVector } from '../../types';
 import { ActionOutcomeDataset } from '../datasets/actionOutcomeDataset';
 import type { ActionOutcome, OutcomePrediction, ModelMetadata } from '../types';
-import type { RLStateVector } from '../../types';
+
+import { MultiClassLogisticRegression } from './simpleModel';
 
 /**
  * Outcome Predictor Model

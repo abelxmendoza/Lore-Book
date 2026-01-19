@@ -1,6 +1,7 @@
-import { supabaseAdmin } from '../supabaseClient';
-import { logger } from '../../logger';
 import { randomUUID } from 'crypto';
+
+import { logger } from '../../logger';
+import { supabaseAdmin } from '../supabaseClient';
 
 export type ClaimType = 'role' | 'skill' | 'experience' | 'achievement' | 'education' | 'certification' | 'project';
 export type ClaimSource = 'resume' | 'chat' | 'linkedin' | 'manual' | 'work_summary' | 'journal_entry';

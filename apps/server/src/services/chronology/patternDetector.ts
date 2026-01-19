@@ -1,4 +1,5 @@
 import { parseISO, differenceInDays } from 'date-fns';
+
 import type { Event, TemporalPattern } from './types';
 
 /**

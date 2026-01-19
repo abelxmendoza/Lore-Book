@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 
 import { embeddingService } from '../embeddingService';
+
 import type { SelfCluster, SelfStatement } from './types';
 
 export class SelfClusterer {

@@ -1,7 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
-import type { AuthenticatedRequest } from './auth';
+
 import { getUserSubscription } from '../services/stripeService';
 import { getCurrentUsage, canCreateEntry, canMakeAiRequest } from '../services/usageTracking';
+
+import type { AuthenticatedRequest } from './auth';
 
 /**
  * Middleware to check if user has active subscription or is within trial period

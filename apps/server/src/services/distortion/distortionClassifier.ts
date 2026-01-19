@@ -1,5 +1,6 @@
-import { logger } from '../../logger';
 import { openai } from '../../lib/openai';
+import { logger } from '../../logger';
+
 import type { DistortionType } from './distortionTypes';
 
 interface DistortionClassification {

@@ -4,25 +4,9 @@
  */
 
 import OpenAI from 'openai';
-import { supabaseAdmin } from './supabaseClient';
-import { logger } from '../logger';
+
 import { config } from '../config';
-import { embeddingService } from './embeddingService';
-import { omegaMemoryService } from './omegaMemoryService';
-import { perspectiveService } from './perspectiveService';
-import { insightReflectionService } from './insightReflectionService';
-import { memoryReviewQueueService } from './memoryReviewQueueService';
-import { decisionMemoryService } from './decisionMemoryService';
-import { predictiveContinuityService } from './predictiveContinuityService';
-import { goalValueAlignmentService } from './goalValueAlignmentService';
-import { privacyScopeService } from './privacyScopeService';
-import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
-import { intentDetectionService } from './intentDetectionService';
-import { expressionRoutingService } from './expressionRoutingService';
-import { responseShapingService } from './responseShapingService';
-import { memoryRecallEngine } from './memoryRecall/memoryRecallEngine';
-import { isRecallQuery, shouldForceArchivist } from './memoryRecall/recallDetector';
-import { formatRecallChatResponse } from './memoryRecall/recallChatFormatter';
+import { logger } from '../logger';
 import type {
   ChatContext,
   ChatMessage,
@@ -32,6 +16,24 @@ import type {
   UserIntent,
   ResponseMode,
 } from '../types/conversationalOrchestration';
+
+import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
+import { decisionMemoryService } from './decisionMemoryService';
+import { embeddingService } from './embeddingService';
+import { expressionRoutingService } from './expressionRoutingService';
+import { goalValueAlignmentService } from './goalValueAlignmentService';
+import { insightReflectionService } from './insightReflectionService';
+import { intentDetectionService } from './intentDetectionService';
+import { memoryRecallEngine } from './memoryRecall/memoryRecallEngine';
+import { memoryReviewQueueService } from './memoryReviewQueueService';
+import { omegaMemoryService } from './omegaMemoryService';
+import { perspectiveService } from './perspectiveService';
+import { predictiveContinuityService } from './predictiveContinuityService';
+import { privacyScopeService } from './privacyScopeService';
+import { responseShapingService } from './responseShapingService';
+import { isRecallQuery, shouldForceArchivist } from './memoryRecall/recallDetector';
+import { formatRecallChatResponse } from './memoryRecall/recallChatFormatter';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 const MIN_CONFIDENCE_THRESHOLD = 0.5;

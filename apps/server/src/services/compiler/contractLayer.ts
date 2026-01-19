@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+
 import { epistemicLatticeService } from './epistemicLattice';
 import type { EntryIR, KnowledgeType, CanonStatus } from './types';
 

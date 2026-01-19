@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 
 import { config } from '../config';
 import { logger } from '../logger';
+
 import { memoryService } from './memoryService';
 
 export type CalendarEvent = {

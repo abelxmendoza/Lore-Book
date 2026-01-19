@@ -2,8 +2,9 @@ import { v4 as uuid } from 'uuid';
 
 import { logger } from '../logger';
 import type { MemoryComponent, TimelineLink } from '../types';
-import { supabaseAdmin } from './supabaseClient';
+
 import { memoryService } from './memoryService';
+import { supabaseAdmin } from './supabaseClient';
 
 class TimelineAssignmentService {
   /**

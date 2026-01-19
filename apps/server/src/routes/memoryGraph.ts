@@ -1,9 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { emitDelta } from '../realtime/orchestratorEmitter';
-
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { emitDelta } from '../realtime/orchestratorEmitter';
 import { memoryGraphService } from '../services/memoryGraphService';
 
 const router = Router();

@@ -3,8 +3,8 @@
  * Toggles a feature flag (dev only)
  */
 
-import { logger } from '../../logger';
 import { config } from '../../config';
+import { logger } from '../../logger';
 
 export async function toggleFlag(flag: string, enabled: boolean): Promise<void> {
   if (config.apiEnv !== 'dev') {

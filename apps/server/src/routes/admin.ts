@@ -4,12 +4,8 @@
  */
 
 import { Router } from 'express';
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { requireAdmin } from '../middleware/rbac';
-import { supabaseAdmin } from '../services/supabaseClient';
-import { logger } from '../logger';
+
 import { config } from '../config';
-import { getAdminMetrics } from '../lib/admin/getAdminMetrics';
 import {
   getFinanceMetrics,
   getMonthlyFinancials,
@@ -17,7 +13,12 @@ import {
   getPaymentEvents,
   calculateLTV,
 } from '../lib/admin/financeService';
+import { getAdminMetrics } from '../lib/admin/getAdminMetrics';
+import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { requireAdmin } from '../middleware/rbac';
 import { cancelSubscription } from '../services/stripeService';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
 

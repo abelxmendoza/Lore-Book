@@ -1,8 +1,10 @@
 import type { Response, NextFunction } from 'express';
-import type { AuthenticatedRequest } from './auth';
+
 import { config } from '../config';
-import { supabaseAdmin } from '../services/supabaseClient';
 import { logger } from '../logger';
+import { supabaseAdmin } from '../services/supabaseClient';
+
+import type { AuthenticatedRequest } from './auth';
 
 export type UserRole = 'admin' | 'developer' | 'standard_user' | 'beta_user';
 

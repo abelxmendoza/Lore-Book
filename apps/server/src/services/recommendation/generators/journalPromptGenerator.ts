@@ -1,11 +1,11 @@
-import { v4 as uuid } from 'uuid';
 import { differenceInDays, parseISO } from 'date-fns';
+import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../../logger';
+import { relationshipAnalyticsModule } from '../../analytics';
+import { ChronologyEngine, EventMapper } from '../../chronology';
 import { supabaseAdmin } from '../../supabaseClient';
 import type { Recommendation, RecommendationContext } from '../types';
-import { ChronologyEngine, EventMapper } from '../../chronology';
-import { relationshipAnalyticsModule } from '../../analytics';
 
 /**
  * Generates journal prompts based on gaps and patterns

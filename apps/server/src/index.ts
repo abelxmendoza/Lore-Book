@@ -1,27 +1,26 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import swaggerUi from 'swagger-ui-express';
 
 import { assertConfig, config } from './config';
-import { logger } from './logger';
-import { setupSwagger } from './swagger';
-import { registerSyncJob } from './jobs/syncJob';
+import { swaggerSpec } from './config/swagger';
 import { memoryExtractionWorker } from './jobs/memoryExtractionWorker';
+import { registerSyncJob } from './jobs/syncJob';
+import { logger } from './logger';
+import { auditLogger } from './middleware/auditLogger';
 import { authMiddleware } from './middleware/auth';
+import { csrfTokenMiddleware, csrfProtection } from './middleware/csrf';
+import { errorHandler , asyncHandler } from './middleware/errorHandler';
+import { intrusionDetection } from './middleware/intrusionDetection';
 import { rateLimitMiddleware } from './middleware/rateLimit';
+import { validateRequestSize, validateCommonPatterns } from './middleware/requestValidation';
 import { inputSanitizer } from './middleware/sanitize';
 import { secureHeaders } from './middleware/secureHeaders';
-import { auditLogger } from './middleware/auditLogger';
-import { csrfTokenMiddleware, csrfProtection } from './middleware/csrf';
-import { validateRequestSize, validateCommonPatterns } from './middleware/requestValidation';
 import { registerRoutes } from './routes/routeRegistry';
 import { subscriptionRouter } from './routes/subscription';
-import { errorHandler } from './middleware/errorHandler';
-import { asyncHandler } from './middleware/errorHandler';
+import { setupSwagger } from './swagger';
 import { requestIdMiddleware } from './utils/requestId';
-import swaggerUi from 'swagger-ui-express';
-import { swaggerSpec } from './config/swagger';
-import { intrusionDetection } from './middleware/intrusionDetection';
 import { performSecurityCheck } from './utils/securityCheck';
 
 assertConfig();

@@ -4,10 +4,11 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
+
+import { logger } from '../logger';
 import { requireAuth } from '../middleware/auth';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { memoryRecallEngine } from '../services/memoryRecall/memoryRecallEngine';
-import { logger } from '../logger';
 
 const router = Router();
 

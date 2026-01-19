@@ -4,12 +4,9 @@
  */
 
 import OpenAI from 'openai';
-import { supabaseAdmin } from './supabaseClient';
-import { logger } from '../logger';
+
 import { config } from '../config';
-import { omegaMemoryService } from './omegaMemoryService';
-import { decisionMemoryService } from './decisionMemoryService';
-import { insightReflectionService } from './insightReflectionService';
+import { logger } from '../logger';
 import type {
   Value,
   Goal,
@@ -24,6 +21,11 @@ import type {
   GoalSignalSourceType,
   DriftObservation,
 } from '../types/goalValueAlignment';
+
+import { decisionMemoryService } from './decisionMemoryService';
+import { insightReflectionService } from './insightReflectionService';
+import { omegaMemoryService } from './omegaMemoryService';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

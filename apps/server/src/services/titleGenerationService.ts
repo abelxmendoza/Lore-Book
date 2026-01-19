@@ -5,12 +5,14 @@
  */
 
 import OpenAI from 'openai';
-import { logger } from '../logger';
+
 import { config } from '../config';
+import { logger } from '../logger';
+
 import { memoryService } from './memoryService';
-import { timelineManager } from './timelineManager';
-import { supabaseAdmin } from './supabaseClient';
 import { ruleBasedTitleGenerationService } from './ruleBasedTitleGeneration';
+import { supabaseAdmin } from './supabaseClient';
+import { timelineManager } from './timelineManager';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

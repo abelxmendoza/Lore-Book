@@ -10,6 +10,7 @@ import type {
   PeoplePlacesStats,
   RelationshipTag
 } from '../types';
+
 import { supabaseAdmin } from './supabaseClient';
 
 const relationshipTags: RelationshipTag[] = ['friend', 'family', 'coach', 'romantic', 'professional', 'other'];

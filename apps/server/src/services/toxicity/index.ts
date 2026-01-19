@@ -1,9 +1,10 @@
 import { logger } from '../../logger';
-import { ToxicitySignalExtractor } from './toxicitySignalExtractor';
-import { ToxicityParser } from './toxicityParser';
+
 import { ToxicityClassifier } from './toxicityClassifier';
-import { ToxicityScorer } from './toxicityScorer';
 import { ToxicityEmbedding } from './toxicityEmbedding';
+import { ToxicityParser } from './toxicityParser';
+import { ToxicityScorer } from './toxicityScorer';
+import { ToxicitySignalExtractor } from './toxicitySignalExtractor';
 import { ToxicityStorage } from './toxicityStorage';
 import type { ToxicityEvent } from './types';
 

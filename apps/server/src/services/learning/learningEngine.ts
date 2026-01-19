@@ -1,4 +1,9 @@
 import { logger } from '../../logger';
+
+import { LearningAnalyzer } from './learningAnalyzer';
+import { LearningExtractor } from './learningExtractor';
+import { learningStorageService } from './learningStorage';
+import { LearningTracker } from './learningTracker';
 import type {
   LearningRecord,
   LearningPayload,
@@ -6,10 +11,6 @@ import type {
   LearningType,
   ProficiencyLevel,
 } from './types';
-import { LearningExtractor } from './learningExtractor';
-import { learningStorageService } from './learningStorage';
-import { LearningTracker } from './learningTracker';
-import { LearningAnalyzer } from './learningAnalyzer';
 
 /**
  * Main Learning Engine

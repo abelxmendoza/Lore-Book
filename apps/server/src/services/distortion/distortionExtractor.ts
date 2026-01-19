@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 
 import type { MemoryEntry } from '../../types';
+
 import { DISTORTION_PATTERNS } from './distortionPatterns';
 import type { DistortionSignal } from './distortionTypes';
 

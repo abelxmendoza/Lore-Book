@@ -2,6 +2,7 @@ import { v4 as uuid } from 'uuid';
 
 import { logger } from '../logger';
 import type { MemoryComponent, GraphEdge, GraphEdgeType } from '../types';
+
 import { supabaseAdmin } from './supabaseClient';
 
 /**

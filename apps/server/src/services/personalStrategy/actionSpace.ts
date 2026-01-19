@@ -1,6 +1,7 @@
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import { activityResolver } from '../activities/activityResolver';
+import { supabaseAdmin } from '../supabaseClient';
+
 import type { Action, ActionType, RLStateVector } from './types';
 
 export class ActionSpace {

@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import type { WellnessCycle, EnergyEvent, SymptomEvent, SleepEvent } from './types';
 
 /**

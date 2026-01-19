@@ -1,8 +1,10 @@
 import OpenAI from 'openai';
+import { v4 as uuid } from 'uuid';
+
 import { config } from '../config';
 import { logger } from '../logger';
+
 import { supabaseAdmin } from './supabaseClient';
-import { v4 as uuid } from 'uuid';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
@@ -504,7 +506,7 @@ Only include mappings with confidence > 0.6. If no nicknames detected, return {"
 
       // Find associated character IDs if provided
       let associatedWithIds: string[] = [];
-      let mentionedByIds: string[] = [];
+      const mentionedByIds: string[] = [];
       
       if (character.associatedWith && character.associatedWith.length > 0) {
         const { data: associatedChars } = await supabaseAdmin

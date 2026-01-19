@@ -1,14 +1,15 @@
 import { randomUUID } from 'crypto';
 
 import type { MemoryEntry } from '../../types';
+
 import { StoryArcAssembler } from './selfArcAssembler';
 import { StoryCoherenceAnalyzer } from './selfCoherence';
 import { NarrativeModeExtractor } from './selfNarrativeModes';
-import { SelfThemeExtractor } from './selfThemes';
 import { StoryOfSelfSummary } from './selfSummary';
+import { SelfThemeExtractor } from './selfThemes';
 import { TurningPointDetector } from './selfTurningPoints';
-import type { StoryOfSelf } from './types';
 import { VoicePrintExtractor } from './selfVoiceExtractor';
+import type { StoryOfSelf } from './types';
 
 export interface StoryOfSelfContext {
   entries: MemoryEntry[];

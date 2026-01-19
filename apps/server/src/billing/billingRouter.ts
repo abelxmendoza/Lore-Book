@@ -1,9 +1,11 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { Router } from 'express';
-import { ensureStripe } from './stripeClient';
-import { pricingTable } from './pricing';
+
 import { requireAuth } from '../middleware/auth';
+
+import { pricingTable } from './pricing';
+import { ensureStripe } from './stripeClient';
 
 export const billingRouter = Router();
 

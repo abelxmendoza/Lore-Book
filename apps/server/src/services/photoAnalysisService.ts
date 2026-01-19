@@ -1,8 +1,10 @@
 import OpenAI from 'openai';
+
 import { config } from '../config';
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import type { PhotoMetadata } from './photoService';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
@@ -55,7 +57,7 @@ class PhotoAnalysisService {
       const mimeType = this.getMimeType(filename);
       
       // Limit image size to avoid API limits (max ~20MB for base64)
-      let imageBuffer = photoBuffer;
+      const imageBuffer = photoBuffer;
       if (imageBuffer.length > 15 * 1024 * 1024) {
         // If too large, we'll need to resize (for now, just use as-is and let API handle it)
         logger.warn({ size: imageBuffer.length, filename }, 'Large image, may exceed API limits');

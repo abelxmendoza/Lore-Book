@@ -1,6 +1,8 @@
+import { parseISO, differenceInDays, format } from 'date-fns';
+
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import { parseISO, differenceInDays, format } from 'date-fns';
+
 import type { NarrativeSegment } from './types';
 
 /**

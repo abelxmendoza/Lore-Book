@@ -1,7 +1,9 @@
 import OpenAI from 'openai';
+
 import { logger } from '../../logger';
-import { ManifestService } from './manifestService';
+
 import { ManifestRegistry } from './manifestRegistry';
+import { ManifestService } from './manifestService';
 
 /**
  * Syncs local blueprints to Supabase and creates embeddings

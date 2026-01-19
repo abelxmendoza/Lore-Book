@@ -1,8 +1,8 @@
 import { Router } from 'express';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { logger } from '../logger';
 import { PersonalityEngine } from '../services/personality/personalityEngine';
 import { PersonalityStorage } from '../services/personality/personalityStorage';
 

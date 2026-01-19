@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
-import { logger } from '../logger';
+
 import { config } from '../config';
+import { logger } from '../logger';
 
 const router = Router();
 

@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { validateBody } from '../middleware/validateRequest';
-import { truthVerificationService } from '../services/truthVerificationService';
 import { memoryService } from '../services/memoryService';
-import { logger } from '../logger';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { truthVerificationService } from '../services/truthVerificationService';
 
 const router = Router();
 

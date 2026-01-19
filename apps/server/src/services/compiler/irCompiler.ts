@@ -4,12 +4,13 @@
 // =====================================================
 
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
+import { canonDetectionService } from '../canonDetectionService';
 import { entryEnrichmentService } from '../entryEnrichmentService';
 import { omegaMemoryService } from '../omegaMemoryService';
-import { canonDetectionService } from '../canonDetectionService';
-import { epistemicLatticeService } from './epistemicLattice';
+import { supabaseAdmin } from '../supabaseClient';
+
 import { epistemicInvariants } from './epistemicInvariants';
+import { epistemicLatticeService } from './epistemicLattice';
 import type { EntryIR, KnowledgeType, CertaintySource, EntityRef, EmotionSignal, ThemeSignal, CanonStatus } from './types';
 
 export class IRCompiler {

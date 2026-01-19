@@ -1,9 +1,9 @@
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../../logger';
+import { essenceProfileService } from '../../essenceProfileService';
 import { supabaseAdmin } from '../../supabaseClient';
 import type { Recommendation, RecommendationContext } from '../types';
-import { essenceProfileService } from '../../essenceProfileService';
 
 /**
  * Generates legacy building recommendations

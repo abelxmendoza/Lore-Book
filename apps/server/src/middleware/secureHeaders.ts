@@ -1,5 +1,6 @@
-import type { NextFunction, Request, Response } from 'express';
 import crypto from 'node:crypto';
+
+import type { NextFunction, Request, Response } from 'express';
 
 // Generate nonce for CSP
 const generateNonce = (): string => {

@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { BaseAnalyticsModule } from './base';
 import type { AnalyticsPayload, MemoryData } from './types';
 
@@ -46,7 +47,7 @@ export class SearchEngineModule extends BaseAnalyticsModule {
     const memories = await this.fetchMemories(userId, 1000);
 
     // Apply filters
-    let filteredMemories = this.applyFilters(memories, options.filters);
+    const filteredMemories = this.applyFilters(memories, options.filters);
 
     // Perform semantic search
     const semanticResults = await this.semanticSearch(userId, query, filteredMemories);

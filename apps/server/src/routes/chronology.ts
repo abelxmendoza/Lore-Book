@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { logger } from '../logger';
 import { ChronologyEngine, EventMapper } from '../services/chronology';
 import { chronologyService } from '../services/chronologyV2';
 import { supabaseAdmin } from '../services/supabaseClient';

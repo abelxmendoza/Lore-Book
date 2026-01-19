@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 
 import type { MemoryEntry } from '../../types';
+
 import { biasPatterns } from './biasPatterns';
 import type { BiasSignal } from './types';
 

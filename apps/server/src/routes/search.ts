@@ -5,10 +5,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../logger';
-import { UniversalSearchService } from '../services/timeline/universalSearchService';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { TimelineEngine } from '../services/timeline';
+import { UniversalSearchService } from '../services/timeline/universalSearchService';
 
 const router = Router();
 

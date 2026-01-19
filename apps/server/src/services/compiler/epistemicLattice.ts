@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+
 import type { EntryIR, KnowledgeType } from './types';
 
 /**

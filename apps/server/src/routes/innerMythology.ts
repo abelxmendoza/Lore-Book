@@ -1,4 +1,5 @@
 import { Router } from 'express';
+
 import { logger } from '../logger';
 import { InnerMythologyEngine } from '../services/innerMythology';
 import { MythStorage } from '../services/innerMythology/mythStorage';

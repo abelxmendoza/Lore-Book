@@ -1,9 +1,10 @@
 import { logger } from '../../../../logger';
 import { supabaseAdmin } from '../../../supabaseClient';
-import { LinearRegression } from './simpleModel';
+import type { RLStateVector } from '../../types';
 import { AlignmentDataset } from '../datasets/alignmentDataset';
 import type { AlignmentImpactPrediction, ModelMetadata } from '../types';
-import type { RLStateVector } from '../../types';
+
+import { LinearRegression } from './simpleModel';
 
 /**
  * Alignment Regressor Model

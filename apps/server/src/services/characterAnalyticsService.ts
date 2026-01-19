@@ -4,8 +4,9 @@
 // =====================================================
 
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import { entityConfidenceService } from './entityConfidenceService';
+import { supabaseAdmin } from './supabaseClient';
 
 export interface CharacterAnalytics {
   // Relationship metrics
@@ -684,7 +685,7 @@ export class CharacterAnalyticsService {
 
     // BRRE: Apply belief weights to items
     const allItems = await this.applyBeliefWeights(userId, [...canonConversations, ...canonJournalMentions]);
-    let totalMentions = allItems.length;
+    const totalMentions = allItems.length;
 
     // 1. Positive sentiment analysis (weighted)
     const positiveWords = {

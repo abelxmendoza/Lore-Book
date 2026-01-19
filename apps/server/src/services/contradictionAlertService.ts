@@ -5,8 +5,9 @@
 // =====================================================
 
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import { beliefRealityReconciliationService } from './beliefRealityReconciliationService';
+import { supabaseAdmin } from './supabaseClient';
 
 export type ContradictionAlertAction = 'REVIEW' | 'ABANDON' | 'DISMISS' | 'NOT_NOW';
 

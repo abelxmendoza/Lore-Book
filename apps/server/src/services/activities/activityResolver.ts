@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import { ActivityExtractor } from './activityExtractor';
 import { FuzzyActivityMatcher } from './fuzzyActivityMatcher';
 import { ActivityStorage } from './storageService';

@@ -1,6 +1,6 @@
-import { SelfExtractor } from './extractSelves';
 import { SelfTypeClassifier } from './classifySelfType';
 import { SelfClusterer } from './clusterSelves';
+import { SelfExtractor } from './extractSelves';
 import { TrajectoryAnalyzer } from './trajectoryAnalysis';
 import type { AlternateSelfModel } from './types';
 

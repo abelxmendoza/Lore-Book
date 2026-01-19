@@ -3,9 +3,9 @@
  * Rebuilds the unified timeline from all data sources
  */
 
-import { supabaseAdmin } from '../supabaseClient';
 import { logger } from '../../logger';
-import { TimelineEngine } from './timelineEngine';
+import { supabaseAdmin } from '../supabaseClient';
+
 import {
   normalizeJournalEntry,
   normalizeFightEvent,
@@ -19,16 +19,17 @@ import {
   normalizeHabitEvent,
   type NormalizedTimelineEvent
 } from './normalizers';
-import type { JournalEntry } from './normalizers/journalNormalizer';
-import type { FightRecord } from './normalizers/fightNormalizer';
-import type { JobRecord } from './normalizers/jobNormalizer';
-import type { ProjectEvent } from './normalizers/projectNormalizer';
-import type { IdentityChange } from './normalizers/identityNormalizer';
-import type { ParacosmEvent } from './normalizers/paracosmNormalizer';
 import type { ArcEvent } from './normalizers/arcNormalizer';
-import type { RelationshipEvent } from './normalizers/relationshipNormalizer';
 import type { EmotionEvent } from './normalizers/emotionNormalizer';
+import type { FightRecord } from './normalizers/fightNormalizer';
 import type { HabitEvent } from './normalizers/habitNormalizer';
+import type { IdentityChange } from './normalizers/identityNormalizer';
+import type { JobRecord } from './normalizers/jobNormalizer';
+import type { JournalEntry } from './normalizers/journalNormalizer';
+import type { ParacosmEvent } from './normalizers/paracosmNormalizer';
+import type { ProjectEvent } from './normalizers/projectNormalizer';
+import type { RelationshipEvent } from './normalizers/relationshipNormalizer';
+import { TimelineEngine } from './timelineEngine';
 
 export class TimelineSyncService {
   constructor(private timelineEngine: TimelineEngine) {}

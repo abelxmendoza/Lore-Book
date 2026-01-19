@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { DecisionRL } from '../services/personalStrategy/decisionRL';
-import { StateEncoder } from '../services/personalStrategy/stateEncoder';
-import { RewardEngine } from '../services/personalStrategy/rewardEngine';
-import { ActionSpace } from '../services/personalStrategy/actionSpace';
-import { PatternClassifierTrainer } from '../services/personalStrategy/supervised/trainers/trainPatternClassifier';
-import { OutcomePredictorTrainer } from '../services/personalStrategy/supervised/trainers/trainOutcomePredictor';
-import { AlignmentRegressorTrainer } from '../services/personalStrategy/supervised/trainers/trainAlignmentRegressor';
+
 import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { ActionSpace } from '../services/personalStrategy/actionSpace';
+import { DecisionRL } from '../services/personalStrategy/decisionRL';
+import { RewardEngine } from '../services/personalStrategy/rewardEngine';
+import { StateEncoder } from '../services/personalStrategy/stateEncoder';
+import { AlignmentRegressorTrainer } from '../services/personalStrategy/supervised/trainers/trainAlignmentRegressor';
+import { OutcomePredictorTrainer } from '../services/personalStrategy/supervised/trainers/trainOutcomePredictor';
+import { PatternClassifierTrainer } from '../services/personalStrategy/supervised/trainers/trainPatternClassifier';
 
 const router = Router();
 const decisionRL = new DecisionRL();

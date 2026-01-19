@@ -1,8 +1,8 @@
 import type { Response } from 'express';
 
+import { logger } from '../logger';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { memoryService } from '../services/memoryService';
-import { logger } from '../logger';
 
 export const getTimeline = async (req: AuthenticatedRequest, res: Response) => {
   try {

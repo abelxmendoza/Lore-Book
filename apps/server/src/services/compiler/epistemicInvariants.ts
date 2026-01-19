@@ -5,9 +5,10 @@
 // =====================================================
 
 import { logger } from '../../logger';
-import type { EntryIR, KnowledgeType } from './types';
+
 import { contractLayer, CONTRACTS } from './contractLayer';
 import { epistemicLatticeService } from './epistemicLattice';
+import type { EntryIR, KnowledgeType } from './types';
 
 export interface InvariantViolation {
   invariant: string;

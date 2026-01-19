@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { ArchetypeSignal, ArchetypeProfile, ArchetypeTransition, ArchetypeDistortion } from './types';
 
 /**

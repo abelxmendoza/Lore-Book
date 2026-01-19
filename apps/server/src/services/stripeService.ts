@@ -1,8 +1,11 @@
-import Stripe from 'stripe';
-import { config } from '../config';
 import { createClient } from '@supabase/supabase-js';
-import { supabaseAdmin } from './supabaseClient';
+import Stripe from 'stripe';
+
+import { config } from '../config';
 import { logger } from '../logger';
+
+import { supabaseAdmin } from './supabaseClient';
+
 
 const supabase = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
   auth: { persistSession: false }

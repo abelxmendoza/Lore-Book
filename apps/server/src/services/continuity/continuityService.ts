@@ -1,16 +1,17 @@
 import { logger } from '../../logger';
 import type { ContinuityEvent } from '../../types';
+import { insightStorageService } from '../insightStorageService';
 import { supabaseAdmin } from '../supabaseClient';
-import { contradictionDetectionService } from './contradictionDetection';
+
 import { abandonedGoalDetectionService } from './abandonedGoalDetection';
 import { arcShiftDetectionService } from './arcShiftDetection';
-import { identityDriftDetectionService } from './identityDriftDetection';
-import { emotionalArcDetectionService } from './emotionalArcDetection';
-import { thematicDriftDetectionService } from './thematicDriftDetection';
-import { insightStorageService } from '../insightStorageService';
 import { ContinuityAggregator } from './continuityAggregator';
 import { ContinuityProfileStorage } from './continuityProfileStorage';
 import type { ContinuityProfile } from './continuityTypes';
+import { contradictionDetectionService } from './contradictionDetection';
+import { emotionalArcDetectionService } from './emotionalArcDetection';
+import { identityDriftDetectionService } from './identityDriftDetection';
+import { thematicDriftDetectionService } from './thematicDriftDetection';
 
 /**
  * Continuity Service - Main orchestrator

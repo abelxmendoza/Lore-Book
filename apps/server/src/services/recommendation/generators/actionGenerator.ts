@@ -1,9 +1,9 @@
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../../logger';
+import { shadowEngineModule } from '../../analytics';
 import { supabaseAdmin } from '../../supabaseClient';
 import type { Recommendation, RecommendationContext } from '../types';
-import { shadowEngineModule } from '../../analytics';
 
 /**
  * Generates action recommendations

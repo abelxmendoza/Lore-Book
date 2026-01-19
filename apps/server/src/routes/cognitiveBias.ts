@@ -1,10 +1,10 @@
 import { Router } from 'express';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { logger } from '../logger';
-import { memoryService } from '../services/memoryService';
 import { CognitiveBiasEngine } from '../services/cognitiveBias';
+import { memoryService } from '../services/memoryService';
 
 const router = Router();
 const engine = new CognitiveBiasEngine();

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+
 import { logger } from '../logger';
 import { beliefRealityReconciliationService } from '../services/beliefRealityReconciliationService';
 import type { BeliefResolutionStatus } from '../services/beliefRealityReconciliationService';

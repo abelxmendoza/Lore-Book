@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+
+import { config } from '../config';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { authMiddleware } from '../middleware/auth';
 import {
@@ -13,7 +15,6 @@ import {
   verifyWebhookSignature,
 } from '../services/stripeService';
 import { getCurrentUsage } from '../services/usageTracking';
-import { config } from '../config';
 
 const router = Router();
 

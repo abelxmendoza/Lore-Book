@@ -1,8 +1,8 @@
 import { Router } from 'express';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { logger } from '../logger';
 import { CreativeEngine } from '../services/creative/creativeEngine';
 import { CreativeStorage } from '../services/creative/creativeStorage';
 

@@ -1,15 +1,15 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { getTimeline } from '../controllers/timelineController';
+import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { emitDelta } from '../realtime/orchestratorEmitter';
+import { autoTaggingService } from '../services/autoTaggingService';
 import { memoryService } from '../services/memoryService';
 import { taskTimelineService } from '../services/taskTimelineService';
-import { timelinePageService } from '../services/timelinePageService';
-import { autoTaggingService } from '../services/autoTaggingService';
-import { emitDelta } from '../realtime/orchestratorEmitter';
-import { logger } from '../logger';
 import { TimelineEngine, TimelineSyncService, TimelinePresets } from '../services/timeline';
+import { timelinePageService } from '../services/timelinePageService';
 
 const router = Router();
 

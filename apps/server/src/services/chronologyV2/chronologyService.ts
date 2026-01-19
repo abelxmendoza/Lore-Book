@@ -1,6 +1,6 @@
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import type { MemoryEntry } from '../../types';
+import { supabaseAdmin } from '../supabaseClient';
 
 export type TimePrecision = 'exact' | 'day' | 'month' | 'year' | 'approximate';
 

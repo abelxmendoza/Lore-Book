@@ -4,8 +4,9 @@
 // =====================================================
 
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import { organizationService, type Organization, type OrganizationMember } from './organizationService';
+import { supabaseAdmin } from './supabaseClient';
 
 export interface GroupAnalytics {
   // User involvement metrics
@@ -514,7 +515,7 @@ export class GroupAnalyticsService {
     let valueScore = 40; // Base value
 
     const allItems = [...conversations, ...journalMentions];
-    let totalMentions = allItems.length;
+    const totalMentions = allItems.length;
 
     // 1. Positive sentiment analysis (weighted)
     const positiveWords = {

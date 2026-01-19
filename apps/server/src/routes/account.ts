@@ -3,10 +3,12 @@
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
+
 import { Router } from 'express';
+
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { supabaseAdmin } from '../services/supabaseClient';
 import { logSecurityEvent } from '../services/securityLog';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 export const accountRouter = Router();
 

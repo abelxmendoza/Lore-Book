@@ -4,13 +4,14 @@
  */
 
 import { logger } from '../../logger';
+
 import { BaseAnalyticsModule } from './base';
 import { identityPulseModule } from './identityPulse';
+import { insightEngineModule } from './insightEngine';
+import { memoryFabricModule } from './memoryFabric';
+import { predictionEngineModule } from './predictionEngine';
 import { relationshipAnalyticsModule } from './relationshipAnalytics';
 import { sagaEngineModule } from './sagaEngine';
-import { memoryFabricModule } from './memoryFabric';
-import { insightEngineModule } from './insightEngine';
-import { predictionEngineModule } from './predictionEngine';
 import type { AnalyticsPayload, MemoryData } from './types';
 
 interface TurningPoint {

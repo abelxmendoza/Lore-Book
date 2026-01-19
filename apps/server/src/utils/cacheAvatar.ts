@@ -1,6 +1,6 @@
-import { supabaseAdmin } from '../services/supabaseClient';
 import { config } from '../config';
 import { logger } from '../logger';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 /**
  * Cache a DiceBear avatar SVG in Supabase storage

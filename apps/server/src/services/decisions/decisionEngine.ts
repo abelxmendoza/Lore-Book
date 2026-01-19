@@ -1,13 +1,14 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import type { Decision, DecisionInsight, DecisionContext } from './types';
+
+import { ConsequencePredictor } from './consequencePredictor';
 import { DecisionExtractor } from './decisionExtractor';
 import { DecisionOutcomeMapper } from './decisionOutcomeMapper';
-import { DecisionPatternDetector } from './patternDetector';
-import { SimilarDecisionAnalyzer } from './similarityAnalyzer';
-import { RiskAnalyzer } from './riskAnalyzer';
-import { ConsequencePredictor } from './consequencePredictor';
 import { DecisionRecommender } from './decisionRecommender';
+import { DecisionPatternDetector } from './patternDetector';
+import { RiskAnalyzer } from './riskAnalyzer';
+import { SimilarDecisionAnalyzer } from './similarityAnalyzer';
+import type { Decision, DecisionInsight, DecisionContext } from './types';
 
 /**
  * Main Decision Support Engine

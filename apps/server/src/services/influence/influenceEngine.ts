@@ -1,13 +1,14 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import type { PersonInfluence, InfluenceEvent, InfluenceInsight, InfluenceContext } from './types';
-import { InfluenceExtractor } from './influenceExtractor';
-import { InteractionAnalyzer } from './interactionAnalyzer';
-import { EmotionalImpact } from './emotionalImpact';
+
 import { BehavioralImpact } from './behavioralImpact';
-import { RiskZones } from './riskZones';
+import { EmotionalImpact } from './emotionalImpact';
+import { InfluenceExtractor } from './influenceExtractor';
 import { InfluenceScorer } from './influenceScorer';
 import { InfluenceTimeline } from './influenceTimeline';
+import { InteractionAnalyzer } from './interactionAnalyzer';
+import { RiskZones } from './riskZones';
+import type { PersonInfluence, InfluenceEvent, InfluenceInsight, InfluenceContext } from './types';
 
 /**
  * Main Influence Engine

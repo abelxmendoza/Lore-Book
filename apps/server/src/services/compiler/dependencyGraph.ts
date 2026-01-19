@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { EntryIR } from './types';
 
 export class DependencyGraph {

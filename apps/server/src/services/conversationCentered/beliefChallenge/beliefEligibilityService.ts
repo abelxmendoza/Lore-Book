@@ -5,6 +5,7 @@
 // =====================================================
 
 import { logger } from '../../../logger';
+
 import type {
   BeliefChallengeEligibility,
   BeliefRiskLevel,

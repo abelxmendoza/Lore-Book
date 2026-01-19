@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { logger } from '../logger';
 import { RecommendationEngine } from '../services/recommendation/recommendationEngine';
 import { recommendationStorageService } from '../services/recommendation/storageService';
 import { supabaseAdmin } from '../services/supabaseClient';

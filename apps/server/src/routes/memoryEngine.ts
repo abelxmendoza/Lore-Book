@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { memoryExtractionWorker } from '../jobs/memoryExtractionWorker';
 import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { conversationService } from '../services/conversationService';
 import { memoryExtractionService } from '../services/memoryExtractionService';
 import { ruleBasedMemoryDetectionService } from '../services/ruleBasedMemoryDetection';
-import { memoryExtractionWorker } from '../jobs/memoryExtractionWorker';
 import { timelineAssignmentService } from '../services/timelineAssignmentService';
 
 const router = Router();

@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { contractLayer, type ConstrainedMemoryView } from './contractLayer';
 import type { EntryIR, KnowledgeType } from './types';
 

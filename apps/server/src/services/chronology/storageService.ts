@@ -2,6 +2,7 @@ import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { TemporalEdge, Gap, CausalChain, ChronologyResult } from './types';
 
 /**

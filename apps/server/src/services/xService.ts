@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { config } from '../config';
 import { logger } from '../logger';
 import type { MemoryEntry } from '../types';
+
 import { memoryService } from './memoryService';
 import { supabaseAdmin } from './supabaseClient';
 

@@ -1,13 +1,15 @@
-import { logger } from '../../logger';
 import { randomUUID } from 'crypto';
+
+import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
-import { IdentitySignalExtractor } from './identitySignals';
-import { IdentityDimensionBuilder } from './identityDimensions';
+
 import { IdentityConflictDetector } from './identityConflicts';
-import { IdentityStabilityAnalyzer } from './identityStability';
+import { IdentityDimensionBuilder } from './identityDimensions';
 import { IdentityProjectionEngine } from './identityProjection';
-import { IdentitySummary } from './identitySummary';
+import { IdentitySignalExtractor } from './identitySignals';
+import { IdentityStabilityAnalyzer } from './identityStability';
 import { IdentityStorage } from './identityStorage';
+import { IdentitySummary } from './identitySummary';
 import type { IdentitySignal, IdentityCoreProfile } from './identityTypes';
 
 /**

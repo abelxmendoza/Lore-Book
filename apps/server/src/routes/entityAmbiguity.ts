@@ -1,4 +1,5 @@
 import { Router } from 'express';
+
 import { logger } from '../logger';
 import { entityAmbiguityService } from '../services/entityAmbiguityService';
 import { entityResolutionService } from '../services/entityResolutionService';

@@ -1,9 +1,10 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import { ArchetypeSignalExtractor } from './signalExtractor';
-import { ProfileCalculator } from './profileCalculator';
-import { TransitionDetector } from './transitionDetector';
+
 import { DistortionDetector } from './distortionDetector';
+import { ProfileCalculator } from './profileCalculator';
+import { ArchetypeSignalExtractor } from './signalExtractor';
+import { TransitionDetector } from './transitionDetector';
 import type { ArchetypeOutput } from './types';
 
 /**

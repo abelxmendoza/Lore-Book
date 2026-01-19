@@ -1,6 +1,7 @@
 import { formatISO } from 'date-fns';
 
 import type { CanonicalAlignment, CanonicalRecord, ResolvedMemoryEntry } from '../types';
+
 import { correctionService } from './correctionService';
 import { memoryService } from './memoryService';
 

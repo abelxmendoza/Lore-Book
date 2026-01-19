@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
-import { perceptionService, type CreatePerceptionEntryInput, type UpdatePerceptionEntryInput } from '../services/perceptionService';
-import { perceptionChatService } from '../services/perceptionChatService';
-import { logger } from '../logger';
 import { z } from 'zod';
+
+import { logger } from '../logger';
+import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
+import { perceptionChatService } from '../services/perceptionChatService';
+import { perceptionService, type CreatePerceptionEntryInput, type UpdatePerceptionEntryInput } from '../services/perceptionService';
 
 const router = Router();
 

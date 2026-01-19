@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
+
 import { BehaviorExtractor } from './behaviorExtractor';
 import { BehaviorNormalizer } from './behaviorNormalizer';
 import { LoopDetector } from './loopDetector';

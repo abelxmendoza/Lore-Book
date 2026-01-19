@@ -9,6 +9,7 @@
 
 import { logger } from '../../logger';
 import { memoryService } from '../memoryService';
+
 import { buildAtomsFromTimeline } from './narrativeAtomBuilder';
 import type { BiographySpec, Domain } from './types';
 

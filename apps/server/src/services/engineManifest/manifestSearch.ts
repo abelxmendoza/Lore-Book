@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
+
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { EngineSearchResult } from './manifestTypes';
 
 /**

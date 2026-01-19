@@ -5,8 +5,8 @@
  * Re-syncs all engine blueprints and rebuilds embeddings
  */
 
-import { ManifestSync } from '../services/engineManifest/manifestSync';
 import { logger } from '../logger';
+import { ManifestSync } from '../services/engineManifest/manifestSync';
 
 async function main() {
   logger.info('Starting engine embeddings rebuild');

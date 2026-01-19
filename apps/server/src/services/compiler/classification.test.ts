@@ -4,6 +4,7 @@
 // =====================================================
 
 import { describe, it, expect } from 'vitest';
+
 import { irCompiler } from './irCompiler';
 import { classificationSamples } from './test-data/classification-samples';
 import type { KnowledgeType } from './types';

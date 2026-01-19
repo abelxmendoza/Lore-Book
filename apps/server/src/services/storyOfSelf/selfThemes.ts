@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 
 import type { MemoryEntry } from '../../types';
+
 import type { SelfTheme } from './types';
 
 export class SelfThemeExtractor {

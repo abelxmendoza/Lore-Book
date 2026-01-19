@@ -1,5 +1,7 @@
-import { logger } from '../../logger';
 import { parseISO, isAfter } from 'date-fns';
+
+import { logger } from '../../logger';
+
 import type { Setback, ResilienceInsight, ResilienceContext } from './types';
 
 /**

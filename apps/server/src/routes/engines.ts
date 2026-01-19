@@ -1,11 +1,11 @@
 import { Router } from 'express';
 
+import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { logger } from '../logger';
+import { ManifestSearch } from '../services/engineManifest/manifestSearch';
 import { ManifestService } from '../services/engineManifest/manifestService';
 import { ManifestSync } from '../services/engineManifest/manifestSync';
-import { ManifestSearch } from '../services/engineManifest/manifestSearch';
 
 const router = Router();
 const manifestService = new ManifestService();

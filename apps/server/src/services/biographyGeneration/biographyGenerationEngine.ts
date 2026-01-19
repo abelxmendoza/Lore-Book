@@ -7,12 +7,14 @@
  */
 
 import OpenAI from 'openai';
-import { logger } from '../../logger';
+
 import { config } from '../../config';
-import { supabaseAdmin } from '../supabaseClient';
+import { logger } from '../../logger';
 import { chapterService } from '../chapterService';
-import { buildAtomsFromTimeline } from './narrativeAtomBuilder';
+import { supabaseAdmin } from '../supabaseClient';
+
 import { filterSensitiveAtoms, filterBiographyText } from './contentFilter';
+import { buildAtomsFromTimeline } from './narrativeAtomBuilder';
 import type {
   NarrativeAtom,
   NarrativeGraph,

@@ -1,8 +1,8 @@
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../../logger';
-import type { Recommendation, RecommendationContext } from '../types';
 import { insightEngineModule, shadowEngineModule } from '../../analytics';
+import type { Recommendation, RecommendationContext } from '../types';
 
 /**
  * Generates pattern exploration recommendations

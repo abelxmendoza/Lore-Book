@@ -3,9 +3,10 @@ import OpenAI from 'openai';
 import { config } from '../config';
 import { logger } from '../logger';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
-import { memoryService } from './memoryService';
 import { extractTags, shouldPersistMessage } from '../utils/keywordDetector';
+
 import { correctionService } from './correctionService';
+import { memoryService } from './memoryService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

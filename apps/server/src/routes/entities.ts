@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
-import { asyncHandler } from '../middleware/errorHandler';
+
 import { logger } from '../logger';
+import { requireAuth } from '../middleware/auth';
 import type { AuthenticatedRequest } from '../middleware/auth';
-import { supabaseAdmin } from '../services/supabaseClient';
+import { asyncHandler } from '../middleware/errorHandler';
 import { embeddingService } from '../services/embeddingService';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
 

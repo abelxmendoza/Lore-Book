@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
-import { skillService } from '../services/skills/skillService';
-import { skillExtractionService } from '../services/skills/skillExtractionService';
-import { logger } from '../logger';
 import { z } from 'zod';
+
+import { logger } from '../logger';
+import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
+import { skillExtractionService } from '../services/skills/skillExtractionService';
+import { skillService } from '../services/skills/skillService';
 
 const router = Router();
 

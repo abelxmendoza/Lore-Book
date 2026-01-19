@@ -1,7 +1,7 @@
 import { logger } from '../../../../logger';
 import { supabaseAdmin } from '../../../supabaseClient';
-import type { ActionOutcome } from '../types';
 import type { RLStateVector } from '../../types';
+import type { ActionOutcome } from '../types';
 
 export interface ActionOutcomeExample {
   action_id: string;

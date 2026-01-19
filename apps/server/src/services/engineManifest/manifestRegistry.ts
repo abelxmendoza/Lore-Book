@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+
 import { logger } from '../../logger';
+
 import type { EngineManifestRecord } from './manifestTypes';
 
 /**

@@ -4,11 +4,12 @@
 // =====================================================
 
 import { logger } from '../logger';
-import { supabaseAdmin } from '../services/supabaseClient';
 import type { KnowledgeUnit } from '../services/knowledgeTypeEngineService';
-import type { SensemakingContract } from './sensemakingContract';
-import { memoryViewBuilder } from './memoryViewBuilder';
+import { supabaseAdmin } from '../services/supabaseClient';
+
 import { contractResolver } from './contractResolver';
+import { memoryViewBuilder } from './memoryViewBuilder';
+import type { SensemakingContract } from './sensemakingContract';
 
 /**
  * Contract-aware memory retrieval result

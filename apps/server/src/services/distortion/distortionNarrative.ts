@@ -1,7 +1,8 @@
-import { logger } from '../../logger';
 import { openai } from '../../lib/openai';
-import type { DistortionSignal } from './distortionTypes';
+import { logger } from '../../logger';
+
 import type { DistortionScoreResult } from './distortionScore';
+import type { DistortionSignal } from './distortionTypes';
 
 export interface DistortionNarrativeResult {
   summary: string;

@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../logger';
+
 import { supabaseAdmin } from './supabaseClient';
 
 export type OverrideScope = 'EVENT' | 'PATTERN' | 'ENTITY' | 'TIME_RANGE' | 'GLOBAL';

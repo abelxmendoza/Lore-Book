@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../../logger';
+
 import { updateBeliefConfidence, type ConfidenceSignal } from './beliefConfidenceUpdater';
 
 export type ChallengeResponseType = 'questioned' | 'reinforced' | 'contradicted' | 'neutral' | 'unclear';

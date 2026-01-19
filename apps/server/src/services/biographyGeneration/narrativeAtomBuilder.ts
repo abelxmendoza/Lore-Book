@@ -7,8 +7,9 @@
 import { logger } from '../../logger';
 import { memoryService } from '../memoryService';
 import { supabaseAdmin } from '../supabaseClient';
-import type { NarrativeAtom, NarrativeAtomType, Domain } from './types';
 import { timelineEngine } from '../timeline';
+
+import type { NarrativeAtom, NarrativeAtomType, Domain } from './types';
 
 /**
  * Build narrative atoms from timeline entries

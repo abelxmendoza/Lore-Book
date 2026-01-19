@@ -5,9 +5,10 @@
 // =====================================================
 
 import { logger } from '../logger';
-import { supabaseAdmin } from './supabaseClient';
+
 import { embeddingService } from './embeddingService';
 import type { KnowledgeUnit } from './knowledgeTypeEngineService';
+import { supabaseAdmin } from './supabaseClient';
 
 export type BeliefResolutionStatus = 
   | 'UNRESOLVED'          // still open, no evidence yet

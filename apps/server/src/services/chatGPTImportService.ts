@@ -1,13 +1,15 @@
 import OpenAI from 'openai';
+import { v4 as uuid } from 'uuid';
+
 import { config } from '../config';
 import { logger } from '../logger';
-import { truthVerificationService } from './truthVerificationService';
-import { factExtractionService } from './factExtractionService';
-import { ruleBasedFactExtractionService } from './ruleBasedFactExtraction';
 import { BooleanContradiction } from '../math/booleanContradiction';
-import { supabaseAdmin } from './supabaseClient';
-import { v4 as uuid } from 'uuid';
+
+import { factExtractionService } from './factExtractionService';
 import type { ExtractedFact } from './factExtractionService';
+import { ruleBasedFactExtractionService } from './ruleBasedFactExtraction';
+import { supabaseAdmin } from './supabaseClient';
+import { truthVerificationService } from './truthVerificationService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

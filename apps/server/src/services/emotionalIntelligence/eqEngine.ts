@@ -1,5 +1,12 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { EmotionExtractor } from './emotionExtractor';
+import { EQGrowthTracker } from './eqGrowthTracker';
+import { ReactionClassifier } from './reactionClassifier';
+import { RecoveryModel } from './recoveryModel';
+import { RegulationScorer } from './regulationScorer';
+import { TriggerDetector } from './triggerDetector';
 import type {
   EQOutput,
   EQContext,
@@ -7,12 +14,6 @@ import type {
   EmotionType,
   TriggerType,
 } from './types';
-import { EmotionExtractor } from './emotionExtractor';
-import { TriggerDetector } from './triggerDetector';
-import { ReactionClassifier } from './reactionClassifier';
-import { RegulationScorer } from './regulationScorer';
-import { RecoveryModel } from './recoveryModel';
-import { EQGrowthTracker } from './eqGrowthTracker';
 
 /**
  * Main Emotional Intelligence Engine

@@ -4,9 +4,10 @@
  */
 
 import cron from 'node-cron';
+
 import { logger } from '../logger';
-import { supabaseAdmin } from '../services/supabaseClient';
 import { goalValueAlignmentService } from '../services/goalValueAlignmentService';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 class ValueEvolutionJob {
   /**

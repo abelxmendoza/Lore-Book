@@ -4,10 +4,11 @@
 // Example: "Sam from Strativ Group recruits for Mach Industries"
 // =====================================================
 
+import OpenAI from 'openai';
+
+import { config } from '../../config';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import { config } from '../../config';
-import OpenAI from 'openai';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

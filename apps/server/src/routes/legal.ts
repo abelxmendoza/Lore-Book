@@ -1,6 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import path from 'path';
+
 import { Router } from 'express';
 
 export const legalRouter = Router();

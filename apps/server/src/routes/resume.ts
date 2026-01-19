@@ -2,10 +2,10 @@ import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../logger';
-import { resumeParsingService } from '../services/profileClaims/resumeParsingService';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { profileClaimsService } from '../services/profileClaims/profileClaimsService';
+import { resumeParsingService } from '../services/profileClaims/resumeParsingService';
 
 const router = Router();
 

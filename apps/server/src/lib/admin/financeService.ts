@@ -3,8 +3,8 @@
  * Handles finance-related queries for admin dashboard
  */
 
-import { supabaseAdmin } from '../../services/supabaseClient';
 import { logger } from '../../logger';
+import { supabaseAdmin } from '../../services/supabaseClient';
 
 export interface FinanceMetrics {
   mrr: number; // Monthly Recurring Revenue in dollars

@@ -5,8 +5,9 @@
 // =====================================================
 
 import { logger } from '../logger';
-import { emotionExtractor } from './emotionalIntelligence/emotionExtractor';
+
 import { embeddingService } from './embeddingService';
+import { emotionExtractor } from './emotionalIntelligence/emotionExtractor';
 
 export type IntensityLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 

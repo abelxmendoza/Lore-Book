@@ -1,7 +1,8 @@
 import { Router } from 'express';
+
 import { logger } from '../logger';
-import { ChatEngine } from '../services/chat/chatEngine';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { ChatEngine } from '../services/chat/chatEngine';
 
 const router = Router();
 const engine = new ChatEngine();

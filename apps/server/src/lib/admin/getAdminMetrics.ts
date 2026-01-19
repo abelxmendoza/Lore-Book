@@ -3,8 +3,8 @@
  * Fetches metrics for admin dashboard
  */
 
-import { supabaseAdmin } from '../../services/supabaseClient';
 import { logger } from '../../logger';
+import { supabaseAdmin } from '../../services/supabaseClient';
 
 export interface AdminMetrics {
   totalUsers: number;

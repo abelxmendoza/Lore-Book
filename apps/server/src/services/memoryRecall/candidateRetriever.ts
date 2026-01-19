@@ -5,10 +5,12 @@
  */
 
 import { logger } from '../../logger';
-import { memoryService } from '../memoryService';
-import { embeddingService } from '../embeddingService';
-import type { RecallIntent, RecallEntry, RecallEvent } from './types';
 import type { MemoryEntry } from '../../types';
+import { embeddingService } from '../embeddingService';
+import { memoryService } from '../memoryService';
+
+import type { RecallIntent, RecallEntry, RecallEvent } from './types';
+
 
 export class CandidateRetriever {
   /**

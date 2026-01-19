@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import type { BehaviorLoop, NormalizedBehavior } from './types';
 
 /**

@@ -8,9 +8,10 @@ import type {
   MemoryEntry,
   PeoplePlaceEntity
 } from '../types';
+
 import { chapterService } from './chapterService';
-import { supabaseAdmin } from './supabaseClient';
 import { locationAnalyticsService } from './locationAnalyticsService';
+import { supabaseAdmin } from './supabaseClient';
 
 const stringFields = ['location', 'place', 'city', 'venue', 'location_tag'];
 

@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { spawnPython } from '../../utils/pythonBridge';
+
 import type { Event, PythonAnalyticsResult } from './types';
 
 /**

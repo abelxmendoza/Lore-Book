@@ -4,8 +4,9 @@
  * Formats Memory Recall Engine results for chat display
  */
 
-import type { RecallResult, PersonaMode } from './types';
 import type { ChatResponse } from '../../types/conversationalOrchestration';
+
+import type { RecallResult, PersonaMode } from './types';
 
 /**
  * Format recall result for chat response

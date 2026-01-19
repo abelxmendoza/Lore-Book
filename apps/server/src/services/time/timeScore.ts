@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import type { TimeBlock, ProcrastinationSignal, EnergyCurvePoint, TimeScore } from './types';
 
 /**

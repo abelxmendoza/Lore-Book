@@ -1,9 +1,10 @@
+import { spawn } from 'node:child_process';
+
 import cron from 'node-cron';
 
 import { logger } from '../logger';
 import { insightStorageService } from '../services/insightStorageService';
 import { supabaseAdmin } from '../services/supabaseClient';
-import { spawn } from 'node:child_process';
 
 /**
  * Daily Insight Generation Job

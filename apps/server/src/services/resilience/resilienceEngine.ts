@@ -1,18 +1,19 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
-import type { Setback, ResilienceInsight, ResilienceContext, ResilienceOutput, SetbackSignal, RecoverySignal } from './types';
-import { SetbackDetector } from './setbackDetector';
-import { RecoveryTracker } from './recoveryTracker';
-import { EmotionalRecoveryAnalyzer } from './emotionalRecoveryAnalyzer';
+
 import { BehavioralRecoveryAnalyzer } from './behavioralRecoveryAnalyzer';
-import { GrowthAfterAdversity } from './growthAfterAdversity';
-import { ResilienceScorer } from './resilienceScorer';
-import { SetbackExtractor } from './setbackExtractor';
-import { RecoveryCalculator } from './recoveryCalculator';
 import { CopingDetector } from './copingDetector';
-import { ResilienceTimeline } from './resilienceTimeline';
 import { DurabilityScorer } from './durabilityScorer';
+import { EmotionalRecoveryAnalyzer } from './emotionalRecoveryAnalyzer';
+import { GrowthAfterAdversity } from './growthAfterAdversity';
+import { RecoveryCalculator } from './recoveryCalculator';
+import { RecoveryTracker } from './recoveryTracker';
+import { ResilienceScorer } from './resilienceScorer';
+import { ResilienceTimeline } from './resilienceTimeline';
+import { SetbackDetector } from './setbackDetector';
+import { SetbackExtractor } from './setbackExtractor';
 import { StressPatternDetector } from './stressPatternDetector';
+import type { Setback, ResilienceInsight, ResilienceContext, ResilienceOutput, SetbackSignal, RecoverySignal } from './types';
 
 /**
  * Main Resilience Engine

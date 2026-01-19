@@ -1,7 +1,8 @@
 import { Router } from 'express';
 
-import { requireAuth, type AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../logger';
+import { requireAuth, type AuthenticatedRequest } from '../../middleware/auth';
+
 import { instagramIntegrationService } from './instagram.service';
 
 const router = Router();

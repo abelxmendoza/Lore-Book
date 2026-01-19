@@ -1,19 +1,20 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { FinancialScoreService } from './financialScore';
+import { FinancialStressModel } from './financialStress';
+import { FinancialForecaster } from './forecasting';
+import { IncomeDetector } from './incomeDetector';
+import { InvestmentBehavior } from './investmentBehavior';
+import { MoneyMindsetDetector } from './patternDetector';
+import { SpendingClassifier } from './spendingClassifier';
+import { TransactionExtractor } from './transactionExtractor';
 import type {
   FinancialOutput,
   FinancialContext,
   FinancialInsight,
   TransactionCategory,
 } from './types';
-import { TransactionExtractor } from './transactionExtractor';
-import { SpendingClassifier } from './spendingClassifier';
-import { IncomeDetector } from './incomeDetector';
-import { InvestmentBehavior } from './investmentBehavior';
-import { FinancialStressModel } from './financialStress';
-import { MoneyMindsetDetector } from './patternDetector';
-import { FinancialForecaster } from './forecasting';
-import { FinancialScoreService } from './financialScore';
 
 /**
  * Main Financial Intelligence Engine

@@ -1,6 +1,8 @@
-import { supabaseAdmin } from './supabaseClient';
-import { logger } from '../logger';
 import { v4 as uuid } from 'uuid';
+
+import { logger } from '../logger';
+
+import { supabaseAdmin } from './supabaseClient';
 
 // HARD RULE: These types enforce perception vs memory separation
 export type PerceptionSource = 'overheard' | 'told_by' | 'rumor' | 'social_media' | 'intuition' | 'assumption';

@@ -5,13 +5,9 @@
  */
 
 import OpenAI from 'openai';
-import { supabaseAdmin } from './supabaseClient';
-import { logger } from '../logger';
+
 import { config } from '../config';
-import { embeddingService } from './embeddingService';
-import { continuityService } from './continuityService';
-import { perspectiveService } from './perspectiveService';
-import { memoryReviewQueueService } from './memoryReviewQueueService';
+import { logger } from '../logger';
 import type {
   Entity,
   Claim,
@@ -24,6 +20,12 @@ import type {
   UpdateSuggestion,
   IngestionResult,
 } from '../types/omegaMemory';
+
+import { continuityService } from './continuityService';
+import { embeddingService } from './embeddingService';
+import { memoryReviewQueueService } from './memoryReviewQueueService';
+import { perspectiveService } from './perspectiveService';
+import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

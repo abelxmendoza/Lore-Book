@@ -1,5 +1,5 @@
-import type { NextFunction, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
+import type { NextFunction, Request, Response } from 'express';
 
 import { config } from '../config';
 import { logSecurityEvent, redactSensitive } from '../services/securityLog';

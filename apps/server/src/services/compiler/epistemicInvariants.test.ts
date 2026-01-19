@@ -4,8 +4,9 @@
 // =====================================================
 
 import { describe, it, expect } from 'vitest';
-import { epistemicInvariants } from './epistemicInvariants';
+
 import { CONTRACTS } from './contractLayer';
+import { epistemicInvariants } from './epistemicInvariants';
 import type { EntryIR } from './types';
 
 describe('Epistemic Invariants', () => {

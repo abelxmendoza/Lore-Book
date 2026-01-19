@@ -1,11 +1,12 @@
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import { RLEngine, type RLContext } from '../reinforcementLearning/rlEngine';
+import { supabaseAdmin } from '../supabaseClient';
+
+import { ActionSpace } from './actionSpace';
 import { RewardEngine } from './rewardEngine';
 import { StateEncoder } from './stateEncoder';
-import { ActionSpace } from './actionSpace';
-import { OutcomePredictorService } from './supervised/inference/predictOutcome';
 import { AlignmentImpactPredictor } from './supervised/inference/predictAlignmentImpact';
+import { OutcomePredictorService } from './supervised/inference/predictOutcome';
 import type { Action, ActionType, ActionRecommendation, RLStateVector } from './types';
 
 export class DecisionRL {

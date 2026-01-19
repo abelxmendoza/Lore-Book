@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { ReflectionExtractor } from './reflectionExtractor';
 import type { Reflection, ReflectionOutput, ReflectionInsight } from './types';
 

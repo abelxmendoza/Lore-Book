@@ -1,7 +1,8 @@
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../supabaseClient';
 import { embeddingService } from '../embeddingService';
+import { supabaseAdmin } from '../supabaseClient';
 import { WillStorage } from '../will';
+
 import type { ContinuityProfile, PersistentValue, RecurringTheme, IdentityVersion, DriftFlag } from './continuityTypes';
 
 /**

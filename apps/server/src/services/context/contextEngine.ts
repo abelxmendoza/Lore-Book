@@ -1,6 +1,7 @@
 import { logger } from '../../logger';
-import type { FullContext, ContextQuery, ContextScope } from './types';
+
 import { ContextAggregator } from './contextAggregator';
+import type { FullContext, ContextQuery, ContextScope } from './types';
 
 /**
  * Main Context Engine

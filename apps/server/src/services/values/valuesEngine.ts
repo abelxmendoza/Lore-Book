@@ -1,18 +1,19 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
+import { AlignmentDetector } from './alignmentDetector';
+import { BeliefEvolution } from './beliefEvolution';
+import { BeliefExtractor } from './beliefExtractor';
 import type {
   ValuesOutput,
   ValuesContext,
   ValueInsight,
   ValueCategory,
 } from './types';
-import { ValueExtractor } from './valueExtractor';
-import { BeliefExtractor } from './beliefExtractor';
 import { ValueClassifier } from './valueClassifier';
 import { ValueConflictDetector } from './valueConflictDetector';
-import { AlignmentDetector } from './alignmentDetector';
 import { ValueEvolution } from './valueEvolution';
-import { BeliefEvolution } from './beliefEvolution';
+import { ValueExtractor } from './valueExtractor';
 
 /**
  * Main Values & Beliefs Engine

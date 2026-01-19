@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { chapterService } from '../services/chapterService';
-import { chapterInsightsService } from '../services/chapterInsightsService';
-import { openai } from '../lib/openai.js';
+
 import { config } from '../config';
+import { openai } from '../lib/openai.js';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { chapterInsightsService } from '../services/chapterInsightsService';
+import { chapterService } from '../services/chapterService';
 
 const router = Router();
 

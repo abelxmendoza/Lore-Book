@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+
 import type { ResolvedActivity, ExtractedActivity, ActivityMention } from './types';
 
 /**

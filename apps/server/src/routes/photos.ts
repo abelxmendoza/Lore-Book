@@ -2,8 +2,8 @@ import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { photoService } from '../services/photoService';
 import { supabaseAdmin } from '../services/supabaseClient';
 

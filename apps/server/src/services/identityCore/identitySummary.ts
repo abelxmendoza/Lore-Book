@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+
 import type { IdentityDimension, IdentityConflict, IdentityStability, IdentityProjection } from './identityTypes';
 
 /**
