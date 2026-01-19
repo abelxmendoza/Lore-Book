@@ -1,5 +1,4 @@
 import { logger } from '../logger';
-// Import engines
 import { ActivityResolver } from '../services/activities/activityResolver';
 import { ArchetypeEngine } from '../services/archetype/archetypeEngine';
 import { BehaviorResolver } from '../services/behavior/behaviorResolver';
