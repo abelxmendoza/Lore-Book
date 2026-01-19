@@ -21,7 +21,7 @@ const defaultEnvPath = path.resolve(rootDir, '.env');
 // Try to load environment-specific file first, then fallback to .env
 let result = dotenv.config({ path: envPath });
 if (result.error) {
-  console.log(`⚠️  Failed to load ${envFileName}, trying .env`);
+  console.warn(`⚠️  Failed to load ${envFileName}, trying .env`);
   result = dotenv.config({ path: defaultEnvPath });
   if (result.error) {
     console.error(`❌ Failed to load .env from ${defaultEnvPath}:`, result.error.message);
@@ -29,13 +29,13 @@ if (result.error) {
     const fallbackPath = path.resolve(process.cwd(), '.env');
     const fallbackResult = dotenv.config({ path: fallbackPath });
     if (!fallbackResult.error) {
-      console.log(`✅ Loaded .env from fallback: ${fallbackPath}`);
+      console.warn(`✅ Loaded .env from fallback: ${fallbackPath}`);
     }
   } else {
-    console.log(`✅ Loaded .env from: ${defaultEnvPath}`);
+    console.warn(`✅ Loaded .env from: ${defaultEnvPath}`);
   }
 } else {
-  console.log(`✅ Loaded ${envFileName} from: ${envPath}`);
+  console.warn(`✅ Loaded ${envFileName} from: ${envPath}`);
 }
 
 type EnvConfig = {

@@ -283,11 +283,12 @@ export const useLoreKeeper = () => {
   }, [entries]);
 
   const timelineCount = useMemo(() => {
+    if (!timeline || !timeline.chapters || !timeline.unassigned) return 0;
     const chapterCount = timeline.chapters.reduce(
-      (acc, chapter) => acc + chapter.months.reduce((chapterAcc, group) => chapterAcc + group.entries.length, 0),
+      (acc, chapter) => acc + (chapter.months?.reduce((chapterAcc, group) => chapterAcc + (group.entries?.length || 0), 0) || 0),
       0
     );
-    const unassignedCount = timeline.unassigned.reduce((acc, group) => acc + group.entries.length, 0);
+    const unassignedCount = timeline.unassigned.reduce((acc, group) => acc + (group.entries?.length || 0), 0);
     return chapterCount + unassignedCount;
   }, [timeline]);
 

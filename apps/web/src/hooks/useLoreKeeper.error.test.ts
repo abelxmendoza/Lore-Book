@@ -8,17 +8,47 @@ vi.mock('../lib/supabase', () => ({
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: null } })
     }
-  }
+  },
+  isSupabaseConfigured: vi.fn().mockReturnValue(true),
+  getConfigDebug: vi.fn().mockReturnValue({})
 }));
 
 describe('useLoreKeeper Error Handling', () => {
+  const mockFetch = vi.fn();
+  
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn() as any;
+    global.fetch = mockFetch;
+    // Default mock - return empty data
+    mockFetch.mockImplementation((url: string | Request) => {
+      const urlString = typeof url === 'string' ? url : url.url;
+      if (urlString.includes('/api/entries') && !urlString.includes('?')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ entries: [] })
+        });
+      }
+      if (urlString.includes('/api/timeline') && !urlString.includes('tags')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
+        });
+      }
+      if (urlString.includes('/api/timeline/tags')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ tags: [] })
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({})
+      });
+    });
   });
 
   it('should handle network errors', async () => {
-    (global.fetch as any).mockRejectedValue(new Error('Network error'));
+    mockFetch.mockRejectedValue(new Error('Network error'));
 
     const { result } = renderHook(() => useLoreKeeper());
 
@@ -26,13 +56,25 @@ describe('useLoreKeeper Error Handling', () => {
       expect(result.current).toBeDefined();
       expect(result.current.entries).toBeDefined();
     }, { timeout: 2000 });
+
+    // Should default to empty arrays on error
+    expect(result.current.entries).toEqual([]);
   });
 
   it('should handle 500 server errors', async () => {
-    (global.fetch as any).mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: () => Promise.resolve({ error: 'Server error' })
+    mockFetch.mockImplementation((url: string | Request) => {
+      const urlString = typeof url === 'string' ? url : url.url;
+      if (urlString.includes('/api/entries') || urlString.includes('/api/timeline')) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: 'Server error' })
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({})
+      });
     });
 
     const { result } = renderHook(() => useLoreKeeper());
@@ -41,17 +83,30 @@ describe('useLoreKeeper Error Handling', () => {
       expect(result.current).toBeDefined();
     }, { timeout: 2000 });
 
-    try {
-      await result.current.refreshEntries();
-    } catch (error) {
-      expect(error).toBeDefined();
-    }
+    // Should handle error gracefully
+    await result.current.refreshEntries();
+    expect(result.current.entries).toEqual([]);
   });
 
   it('should handle empty responses gracefully', async () => {
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ entries: null })
+    mockFetch.mockImplementation((url: string | Request) => {
+      const urlString = typeof url === 'string' ? url : url.url;
+      if (urlString.includes('/api/entries') && !urlString.includes('?')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ entries: null })
+        });
+      }
+      if (urlString.includes('/api/timeline') && !urlString.includes('tags')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ timeline: null })
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({})
+      });
     });
 
     const { result } = renderHook(() => useLoreKeeper());
@@ -59,6 +114,9 @@ describe('useLoreKeeper Error Handling', () => {
     await waitFor(() => {
       expect(result.current).toBeDefined();
     }, { timeout: 2000 });
+
+    // Should handle null responses
+    expect(result.current.entries).toBeDefined();
   });
 });
 

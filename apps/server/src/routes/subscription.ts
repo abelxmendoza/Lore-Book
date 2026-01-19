@@ -1,9 +1,7 @@
-import { Router } from 'express';
-import type { Request, Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 
 import { config } from '../config';
-import type { AuthenticatedRequest } from '../middleware/auth';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, type AuthenticatedRequest } from '../middleware/auth';
 import {
   createCustomer,
   createSubscription,

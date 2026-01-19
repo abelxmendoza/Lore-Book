@@ -1,8 +1,7 @@
 import { Router } from 'express';
 
 import { logger } from '../logger';
-import { narrativeDiffEngineService } from '../services/narrativeDiffEngineService';
-import type { SensemakingContractType, DiffType, SubjectType } from '../services/narrativeDiffEngineService';
+import { narrativeDiffEngineService, type SensemakingContractType, type DiffType, type SubjectType } from '../services/narrativeDiffEngineService';
 
 const router = Router();
 

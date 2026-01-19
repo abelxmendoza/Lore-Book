@@ -6,8 +6,7 @@
 import { logger } from '../logger';
 import type { KnowledgeType , KnowledgeUnit } from '../services/knowledgeTypeEngineService';
 
-import type { SensemakingContract, ContradictionPolicy } from './sensemakingContract';
-import { getContract } from './sensemakingContract';
+import { getContract, type SensemakingContract, type ContradictionPolicy } from './sensemakingContract';
 
 /**
  * Contract resolution result

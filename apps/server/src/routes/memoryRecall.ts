@@ -6,8 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { logger } from '../logger';
-import { requireAuth } from '../middleware/auth';
-import type { AuthenticatedRequest } from '../middleware/auth';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { memoryRecallEngine } from '../services/memoryRecall/memoryRecallEngine';
 
 const router = Router();

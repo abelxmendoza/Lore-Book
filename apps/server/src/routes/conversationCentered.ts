@@ -14,7 +14,7 @@ import { confidenceTrackingService } from '../services/confidenceTrackingService
 import { entityRelationshipDetector } from '../services/conversationCentered/entityRelationshipDetector';
 import { entityScopeService } from '../services/conversationCentered/entityScopeService';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
-import { relationshipTreeBuilder } from '../services/conversationCentered/relationshipTreeBuilder';
+import { relationshipTreeBuilder, type RelationshipCategory } from '../services/conversationCentered/relationshipTreeBuilder';
 import { skillNetworkBuilder } from '../services/conversationCentered/skillNetworkBuilder';
 import { groupNetworkBuilder } from '../services/conversationCentered/groupNetworkBuilder';
 import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
@@ -1341,7 +1341,6 @@ router.get(
   })
 );
 
-import type { RelationshipCategory } from '../services/conversationCentered/relationshipTreeBuilder';
 import { metaControlService } from '../services/metaControlService';
 import { narrativeContinuityService } from '../services/narrativeContinuityService';
 import { selfAwarenessService } from '../services/selfAwarenessService';

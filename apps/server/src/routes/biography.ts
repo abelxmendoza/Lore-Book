@@ -3,8 +3,7 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { biographyGenerationEngine, biographyRecommendationEngine, BIOGRAPHY_VERSIONS } from '../services/biographyGeneration';
-import type { BiographySpec } from '../services/biographyGeneration';
+import { biographyGenerationEngine, biographyRecommendationEngine, BIOGRAPHY_VERSIONS, type BiographySpec } from '../services/biographyGeneration';
 import { dateAssignmentService } from '../services/dateAssignmentService';
 import { lorebookRecommendationEngine } from '../services/lorebook/lorebookRecommendationEngine';
 import { lorebookSearchParser } from '../services/lorebook/lorebookSearchParser';
