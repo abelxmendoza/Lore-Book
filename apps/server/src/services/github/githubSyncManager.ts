@@ -2,8 +2,7 @@ import { logger } from '../../logger';
 import { memoryService } from '../memoryService';
 import { supabaseAdmin } from '../supabaseClient';
 
-import type { ClassifiedEvent } from './githubClassifier';
-import { classifyEvents } from './githubClassifier';
+import { classifyEvents, type ClassifiedEvent } from './githubClassifier';
 import { githubClient, type RepoRef } from './githubClient';
 import { filterNoise, type IngestableEvent, persistEvents } from './githubIngestion';
 import { runPythonSummarizer, type MilestoneSummary } from './githubSummarizer';

@@ -31,7 +31,7 @@ export const fetchSaga = async () => {
       }))
     };
     return { saga };
-  } catch (error) {
+  } catch (_error) {
     // Return default saga on error
     return {
       saga: {

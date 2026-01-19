@@ -6,8 +6,7 @@
 
 import { logger } from '../logger';
 
-import { entityResolutionService } from './entityResolutionService';
-import type { EntityType } from './entityResolutionService';
+import { entityResolutionService, type EntityType } from './entityResolutionService';
 import { supabaseAdmin } from './supabaseClient';
 
 export type DominantContext = 

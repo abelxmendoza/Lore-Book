@@ -2,10 +2,8 @@ import { randomUUID } from 'crypto';
 
 import { DistortionClassifier } from './distortionClassifier';
 import { DistortionExtractor } from './distortionExtractor';
-import { DistortionNarrative } from './distortionNarrative';
-import type { DistortionNarrativeResult } from './distortionNarrative';
-import { DistortionScore } from './distortionScore';
-import type { DistortionScoreResult } from './distortionScore';
+import { DistortionNarrative, type DistortionNarrativeResult } from './distortionNarrative';
+import { DistortionScore, type DistortionScoreResult } from './distortionScore';
 import type { DistortionSignal, DistortionType } from './distortionTypes';
 
 export interface DistortionEngineResult {

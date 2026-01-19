@@ -75,8 +75,8 @@ describe('useLoreKeeper', () => {
       if (callCount > 3 && urlString.includes('/api/entries')) {
         return Promise.reject(new Error('Network error'));
       }
-      // Default successful response for initial load
-      if (urlString.includes('/api/entries') && !urlString.includes('?')) {
+      // Default successful response for initial load - return empty entries
+      if (urlString.includes('/api/entries')) {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ entries: [] })

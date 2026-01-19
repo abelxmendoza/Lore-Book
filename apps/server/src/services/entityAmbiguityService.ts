@@ -9,8 +9,7 @@
 import { logger } from '../logger';
 import type { UserIntent } from '../types/conversationalOrchestration';
 
-import { entityResolutionService } from './entityResolutionService';
-import type { EntityCandidate, ResolutionTier } from './entityResolutionService';
+import { entityResolutionService, type EntityCandidate, type ResolutionTier } from './entityResolutionService';
 
 // -----------------------------
 // TYPES

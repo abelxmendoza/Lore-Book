@@ -79,7 +79,8 @@ describe('EventDetailModal', () => {
       />
     );
 
-    const closeButton = screen.getByRole('button', { name: /close/i });
+    // Find close button by aria-label
+    const closeButton = screen.getByLabelText(/close/i);
     await user.click(closeButton);
 
     expect(mockOnClose).toHaveBeenCalled();
@@ -97,6 +98,7 @@ describe('EventDetailModal', () => {
     // Check for tab labels - tabs are "Chat", "Details", "Sources", "Questions"
     expect(screen.getByText(/chat/i)).toBeInTheDocument();
     expect(screen.getByText(/details/i)).toBeInTheDocument();
+    expect(screen.getByText(/sources/i)).toBeInTheDocument();
   });
 
   it('should handle event with no summary gracefully', () => {

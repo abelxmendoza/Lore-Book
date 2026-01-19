@@ -8,10 +8,10 @@ import express, { Router } from 'express';
 
 
 // Import all routers
-import { chaptersRouter } from './chapters';
-import { evolutionRouter } from './evolution';
-import { correctionsRouter } from './corrections';
 import { canonRouter } from './canon';
+import { chaptersRouter } from './chapters';
+import { correctionsRouter } from './corrections';
+import { evolutionRouter } from './evolution';
 import { memoryGraphRouter } from './memoryGraph';
 import { memoryLadderRouter } from './memoryLadder';
 import { hqiRouter } from './hqi';

@@ -4,6 +4,17 @@ import { supabaseAdmin } from '../../src/services/supabaseClient';
 
 // Mock dependencies
 vi.mock('../../src/services/supabaseClient');
+vi.mock('../../src/services/embeddingService', () => ({
+  embeddingService: {
+    embedText: vi.fn().mockResolvedValue(new Array(1536).fill(0.1))
+  }
+}));
+vi.mock('../../src/services/continuityService', () => ({
+  continuityService: {
+    emitEvent: vi.fn().mockResolvedValue(undefined),
+    recordEntityResolved: vi.fn().mockResolvedValue(undefined)
+  }
+}));
 vi.mock('../../src/logger', () => ({
   logger: {
     error: vi.fn(),

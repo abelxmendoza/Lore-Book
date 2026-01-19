@@ -2,9 +2,7 @@ import { logger } from '../../logger';
 
 import { InterventionStorage } from './interventionStorage';
 import { RecommenderBridge } from './recommenderBridge';
-import { identityPulseModule } from '../analytics';
-import { relationshipAnalyticsModule } from '../analytics';
-import { insightEngineModule } from '../analytics';
+import { identityPulseModule, relationshipAnalyticsModule, insightEngineModule } from '../analytics';
 import { continuityService } from '../continuity/continuityService';
 import { RelationshipDynamicsEngine } from '../relationshipDynamics';
 import { supabaseAdmin } from '../supabaseClient';

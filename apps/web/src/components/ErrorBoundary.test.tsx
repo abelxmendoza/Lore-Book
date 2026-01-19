@@ -94,22 +94,26 @@ describe('ErrorBoundary', () => {
     // Error should be cleared, but component will still throw
     // This is expected behavior - the button resets state
     // After click, the button may still be there or error may re-trigger
+    // Wait for button to either disappear (error cleared) or reappear (error re-triggered)
     await waitFor(() => {
       const buttonAfterClick = screen.queryByText(/Try Again/i);
-      // Button should still exist (either same instance or re-rendered)
-      expect(buttonAfterClick || tryAgainButton).toBeTruthy();
+      // Button should exist (either same instance or re-rendered after error re-triggers)
+      expect(buttonAfterClick).toBeInTheDocument();
     }, { timeout: 1000 });
   });
 
   it('shows Reload Page button', () => {
-    // Use Object.defineProperty instead of vi.spyOn for window.location.reload
+    // Mock window.location.reload by replacing it
     const reloadSpy = vi.fn();
     const originalReload = window.location.reload;
-    Object.defineProperty(window.location, 'reload', {
-      writable: true,
-      configurable: true,
-      value: reloadSpy
-    });
+    
+    // Delete and redefine
+    try {
+      delete (window.location as any).reload;
+    } catch (e) {
+      // Ignore if can't delete
+    }
+    window.location.reload = reloadSpy;
     
     render(
       <ErrorBoundary>
@@ -122,13 +126,10 @@ describe('ErrorBoundary', () => {
 
     expect(reloadSpy).toHaveBeenCalled();
     
-    // Restore original
-    Object.defineProperty(window.location, 'reload', {
-      writable: true,
-      configurable: true,
-      value: originalReload
-    });
-    reloadSpy.mockRestore();
+    // Restore original if it existed
+    if (originalReload) {
+      window.location.reload = originalReload;
+    }
   });
 
   it('uses custom fallback when provided', () => {

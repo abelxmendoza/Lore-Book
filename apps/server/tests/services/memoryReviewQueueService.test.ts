@@ -17,6 +17,11 @@ vi.mock('../../src/services/omegaMemoryService', () => ({
       id: 'claim-1',
       text: 'Test claim',
     }),
+    ingestText: vi.fn().mockResolvedValue({
+      entities: [],
+      claims: [],
+      relationships: [],
+    }),
   }
 }));
 vi.mock('../../src/services/perspectiveService', () => ({
@@ -285,9 +290,13 @@ describe('MemoryReviewQueueService', () => {
         })
       };
       
+      // Need to mock continuityService.emitEvent which also makes a DB call
+      const { continuityService } = await import('../../src/services/continuityService');
+      vi.mocked(continuityService.emitEvent).mockResolvedValue(undefined);
+
       vi.mocked(supabaseAdmin.from)
-        .mockReturnValueOnce(mockInsertChain as any)
-        .mockReturnValueOnce(mockUpdateChain as any);
+        .mockReturnValueOnce(mockInsertChain as any) // memory_decisions insert
+        .mockReturnValueOnce(mockUpdateChain as any); // memory_proposals update (from finalizeProposal)
 
       const result = await memoryReviewQueueService.rejectProposal(
         'user-123',
@@ -296,6 +305,7 @@ describe('MemoryReviewQueueService', () => {
       );
 
       expect(result.decision).toBe('REJECT');
+      expect(result.decided_by).toBe('USER');
     });
   });
 

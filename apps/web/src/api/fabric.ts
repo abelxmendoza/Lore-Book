@@ -44,7 +44,7 @@ export const fetchFabric = async () => {
         links: response.graph.edges
       }
     };
-  } catch (error) {
+  } catch (_error) {
     // Return empty fabric on error
     return {
       fabric: {

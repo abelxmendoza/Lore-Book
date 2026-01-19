@@ -42,7 +42,7 @@ export const fetchContinuity = async () => {
         })) || []
       }
     };
-  } catch {
+  } catch (_error) {
     // Return a default snapshot if endpoint doesn't exist yet
     return {
       continuity: {

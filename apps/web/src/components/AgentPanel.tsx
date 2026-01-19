@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
 import { Bot, RotateCw } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { fetchJson } from '../lib/api';
 import { AgentCard, type AgentSummary } from './AgentCard';

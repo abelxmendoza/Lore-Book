@@ -191,10 +191,26 @@ export const analytics = {
 };
 
 // Performance monitoring
+// Store reference to native mark function to avoid recursion
+const getNativeMark = () => {
+  if (typeof globalThis !== 'undefined' && globalThis.performance) {
+    const perf = globalThis.performance;
+    // Get the original mark function from Performance prototype
+    const nativeMark = Object.getOwnPropertyDescriptor(Performance.prototype, 'mark')?.value || perf.mark;
+    return nativeMark && typeof nativeMark === 'function' ? nativeMark.bind(perf) : null;
+  }
+  return null;
+};
+
 export const performance = {
   mark: (name: string) => {
-    if (typeof globalThis !== 'undefined' && globalThis.performance && globalThis.performance.mark) {
-      globalThis.performance.mark(name);
+    const nativeMark = getNativeMark();
+    if (nativeMark) {
+      try {
+        nativeMark(name);
+      } catch (e) {
+        // Silently fail if mark fails (e.g., in test environments)
+      }
     }
   },
 

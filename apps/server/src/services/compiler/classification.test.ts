@@ -56,10 +56,12 @@ describe('Classification Accuracy Tests', () => {
         
         const results = await Promise.all(
           samples.map(async (sample) => {
-            const ir = await irCompiler.compile(
+            const ir = await irCompiler.compileUtteranceToIR(
               testUserId,
               getNextUtteranceId(),
-              sample.text
+              sample.text,
+              'thread-1',
+              new Date().toISOString()
             );
             return {
               sample,
@@ -99,10 +101,12 @@ describe('Classification Accuracy Tests', () => {
       }> = [];
 
       for (const sample of classificationSamples) {
-        const ir = await irCompiler.compile(
+        const ir = await irCompiler.compileUtteranceToIR(
           testUserId,
           getNextUtteranceId(),
-          sample.text
+          sample.text,
+          'thread-1',
+          new Date().toISOString()
         );
 
         if (ir.knowledge_type !== sample.expectedType) {
@@ -162,7 +166,13 @@ describe('Classification Accuracy Tests', () => {
 
     it('should handle mixed types in single entry', async () => {
       const mixedText = 'I went to the store and I feel happy about it';
-      const ir = await irCompiler.compile(testUserId, getNextUtteranceId(), mixedText);
+      const ir = await irCompiler.compileUtteranceToIR(
+        testUserId,
+        getNextUtteranceId(),
+        mixedText,
+        'thread-1',
+        new Date().toISOString()
+      );
 
       // Should classify as EXPERIENCE (first pattern match)
       expect(ir.knowledge_type).toBe('EXPERIENCE');
@@ -170,7 +180,13 @@ describe('Classification Accuracy Tests', () => {
 
     it('should handle uncertain experiences', async () => {
       const uncertainText = "I'm pretty sure I went to the store yesterday";
-      const ir = await irCompiler.compile(testUserId, getNextUtteranceId(), uncertainText);
+      const ir = await irCompiler.compileUtteranceToIR(
+        testUserId,
+        getNextUtteranceId(),
+        uncertainText,
+        'thread-1',
+        new Date().toISOString()
+      );
 
       // Should still classify as EXPERIENCE (past tense action)
       expect(ir.knowledge_type).toBe('EXPERIENCE');
@@ -194,10 +210,12 @@ describe('Classification Accuracy Tests', () => {
 
       // Fill matrix
       for (const sample of classificationSamples) {
-        const ir = await irCompiler.compile(
+        const ir = await irCompiler.compileUtteranceToIR(
           testUserId,
           getNextUtteranceId(),
-          sample.text
+          sample.text,
+          'thread-1',
+          new Date().toISOString()
         );
         matrix[sample.expectedType][ir.knowledge_type]++;
       }
@@ -241,10 +259,12 @@ describe('Classification Accuracy Tests', () => {
       const misclassifications: Record<string, number> = {};
 
       for (const sample of classificationSamples) {
-        const ir = await irCompiler.compile(
+        const ir = await irCompiler.compileUtteranceToIR(
           testUserId,
           getNextUtteranceId(),
-          sample.text
+          sample.text,
+          'thread-1',
+          new Date().toISOString()
         );
 
         if (ir.knowledge_type !== sample.expectedType) {

@@ -140,6 +140,17 @@ export class CanonDetectionService {
 
     // Try heuristic classification
     const classified = this.classifyCanon(text);
+    
+    // If classification returned null or a string, convert to proper format
+    if (!classified || typeof classified === 'string') {
+      return {
+        status: classified === 'META' ? 'META' : 'CANON',
+        source: 'SYSTEM',
+        confidence: 0.5,
+        classified_at: new Date().toISOString(),
+      };
+    }
+    
     logger.debug(
       { status: classified.status, confidence: classified.confidence, textLength: text.length },
       'Classified canon status'

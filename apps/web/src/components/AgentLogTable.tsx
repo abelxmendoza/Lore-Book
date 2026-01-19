@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
 import { Filter } from 'lucide-react';
+import { useMemo, useState } from 'react';
 
 export type AgentLog = {
   id?: number;

@@ -19,6 +19,7 @@ import { affectionCalculator } from '../services/conversationCentered/affectionC
 import { breakupDetector } from '../services/conversationCentered/breakupDetector';
 import { characterTimelineBuilder } from '../services/conversationCentered/characterTimelineBuilder';
 import { correctionResolutionService } from '../services/conversationCentered/correctionResolutionService';
+import { groupNetworkBuilder } from '../services/conversationCentered/groupNetworkBuilder';
 import { conversationIngestionPipeline } from '../services/conversationCentered/ingestionPipeline';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 import { entityRelationshipDetector } from '../services/conversationCentered/entityRelationshipDetector';
@@ -27,6 +28,7 @@ import { eventAssemblyService } from '../services/conversationCentered/eventAsse
 import { eventCausalDetector } from '../services/conversationCentered/eventCausalDetector';
 import { eventImpactDetector } from '../services/conversationCentered/eventImpactDetector';
 import { groupNetworkBuilder } from '../services/conversationCentered/groupNetworkBuilder';
+import { conversationIngestionPipeline } from '../services/conversationCentered/ingestionPipeline';
 import { memoryTraceService } from '../services/conversationCentered/memoryTraceService';
 import { relationshipCycleDetector } from '../services/conversationCentered/relationshipCycleDetector';
 import { relationshipDriftDetector } from '../services/conversationCentered/relationshipDriftDetector';

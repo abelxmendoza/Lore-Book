@@ -1,7 +1,7 @@
-import { fetchJson } from '../lib/api';
-import { supabase } from '../lib/supabase';
 import { config } from '../config/env';
 import { getGlobalMockDataEnabled } from '../contexts/MockDataContext';
+import { fetchJson } from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 export type UserProfile = {
   id: string;
@@ -80,7 +80,7 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
       }
     );
     return response.profile;
-  } catch (error) {
+  } catch (_error) {
     // Fallback to user metadata if API fails (always available)
     return {
       id: user.id,
@@ -111,7 +111,7 @@ export const updateUserProfile = async (updates: {
       body: JSON.stringify(updates),
     });
     return response.profile;
-  } catch (error) {
+  } catch (_error) {
     // Fallback to Supabase user metadata update
     const { data, error: updateError } = await supabase.auth.updateUser({
       data: {
@@ -152,7 +152,7 @@ export const fetchPrivacySettings = async (): Promise<PrivacySettings> => {
       }
     );
     return response.settings;
-  } catch (error) {
+  } catch (_error) {
     // Return defaults if API fails
     return defaultSettings;
   }
@@ -210,7 +210,7 @@ export const fetchActivityLogs = async (limit: number = 50): Promise<ActivityLog
       }
     );
     return response.logs;
-  } catch (error) {
+  } catch (_error) {
     // Return mock data if API fails (when mock data is enabled)
     const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
     if (shouldUseMock) {
@@ -243,7 +243,7 @@ export const fetchStorageUsage = async (): Promise<StorageUsage> => {
       }
     );
     return response.usage;
-  } catch (error) {
+  } catch (_error) {
     // Return mock data if API fails (when mock data is enabled)
     const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
     if (shouldUseMock) {
@@ -286,7 +286,7 @@ export const fetchPaymentMethods = async (): Promise<PaymentMethod[]> => {
       }
     );
     return response.paymentMethods;
-  } catch (error) {
+  } catch (_error) {
     const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
     if (shouldUseMock) {
       if (config.isDevelopment) {
@@ -337,7 +337,7 @@ export const fetchBillingHistory = async (limit: number = 50): Promise<BillingIn
       }
     );
     return response.invoices;
-  } catch (error) {
+  } catch (_error) {
     const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
     if (shouldUseMock) {
       if (config.isDevelopment) {

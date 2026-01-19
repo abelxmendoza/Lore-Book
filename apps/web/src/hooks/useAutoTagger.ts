@@ -22,8 +22,9 @@ export const useAutoTagger = (initial: string[] = []) => {
         .filter((rule) => rule.pattern.test(text))
         .map((rule) => ({ tag: rule.tag, rationale: rule.rationale }));
 
+      const uniqueRationales = Array.from(new Map(rationales.map((item) => [item.tag, item])).values());
       setSuggestions(
-        Array.from(new Map(rationales.map((item) => [item.tag, item])).values()).map((item) => ({
+        uniqueRationales.map((item) => ({
           tag: item.tag,
           rationale: item.rationale
         }))

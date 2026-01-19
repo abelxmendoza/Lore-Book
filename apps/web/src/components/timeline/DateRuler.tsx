@@ -59,7 +59,7 @@ export const DateRuler = ({
       start.setDate(start.getDate() - dayOfWeek);
     }
     
-    const current = new Date(start);
+    let current = new Date(start);
     while (current <= endDate) {
       const daysDiff = (current.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
       const x = daysDiff * pixelsPerDay;

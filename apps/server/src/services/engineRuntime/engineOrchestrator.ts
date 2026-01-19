@@ -1,6 +1,5 @@
 import { logger } from '../../logger';
-import { sensemakingOrchestrator , engineHealthMonitor } from '../engineGovernance';
-import type { OrchestrationContext } from '../engineGovernance';
+import { sensemakingOrchestrator, engineHealthMonitor, type OrchestrationContext } from '../engineGovernance';
 
 import { buildEngineContext } from './contextBuilder';
 import { ENGINE_REGISTRY, type EngineFunction } from './engineRegistry';
