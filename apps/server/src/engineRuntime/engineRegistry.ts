@@ -1,6 +1,5 @@
 import { logger } from '../logger';
 
-
 // Import engines
 import { ActivityResolver } from '../services/activities/activityResolver';
 import { ArchetypeEngine } from '../services/archetype/archetypeEngine';
@@ -11,6 +10,7 @@ import { EmotionResolver } from '../services/emotion/emotionResolver';
 import { emotionalIntelligenceEngine } from '../services/emotionalIntelligence/emotionalEngine';
 import { EntityResolver } from '../services/entities/entityResolver';
 import { IdentityCoreEngine } from '../services/identityCore/identityCoreEngine';
+import { InnerMythologyEngine } from '../services/innerMythology/innerMythologyEngine';
 import { LocationResolver } from '../services/locations/locationResolver';
 import { ParacosmEngine } from '../services/paracosm/paracosmEngine';
 import { PersonalityEngine } from '../services/personality/personalityEngine';
@@ -21,7 +21,6 @@ import { SocialProjectionEngine } from '../services/socialProjection/projectionE
 import { TemporalEventResolver } from '../services/temporalEvents/eventResolver';
 import { TimeEngine } from '../services/time/timeEngine';
 import { ToxicityResolver } from '../services/toxicity';
-import { InnerMythologyEngine } from '../services/innerMythology/innerMythologyEngine';
 
 import type { EngineFunction, EngineContext } from './types';
 
