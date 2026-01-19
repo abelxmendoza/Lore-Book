@@ -55,15 +55,19 @@ describe('useLoreKeeper', () => {
   it('should initialize successfully', async () => {
     const { result } = renderHook(() => useLoreKeeper());
     
-    expect(result.current).toBeDefined();
-    expect(result.current.entries).toBeDefined();
-    expect(result.current.timeline).toBeDefined();
-    expect(Array.isArray(result.current.entries)).toBe(true);
+    await waitFor(() => {
+      expect(result.current).toBeDefined();
+      expect(result.current.entries).toBeDefined();
+      expect(result.current.timeline).toBeDefined();
+      expect(Array.isArray(result.current.entries)).toBe(true);
+    }, { timeout: 2000 });
   });
 
   it('should handle errors gracefully', async () => {
-    // Mock fetchJson to throw an error
-    vi.mocked(fetchJson).mockRejectedValueOnce(new Error('Network error'));
+    // Mock fetch to throw an error - useLoreKeeper uses its own fetchJson that calls fetch
+    mockFetch.mockImplementationOnce(() => 
+      Promise.reject(new Error('Network error'))
+    );
 
     const { result } = renderHook(() => useLoreKeeper());
 
