@@ -4,6 +4,22 @@ import { BrowserRouter } from 'react-router-dom';
 import { GuestProvider } from '../../contexts/GuestContext';
 import { ChatFirstInterface } from '../../features/chat/components/ChatFirstInterface';
 
+// Mock fetchJson to prevent real network requests
+vi.mock('../../lib/api', () => ({
+  fetchJson: vi.fn().mockResolvedValue({})
+}));
+
+// Mock supabase
+vi.mock('../../lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } })
+    }
+  },
+  isSupabaseConfigured: vi.fn().mockReturnValue(true),
+  getConfigDebug: vi.fn().mockReturnValue({})
+}));
+
 describe('Chat Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();

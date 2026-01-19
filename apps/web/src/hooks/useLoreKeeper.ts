@@ -125,17 +125,28 @@ export const useLoreKeeper = () => {
   );
 
   const refreshEntries = useCallback(async () => {
-    const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries');
-    setEntries(data.entries);
+    try {
+      const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries');
+      setEntries(data.entries);
+    } catch (error) {
+      console.error('Failed to refresh entries:', error);
+      setEntries([]);
+    }
   }, []);
 
   const refreshTimeline = useCallback(async () => {
-    const [timelineData, tagData] = await Promise.all([
-      fetchJson<{ timeline: TimelineResponse }>('/api/timeline'),
-      fetchJson<{ tags: { name: string; count: number }[] }>('/api/timeline/tags')
-    ]);
-    setTimeline(timelineData.timeline);
-    setTags(tagData.tags);
+    try {
+      const [timelineData, tagData] = await Promise.all([
+        fetchJson<{ timeline: TimelineResponse }>('/api/timeline'),
+        fetchJson<{ tags: { name: string; count: number }[] }>('/api/timeline/tags')
+      ]);
+      setTimeline(timelineData.timeline);
+      setTags(tagData.tags);
+    } catch (error) {
+      console.error('Failed to refresh timeline:', error);
+      setTimeline({ chapters: [], unassigned: [] });
+      setTags([]);
+    }
   }, []);
 
   const refreshChapters = useCallback(async () => {

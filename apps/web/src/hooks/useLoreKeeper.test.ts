@@ -8,7 +8,14 @@ vi.mock('../lib/supabase', () => ({
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: null } })
     }
-  }
+  },
+  isSupabaseConfigured: vi.fn().mockReturnValue(true),
+  getConfigDebug: vi.fn().mockReturnValue({})
+}));
+
+// Mock fetchJson to prevent real network requests
+vi.mock('../lib/api', () => ({
+  fetchJson: vi.fn()
 }));
 
 // Mock fetch
@@ -55,21 +62,18 @@ describe('useLoreKeeper', () => {
   });
 
   it('should handle errors gracefully', async () => {
-    // Mock fetch to throw an error
-    mockFetch.mockImplementationOnce(() => 
-      Promise.reject(new Error('Network error'))
-    );
+    // Mock fetchJson to throw an error
+    vi.mocked(fetchJson).mockRejectedValueOnce(new Error('Network error'));
 
     const { result } = renderHook(() => useLoreKeeper());
 
     // Try to refresh entries which will trigger the error
-    try {
-      await result.current.refreshEntries();
-    } catch (error) {
-      // Error is expected, verify hook still works
-      expect(result.current).toBeDefined();
-      expect(result.current.entries).toBeDefined();
-    }
+    await result.current.refreshEntries();
+    
+    // Error should be handled, verify hook still works
+    expect(result.current).toBeDefined();
+    expect(result.current.entries).toBeDefined();
+    expect(result.current.entries).toEqual([]); // Should default to empty array on error
   });
 });
 

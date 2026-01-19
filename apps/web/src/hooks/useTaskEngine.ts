@@ -53,15 +53,25 @@ export const useTaskEngine = () => {
       const data = await fetchJson<{ tasks: TaskRecord[] }>('/api/tasks');
       setTasks(data.tasks ?? []);
       return data.tasks ?? [];
+    } catch (error) {
+      console.error('Failed to refresh tasks:', error);
+      setTasks([]);
+      return [];
     } finally {
       setLoading(false);
     }
   }, []);
 
   const refreshEvents = useCallback(async () => {
-    const data = await fetchJson<{ events: TaskEvent[] }>('/api/tasks/events');
-    setEvents(data.events ?? []);
-    return data.events ?? [];
+    try {
+      const data = await fetchJson<{ events: TaskEvent[] }>('/api/tasks/events');
+      setEvents(data.events ?? []);
+      return data.events ?? [];
+    } catch (error) {
+      console.error('Failed to refresh events:', error);
+      setEvents([]);
+      return [];
+    }
   }, []);
 
   useEffect(() => {

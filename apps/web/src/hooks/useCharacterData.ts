@@ -20,19 +20,29 @@ export const useCharacterData = (characterId: string) => {
 
   const refresh = useCallback(async () => {
     if (!characterId) return;
-    const [profileRes, relationshipRes, memoryRes, closenessRes, influenceRes] = await Promise.all([
-      fetchCharacterProfile(characterId),
-      fetchCharacterRelationships(characterId),
-      fetchCharacterMemories(characterId),
-      fetchCharacterCloseness(characterId),
-      fetchCharacterInfluence(characterId)
-    ]);
+    try {
+      const [profileRes, relationshipRes, memoryRes, closenessRes, influenceRes] = await Promise.all([
+        fetchCharacterProfile(characterId).catch(() => ({ profile: null })),
+        fetchCharacterRelationships(characterId).catch(() => ({ relationships: [] })),
+        fetchCharacterMemories(characterId).catch(() => ({ memories: [] })),
+        fetchCharacterCloseness(characterId).catch(() => ({ closeness: [] })),
+        fetchCharacterInfluence(characterId).catch(() => ({ influence: [] }))
+      ]);
 
-    setProfile(profileRes.profile);
-    setRelationships(relationshipRes.relationships);
-    setMemories(memoryRes.memories);
-    setCloseness(closenessRes.closeness);
-    setInfluence(influenceRes.influence);
+      setProfile(profileRes?.profile ?? null);
+      setRelationships(relationshipRes?.relationships ?? []);
+      setMemories(memoryRes?.memories ?? []);
+      setCloseness(closenessRes?.closeness ?? []);
+      setInfluence(influenceRes?.influence ?? []);
+    } catch (error) {
+      console.error('Failed to refresh character data:', error);
+      // Set defaults on error
+      setProfile(null);
+      setRelationships([]);
+      setMemories([]);
+      setCloseness([]);
+      setInfluence([]);
+    }
   }, [characterId]);
 
   useEffect(() => {
