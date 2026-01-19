@@ -66,7 +66,7 @@ export interface MergePreview {
   references_to_move: number;
   events_affected: number;
   claims_affected: number;
-  timeline_preview: any[];
+  timeline_preview: unknown[];
 }
 
 export const entityResolutionApi = {
@@ -184,7 +184,7 @@ export const entityResolutionApi = {
     updates: {
       name?: string;
       aliases?: string[];
-      metadata?: Record<string, any>;
+      metadata?: Record<string, unknown>;
     }
   ): Promise<void> {
     const result = await fetchJson<{ success: boolean; message?: string }>(

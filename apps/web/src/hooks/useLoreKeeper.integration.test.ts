@@ -103,7 +103,7 @@ describe('useLoreKeeper Integration Tests', () => {
 
   it('should create a new entry', async () => {
     const mockEntry = { id: 'new-entry', content: 'New entry', date: new Date().toISOString(), tags: [], source: 'manual' };
-    let entriesList: any[] = [];
+    const entriesList: unknown[] = [];
     
     // Mock create entry response
     (global.fetch as any).mockImplementation((url: string, init?: RequestInit) => {

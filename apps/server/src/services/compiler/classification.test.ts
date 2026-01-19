@@ -21,10 +21,12 @@ describe('Classification Accuracy Tests', () => {
     it('should classify all samples', async () => {
       const results = await Promise.all(
         classificationSamples.map(async (sample) => {
-          const ir = await irCompiler.compile(
+          const ir = await irCompiler.compileUtteranceToIR(
             testUserId,
             getNextUtteranceId(),
-            sample.text
+            sample.text,
+            'thread-1',
+            new Date().toISOString()
           );
           return {
             sample,
@@ -131,10 +133,12 @@ describe('Classification Accuracy Tests', () => {
 
       const results = await Promise.all(
         ambiguousSamples.map(async (sample) => {
-          const ir = await irCompiler.compile(
+          const ir = await irCompiler.compileUtteranceToIR(
             testUserId,
             getNextUtteranceId(),
-            sample.text
+            sample.text,
+            'thread-1',
+            new Date().toISOString()
           );
           return {
             sample,

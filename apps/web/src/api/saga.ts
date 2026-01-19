@@ -11,7 +11,7 @@ export type SagaOverview = {
 export const fetchSaga = async () => {
   try {
     const [sagaResponse, chaptersResponse] = await Promise.all([
-      fetchJson<{ title?: string; arcs?: string[]; seasons?: any }>('/api/orchestrator/saga'),
+      fetchJson<{ title?: string; arcs?: string[]; seasons?: unknown }>('/api/orchestrator/saga'),
       fetchJson<{ chapters?: Array<{ id: string; title: string; summary?: string; start_date?: string; end_date?: string }> }>('/api/chapters').catch(() => ({ chapters: [] }))
     ]);
     

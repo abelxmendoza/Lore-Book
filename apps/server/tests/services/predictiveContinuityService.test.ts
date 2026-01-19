@@ -116,17 +116,14 @@ describe('PredictiveContinuityService', () => {
         }
       ];
 
-      vi.mocked(supabaseAdmin.from).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockReturnValue({
-                limit: vi.fn().mockResolvedValue({ data: mockPredictions, error: null })
-              })
-            })
-          })
-        })
-      } as any);
+      const mockChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue({ data: mockPredictions, error: null })
+      };
+      
+      vi.mocked(supabaseAdmin.from).mockReturnValue(mockChain as any);
 
       const predictions = await predictiveContinuityService.getPredictions('user-123', {
         dismissed: false,

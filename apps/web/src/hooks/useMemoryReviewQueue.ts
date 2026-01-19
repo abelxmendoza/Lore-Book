@@ -5,9 +5,8 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { fetchJson } from '../lib/api';
-import { useMockData } from '../contexts/MockDataContext';
+import { useMockData, subscribeToMockDataState } from '../contexts/MockDataContext';
 import { mockDataService } from '../services/mockDataService';
-import { subscribeToMockDataState } from '../contexts/MockDataContext';
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 export type ProposalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EDITED' | 'DEFERRED';

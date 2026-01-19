@@ -44,10 +44,10 @@ export const perceptionReactionEngineApi = {
    * Get reactions needing time-delayed reflection
    */
   async getReactionsNeedingReflection(daysDelay: number = 7): Promise<Array<{
-    reaction: any;
+    reaction: unknown;
     daysSince: number;
   }>> {
-    const response = await fetchJson<{ reactions: Array<{ reaction: any; daysSince: number }> }>(
+    const response = await fetchJson<{ reactions: Array<{ reaction: unknown; daysSince: number }> }>(
       `/api/perception-reaction-engine/reflection-needed?days=${daysDelay}`
     );
     return response.reactions;

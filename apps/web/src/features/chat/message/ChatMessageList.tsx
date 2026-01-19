@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { ChatMessage, type Message } from './ChatMessage';
+import { ChatMessage, type Message, type ChatSource } from './ChatMessage';
 import { groupMessagesByDate } from '../utils/messageGrouping';
 import { scrollToMessage } from '../utils/scrollToMessage';
-import type { ChatSource } from './ChatMessage';
 
 type ChatMessageListProps = {
   messages: Message[];

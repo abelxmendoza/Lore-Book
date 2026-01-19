@@ -3,8 +3,7 @@
  * For development and demonstration
  */
 
-import type { GoalsValuesMockData } from '../services/mockDataService';
-import { mockDataService } from '../services/mockDataService';
+import { mockDataService, type GoalsValuesMockData } from '../services/mockDataService';
 
 export const MOCK_GOALS_VALUES_DATA: GoalsValuesMockData = {
   values: [

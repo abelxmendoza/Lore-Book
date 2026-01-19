@@ -1,6 +1,6 @@
+import { config } from '../config/env';
 import { fetchJson } from '../lib/api';
 import { supabase } from '../lib/supabase';
-import { config } from '../config/env';
 
 export type Entry = {
   id: string;
@@ -31,7 +31,7 @@ export const uploadVoiceMemo = async (file: File): Promise<VoiceMemoResponse> =>
   // If mock data is enabled, return mock response
   if (config.dev.allowMockData) {
     if (config.dev.enableConsoleLogs) {
-      console.log('[MOCK API] Voice memo upload - Using mock data');
+      console.warn('[MOCK API] Voice memo upload - Using mock data');
     }
     
     // Simulate processing delay
@@ -89,7 +89,7 @@ export const suggestTags = async (content: string): Promise<string[]> => {
   // If mock data is enabled, return mock suggestions
   if (config.dev.allowMockData) {
     if (config.dev.enableConsoleLogs) {
-      console.log('[MOCK API] Tag suggestions - Using mock data');
+      console.warn('[MOCK API] Tag suggestions - Using mock data');
     }
     
     // Simple mock tag extraction based on content

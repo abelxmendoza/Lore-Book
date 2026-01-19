@@ -112,6 +112,11 @@ export class OmegaMemoryService {
       // Step 7: Generate suggestions (but don't auto-apply)
       const suggestions = await this.suggestUpdates(userId, inputText, resolvedEntities, claims, relationships);
       
+      // Track conflicts detected during processing
+      const conflictsDetected = claims.some(claim => 
+        claim.confidence < 0.5 || claim.metadata?.flagged === true
+      );
+      
       return {
         entities: resolvedEntities,
         claims,

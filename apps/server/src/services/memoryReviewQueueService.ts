@@ -376,7 +376,7 @@ Identity-affecting claims include:
 
     // 1. Omega Memory ingestion (entities, claims, relationships)
     ingestionPromises.push(
-      omegaMemoryService.ingestText(userId, sourceText, 'AI')
+      omegaMemoryService.ingestText(userId, sourceText)
         .then(result => {
           logger.info({ 
             userId, 
