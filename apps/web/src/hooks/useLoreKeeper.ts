@@ -127,7 +127,7 @@ export const useLoreKeeper = () => {
   const refreshEntries = useCallback(async () => {
     try {
       const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries');
-      setEntries(data.entries);
+      setEntries(data.entries || []);
     } catch (error) {
       console.error('Failed to refresh entries:', error);
       setEntries([]);
@@ -140,8 +140,8 @@ export const useLoreKeeper = () => {
         fetchJson<{ timeline: TimelineResponse }>('/api/timeline'),
         fetchJson<{ tags: { name: string; count: number }[] }>('/api/timeline/tags')
       ]);
-      setTimeline(timelineData.timeline);
-      setTags(tagData.tags);
+      setTimeline(timelineData.timeline || { chapters: [], unassigned: [] });
+      setTags(tagData.tags || []);
     } catch (error) {
       console.error('Failed to refresh timeline:', error);
       setTimeline({ chapters: [], unassigned: [] });

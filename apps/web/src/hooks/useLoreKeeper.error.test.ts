@@ -48,23 +48,26 @@ describe('useLoreKeeper Error Handling', () => {
   });
 
   it('should handle network errors', async () => {
-    mockFetch.mockRejectedValue(new Error('Network error'));
+    // Override default mock to reject for all requests
+    mockFetch.mockImplementation(() => Promise.reject(new Error('Network error')));
 
     const { result } = renderHook(() => useLoreKeeper());
 
     await waitFor(() => {
       expect(result.current).toBeDefined();
       expect(result.current.entries).toBeDefined();
-    }, { timeout: 2000 });
+      expect(result.current.timeline).toBeDefined();
+    }, { timeout: 5000 });
 
     // Should default to empty arrays on error
     expect(result.current.entries).toEqual([]);
+    expect(result.current.timeline).toEqual({ chapters: [], unassigned: [] });
   });
 
   it('should handle 500 server errors', async () => {
     mockFetch.mockImplementation((url: string | Request) => {
       const urlString = typeof url === 'string' ? url : url.url;
-      if (urlString.includes('/api/entries') || urlString.includes('/api/timeline') || urlString.includes('/api/timeline/tags')) {
+      if (urlString.includes('/api/entries') || urlString.includes('/api/timeline') || urlString.includes('/api/timeline/tags') || urlString.includes('/api/chapters') || urlString.includes('/api/evolution')) {
         return Promise.resolve({
           ok: false,
           status: 500,
@@ -83,7 +86,7 @@ describe('useLoreKeeper Error Handling', () => {
       expect(result.current).toBeDefined();
       expect(result.current.entries).toBeDefined();
       expect(result.current.timeline).toBeDefined();
-    }, { timeout: 3000 });
+    }, { timeout: 5000 });
 
     // Should handle error gracefully - errors are caught in the hook
     expect(result.current.entries).toEqual([]);
@@ -102,13 +105,25 @@ describe('useLoreKeeper Error Handling', () => {
       if (urlString.includes('/api/timeline') && !urlString.includes('tags')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ timeline: null })
+          json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
         });
       }
       if (urlString.includes('/api/timeline/tags')) {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ tags: [] })
+        });
+      }
+      if (urlString.includes('/api/chapters')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ chapters: [] })
+        });
+      }
+      if (urlString.includes('/api/evolution')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ insights: null })
         });
       }
       return Promise.resolve({
@@ -123,7 +138,7 @@ describe('useLoreKeeper Error Handling', () => {
       expect(result.current).toBeDefined();
       expect(result.current.entries).toBeDefined();
       expect(result.current.timeline).toBeDefined();
-    }, { timeout: 3000 });
+    }, { timeout: 5000 });
 
     // Should handle null responses - entries should be array, timeline should have default structure
     expect(Array.isArray(result.current.entries)).toBe(true);

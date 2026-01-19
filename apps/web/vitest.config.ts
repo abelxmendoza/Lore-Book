@@ -8,6 +8,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}', 'src/**/*.integration.test.{ts,tsx}'],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
@@ -16,6 +17,7 @@ export default defineConfig({
       '**/cypress/**',
       '**/*.e2e.{ts,tsx}',
       '**/*.spec.{ts,tsx}', // Exclude Playwright spec files
+      '**/scripts/**', // Exclude script files
     ],
     coverage: {
       provider: 'v8',
