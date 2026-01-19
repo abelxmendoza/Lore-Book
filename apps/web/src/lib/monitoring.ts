@@ -222,8 +222,15 @@ export const performance = {
     }
     try {
       const result = await fn();
-      globalThis.performance.mark(endMark);
-      const duration = globalThis.performance.measure(name, startMark, endMark);
+      if (typeof globalThis !== 'undefined' && globalThis.performance && globalThis.performance.mark) {
+        globalThis.performance.mark(endMark);
+      }
+      let duration: number | undefined;
+      if (typeof globalThis !== 'undefined' && globalThis.performance && globalThis.performance.measure) {
+        globalThis.performance.measure(name, startMark, endMark);
+        const measure = globalThis.performance.getEntriesByName(name, 'measure')[0] as PerformanceMeasure | undefined;
+        duration = measure?.duration;
+      }
       
       // Track slow operations
       if (duration && duration > 1000) {
@@ -235,8 +242,12 @@ export const performance = {
       
       return result;
     } catch (error) {
-      globalThis.performance.mark(endMark);
-      globalThis.performance.measure(name, startMark, endMark);
+      if (typeof globalThis !== 'undefined' && globalThis.performance && globalThis.performance.mark) {
+        globalThis.performance.mark(endMark);
+      }
+      if (typeof globalThis !== 'undefined' && globalThis.performance && globalThis.performance.measure) {
+        globalThis.performance.measure(name, startMark, endMark);
+      }
       throw error;
     }
   },
