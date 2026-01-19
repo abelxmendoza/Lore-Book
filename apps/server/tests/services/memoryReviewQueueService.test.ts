@@ -83,6 +83,18 @@ describe('MemoryReviewQueueService', () => {
     });
 
     it('should classify HIGH risk for identity-affecting claims', async () => {
+      // Mock supabase for contradictsExistingClaims check
+      vi.mocked(supabaseAdmin.from).mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: [], error: null })
+            })
+          })
+        })
+      } as any);
+
+      // Mock OpenAI
       const mockOpenAI = {
         chat: {
           completions: {
@@ -92,6 +104,7 @@ describe('MemoryReviewQueueService', () => {
                   content: JSON.stringify({
                     affects_identity: true,
                     confidence: 0.9,
+                    reason: 'Parent status affects identity'
                   })
                 }
               }]
@@ -99,9 +112,16 @@ describe('MemoryReviewQueueService', () => {
           }
         }
       };
-      (await import('openai')).default = vi.fn().mockImplementation(() => mockOpenAI) as any;
+      
+      // Mock the OpenAI import
+      vi.doMock('openai', () => ({
+        default: vi.fn().mockImplementation(() => mockOpenAI)
+      }));
 
-      const risk = await memoryReviewQueueService.classifyRisk({
+      // Re-import the service to get the mocked OpenAI
+      const { memoryReviewQueueService: service } = await import('../../src/services/memoryReviewQueueService');
+
+      const risk = await service.classifyRisk({
         entity_id: 'entity-1',
         claim_text: 'I am a parent',
         confidence: 0.5,
@@ -151,12 +171,16 @@ describe('MemoryReviewQueueService', () => {
       // Mock risk classification
       vi.spyOn(memoryReviewQueueService, 'classifyRisk').mockResolvedValue('LOW');
 
-      // Mock proposal creation
-      vi.mocked(supabaseAdmin.from).mockReturnValueOnce({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: mockProposal, error: null })
-          })
+      // Mock proposal creation - chain: insert().select().single()
+      const mockSingle = vi.fn().mockResolvedValue({ data: mockProposal, error: null });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+      
+      vi.mocked(supabaseAdmin.from).mockReturnValue({
+        insert: mockInsert,
+        select: vi.fn(),
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: null, error: null })
         })
       } as any);
 

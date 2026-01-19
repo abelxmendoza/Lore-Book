@@ -269,23 +269,18 @@ describe('ContinuityService', () => {
         },
       ];
 
-      const mockGte = vi.fn().mockReturnThis();
-      const mockLte = vi.fn().mockReturnThis();
-      const mockRange = vi.fn().mockReturnThis();
+      const mockLimitChain = vi.fn().mockResolvedValue({ data: mockEvents, error: null });
+      const mockOrderChain = vi.fn().mockReturnValue({ limit: mockLimitChain });
+      const mockEqChain = vi.fn().mockReturnValue({ order: mockOrderChain });
 
       mockSelect.mockReturnValue({
-        eq: vi.fn().mockReturnThis(),
-        order: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue({ data: mockEvents, error: null }),
-        gte: mockGte,
-        lte: mockLte,
-        range: mockRange,
+        eq: mockEqChain,
       });
 
       const result = await continuityService.listEvents('user-1', { limit: 10 });
 
       expect(result).toEqual(mockEvents);
-      expect(mockEq).toHaveBeenCalledWith('user_id', 'user-1');
+      expect(mockEqChain).toHaveBeenCalledWith('user_id', 'user-1');
     });
 
     it('should handle errors when listing events', async () => {

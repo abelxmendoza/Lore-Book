@@ -154,7 +154,7 @@ describe('useLocalStorage', () => {
   it('should work with SSR (window undefined)', () => {
     const originalWindow = global.window;
     // @ts-expect-error - intentionally setting to undefined for SSR test
-    global.window = undefined;
+    delete (global as any).window;
 
     const { result } = renderHook(() => useLocalStorage('test-key', 'initial'));
 
@@ -164,9 +164,10 @@ describe('useLocalStorage', () => {
       result.current[1]('value');
     });
 
-    // Should not crash in SSR
+    // Should not crash in SSR - value should be set in state even if localStorage isn't available
     expect(result.current[0]).toBe('value');
 
-    global.window = originalWindow;
+    // Restore window
+    (global as any).window = originalWindow;
   });
 });
