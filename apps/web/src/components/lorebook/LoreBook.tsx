@@ -306,6 +306,20 @@ export const LoreBook = () => {
     void loadData();
   }, [isMockDataEnabled, loreChapters]);
 
+  // Load lorebook recommendations (must be before early returns)
+  useEffect(() => {
+    const loadRecommendations = async () => {
+      try {
+        const result = await fetchJson<{ recommendations: any[] }>('/api/biography/lorebook-recommendations?limit=10');
+        // Store recommendations for display
+        // You can add a state variable to show these
+      } catch (error) {
+        console.warn('Failed to load lorebook recommendations:', error);
+      }
+    };
+    loadRecommendations();
+  }, []);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -642,20 +656,6 @@ export const LoreBook = () => {
       setGenerating(false);
     }
   };
-
-  // Load lorebook recommendations
-  useEffect(() => {
-    const loadRecommendations = async () => {
-      try {
-        const result = await fetchJson<{ recommendations: any[] }>('/api/biography/lorebook-recommendations?limit=10');
-        // Store recommendations for display
-        // You can add a state variable to show these
-      } catch (error) {
-        console.warn('Failed to load lorebook recommendations:', error);
-      }
-    };
-    loadRecommendations();
-  }, []);
 
   // Show recommendations if no book is loaded
   if (showRecommendations && (!outline || outline.sections.length === 0)) {

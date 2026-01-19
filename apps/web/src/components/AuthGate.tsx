@@ -137,6 +137,26 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
       setTermsAccepted(true);
     }
   }, [termsStatus, termsLoading]);
+
+  // Safety timeout for loading state (must be before early returns)
+  useEffect(() => {
+    if (loading) {
+      const safetyTimeout = setTimeout(() => {
+        console.warn('[AuthGate] Loading timeout (5s) - proceeding anyway to prevent black screen');
+        setLoading(false);
+      }, 5000);
+      return () => clearTimeout(safetyTimeout);
+    }
+  }, [loading]);
+
+  // Check terms after authentication (must be before early returns)
+  useEffect(() => {
+    if (session && termsStatus && !termsStatus.accepted && !termsLoading) {
+      setTermsAccepted(false);
+    } else if (termsStatus?.accepted) {
+      setTermsAccepted(true);
+    }
+  }, [session, termsStatus, termsLoading]);
   
   // Allow guest access or authenticated users
   if (isGuest || DEV_DISABLE_AUTH) {
@@ -314,16 +334,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
    * 2. Clear it when done
    * 3. Force release if timeout fires
    */
-  useEffect(() => {
-    if (loading) {
-      const safetyTimeout = setTimeout(() => {
-        console.warn('[AuthGate] Loading timeout (5s) - proceeding anyway to prevent black screen');
-        setLoading(false);
-      }, 5000);
-      return () => clearTimeout(safetyTimeout);
-    }
-  }, [loading]);
-
+  
   /**
    * CRITICAL: Always render something visible - never return null
    * 
@@ -352,15 +363,6 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   if (!session && !isGuest) {
     return <AuthScreen onEmailLogin={handleEmailLogin} onGuestLogin={handleGuestLogin} />;
   }
-
-  // Check terms acceptance after authentication
-  useEffect(() => {
-    if (session && termsStatus && !termsStatus.accepted && !termsLoading) {
-      setTermsAccepted(false);
-    } else if (termsStatus?.accepted) {
-      setTermsAccepted(true);
-    }
-  }, [session, termsStatus, termsLoading]);
 
   // Show terms agreement if user hasn't accepted
   // Show it if:
