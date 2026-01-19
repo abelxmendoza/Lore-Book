@@ -217,7 +217,9 @@ export const performance = {
   measureAsync: async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
     const startMark = `${name}-start`;
     const endMark = `${name}-end`;
-    performance.mark(startMark);
+    if (typeof globalThis !== 'undefined' && globalThis.performance && globalThis.performance.mark) {
+      globalThis.performance.mark(startMark);
+    }
     try {
       const result = await fn();
       globalThis.performance.mark(endMark);
