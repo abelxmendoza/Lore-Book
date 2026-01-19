@@ -106,10 +106,13 @@ describe('InsightReflectionService', () => {
         }
       ];
 
-      const mockOrder = vi.fn().mockResolvedValue({ data: mockInsights, error: null });
-      const mockEq2 = vi.fn().mockReturnValue({ order: mockOrder });
-      const mockEq1 = vi.fn().mockReturnValue({ eq: mockEq2 });
-      const mockSelect = vi.fn().mockReturnValue({ eq: mockEq1 });
+      // Chain: select('*').eq('user_id', userId).order(...).eq('type', ...).eq('dismissed', ...)
+      // The order() returns a query that can be chained with more eq() calls
+      const mockEqDismissed = vi.fn().mockResolvedValue({ data: mockInsights, error: null });
+      const mockEqType = vi.fn().mockReturnValue({ eq: mockEqDismissed });
+      const mockOrder = vi.fn().mockReturnValue({ eq: mockEqType });
+      const mockEqUserId = vi.fn().mockReturnValue({ order: mockOrder });
+      const mockSelect = vi.fn().mockReturnValue({ eq: mockEqUserId });
       
       vi.mocked(supabaseAdmin.from).mockReturnValue({
         select: mockSelect,

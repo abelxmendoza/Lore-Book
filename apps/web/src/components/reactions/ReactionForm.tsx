@@ -5,8 +5,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { reactionApi } from '../../api/reactions';
 import { perceptionReactionEngineApi } from '../../api/perceptionReactionEngine';
-import { REACTION_LABELS } from '../../types/reaction';
-import type { ReactionTriggerType, ReactionType, CreateReactionInput } from '../../types/reaction';
+import { REACTION_LABELS, type ReactionTriggerType, type ReactionType, type CreateReactionInput } from '../../types/reaction';
 
 interface ReactionFormProps {
   triggerType: ReactionTriggerType;

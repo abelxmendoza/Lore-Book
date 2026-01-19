@@ -1,13 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, MessageSquare, Eye, Sparkles, UserPlus, Link2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { X, MessageSquare, Eye, Sparkles, UserPlus, Link2, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
-import { ChatMessage } from '../../features/chat/message/ChatMessage';
-import type { Message } from '../../features/chat/message/ChatMessage';
+import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
 import { useChatStream } from '../../hooks/useChatStream';
 import { fetchJson } from '../../lib/api';
 import { perceptionApi } from '../../api/perceptions';
-import { Loader2 } from 'lucide-react';
 
 interface GossipChatModalProps {
   onClose: () => void;
