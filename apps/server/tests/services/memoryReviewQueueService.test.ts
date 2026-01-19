@@ -269,19 +269,25 @@ describe('MemoryReviewQueueService', () => {
 
       vi.spyOn(memoryReviewQueueService, 'getProposal').mockResolvedValue(mockProposal);
 
+      // Mock the insert chain for memory_decisions
+      const mockInsertChain = {
+        insert: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: mockDecision, error: null })
+          })
+        })
+      };
+      
+      // Mock the update chain for memory_proposals
+      const mockUpdateChain = {
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: null, error: null })
+        })
+      };
+      
       vi.mocked(supabaseAdmin.from)
-        .mockReturnValueOnce({
-          insert: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: mockDecision, error: null })
-            })
-          })
-        } as any)
-        .mockReturnValueOnce({
-          update: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: null, error: null })
-          })
-        } as any);
+        .mockReturnValueOnce(mockInsertChain as any)
+        .mockReturnValueOnce(mockUpdateChain as any);
 
       const result = await memoryReviewQueueService.rejectProposal(
         'user-123',
