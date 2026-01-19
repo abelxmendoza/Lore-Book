@@ -808,12 +808,117 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
     }
   }, [activeTab]);
 
+  // Generate mock relationship and proximity data
+  const generateMockRelationshipData = (character: CharacterDetail): Partial<CharacterDetail> => {
+    const mockData: Partial<CharacterDetail> = {};
+    
+    // Generate proximity level based on character properties
+    if (!character.proximity_level) {
+      const proximityOptions: Array<'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party'> = ['direct', 'indirect', 'distant', 'unmet', 'third_party'];
+      // Weight towards 'direct' for characters with relationships or shared memories
+      if (character.relationships && character.relationships.length > 0) {
+        mockData.proximity_level = 'direct';
+      } else if (character.shared_memories && character.shared_memories.length > 0) {
+        mockData.proximity_level = 'direct';
+      } else {
+        // Random selection with weights
+        const weights = [0.5, 0.2, 0.15, 0.1, 0.05]; // direct, indirect, distant, unmet, third_party
+        const rand = Math.random();
+        let cumulative = 0;
+        for (let i = 0; i < proximityOptions.length; i++) {
+          cumulative += weights[i];
+          if (rand <= cumulative) {
+            mockData.proximity_level = proximityOptions[i];
+            break;
+          }
+        }
+      }
+    }
+    
+    // Generate relationship depth based on character properties
+    if (!character.relationship_depth) {
+      const depthOptions: Array<'close' | 'moderate' | 'casual' | 'acquaintance' | 'mentioned_only'> = ['close', 'moderate', 'casual', 'acquaintance', 'mentioned_only'];
+      // Weight towards 'close' or 'moderate' for characters with many shared memories
+      if (character.shared_memories && character.shared_memories.length >= 10) {
+        mockData.relationship_depth = 'close';
+      } else if (character.shared_memories && character.shared_memories.length >= 5) {
+        mockData.relationship_depth = 'moderate';
+      } else if (character.shared_memories && character.shared_memories.length > 0) {
+        mockData.relationship_depth = 'casual';
+      } else {
+        // Random selection with weights
+        const weights = [0.2, 0.3, 0.25, 0.15, 0.1]; // close, moderate, casual, acquaintance, mentioned_only
+        const rand = Math.random();
+        let cumulative = 0;
+        for (let i = 0; i < depthOptions.length; i++) {
+          cumulative += weights[i];
+          if (rand <= cumulative) {
+            mockData.relationship_depth = depthOptions[i];
+            break;
+          }
+        }
+      }
+    }
+    
+    // Generate has_met based on proximity
+    if (character.has_met === null || character.has_met === undefined) {
+      const proximity = mockData.proximity_level || character.proximity_level;
+      mockData.has_met = proximity === 'direct' || 
+                        proximity === 'indirect' || 
+                        proximity === 'distant';
+    }
+    
+    // Generate likelihood_to_meet based on proximity and relationship
+    if (!character.likelihood_to_meet) {
+      const proximity = mockData.proximity_level || character.proximity_level;
+      if (proximity === 'unmet') {
+        const likelihoodOptions: Array<'likely' | 'possible' | 'unlikely' | 'never'> = ['likely', 'possible', 'unlikely', 'never'];
+        const weights = [0.3, 0.4, 0.2, 0.1];
+        const rand = Math.random();
+        let cumulative = 0;
+        for (let i = 0; i < likelihoodOptions.length; i++) {
+          cumulative += weights[i];
+          if (rand <= cumulative) {
+            mockData.likelihood_to_meet = likelihoodOptions[i];
+            break;
+          }
+        }
+      } else if (proximity === 'third_party') {
+        mockData.likelihood_to_meet = 'unlikely';
+      } else {
+        mockData.likelihood_to_meet = null; // Already met or know them
+      }
+    }
+    
+    // Generate context_of_mention for indirect/third-party characters
+    const proximity = mockData.proximity_level || character.proximity_level;
+    if (!character.context_of_mention && (proximity === 'indirect' || proximity === 'third_party')) {
+      const contexts = [
+        `Mentioned by ${character.relationships?.[0]?.character_name || 'a mutual friend'} in conversations about shared activities.`,
+        `Discussed in context of ${character.role || 'a group'} that you're both part of.`,
+        `Brought up during conversations about ${character.archetype || 'mutual connections'}.`,
+        `Referenced in discussions about ${character.tags?.[0] || 'shared interests'}.`
+      ];
+      mockData.context_of_mention = contexts[Math.floor(Math.random() * contexts.length)];
+    }
+    
+    return mockData;
+  };
+
   useEffect(() => {
     const loadFullDetails = async () => {
       setLoadingDetails(true);
       try {
         const response = await fetchJson<CharacterDetail>(`/api/characters/${character.id}`);
-        setEditedCharacter(response);
+        
+        // Generate mock relationship and proximity data if missing
+        const mockRelationshipData = generateMockRelationshipData(response);
+        const characterWithMockData = {
+          ...response,
+          ...mockRelationshipData
+        };
+        
+        setEditedCharacter(characterWithMockData);
         
         // Load full entry details for shared memories
         if (response.shared_memories && response.shared_memories.length > 0) {
@@ -829,6 +934,14 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
         }
       } catch (error) {
         console.error('Failed to load character details:', error);
+        // On error, generate mock data for the character
+        const mockRelationshipData = generateMockRelationshipData(character as CharacterDetail);
+        const characterWithMockData = {
+          ...character,
+          ...mockRelationshipData
+        } as CharacterDetail;
+        setEditedCharacter(characterWithMockData);
+        
         // On error, show mock memories only if toggle is enabled
         if (isMockDataEnabled) {
           const mockMemories = createMockMemories(character.name);
@@ -996,43 +1109,43 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate }: Character
       }
       
       if (!insights && !loadingInsights) {
-        setLoadingInsights(true);
-        // Generate AI insights based on character data
-        setTimeout(() => {
+      setLoadingInsights(true);
+      // Generate AI insights based on character data
+      setTimeout(() => {
           const closenessScore = editedCharacter.analytics?.closeness_score || editedCharacter.metadata?.closeness_score || 0;
-          const memoryCount = editedCharacter.shared_memories?.length || 0;
-          const relationshipCount = editedCharacter.relationships?.length || 0;
-          
-          // Generate insights
-          const generatedInsights = {
-            totalMemories: memoryCount,
-            relationships: relationshipCount,
-            tags: editedCharacter.tags?.length || 0,
-            firstAppearance: editedCharacter.first_appearance,
-            status: editedCharacter.status,
-            closenessScore: closenessScore,
-            // AI-generated insights
-            relationshipStrength: closenessScore >= 80 ? 'Very Strong' : closenessScore >= 60 ? 'Strong' : closenessScore >= 40 ? 'Moderate' : 'Developing',
-            interactionFrequency: memoryCount >= 20 ? 'Very Frequent' : memoryCount >= 10 ? 'Frequent' : memoryCount >= 5 ? 'Occasional' : 'Rare',
-            networkSize: relationshipCount >= 10 ? 'Large Network' : relationshipCount >= 5 ? 'Medium Network' : relationshipCount >= 1 ? 'Small Network' : 'Isolated',
-            keyThemes: editedCharacter.tags?.slice(0, 5) || [],
-            relationshipType: editedCharacter.metadata?.relationship_type || editedCharacter.archetype || 'Unknown',
-            lastInteraction: editedCharacter.shared_memories && editedCharacter.shared_memories.length > 0 
-              ? editedCharacter.shared_memories[editedCharacter.shared_memories.length - 1].date 
-              : null,
-            insights: [
-              closenessScore >= 80 && `You have a ${closenessScore >= 90 ? 'very close' : 'close'} relationship with ${editedCharacter.name} (${closenessScore}/100)`,
-              memoryCount > 0 && `You've shared ${memoryCount} ${memoryCount === 1 ? 'memory' : 'memories'} together`,
-              relationshipCount > 0 && `${editedCharacter.name} is connected to ${relationshipCount} other ${relationshipCount === 1 ? 'person' : 'people'} in your network`,
-              editedCharacter.archetype && `Archetype: ${editedCharacter.archetype} - This suggests ${editedCharacter.archetype === 'mentor' ? 'a guidance and learning relationship' : editedCharacter.archetype === 'friend' ? 'a supportive and social connection' : editedCharacter.archetype === 'family' ? 'a deep familial bond' : 'a meaningful connection'}`,
-              editedCharacter.status === 'unmet' && 'This character is mentioned but you haven\'t met them yet',
-              editedCharacter.tags && editedCharacter.tags.length > 0 && `Key themes: ${editedCharacter.tags.slice(0, 3).join(', ')}`
-            ].filter(Boolean)
-          };
-          
-          setInsights(generatedInsights);
-          setLoadingInsights(false);
-        }, 800);
+        const memoryCount = editedCharacter.shared_memories?.length || 0;
+        const relationshipCount = editedCharacter.relationships?.length || 0;
+        
+        // Generate insights
+        const generatedInsights = {
+          totalMemories: memoryCount,
+          relationships: relationshipCount,
+          tags: editedCharacter.tags?.length || 0,
+          firstAppearance: editedCharacter.first_appearance,
+          status: editedCharacter.status,
+          closenessScore: closenessScore,
+          // AI-generated insights
+          relationshipStrength: closenessScore >= 80 ? 'Very Strong' : closenessScore >= 60 ? 'Strong' : closenessScore >= 40 ? 'Moderate' : 'Developing',
+          interactionFrequency: memoryCount >= 20 ? 'Very Frequent' : memoryCount >= 10 ? 'Frequent' : memoryCount >= 5 ? 'Occasional' : 'Rare',
+          networkSize: relationshipCount >= 10 ? 'Large Network' : relationshipCount >= 5 ? 'Medium Network' : relationshipCount >= 1 ? 'Small Network' : 'Isolated',
+          keyThemes: editedCharacter.tags?.slice(0, 5) || [],
+          relationshipType: editedCharacter.metadata?.relationship_type || editedCharacter.archetype || 'Unknown',
+          lastInteraction: editedCharacter.shared_memories && editedCharacter.shared_memories.length > 0 
+            ? editedCharacter.shared_memories[editedCharacter.shared_memories.length - 1].date 
+            : null,
+          insights: [
+            closenessScore >= 80 && `You have a ${closenessScore >= 90 ? 'very close' : 'close'} relationship with ${editedCharacter.name} (${closenessScore}/100)`,
+            memoryCount > 0 && `You've shared ${memoryCount} ${memoryCount === 1 ? 'memory' : 'memories'} together`,
+            relationshipCount > 0 && `${editedCharacter.name} is connected to ${relationshipCount} other ${relationshipCount === 1 ? 'person' : 'people'} in your network`,
+            editedCharacter.archetype && `Archetype: ${editedCharacter.archetype} - This suggests ${editedCharacter.archetype === 'mentor' ? 'a guidance and learning relationship' : editedCharacter.archetype === 'friend' ? 'a supportive and social connection' : editedCharacter.archetype === 'family' ? 'a deep familial bond' : 'a meaningful connection'}`,
+            editedCharacter.status === 'unmet' && 'This character is mentioned but you haven\'t met them yet',
+            editedCharacter.tags && editedCharacter.tags.length > 0 && `Key themes: ${editedCharacter.tags.slice(0, 3).join(', ')}`
+          ].filter(Boolean)
+        };
+        
+        setInsights(generatedInsights);
+        setLoadingInsights(false);
+      }, 800);
       }
     }
   }, [activeTab, insights, loadingInsights, editedCharacter]);
@@ -1333,17 +1446,17 @@ User's message: ${message}`;
                 {editedCharacter.status && (
                   <div className="absolute -bottom-1 -right-1">
                     <Tooltip content={getStatusTooltip(editedCharacter.status)}>
-                      <Badge 
-                        className={`${
-                          editedCharacter.status === 'active' 
-                            ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                            : editedCharacter.status === 'unmet'
-                            ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 border-dashed'
-                            : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                    <Badge 
+                      className={`${
+                        editedCharacter.status === 'active' 
+                          ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                          : editedCharacter.status === 'unmet'
+                          ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 border-dashed'
+                          : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
                         } text-xs px-2 py-0.5 cursor-help`}
-                      >
-                        {editedCharacter.status === 'unmet' ? 'Unmet' : editedCharacter.status}
-                      </Badge>
+                    >
+                      {editedCharacter.status === 'unmet' ? 'Unmet' : editedCharacter.status}
+                    </Badge>
                     </Tooltip>
                   </div>
                 )}
@@ -1357,12 +1470,12 @@ User's message: ${message}`;
                   </h2>
                   {editedCharacter.is_nickname && (
                     <Tooltip content={getNicknameTooltip()}>
-                      <Badge 
-                        variant="outline" 
+                    <Badge 
+                      variant="outline" 
                         className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs px-2 py-0.5 cursor-help"
-                      >
-                        Nickname
-                      </Badge>
+                    >
+                      Nickname
+                    </Badge>
                     </Tooltip>
                   )}
                 </div>
@@ -1379,40 +1492,40 @@ User's message: ${message}`;
                 <div className="flex items-center gap-3 flex-wrap">
                   {editedCharacter.importance_level && (
                     <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score)}>
-                      <Badge 
-                        variant="outline" 
+                    <Badge 
+                      variant="outline" 
                         className={`${getImportanceColor(editedCharacter.importance_level)} text-sm px-3 py-1 flex items-center gap-1.5 cursor-help`}
-                      >
-                        {getImportanceIcon(editedCharacter.importance_level)}
-                        <span>{getImportanceLabel(editedCharacter.importance_level)}</span>
-                        {editedCharacter.importance_score !== null && editedCharacter.importance_score !== undefined && (
-                          <span className="text-xs opacity-70">({Math.round(editedCharacter.importance_score)})</span>
-                        )}
-                      </Badge>
+                    >
+                      {getImportanceIcon(editedCharacter.importance_level)}
+                      <span>{getImportanceLabel(editedCharacter.importance_level)}</span>
+                      {editedCharacter.importance_score !== null && editedCharacter.importance_score !== undefined && (
+                        <span className="text-xs opacity-70">({Math.round(editedCharacter.importance_score)})</span>
+                      )}
+                    </Badge>
                     </Tooltip>
                   )}
                   {editedCharacter.role && (
                     <Tooltip content={getRoleTooltip(editedCharacter.role)}>
                       <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-sm px-3 py-1 cursor-help flex items-center gap-1.5">
                         <Tag className="h-3 w-3" />
-                        {editedCharacter.role}
-                      </Badge>
+                      {editedCharacter.role}
+                    </Badge>
                     </Tooltip>
                   )}
                   {editedCharacter.archetype && (
                     <Tooltip content={getArchetypeTooltip(editedCharacter.archetype)}>
                       <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-sm px-3 py-1 cursor-help flex items-center gap-1.5">
                         <Sparkles className="h-3 w-3" />
-                        {editedCharacter.archetype}
-                      </Badge>
+                      {editedCharacter.archetype}
+                    </Badge>
                     </Tooltip>
                   )}
                   {editedCharacter.pronouns && (
                     <Tooltip content={getPronounsTooltip(editedCharacter.pronouns)}>
                       <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-sm px-3 py-1 cursor-help flex items-center gap-1.5">
                         <Users className="h-3 w-3" />
-                        {editedCharacter.pronouns}
-                      </Badge>
+                      {editedCharacter.pronouns}
+                    </Badge>
                     </Tooltip>
                   )}
                 </div>
@@ -1501,8 +1614,8 @@ User's message: ${message}`;
                         <UserCircle className="h-5 w-5 text-blue-300" />
                       </div>
                       <h3 className="text-xl font-bold text-white">Detected Attributes</h3>
-                    </div>
-
+                  </div>
+                  
                     {loadingAttributes ? (
                       <div className="text-center py-8 text-white/60">
                         <Clock className="h-6 w-6 mx-auto mb-2 animate-spin" />
@@ -1512,11 +1625,11 @@ User's message: ${message}`;
                       <div className="space-y-6">
                         {/* Employment & Financial */}
                         {(characterAttributes.some(a => a.attributeType === 'employment_status' || a.attributeType === 'occupation' || a.attributeType === 'workplace' || a.attributeType === 'financial_status')) && (
-                          <div>
+                    <div>
                             <div className="flex items-center gap-2 mb-4">
                               <Briefcase className="h-4 w-4 text-blue-300" />
                               <h4 className="text-sm font-bold text-white/90 uppercase tracking-wide">Employment & Financial</h4>
-                            </div>
+                    </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {characterAttributes
                                 .filter(a => ['employment_status', 'occupation', 'workplace', 'financial_status'].includes(a.attributeType))
@@ -1545,11 +1658,11 @@ User's message: ${message}`;
 
                         {/* Lifestyle Patterns */}
                         {characterAttributes.some(a => a.attributeType === 'lifestyle_pattern') && (
-                          <div>
+                    <div>
                             <div className="flex items-center gap-2 mb-4">
                               <Activity className="h-4 w-4 text-blue-300" />
                               <h4 className="text-sm font-bold text-white/90 uppercase tracking-wide">Lifestyle Patterns</h4>
-                            </div>
+                    </div>
                             <div className="flex flex-wrap gap-3">
                               {characterAttributes
                                 .filter(a => a.attributeType === 'lifestyle_pattern')
@@ -1561,13 +1674,13 @@ User's message: ${message}`;
                                     </Badge>
                                   </Tooltip>
                                 ))}
-                            </div>
+                  </div>
                           </div>
                         )}
 
                         {/* Personality Traits */}
                         {characterAttributes.some(a => a.attributeType === 'personality_trait') && (
-                          <div>
+                  <div>
                             <div className="flex items-center gap-2 mb-4">
                               <Smile className="h-4 w-4 text-blue-300" />
                               <h4 className="text-sm font-bold text-white/90 uppercase tracking-wide">Personality Traits</h4>
@@ -1698,15 +1811,15 @@ User's message: ${message}`;
 
                     <div className="mb-6">
                       <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide flex items-center gap-3">
-                        Display Name
-                        {editedCharacter.is_nickname && (
+                      Display Name
+                      {editedCharacter.is_nickname && (
                           <Tooltip content={getNicknameTooltip()}>
                             <Badge variant="outline" className="bg-yellow-500/20 text-yellow-300 border-yellow-500/50 text-xs px-2 py-1 font-semibold cursor-help">
-                              Nickname
-                            </Badge>
+                          Nickname
+                        </Badge>
                           </Tooltip>
-                        )}
-                      </label>
+                      )}
+                    </label>
                       <div className="bg-gradient-to-r from-primary/20 to-primary/10 border-2 border-primary/40 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-lg">
                         {editedCharacter.name}
                       </div>
@@ -1715,9 +1828,9 @@ User's message: ${message}`;
                           Full name: <span className="text-white/80">{editedCharacter.first_name} {editedCharacter.last_name}</span>
                         </p>
                       )}
-                    </div>
+                  </div>
 
-                    <div>
+                  <div>
                       <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Aliases / Nicknames</label>
                       {editedCharacter.alias && editedCharacter.alias.length > 0 ? (
                         <div className="flex flex-wrap gap-3">
@@ -1728,11 +1841,11 @@ User's message: ${message}`;
                               </Badge>
                             </Tooltip>
                           ))}
-                        </div>
+                  </div>
                       ) : (
                         <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white/50 text-sm min-h-[48px] flex items-center italic">
                           No aliases recorded
-                        </div>
+                </div>
                       )}
                     </div>
                   </CardContent>
@@ -1747,35 +1860,35 @@ User's message: ${message}`;
                           <TrendingUp className="h-5 w-5 text-purple-300" />
                         </div>
                         <h3 className="text-xl font-bold text-white">Importance Level</h3>
-                      </div>
-                      
+                    </div>
+                    
                       <div className="flex items-center gap-6 mb-4">
-                        {editedCharacter.importance_level && (
-                          <div className="flex items-center gap-2">
+                      {editedCharacter.importance_level && (
+                        <div className="flex items-center gap-2">
                             <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score)}>
-                              <Badge 
-                                variant="outline" 
+                          <Badge 
+                            variant="outline" 
                                 className={`${getImportanceColor(editedCharacter.importance_level)} text-base px-4 py-2 flex items-center gap-2 font-bold shadow-md cursor-help`}
-                              >
-                                {getImportanceIcon(editedCharacter.importance_level)}
-                                <span>{getImportanceLabel(editedCharacter.importance_level)}</span>
-                              </Badge>
+                          >
+                            {getImportanceIcon(editedCharacter.importance_level)}
+                            <span>{getImportanceLabel(editedCharacter.importance_level)}</span>
+                          </Badge>
                             </Tooltip>
-                          </div>
-                        )}
-                        {editedCharacter.importance_score !== null && editedCharacter.importance_score !== undefined && (
+                        </div>
+                      )}
+                      {editedCharacter.importance_score !== null && editedCharacter.importance_score !== undefined && (
                           <div className="flex items-center gap-3 bg-black/40 rounded-lg px-4 py-2 border border-purple-500/30">
                             <span className="text-sm font-semibold text-white/70 uppercase tracking-wide">Score:</span>
                             <span className="text-2xl font-bold text-purple-300">{Math.round(editedCharacter.importance_score)}/100</span>
-                          </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
+                    </div>
                       <div className="bg-black/40 rounded-lg p-3 border border-purple-500/20">
                         <p className="text-sm text-white/80 flex items-start gap-2 leading-relaxed">
                           <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-purple-300" />
-                          <span>Importance is automatically calculated based on mentions, relationships, role significance, and interaction frequency. This helps identify major vs. minor characters in your story.</span>
-                        </p>
-                      </div>
+                      <span>Importance is automatically calculated based on mentions, relationships, role significance, and interaction frequency. This helps identify major vs. minor characters in your story.</span>
+                    </p>
+                  </div>
                     </CardContent>
                   </Card>
                 )}
@@ -1788,10 +1901,10 @@ User's message: ${message}`;
                         <Network className="h-5 w-5 text-orange-300" />
                       </div>
                       <h3 className="text-xl font-bold text-white">Relationship & Proximity</h3>
-                    </div>
+                  </div>
 
                     <div className="grid grid-cols-2 gap-6 mb-6">
-                      <div>
+                    <div>
                         <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Proximity Level</label>
                         <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 min-h-[52px] flex items-center shadow-inner">
                           {editedCharacter.proximity_level ? (
@@ -1809,9 +1922,9 @@ User's message: ${message}`;
                             <span className="text-white/40 italic text-base">Not specified</span>
                           )}
                         </div>
-                      </div>
+                    </div>
 
-                      <div>
+                    <div>
                         <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Relationship Depth</label>
                         <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 min-h-[52px] flex items-center shadow-inner">
                           {editedCharacter.relationship_depth ? (
@@ -1824,8 +1937,8 @@ User's message: ${message}`;
                             <span className="text-white/40 italic text-base">Not specified</span>
                           )}
                         </div>
-                      </div>
                     </div>
+                  </div>
 
                     <div className="grid grid-cols-2 gap-6 mb-6">
                       <div className="flex items-center gap-4 bg-black/40 rounded-lg p-4 border border-orange-500/30">
@@ -1835,11 +1948,11 @@ User's message: ${message}`;
                           {editedCharacter.has_met && <span className="text-white text-sm font-bold">✓</span>}
                         </div>
                         <label className="text-base font-semibold text-white">
-                          Have met in person
-                        </label>
-                      </div>
+                        Have met in person
+                      </label>
+                    </div>
 
-                      <div>
+                    <div>
                         <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Likelihood to Meet</label>
                         <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 min-h-[52px] flex items-center shadow-inner">
                           {editedCharacter.likelihood_to_meet ? (
@@ -1852,24 +1965,24 @@ User's message: ${message}`;
                             <span className="text-white/40 italic text-base">Not specified</span>
                           )}
                         </div>
-                      </div>
                     </div>
+                  </div>
 
-                    {editedCharacter.context_of_mention && (
+                  {editedCharacter.context_of_mention && (
                       <div className="mb-6">
                         <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Context of Mention</label>
                         <div className="bg-black/80 border-2 border-border/60 rounded-lg p-4 text-white text-base min-h-[80px] leading-relaxed shadow-inner">
                           {editedCharacter.context_of_mention}
                         </div>
-                      </div>
-                    )}
+                    </div>
+                  )}
 
                     <div className="bg-black/40 rounded-lg p-4 border border-orange-500/20">
                       <p className="text-sm text-white/80 flex items-start gap-2 leading-relaxed">
                         <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-orange-300" />
-                        <span>Proximity tracks how directly you know this person. Use "Third Party" for people mentioned by others that you don't know personally.</span>
-                      </p>
-                    </div>
+                    <span>Proximity tracks how directly you know this person. Use "Third Party" for people mentioned by others that you don't know personally.</span>
+                  </p>
+                </div>
                   </CardContent>
                 </Card>
 
@@ -1879,7 +1992,7 @@ User's message: ${message}`;
                       <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Pronouns</label>
                       <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-inner">
                         {editedCharacter.pronouns || <span className="text-white/40 italic text-base">Not specified</span>}
-                      </div>
+                  </div>
                     </CardContent>
                   </Card>
                   <Card className="bg-gradient-to-br from-pink-500/20 via-pink-600/15 to-pink-500/20 border-2 border-pink-500/40 shadow-lg">
@@ -1887,7 +2000,7 @@ User's message: ${message}`;
                       <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Archetype</label>
                       <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-inner">
                         {editedCharacter.archetype || <span className="text-white/40 italic text-base">Not specified</span>}
-                      </div>
+                  </div>
                     </CardContent>
                   </Card>
                   <Card className="bg-gradient-to-br from-cyan-500/20 via-cyan-600/15 to-cyan-500/20 border-2 border-cyan-500/40 shadow-lg">
@@ -1895,7 +2008,7 @@ User's message: ${message}`;
                       <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Role</label>
                       <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-inner">
                         {editedCharacter.role || <span className="text-white/40 italic text-base">Not specified</span>}
-                      </div>
+                  </div>
                     </CardContent>
                   </Card>
                 </div>
@@ -1912,19 +2025,19 @@ User's message: ${message}`;
                       <div className="flex flex-wrap gap-3">
                         {editedCharacter.tags.map((tag) => (
                           <Tooltip key={tag} content={getTagTooltip(tag)}>
-                            <Badge
-                              variant="outline"
+                      <Badge
+                        variant="outline"
                               className="px-4 py-2 text-sm bg-indigo-500/20 text-indigo-300 border-indigo-500/50 font-semibold shadow-md cursor-help"
-                            >
-                              {tag}
-                            </Badge>
+                      >
+                        {tag}
+                      </Badge>
                           </Tooltip>
-                        ))}
-                      </div>
+                    ))}
+                  </div>
                     ) : (
                       <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white/50 text-base min-h-[52px] flex items-center italic">
                         No tags assigned
-                      </div>
+                </div>
                     )}
                   </CardContent>
                 </Card>
@@ -2151,8 +2264,8 @@ User's message: ${message}`;
                                     <p className="font-medium text-white">{rel.character_name}</p>
                                     <Tooltip content={`Relationship Type: "${rel.relationship_type}" describes how ${rel.character_name} relates to ${editedCharacter.name}. This is automatically detected from your conversations when you describe their connection.`}>
                                       <span className="text-xs text-primary/70 px-2 py-0.5 rounded bg-primary/10 border border-primary/20 cursor-help">
-                                        {rel.relationship_type}
-                                      </span>
+                                      {rel.relationship_type}
+                                    </span>
                                     </Tooltip>
                                   </div>
                                   {rel.summary && <p className="text-sm text-white/60 mt-1">{rel.summary}</p>}
@@ -2366,8 +2479,8 @@ User's message: ${message}`;
             {!loadingDetails && activeTab === 'relationship_timeline' && (
               <div className="space-y-6">
                 <CharacterRelationshipTimeline characterId={editedCharacter.id} />
-              </div>
-            )}
+                          </div>
+                        )}
 
             {!loadingDetails && activeTab === 'chat' && (
               <div className="space-y-4">
@@ -2501,10 +2614,10 @@ User's message: ${message}`;
                                     <div 
                                       className="h-full bg-gradient-to-r from-purple-500 to-purple-600 transition-all shadow-lg"
                                       style={{ width: `${analytics.relationship_depth}%` }}
-                                    />
-                                  </div>
+                                />
+                              </div>
                                   <span className="text-xl font-bold text-purple-300 min-w-[60px] text-right">{analytics.relationship_depth}%</span>
-                                </div>
+                            </div>
                                 <div className="text-sm text-white/70 font-medium">{analytics.shared_experiences} shared experiences</div>
                               </CardContent>
                             </Card>
@@ -2518,10 +2631,10 @@ User's message: ${message}`;
                                     <div 
                                       className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all shadow-lg"
                                       style={{ width: `${analytics.interaction_frequency}%` }}
-                                    />
-                                  </div>
+                                />
+                              </div>
                                   <span className="text-xl font-bold text-blue-300 min-w-[60px] text-right">{analytics.interaction_frequency}%</span>
-                                </div>
+                            </div>
                                 <div className="text-sm text-white/70 font-medium">Based on last 90 days</div>
                               </CardContent>
                             </Card>
@@ -2539,10 +2652,10 @@ User's message: ${message}`;
                                     <div 
                                       className="h-full bg-gradient-to-r from-purple-500 to-purple-600 transition-all shadow-lg"
                                       style={{ width: `${analytics.character_influence_on_user}%` }}
-                                    />
-                                  </div>
+                                />
+                              </div>
                                   <span className="text-xl font-bold text-purple-300 min-w-[60px] text-right">{analytics.character_influence_on_user}%</span>
-                                </div>
+                            </div>
                               </CardContent>
                             </Card>
                           </Tooltip>
@@ -2555,10 +2668,10 @@ User's message: ${message}`;
                                     <div 
                                       className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all shadow-lg"
                                       style={{ width: `${analytics.user_influence_over_character}%` }}
-                                    />
-                                  </div>
+                                />
+                              </div>
                                   <span className="text-xl font-bold text-blue-300 min-w-[60px] text-right">{analytics.user_influence_over_character}%</span>
-                                </div>
+                            </div>
                               </CardContent>
                             </Card>
                           </Tooltip>
@@ -2572,7 +2685,7 @@ User's message: ${message}`;
                                 <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Sentiment</div>
                                 <div className={`text-3xl font-bold ${analytics.sentiment_score >= 0 ? 'text-green-300' : 'text-red-300'}`}>
                                   {analytics.sentiment_score > 0 ? '+' : ''}{analytics.sentiment_score}
-                                </div>
+                            </div>
                               </CardContent>
                             </Card>
                           </Tooltip>
@@ -2639,26 +2752,26 @@ User's message: ${message}`;
                                 {analytics.trend === 'deepening' && (
                                   <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/50 text-sm px-4 py-2 font-bold shadow-md">
                                     <TrendingUp className="h-4 w-4 mr-2" />
-                                    Deepening
-                                  </Badge>
-                                )}
+                              Deepening
+                            </Badge>
+                          )}
                                 {analytics.trend === 'weakening' && (
                                   <Badge variant="outline" className="bg-red-500/20 text-red-300 border-red-500/50 text-sm px-4 py-2 font-bold shadow-md">
                                     <TrendingDown className="h-4 w-4 mr-2" />
-                                    Weakening
-                                  </Badge>
-                                )}
+                              Weakening
+                            </Badge>
+                          )}
                                 {analytics.trend === 'stable' && (
                                   <Badge variant="outline" className="bg-gray-500/20 text-gray-300 border-gray-500/50 text-sm px-4 py-2 font-bold shadow-md">
                                     <Minus className="h-4 w-4 mr-2" />
-                                    Stable
-                                  </Badge>
-                                )}
+                              Stable
+                            </Badge>
+                          )}
                                 <div className="ml-auto flex items-center gap-2 bg-black/40 rounded-lg px-4 py-2 border border-indigo-500/30">
                                   <span className="text-sm font-semibold text-white/70">Known for</span>
                                   <span className="text-xl font-bold text-indigo-300">{analytics.relationship_duration_days}</span>
                                   <span className="text-sm font-semibold text-white/70">days</span>
-                                </div>
+                        </div>
                               </div>
                             </CardContent>
                           </Card>
@@ -2688,8 +2801,8 @@ User's message: ${message}`;
                                           <span className="text-green-400 mt-1">•</span>
                                           <span>{strength}</span>
                                         </li>
-                                      ))}
-                                    </ul>
+                                  ))}
+                                </ul>
                                   </CardContent>
                                 </Card>
                               )}
@@ -2706,8 +2819,8 @@ User's message: ${message}`;
                                           <span className="text-red-400 mt-1">•</span>
                                           <span>{weakness}</span>
                                         </li>
-                                      ))}
-                                    </ul>
+                                  ))}
+                                </ul>
                                   </CardContent>
                                 </Card>
                               )}
@@ -2724,8 +2837,8 @@ User's message: ${message}`;
                                           <span className="text-blue-400 mt-1">•</span>
                                           <span>{opp}</span>
                                         </li>
-                                      ))}
-                                    </ul>
+                                  ))}
+                                </ul>
                                   </CardContent>
                                 </Card>
                               )}
@@ -2742,11 +2855,11 @@ User's message: ${message}`;
                                           <span className="text-orange-400 mt-1">•</span>
                                           <span>{risk}</span>
                                         </li>
-                                      ))}
-                                    </ul>
+                                  ))}
+                                </ul>
                                   </CardContent>
                                 </Card>
-                              )}
+                            )}
                             </div>
                           </div>
                         )}
@@ -2849,9 +2962,9 @@ User's message: ${message}`;
             Close
           </Button>
           {activeTab !== 'info' && (
-            <Button onClick={handleSave} disabled={loading} leftIcon={<Save className="h-4 w-4" />}>
-              {loading ? 'Saving...' : 'Save Changes'}
-            </Button>
+          <Button onClick={handleSave} disabled={loading} leftIcon={<Save className="h-4 w-4" />}>
+            {loading ? 'Saving...' : 'Save Changes'}
+          </Button>
           )}
         </div>
       </div>

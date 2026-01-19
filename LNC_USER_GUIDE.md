@@ -211,6 +211,94 @@ A: No! Incremental compilation means only affected entries are reprocessed. It's
 **Q: What if I disagree with the classification?**  
 A: The system learns from your corrections. If you consistently mark something differently, it adapts.
 
+## Current Limitations and Known Edge Cases
+
+### Classification Accuracy
+
+**Issue**: The classification system uses pattern matching (regex) which has limited accuracy (~70-80%).
+
+**Impact**: Some entries may be misclassified. For example:
+- A BELIEF might be classified as FACT
+- An EXPERIENCE might be classified as FEELING
+- Mixed-type entries (e.g., "I went to the store and I feel happy") may be classified based on the first pattern match
+
+**What You Can Do**: 
+- If you notice a misclassification, you can correct it via the chatbot
+- The system will learn from your corrections over time
+
+**Future**: We're working on LLM-based classification for ambiguous entries to improve accuracy.
+
+### Entity Resolution Collisions
+
+**Issue**: If you mention two different people with the same name (e.g., two different "Sarah"s), the system may confuse them.
+
+**Impact**: Entity references may point to the wrong person, especially if they're mentioned in different contexts.
+
+**What You Can Do**:
+- Use full names or nicknames to distinguish between people
+- The system uses scope-based resolution to reduce collisions
+- You can correct entity references via the chatbot
+
+**Future**: We're working on context-aware disambiguation using entry content.
+
+### Confidence Decay
+
+**Issue**: Currently, confidence scores don't decay over time. An old BELIEF from a year ago has the same confidence as a new BELIEF.
+
+**Impact**: Old, potentially outdated information maintains the same confidence as recent information.
+
+**What You Can Do**:
+- Be aware that older entries may be less reliable
+- You can manually update confidence via corrections
+
+**Future**: We're planning to implement temporal confidence decay (older entries will gradually lose confidence).
+
+### Incremental Compilation Scope
+
+**Issue**: When entries are recompiled, only "cheap passes" are performed (entity extraction, emotion/themes extraction). Knowledge type and canon status are not re-evaluated.
+
+**Impact**: If an entity update would change the knowledge type, the entry may not be reclassified automatically.
+
+**What You Can Do**:
+- If you notice an entry should be reclassified, you can trigger a full recompilation via the chatbot
+
+**Future**: We're working on smart recompilation that detects when a full pass is needed.
+
+### Canon Classification
+
+**Issue**: Canon status (real life vs. roleplay vs. hypothetical) is inferred automatically with default confidence 0.6.
+
+**Impact**: Some entries may be misclassified as CANON when they're actually HYPOTHETICAL or ROLEPLAY.
+
+**What You Can Do**:
+- You can override canon status via the chatbot
+- The system will remember your preferences
+
+**Future**: We're improving canon classification using LLM analysis.
+
+### Symbol Resolution Performance
+
+**Issue**: For users with many entities, symbol resolution may be slower due to database lookups.
+
+**Impact**: Entry compilation may take longer for users with extensive entity databases.
+
+**What You Can Do**:
+- The system uses in-memory caching to improve performance
+- Most lookups complete in < 100ms
+
+**Future**: We're optimizing database queries with better indexes and caching strategies.
+
+### How to Report Issues
+
+If you encounter any of these limitations or other issues:
+
+1. **Use the chatbot**: Describe the issue and the system will help you correct it
+2. **Check the documentation**: See `docs/LNC_V0.1_SPECIFICATION.md` for technical details
+3. **Report bugs**: Create an issue on GitHub with:
+   - Description of the issue
+   - Example entry that demonstrates the issue
+   - Expected vs. actual behavior
+
 ## Summary
 
 The LoreKeeper Narrative Compiler ensures your memories are:
