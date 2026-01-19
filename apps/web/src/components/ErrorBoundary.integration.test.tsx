@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ErrorBoundary } from './ErrorBoundary';
 
 // Mock error tracking
@@ -38,7 +39,8 @@ describe('ErrorBoundary Integration Tests', () => {
     expect(screen.getByText(/Something went wrong/i)).toBeInTheDocument();
   });
 
-  it('should allow resetting error state', () => {
+  it('should allow resetting error state', async () => {
+    const user = userEvent.setup();
     const ThrowError = ({ shouldThrow }: { shouldThrow: boolean }) => {
       if (shouldThrow) {
         throw new Error('Error');
@@ -54,7 +56,11 @@ describe('ErrorBoundary Integration Tests', () => {
 
     expect(screen.getByText(/Something went wrong/i)).toBeInTheDocument();
 
-    // Reset by rendering without error
+    // Click "Try Again" button to reset
+    const tryAgainButton = screen.getByText(/Try Again/i);
+    await user.click(tryAgainButton);
+
+    // After reset, rerender with non-throwing component
     rerender(
       <ErrorBoundary>
         <ThrowError shouldThrow={false} />
@@ -63,6 +69,7 @@ describe('ErrorBoundary Integration Tests', () => {
 
     // Should show content, not error
     expect(screen.queryByText(/Something went wrong/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/No error/i)).toBeInTheDocument();
   });
 });
 

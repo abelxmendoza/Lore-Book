@@ -12,13 +12,14 @@ vi.mock('../lib/supabase', () => ({
 }));
 
 // Mock fetch
-global.fetch = vi.fn();
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
 
 describe('useLoreKeeper', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Setup default fetch mock
-    (global.fetch as any).mockImplementation((url: string) => {
+    mockFetch.mockImplementation((url: string) => {
       if (url.includes('/api/entries') && !url.includes('?')) {
         return Promise.resolve({
           ok: true,
@@ -55,7 +56,7 @@ describe('useLoreKeeper', () => {
 
   it('should handle errors gracefully', async () => {
     // Mock fetch to throw an error
-    (global.fetch as any).mockImplementationOnce(() => 
+    mockFetch.mockImplementationOnce(() => 
       Promise.reject(new Error('Network error'))
     );
 

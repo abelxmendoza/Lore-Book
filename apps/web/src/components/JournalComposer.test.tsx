@@ -26,38 +26,41 @@ vi.mock('../hooks/useLoreKeeper', () => ({
 }));
 
 describe('JournalComposer', () => {
+  const mockOnSave = vi.fn();
+  const mockOnAsk = vi.fn();
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('should render journal composer', () => {
-    render(<JournalComposer />);
+    render(<JournalComposer onSave={mockOnSave} onAsk={mockOnAsk} />);
     
     // Check for main elements
-    expect(screen.getByPlaceholderText(/write your entry/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/log your mission/i)).toBeInTheDocument();
   });
 
   it('should allow text input', async () => {
     const user = userEvent.setup();
-    render(<JournalComposer />);
+    render(<JournalComposer onSave={mockOnSave} onAsk={mockOnAsk} />);
 
-    const textarea = screen.getByPlaceholderText(/write your entry/i);
+    const textarea = screen.getByPlaceholderText(/log your mission/i);
     await user.type(textarea, 'Test entry content');
 
     expect(textarea).toHaveValue('Test entry content');
   });
 
   it('should display character suggestions', () => {
-    render(<JournalComposer />);
+    render(<JournalComposer onSave={mockOnSave} onAsk={mockOnAsk} />);
     
     // Component should render without crashing
-    expect(screen.getByPlaceholderText(/write your entry/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/log your mission/i)).toBeInTheDocument();
   });
 
   it('should handle empty input', () => {
-    render(<JournalComposer />);
+    render(<JournalComposer onSave={mockOnSave} onAsk={mockOnAsk} />);
     
-    const textarea = screen.getByPlaceholderText(/write your entry/i);
+    const textarea = screen.getByPlaceholderText(/log your mission/i);
     expect(textarea).toHaveValue('');
   });
 });

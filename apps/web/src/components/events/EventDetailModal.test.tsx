@@ -41,6 +41,8 @@ describe('EventDetailModal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mock scrollIntoView
+    Element.prototype.scrollIntoView = vi.fn();
   });
 
   it('should render event information', () => {
