@@ -134,9 +134,17 @@ console.log(`\n📊 Results: ${passed} passed, ${failed} failed`);
 
 if (failed > 0) {
   console.error('\n❌ Build validation failed! This may cause black screens on deployment.');
-  process.exit(1);
+  // Only exit if not running as a test (check for test environment)
+  if (!process.env.VITEST && !process.env.NODE_ENV?.includes('test')) {
+    process.exit(1);
+  } else {
+    throw new Error(`Build validation failed: ${failed} test(s) failed`);
+  }
 } else {
   console.log('\n✅ Build validation passed!');
-  process.exit(0);
+  // Only exit if not running as a test
+  if (!process.env.VITEST && !process.env.NODE_ENV?.includes('test')) {
+    process.exit(0);
+  }
 }
 

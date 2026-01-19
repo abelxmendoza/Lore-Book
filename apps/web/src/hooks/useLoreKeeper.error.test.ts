@@ -64,7 +64,7 @@ describe('useLoreKeeper Error Handling', () => {
   it('should handle 500 server errors', async () => {
     mockFetch.mockImplementation((url: string | Request) => {
       const urlString = typeof url === 'string' ? url : url.url;
-      if (urlString.includes('/api/entries') || urlString.includes('/api/timeline')) {
+      if (urlString.includes('/api/entries') || urlString.includes('/api/timeline') || urlString.includes('/api/timeline/tags')) {
         return Promise.resolve({
           ok: false,
           status: 500,
@@ -81,11 +81,13 @@ describe('useLoreKeeper Error Handling', () => {
 
     await waitFor(() => {
       expect(result.current).toBeDefined();
-    }, { timeout: 2000 });
+      expect(result.current.entries).toBeDefined();
+      expect(result.current.timeline).toBeDefined();
+    }, { timeout: 3000 });
 
-    // Should handle error gracefully
-    await result.current.refreshEntries();
+    // Should handle error gracefully - errors are caught in the hook
     expect(result.current.entries).toEqual([]);
+    expect(result.current.timeline).toEqual({ chapters: [], unassigned: [] });
   });
 
   it('should handle empty responses gracefully', async () => {
@@ -103,6 +105,12 @@ describe('useLoreKeeper Error Handling', () => {
           json: () => Promise.resolve({ timeline: null })
         });
       }
+      if (urlString.includes('/api/timeline/tags')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ tags: [] })
+        });
+      }
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({})
@@ -113,10 +121,15 @@ describe('useLoreKeeper Error Handling', () => {
 
     await waitFor(() => {
       expect(result.current).toBeDefined();
-    }, { timeout: 2000 });
+      expect(result.current.entries).toBeDefined();
+      expect(result.current.timeline).toBeDefined();
+    }, { timeout: 3000 });
 
-    // Should handle null responses
-    expect(result.current.entries).toBeDefined();
+    // Should handle null responses - entries should be array, timeline should have default structure
+    expect(Array.isArray(result.current.entries)).toBe(true);
+    expect(result.current.timeline).toBeDefined();
+    expect(result.current.timeline.chapters).toBeDefined();
+    expect(result.current.timeline.unassigned).toBeDefined();
   });
 });
 

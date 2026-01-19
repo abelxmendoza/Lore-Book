@@ -150,14 +150,25 @@ export const useLoreKeeper = () => {
   }, []);
 
   const refreshChapters = useCallback(async () => {
-    const data = await fetchJson<{ chapters: ChapterProfile[]; candidates?: ChapterCandidate[] }>('/api/chapters');
-    setChapters(data.chapters);
-    setChapterCandidates(data.candidates ?? []);
+    try {
+      const data = await fetchJson<{ chapters: ChapterProfile[]; candidates?: ChapterCandidate[] }>('/api/chapters');
+      setChapters(data.chapters);
+      setChapterCandidates(data.candidates ?? []);
+    } catch (error) {
+      console.error('Failed to refresh chapters:', error);
+      setChapters([]);
+      setChapterCandidates([]);
+    }
   }, []);
 
   const refreshEvolution = useCallback(async () => {
-    const data = await fetchJson<{ insights: EvolutionInsights }>('/api/evolution');
-    setEvolution(data.insights);
+    try {
+      const data = await fetchJson<{ insights: EvolutionInsights }>('/api/evolution');
+      setEvolution(data.insights);
+    } catch (error) {
+      console.error('Failed to refresh evolution:', error);
+      setEvolution(null);
+    }
   }, []);
 
   const createEntry = useCallback(async (content: string, overrides?: Partial<JournalEntry> & { tags?: string[]; chapterId?: string | null; metadata?: Record<string, unknown> }) => {
@@ -271,10 +282,10 @@ export const useLoreKeeper = () => {
   }, []);
 
   useEffect(() => {
-    refreshEntries();
-    refreshTimeline();
-    refreshChapters();
-    refreshEvolution();
+    void refreshEntries().catch(err => console.error('Failed to refresh entries on mount:', err));
+    void refreshTimeline().catch(err => console.error('Failed to refresh timeline on mount:', err));
+    void refreshChapters().catch(err => console.error('Failed to refresh chapters on mount:', err));
+    void refreshEvolution().catch(err => console.error('Failed to refresh evolution on mount:', err));
   }, [refreshEntries, refreshTimeline, refreshChapters, refreshEvolution]);
 
   useEffect(() => {
