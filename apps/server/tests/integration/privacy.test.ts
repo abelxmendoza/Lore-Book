@@ -11,12 +11,16 @@ vi.mock('../../src/lib/supabase', () => ({
 }));
 
 // Mock auth middleware
-vi.mock('../../src/middleware/auth', () => ({
-  authMiddleware: (req: any, res: any, next: any) => {
-    req.user = { id: 'test-user-id' };
-    next();
-  }
-}));
+vi.mock('../../src/middleware/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/middleware/auth')>();
+  return {
+    ...actual,
+    requireAuth: (req: any, res: any, next: any) => {
+      req.user = { id: 'test-user-id' };
+      next();
+    },
+  };
+});
 
 describe('Privacy API Integration Tests', () => {
   let mockRequest: Partial<Request>;

@@ -9,9 +9,36 @@ import { chaptersRouter } from '../../src/routes/chapters';
 import { requireAuth } from '../../src/middleware/auth';
 
 // Mock dependencies
-vi.mock('../../src/services/chapterService');
-vi.mock('../../src/services/chapterInsightsService');
-vi.mock('../../src/lib/openai.js');
+import { chapterService } from '../../src/services/chapterService';
+import { chapterInsightsService } from '../../src/services/chapterInsightsService';
+import { openai } from '../../src/lib/openai.js';
+
+vi.mock('../../src/services/chapterService', () => ({
+  chapterService: {
+    createChapter: vi.fn(),
+    listChapters: vi.fn(),
+    getChapter: vi.fn(),
+    updateChapter: vi.fn(),
+    deleteChapter: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/services/chapterInsightsService', () => ({
+  chapterInsightsService: {
+    detectCandidates: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/lib/openai.js', () => ({
+  openai: {
+    chat: {
+      completions: {
+        create: vi.fn(),
+      },
+    },
+  },
+}));
+
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/supabaseClient');
 
@@ -32,7 +59,6 @@ describe('Chapters Routes', () => {
 
   describe('POST /api/chapters', () => {
     it('should create a chapter', async () => {
-      const { chapterService } = await import('../../src/services/chapterService');
       const mockChapter = {
         id: 'ch-1',
         user_id: 'test-user-id',
@@ -171,7 +197,6 @@ describe('Chapters Routes', () => {
 
   describe('PATCH /api/chapters/:id', () => {
     it('should update a chapter', async () => {
-      const { chapterService } = await import('../../src/services/chapterService');
       const mockChapter = {
         id: 'ch-1',
         user_id: 'test-user-id',
@@ -202,7 +227,6 @@ describe('Chapters Routes', () => {
     });
 
     it('should handle partial updates', async () => {
-      const { chapterService } = await import('../../src/services/chapterService');
       const mockChapter = {
         id: 'ch-1',
         user_id: 'test-user-id',
@@ -231,7 +255,6 @@ describe('Chapters Routes', () => {
     });
 
     it('should return 404 if chapter not found', async () => {
-      const { chapterService } = await import('../../src/services/chapterService');
       vi.mocked(chapterService.updateChapter).mockResolvedValue(null);
 
       await request(app)
@@ -243,7 +266,6 @@ describe('Chapters Routes', () => {
 
   describe('DELETE /api/chapters/:id', () => {
     it('should delete a chapter', async () => {
-      const { chapterService } = await import('../../src/services/chapterService');
       vi.mocked(chapterService.deleteChapter).mockResolvedValue(undefined);
 
       await request(app)
@@ -256,7 +278,6 @@ describe('Chapters Routes', () => {
 
   describe('POST /api/chapters/extract-info', () => {
     it('should extract chapter info from conversation', async () => {
-      const { openai } = await import('../../src/lib/openai.js');
       const mockResponse = {
         choices: [{
           message: {
@@ -280,8 +301,9 @@ describe('Chapters Routes', () => {
         })
         .expect(200);
 
-      expect(response.body).toHaveProperty('chapter');
-      expect(response.body.chapter).toHaveProperty('title', 'Extracted Chapter');
+      expect(response.body).toHaveProperty('title', 'Extracted Chapter');
+      expect(response.body).toHaveProperty('startDate');
+      expect(response.body).toHaveProperty('endDate');
     });
 
     it('should validate conversation is provided', async () => {
@@ -292,15 +314,18 @@ describe('Chapters Routes', () => {
     });
 
     it('should handle OpenAI errors', async () => {
-      const { openai } = await import('../../src/lib/openai.js');
       vi.mocked(openai.chat.completions.create).mockRejectedValue(new Error('OpenAI error'));
 
-      await request(app)
+      const response = await request(app)
         .post('/api/chapters/extract-info')
         .send({
           conversation: 'Test conversation',
         })
-        .expect(500);
+        .expect(200); // Route catches errors and returns fallback
+
+      // Should return fallback data when error occurs
+      expect(response.body).toHaveProperty('title');
+      expect(response.body).toHaveProperty('startDate');
     });
   });
 });

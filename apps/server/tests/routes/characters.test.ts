@@ -6,9 +6,29 @@ import { requireAuth } from '../../src/middleware/auth';
 import { charactersRouter } from '../../src/routes/characters';
 
 // Mock dependencies
-vi.mock('../../src/services/peoplePlacesService');
+import { peoplePlacesService } from '../../src/services/peoplePlacesService';
+import { supabaseAdmin } from '../../src/services/supabaseClient';
+
+vi.mock('../../src/services/peoplePlacesService', () => ({
+  peoplePlacesService: {
+    listCharacters: vi.fn(),
+    createCharacter: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/services/supabaseClient', () => ({
+  supabaseAdmin: {
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: null, error: null }),
+    }),
+  },
+}));
+
 vi.mock('../../src/middleware/auth');
-vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/utils/avatar');
 vi.mock('../../src/utils/cacheAvatar');
 
@@ -35,10 +55,25 @@ describe('Characters API Routes', () => {
 
   describe('GET /api/characters', () => {
     it('should return characters list', async () => {
-      vi.mocked(peoplePlacesService.listCharacters).mockResolvedValue([mockCharacter]);
+      // Mock supabase to return characters
+      const mockFrom = vi.mocked(supabaseAdmin.from);
+      const mockSelect = vi.fn().mockReturnThis();
+      const mockEq = vi.fn().mockReturnThis();
+      const mockOrder = vi.fn().mockResolvedValue({
+        data: [mockCharacter],
+        error: null,
+      });
+
+      mockFrom.mockReturnValue({
+        select: mockSelect.mockReturnValue({
+          eq: mockEq.mockReturnValue({
+            order: mockOrder,
+          }),
+        }),
+      } as any);
 
       const response = await request(app)
-        .get('/api/characters')
+        .get('/api/characters/list')
         .expect(200);
 
       expect(response.body).toHaveProperty('characters');
@@ -48,7 +83,29 @@ describe('Characters API Routes', () => {
 
   describe('POST /api/characters', () => {
     it('should create a new character', async () => {
-      vi.mocked(peoplePlacesService.createCharacter).mockResolvedValue(mockCharacter);
+      // Mock supabase insert
+      const mockFrom = vi.mocked(supabaseAdmin.from);
+      const mockInsert = vi.fn().mockReturnThis();
+      const mockSelect = vi.fn().mockReturnThis();
+      const mockSingle = vi.fn().mockResolvedValue({
+        data: mockCharacter,
+        error: null,
+      });
+
+      mockFrom.mockReturnValue({
+        insert: mockInsert.mockReturnValue({
+          select: mockSelect.mockReturnValue({
+            single: mockSingle,
+          }),
+        }),
+      } as any);
+
+      // Mock avatar and cache functions
+      const { characterAvatarUrl, avatarStyleFor } = await import('../../src/utils/avatar');
+      const { cacheAvatar } = await import('../../src/utils/cacheAvatar');
+      vi.mocked(characterAvatarUrl).mockReturnValue('https://avatar.url');
+      vi.mocked(avatarStyleFor).mockReturnValue('adventurer');
+      vi.mocked(cacheAvatar).mockResolvedValue('https://cached.avatar.url');
 
       const response = await request(app)
         .post('/api/characters')
@@ -71,7 +128,8 @@ describe('Characters API Routes', () => {
         })
         .expect(400);
 
-      expect(response.body).toHaveProperty('fieldErrors');
+      expect(response.body).toHaveProperty('error');
+      expect(response.body).toHaveProperty('details');
     });
   });
 });
