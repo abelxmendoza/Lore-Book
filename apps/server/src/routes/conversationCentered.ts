@@ -1343,11 +1343,6 @@ router.get(
   })
 );
 
-import { metaControlService } from '../services/metaControlService';
-import { narrativeContinuityService } from '../services/narrativeContinuityService';
-import { selfAwarenessService } from '../services/selfAwarenessService';
-import { supabaseAdmin } from '../services/supabaseClient';
-
 /**
  * GET /api/conversation/skill-network
  * Get skill network for user
