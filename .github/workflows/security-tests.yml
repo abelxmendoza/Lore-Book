@@ -28,7 +28,6 @@ on:
 
 env:
   NODE_VERSION: '20'
-  PNPM_VERSION: '8'
 
 jobs:
   backend-security-tests:
@@ -47,37 +46,40 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: 'npm'
+          cache-dependency-path: apps/server/package-lock.json
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        working-directory: apps/server
+        run: npm ci
 
       - name: Run CSRF middleware tests
-        run: pnpm --filter server test middleware/csrf.test.ts
+        working-directory: apps/server
+        run: npm test -- middleware/csrf.test.ts
 
       - name: Run rate limiting tests
-        run: pnpm --filter server test middleware/rateLimit.test.ts
+        working-directory: apps/server
+        run: npm test -- middleware/rateLimit.test.ts
 
       - name: Run request validation tests
-        run: pnpm --filter server test middleware/requestValidation.test.ts
+        working-directory: apps/server
+        run: npm test -- middleware/requestValidation.test.ts
 
       - name: Run secure headers tests
-        run: pnpm --filter server test middleware/secureHeaders.test.ts
+        working-directory: apps/server
+        run: npm test -- middleware/secureHeaders.test.ts
 
       - name: Run privacy API integration tests
-        run: pnpm --filter server test integration/privacy.test.ts
+        working-directory: apps/server
+        run: npm test -- integration/privacy.test.ts
 
       - name: Run all middleware tests
-        run: pnpm --filter server test middleware/
+        working-directory: apps/server
+        run: npm test -- middleware/
 
       - name: Upload test results
         if: always()
@@ -111,30 +113,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          cache: 'npm'
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        working-directory: apps/web
+        run: npm ci
 
       - name: Install Playwright browsers
-        run: pnpm --filter web exec playwright install --with-deps
+        working-directory: apps/web
+        run: npx playwright install --with-deps
 
       - name: Build frontend
-        run: pnpm --filter web build
+        working-directory: apps/web
+        run: npm run build
         env:
           NODE_ENV: production
 
       - name: Run security E2E tests
-        run: pnpm --filter web test:e2e security.spec.ts
+        working-directory: apps/web
+        run: npm run test:e2e -- security.spec.ts
         env:
           CI: true
 
