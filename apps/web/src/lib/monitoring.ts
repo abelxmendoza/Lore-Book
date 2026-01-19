@@ -193,16 +193,16 @@ export const analytics = {
 // Performance monitoring
 export const performance = {
   mark: (name: string) => {
-    if (typeof performance !== 'undefined' && performance.mark) {
-      performance.mark(name);
+    if (typeof globalThis !== 'undefined' && globalThis.performance && globalThis.performance.mark) {
+      globalThis.performance.mark(name);
     }
   },
 
   measure: (name: string, startMark: string, endMark?: string) => {
-    if (typeof performance !== 'undefined' && performance.measure) {
+    if (typeof globalThis !== 'undefined' && globalThis.performance && globalThis.performance.measure) {
       try {
-        performance.measure(name, startMark, endMark);
-        const measure = performance.getEntriesByName(name, 'measure')[0];
+        globalThis.performance.measure(name, startMark, endMark);
+        const measure = globalThis.performance.getEntriesByName(name, 'measure')[0];
         if (measure && config.dev.showPerformanceMetrics) {
           console.log(`[Performance] ${name}: ${measure.duration.toFixed(2)}ms`);
         }
@@ -220,8 +220,8 @@ export const performance = {
     performance.mark(startMark);
     try {
       const result = await fn();
-      performance.mark(endMark);
-      const duration = performance.measure(name, startMark, endMark);
+      globalThis.performance.mark(endMark);
+      const duration = globalThis.performance.measure(name, startMark, endMark);
       
       // Track slow operations
       if (duration && duration > 1000) {
@@ -233,8 +233,8 @@ export const performance = {
       
       return result;
     } catch (error) {
-      performance.mark(endMark);
-      performance.measure(name, startMark, endMark);
+      globalThis.performance.mark(endMark);
+      globalThis.performance.measure(name, startMark, endMark);
       throw error;
     }
   },

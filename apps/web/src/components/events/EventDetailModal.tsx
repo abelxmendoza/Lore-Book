@@ -242,7 +242,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                     loadEvent(); // Reload to show updated overrides
                   }}
                 />
-                <Button onClick={onClose} variant="ghost" size="sm">
+                <Button onClick={onClose} variant="ghost" size="sm" aria-label="Close">
                   <X className="w-5 h-5" />
                 </Button>
               </div>

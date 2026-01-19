@@ -94,8 +94,9 @@ describe('EventDetailModal', () => {
       />
     );
 
-    // Check for tab labels
-    expect(screen.getByText(/overview/i)).toBeInTheDocument();
+    // Check for tab labels - tabs are "Chat", "Details", "Sources", "Questions"
+    expect(screen.getByText(/chat/i)).toBeInTheDocument();
+    expect(screen.getByText(/details/i)).toBeInTheDocument();
   });
 
   it('should handle event with no summary gracefully', () => {

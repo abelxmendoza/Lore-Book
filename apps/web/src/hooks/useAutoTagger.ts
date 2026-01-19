@@ -23,7 +23,7 @@ export const useAutoTagger = (initial: string[] = []) => {
         .map((rule) => ({ tag: rule.tag, rationale: rule.rationale }));
 
       setSuggestions(
-        Array.from(new Map(rationales.map((item) => [item.tag, item]))).values().map((item) => ({
+        Array.from(new Map(rationales.map((item) => [item.tag, item])).values()).map((item) => ({
           tag: item.tag,
           rationale: item.rationale
         }))

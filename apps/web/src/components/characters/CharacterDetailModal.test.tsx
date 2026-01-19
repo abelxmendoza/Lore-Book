@@ -96,7 +96,7 @@ describe('CharacterDetailModal', () => {
     );
 
     expect(screen.getByText(/info/i)).toBeInTheDocument();
-    expect(screen.getByText(/chat/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/chat/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/social media/i)).toBeInTheDocument();
     expect(screen.getByText(/connections/i)).toBeInTheDocument();
   });
