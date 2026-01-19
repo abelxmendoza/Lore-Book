@@ -176,6 +176,10 @@ describe('MemoryReviewQueueService', () => {
       const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
       const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
       
+      // Mock findAffectedClaims and generateReasoning
+      vi.spyOn(memoryReviewQueueService as any, 'findAffectedClaims').mockResolvedValue([]);
+      vi.spyOn(memoryReviewQueueService as any, 'generateReasoning').mockResolvedValue('Test reasoning');
+      
       vi.mocked(supabaseAdmin.from).mockReturnValue({
         insert: mockInsert,
         select: vi.fn(),
