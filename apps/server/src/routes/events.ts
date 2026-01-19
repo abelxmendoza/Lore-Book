@@ -7,8 +7,30 @@ import { EventResolver } from '../services/events/eventResolver';
 import { EventStorage } from '../services/events/storageService';
 
 const router = Router();
-const resolver = new EventResolver();
-const storage = new EventStorage();
+
+// Create instances lazily to allow for testing/mocking
+let resolverInstance: EventResolver | null = null;
+let storageInstance: EventStorage | null = null;
+
+function getResolver(): EventResolver {
+  if (!resolverInstance) {
+    resolverInstance = new EventResolver();
+  }
+  return resolverInstance;
+}
+
+function getStorage(): EventStorage {
+  if (!storageInstance) {
+    storageInstance = new EventStorage();
+  }
+  return storageInstance;
+}
+
+// Export for testing
+export function resetInstances() {
+  resolverInstance = null;
+  storageInstance = null;
+}
 
 /**
  * POST /api/events/resolve
@@ -26,7 +48,7 @@ router.post(
 
     logger.info({ userId, entries: context.entries.length }, 'Resolving events');
 
-    const resolved = await resolver.process(context);
+    const resolved = await getResolver().process(context);
 
     res.json({ events: resolved });
   })
@@ -46,7 +68,7 @@ router.get(
 
     logger.info({ userId, startDate, endDate }, 'Getting events');
 
-    let events = await storage.loadAll(userId);
+    let events = await getStorage().loadAll(userId);
 
     // Filter by date range if provided
     if (startDate || endDate) {
@@ -74,7 +96,7 @@ router.get(
     const userId = req.user!.id;
     const { id } = req.params;
 
-    const events = await storage.loadAll(userId);
+    const events = await getStorage().loadAll(userId);
     const event = events.find(e => e.id === id);
 
     if (!event) {

@@ -186,40 +186,86 @@ describe('DecisionMemoryService', () => {
         { id: 'outcome-1', decision_id: 'decision-1', outcome_text: 'Outcome 1' },
       ];
 
+      // Mock decision query: from('decisions').select('*').eq('id').eq('user_id').single()
+      const mockDecisionSelect = vi.fn();
+      const mockDecisionEq1 = vi.fn();
+      const mockDecisionEq2 = vi.fn();
+      const mockDecisionSingle = vi.fn();
+      
+      mockDecisionSelect.mockReturnValue({
+        eq: mockDecisionEq1
+      });
+      mockDecisionEq1.mockReturnValue({
+        eq: mockDecisionEq2
+      });
+      mockDecisionEq2.mockReturnValue({
+        single: mockDecisionSingle
+      });
+      mockDecisionSingle.mockResolvedValue({ data: mockDecision, error: null });
+
+      // Mock options query: from('decision_options').select('*').eq('decision_id').eq('user_id').order()
+      const mockOptionsSelect = vi.fn();
+      const mockOptionsEq1 = vi.fn();
+      const mockOptionsEq2 = vi.fn();
+      const mockOptionsOrder = vi.fn();
+      
+      mockOptionsSelect.mockReturnValue({
+        eq: mockOptionsEq1
+      });
+      mockOptionsEq1.mockReturnValue({
+        eq: mockOptionsEq2
+      });
+      mockOptionsEq2.mockReturnValue({
+        order: mockOptionsOrder
+      });
+      mockOptionsOrder.mockResolvedValue({ data: mockOptions, error: null });
+
+      // Mock rationale query: from('decision_rationales').select('*').eq('decision_id').eq('user_id').single()
+      const mockRationaleSelect = vi.fn();
+      const mockRationaleEq1 = vi.fn();
+      const mockRationaleEq2 = vi.fn();
+      const mockRationaleSingle = vi.fn();
+      
+      mockRationaleSelect.mockReturnValue({
+        eq: mockRationaleEq1
+      });
+      mockRationaleEq1.mockReturnValue({
+        eq: mockRationaleEq2
+      });
+      mockRationaleEq2.mockReturnValue({
+        single: mockRationaleSingle
+      });
+      mockRationaleSingle.mockResolvedValue({ data: mockRationale, error: null });
+
+      // Mock outcomes query: from('decision_outcomes').select('*').eq('decision_id').eq('user_id').order()
+      const mockOutcomesSelect = vi.fn();
+      const mockOutcomesEq1 = vi.fn();
+      const mockOutcomesEq2 = vi.fn();
+      const mockOutcomesOrder = vi.fn();
+      
+      mockOutcomesSelect.mockReturnValue({
+        eq: mockOutcomesEq1
+      });
+      mockOutcomesEq1.mockReturnValue({
+        eq: mockOutcomesEq2
+      });
+      mockOutcomesEq2.mockReturnValue({
+        order: mockOutcomesOrder
+      });
+      mockOutcomesOrder.mockResolvedValue({ data: mockOutcomes, error: null });
+
       vi.mocked(supabaseAdmin.from)
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: mockDecision, error: null })
-              })
-            })
-          })
+          select: mockDecisionSelect,
         } as any)
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              order: vi.fn().mockResolvedValue({ data: mockOptions, error: null })
-            })
-          })
+          select: mockOptionsSelect,
         } as any)
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: mockRationale, error: null })
-              })
-            })
-          })
+          select: mockRationaleSelect,
         } as any)
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                order: vi.fn().mockResolvedValue({ data: mockOutcomes, error: null })
-              })
-            })
-          })
+          select: mockOutcomesSelect,
         } as any);
 
       const summary = await decisionMemoryService.summarizeDecision('decision-1', 'user-123');

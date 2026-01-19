@@ -1,8 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Layout, List, GitBranch, Info, Loader2, X } from 'lucide-react';
-import { useTimelineV2 } from '../../hooks/useTimelineV2';
-import { useChronology } from '../../hooks/useChronology';
-import { useTimeline } from '../../hooks/useTimelineV2';
+import { useTimelineV2, useChronology } from '../../hooks/useTimelineV2';
 import { TimelineNavigator } from './TimelineNavigator';
 import { TimelineSearch } from './TimelineSearch';
 import { LinearTimelineView } from './LinearTimelineView';

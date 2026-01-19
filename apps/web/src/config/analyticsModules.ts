@@ -10,9 +10,9 @@ import {
   Map,
   Search,
   HeartPulse,
-  Award
+  Award,
+  type LucideIcon
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 
 export type AnalyticsModuleTier = 'core' | 'advanced' | 'lab';
 

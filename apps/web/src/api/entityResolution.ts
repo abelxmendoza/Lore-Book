@@ -37,7 +37,7 @@ export interface EntityConflict {
   status: ConflictStatus;
   detected_at: string;
   resolved_at: string | null;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export interface EntityMergeRecord {
@@ -52,7 +52,7 @@ export interface EntityMergeRecord {
   created_at: string;
   reversible: boolean;
   reverted_at: string | null;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export interface EntityResolutionDashboardData {

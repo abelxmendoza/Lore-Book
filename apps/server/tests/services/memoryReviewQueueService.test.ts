@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { memoryReviewQueueService } from '../../src/services/memoryReviewQueueService';
+import { memoryReviewQueueService, MemoryReviewQueueService } from '../../src/services/memoryReviewQueueService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
 import { embeddingService } from '../../src/services/embeddingService';
 
@@ -94,7 +94,7 @@ describe('MemoryReviewQueueService', () => {
         })
       } as any);
 
-      // Mock OpenAI
+      // Create a new service instance with mocked OpenAI
       const mockOpenAI = {
         chat: {
           completions: {
@@ -112,14 +112,8 @@ describe('MemoryReviewQueueService', () => {
           }
         }
       };
-      
-      // Mock the OpenAI import
-      vi.doMock('openai', () => ({
-        default: vi.fn().mockImplementation(() => mockOpenAI)
-      }));
 
-      // Re-import the service to get the mocked OpenAI
-      const { memoryReviewQueueService: service } = await import('../../src/services/memoryReviewQueueService');
+      const service = new MemoryReviewQueueService(mockOpenAI as any);
 
       const risk = await service.classifyRisk({
         entity_id: 'entity-1',

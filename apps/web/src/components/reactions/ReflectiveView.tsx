@@ -3,9 +3,8 @@ import { Brain, TrendingUp, AlertTriangle, Eye, HelpCircle, Loader2, Activity } 
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { reactionApi } from '../../api/reactions';
-import { perceptionReactionEngineApi } from '../../api/perceptionReactionEngine';
+import { perceptionReactionEngineApi, type PatternInsight, type StabilityMetrics } from '../../api/perceptionReactionEngine';
 import type { ReactionPatterns } from '../../types/reaction';
-import type { PatternInsight, StabilityMetrics } from '../../api/perceptionReactionEngine';
 
 /**
  * Reflective View (Therapist Mode)

@@ -21,7 +21,7 @@ const STORAGE_KEY = 'lorebook_use_mock_data';
 
 // Global state for use outside React components (e.g., in fetchJson)
 let globalMockDataEnabled = false;
-let mockDataStateListeners: Set<(enabled: boolean) => void> = new Set();
+const mockDataStateListeners: Set<(enabled: boolean) => void> = new Set();
 
 export function setGlobalMockDataEnabled(enabled: boolean) {
   globalMockDataEnabled = enabled;

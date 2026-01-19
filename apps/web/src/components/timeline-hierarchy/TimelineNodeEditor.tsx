@@ -10,9 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Badge } from '../ui/badge';
-import { TimelineLayer, LAYER_COLORS } from '../../types/timeline';
+import { TimelineLayer, LAYER_COLORS, TimelineNode } from '../../types/timeline';
 import { useTimelineHierarchy } from '../../hooks/useTimelineHierarchy';
-import { TimelineNode } from '../../types/timeline';
 
 type TimelineNodeEditorProps = {
   nodeId: string;

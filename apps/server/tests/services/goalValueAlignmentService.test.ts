@@ -127,38 +127,54 @@ describe('GoalValueAlignmentService', () => {
         },
       ];
 
+      // Mock getGoal (first call in computeAlignment doesn't call getGoal, but getGoalSignals does)
+      // Actually computeAlignment only calls getGoalSignals, not getGoal
+      // So we need to mock goal_signals query first
+      const mockSelect = vi.fn();
+      const mockEq1 = vi.fn();
+      const mockEq2 = vi.fn();
+      const mockOrder = vi.fn();
+      
+      mockSelect.mockReturnValue({
+        eq: mockEq1
+      });
+      mockEq1.mockReturnValue({
+        eq: mockEq2
+      });
+      mockEq2.mockReturnValue({
+        order: mockOrder
+      });
+      mockOrder.mockResolvedValue({ data: mockSignals, error: null });
+
+      const mockInsert = vi.fn();
+      const mockInsertSelect = vi.fn();
+      const mockInsertSingle = vi.fn();
+      
+      mockInsert.mockReturnValue({
+        select: mockInsertSelect
+      });
+      mockInsertSelect.mockReturnValue({
+        single: mockInsertSingle
+      });
+      mockInsertSingle.mockResolvedValue({
+        data: {
+          id: 'snapshot-1',
+          alignment_score: 0.75,
+          confidence: 0.6,
+          user_id: 'user-123',
+          goal_id: 'goal-1',
+          time_window: { start: '2025-01-01', end: '2025-01-02' },
+          generated_at: new Date().toISOString(),
+        },
+        error: null
+      });
+
       vi.mocked(supabaseAdmin.from)
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                single: vi.fn().mockResolvedValue({ data: mockGoal, error: null })
-              })
-            })
-          })
+          select: mockSelect,
         } as any)
         .mockReturnValueOnce({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                order: vi.fn().mockResolvedValue({ data: mockSignals, error: null })
-              })
-            })
-          })
-        } as any)
-        .mockReturnValueOnce({
-          insert: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
-                data: {
-                  id: 'snapshot-1',
-                  alignment_score: 0.75,
-                  confidence: 0.6,
-                },
-                error: null
-              })
-            })
-          })
+          insert: mockInsert,
         } as any);
 
       const snapshot = await goalValueAlignmentService.computeAlignment('user-123', 'goal-1');
@@ -178,8 +194,11 @@ describe('GoalValueAlignmentService', () => {
 
       const mockSnapshots = [
         { id: 's1', alignment_score: 0.8, generated_at: '2025-01-01T00:00:00Z' },
-        { id: 's2', alignment_score: 0.6, generated_at: '2025-01-02T00:00:00Z' },
-        { id: 's3', alignment_score: 0.4, generated_at: '2025-01-03T00:00:00Z' },
+        { id: 's2', alignment_score: 0.8, generated_at: '2025-01-02T00:00:00Z' },
+        { id: 's3', alignment_score: 0.8, generated_at: '2025-01-03T00:00:00Z' },
+        { id: 's4', alignment_score: 0.6, generated_at: '2025-01-04T00:00:00Z' },
+        { id: 's5', alignment_score: 0.4, generated_at: '2025-01-05T00:00:00Z' },
+        { id: 's6', alignment_score: 0.4, generated_at: '2025-01-06T00:00:00Z' },
       ];
 
       vi.mocked(supabaseAdmin.from)

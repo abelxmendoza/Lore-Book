@@ -60,7 +60,7 @@ export const achievementsApi = {
     life_category: string;
     significance_score?: number;
     impact_description?: string;
-    evidence?: any;
+    evidence?: unknown;
     verified?: boolean;
     xp_reward?: number;
     icon_name?: string;
@@ -82,7 +82,7 @@ export const achievementsApi = {
     xp_reward?: number;
     verified?: boolean;
     impact_description?: string;
-    evidence?: any;
+    evidence?: unknown;
   }): Promise<AchievementRarity> {
     const response = await fetchJson<{ rarity: AchievementRarity }>('/api/achievements/real-life/calculate-rarity', {
       method: 'POST',

@@ -5,14 +5,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import eventsRouter from '../../src/routes/events';
 import { requireAuth } from '../../src/middleware/auth';
 
-// Mock dependencies
+// Mock dependencies BEFORE importing the route
 vi.mock('../../src/services/events/eventResolver');
 vi.mock('../../src/services/events/storageService');
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/supabaseClient');
+
+// Import route after mocks are set up
+import eventsRouter from '../../src/routes/events';
+import { resetInstances } from '../../src/routes/events';
 
 const app = express();
 app.use(express.json());
@@ -23,6 +26,7 @@ describe('Events Routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetInstances(); // Reset instances so mocks take effect
     vi.mocked(requireAuth).mockImplementation((req, res, next) => {
       (req as any).user = mockUser;
       next();
