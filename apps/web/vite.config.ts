@@ -114,23 +114,27 @@ export default defineConfig({
           // if (id.includes('node_modules/react-markdown') || id.includes('node_modules/react-simple-code-editor') || id.includes('node_modules/highlight.js')) {
           //   return 'editor-vendor';
           // }
-          // Routes - split by feature
-          if (id.includes('/routes/') || id.includes('/pages/')) {
-            const routeMatch = id.match(/\/(routes|pages)\/([^/]+)/);
-            if (routeMatch) {
-              return `route-${routeMatch[2]}`;
-            }
-          }
-          // Components - split large component directories
-          if (id.includes('/components/chat/')) {
-            return 'chat-components';
-          }
-          if (id.includes('/components/characters/')) {
-            return 'character-components';
-          }
-          if (id.includes('/components/timeline/')) {
-            return 'timeline-components';
-          }
+          // CRITICAL FIX: Don't split routes or components - keep them in main bundle
+          // Route chunks were causing "React.forwardRef is undefined" errors because they execute before React loads
+          // Component chunks can have the same issue. Keep everything in main bundle for now.
+          
+          // Routes - merge into main bundle to avoid React dependency issues
+          // if (id.includes('/routes/') || id.includes('/pages/')) {
+          //   const routeMatch = id.match(/\/(routes|pages)\/([^/]+)/);
+          //   if (routeMatch) {
+          //     return `route-${routeMatch[2]}`;
+          //   }
+          // }
+          // Components - merge into main bundle to avoid React dependency issues
+          // if (id.includes('/components/chat/')) {
+          //   return 'chat-components';
+          // }
+          // if (id.includes('/components/characters/')) {
+          //   return 'character-components';
+          // }
+          // if (id.includes('/components/timeline/')) {
+          //   return 'timeline-components';
+          // }
           // Return undefined for everything else (including React) to keep in main bundle
           return undefined;
         },
