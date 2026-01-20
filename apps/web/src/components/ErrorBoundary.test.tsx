@@ -103,17 +103,16 @@ describe('ErrorBoundary', () => {
   });
 
   it('shows Reload Page button', () => {
-    // Mock window.location.reload by replacing it
+    // Mock window.location.reload using Object.defineProperty
     const reloadSpy = vi.fn();
     const originalReload = window.location.reload;
     
-    // Delete and redefine
-    try {
-      delete (window.location as any).reload;
-    } catch (e) {
-      // Ignore if can't delete
-    }
-    window.location.reload = reloadSpy;
+    // Use Object.defineProperty to avoid "Cannot redefine property" error
+    Object.defineProperty(window.location, 'reload', {
+      writable: true,
+      value: reloadSpy,
+      configurable: true
+    });
     
     render(
       <ErrorBoundary>
@@ -126,10 +125,12 @@ describe('ErrorBoundary', () => {
 
     expect(reloadSpy).toHaveBeenCalled();
     
-    // Restore original if it existed
-    if (originalReload) {
-      window.location.reload = originalReload;
-    }
+    // Restore original
+    Object.defineProperty(window.location, 'reload', {
+      writable: true,
+      value: originalReload,
+      configurable: true
+    });
   });
 
   it('uses custom fallback when provided', () => {

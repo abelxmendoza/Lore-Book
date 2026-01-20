@@ -116,11 +116,16 @@ describe('PredictiveContinuityService', () => {
         }
       ];
 
+      const mockLimit = vi.fn().mockResolvedValue({ data: mockPredictions, error: null });
+      const mockOrder = vi.fn().mockReturnValue({
+        limit: mockLimit,
+        eq: vi.fn().mockReturnThis()
+      });
       const mockChain = {
         select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        order: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue({ data: mockPredictions, error: null })
+        eq: vi.fn().mockReturnValue({
+          order: mockOrder
+        })
       };
       
       vi.mocked(supabaseAdmin.from).mockReturnValue(mockChain as any);

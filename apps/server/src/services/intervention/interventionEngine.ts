@@ -1,13 +1,13 @@
 import { logger } from '../../logger';
 
-import { InterventionStorage } from './interventionStorage';
-import { RecommenderBridge } from './recommenderBridge';
 import { identityPulseModule, relationshipAnalyticsModule, insightEngineModule } from '../analytics';
 import { continuityService } from '../continuity/continuityService';
 import { RelationshipDynamicsEngine } from '../relationshipDynamics';
 import { supabaseAdmin } from '../supabaseClient';
 import { ContradictionDetector } from './detectors/contradictionDetector';
 import { GoalAbandonmentDetector } from './detectors/goalAbandonmentDetector';
+import { InterventionStorage } from './interventionStorage';
+import { RecommenderBridge } from './recommenderBridge';
 import { IdentityDriftDetector } from './detectors/identityDriftDetector';
 import { MoodSpiralDetector } from './detectors/moodSpiralDetector';
 import { NegativeLoopDetector } from './detectors/negativeLoopDetector';

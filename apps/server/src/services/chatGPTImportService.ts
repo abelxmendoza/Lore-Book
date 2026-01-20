@@ -4,7 +4,6 @@ import { v4 as uuid } from 'uuid';
 import { config } from '../config';
 import { logger } from '../logger';
 import { BooleanContradiction } from '../math/booleanContradiction';
-
 import { factExtractionService, type ExtractedFact } from './factExtractionService';
 import { ruleBasedFactExtractionService } from './ruleBasedFactExtraction';
 import { supabaseAdmin } from './supabaseClient';

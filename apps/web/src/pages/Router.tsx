@@ -42,6 +42,11 @@ const LazyRoute = ({ children }: { children: React.ReactNode }) => (
 );
 
 export const Router = () => {
+  // #region agent log
+  if (typeof window !== 'undefined') {
+    fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Router.tsx:44',message:'Router component rendering',data:{pathname:window.location.pathname,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime',hypothesisId:'C'})}).catch(()=>{});
+  }
+  // #endregion
   return (
     <Routes>
       {/* Root — defaults to chat */}

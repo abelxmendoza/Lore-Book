@@ -271,10 +271,13 @@ describe('DecisionMemoryService', () => {
       const summary = await decisionMemoryService.summarizeDecision('decision-1', 'user-123');
 
       expect(summary).toBeDefined();
-      expect(summary?.decision).toEqual(mockDecision);
-      expect(summary?.options).toHaveLength(1);
-      expect(summary?.rationale).toBeDefined();
-      expect(summary?.outcomes).toHaveLength(1);
+      expect(summary).not.toBeNull();
+      if (summary) {
+        expect(summary.decision).toEqual(mockDecision);
+        expect(summary.options).toHaveLength(1);
+        expect(summary.rationale).toBeDefined();
+        expect(summary.outcomes).toHaveLength(1);
+      }
     });
   });
 

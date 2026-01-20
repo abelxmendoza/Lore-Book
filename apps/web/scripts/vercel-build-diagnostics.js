@@ -127,7 +127,8 @@ console.log('');
 
 // 8. Check environment variables (build-time)
 console.log(`🔐 Environment Variables Check:`);
-const useMockData = String(process.env.VITE_USE_MOCK_DATA || '').toLowerCase().trim() === 'true';
+// Match vite.config.ts logic: mock data is enabled by default unless explicitly disabled
+const useMockData = process.env.VITE_USE_MOCK_DATA !== 'false';
 console.log(`ℹ️  VITE_USE_MOCK_DATA: ${process.env.VITE_USE_MOCK_DATA || 'not set'} (useMockData: ${useMockData})`);
 const requiredEnvVars = useMockData ? [] : ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
 const optionalEnvVars = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
@@ -163,6 +164,7 @@ if (missingEnvVars.length > 0) {
   console.error('');
   console.error(`❌ ERROR: Missing required environment variables: ${missingEnvVars.join(', ')}`);
   console.error(`   These must be set in Vercel Dashboard → Settings → Environment Variables`);
+  console.error(`   Or set VITE_USE_MOCK_DATA=true to use mock data instead`);
   process.exit(1);
 }
 console.log('');

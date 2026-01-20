@@ -170,24 +170,24 @@ describe('Monitoring', () => {
 
   describe('performance', () => {
     it('marks performance entries', () => {
-      // Mock performance.mark to avoid infinite recursion
-      const originalMark = global.performance.mark;
+      // Mock the native performance.mark to avoid infinite recursion
+      const originalMark = Performance.prototype.mark;
       const markSpy = vi.fn();
-      global.performance.mark = markSpy;
+      Performance.prototype.mark = markSpy;
       
       try {
         performance.mark('test-mark');
         expect(markSpy).toHaveBeenCalledWith('test-mark');
       } finally {
-        global.performance.mark = originalMark;
+        Performance.prototype.mark = originalMark;
       }
     });
 
     it('measures performance', () => {
-      // Mock performance methods to avoid infinite recursion
-      const originalMeasure = global.performance.measure;
-      const originalGetEntries = global.performance.getEntriesByName;
-      const originalMark = global.performance.mark;
+      // Mock the native performance methods to avoid infinite recursion
+      const originalMeasure = Performance.prototype.measure;
+      const originalGetEntries = Performance.prototype.getEntriesByName;
+      const originalMark = Performance.prototype.mark;
       
       const measureSpy = vi.fn().mockReturnValue({ duration: 100 } as PerformanceMeasure);
       const getEntriesSpy = vi.fn().mockReturnValue([
@@ -195,9 +195,9 @@ describe('Monitoring', () => {
       ] as PerformanceEntry[]);
       const markSpy = vi.fn();
       
-      global.performance.measure = measureSpy;
-      global.performance.getEntriesByName = getEntriesSpy;
-      global.performance.mark = markSpy;
+      Performance.prototype.measure = measureSpy;
+      Performance.prototype.getEntriesByName = getEntriesSpy;
+      Performance.prototype.mark = markSpy;
 
       try {
         performance.mark('start');
@@ -208,9 +208,9 @@ describe('Monitoring', () => {
         expect(result).toBeDefined();
       } finally {
         // Restore originals
-        global.performance.measure = originalMeasure;
-        global.performance.getEntriesByName = originalGetEntries;
-        global.performance.mark = originalMark;
+        Performance.prototype.measure = originalMeasure;
+        Performance.prototype.getEntriesByName = originalGetEntries;
+        Performance.prototype.mark = originalMark;
       }
     });
 

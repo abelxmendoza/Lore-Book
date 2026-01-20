@@ -127,9 +127,7 @@ describe('GoalValueAlignmentService', () => {
         },
       ];
 
-      // Mock getGoal (first call in computeAlignment doesn't call getGoal, but getGoalSignals does)
-      // Actually computeAlignment only calls getGoalSignals, not getGoal
-      // So we need to mock goal_signals query first
+      // Mock getGoalSignals query: from('goal_signals').select('*').eq('user_id').eq('goal_id').order()
       const mockSelect = vi.fn();
       const mockEq1 = vi.fn();
       const mockEq2 = vi.fn();
@@ -145,6 +143,9 @@ describe('GoalValueAlignmentService', () => {
         order: mockOrder
       });
       mockOrder.mockResolvedValue({ data: mockSignals, error: null });
+      
+      // Ensure mockSignals has the required fields for alignment calculation
+      expect(mockSignals.length).toBeGreaterThan(0);
 
       const mockInsert = vi.fn();
       const mockInsertSelect = vi.fn();
@@ -193,12 +194,12 @@ describe('GoalValueAlignmentService', () => {
       };
 
       const mockSnapshots = [
-        { id: 's1', alignment_score: 0.8, generated_at: '2025-01-01T00:00:00Z' },
-        { id: 's2', alignment_score: 0.8, generated_at: '2025-01-02T00:00:00Z' },
-        { id: 's3', alignment_score: 0.8, generated_at: '2025-01-03T00:00:00Z' },
-        { id: 's4', alignment_score: 0.6, generated_at: '2025-01-04T00:00:00Z' },
-        { id: 's5', alignment_score: 0.4, generated_at: '2025-01-05T00:00:00Z' },
-        { id: 's6', alignment_score: 0.4, generated_at: '2025-01-06T00:00:00Z' },
+        { id: 's1', alignment_score: 0.8, generated_at: '2025-01-01T00:00:00Z', user_id: 'user-123', goal_id: 'goal-1' },
+        { id: 's2', alignment_score: 0.8, generated_at: '2025-01-02T00:00:00Z', user_id: 'user-123', goal_id: 'goal-1' },
+        { id: 's3', alignment_score: 0.8, generated_at: '2025-01-03T00:00:00Z', user_id: 'user-123', goal_id: 'goal-1' },
+        { id: 's4', alignment_score: 0.6, generated_at: '2025-01-04T00:00:00Z', user_id: 'user-123', goal_id: 'goal-1' },
+        { id: 's5', alignment_score: 0.4, generated_at: '2025-01-05T00:00:00Z', user_id: 'user-123', goal_id: 'goal-1' },
+        { id: 's6', alignment_score: 0.4, generated_at: '2025-01-06T00:00:00Z', user_id: 'user-123', goal_id: 'goal-1' },
       ];
 
       vi.mocked(supabaseAdmin.from)
@@ -239,6 +240,7 @@ describe('GoalValueAlignmentService', () => {
       const drift = await goalValueAlignmentService.detectGoalDrift('user-123', 'goal-1');
 
       expect(drift).toBeDefined();
+      expect(drift).not.toBeNull();
       expect(drift?.trend).toBe('downward');
     });
   });

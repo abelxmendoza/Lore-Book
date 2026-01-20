@@ -35,6 +35,7 @@ describe('Events Routes', () => {
 
   describe('POST /api/events/resolve', () => {
     it('should resolve events from journal entries', async () => {
+      resetInstances(); // Reset before setting up mocks
       const { EventResolver } = await import('../../src/services/events/eventResolver');
       const mockResolver = {
         process: vi.fn().mockResolvedValue([
@@ -61,6 +62,7 @@ describe('Events Routes', () => {
     });
 
     it('should handle entries from context', async () => {
+      resetInstances(); // Reset before setting up mocks
       const { EventResolver } = await import('../../src/services/events/eventResolver');
       const mockResolver = {
         process: vi.fn().mockResolvedValue([]),
@@ -83,6 +85,7 @@ describe('Events Routes', () => {
 
   describe('GET /api/events', () => {
     it('should get all events for user', async () => {
+      resetInstances(); // Reset before setting up mocks
       const { EventStorage } = await import('../../src/services/events/storageService');
       const mockStorage = {
         loadAll: vi.fn().mockResolvedValue([
@@ -103,6 +106,7 @@ describe('Events Routes', () => {
     });
 
     it('should filter by date range', async () => {
+      resetInstances(); // Reset before setting up mocks
       const { EventStorage } = await import('../../src/services/events/storageService');
       const mockStorage = {
         loadAll: vi.fn().mockResolvedValue([
@@ -128,6 +132,7 @@ describe('Events Routes', () => {
 
   describe('GET /api/events/:id', () => {
     it('should get a specific event', async () => {
+      resetInstances(); // Reset before setting up mocks
       const { EventStorage } = await import('../../src/services/events/storageService');
       const mockStorage = {
         loadAll: vi.fn().mockResolvedValue([
@@ -147,6 +152,7 @@ describe('Events Routes', () => {
     });
 
     it('should return 404 if event not found', async () => {
+      resetInstances(); // Reset before setting up mocks
       const { EventStorage } = await import('../../src/services/events/storageService');
       const mockStorage = {
         loadAll: vi.fn().mockResolvedValue([]),

@@ -15,6 +15,41 @@
   </head>
   <body class="bg-background text-foreground">
     <div id="root"></div>
+    <script>
+      // Immediate inline script to verify HTML is loading
+      console.log('[HTML] index.html loaded');
+      console.log('[HTML] Root element exists:', !!document.getElementById('root'));
+      console.log('[HTML] User agent:', navigator.userAgent);
+      console.log('[HTML] Current URL:', window.location.href);
+      
+      // Check if script tags are present
+      setTimeout(function() {
+        const scripts = document.querySelectorAll('script[type="module"]');
+        console.log('[HTML] Module scripts found:', scripts.length);
+        scripts.forEach(function(script, i) {
+          console.log('[HTML] Script ' + i + ':', script.src || script.textContent?.substring(0, 50));
+        });
+        
+        // If no scripts loaded after 2 seconds, show error
+        if (scripts.length === 0) {
+          document.body.innerHTML = '<div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh;"><h1>Build Error</h1><p>No JavaScript bundle found. The build may have failed.</p><p>Check Vercel build logs for errors.</p></div>';
+        }
+      }, 2000);
+      
+      // Log any errors that occur before main.tsx loads
+      window.addEventListener('error', function(e) {
+        console.error('[HTML] Global error caught:', e.error, e.message, e.filename, e.lineno);
+        if (!e.filename || e.filename.includes('content-scripts')) {
+          // Show error on page if it's from our code
+          document.body.innerHTML = '<div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh;"><h1>JavaScript Error</h1><p>' + e.message + '</p><pre style="text-align: left; background: rgba(255,0,0,0.2); padding: 10px; border-radius: 4px; overflow: auto;">' + (e.error?.stack || e.message) + '</pre></div>';
+        }
+      });
+      
+      // Log unhandled promise rejections
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('[HTML] Unhandled promise rejection:', e.reason);
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
     <noscript>
       <div style="padding: 20px; text-align: center; color: white;">

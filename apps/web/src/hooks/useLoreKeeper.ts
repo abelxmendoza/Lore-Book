@@ -61,9 +61,11 @@ const fetchJson = async <T>(input: RequestInfo, init?: RequestInit): Promise<T> 
   });
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
-    throw new Error(error.error ?? 'Request failed');
+    const errorMessage = error?.error || `Request failed with status ${res.status}`;
+    throw new Error(errorMessage);
   }
-  return res.json();
+  const json = await res.json().catch(() => null);
+  return json;
 };
 
 export type ChapterFacet = { label: string; score: number };
@@ -127,7 +129,7 @@ export const useLoreKeeper = () => {
   const refreshEntries = useCallback(async () => {
     try {
       const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries');
-      setEntries(data.entries || []);
+      setEntries(data?.entries || []);
     } catch (error) {
       console.error('Failed to refresh entries:', error);
       setEntries([]);
@@ -140,8 +142,8 @@ export const useLoreKeeper = () => {
         fetchJson<{ timeline: TimelineResponse }>('/api/timeline'),
         fetchJson<{ tags: { name: string; count: number }[] }>('/api/timeline/tags')
       ]);
-      setTimeline(timelineData.timeline || { chapters: [], unassigned: [] });
-      setTags(tagData.tags || []);
+      setTimeline(timelineData?.timeline || { chapters: [], unassigned: [] });
+      setTags(tagData?.tags || []);
     } catch (error) {
       console.error('Failed to refresh timeline:', error);
       setTimeline({ chapters: [], unassigned: [] });
@@ -290,16 +292,20 @@ export const useLoreKeeper = () => {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem('lorekeeper-cache', JSON.stringify(entries.slice(0, 10)));
+    if (entries && Array.isArray(entries) && entries.length > 0) {
+      window.localStorage.setItem('lorekeeper-cache', JSON.stringify(entries.slice(0, 10)));
+    }
   }, [entries]);
 
   const timelineCount = useMemo(() => {
-    if (!timeline || !timeline.chapters || !timeline.unassigned) return 0;
-    const chapterCount = timeline.chapters.reduce(
+    if (!timeline) return 0;
+    const chapters = timeline.chapters || [];
+    const unassigned = timeline.unassigned || [];
+    const chapterCount = chapters.reduce(
       (acc, chapter) => acc + (chapter.months?.reduce((chapterAcc, group) => chapterAcc + (group.entries?.length || 0), 0) || 0),
       0
     );
-    const unassignedCount = timeline.unassigned.reduce((acc, group) => acc + (group.entries?.length || 0), 0);
+    const unassignedCount = unassigned.reduce((acc, group) => acc + (group.entries?.length || 0), 0);
     return chapterCount + unassignedCount;
   }, [timeline]);
 

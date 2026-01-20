@@ -50,6 +50,10 @@ describe('OmegaMemoryService', () => {
         single: vi.fn().mockResolvedValue({ data: mockEntity, error: null })
       };
 
+      // Mock continuityService.emitEvent to prevent actual DB calls
+      const { continuityService } = await import('../../src/services/continuityService');
+      vi.mocked(continuityService.emitEvent).mockResolvedValue(undefined);
+
       vi.mocked(supabaseAdmin.from).mockReturnValue(mockChain as any);
 
       const result = await omegaMemoryService.resolveEntities('user-123', [
@@ -61,6 +65,10 @@ describe('OmegaMemoryService', () => {
     });
 
     it('should create new entity if not found', async () => {
+      // Mock continuityService.emitEvent to prevent actual DB calls
+      const { continuityService } = await import('../../src/services/continuityService');
+      vi.mocked(continuityService.emitEvent).mockResolvedValue(undefined);
+      
       // Mock findEntityByNameOrAlias to return null (not found)
       const mockFindChain = {
         select: vi.fn().mockReturnThis(),

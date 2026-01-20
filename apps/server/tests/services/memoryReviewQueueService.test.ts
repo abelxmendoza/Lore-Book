@@ -88,7 +88,7 @@ describe('MemoryReviewQueueService', () => {
     });
 
     it('should classify HIGH risk for identity-affecting claims', async () => {
-      // Mock supabase for contradictsExistingClaims check
+      // Mock supabase for contradictsExistingClaims check (returns empty, so no contradictions)
       vi.mocked(supabaseAdmin.from).mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
@@ -100,20 +100,22 @@ describe('MemoryReviewQueueService', () => {
       } as any);
 
       // Create a new service instance with mocked OpenAI
+      const mockCreate = vi.fn().mockResolvedValue({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              affects_identity: true,
+              confidence: 0.9,
+              reason: 'Parent status affects identity'
+            })
+          }
+        }]
+      });
+
       const mockOpenAI = {
         chat: {
           completions: {
-            create: vi.fn().mockResolvedValue({
-              choices: [{
-                message: {
-                  content: JSON.stringify({
-                    affects_identity: true,
-                    confidence: 0.9,
-                    reason: 'Parent status affects identity'
-                  })
-                }
-              }]
-            })
+            create: mockCreate
           }
         }
       };
@@ -123,9 +125,10 @@ describe('MemoryReviewQueueService', () => {
       const risk = await service.classifyRisk({
         entity_id: 'entity-1',
         claim_text: 'I am a parent',
-        confidence: 0.5,
+        confidence: 0.5, // Low confidence so it checks affectsIdentity
       }, 'user-123');
 
+      expect(mockCreate).toHaveBeenCalled();
       expect(risk).toBe('HIGH');
     });
   });
@@ -228,20 +231,29 @@ describe('MemoryReviewQueueService', () => {
       };
 
       vi.spyOn(memoryReviewQueueService, 'getProposal').mockResolvedValue(mockProposal);
+      vi.spyOn(memoryReviewQueueService, 'commitClaim').mockResolvedValue(undefined);
+      vi.spyOn(memoryReviewQueueService, 'finalizeProposal').mockResolvedValue(undefined);
+      
+      // Mock omegaMemoryService.ingestText which is called by comprehensiveIngestion
+      const { omegaMemoryService } = await import('../../src/services/omegaMemoryService');
+      vi.spyOn(omegaMemoryService, 'ingestText').mockResolvedValue({
+        entities: [],
+        claims: [],
+        relationships: [],
+        conflicts_detected: false
+      });
+
+      // Mock the insert chain for memory_decisions
+      const mockInsertChain = {
+        insert: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: mockDecision, error: null })
+          })
+        })
+      };
 
       vi.mocked(supabaseAdmin.from)
-        .mockReturnValueOnce({
-          insert: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: mockDecision, error: null })
-            })
-          })
-        } as any)
-        .mockReturnValueOnce({
-          update: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: null, error: null })
-          })
-        } as any);
+        .mockReturnValueOnce(mockInsertChain as any);
 
       const result = await memoryReviewQueueService.approveProposal('user-123', 'proposal-1');
 
@@ -273,6 +285,9 @@ describe('MemoryReviewQueueService', () => {
       };
 
       vi.spyOn(memoryReviewQueueService, 'getProposal').mockResolvedValue(mockProposal);
+      
+      // Mock finalizeProposal to avoid the actual DB call
+      vi.spyOn(memoryReviewQueueService as any, 'finalizeProposal').mockResolvedValue(undefined);
 
       // Mock the insert chain for memory_decisions
       const mockInsertChain = {
@@ -283,10 +298,14 @@ describe('MemoryReviewQueueService', () => {
         })
       };
       
-      // Mock the update chain for memory_proposals
+      // Mock the update chain for memory_proposals (called by finalizeProposal)
       const mockUpdateChain = {
         update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ data: null, error: null })
+          eq: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: { ...mockProposal, status: 'REJECTED' }, error: null })
+            })
+          })
         })
       };
       
@@ -296,7 +315,7 @@ describe('MemoryReviewQueueService', () => {
 
       vi.mocked(supabaseAdmin.from)
         .mockReturnValueOnce(mockInsertChain as any) // memory_decisions insert
-        .mockReturnValueOnce(mockUpdateChain as any); // memory_proposals update (from finalizeProposal)
+        .mockReturnValueOnce(mockUpdateChain as any); // memory_proposals update
 
       const result = await memoryReviewQueueService.rejectProposal(
         'user-123',
@@ -304,6 +323,7 @@ describe('MemoryReviewQueueService', () => {
         'Not accurate'
       );
 
+      expect(result).toBeDefined();
       expect(result.decision).toBe('REJECT');
       expect(result.decided_by).toBe('USER');
     });

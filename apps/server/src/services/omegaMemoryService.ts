@@ -98,7 +98,7 @@ export class OmegaMemoryService {
               }
             }
           } catch (error) {
-            logger.debug({ err: error, userId }, 'Failed to create perspective claim or MRQ proposal, continuing');
+            logger.info({ err: error, userId }, 'Failed to create perspective claim or MRQ proposal, continuing');
           }
         }
       }
@@ -249,7 +249,7 @@ Only extract entities that are clearly mentioned. Be conservative with confidenc
         return similarEntities[0];
       }
     } catch (error) {
-      logger.debug({ err: error, userId, name, type }, 'Semantic search failed, using exact match only');
+      logger.info({ err: error, userId, name, type }, 'Semantic search failed, using exact match only');
     }
 
     return null;

@@ -112,9 +112,11 @@ describe('useLoreKeeper', () => {
     await result.current.refreshEntries();
     
     // Error should be handled, verify hook still works
+    // After error in refreshEntries, entries are set to empty array (see refreshEntries implementation)
     expect(result.current).toBeDefined();
     expect(result.current.entries).toBeDefined();
-    expect(result.current.entries).toEqual([]); // Should default to empty array on error
+    // refreshEntries sets entries to [] on error
+    expect(result.current.entries).toEqual([]);
   });
 });
 

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import dotenv from 'dotenv';
+import { logger } from './logger';
 
 // Load .env from project root
 // From apps/server/src/config.ts, we need to go up 3 levels to reach root
@@ -21,26 +22,21 @@ const defaultEnvPath = path.resolve(rootDir, '.env');
 // Try to load environment-specific file first, then fallback to .env
 let result = dotenv.config({ path: envPath });
 if (result.error) {
-  // eslint-disable-next-line no-console
-  console.warn(`⚠️  Failed to load ${envFileName}, trying .env`);
+  logger.warn(`⚠️  Failed to load ${envFileName}, trying .env`);
   result = dotenv.config({ path: defaultEnvPath });
   if (result.error) {
-    // eslint-disable-next-line no-console
-    console.error(`❌ Failed to load .env from ${defaultEnvPath}:`, result.error.message);
+    logger.error(`❌ Failed to load .env from ${defaultEnvPath}:`, result.error.message);
     // Try process.cwd() as fallback
     const fallbackPath = path.resolve(process.cwd(), '.env');
     const fallbackResult = dotenv.config({ path: fallbackPath });
     if (!fallbackResult.error) {
-      // eslint-disable-next-line no-console
-      console.warn(`✅ Loaded .env from fallback: ${fallbackPath}`);
+      logger.warn(`✅ Loaded .env from fallback: ${fallbackPath}`);
     }
   } else {
-    // eslint-disable-next-line no-console
-    console.warn(`✅ Loaded .env from: ${defaultEnvPath}`);
+    logger.warn(`✅ Loaded .env from: ${defaultEnvPath}`);
   }
 } else {
-  // eslint-disable-next-line no-console
-  console.warn(`✅ Loaded ${envFileName} from: ${envPath}`);
+  logger.warn(`✅ Loaded ${envFileName} from: ${envPath}`);
 }
 
 type EnvConfig = {

@@ -29,6 +29,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (config.dev.enableConsoleLogs) {
       console.error('ErrorBoundary caught an error:', error, errorInfo);
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ErrorBoundary.tsx:27',message:'ErrorBoundary caught error - CRITICAL',data:{errorMessage:error.message,errorStack:error.stack,componentStack:errorInfo.componentStack,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
 
     // Track error with monitoring service
     errorTracking.captureException(error, {

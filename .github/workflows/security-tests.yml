@@ -139,6 +139,7 @@ jobs:
         run: npm run test:e2e -- security.spec.ts
         env:
           CI: true
+          NODE_ENV: production
 
       - name: Upload Playwright report
         if: always()

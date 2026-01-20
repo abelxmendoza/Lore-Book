@@ -450,7 +450,7 @@ export const MemoryPanel = ({
           )}
         </div>
       </div>
-    </div>
+      </div>
     </>
   );
 };

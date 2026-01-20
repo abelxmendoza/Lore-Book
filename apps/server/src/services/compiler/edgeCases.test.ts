@@ -283,10 +283,12 @@ describe('LNC Edge Cases', () => {
       
       // This should be classified as EXPERIENCE (past tense action)
       // But confidence should be lower due to uncertainty marker
-      const ir = await irCompiler.compile(
+      const ir = await irCompiler.compileUtteranceToIR(
         testUserId,
         'test-utterance',
-        ambiguousText
+        ambiguousText,
+        'thread-1',
+        new Date().toISOString()
       );
 
       expect(ir.knowledge_type).toBe('EXPERIENCE');
@@ -298,10 +300,12 @@ describe('LNC Edge Cases', () => {
       const mixedText = "I went to the store and I feel happy about it";
       
       // Should classify based on first pattern match (EXPERIENCE)
-      const ir = await irCompiler.compile(
+      const ir = await irCompiler.compileUtteranceToIR(
         testUserId,
         'test-utterance',
-        mixedText
+        mixedText,
+        'thread-1',
+        new Date().toISOString()
       );
 
       // EXPERIENCE has higher priority in pattern matching
@@ -499,7 +503,7 @@ describe('LNC Edge Cases', () => {
 
   describe('Edge Case 12: Empty and Null Values', () => {
     it('should handle empty content', async () => {
-      const ir = await irCompiler.compile(testUserId, 'test-utterance', '');
+      const ir = await irCompiler.compileUtteranceToIR(testUserId, 'test-utterance', '', 'thread-1', new Date().toISOString());
       
       // Should still create valid IR
       expect(ir).toBeDefined();

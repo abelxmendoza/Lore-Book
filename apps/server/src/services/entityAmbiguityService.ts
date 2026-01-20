@@ -8,7 +8,6 @@
 
 import { logger } from '../logger';
 import type { UserIntent } from '../types/conversationalOrchestration';
-
 import { entityResolutionService, type EntityCandidate, type ResolutionTier } from './entityResolutionService';
 
 // -----------------------------

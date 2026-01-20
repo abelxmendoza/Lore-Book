@@ -79,10 +79,11 @@ describe('OmegaMemoryService - Enhanced Features', () => {
 
   describe('Semantic Similarity', () => {
     it('should detect conflicts using embeddings', async () => {
-      const mockEmbedding = new Array(1536).fill(0.1);
+      // Use very different embeddings to get low similarity (< 0.3) which triggers LLM check
+      // One embedding all 0.1, other all 0.9 gives cosine similarity ~0.1 (very low)
       vi.mocked(embeddingService.embedText)
-        .mockResolvedValueOnce(mockEmbedding)
-        .mockResolvedValueOnce(new Array(1536).fill(0.9)); // Different embedding
+        .mockResolvedValueOnce(new Array(1536).fill(0.1)) // newClaim embedding
+        .mockResolvedValueOnce(new Array(1536).fill(0.9)); // existingClaim embedding (very different)
 
       const newClaim = {
         id: 'claim-1',
@@ -218,8 +219,10 @@ describe('OmegaMemoryService - Enhanced Features', () => {
       };
 
       // These overlap temporally, so if semantically opposite, it's a conflict
-      const mockEmbedding = new Array(1536).fill(0.1);
-      vi.mocked(embeddingService.embedText).mockResolvedValue(mockEmbedding);
+      // Use different embeddings to get low similarity (< 0.3) which triggers LLM check
+      vi.mocked(embeddingService.embedText)
+        .mockResolvedValueOnce(new Array(1536).fill(0.1)) // newClaim embedding
+        .mockResolvedValueOnce(new Array(1536).fill(0.9)); // oldClaim embedding (different = low similarity)
 
       vi.mocked(supabaseAdmin.rpc).mockResolvedValue({
         data: [existingClaim],
