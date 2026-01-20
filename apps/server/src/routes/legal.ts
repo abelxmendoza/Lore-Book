@@ -4,7 +4,12 @@ import path from 'path';
 
 import { Router } from 'express';
 
+import { rateLimitMiddleware } from '../middleware/rateLimit';
+
 export const legalRouter = Router();
+
+// Apply rate limiting to prevent DoS attacks on file system access
+legalRouter.use(rateLimitMiddleware);
 
 const legalDir = path.resolve(process.cwd(), 'legal');
 
