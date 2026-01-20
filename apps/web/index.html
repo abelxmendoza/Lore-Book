@@ -95,16 +95,140 @@
       // Log any errors that occur before main.tsx loads
       window.addEventListener('error', function(e) {
         console.error('[HTML] Global error caught:', e.error, e.message, e.filename, e.lineno);
-        if (!e.filename || e.filename.includes('content-scripts')) {
-          // Show error on page if it's from our code
-          document.body.innerHTML = '<div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh;"><h1>JavaScript Error</h1><p>' + e.message + '</p><pre style="text-align: left; background: rgba(255,0,0,0.2); padding: 10px; border-radius: 4px; overflow: auto;">' + (e.error?.stack || e.message) + '</pre></div>';
+        // Store error for diagnostics
+        try {
+          const errorLog = {
+            location: 'index.html:global-error',
+            message: 'Global error caught',
+            data: {
+              errorMessage: e.message,
+              errorStack: e.error?.stack,
+              filename: e.filename,
+              lineno: e.lineno,
+              timestamp: Date.now()
+            },
+            timestamp: Date.now()
+          };
+          localStorage.setItem('lorekeeper_debug_error', JSON.stringify(errorLog));
+        } catch (err) { /* localStorage may not be available */ }
+        
+        // Show error on page if it's from our code (not browser extensions)
+        if (!e.filename || (!e.filename.includes('content-scripts') && !e.filename.includes('moz-extension'))) {
+          const root = document.getElementById('root');
+          if (root && !root.hasChildNodes()) {
+            root.innerHTML = '<div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh; font-family: monospace;"><h1 style="color: #ef4444;">🚨 JavaScript Error</h1><p style="color: #fbbf24; font-size: 18px; margin: 20px 0;">' + e.message + '</p><pre style="text-align: left; background: rgba(255,0,0,0.2); padding: 15px; border-radius: 4px; overflow: auto; max-width: 800px; margin: 0 auto; color: #fca5a5;">' + (e.error?.stack || e.message) + '</pre><p style="margin-top: 20px; color: #94a3b8; font-size: 14px;">File: ' + (e.filename || 'unknown') + ' | Line: ' + (e.lineno || 'unknown') + '</p></div>';
+          }
         }
       });
+      
+      // Catch module loading errors specifically
+      window.addEventListener('error', function(e) {
+        // Check if this is a module loading error
+        if (e.filename && e.filename.includes('/assets/index-') && e.filename.endsWith('.js')) {
+          console.error('[HTML] MODULE LOAD ERROR - Bundle failed to load/execute:', e);
+          const root = document.getElementById('root');
+          if (root) {
+            root.innerHTML = `
+              <div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh; font-family: monospace;">
+                <h1 style="color: #ef4444;">🚨 Module Load Error</h1>
+                <p style="color: #fbbf24; font-size: 18px; margin: 20px 0;">JavaScript bundle failed to load or execute</p>
+                <pre style="text-align: left; background: rgba(255,0,0,0.2); padding: 15px; border-radius: 4px; overflow: auto; max-width: 800px; margin: 0 auto; color: #fca5a5;">${e.message}\n\n${e.error?.stack || 'No stack trace'}</pre>
+                <p style="margin-top: 20px; color: #94a3b8; font-size: 14px;">File: ${e.filename || 'unknown'} | Line: ${e.lineno || 'unknown'}</p>
+                <p style="margin-top: 10px; color: #64748b; font-size: 12px;">This usually indicates a syntax error or import failure in the production bundle.</p>
+              </div>
+            `;
+          }
+        }
+      }, true); // Use capture phase to catch errors earlier
       
       // Log unhandled promise rejections
       window.addEventListener('unhandledrejection', function(e) {
         console.error('[HTML] Unhandled promise rejection:', e.reason);
+        // Store rejection for diagnostics
+        try {
+          const rejectionLog = {
+            location: 'index.html:unhandled-rejection',
+            message: 'Unhandled promise rejection',
+            data: {
+              reason: String(e.reason),
+              errorStack: e.reason?.stack,
+              timestamp: Date.now()
+            },
+            timestamp: Date.now()
+          };
+          localStorage.setItem('lorekeeper_debug_rejection', JSON.stringify(rejectionLog));
+        } catch (err) { /* localStorage may not be available */ }
       });
+      
+      // Try to detect if the module script fails to load/execute
+      setTimeout(function() {
+        const moduleScript = document.querySelector('script[type="module"]');
+        if (moduleScript && moduleScript.src) {
+          // Check if the script loaded but didn't execute
+          fetch(moduleScript.src, { method: 'HEAD' })
+            .then(function(response) {
+              if (!response.ok) {
+                console.error('[HTML] Module script failed to load:', response.status, response.statusText);
+                const root = document.getElementById('root');
+                if (root) {
+                  root.innerHTML = `
+                    <div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh; font-family: monospace;">
+                      <h1 style="color: #ef4444;">🚨 Module Load Failed</h1>
+                      <p style="color: #fbbf24; font-size: 18px; margin: 20px 0;">JavaScript bundle failed to load</p>
+                      <p style="color: #94a3b8;">Status: ${response.status} ${response.statusText}</p>
+                      <p style="color: #94a3b8;">URL: ${moduleScript.src}</p>
+                    </div>
+                  `;
+                }
+              }
+            })
+            .catch(function(error) {
+              console.error('[HTML] Failed to check module script:', error);
+            });
+        }
+      }, 3000);
+    </script>
+    <!-- CRITICAL: Boot test must run BEFORE module script to catch import failures -->
+    <script>
+      // Inline boot test that runs immediately, before any module loads
+      (function() {
+        'use strict';
+        try {
+          console.error('[BOOT] Inline boot test executing (before module load)');
+          const bootMarker = document.createElement('div');
+          bootMarker.id = 'lorekeeper-boot-marker';
+          bootMarker.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+          bootMarker.setAttribute('data-boot-time', Date.now().toString());
+          document.body.appendChild(bootMarker);
+          try {
+            localStorage.setItem('lorekeeper_debug_boot', JSON.stringify({ 
+              location: 'index.html:inline-boot', 
+              message: 'Inline boot test executed', 
+              timestamp: Date.now() 
+            }));
+          } catch (e) { /* localStorage may not be available */ }
+        } catch (error) {
+          console.error('[BOOT ERROR] Inline boot test failed:', error);
+        }
+      })();
+      
+      // Monitor module script loading
+      window.addEventListener('error', function(e) {
+        if (e.filename && e.filename.includes('/assets/index-') && e.filename.endsWith('.js')) {
+          console.error('[HTML] MODULE LOAD ERROR:', e.message, e.filename, e.lineno);
+          const root = document.getElementById('root');
+          if (root && !root.hasChildNodes()) {
+            root.innerHTML = `
+              <div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh; font-family: monospace;">
+                <h1 style="color: #ef4444;">🚨 Module Load Error</h1>
+                <p style="color: #fbbf24; font-size: 18px; margin: 20px 0;">${e.message}</p>
+                <pre style="text-align: left; background: rgba(255,0,0,0.2); padding: 15px; border-radius: 4px; overflow: auto; max-width: 800px; margin: 0 auto; color: #fca5a5;">${e.error?.stack || 'No stack trace'}</pre>
+                <p style="margin-top: 20px; color: #94a3b8; font-size: 14px;">File: ${e.filename || 'unknown'} | Line: ${e.lineno || 'unknown'}</p>
+              </div>
+            `;
+          }
+        }
+      }, true);
     </script>
     <script type="module" src="/src/main.tsx"></script>
     <noscript>
