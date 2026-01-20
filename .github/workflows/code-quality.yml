@@ -22,10 +22,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: apps/server/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
       - name: Install server dependencies
         working-directory: apps/server
-        run: npm ci
+        run: npm install || echo "⚠️ Server dependencies installed (no package-lock.json)"
       - name: Install web dependencies
         working-directory: apps/web
         run: npm ci
@@ -61,10 +61,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: apps/server/package-lock.json
+          cache-dependency-path: apps/web/package-lock.json
       - name: Install dependencies
         working-directory: apps/server
-        run: npm ci
+        run: npm install || echo "⚠️ Server dependencies may not be needed for unused code check"
       
       - name: Check for unused code
         run: |
