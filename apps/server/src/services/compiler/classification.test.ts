@@ -17,6 +17,36 @@ vi.mock('../supabaseClient', () => ({
   }
 }));
 
+// Mock omegaMemoryService to prevent real OpenAI API calls
+vi.mock('../omegaMemoryService', () => ({
+  omegaMemoryService: {
+    extractEntities: vi.fn().mockResolvedValue([]),
+    resolveEntities: vi.fn().mockResolvedValue([])
+  }
+}));
+
+// Mock entryEnrichmentService
+vi.mock('../entryEnrichmentService', () => ({
+  entryEnrichmentService: {
+    enrichEntry: vi.fn().mockResolvedValue({
+      emotions: [],
+      themes: [],
+      intensity: 'LOW'
+    })
+  }
+}));
+
+// Mock canonDetectionService
+vi.mock('../canonDetectionService', () => ({
+  canonDetectionService: {
+    determineCanonStatus: vi.fn().mockReturnValue({
+      status: 'CANON',
+      source: 'SYSTEM',
+      confidence: 0.8
+    })
+  }
+}));
+
 describe('Classification Accuracy Tests', () => {
   const testUserId = 'test-user-classification';
   let testUtteranceCounter = 0;

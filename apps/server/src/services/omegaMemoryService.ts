@@ -132,8 +132,16 @@ export class OmegaMemoryService {
 
   /**
    * Extract entities from text using LLM
+   * Made public for mocking in tests
    */
-  private async extractEntities(text: string): Promise<Array<{ name: string; type: EntityType }>> {
+  async extractEntities(text: string): Promise<Array<{ name: string; type: EntityType }>> {
+    // FIX 1: Hard fail in tests - prevent LLM access during unit tests
+    if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+      throw new Error(
+        'LLM access forbidden during unit tests. Mock extractEntities() in test setup.'
+      );
+    }
+
     try {
       const completion = await openai.chat.completions.create({
         model: config.defaultModel || 'gpt-4o-mini',
@@ -172,10 +180,17 @@ Only extract entities that are clearly mentioned. Be conservative with confidenc
         name: e.name,
         type: e.type as EntityType,
       }));
-    } catch (error) {
-      logger.error({ err: error }, 'Failed to extract entities with LLM');
-      // Fallback to empty array
-      return [];
+    } catch (error: any) {
+      // FIX 3: Never downgrade errors - throw instead of returning empty
+      // FIX 4: Rate-limit circuit breaker
+      if (error?.status === 429 || error?.code === 'rate_limit_exceeded' || error?.message?.includes('rate limit')) {
+        logger.error({ err: error }, 'LLM rate limit exceeded - failing fast');
+        throw new Error('LLM rate limit exceeded. Please retry later.');
+      }
+      
+      logger.error({ err: error }, 'Failed to extract entities with LLM - throwing error');
+      // Invalid IR is worse than no IR - throw instead of returning empty
+      throw error;
     }
   }
 

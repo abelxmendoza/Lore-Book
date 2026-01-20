@@ -120,8 +120,10 @@ export class IncrementalCompiler {
         confidence: entity.confidence || 0.7,
       }));
     } catch (error) {
-      logger.debug({ error }, 'Failed to re-extract entities');
-      return [];
+      // FIX 3: Never downgrade errors - throw instead of returning empty
+      // Invalid IR is worse than no IR
+      logger.error({ error }, 'Failed to re-extract entities - throwing to prevent corrupted IR');
+      throw error;
     }
   }
 
