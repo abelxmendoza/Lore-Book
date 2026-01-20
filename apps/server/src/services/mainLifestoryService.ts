@@ -8,8 +8,7 @@
 
 import { logger } from '../logger';
 
-import { biographyGenerationEngine } from './biographyGeneration';
-import type { BiographySpec } from './biographyGeneration';
+import { biographyGenerationEngine, type BiographySpec } from './biographyGeneration';
 import { supabaseAdmin } from './supabaseClient';
 
 const MAIN_LIFESTORY_NAME = 'My Full Life Story';
