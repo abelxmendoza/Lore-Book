@@ -4,6 +4,7 @@ import { v4 as uuid } from 'uuid';
 import { config } from '../config';
 import { logger } from '../logger';
 import { BooleanContradiction } from '../math/booleanContradiction';
+
 import { factExtractionService, type ExtractedFact } from './factExtractionService';
 import { ruleBasedFactExtractionService } from './ruleBasedFactExtraction';
 import { supabaseAdmin } from './supabaseClient';
@@ -188,13 +189,25 @@ class ChatGPTImportService {
     // Format 2: JSON-like or markdown format
     if (conversation.includes('"role"') || conversation.includes("'role'")) {
       try {
-        const jsonMatch = conversation.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          return parsed.map((msg: any) => ({
-            role: msg.role === 'user' ? 'user' : 'assistant',
-            content: msg.content || msg.text || ''
-          }));
+        // Find JSON array boundaries more safely to prevent ReDoS
+        // Look for first '[' and last ']' to avoid catastrophic backtracking
+        const firstBracket = conversation.indexOf('[');
+        const lastBracket = conversation.lastIndexOf(']');
+        
+        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+          // Limit the size of the JSON string to prevent DoS
+          const maxJsonLength = 100000; // 100KB limit
+          const jsonCandidate = conversation.substring(firstBracket, lastBracket + 1);
+          
+          if (jsonCandidate.length <= maxJsonLength) {
+            const parsed = JSON.parse(jsonCandidate);
+            if (Array.isArray(parsed)) {
+              return parsed.map((msg: any) => ({
+                role: msg.role === 'user' ? 'user' : 'assistant',
+                content: msg.content || msg.text || ''
+              }));
+            }
+          }
         }
       } catch (e) {
         // Fall through to text parsing

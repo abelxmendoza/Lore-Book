@@ -16,12 +16,13 @@ const BLOCK_THRESHOLD = 10; // Number of suspicious patterns before blocking
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 // Patterns that indicate potential attacks
+// Using non-greedy quantifiers and word boundaries to prevent ReDoS
 const ATTACK_PATTERNS = [
   /\.\.\//g, // Path traversal
   /<script/gi, // XSS attempts
-  /union.*select/gi, // SQL injection
-  /exec\(/gi, // Code execution attempts
-  /eval\(/gi, // Code execution attempts
+  /\bunion\s+select\b/gi, // SQL injection - using word boundaries and \s+ instead of .*
+  /\bexec\s*\(/gi, // Code execution attempts - word boundary prevents ReDoS
+  /\beval\s*\(/gi, // Code execution attempts - word boundary prevents ReDoS
   /\.env/gi, // Environment file access
   /\/etc\/passwd/gi, // System file access
   /\.git/gi, // Git directory access
@@ -30,8 +31,8 @@ const ATTACK_PATTERNS = [
   /\.\.\\/g, // Windows path traversal
   /%00/gi, // Null byte injection
   /javascript:/gi, // JavaScript protocol
-  /onerror=/gi, // Event handler injection
-  /onload=/gi, // Event handler injection
+  /\bonerror\s*=/gi, // Event handler injection - word boundary prevents ReDoS
+  /\bonload\s*=/gi, // Event handler injection - word boundary prevents ReDoS
 ];
 
 // Suspicious user agents
