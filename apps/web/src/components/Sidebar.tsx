@@ -10,7 +10,6 @@ import { isAdmin } from '../middleware/roleGuard';
 interface SidebarProps {
   activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills';
   onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills') => void;
-  onCreateChapter?: () => void;
   onToggleDevMode?: () => void;
   devModeEnabled?: boolean;
 }
@@ -20,7 +19,6 @@ import { getRouteFromSurface, surfaceToRoute } from '../utils/routeMapping';
 export const Sidebar = ({
   activeSurface,
   onSurfaceChange,
-  onCreateChapter,
   onToggleDevMode,
   devModeEnabled
 }: SidebarProps) => {
@@ -48,7 +46,7 @@ export const Sidebar = ({
   <aside className="hidden w-64 flex-col border-r border-border/60 bg-black/20 p-6 text-white lg:flex">
     <div className="mb-6">
       <Logo size="lg" showText={true} />
-      <p className="mt-4 text-xs text-white/50">Cyberpunk journal with GPT-4 memory.</p>
+      <p className="mt-4 text-xs text-white/50">Your personal memory system. Remember everything that matters.</p>
     </div>
     <div className="mt-8 space-y-2">
       <button
@@ -342,13 +340,7 @@ export const Sidebar = ({
       </div>
     )}
     
-    <div className="mt-auto">
-      <div className="space-y-2">
-        <Button className="w-full" leftIcon={<Plus className="h-4 w-4" />} onClick={onCreateChapter}>
-          New Chapter
-        </Button>
-      </div>
-    </div>
+    {/* New Chapter button removed */}
   </aside>
   );
 };

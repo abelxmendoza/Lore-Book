@@ -44,8 +44,10 @@ export const DEV_FEATURES = {
   enableDebugOverlays: isDevelopment,
   
   // Show development notice banner
-  // Enabled by default in production for frontend-only demo (can be disabled with VITE_SHOW_DEV_NOTICE=false)
-  showDevNotice: isDevelopment || import.meta.env.VITE_SHOW_DEV_NOTICE !== 'false',
+  // CRITICAL: Always show in production unless explicitly disabled
+  // This ensures users know the app is still in development
+  // To disable: set VITE_SHOW_DEV_NOTICE=false in environment variables
+  showDevNotice: import.meta.env.VITE_SHOW_DEV_NOTICE === 'false' ? false : true,
 } as const;
 
 // Production Features

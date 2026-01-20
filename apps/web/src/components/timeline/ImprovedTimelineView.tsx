@@ -553,9 +553,6 @@ export const ImprovedTimelineView = ({
                       <BookOpen className="h-5 w-5 text-primary" />
                       Story Chapters
                     </h3>
-                    <Button size="sm" onClick={onCreateChapter}>
-                      New Chapter
-                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -579,9 +576,6 @@ export const ImprovedTimelineView = ({
                   <div className="text-center py-8 text-white/60">
                     <BookOpen className="h-12 w-12 mx-auto mb-4 text-white/20" />
                     <p className="text-sm mb-4">No chapters yet</p>
-                    <Button size="sm" onClick={onCreateChapter}>
-                      Create Your First Chapter
-                    </Button>
                   </div>
                 </CardContent>
               </Card>

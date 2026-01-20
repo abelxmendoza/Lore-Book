@@ -206,7 +206,6 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <Sidebar
         activeSurface={activeSurface}
         onSurfaceChange={setActiveSurface}
-        onCreateChapter={() => setChapterModalOpen(true)}
         onToggleDevMode={() => setDevMode((prev) => !prev)}
         devModeEnabled={devMode}
       />

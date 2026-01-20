@@ -60,7 +60,7 @@ const AuthScreen = ({ onEmailLogin, onGuestLogin }: { onEmailLogin: (email: stri
   return (
     <div className="mx-auto mt-20 flex max-w-md flex-col items-center rounded-2xl border border-border/60 bg-black/30 p-10 text-center shadow-panel">
       <Logo size="xl" showText={true} className="mb-8" />
-      <p className="mt-2 text-white/70">AI-powered journal with a cyberpunk heart.</p>
+      <p className="mt-2 text-white/70">Your intelligent memory companion. Capture, organize, and understand your life story.</p>
       <Input
         type="email"
         placeholder="you@orbital.city"

@@ -1,165 +1,225 @@
-# Black Screen Prevention - Complete Guide
+# Black Screen Prevention System
 
-## ✅ Tests Created
+This document describes the comprehensive safeguards we've implemented to prevent black screen issues in production.
 
-We've added comprehensive tests to prevent black screens on Vercel deployment:
+## 🛡️ Prevention Layers
 
-### Test Files Created
+### 1. Build-Time Validation
 
-1. **`apps/web/src/App.integration.test.tsx`** - Tests main App component renders
-2. **`apps/web/src/pages/Router.integration.test.tsx`** - Tests routing works
-3. **`apps/web/src/components/AuthGate.integration.test.tsx`** - Tests auth doesn't block
-4. **`apps/web/src/config/env.test.ts`** - Tests environment config
-5. **`apps/web/src/main.integration.test.tsx`** - Tests entry point
-6. **`apps/web/scripts/build-validation.test.js`** - Tests build output
+#### Chunk Dependency Check (`scripts/chunk-dependency-check.js`)
+- **Purpose**: Prevents React-dependent chunks from being split incorrectly
+- **Checks**:
+  - No `ui-vendor`, `editor-vendor`, `visualization-vendor` chunks
+  - No `route-*` chunks
+  - No component chunks (`chat-components`, `character-components`, etc.)
+  - Main bundle contains React and all React-dependent code
+- **Runs**: Automatically after every build (`postbuild` hook)
 
-## 🎯 What These Tests Prevent
+#### Build Validation (`scripts/build-validation.test.js`)
+- **Purpose**: Validates build output structure
+- **Checks**:
+  - `dist` directory exists
+  - `index.html` exists and references built assets
+  - No source file references (`/src/main.tsx`)
+  - Assets directory contains JavaScript bundles
+- **Runs**: After build, before deployment
 
-| Issue | Test Coverage | Status |
-|-------|--------------|--------|
-| Missing root element | ✅ main.integration.test.tsx | Tested |
-| Build errors | ✅ build-validation.test.js | Tested |
-| Infinite loading | ✅ AuthGate.integration.test.tsx | Tested |
-| Missing error boundaries | ✅ App.integration.test.tsx | Tested |
-| Environment variable issues | ✅ env.test.ts | Tested |
-| Route errors | ✅ Router.integration.test.tsx | Tested |
-| Module import errors | ✅ main.integration.test.tsx | Tested |
-| Auth blocking | ✅ AuthGate.integration.test.tsx | Tested |
+### 2. Runtime Detection
 
-## 🚀 Running Tests
+#### Inline Boot Test (`index.html`)
+- **Purpose**: Detects if JavaScript bundle executes
+- **Implementation**: Creates DOM marker and localStorage log before module loads
+- **Detection**: If marker missing after 5 seconds, shows diagnostic banner
 
-### Before Deployment:
+#### Global Error Handlers (`main.tsx`)
+- **Purpose**: Catches and displays errors instead of black screen
+- **Features**:
+  - Global `error` event listener
+  - Global `unhandledrejection` handler
+  - Visibility and height checks
+  - Error display on page
+
+### 3. E2E Testing
+
+#### Production Build Tests (`e2e/production-build.spec.ts`)
+- **Purpose**: Verifies production build loads correctly
+- **Tests**:
+  - Main bundle loads without errors
+  - Boot test executes
+  - Root element renders with content
+  - No `React.forwardRef` errors
+  - No unhandled promise rejections
+  - Content appears within 5 seconds
+- **Runs**: In CI/CD before deployment
+
+### 4. CI/CD Integration
+
+#### Production Build Verification Workflow (`.github/workflows/production-build-verification.yml`)
+- **Triggers**: 
+  - Push to `main`
+  - Pull requests
+  - Manual dispatch
+- **Steps**:
+  1. Run unit tests
+  2. Run black screen prevention tests
+  3. Build production bundle
+  4. Validate build output
+  5. Check chunk dependencies
+  6. Verify no forbidden chunks
+  7. Run E2E production build tests
+- **Blocks**: Deployment if any check fails
+
+### 5. Security Checks
+
+#### Security Headers Validation (`scripts/security-headers-check.js`)
+- **Purpose**: Ensures production has proper security headers
+- **Checks**:
+  - Content-Security-Policy
+  - X-Content-Type-Options
+  - X-Frame-Options
+  - Strict-Transport-Security
+  - X-XSS-Protection
+  - Referrer-Policy
+- **Runs**: Optional (set `CHECK_SECURITY_HEADERS=true`)
+
+## 📋 Pre-Deployment Checklist
+
+Before deploying, run:
+
 ```bash
 cd apps/web
 npm run test:pre-deploy
 ```
 
 This runs:
-1. Unit tests
-2. Black screen prevention tests
-3. Build
-4. Build validation
+1. ✅ Unit tests
+2. ✅ Black screen prevention tests
+3. ✅ Production build
+4. ✅ Build validation
+5. ✅ Chunk dependency check
 
-### Individual Test Commands:
+## 🔍 Manual Verification
+
+### Check Build Output
 ```bash
-# Black screen prevention tests
-npm run test:black-screen
-
-# Build validation (after build)
+cd apps/web
 npm run build
-npm run test:build
+npm run test:chunk-deps
 ```
 
-## 🔧 Vercel Configuration
-
-The `vercel.json` has been updated to include build validation:
-
-```json
-{
-  "buildCommand": "npm run build && npm run test:build"
-}
+### Verify No Forbidden Chunks
+```bash
+# Should return nothing
+ls dist/assets/ui-vendor-*.js
+ls dist/assets/editor-vendor-*.js
+ls dist/assets/route-*.js
 ```
 
-This ensures the build is validated before deployment.
+### Test Production Build Locally
+```bash
+npm run build
+npm run preview
+# Open http://localhost:4173
+# Check browser console for errors
+```
 
-## 📋 Pre-Deployment Checklist
+## 🚨 What Each Check Prevents
 
-Before deploying to Vercel:
+| Check | Prevents |
+|-------|----------|
+| Chunk dependency check | `React.forwardRef is undefined` errors |
+| Build validation | Missing or incorrect build output |
+| Boot test | Silent bundle execution failures |
+| Error handlers | Black screen from uncaught errors |
+| E2E tests | Runtime errors in production build |
+| CI/CD workflow | Deploying broken builds |
 
-1. ✅ **Run pre-deployment tests**:
-   ```bash
-   cd apps/web
-   npm run test:pre-deploy
-   ```
+## 📊 Monitoring
 
-2. ✅ **Verify environment variables in Vercel**:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-   - `VITE_API_URL` (if using separate API)
+### Health Check Endpoint
+- **URL**: `/api/diagnostics`
+- **Purpose**: Verify server is running and configured correctly
+- **Response**: Non-sensitive diagnostic information
 
-3. ✅ **Check Vercel build logs** for:
-   - Build errors
-   - Missing environment variables
-   - Failed tests
+### Browser Console
+Check for:
+- `[BOOT] main.tsx executing` - Bundle executed
+- `[Main] React app mounted successfully` - React mounted
+- Any `[GLOBAL ERROR]` messages
+- Any `[VISIBILITY ERROR]` messages
 
-4. ✅ **Test production build locally**:
-   ```bash
-   cd apps/web
-   npm run build
-   npm run preview
-   ```
+### localStorage Debug Keys
+- `lorekeeper_debug_boot` - Bundle execution
+- `lorekeeper_debug_error` - JavaScript errors
+- `lorekeeper_debug_rejection` - Unhandled rejections
+- `lorekeeper_debug_mount` - React mounting
 
-5. ✅ **Verify in browser**:
-   - Open DevTools console
+## 🔧 Configuration
+
+### Vite Config (`vite.config.ts`)
+- React stays in main bundle (never split)
+- React-dependent libraries merged into main bundle
+- Only non-React chunks split (`supabase-vendor`, `monitoring-vendor`)
+
+### Package.json Scripts
+- `test:pre-deploy` - Full pre-deployment check
+- `test:chunk-deps` - Chunk dependency validation
+- `test:e2e:production` - Production build E2E tests
+
+## 📝 Best Practices
+
+1. **Never split React-dependent code** - Keep in main bundle
+2. **Always run pre-deploy checks** - Before pushing to main
+3. **Monitor CI/CD results** - Don't merge if checks fail
+4. **Test production builds locally** - Use `npm run preview`
+5. **Check browser console** - Look for boot markers and errors
+
+## 🐛 Troubleshooting
+
+### Black Screen Still Appears
+
+1. **Check browser console**:
+   - Look for `[BOOT]` message
    - Check for JavaScript errors
-   - Check Network tab for failed requests
-   - Verify app loads (not black screen)
+   - Verify bundle loaded (Network tab)
 
-## 🐛 Troubleshooting Black Screens
+2. **Check localStorage**:
+   - Open DevTools → Application → Local Storage
+   - Look for `lorekeeper_debug_*` keys
+   - Check values for error information
 
-### If you still see a black screen:
-
-1. **Check browser console** (F12):
-   - Look for JavaScript errors
-   - Check for missing environment variables
-   - Look for network errors
-
-2. **Check Vercel build logs**:
-   - Verify build completed successfully
-   - Check for build validation errors
-   - Verify all tests passed
-
-3. **Verify environment variables**:
-   - Go to Vercel Dashboard → Settings → Environment Variables
-   - Ensure all required variables are set
-   - Check variable names match exactly (case-sensitive)
-
-4. **Test build locally**:
+3. **Verify build**:
    ```bash
-   cd apps/web
+   npm run build
+   npm run test:chunk-deps
+   ```
+
+4. **Check CI/CD logs**:
+   - Verify all checks passed
+   - Look for warnings or errors
+
+5. **Test locally**:
+   ```bash
    npm run build
    npm run preview
    ```
-   - If it works locally but not on Vercel, it's likely an environment variable issue
 
-5. **Check network requests**:
-   - Open DevTools → Network tab
-   - Look for failed requests (red status codes)
-   - Check if API is accessible
+## ✅ Success Criteria
 
-## 📊 Test Results
+A successful deployment should:
+- ✅ Pass all CI/CD checks
+- ✅ Show `[BOOT]` message in console
+- ✅ Render content within 5 seconds
+- ✅ Have no `React.forwardRef` errors
+- ✅ Have no unhandled rejections
+- ✅ Display diagnostic banner if issues detected
 
-**Server Tests**: ✅ 116/116 passing (100%)
-**Web Black Screen Tests**: ✅ 12/15 passing (80%)
+## 🔗 Related Files
 
-The 3 failing tests are timing-related in `useLoreKeeper.integration.test.ts` and don't affect black screen prevention.
-
-## 🔄 CI/CD Integration
-
-The CI workflow (`.github/workflows/ci.yml`) now includes:
-- ✅ Black screen prevention tests
-- ✅ Build validation after build
-
-These run automatically on every push/PR.
-
-## 📝 Additional Recommendations
-
-1. **Add error logging** (Sentry, LogRocket, etc.)
-2. **Add health check endpoint** (`/api/health`)
-3. **Monitor production errors** in real-time
-4. **Set up alerts** for build failures
-5. **Use Vercel preview deployments** to test before production
-
-## 🎉 Summary
-
-We've added **6 new test files** with **15+ tests** specifically designed to prevent black screens:
-
-- ✅ App renders correctly
-- ✅ Router works
-- ✅ AuthGate doesn't block
-- ✅ Environment config is valid
-- ✅ Entry point works
-- ✅ Build output is valid
-
-All tests are integrated into CI/CD and will run automatically before deployment.
-
+- `apps/web/vite.config.ts` - Build configuration
+- `apps/web/scripts/chunk-dependency-check.js` - Chunk validation
+- `apps/web/scripts/post-build-validation.js` - Build validation
+- `apps/web/e2e/production-build.spec.ts` - E2E tests
+- `.github/workflows/production-build-verification.yml` - CI/CD workflow
+- `apps/web/index.html` - Boot test and error handlers
+- `apps/web/src/main.tsx` - Error handling and monitoring

@@ -73,7 +73,7 @@ export default function Login() {
               </div>
             </div>
             <Logo size="xl" showText={true} />
-            <p className="text-white/70 text-sm">AI-powered journal with a cyberpunk heart</p>
+            <p className="text-white/70 text-sm">Your intelligent memory companion. Capture, organize, and understand your life story.</p>
           </div>
 
           {/* Login Form */}

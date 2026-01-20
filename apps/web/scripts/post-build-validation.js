@@ -94,6 +94,26 @@ if (!indexHtml.includes('src=')) {
 }
 console.log('');
 
+// 6. Run chunk dependency check
+console.log(`🔍 Running chunk dependency check...`);
+try {
+  const { execSync } = await import('child_process');
+  execSync('node scripts/chunk-dependency-check.js', { 
+    stdio: 'inherit',
+    cwd: process.cwd(),
+    encoding: 'utf8'
+  });
+  console.log(`✅ Chunk dependency check passed`);
+} catch (err) {
+  console.error(`❌ Chunk dependency check failed`);
+  console.error(`   This may cause "React.forwardRef is undefined" errors in production.`);
+  if (err.message) {
+    console.error(`   Error: ${err.message}`);
+  }
+  process.exit(1);
+}
+console.log('');
+
 // Summary
 console.log('='.repeat(50));
 console.log('✅ Post-build validation complete!');

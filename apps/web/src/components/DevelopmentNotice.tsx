@@ -81,7 +81,8 @@ export function DevelopmentNotice() {
               App Under Development
             </h2>
             <p id="dev-notice-description" className="text-white/80 text-lg">
-              Lore Book is still being built! You're seeing an early preview of the UI.
+              Lore Book is still being built! You're seeing an early preview of the UI. 
+              Some features may not be fully functional yet.
             </p>
           </div>
         </div>
