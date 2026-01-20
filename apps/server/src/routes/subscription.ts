@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 
 import { config } from '../config';
 import { authMiddleware, type AuthenticatedRequest } from '../middleware/auth';
+import { rateLimitMiddleware } from '../middleware/rateLimit';
 import {
   createCustomer,
   createSubscription,
@@ -225,8 +226,9 @@ router.get('/billing-portal', authMiddleware, async (req: AuthenticatedRequest, 
  * POST /api/subscription/webhook
  * Stripe webhook endpoint (no auth required - uses signature verification)
  * Note: This route is registered separately in index.ts with raw body parser
+ * Rate limited to prevent DoS attacks
  */
-router.post('/webhook', async (req: Request, res: Response) => {
+router.post('/webhook', rateLimitMiddleware, async (req: Request, res: Response) => {
   const signature = req.headers['stripe-signature'] as string;
 
   if (!signature) {

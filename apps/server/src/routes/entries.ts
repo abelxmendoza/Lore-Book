@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { rateLimitMiddleware } from '../middleware/rateLimit';
 import { checkEntryLimit } from '../middleware/subscription';
 import { validateQuery, validateBody } from '../middleware/validateRequest';
 import { emitDelta } from '../realtime/orchestratorEmitter';
@@ -220,7 +221,7 @@ router.get('/', requireAuth, validateQuery(entryQuerySchema), async (req: Authen
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', requireAuth, checkEntryLimit, validateBody(entrySchema), async (req: AuthenticatedRequest, res) => {
+router.post('/', requireAuth, rateLimitMiddleware, checkEntryLimit, validateBody(entrySchema), async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = entrySchema.safeParse(req.body);
     if (!parsed.success) {

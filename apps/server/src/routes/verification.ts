@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { rateLimitMiddleware } from '../middleware/rateLimit';
 import { validateBody } from '../middleware/validateRequest';
 import { memoryService } from '../services/memoryService';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -20,7 +21,7 @@ const verifyClaimSchema = z.object({
 /**
  * Verify a specific entry
  */
-router.post('/verify-entry/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/verify-entry/:id', requireAuth, rateLimitMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;

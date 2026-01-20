@@ -188,9 +188,21 @@ export function generateMockPaymentEvents(count: number = 20): PaymentEvent[] {
       ? `inv_${Math.random().toString(36).substring(2, 11)}`
       : null;
     
+    // Use secure randomness for user IDs (even in mock data)
+    const getSecureRandomInt = (max: number): number => {
+      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        const bytes = new Uint8Array(4);
+        crypto.getRandomValues(bytes);
+        const randomValue = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+        return randomValue % max;
+      }
+      // Fallback for non-crypto environments
+      return Math.floor(Math.random() * max);
+    };
+    
     events.push({
       id: `evt_${i.toString().padStart(8, '0')}`,
-      userId: `user_${Math.floor(Math.random() * 10)}`,
+      userId: `user_${getSecureRandomInt(10)}`,
       email,
       timestamp,
       eventType,
