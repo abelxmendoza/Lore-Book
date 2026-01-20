@@ -103,14 +103,17 @@ export default defineConfig({
           if (id.includes('node_modules/@sentry') || id.includes('node_modules/posthog')) {
             return 'monitoring-vendor';
           }
-          // Large visualization libraries (depend on React)
-          if (id.includes('node_modules/recharts') || id.includes('node_modules/react-force-graph')) {
-            return 'visualization-vendor';
-          }
-          // Markdown and code editing (depend on React)
-          if (id.includes('node_modules/react-markdown') || id.includes('node_modules/react-simple-code-editor') || id.includes('node_modules/highlight.js')) {
-            return 'editor-vendor';
-          }
+          // CRITICAL FIX: Don't split visualization vendor - keep it in main bundle to avoid React dependency issues
+          // The visualization-vendor chunk depends on React, so it can have the same initialization order problems
+          // if (id.includes('node_modules/recharts') || id.includes('node_modules/react-force-graph')) {
+          //   return 'visualization-vendor';
+          // }
+          // CRITICAL FIX: Don't split editor vendor - keep it in main bundle to avoid initialization order issues
+          // The editor-vendor chunk was causing "can't access lexical declaration before initialization" errors
+          // Keeping it in the main bundle ensures proper initialization order
+          // if (id.includes('node_modules/react-markdown') || id.includes('node_modules/react-simple-code-editor') || id.includes('node_modules/highlight.js')) {
+          //   return 'editor-vendor';
+          // }
           // Routes - split by feature
           if (id.includes('/routes/') || id.includes('/pages/')) {
             const routeMatch = id.match(/\/(routes|pages)\/([^/]+)/);
