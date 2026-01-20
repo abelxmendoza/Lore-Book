@@ -75,15 +75,26 @@ export default defineConfig({
         // CRITICAL FIX: Force React into the main entry chunk to ensure it's always available
         // This prevents UI vendor chunks from executing before React is defined
         manualChunks: (id) => {
-          // DO NOT split React into a separate chunk - keep it in the main bundle
+          // CRITICAL: NEVER split React or React-DOM - they MUST stay in the main bundle
           // This ensures React.forwardRef is always available when UI vendor chunks execute
-          // The trade-off is a slightly larger main bundle, but it prevents runtime errors
-          
-          // UI libraries - these depend on React, so they can be in a separate chunk
-          // React will already be loaded in the main bundle before these execute
-          if (id.includes('node_modules/@radix-ui') || id.includes('node_modules/lucide-react')) {
-            return 'ui-vendor';
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/react/jsx-runtime') ||
+            id.includes('node_modules/react/jsx-dev-runtime') ||
+            id.includes('node_modules/react-dom/client') ||
+            id.includes('node_modules/react-dom/server')
+          ) {
+            // Return undefined to keep React in the main bundle
+            return undefined;
           }
+          
+          // CRITICAL FIX: Don't split UI vendor - keep it in main bundle to ensure React is available
+          // The ui-vendor chunk was executing before React was defined, causing "React.forwardRef is undefined"
+          // Keeping it in the main bundle ensures React loads first
+          // if (id.includes('node_modules/@radix-ui') || id.includes('node_modules/lucide-react')) {
+          //   return 'ui-vendor';
+          // }
           // Supabase and auth
           if (id.includes('node_modules/@supabase')) {
             return 'supabase-vendor';
@@ -117,8 +128,13 @@ export default defineConfig({
           if (id.includes('/components/timeline/')) {
             return 'timeline-components';
           }
+          // Return undefined for everything else (including React) to keep in main bundle
+          return undefined;
         },
       },
+      // CRITICAL: Ensure main bundle loads before vendor chunks
+      // This prevents "React is undefined" errors in vendor chunks
+      preserveEntrySignatures: 'strict',
     },
     // Faster builds in development
     ...(process.env.NODE_ENV === 'development' && {
