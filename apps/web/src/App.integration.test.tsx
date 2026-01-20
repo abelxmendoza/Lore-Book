@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 
-import { ErrorBoundary } from '../components/ErrorBoundary';
-import { EntityModalProvider } from '../contexts/EntityModalContext';
-import { GuestProvider } from '../contexts/GuestContext';
-import App from '../pages/App';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { EntityModalProvider } from './contexts/EntityModalContext';
+import { GuestProvider } from './contexts/GuestContext';
+import App from './pages/App';
 
 // Mock all external dependencies
 vi.mock('../lib/supabase', () => ({

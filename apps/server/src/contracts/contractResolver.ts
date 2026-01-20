@@ -5,6 +5,7 @@
 
 import { logger } from '../logger';
 import type { KnowledgeType, KnowledgeUnit } from '../services/knowledgeTypeEngineService';
+
 import { getContract, type SensemakingContract, type ContradictionPolicy } from './sensemakingContract';
 
 /**

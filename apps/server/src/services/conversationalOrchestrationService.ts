@@ -25,14 +25,14 @@ import { goalValueAlignmentService } from './goalValueAlignmentService';
 import { insightReflectionService } from './insightReflectionService';
 import { intentDetectionService } from './intentDetectionService';
 import { memoryRecallEngine } from './memoryRecall/memoryRecallEngine';
+import { formatRecallChatResponse } from './memoryRecall/recallChatFormatter';
+import { isRecallQuery, shouldForceArchivist } from './memoryRecall/recallDetector';
 import { memoryReviewQueueService } from './memoryReviewQueueService';
 import { omegaMemoryService } from './omegaMemoryService';
 import { perspectiveService } from './perspectiveService';
 import { predictiveContinuityService } from './predictiveContinuityService';
 import { privacyScopeService } from './privacyScopeService';
 import { responseShapingService } from './responseShapingService';
-import { isRecallQuery, shouldForceArchivist } from './memoryRecall/recallDetector';
-import { formatRecallChatResponse } from './memoryRecall/recallChatFormatter';
 import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });

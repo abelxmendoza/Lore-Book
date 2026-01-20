@@ -35,7 +35,8 @@ export const useChatComposer = (onSubmit: (message: string) => void) => {
       characterIndexer.analyze('');
       setShowCommandSuggestions(false);
     }
-  }, [input, moodEngine, autoTagger, characterIndexer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input]); // Only depend on input - the methods are stable useCallback refs
 
   // Auto-resize textarea
   useEffect(() => {

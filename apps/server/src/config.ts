@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import dotenv from 'dotenv';
+
 import { logger } from './logger';
 
 // Load .env from project root

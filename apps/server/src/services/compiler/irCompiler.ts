@@ -3,6 +3,8 @@
 // IR Compiler - Converts utterances to EntryIR
 // =====================================================
 
+import { randomUUID } from 'crypto';
+
 import { logger } from '../../logger';
 import { canonDetectionService } from '../canonDetectionService';
 import { entryEnrichmentService } from '../entryEnrichmentService';
@@ -62,7 +64,7 @@ export class IRCompiler {
       );
 
       // Create IR
-      const ir: EntryIR = {
+      let ir: EntryIR = {
         id: randomUUID(),
         user_id: userId,
         source_utterance_id: utteranceId,
@@ -135,7 +137,9 @@ export class IRCompiler {
 
       return ir;
     } catch (error) {
-      logger.error({ error, utteranceId }, 'Failed to compile utterance to IR');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      logger.error({ error: { message: errorMessage, stack: errorStack }, utteranceId }, 'Failed to compile utterance to IR');
       throw error;
     }
   }

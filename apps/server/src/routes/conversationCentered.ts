@@ -8,13 +8,7 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { asyncHandler } from '../utils/asyncHandler';
 import { confidenceTrackingService } from '../services/confidenceTrackingService';
-import { metaControlService } from '../services/metaControlService';
-import { narrativeContinuityService } from '../services/narrativeContinuityService';
-import { omegaChatService } from '../services/omegaChatService';
-import { selfAwarenessService } from '../services/selfAwarenessService';
-import { supabaseAdmin } from '../services/supabaseClient';
 import { affectionCalculator } from '../services/conversationCentered/affectionCalculator';
 import { breakupDetector } from '../services/conversationCentered/breakupDetector';
 import { characterTimelineBuilder } from '../services/conversationCentered/characterTimelineBuilder';
@@ -34,6 +28,12 @@ import { relationshipTreeBuilder, type RelationshipCategory } from '../services/
 import { romanticRelationshipAnalytics } from '../services/conversationCentered/romanticRelationshipAnalytics';
 import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
 import { skillNetworkBuilder } from '../services/conversationCentered/skillNetworkBuilder';
+import { metaControlService } from '../services/metaControlService';
+import { narrativeContinuityService } from '../services/narrativeContinuityService';
+import { omegaChatService } from '../services/omegaChatService';
+import { selfAwarenessService } from '../services/selfAwarenessService';
+import { supabaseAdmin } from '../services/supabaseClient';
+import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 

@@ -9,36 +9,36 @@ import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/ke
 
 import { autopilotService } from './autopilotService';
 import { chapterService } from './chapterService';
-import { supabaseAdmin } from './supabaseClient';
-import { ragPacketCacheService } from './ragPacketCacheService';
-import { essenceProfileService } from './essenceProfileService';
-import { essenceRefinementEngine } from './essenceRefinement';
-import { omegaMemoryService } from './omegaMemoryService';
-import { memoryReviewQueueService } from './memoryReviewQueueService';
-import { perspectiveService } from './perspectiveService';
-import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
-import { responseSafetyService } from './conversationCentered/responseSafetyService';
 import {
   isBeliefChallengeAllowed,
   evaluateBelief,
   generateBeliefChallenge,
 } from './conversationCentered/beliefChallenge';
 import { processChallengeResponse } from './conversationCentered/beliefChallenge/beliefChallengeResponseDetector';
-import { perceptionService } from './perceptionService';
-import { entityAmbiguityService } from './entityAmbiguityService';
-import { intentDetectionService } from './intentDetectionService';
-import { entityMeaningDriftService } from './entityMeaningDriftService';
-import { ChatPersonaRL } from './reinforcementLearning/chatPersonaRL';
 import { entityAttributeDetector } from './conversationCentered/entityAttributeDetector';
+import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
+import { responseSafetyService } from './conversationCentered/responseSafetyService';
 import { tangentTransitionDetector, type TransitionAnalysis, type EmotionalState } from './conversationCentered/tangentTransitionDetector';
 import { correctionService } from './correctionService';
+import { entityAmbiguityService } from './entityAmbiguityService';
+import { entityMeaningDriftService } from './entityMeaningDriftService';
+import { essenceProfileService } from './essenceProfileService';
+import { essenceRefinementEngine } from './essenceRefinement';
 import { hqiService } from './hqiService';
+import { intentDetectionService } from './intentDetectionService';
 import { locationService } from './locationService';
 import { memoirService } from './memoirService';
 import { memoryGraphService } from './memoryGraphService';
+import { memoryReviewQueueService } from './memoryReviewQueueService';
 import { memoryService } from './memoryService';
+import { omegaMemoryService } from './omegaMemoryService';
 import { orchestratorService } from './orchestratorService';
 import { peoplePlacesService } from './peoplePlacesService';
+import { perceptionService } from './perceptionService';
+import { perspectiveService } from './perspectiveService';
+import { ragPacketCacheService } from './ragPacketCacheService';
+import { ChatPersonaRL } from './reinforcementLearning/chatPersonaRL';
+import { supabaseAdmin } from './supabaseClient';
 import { taskEngineService } from './taskEngineService';
 import { timeEngine } from './timeEngine';
 

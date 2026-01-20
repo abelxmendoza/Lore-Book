@@ -2,13 +2,13 @@ import { logger } from '../../logger';
 
 import { deduplicateRecommendations } from './deduplication';
 import { ActionGenerator } from './generators/actionGenerator';
-import { PatternExplorationGenerator } from './generators/patternExplorationGenerator';
-import { GapFillerGenerator } from './generators/gapFillerGenerator';
 import { ContinuityFollowupGenerator } from './generators/continuityFollowupGenerator';
+import { GapFillerGenerator } from './generators/gapFillerGenerator';
 import { GoalReminderGenerator } from './generators/goalReminderGenerator';
 import { GrowthOpportunityGenerator } from './generators/growthOpportunityGenerator';
 import { JournalPromptGenerator } from './generators/journalPromptGenerator';
 import { LegacyGenerator } from './generators/legacyGenerator';
+import { PatternExplorationGenerator } from './generators/patternExplorationGenerator';
 import { ReflectionQuestionGenerator } from './generators/reflectionQuestionGenerator';
 import { RelationshipCheckinGenerator } from './generators/relationshipCheckinGenerator';
 import { PriorityScorer } from './prioritization/priorityScorer';

@@ -68,7 +68,7 @@ export const fetchTimelineMemberships = (timelineId: string, limit?: number) => 
 export const fetchTimelineEntries = (timelineId: string, limit?: number) => {
   const params = new URLSearchParams();
   if (limit) params.append('limit', limit.toString());
-  return fetchJson<{ entries: Array<Record<string, unknown> & { membership?: TimelineMembership }> }>(
+  return fetchJson<{ entries: Array<Record<string, string | number | boolean | null> & { membership?: TimelineMembership }> }>(
     `/api/timeline-v2/${timelineId}/entries?${params.toString()}`
   );
 };

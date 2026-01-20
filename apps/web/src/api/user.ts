@@ -215,7 +215,7 @@ export const fetchActivityLogs = async (limit: number = 50): Promise<ActivityLog
     const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
     if (shouldUseMock) {
       if (config.isDevelopment) {
-        console.warn('Failed to fetch activity logs, using mock data:', error);
+        console.warn('Failed to fetch activity logs, using mock data');
       }
       return mockLogs;
     }
@@ -248,7 +248,7 @@ export const fetchStorageUsage = async (): Promise<StorageUsage> => {
     const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
     if (shouldUseMock) {
       if (config.isDevelopment) {
-        console.warn('Failed to fetch storage usage, using mock data:', error);
+        console.warn('Failed to fetch storage usage, using mock data');
       }
       return mockUsage;
     }
@@ -290,7 +290,7 @@ export const fetchPaymentMethods = async (): Promise<PaymentMethod[]> => {
     const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
     if (shouldUseMock) {
       if (config.isDevelopment) {
-        console.warn('Failed to fetch payment methods, using mock data:', error);
+        console.warn('Failed to fetch payment methods, using mock data');
       }
       return mockPaymentMethods;
     }

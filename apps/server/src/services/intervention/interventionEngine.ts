@@ -1,19 +1,19 @@
 import { logger } from '../../logger';
-
 import { identityPulseModule, relationshipAnalyticsModule, insightEngineModule } from '../analytics';
 import { continuityService } from '../continuity/continuityService';
 import { RelationshipDynamicsEngine } from '../relationshipDynamics';
 import { supabaseAdmin } from '../supabaseClient';
+
 import { ContradictionDetector } from './detectors/contradictionDetector';
 import { GoalAbandonmentDetector } from './detectors/goalAbandonmentDetector';
-import { InterventionStorage } from './interventionStorage';
-import { RecommenderBridge } from './recommenderBridge';
 import { IdentityDriftDetector } from './detectors/identityDriftDetector';
 import { MoodSpiralDetector } from './detectors/moodSpiralDetector';
 import { NegativeLoopDetector } from './detectors/negativeLoopDetector';
 import { RelationshipDriftDetector } from './detectors/relationshipDriftDetector';
+import { InterventionStorage } from './interventionStorage';
 import { InterventionPrioritizer } from './prioritizer';
 import { PythonInterventionClient } from './pythonClient';
+import { RecommenderBridge } from './recommenderBridge';
 import type { Intervention, InterventionContext } from './types';
 
 /**
