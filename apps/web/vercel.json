@@ -1,6 +1,6 @@
 {
   "installCommand": "rm -rf node_modules && npm ci --legacy-peer-deps",
-  "buildCommand": "npm run build",
+  "buildCommand": "rm -rf dist && npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
@@ -24,7 +24,6 @@
     "NODE_VERSION": "20",
     "VITE_USE_MOCK_DATA": "true",
     "VITE_SHOW_DEV_NOTICE": "true"
-  },
-  "buildCommand": "rm -rf node_modules dist && npm ci --legacy-peer-deps && npm run build"
+  }
 }
 
