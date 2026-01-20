@@ -137,9 +137,26 @@ export class IRCompiler {
 
       return ir;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : undefined;
-      logger.error({ error: { message: errorMessage, stack: errorStack }, utteranceId }, 'Failed to compile utterance to IR');
+      // Extract error details properly (handles Error, Supabase errors, and other objects)
+      const errorDetails: Record<string, unknown> = {};
+      
+      if (error instanceof Error) {
+        errorDetails.message = error.message;
+        errorDetails.stack = error.stack;
+        errorDetails.name = error.name;
+      } else if (error && typeof error === 'object') {
+        // Handle Supabase errors and other structured errors
+        const err = error as Record<string, unknown>;
+        errorDetails.message = err.message || String(error);
+        errorDetails.details = err.details;
+        errorDetails.hint = err.hint;
+        errorDetails.code = err.code;
+        errorDetails.stack = err.stack;
+      } else {
+        errorDetails.message = String(error);
+      }
+      
+      logger.error({ error: errorDetails, utteranceId }, 'Failed to compile utterance to IR');
       throw error;
     }
   }
@@ -300,7 +317,26 @@ export class IRCompiler {
 
       if (error) throw error;
     } catch (error) {
-      logger.error({ error, irId: ir.id }, 'Failed to save IR');
+      // Extract error details properly (handles Error, Supabase errors, and other objects)
+      const errorDetails: Record<string, unknown> = {};
+      
+      if (error instanceof Error) {
+        errorDetails.message = error.message;
+        errorDetails.stack = error.stack;
+        errorDetails.name = error.name;
+      } else if (error && typeof error === 'object') {
+        // Handle Supabase errors and other structured errors
+        const err = error as Record<string, unknown>;
+        errorDetails.message = err.message || String(error);
+        errorDetails.details = err.details;
+        errorDetails.hint = err.hint;
+        errorDetails.code = err.code;
+        errorDetails.stack = err.stack;
+      } else {
+        errorDetails.message = String(error);
+      }
+      
+      logger.error({ error: errorDetails, irId: ir.id }, 'Failed to save IR');
       throw error;
     }
   }

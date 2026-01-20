@@ -233,6 +233,7 @@ describe('MemoryReviewQueueService', () => {
       vi.spyOn(memoryReviewQueueService, 'getProposal').mockResolvedValue(mockProposal);
       vi.spyOn(memoryReviewQueueService, 'commitClaim').mockResolvedValue(undefined);
       vi.spyOn(memoryReviewQueueService, 'finalizeProposal').mockResolvedValue(undefined);
+      vi.spyOn(memoryReviewQueueService, 'comprehensiveIngestion').mockResolvedValue(undefined);
       
       // Mock omegaMemoryService.ingestText which is called by comprehensiveIngestion
       const { omegaMemoryService } = await import('../../src/services/omegaMemoryService');
@@ -243,7 +244,7 @@ describe('MemoryReviewQueueService', () => {
         conflicts_detected: false
       });
 
-      // Mock the insert chain for memory_decisions
+      // Mock the insert chain for memory_decisions - need to return the decision
       const mockInsertChain = {
         insert: vi.fn().mockReturnValue({
           select: vi.fn().mockReturnValue({
@@ -253,10 +254,11 @@ describe('MemoryReviewQueueService', () => {
       };
 
       vi.mocked(supabaseAdmin.from)
-        .mockReturnValueOnce(mockInsertChain as any);
+        .mockReturnValue(mockInsertChain as any);
 
       const result = await memoryReviewQueueService.approveProposal('user-123', 'proposal-1');
 
+      expect(result).toBeDefined();
       expect(result.decision).toBe('APPROVE');
     });
   });

@@ -16,19 +16,19 @@ export class DependencyGraph {
     try {
       // Link entities to entry
       for (const entity of ir.entities) {
-        await this.linkEntityToEntry(entity.entity_id, ir.id);
+        await this.linkEntityToEntry(entity.entity_id, ir.id, ir.user_id);
       }
 
       // Link related entries
       if (ir.narrative_links.related_entry_ids) {
         for (const relatedId of ir.narrative_links.related_entry_ids) {
-          await this.linkEntryDependency(ir.id, relatedId);
+          await this.linkEntryDependency(ir.id, relatedId, ir.user_id);
         }
       }
 
       // Link previous entry
       if (ir.narrative_links.previous_entry_id) {
-        await this.linkEntryDependency(ir.id, ir.narrative_links.previous_entry_id);
+        await this.linkEntryDependency(ir.id, ir.narrative_links.previous_entry_id, ir.user_id);
       }
 
       logger.debug({ irId: ir.id, entityCount: ir.entities.length }, 'Updated dependency graph');
@@ -40,8 +40,15 @@ export class DependencyGraph {
   /**
    * Link entity to entry
    */
-  private async linkEntityToEntry(entityId: string, entryId: string): Promise<void> {
+  private async linkEntityToEntry(entityId: string, entryId: string, userId?: string): Promise<void> {
     try {
+      // Use provided userId or try to get it from database
+      const finalUserId = userId || await this.getEntryUserId(entryId);
+      if (!finalUserId) {
+        logger.warn({ entryId }, 'Could not get user ID for entry');
+        return;
+      }
+
       // Store in dependency graph table
       const { error } = await supabaseAdmin
         .from('entry_dependencies')
@@ -49,7 +56,7 @@ export class DependencyGraph {
           entry_id: entryId,
           dependency_type: 'ENTITY',
           dependency_id: entityId,
-          user_id: (await this.getEntryUserId(entryId)), // Will be set properly
+          user_id: finalUserId,
         }, {
           onConflict: 'entry_id,dependency_type,dependency_id',
         });
@@ -63,10 +70,11 @@ export class DependencyGraph {
   /**
    * Link entry dependency
    */
-  private async linkEntryDependency(entryId: string, dependentEntryId: string): Promise<void> {
+  private async linkEntryDependency(entryId: string, dependentEntryId: string, userId?: string): Promise<void> {
     try {
-      const userId = await this.getEntryUserId(entryId);
-      if (!userId) {
+      // Use provided userId or try to get it from database
+      const finalUserId = userId || await this.getEntryUserId(entryId);
+      if (!finalUserId) {
         logger.warn({ entryId }, 'Could not get user ID for entry');
         return;
       }
@@ -77,7 +85,7 @@ export class DependencyGraph {
           entry_id: entryId,
           dependency_type: 'ENTRY',
           dependency_id: dependentEntryId,
-          user_id: userId,
+          user_id: finalUserId,
         }, {
           onConflict: 'entry_id,dependency_type,dependency_id',
         });

@@ -205,7 +205,8 @@ export class SensemakingOrchestrator {
   }
 
   /**
-   * Evaluate a condition string
+   * Evaluate a condition string safely without using eval()
+   * Supports: >, <, ===, !==, &&, ||
    */
   private evaluateCondition(
     condition: string,
@@ -213,11 +214,8 @@ export class SensemakingOrchestrator {
     currentState: OrchestrationContext['currentState']
   ): boolean {
     try {
-      // Simple condition evaluator
-      // Supports: >, <, ===, !==, &&, ||
-      
       // Replace variables with actual values
-      const evalString = condition
+      let evalString = condition
         .replace(/volatility/g, String(context.recentActivity?.volatility || 0))
         .replace(/identityPulseConfidence/g, String(currentState?.identityPulseConfidence || 0))
         .replace(/essenceProfileConfidence/g, String(currentState?.essenceProfileConfidence || 0))
@@ -229,12 +227,87 @@ export class SensemakingOrchestrator {
           return context.trigger !== trigger ? 'true' : 'false';
         });
 
-      // Evaluate (simple, could be enhanced with a proper expression parser)
-      return eval(evalString);
+      // Safe evaluation without eval() - only allows numeric comparisons and boolean logic
+      // This prevents code injection by restricting to safe operations
+      return this.safeEvaluate(evalString);
     } catch (error) {
       logger.warn({ error, condition }, 'Failed to evaluate condition');
       return false;
     }
+  }
+
+  /**
+   * Safely evaluate a simple expression without using eval()
+   * Only supports: numeric comparisons (>, <, >=, <=, ===, !==) and boolean logic (&&, ||)
+   */
+  private safeEvaluate(expression: string): boolean {
+    // Remove whitespace for easier parsing
+    const expr = expression.replace(/\s+/g, ' ').trim();
+    
+    // Handle boolean literals
+    if (expr === 'true') return true;
+    if (expr === 'false') return false;
+    
+    // Handle logical operators (process && and || with proper precedence)
+    // Split by || first (lower precedence), then by && (higher precedence)
+    if (expr.includes('||')) {
+      const parts = expr.split('||').map(p => p.trim());
+      return parts.some(part => this.safeEvaluate(part));
+    }
+    
+    if (expr.includes('&&')) {
+      const parts = expr.split('&&').map(p => p.trim());
+      return parts.every(part => this.safeEvaluate(part));
+    }
+    
+    // Handle comparisons: extract left, operator, right
+    const comparisonMatch = expr.match(/^(.+?)(===|!==|>=|<=|>|<)(.+)$/);
+    if (comparisonMatch) {
+      const [, leftStr, operator, rightStr] = comparisonMatch;
+      const left = this.parseValue(leftStr.trim());
+      const right = this.parseValue(rightStr.trim());
+      
+      switch (operator) {
+        case '===':
+          return left === right;
+        case '!==':
+          return left !== right;
+        case '>':
+          return Number(left) > Number(right);
+        case '<':
+          return Number(left) < Number(right);
+        case '>=':
+          return Number(left) >= Number(right);
+        case '<=':
+          return Number(left) <= Number(right);
+        default:
+          throw new Error(`Unsupported operator: ${operator}`);
+      }
+    }
+    
+    // If no operator found, try to parse as a number or boolean
+    const value = this.parseValue(expr);
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    
+    throw new Error(`Unable to evaluate expression: ${expr}`);
+  }
+
+  /**
+   * Parse a value string to a number or boolean safely
+   */
+  private parseValue(valueStr: string): number | boolean {
+    // Handle boolean literals
+    if (valueStr === 'true') return true;
+    if (valueStr === 'false') return false;
+    
+    // Handle numeric values
+    const num = Number(valueStr);
+    if (!isNaN(num) && isFinite(num)) {
+      return num;
+    }
+    
+    throw new Error(`Invalid value: ${valueStr}`);
   }
 
   /**

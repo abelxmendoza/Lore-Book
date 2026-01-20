@@ -3,15 +3,33 @@
 // Purpose: Test dependency graph and recompilation
 // =====================================================
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { dependencyGraph } from './dependencyGraph';
 import { incrementalCompiler } from './incrementalCompiler';
+import { supabaseAdmin } from '../supabaseClient';
 import type { EntryIR } from './types';
+
+// Mock Supabase for dependency graph tests
+vi.mock('../supabaseClient', () => ({
+  supabaseAdmin: {
+    from: vi.fn()
+  }
+}));
 
 describe('Incremental Compilation Tests', () => {
   const testUserId = 'test-user-incremental';
   const testThreadId = 'test-thread-incremental';
+  
+  // In-memory storage for dependencies
+  const dependencyStore: Array<{
+    entry_id: string;
+    dependency_type: string;
+    dependency_id: string;
+    user_id: string;
+  }> = [];
+  
+  const entryStore: Array<{ id: string; user_id: string }> = [];
 
   function createTestEntryIR(overrides: Partial<EntryIR> = {}): EntryIR {
     return {
@@ -42,6 +60,84 @@ describe('Incremental Compilation Tests', () => {
       ...overrides,
     };
   }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dependencyStore.length = 0;
+    entryStore.length = 0;
+    
+    // Mock entry_dependencies table
+    const mockUpsert = vi.fn().mockImplementation(async (data: any) => {
+      const existingIndex = dependencyStore.findIndex(
+        d => d.entry_id === data.entry_id && 
+             d.dependency_type === data.dependency_type && 
+             d.dependency_id === data.dependency_id
+      );
+      if (existingIndex >= 0) {
+        dependencyStore[existingIndex] = data;
+      } else {
+        dependencyStore.push(data);
+      }
+      return { data: null, error: null };
+    });
+    
+    const mockSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockImplementation((field: string, value: string) => {
+        if (field === 'dependency_type' && value === 'ENTRY') {
+          return {
+            eq: vi.fn().mockImplementation((depField: string, depValue: string) => {
+              if (depField === 'dependency_id') {
+                const dependents = dependencyStore.filter(
+                  d => d.dependency_type === 'ENTRY' && d.dependency_id === depValue
+                );
+                return Promise.resolve({ data: dependents, error: null });
+              }
+              return Promise.resolve({ data: [], error: null });
+            })
+          };
+        }
+        return Promise.resolve({ data: [], error: null });
+      })
+    });
+    
+    const mockFrom = vi.fn().mockImplementation((table: string) => {
+      if (table === 'entry_dependencies') {
+        return {
+          upsert: mockUpsert,
+          select: mockSelect
+        };
+      }
+      if (table === 'entry_ir') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockImplementation((field: string, value: string) => {
+              if (field === 'id') {
+                return {
+                  single: vi.fn().mockImplementation(async () => {
+                    const entry = entryStore.find(e => e.id === value);
+                    return { data: entry || null, error: null };
+                  })
+                };
+              }
+              return {
+                single: vi.fn().mockResolvedValue({ data: null, error: null })
+              };
+            })
+          }),
+          insert: vi.fn().mockImplementation(async (data: any) => {
+            entryStore.push({ id: data.id, user_id: data.user_id });
+            return { data: null, error: null };
+          })
+        };
+      }
+      return {
+        upsert: mockUpsert,
+        select: mockSelect
+      };
+    });
+    
+    (supabaseAdmin.from as any) = mockFrom;
+  });
 
   describe('Dependency Graph Traversal', () => {
     it('should calculate transitive closure correctly', async () => {

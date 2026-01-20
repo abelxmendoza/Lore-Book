@@ -195,9 +195,15 @@ describe('Monitoring', () => {
       ] as PerformanceEntry[]);
       const markSpy = vi.fn();
       
-      Performance.prototype.measure = measureSpy;
-      Performance.prototype.getEntriesByName = getEntriesSpy;
-      Performance.prototype.mark = markSpy;
+      // Mock globalThis.performance instead of Performance.prototype
+      // The monitoring.ts code uses globalThis.performance.measure
+      const originalPerformance = globalThis.performance;
+      globalThis.performance = {
+        ...originalPerformance,
+        measure: measureSpy,
+        getEntriesByName: getEntriesSpy,
+        mark: markSpy,
+      } as any;
 
       try {
         performance.mark('start');
@@ -207,10 +213,8 @@ describe('Monitoring', () => {
         expect(measureSpy).toHaveBeenCalled();
         expect(result).toBeDefined();
       } finally {
-        // Restore originals
-        Performance.prototype.measure = originalMeasure;
-        Performance.prototype.getEntriesByName = originalGetEntries;
-        Performance.prototype.mark = originalMark;
+        // Restore original
+        globalThis.performance = originalPerformance;
       }
     });
 

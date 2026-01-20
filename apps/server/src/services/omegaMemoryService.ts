@@ -522,12 +522,17 @@ Only extract clear relationships. Include temporal context when available.`
       // Check temporal overlap and semantic similarity
       for (const oldClaim of existingClaims) {
         // Check temporal overlap first (only conflicts matter if they overlap in time)
-        if (this.temporalOverlap(
+        const hasOverlap = this.temporalOverlap(
           new Date(newClaim.start_time),
           newClaim.end_time ? new Date(newClaim.end_time) : null,
           new Date(oldClaim.start_time),
           oldClaim.end_time ? new Date(oldClaim.end_time) : null
-        )) {
+        );
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'omegaMemoryService.ts:525',message:'Temporal overlap check',data:{hasOverlap,newStart:newClaim.start_time,newEnd:newClaim.end_time,oldStart:oldClaim.start_time,oldEnd:oldClaim.end_time,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        
+        if (hasOverlap) {
           // Get old claim embedding if not cached
           let oldEmbedding: number[];
           if ((oldClaim as any).embedding) {
@@ -540,11 +545,17 @@ Only extract clear relationships. Include temporal context when available.`
 
           // Calculate cosine similarity
           const similarity = this.cosineSimilarity(newEmbedding, oldEmbedding);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'omegaMemoryService.ts:542',message:'Similarity calculated',data:{similarity,newText:newClaim.text,oldText:oldClaim.text,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
           
           // Low similarity + temporal overlap might indicate contradiction
           // Use LLM to verify if it's actually a contradiction
           if (similarity < 0.3) {
             const isContradiction = await this.llmDetectContradiction(newClaim.text, oldClaim.text);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'omegaMemoryService.ts:547',message:'LLM contradiction check',data:{isContradiction,similarity,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime',hypothesisId:'C'})}).catch(()=>{});
+            // #endregion
             if (isContradiction) {
               return true;
             }
@@ -555,8 +566,15 @@ Only extract clear relationships. Include temporal context when available.`
       return false;
     } catch (error) {
       logger.error({ err: error }, 'Failed to detect conflict with semantic similarity');
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'omegaMemoryService.ts:557',message:'Error in conflictDetected, using fallback',data:{errorMessage:error instanceof Error ? error.message : String(error),newText:newClaim.text,oldText:existingClaims[0]?.text,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       // Fallback to simple text check
-      return this.semanticOpposite(newClaim.text, existingClaims[0]?.text || '');
+      const fallbackResult = this.semanticOpposite(newClaim.text, existingClaims[0]?.text || '');
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'omegaMemoryService.ts:559',message:'Fallback semanticOpposite result',data:{fallbackResult,newText:newClaim.text,oldText:existingClaims[0]?.text,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      return fallbackResult;
     }
   }
 
@@ -632,7 +650,14 @@ A contradiction means the claims cannot both be true at the same time.`
       });
 
       const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
-      return response.is_contradiction === true && (response.confidence || 0) >= 0.7;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'omegaMemoryService.ts:652',message:'LLM response parsed',data:{response,isContradiction:response.is_contradiction,confidence:response.confidence,content:completion.choices[0]?.message?.content,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
+      const result = response.is_contradiction === true && (response.confidence || 0) >= 0.7;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'omegaMemoryService.ts:655',message:'LLM contradiction result',data:{result,isContradiction:response.is_contradiction,confidence:response.confidence,timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime',hypothesisId:'H'})}).catch(()=>{});
+      // #endregion
+      return result;
     } catch (error) {
       logger.error({ err: error }, 'Failed to detect contradiction with LLM');
       return false;

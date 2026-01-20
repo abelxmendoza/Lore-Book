@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ErrorBoundary } from './ErrorBoundary';
 import { errorTracking } from '../lib/monitoring';
 
@@ -79,7 +79,7 @@ describe('ErrorBoundary', () => {
     );
   });
 
-  it('shows Try Again button that resets error state', () => {
+  it('shows Try Again button that resets error state', async () => {
     render(
       <ErrorBoundary>
         <ThrowError shouldThrow={true} />
@@ -103,16 +103,16 @@ describe('ErrorBoundary', () => {
   });
 
   it('shows Reload Page button', () => {
-    // Mock window.location.reload using Object.defineProperty
+    // Mock window.location.reload - use delete and redefine approach
     const reloadSpy = vi.fn();
-    const originalReload = window.location.reload;
+    const originalLocation = window.location;
     
-    // Use Object.defineProperty to avoid "Cannot redefine property" error
-    Object.defineProperty(window.location, 'reload', {
-      writable: true,
-      value: reloadSpy,
-      configurable: true
-    });
+    // Create a mock location object
+    delete (window as any).location;
+    (window as any).location = {
+      ...originalLocation,
+      reload: reloadSpy
+    };
     
     render(
       <ErrorBoundary>
@@ -125,12 +125,8 @@ describe('ErrorBoundary', () => {
 
     expect(reloadSpy).toHaveBeenCalled();
     
-    // Restore original
-    Object.defineProperty(window.location, 'reload', {
-      writable: true,
-      value: originalReload,
-      configurable: true
-    });
+    // Restore original location
+    (window as any).location = originalLocation;
   });
 
   it('uses custom fallback when provided', () => {

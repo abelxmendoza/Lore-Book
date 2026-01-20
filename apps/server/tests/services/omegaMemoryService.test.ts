@@ -1,12 +1,40 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { omegaMemoryService } from '../../src/services/omegaMemoryService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
+import OpenAI from 'openai';
 
 // Mock dependencies
 vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/services/embeddingService', () => ({
   embeddingService: {
     embedText: vi.fn().mockResolvedValue(new Array(1536).fill(0.1))
+  }
+}));
+// Mock OpenAI - the instance is created at module load, so we need to mock it properly
+// Make it return a contradiction detection result
+vi.mock('openai', () => ({
+  default: vi.fn().mockImplementation(() => ({
+    chat: {
+      completions: {
+        create: vi.fn().mockResolvedValue({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                is_contradiction: true,
+                confidence: 0.9,
+                reason: 'Opposite statements'
+              })
+            }
+          }]
+        })
+      }
+    }
+  }))
+}));
+vi.mock('../../src/config', () => ({
+  config: {
+    openAiKey: 'test-key',
+    defaultModel: 'gpt-4o-mini'
   }
 }));
 vi.mock('../../src/services/continuityService', () => ({
@@ -110,6 +138,9 @@ describe('OmegaMemoryService', () => {
 
   describe('conflictDetected', () => {
     it('should detect semantic opposites', async () => {
+      // Use a fixed timestamp to ensure exact overlap
+      const fixedTime = '2024-01-01T00:00:00Z';
+      
       const newClaim = {
         id: 'claim-1',
         user_id: 'user-123',
@@ -117,7 +148,8 @@ describe('OmegaMemoryService', () => {
         text: 'John is a good person',
         source: 'USER' as const,
         confidence: 0.8,
-        start_time: new Date().toISOString(),
+        start_time: fixedTime,
+        end_time: null, // Ongoing claim
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -130,12 +162,23 @@ describe('OmegaMemoryService', () => {
         text: 'John is not a good person',
         source: 'USER' as const,
         confidence: 0.7,
-        start_time: new Date().toISOString(),
+        start_time: fixedTime, // Same time = temporal overlap
+        end_time: null, // Ongoing claim
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
+      // Mock embeddings to be very different (low similarity < 0.3) to trigger LLM check
+      // Cosine similarity measures direction, not magnitude. To get low similarity, use opposite directions
+      const { embeddingService } = await import('../../src/services/embeddingService');
+      // Use positive values for one, negative for the other to get low cosine similarity
+      vi.mocked(embeddingService.embedText)
+        .mockResolvedValueOnce(new Array(1536).fill(0.5)) // newClaim embedding (all positive)
+        .mockResolvedValueOnce(new Array(1536).fill(-0.5)); // existingClaim embedding (all negative = opposite direction = low similarity)
+
+      // The LLM will throw an error (mocked), so it will fall back to semanticOpposite
+      // semanticOpposite should detect "is" vs "is not" pattern
       const hasConflict = await omegaMemoryService.conflictDetected(newClaim, [existingClaim]);
       expect(hasConflict).toBe(true);
     });

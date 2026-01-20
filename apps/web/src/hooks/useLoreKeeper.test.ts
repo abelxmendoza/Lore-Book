@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useLoreKeeper } from './useLoreKeeper';
 
@@ -18,13 +18,23 @@ vi.mock('../lib/api', () => ({
   fetchJson: vi.fn()
 }));
 
-// Mock fetch
+// Mock fetch - use a more robust mock that handles all cases
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+const originalFetch = global.fetch;
+
+beforeEach(() => {
+  global.fetch = mockFetch;
+});
+
+afterEach(() => {
+  global.fetch = originalFetch;
+});
 
 describe('useLoreKeeper', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Clear localStorage to ensure no cached data
+    localStorage.clear();
     // Setup default fetch mock - useLoreKeeper has its own fetchJson that uses fetch
     mockFetch.mockImplementation((url: string | Request) => {
       const urlString = typeof url === 'string' ? url : url.url;
@@ -65,57 +75,78 @@ describe('useLoreKeeper', () => {
   });
 
   it('should handle errors gracefully', async () => {
-    // Mock fetch to throw an error after initial successful calls
-    // First allow initial load to succeed, then fail on refresh
-    let callCount = 0;
+    // Clear localStorage to ensure no cached data
+    localStorage.clear();
+    
+    // Mock fetch to throw an error when refreshEntries is called manually
+    // The hook calls refreshEntries on mount (first call), then we call it manually (second call)
+    let entriesCallCount = 0;
+    
+    // Reset mock for this test
+    mockFetch.mockReset();
     mockFetch.mockImplementation((url: string | Request) => {
       const urlString = typeof url === 'string' ? url : url.url;
-      callCount++;
-      // Fail on refreshEntries call (after initial load)
-      if (callCount > 3 && urlString.includes('/api/entries')) {
-        return Promise.reject(new Error('Network error'));
-      }
-      // Default successful response for initial load - return empty entries
-      if (urlString.includes('/api/entries')) {
+      
+      // Track entries calls separately
+      if (urlString.includes('/api/entries') && !urlString.includes('?')) {
+        entriesCallCount++;
+        // Fail on the second call (when refreshEntries is called manually)
+        if (entriesCallCount === 2) {
+          return Promise.reject(new Error('Network error'));
+        }
+        // First call (on mount) succeeds with empty entries
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ entries: [] })
-        });
+          json: async () => ({ entries: [] }),
+          clone: function() { return this; }
+        } as Response);
       }
+      
       if (urlString.includes('/api/timeline') && !urlString.includes('tags')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
-        });
+          json: async () => ({ timeline: { chapters: [], unassigned: [] } }),
+          clone: function() { return this; }
+        } as Response);
       }
       if (urlString.includes('/api/timeline/tags')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ tags: [] })
-        });
+          json: async () => ({ tags: [] }),
+          clone: function() { return this; }
+        } as Response);
       }
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({})
-      });
+        json: async () => ({}),
+        clone: function() { return this; }
+      } as Response);
     });
 
     const { result } = renderHook(() => useLoreKeeper());
 
-    // Wait for initial load
+    // Wait for initial load to complete - entries should be empty after mount
     await waitFor(() => {
       expect(result.current).toBeDefined();
       expect(result.current.entries).toBeDefined();
-    }, { timeout: 2000 });
+      // Wait for entries to be empty (initial load completes)
+      expect(result.current.entries).toEqual([]);
+    }, { timeout: 3000 });
+    
+    // Verify initial state is empty (first call completed successfully)
+    expect(result.current.entries).toEqual([]);
 
-    // Now try to refresh entries which will trigger the error
+    // Now manually call refreshEntries which will trigger the error (second call)
     await result.current.refreshEntries();
     
-    // Error should be handled, verify hook still works
-    // After error in refreshEntries, entries are set to empty array (see refreshEntries implementation)
+    // Wait for error handling to complete - entries should be set to empty array on error
+    await waitFor(() => {
+      expect(result.current.entries).toEqual([]);
+    }, { timeout: 1000 });
+    
+    // Verify hook still works after error
     expect(result.current).toBeDefined();
     expect(result.current.entries).toBeDefined();
-    // refreshEntries sets entries to [] on error
     expect(result.current.entries).toEqual([]);
   });
 });

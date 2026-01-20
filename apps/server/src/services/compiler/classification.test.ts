@@ -3,11 +3,19 @@
 // Purpose: Test classification accuracy with 100+ samples
 // =====================================================
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { irCompiler } from './irCompiler';
 import { classificationSamples } from './test-data/classification-samples';
+import { supabaseAdmin } from '../supabaseClient';
 import type { KnowledgeType } from './types';
+
+// Mock Supabase for classification tests
+vi.mock('../supabaseClient', () => ({
+  supabaseAdmin: {
+    from: vi.fn()
+  }
+}));
 
 describe('Classification Accuracy Tests', () => {
   const testUserId = 'test-user-classification';
@@ -16,6 +24,23 @@ describe('Classification Accuracy Tests', () => {
   function getNextUtteranceId(): string {
     return `utterance-${testUtteranceCounter++}`;
   }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    
+    // Mock Supabase to allow saveIR to succeed
+    const mockInsert = vi.fn().mockResolvedValue({ data: null, error: null });
+    const mockFrom = vi.fn().mockReturnValue({
+      insert: mockInsert,
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({ data: { user_id: testUserId }, error: null })
+        })
+      })
+    });
+    
+    (supabaseAdmin.from as any) = mockFrom;
+  });
 
   describe('Overall Accuracy', () => {
     it('should classify all samples', async () => {

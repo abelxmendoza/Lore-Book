@@ -79,8 +79,47 @@ class GithubClient {
     }
     
     // Ensure the final URL is still pointing to the GitHub API domain
-    if (!url.hostname.endsWith('github.com') && !url.hostname.endsWith('api.github.com')) {
-      throw new Error('Invalid URL: hostname validation failed');
+    // Use explicit whitelist to prevent subdomain bypass attacks (e.g., evil-github.com, github.com.evil.com)
+    const allowedHosts = [
+      'github.com',
+      'api.github.com',
+      'gist.github.com',
+      'raw.githubusercontent.com'
+    ];
+    
+    const hostname = url.hostname;
+    let isAllowed = false;
+    
+    // Check for exact match first
+    if (allowedHosts.includes(hostname)) {
+      isAllowed = true;
+    }
+    // For subdomains, ensure it's a legitimate GitHub subdomain
+    // Only allow *.github.com or *.githubusercontent.com with proper validation
+    else if (hostname.endsWith('.github.com')) {
+      const parts = hostname.split('.');
+      // Must be exactly 3 parts: subdomain.github.com
+      if (parts.length === 3 && parts[0].length > 0) {
+        // Additional validation: subdomain must be alphanumeric with hyphens/underscores
+        if (/^[a-zA-Z0-9_-]+$/.test(parts[0])) {
+          isAllowed = true;
+        }
+      }
+    }
+    else if (hostname.endsWith('.githubusercontent.com')) {
+      const parts = hostname.split('.');
+      // Must be exactly 3 parts: subdomain.githubusercontent.com
+      if (parts.length === 3 && parts[0].length > 0) {
+        // Additional validation: subdomain must be alphanumeric with hyphens/underscores
+        if (/^[a-zA-Z0-9_-]+$/.test(parts[0])) {
+          isAllowed = true;
+        }
+      }
+    }
+    
+    // If hostname is not allowed, throw error
+    if (!isAllowed) {
+      throw new Error(`Invalid URL: hostname "${hostname}" is not in the allowed list`);
     }
     
     const response = await fetch(url.toString(), { headers: this.headers() });
