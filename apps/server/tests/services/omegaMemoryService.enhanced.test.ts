@@ -68,7 +68,13 @@ describe('OmegaMemoryService - Enhanced Features', () => {
 
   describe('LLM Entity Extraction', () => {
     it('should extract entities using OpenAI', async () => {
-      // First call: entity extraction
+      // Override the global mock to return entities for this test
+      vi.mocked(omegaMemoryService.extractEntities).mockResolvedValueOnce([
+        { name: 'John Doe', type: 'PERSON' },
+        { name: 'New York', type: 'LOCATION' }
+      ]);
+      
+      // First call: entity extraction (for other LLM calls if any)
       mockOpenAICreate.mockResolvedValueOnce({
         choices: [{
           message: {

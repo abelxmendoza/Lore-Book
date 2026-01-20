@@ -32,8 +32,64 @@
         
         // If no scripts loaded after 2 seconds, show error
         if (scripts.length === 0) {
-          document.body.innerHTML = '<div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh;"><h1>Build Error</h1><p>No JavaScript bundle found. The build may have failed.</p><p>Check Vercel build logs for errors.</p></div>';
+          document.body.innerHTML = '<div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh; font-family: monospace;"><h1 style="color: #ef4444;">🚨 Build Error</h1><p style="color: #fbbf24; font-size: 18px; margin: 20px 0;">No JavaScript bundle found. The build may have failed.</p><p style="color: #94a3b8;">Check Vercel build logs for errors.</p><p style="margin-top: 20px; color: #64748b; font-size: 12px;">This usually means:<br/>1. Build failed during deployment<br/>2. Bundle files are not being served<br/>3. Script tags are missing from HTML</p></div>';
         }
+        
+        // Check if main.tsx executed (look for [BOOT] log in console or check if root has content)
+        setTimeout(function() {
+          const root = document.getElementById('root');
+          const bootMarker = document.getElementById('lorekeeper-boot-marker');
+          const hasBootMarker = !!bootMarker;
+          
+          if (root && !root.hasChildNodes()) {
+            // main.tsx may have loaded but React didn't render
+            // Check console for [BOOT] message - if it's not there, bundle didn't execute
+            console.warn('[HTML] Root element exists but has no children after 5 seconds');
+            console.warn('[HTML] Boot marker found:', hasBootMarker);
+            console.warn('[HTML] If you see [BOOT] main.tsx executing in console, React may have failed to mount');
+            console.warn('[HTML] If you do NOT see [BOOT] message, the JavaScript bundle did not execute');
+            
+            // Check localStorage for debug info
+            let debugInfo = '';
+            try {
+              const bootLog = localStorage.getItem('lorekeeper_debug_boot');
+              const errorLog = localStorage.getItem('lorekeeper_debug_error');
+              const rejectionLog = localStorage.getItem('lorekeeper_debug_rejection');
+              const mountLog = localStorage.getItem('lorekeeper_debug_mount');
+              
+              if (bootLog || hasBootMarker) debugInfo += '✅ Bundle executed (boot log/marker found)\n';
+              else debugInfo += '❌ Bundle did NOT execute (no boot log or marker)\n';
+              
+              if (errorLog) {
+                const error = JSON.parse(errorLog);
+                debugInfo += `❌ Error occurred: ${error.data?.errorMessage || 'Unknown'}\n`;
+              }
+              if (rejectionLog) {
+                const rejection = JSON.parse(rejectionLog);
+                debugInfo += `❌ Unhandled rejection: ${rejection.data?.reason || 'Unknown'}\n`;
+              }
+              if (mountLog) debugInfo += '✅ React mounted successfully\n';
+              else debugInfo += '❌ React did NOT mount (no mount log)\n';
+            } catch (e) {
+              debugInfo = 'Could not read debug logs from localStorage: ' + String(e);
+            }
+            
+            // Show helpful message with debug info
+            if (!document.querySelector('[data-boot-check]')) {
+              const warningDiv = document.createElement('div');
+              warningDiv.setAttribute('data-boot-check', 'true');
+              warningDiv.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; background: #ef4444; color: white; padding: 15px; text-align: center; z-index: 9999; font-family: monospace; font-size: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);';
+              warningDiv.innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 10px;">⚠️ App not loading after 5 seconds</div>
+                <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; margin-top: 10px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;">
+                  <pre style="margin: 0; white-space: pre-wrap; font-size: 11px;">${debugInfo}</pre>
+                </div>
+                <div style="margin-top: 10px; font-size: 11px; opacity: 0.8;">Check browser console (F12) for [BOOT] message and errors</div>
+              `;
+              document.body.appendChild(warningDiv);
+            }
+          }
+        }, 5000);
       }, 2000);
       
       // Log any errors that occur before main.tsx loads

@@ -15,19 +15,22 @@ process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-key';
 // forcing tests to properly mock the method
 vi.mock('../src/services/omegaMemoryService', async () => {
   const actual = await vi.importActual('../src/services/omegaMemoryService');
-  // Get the actual instance
   const actualInstance = (actual as any).omegaMemoryService;
   
-  // Create a spy on extractEntities that returns empty array by default
-  // Individual tests can override with: vi.mocked(omegaMemoryService.extractEntities).mockResolvedValue([...])
+  // Create a mock function for extractEntities
   const mockExtractEntities = vi.fn().mockResolvedValue([]);
+  
+  // Preserve the actual instance but override extractEntities
+  // Use Object.defineProperty to ensure it's configurable
+  Object.defineProperty(actualInstance, 'extractEntities', {
+    value: mockExtractEntities,
+    writable: true,
+    configurable: true,
+  });
   
   return {
     ...actual,
-    omegaMemoryService: {
-      ...actualInstance,
-      extractEntities: mockExtractEntities,
-    },
+    omegaMemoryService: actualInstance,
   };
 });
 

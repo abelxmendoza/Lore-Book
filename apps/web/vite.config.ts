@@ -145,9 +145,10 @@ export default defineConfig({
   // Development-specific optimizations
   esbuild: {
     // Remove console.log in production (keep console.error and console.warn)
+    // CRITICAL: Do NOT drop all console - we need console.error and console.warn for debugging
     ...(process.env.NODE_ENV === 'production' && {
-      drop: ['console', 'debugger'],
-      pure: ['console.log', 'console.debug', 'console.info'],
+      pure: ['console.log', 'console.debug', 'console.info'], // Only remove these, keep error/warn
+      drop: ['debugger'], // Only drop debugger, not console
     }),
     // Faster builds in development
     ...(process.env.NODE_ENV === 'development' && {

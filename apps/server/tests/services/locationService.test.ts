@@ -18,6 +18,7 @@ vi.mock('../../src/services/memoryService', () => ({
 vi.mock('../../src/logger', () => ({
   logger: {
     debug: vi.fn(),
+    warn: vi.fn(),
     error: vi.fn(),
     info: vi.fn()
   }

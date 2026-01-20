@@ -178,108 +178,110 @@ class LocationService {
         });
       });
 
-    const locations: LocationProfile[] = Array.from(accumulator.values()).map((location) => {
-      const relatedEntries = Array.from(location.entryIds)
-        .map((id) => entryMap.get(id))
-        .filter((entry): entry is MemoryEntry => Boolean(entry));
+    const locations: LocationProfile[] = await Promise.all(
+      Array.from(accumulator.values()).map(async (location) => {
+        const relatedEntries = Array.from(location.entryIds)
+          .map((id) => entryMap.get(id))
+          .filter((entry): entry is MemoryEntry => Boolean(entry));
 
-      const visitCount = relatedEntries.length;
-      const firstVisited = visitCount
-        ? relatedEntries.reduce((current, entry) => (entry.date < current ? entry.date : current), relatedEntries[0].date)
-        : undefined;
-      const lastVisited = visitCount
-        ? relatedEntries.reduce((current, entry) => (entry.date > current ? entry.date : current), relatedEntries[0].date)
-        : undefined;
+        const visitCount = relatedEntries.length;
+        const firstVisited = visitCount
+          ? relatedEntries.reduce((current, entry) => (entry.date < current ? entry.date : current), relatedEntries[0].date)
+          : undefined;
+        const lastVisited = visitCount
+          ? relatedEntries.reduce((current, entry) => (entry.date > current ? entry.date : current), relatedEntries[0].date)
+          : undefined;
 
-      const tagCounts = relatedEntries.reduce<Map<string, number>>((acc, entry) => {
-        entry.tags.forEach((tag) => {
-          acc.set(tag, (acc.get(tag) ?? 0) + 1);
-        });
-        return acc;
-      }, new Map());
-
-      const chapterCounts = relatedEntries.reduce<Map<string, { id: string; title?: string; count: number }>>((acc, entry) => {
-        if (!entry.chapter_id) return acc;
-        const current = acc.get(entry.chapter_id) ?? {
-          id: entry.chapter_id,
-          title: chapterTitles.get(entry.chapter_id),
-          count: 0
-        };
-        current.count += 1;
-        acc.set(entry.chapter_id, current);
-        return acc;
-      }, new Map());
-
-      const moodCounts = relatedEntries.reduce<Map<string, number>>((acc, entry) => {
-        if (!entry.mood) return acc;
-        acc.set(entry.mood, (acc.get(entry.mood) ?? 0) + 1);
-        return acc;
-      }, new Map());
-
-      const relatedPeople = relatedEntries.reduce<Map<string, { entity: PeoplePlaceEntity; entryCount: number }>>(
-        (acc, entry) => {
-          (personMentions.get(entry.id) ?? []).forEach((person) => {
-            const current = acc.get(person.id) ?? { entity: person, entryCount: 0 };
-            current.entryCount += 1;
-            acc.set(person.id, current);
+        const tagCounts = relatedEntries.reduce<Map<string, number>>((acc, entry) => {
+          entry.tags.forEach((tag) => {
+            acc.set(tag, (acc.get(tag) ?? 0) + 1);
           });
           return acc;
-        },
-        new Map()
-      );
+        }, new Map());
 
-      const simplifiedEntries = relatedEntries
-        .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
-        .map((entry) => ({
-          id: entry.id,
-          date: entry.date,
-          tags: entry.tags,
-          chapter_id: entry.chapter_id,
-          mood: entry.mood,
-          summary: entry.summary,
-          source: entry.source
-        }));
+        const chapterCounts = relatedEntries.reduce<Map<string, { id: string; title?: string; count: number }>>((acc, entry) => {
+          if (!entry.chapter_id) return acc;
+          const current = acc.get(entry.chapter_id) ?? {
+            id: entry.chapter_id,
+            title: chapterTitles.get(entry.chapter_id),
+            count: 0
+          };
+          current.count += 1;
+          acc.set(entry.chapter_id, current);
+          return acc;
+        }, new Map());
 
-      const locationProfile: LocationProfile = {
-        id: location.id,
-        name: location.name,
-        visitCount,
-        firstVisited,
-        lastVisited,
-        coordinates: location.coordinates,
-        relatedPeople: Array.from(relatedPeople.values())
-          .map(({ entity, entryCount }) => ({
-            id: entity.id,
-            name: entity.name,
-            total_mentions: entity.total_mentions,
-            entryCount
-          }))
-          .sort((a, b) => b.entryCount - a.entryCount),
-        tagCounts: Array.from(tagCounts.entries())
-          .map(([tag, count]) => ({ tag, count }))
-          .sort((a, b) => b.count - a.count),
-        chapters: Array.from(chapterCounts.values()).sort((a, b) => b.count - a.count),
-        moods: Array.from(moodCounts.entries())
-          .map(([mood, count]) => ({ mood, count }))
-          .sort((a, b) => b.count - a.count),
-        entries: simplifiedEntries,
-        sources: Array.from(location.sources)
-      };
+        const moodCounts = relatedEntries.reduce<Map<string, number>>((acc, entry) => {
+          if (!entry.mood) return acc;
+          acc.set(entry.mood, (acc.get(entry.mood) ?? 0) + 1);
+          return acc;
+        }, new Map());
 
-      // Calculate analytics (async, don't block)
-      try {
-        const analytics = await locationAnalyticsService.calculateAnalytics(
-          userId,
-          location.id,
-          locationProfile
+        const relatedPeople = relatedEntries.reduce<Map<string, { entity: PeoplePlaceEntity; entryCount: number }>>(
+          (acc, entry) => {
+            (personMentions.get(entry.id) ?? []).forEach((person) => {
+              const current = acc.get(person.id) ?? { entity: person, entryCount: 0 };
+              current.entryCount += 1;
+              acc.set(person.id, current);
+            });
+            return acc;
+          },
+          new Map()
         );
-        (locationProfile as any).analytics = analytics;
-      } catch (error) {
-        logger.debug({ error, locationId: location.id }, 'Failed to calculate location analytics, continuing without');
-      }
 
-      return locationProfile;
-    });
+        const simplifiedEntries = relatedEntries
+          .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
+          .map((entry) => ({
+            id: entry.id,
+            date: entry.date,
+            tags: entry.tags,
+            chapter_id: entry.chapter_id,
+            mood: entry.mood,
+            summary: entry.summary,
+            source: entry.source
+          }));
+
+        const locationProfile: LocationProfile = {
+          id: location.id,
+          name: location.name,
+          visitCount,
+          firstVisited,
+          lastVisited,
+          coordinates: location.coordinates,
+          relatedPeople: Array.from(relatedPeople.values())
+            .map(({ entity, entryCount }) => ({
+              id: entity.id,
+              name: entity.name,
+              total_mentions: entity.total_mentions,
+              entryCount
+            }))
+            .sort((a, b) => b.entryCount - a.entryCount),
+          tagCounts: Array.from(tagCounts.entries())
+            .map(([tag, count]) => ({ tag, count }))
+            .sort((a, b) => b.count - a.count),
+          chapters: Array.from(chapterCounts.values()).sort((a, b) => b.count - a.count),
+          moods: Array.from(moodCounts.entries())
+            .map(([mood, count]) => ({ mood, count }))
+            .sort((a, b) => b.count - a.count),
+          entries: simplifiedEntries,
+          sources: Array.from(location.sources)
+        };
+
+        // Calculate analytics (async, don't block)
+        try {
+          const analytics = await locationAnalyticsService.calculateAnalytics(
+            userId,
+            location.id,
+            locationProfile
+          );
+          (locationProfile as any).analytics = analytics;
+        } catch (error) {
+          logger.debug({ error, locationId: location.id }, 'Failed to calculate location analytics, continuing without');
+        }
+
+        return locationProfile;
+      })
+    );
 
     return locations.sort((a, b) => (b.lastVisited ?? '').localeCompare(a.lastVisited ?? ''));
   }
