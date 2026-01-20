@@ -24,6 +24,7 @@
     "NODE_VERSION": "20",
     "VITE_USE_MOCK_DATA": "true",
     "VITE_SHOW_DEV_NOTICE": "true"
-  }
+  },
+  "buildCommand": "rm -rf node_modules dist && npm ci --legacy-peer-deps && npm run build"
 }
 

@@ -4,7 +4,7 @@ import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
-import { ChatFirstInterface } from '../chat/ChatFirstInterface';
+import { ChatFirstInterface } from '../../features/chat/components/ChatFirstInterface';
 import { BiographyGenerator } from '../biography/BiographyGenerator';
 import { BiographyRecommendations } from './BiographyRecommendations';
 import { SavedBiographies } from './SavedBiographies';
