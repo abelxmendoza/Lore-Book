@@ -497,6 +497,11 @@ class MemoryService {
 
       // Score and rank by keyword density
       const entries = (data ?? []) as MemoryEntry[];
+      // Escape regex special characters in user input to prevent regex injection
+      const escapeRegExp = (str: string): string => {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      };
+
       const scored = entries.map((entry) => {
         const contentLower = (entry.content || '').toLowerCase();
         const summaryLower = (entry.summary || '').toLowerCase();
@@ -505,8 +510,10 @@ class MemoryService {
 
         let score = 0;
         queryWords.forEach((word) => {
-          const contentMatches = (contentLower.match(new RegExp(word, 'g')) || []).length;
-          const summaryMatches = (summaryLower.match(new RegExp(word, 'g')) || []).length;
+          // Sanitize word before using in regex to prevent injection attacks
+          const escapedWord = escapeRegExp(word);
+          const contentMatches = (contentLower.match(new RegExp(escapedWord, 'g')) || []).length;
+          const summaryMatches = (summaryLower.match(new RegExp(escapedWord, 'g')) || []).length;
           score += contentMatches * 2 + summaryMatches * 3; // Summary matches weighted higher
         });
 

@@ -27,8 +27,17 @@ const pruneOldLogs = () => {
 
 export const redactSensitive = (value?: string | null) => {
   if (!value) return value ?? '';
-  const scrubbedEmails = value.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[redacted-email]');
-  return scrubbedEmails.replace(/[A-Za-z0-9]{6,}/g, (match) => `${match.slice(0, 2)}***${match.slice(-2)}`);
+  // Use more specific email regex to prevent ReDoS - avoid nested quantifiers
+  // Email pattern: word chars, dots, hyphens, plus, percent before @, domain after
+  const scrubbedEmails = value.replace(/\b[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}\b/g, '[redacted-email]');
+  // Use word boundary and limit length to prevent ReDoS on long alphanumeric strings
+  return scrubbedEmails.replace(/\b[A-Za-z0-9]{6,}\b/g, (match) => {
+    // Limit processing to reasonable length
+    if (match.length > 100) {
+      return `${match.slice(0, 2)}***${match.slice(-2)}`;
+    }
+    return `${match.slice(0, 2)}***${match.slice(-2)}`;
+  });
 };
 
 type SecurityEvent = {

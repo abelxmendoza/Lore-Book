@@ -92,7 +92,13 @@ app.use(
 // CORS - strict in production, permissive only in development
 app.use(cors({
   origin: isDevelopment 
-    ? true // Allow all origins in development
+    ? (origin, callback) => {
+        // In development, allow all origins but log them for security awareness
+        if (origin) {
+          logger.debug({ origin }, 'CORS: Allowing origin in development');
+        }
+        callback(null, true);
+      }
     : (origin, callback) => {
         // In production, only allow specific origins
         const allowedOrigins = [

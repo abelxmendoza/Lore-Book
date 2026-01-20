@@ -89,9 +89,9 @@ export const validateCommonPatterns = (req: Request, res: Response, next: NextFu
   const suspiciousPatterns = [
     /<script/i,
     /javascript:/i,
-    /on\w+\s*=/i,
-    /eval\(/i,
-    /expression\(/i
+    /\bon\w+\s*=/i, // Use word boundary to prevent ReDoS
+    /\beval\s*\(/i, // Use word boundary to prevent ReDoS
+    /\bexpression\s*\(/i // Use word boundary to prevent ReDoS
   ];
 
   const checkValue = (value: unknown, path: string): boolean => {

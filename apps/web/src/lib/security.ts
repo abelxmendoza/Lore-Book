@@ -33,8 +33,13 @@ export const sanitizeInput = (input: string): string => {
   let sanitized = input.replace(/[\x00-\x1F\x7F]/g, '');
   
   // Remove script tags and event handlers (basic protection)
-  sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  sanitized = sanitized.replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
+  // Improved regex to handle edge cases like </script >, </script foo="bar">, etc.
+  // Match opening script tag, any content, and closing tag (including malformed ones)
+  sanitized = sanitized.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*[^>]*>/gi, '');
+  // Also handle self-closing script tags
+  sanitized = sanitized.replace(/<script\b[^>]*\/>/gi, '');
+  // Remove event handlers with word boundary to prevent ReDoS
+  sanitized = sanitized.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
   
   return sanitized.trim();
 };
