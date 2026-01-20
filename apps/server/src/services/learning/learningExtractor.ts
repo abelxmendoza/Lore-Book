@@ -219,10 +219,14 @@ export class LearningExtractor {
    */
   private extractName(text: string, type: LearningType): string {
     // Try to extract the name after learning indicators
+    // Using more specific patterns with word boundaries to prevent ReDoS
     const patterns = [
-      /(?:learned|learning|mastered|practicing|using|working with)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/,
-      /(?:skill|knowledge|concept|technique|tool|language|framework|methodology)\s+(?:of|in|called|named)?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/,
-      /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:skill|knowledge|concept|technique|tool|language|framework)/,
+      // Pattern 1: "learned React" or "learning TypeScript"
+      /\b(?:learned|learning|mastered|practicing|using|working with)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})/,
+      // Pattern 2: "skill of JavaScript" or "tool called Docker"
+      /\b(?:skill|knowledge|concept|technique|tool|language|framework|methodology)\s+(?:of|in|called|named)?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})/,
+      // Pattern 3: "React skill" or "TypeScript framework"
+      /([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})\s+(?:skill|knowledge|concept|technique|tool|language|framework)\b/,
     ];
 
     for (const pattern of patterns) {

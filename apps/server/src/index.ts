@@ -43,10 +43,24 @@ const isProduction = process.env.NODE_ENV === 'production' ||
                      process.env.API_ENV === 'production' ||
                      (!process.env.NODE_ENV && !process.env.API_ENV); // Default to production for safety
 
-// Configure Helmet with strict security in production
+// Configure Helmet with strict security in production, permissive in development
 app.use(
   helmet({
-    contentSecurityPolicy: isDevelopment ? false : {
+    contentSecurityPolicy: isDevelopment ? {
+      // More permissive CSP for development (allows hot reload, dev tools, etc.)
+      directives: {
+        defaultSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:", "http:"],
+        fontSrc: ["'self'", "data:"],
+        connectSrc: ["'self'", "https://*.supabase.co", "https://api.openai.com", "ws:", "wss:", "http://localhost:*"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'none'"],
+        formAction: ["'self'"],
+      }
+    } : {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'"], // Needed for some frameworks

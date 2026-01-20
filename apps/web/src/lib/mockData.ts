@@ -449,9 +449,26 @@ export function generateMockLogs(
     const hoursAgo = (Math.random() * timeRange);
     const timestamp = new Date(now - hoursAgo * 60 * 60 * 1000).toISOString();
     
-    // Generate optional fields
-    const userId = Math.random() > 0.4 ? `user_${Math.random().toString(36).substring(2, 11)}` : undefined;
-    const requestId = Math.random() > 0.5 ? `req_${Math.random().toString(36).substring(2, 15)}` : undefined;
+    // Generate optional fields using cryptographically secure randomness
+    // Note: This is mock data, but we use secure randomness to prevent predictability
+    const getSecureRandomId = (prefix: string, length: number): string => {
+      // Use crypto.getRandomValues for secure randomness in browser
+      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        // Generate enough random bytes to create the desired length
+        const byteCount = Math.ceil(length * 0.75); // Base36 encoding needs ~0.75 bytes per char
+        const bytes = new Uint8Array(byteCount);
+        crypto.getRandomValues(bytes);
+        // Convert to base36 string
+        const base36 = Array.from(bytes, byte => byte.toString(36)).join('');
+        return `${prefix}_${base36.substring(0, length)}`;
+      }
+      // Fallback for environments without crypto (shouldn't happen in modern browsers)
+      // Use timestamp + random to reduce predictability
+      return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, length + 2)}`;
+    };
+    
+    const userId = Math.random() > 0.4 ? getSecureRandomId('user', 9) : undefined;
+    const requestId = Math.random() > 0.5 ? getSecureRandomId('req', 13) : undefined;
     const stackTrace = level === 'error' ? getStackTrace(source) : undefined;
     
     const metadata: Record<string, any> = {};
