@@ -1,4 +1,4 @@
-import { Rocket, Sparkles, Waypoints } from 'lucide-react';
+import { Rocket, Sparkles, Waypoints, Lock } from 'lucide-react';
 
 import { Button } from '../ui/button';
 
@@ -8,6 +8,10 @@ export const QuickStart = () => (
       <div>
         <p className="text-xs uppercase tracking-widest text-white/60">Guided onboarding</p>
         <h2 className="text-2xl font-semibold text-white">Start your first week</h2>
+        <div className="mt-2 flex items-center gap-1.5">
+          <Lock className="h-3 w-3 text-green-400" />
+          <p className="text-xs text-green-400/80">Everything you share is private and secure</p>
+        </div>
       </div>
       <Rocket className="h-8 w-8 text-primary" />
     </div>

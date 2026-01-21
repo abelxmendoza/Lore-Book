@@ -1,4 +1,4 @@
-import { Bot, Paperclip, FileText, MessageSquare, Image as ImageIcon } from 'lucide-react';
+import { Bot, Paperclip, FileText, MessageSquare, Image as ImageIcon, Lock } from 'lucide-react';
 
 export const ChatEmptyState = () => {
   return (
@@ -9,6 +9,16 @@ export const ChatEmptyState = () => {
         Dump everything freely here. I'll reflect back, make connections,<br />
         and help you understand your story while automatically updating your timeline.
       </p>
+      
+      {/* Privacy Reassurance */}
+      <div className="mb-6 flex items-center justify-center">
+        <div className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-2">
+          <Lock className="h-4 w-4 text-green-400" />
+          <p className="text-xs text-green-400">
+            <strong className="font-semibold">Private & Secure:</strong> Your conversations are encrypted and never shared. Only you can access your data.
+          </p>
+        </div>
+      </div>
       
       {/* Document Upload Instructions */}
       <div className="mb-8 space-y-4 max-w-lg mx-auto">

@@ -18,6 +18,12 @@ const OnboardingPage = () => {
           <p className="mt-2 text-sm text-white/70">
             Guided setup, import wizards, and a first-week briefing to seed your memory graph.
           </p>
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2">
+            <Lock className="h-4 w-4 text-green-400" />
+            <p className="text-xs text-green-400">
+              <strong className="font-semibold">Your data is private.</strong> Everything you share stays encrypted and accessible only to you.
+            </p>
+          </div>
         </header>
 
         <QuickStart />

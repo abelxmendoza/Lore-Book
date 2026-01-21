@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   BookOpen, MessageSquareText, CalendarDays, Search, Users, MapPin, 
   BookMarked, Compass, Sparkles, Layers, GitBranch, Clock, Target,
-  ChevronRight, ChevronDown, Zap, Info, HelpCircle, ArrowLeft, Heart
+  ChevronRight, ChevronDown, Zap, Info, HelpCircle, ArrowLeft, Heart, Lock, Shield
 } from 'lucide-react';
 
 interface GuideSection {
@@ -450,6 +450,89 @@ const UserGuide: React.FC = () => {
                 <li>Relationship Patterns</li>
               </ul>
             </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'privacy',
+      title: 'Privacy & Security',
+      icon: <Shield className="w-5 h-5" />,
+      content: (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-2">Your Data is Private by Design</h3>
+            <p className="text-white/70 mb-4">
+              Lore Book is built with privacy as a core principle. Everything you share is encrypted, secure, and accessible only to you.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Lock className="h-5 w-5 text-green-400" />
+                <h4 className="text-base font-semibold text-white">End-to-End Encryption</h4>
+              </div>
+              <p className="text-sm text-white/70">
+                Your journal entries, memories, and personal data are encrypted both in transit and at rest. 
+                Only you can decrypt and read your data.
+              </p>
+            </div>
+
+            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="h-5 w-5 text-green-400" />
+                <h4 className="text-base font-semibold text-white">We Never Sell Your Data</h4>
+              </div>
+              <p className="text-sm text-white/70">
+                Your personal information, journal entries, and usage data are never sold, shared, or used for advertising purposes.
+              </p>
+            </div>
+
+            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Lock className="h-5 w-5 text-green-400" />
+                <h4 className="text-base font-semibold text-white">Private by Default</h4>
+              </div>
+              <p className="text-sm text-white/70">
+                Your Lore Book is completely private. No one else can see your entries, characters, timeline, or memories unless you explicitly choose to publish them.
+              </p>
+            </div>
+
+            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="h-5 w-5 text-green-400" />
+                <h4 className="text-base font-semibold text-white">You Control Your Data</h4>
+              </div>
+              <p className="text-sm text-white/70">
+                Export your data anytime, delete your account and all data permanently, or adjust privacy settings to your comfort level.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
+            <h4 className="text-base font-semibold text-white mb-2">Trust & Confidentiality</h4>
+            <p className="text-white/70 text-sm mb-3">
+              We understand that your life story is deeply personal. You can confide in Lore Book knowing that:
+            </p>
+            <ul className="space-y-2 text-sm text-white/70 list-disc list-inside">
+              <li>Your conversations with the AI are private and encrypted</li>
+              <li>No human reviews your entries or data</li>
+              <li>Your data is isolated and cannot be accessed by other users</li>
+              <li>Future social features will be opt-in only</li>
+              <li>You can publish your Lore Book only if you choose to</li>
+            </ul>
+          </div>
+
+          <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
+            <h4 className="text-base font-semibold text-primary mb-2 flex items-center gap-2">
+              <Info className="w-4 h-4" />
+              Privacy Settings
+            </h4>
+            <p className="text-white/80 text-sm">
+              Visit <strong className="text-white">Account Center → Privacy & Security</strong> to manage your privacy settings, 
+              export your data, or delete your account.
+            </p>
           </div>
         </div>
       )

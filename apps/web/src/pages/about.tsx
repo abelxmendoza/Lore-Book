@@ -22,6 +22,15 @@ const AboutPage = () => {
           <p>Led by Abel Mendoza, crafting AI-first storytelling infrastructure with care for privacy and agency.</p>
         </section>
         <section className="space-y-2 text-white/80">
+          <h2 className="text-xl font-semibold text-white">Privacy First</h2>
+          <p>
+            Your Lore Book is completely private by default. Everything you share—journal entries, memories, conversations, 
+            characters, and timeline—is encrypted and accessible only to you. We never sell your data, never share it with 
+            advertisers, and never allow other users to see your content unless you explicitly choose to publish it. 
+            Your trust is our foundation.
+          </p>
+        </section>
+        <section className="space-y-2 text-white/80">
           <h2 className="text-xl font-semibold text-white">Philosophy</h2>
           <p>Human stories deserve secure, contextual recall. We honor that by combining encryption options, strict data boundaries, and transparent AI disclaimers.</p>
         </section>

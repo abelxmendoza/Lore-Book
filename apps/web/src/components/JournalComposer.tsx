@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Lock } from 'lucide-react';
 
 import type { Chapter } from '../hooks/useLoreKeeper';
 
@@ -79,10 +79,16 @@ export const JournalComposer = ({ onSave, onAsk, onVoiceUpload, loading, chapter
     <div className="rounded-2xl border border-border/50 bg-black/40 p-6 shadow-panel">
       <div className="flex items-center justify-between">
         <h3 className="font-techno text-sm uppercase tracking-[0.5em] text-white/60">New Memory</h3>
-        <span className="text-xs text-white/40">Auto-save keywords: log, update, chapter…</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 rounded-full border border-green-500/20 bg-green-500/5 px-2 py-0.5">
+            <Lock className="h-3 w-3 text-green-400" />
+            <span className="text-xs text-green-400/80">Private</span>
+          </div>
+          <span className="text-xs text-white/40">Auto-save keywords: log, update, chapter…</span>
+        </div>
       </div>
       <Textarea
-        placeholder="Log your mission, feelings, or milestones…"
+        placeholder="Log your mission, feelings, or milestones… (Everything you write is private and encrypted)"
         className="mt-4"
         value={value}
         onChange={(event) => setValue(event.target.value)}

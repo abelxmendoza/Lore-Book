@@ -54,6 +54,10 @@ const SidebarContent = ({
       <div className="mb-6">
         <Logo size="lg" showText={true} />
         <p className="mt-4 text-xs text-white/50">Your personal memory system. Remember everything that matters.</p>
+        <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/5 px-2 py-1">
+          <Shield className="h-3 w-3 text-green-400" />
+          <p className="text-xs text-green-400/80">100% Private & Secure</p>
+        </div>
       </div>
       <div className="mt-8 space-y-2">
         <button
