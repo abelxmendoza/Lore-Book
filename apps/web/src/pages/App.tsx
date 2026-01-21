@@ -292,7 +292,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         <TrialBanner />
 
         {activeSurface === 'chat' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-8rem)] sm:h-[calc(100vh-12rem)]">
+          <div className="sm:rounded-2xl sm:border sm:border-border/60 sm:bg-black/40 sm:shadow-panel h-[calc(100vh-4rem)] sm:h-[calc(100vh-12rem)] -mx-4 sm:mx-0">
             <ChatFirstInterface />
           </div>
         )}

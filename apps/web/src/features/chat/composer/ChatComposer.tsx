@@ -106,7 +106,7 @@ export const ChatComposer = ({
       )}
 
       {/* Input Form - ChatGPT style */}
-      <form onSubmit={handleSubmit} className="mx-auto max-w-4xl lg:max-w-5xl xl:max-w-6xl px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+      <form onSubmit={handleSubmit} className="mx-auto w-full max-w-4xl lg:max-w-5xl xl:max-w-6xl px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
         <div className="flex items-end gap-2 sm:gap-3 lg:gap-4">
           <div className="flex-1 relative">
             <Textarea

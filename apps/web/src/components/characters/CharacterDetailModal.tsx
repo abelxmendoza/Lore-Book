@@ -68,10 +68,38 @@ type CharacterDetail = Character & {
   }>;
 };
 
+type RomanticRelationship = {
+  id: string;
+  person_id: string;
+  person_type: 'character' | 'omega_entity';
+  person_name?: string;
+  relationship_type: string;
+  status: string;
+  is_current: boolean;
+  affection_score: number;
+  emotional_intensity: number;
+  compatibility_score: number;
+  relationship_health: number;
+  is_situationship: boolean;
+  exclusivity_status?: string;
+  strengths: string[];
+  weaknesses: string[];
+  pros: string[];
+  cons: string[];
+  red_flags: string[];
+  green_flags: string[];
+  start_date?: string;
+  end_date?: string;
+  created_at: string;
+  rank_among_all?: number;
+  rank_among_active?: number;
+};
+
 type CharacterDetailModalProps = {
   character: Character;
   onClose: () => void;
   onUpdate: () => void;
+  relationship?: RomanticRelationship;
 };
 
 type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'relationship_timeline' | 'chat' | 'insights' | 'metadata';
@@ -88,7 +116,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'metadata', label: 'Metadata', icon: Database }
 ];
 
-export const CharacterDetailModal = ({ character, onClose, onUpdate }: CharacterDetailModalProps) => {
+export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship }: CharacterDetailModalProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
 
@@ -1584,6 +1612,135 @@ User's message: ${message}`;
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* Relationship Section */}
+                {relationship && (
+                  <Card className="bg-gradient-to-br from-pink-950/20 via-purple-950/20 to-pink-950/20 border-2 border-pink-500/30 shadow-xl">
+                    <CardContent className="p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 rounded-lg bg-pink-500/20 border border-pink-500/40">
+                          <Heart className="h-6 w-6 text-pink-400" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-white">Relationship Status</h2>
+                      </div>
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <Badge 
+                            variant="outline" 
+                            className={`text-sm px-3 py-1 ${
+                              relationship.status === 'active' 
+                                ? 'bg-green-500/20 text-green-300 border-green-500/30' 
+                                : relationship.status === 'ended'
+                                ? 'bg-gray-500/20 text-gray-300 border-gray-500/30'
+                                : relationship.status === 'on_break'
+                                ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+                                : 'bg-white/10 text-white/70 border-white/20'
+                            }`}
+                          >
+                            <Heart 
+                              className="w-4 h-4 mr-1" 
+                              style={{
+                                fill: relationship.is_current && relationship.status === 'active' 
+                                  ? `rgba(244, 114, 182, ${relationship.affection_score})` 
+                                  : 'transparent',
+                                stroke: 'currentColor',
+                                strokeWidth: 2
+                              }}
+                            />
+                            {relationship.relationship_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </Badge>
+                          {relationship.is_situationship && (
+                            <Badge variant="outline" className="text-sm px-3 py-1 bg-purple-500/20 text-purple-300 border-purple-500/30">
+                              Situationship
+                            </Badge>
+                          )}
+                          {relationship.exclusivity_status && (
+                            <Badge variant="outline" className="text-sm px-3 py-1 bg-blue-500/20 text-blue-300 border-blue-500/30">
+                              {relationship.exclusivity_status}
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-black/40 rounded-lg p-4 border border-pink-500/20">
+                            <p className="text-xs text-white/60 mb-1">Compatibility</p>
+                            <div className="flex items-center gap-2">
+                              <p className={`text-lg font-semibold ${
+                                relationship.compatibility_score >= 0.7 ? 'text-green-400' :
+                                relationship.compatibility_score >= 0.5 ? 'text-yellow-400' : 'text-red-400'
+                              }`}>
+                                {Math.round(relationship.compatibility_score * 100)}%
+                              </p>
+                              {relationship.compatibility_score >= 0.7 ? (
+                                <TrendingUp className="w-4 h-4 text-green-400" />
+                              ) : relationship.compatibility_score < 0.4 ? (
+                                <TrendingDown className="w-4 h-4 text-red-400" />
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="bg-black/40 rounded-lg p-4 border border-pink-500/20">
+                            <p className="text-xs text-white/60 mb-1">Relationship Health</p>
+                            <div className="flex items-center gap-2">
+                              <p className={`text-lg font-semibold ${
+                                relationship.relationship_health >= 0.7 ? 'text-green-400' :
+                                relationship.relationship_health >= 0.5 ? 'text-yellow-400' : 'text-red-400'
+                              }`}>
+                                {Math.round(relationship.relationship_health * 100)}%
+                              </p>
+                              {relationship.relationship_health >= 0.7 ? (
+                                <TrendingUp className="w-4 h-4 text-green-400" />
+                              ) : relationship.relationship_health < 0.4 ? (
+                                <TrendingDown className="w-4 h-4 text-red-400" />
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+
+                        {relationship.start_date && (
+                          <div className="text-sm text-white/70">
+                            <span className="text-white/50">Started: </span>
+                            {new Date(relationship.start_date).toLocaleDateString('en-US', { 
+                              month: 'long', 
+                              day: 'numeric', 
+                              year: 'numeric' 
+                            })}
+                          </div>
+                        )}
+
+                        {(relationship.pros.length > 0 || relationship.cons.length > 0) && (
+                          <div className="grid grid-cols-2 gap-4 mt-4">
+                            {relationship.pros.length > 0 && (
+                              <div>
+                                <p className="text-sm font-semibold text-green-400 mb-2">Pros ({relationship.pros.length})</p>
+                                <ul className="space-y-1">
+                                  {relationship.pros.slice(0, 3).map((pro, idx) => (
+                                    <li key={idx} className="text-xs text-white/70 flex items-start gap-2">
+                                      <span className="text-green-400 mt-1">•</span>
+                                      <span>{pro}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {relationship.cons.length > 0 && (
+                              <div>
+                                <p className="text-sm font-semibold text-red-400 mb-2">Cons ({relationship.cons.length})</p>
+                                <ul className="space-y-1">
+                                  {relationship.cons.slice(0, 3).map((con, idx) => (
+                                    <li key={idx} className="text-xs text-white/70 flex items-start gap-2">
+                                      <span className="text-red-400 mt-1">•</span>
+                                      <span>{con}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Summary Section - Prominent */}
                 <div>

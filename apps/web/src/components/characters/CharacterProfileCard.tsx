@@ -1,4 +1,4 @@
-import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff, Briefcase, DollarSign, Activity, Smile, Home, Heart as HeartIcon } from 'lucide-react';
+import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff, Briefcase, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Heart, TrendingUp, TrendingDown } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -84,12 +84,40 @@ type CharacterAttribute = {
   evidence?: string;
 };
 
+type RomanticRelationship = {
+  id: string;
+  person_id: string;
+  person_type: 'character' | 'omega_entity';
+  person_name?: string;
+  relationship_type: string;
+  status: string;
+  is_current: boolean;
+  affection_score: number;
+  emotional_intensity: number;
+  compatibility_score: number;
+  relationship_health: number;
+  is_situationship: boolean;
+  exclusivity_status?: string;
+  strengths: string[];
+  weaknesses: string[];
+  pros: string[];
+  cons: string[];
+  red_flags: string[];
+  green_flags: string[];
+  start_date?: string;
+  end_date?: string;
+  created_at: string;
+  rank_among_all?: number;
+  rank_among_active?: number;
+};
+
 type CharacterProfileCardProps = {
   character: Character;
   onClick?: () => void;
+  relationship?: RomanticRelationship;
 };
 
-export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCardProps) => {
+export const CharacterProfileCard = ({ character, onClick, relationship }: CharacterProfileCardProps) => {
   const [attributes, setAttributes] = useState<CharacterAttribute[]>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
 
@@ -392,6 +420,57 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
             </Badge>
           )}
         </div>
+        
+        {/* Relationship Badge */}
+        {relationship && (
+          <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-border/30">
+            <Badge 
+              variant="outline" 
+              className={`text-[10px] sm:text-xs ${
+                relationship.status === 'active' 
+                  ? 'bg-green-500/20 text-green-300 border-green-500/30' 
+                  : relationship.status === 'ended'
+                  ? 'bg-gray-500/20 text-gray-300 border-gray-500/30'
+                  : relationship.status === 'on_break'
+                  ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+                  : 'bg-white/10 text-white/70 border-white/20'
+              }`}
+            >
+              <Heart 
+                className="w-3 h-3 mr-1" 
+                style={{
+                  fill: relationship.is_current && relationship.status === 'active' 
+                    ? `rgba(244, 114, 182, ${relationship.affection_score})` 
+                    : 'transparent',
+                  stroke: 'currentColor',
+                  strokeWidth: 2
+                }}
+              />
+              {relationship.relationship_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+            </Badge>
+            {relationship.is_situationship && (
+              <Badge variant="outline" className="text-[10px] sm:text-xs bg-purple-500/20 text-purple-300 border-purple-500/30">
+                Situationship
+              </Badge>
+            )}
+            {relationship.is_current && relationship.status === 'active' && (
+              <div className="flex items-center gap-1 text-[9px] sm:text-[10px]">
+                <span className="text-white/60">Compatibility:</span>
+                <span className={`font-semibold ${
+                  relationship.compatibility_score >= 0.7 ? 'text-green-400' :
+                  relationship.compatibility_score >= 0.5 ? 'text-yellow-400' : 'text-red-400'
+                }`}>
+                  {Math.round(relationship.compatibility_score * 100)}%
+                </span>
+                {relationship.compatibility_score >= 0.7 ? (
+                  <TrendingUp className="w-2.5 h-2.5 text-green-400" />
+                ) : relationship.compatibility_score < 0.4 ? (
+                  <TrendingDown className="w-2.5 h-2.5 text-red-400" />
+                ) : null}
+              </div>
+            )}
+          </div>
+        )}
         
         {/* Metadata Row */}
         <div className="flex flex-wrap gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] text-white/50">

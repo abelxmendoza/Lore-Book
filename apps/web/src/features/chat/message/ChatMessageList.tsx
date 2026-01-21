@@ -45,7 +45,7 @@ export const ChatMessageList = ({
       ref={containerRef}
       className="flex-1 overflow-y-auto chat-scrollbar"
     >
-      <div className="mx-auto max-w-4xl lg:max-w-5xl xl:max-w-6xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 space-y-6 sm:space-y-8 lg:space-y-10">
+      <div className="mx-auto w-full max-w-4xl lg:max-w-5xl xl:max-w-6xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-12 space-y-6 sm:space-y-8 lg:space-y-10">
         {groupedMessages.map((group) => (
           <div key={group.date}>
             {/* Date Header - ChatGPT style */}

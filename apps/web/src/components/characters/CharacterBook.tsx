@@ -21,6 +21,7 @@ import { generateNicknames } from '../../utils/nicknameGenerator';
 import { useAuth } from '../../lib/supabase';
 import { mockDataService } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
+import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
 
 // Comprehensive mock character data showcasing all app capabilities
 // Export for use in mock data service
@@ -1675,6 +1676,34 @@ type CharacterAttribute = {
   evidence?: string;
 };
 
+// Romantic Relationship Type
+type RomanticRelationship = {
+  id: string;
+  person_id: string;
+  person_type: 'character' | 'omega_entity';
+  person_name?: string;
+  relationship_type: string;
+  status: string;
+  is_current: boolean;
+  affection_score: number;
+  emotional_intensity: number;
+  compatibility_score: number;
+  relationship_health: number;
+  is_situationship: boolean;
+  exclusivity_status?: string;
+  strengths: string[];
+  weaknesses: string[];
+  pros: string[];
+  cons: string[];
+  red_flags: string[];
+  green_flags: string[];
+  start_date?: string;
+  end_date?: string;
+  created_at: string;
+  rank_among_all?: number;
+  rank_among_active?: number;
+};
+
 // Main Character Section Component
 const MainCharacterSection = ({ user }: { user: any }) => {
   const [userCharacterId, setUserCharacterId] = useState<string | null>(null);
@@ -1806,6 +1835,7 @@ export const CharacterBook = () => {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
+  const [relationships, setRelationships] = useState<Map<string, RomanticRelationship>>(new Map());
   
   // Register mock data with service on mount
   useEffect(() => {
@@ -1858,13 +1888,45 @@ export const CharacterBook = () => {
     }
   };
 
+  // Load romantic relationships
+  const loadRelationships = async () => {
+    try {
+      let allRelationships: RomanticRelationship[] = [];
+      
+      if (isMockDataEnabled) {
+        allRelationships = getMockRomanticRelationships() as RomanticRelationship[];
+      } else {
+        const data = await fetchJson<{ success: boolean; relationships: RomanticRelationship[] }>(
+          '/api/conversation/romantic-relationships'
+        );
+        if (data.success) {
+          allRelationships = data.relationships;
+        }
+      }
+
+      // Create a map of character_id -> relationship
+      const relationshipMap = new Map<string, RomanticRelationship>();
+      allRelationships.forEach(rel => {
+        if (rel.person_type === 'character') {
+          relationshipMap.set(rel.person_id, rel);
+        }
+      });
+
+      setRelationships(relationshipMap);
+    } catch (error) {
+      console.error('Failed to load relationships:', error);
+    }
+  };
+
   useEffect(() => {
     void loadCharacters();
+    void loadRelationships();
   }, []);
 
   // Refresh when mock data toggle changes
   useEffect(() => {
     void loadCharacters();
+    void loadRelationships();
   }, [isMockDataEnabled]);
 
   // Convert entries to MemoryCard format for modal
@@ -2320,11 +2382,13 @@ export const CharacterBook = () => {
       {selectedCharacter && (
         <CharacterDetailModal
           character={selectedCharacter}
+          relationship={relationships.get(selectedCharacter.id)}
           onClose={() => {
             setSelectedCharacter(null);
           }}
           onUpdate={() => {
             void loadCharacters();
+            void loadRelationships();
             setSelectedCharacter(null);
           }}
         />
