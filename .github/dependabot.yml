@@ -15,13 +15,11 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
-    # Group security updates together
+    # Group all dependency updates together to reduce PR noise
     groups:
-      security-updates:
+      all-dependencies:
         patterns:
           - "*"
-        update-types:
-          - "security"
 
   # Backend dependencies
   - package-ecosystem: "npm"
@@ -39,8 +37,6 @@ updates:
       prefix: "chore"
       include: "scope"
     groups:
-      security-updates:
+      all-dependencies:
         patterns:
           - "*"
-        update-types:
-          - "security"
