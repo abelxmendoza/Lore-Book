@@ -50,16 +50,17 @@ const SidebarContent = ({
   const userIsAdmin = user ? isAdmin(user) : false;
 
   return (
-    <>
-      <div className="mb-6">
-        <Logo size="lg" showText={true} />
-        <p className="mt-4 text-xs text-white/50">Your personal memory system. Remember everything that matters.</p>
-        <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/5 px-2 py-1">
-          <Shield className="h-3 w-3 text-green-400" />
-          <p className="text-xs text-green-400/80">100% Private & Secure</p>
+    <div className="flex flex-col h-full relative">
+      <div className="flex-1 overflow-y-auto pb-20">
+        <div className="mb-6 hidden lg:block">
+          <Logo size="lg" showText={true} />
+          <p className="mt-4 text-xs text-white/50">Your personal memory system. Remember everything that matters.</p>
+          <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/5 px-2 py-1">
+            <Shield className="h-3 w-3 text-green-400" />
+            <p className="text-xs text-green-400/80">100% Private & Secure</p>
+          </div>
         </div>
-      </div>
-      <div className="mt-8 space-y-2">
+        <div className="mt-8 space-y-2">
         <button
           onClick={() => handleSurfaceChange('chat')}
           aria-label="Open chat interface"
@@ -312,43 +313,6 @@ const SidebarContent = ({
           <HelpCircle className="h-4 w-4 text-primary" aria-hidden="true" />
           User Guide
         </button>
-        <button
-          onClick={() => navigate('/account')}
-          aria-label="Open account center"
-          aria-current={isActiveRoute('/account') ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all relative overflow-hidden group",
-            isActiveRoute('/account')
-              ? 'border-primary bg-gradient-to-r from-primary/20 to-purple-600/20 text-white shadow-lg shadow-primary/20'
-              : 'border-primary/60 bg-gradient-to-r from-primary/10 to-purple-600/10 text-white hover:border-primary hover:from-primary/20 hover:to-purple-600/20 hover:shadow-md hover:shadow-primary/10'
-          )}
-        >
-          {/* Animated background glow */}
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -translate-x-full group-hover:translate-x-full" />
-          <UserCog className="h-5 w-5 text-primary relative z-10" aria-hidden="true" />
-          <span className="relative z-10">Account Center</span>
-          {/* Badge indicator */}
-          <span className="ml-auto relative z-10 text-xs bg-primary/30 text-primary px-2 py-0.5 rounded-full border border-primary/50">
-            Profile & Settings
-          </span>
-        </button>
-        {/* Admin Console - Visible to admins in production, all users in development */}
-        {(userIsAdmin || !config.env.isProduction) && (
-          <button
-            onClick={() => navigate('/admin')}
-            aria-label="Open admin console"
-            aria-current={isActiveRoute('/admin') ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-              isActiveRoute('/admin')
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Settings className="h-4 w-4 text-primary" aria-hidden="true" />
-            Admin Console
-          </button>
-        )}
       </div>
       
       {/* Development Routes - Only visible in development */}
@@ -391,7 +355,63 @@ const SidebarContent = ({
           </div>
         </div>
       )}
-    </>
+      </div>
+
+      {/* Sticky Account Center & Admin Console - Always at bottom */}
+      <div className="sticky bottom-0 pt-4 pb-2 border-t border-border/30 bg-black/20 lg:bg-black/20 backdrop-blur-md z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)] space-y-2">
+        {/* Admin Console - Only visible to admins */}
+        {(userIsAdmin || !config.env.isProduction) && (
+          <button
+            onClick={() => {
+              navigate('/admin');
+              onMobileDrawerClose?.();
+            }}
+            aria-label="Open admin console"
+            aria-current={isActiveRoute('/admin') ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all relative overflow-hidden group",
+              isActiveRoute('/admin')
+                ? 'border-primary bg-gradient-to-r from-primary/20 to-purple-600/20 text-white shadow-lg shadow-primary/20'
+                : 'border-primary/60 bg-gradient-to-r from-primary/10 to-purple-600/10 text-white hover:border-primary hover:from-primary/20 hover:to-purple-600/20 hover:shadow-md hover:shadow-primary/10'
+            )}
+          >
+            {/* Animated background glow */}
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -translate-x-full group-hover:translate-x-full" />
+            <Settings className="h-5 w-5 text-primary relative z-10" aria-hidden="true" />
+            <span className="relative z-10">Admin Console</span>
+            {/* Badge indicator */}
+            <span className="ml-auto relative z-10 text-xs bg-primary/30 text-primary px-2 py-0.5 rounded-full border border-primary/50">
+              Admin
+            </span>
+          </button>
+        )}
+        
+        {/* Account Center - Always visible */}
+        <button
+          onClick={() => {
+            navigate('/account');
+            onMobileDrawerClose?.();
+          }}
+          aria-label="Open account center"
+          aria-current={isActiveRoute('/account') ? 'page' : undefined}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all relative overflow-hidden group",
+            isActiveRoute('/account')
+              ? 'border-primary bg-gradient-to-r from-primary/20 to-purple-600/20 text-white shadow-lg shadow-primary/20'
+              : 'border-primary/60 bg-gradient-to-r from-primary/10 to-purple-600/10 text-white hover:border-primary hover:from-primary/20 hover:to-purple-600/20 hover:shadow-md hover:shadow-primary/10'
+          )}
+        >
+          {/* Animated background glow */}
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -translate-x-full group-hover:translate-x-full" />
+          <UserCog className="h-5 w-5 text-primary relative z-10" aria-hidden="true" />
+          <span className="relative z-10">Account Center</span>
+          {/* Badge indicator */}
+          <span className="ml-auto relative z-10 text-xs bg-primary/30 text-primary px-2 py-0.5 rounded-full border border-primary/50">
+            Profile & Settings
+          </span>
+        </button>
+      </div>
+    </div>
   );
 };
 
@@ -418,7 +438,7 @@ export const Sidebar = ({
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden w-64 flex-col border-r border-border/60 bg-black/20 p-6 text-white lg:flex">
+      <aside className="hidden w-64 flex-col border-r border-border/60 bg-black/20 p-6 text-white lg:flex h-screen sticky top-0 overflow-hidden">
         <SidebarContent
           activeSurface={activeSurface}
           onSurfaceChange={onSurfaceChange}
@@ -446,15 +466,6 @@ export const Sidebar = ({
       >
         <div className="flex items-center justify-between p-4 border-b border-border/60 lg:hidden">
           <Logo size="md" showText={true} />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onMobileDrawerClose}
-            className="text-white/70 hover:text-white"
-            aria-label="Close menu"
-          >
-            <X className="h-5 w-5" />
-          </Button>
         </div>
         <div className="p-4 lg:hidden">
           <SidebarContent
@@ -464,6 +475,18 @@ export const Sidebar = ({
             devModeEnabled={devModeEnabled}
             onMobileDrawerClose={onMobileDrawerClose}
           />
+        </div>
+        <div className="lg:hidden border-t border-border/60 p-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMobileDrawerClose}
+            className="w-full text-white/70 hover:text-white justify-center"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5 mr-2" />
+            <span>Close</span>
+          </Button>
         </div>
       </aside>
     </>

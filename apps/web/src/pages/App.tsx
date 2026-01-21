@@ -277,22 +277,26 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           }
         }}
         id="main-content" 
-        className="flex-1 text-white overflow-x-hidden flex flex-col space-y-4 sm:space-y-6 p-4 sm:p-6 pt-16 sm:pt-6"
+        className={`flex-1 text-white overflow-x-hidden flex flex-col ${activeSurface === 'chat' ? 'p-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
         role="main"
-        style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : {}}
+        style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : activeSurface === 'chat' ? { height: '100vh', overflow: 'hidden' } : {}}
       >
-        <header className="hidden lg:flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-semibold">Welcome back</h1>
-            <p className="text-xs sm:text-sm text-white/60">{entries.length} memories · {chapters.length} chapters</p>
-          </div>
-        </header>
+        {activeSurface !== 'chat' && (
+          <>
+            <header className="hidden lg:flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-semibold">Welcome back</h1>
+                <p className="text-xs sm:text-sm text-white/60">{entries.length} memories · {chapters.length} chapters</p>
+              </div>
+            </header>
 
-        <GuestBanner />
-        <TrialBanner />
+            <GuestBanner />
+            <TrialBanner />
+          </>
+        )}
 
         {activeSurface === 'chat' && (
-          <div className="fixed inset-0 sm:relative sm:inset-auto sm:rounded-2xl sm:border sm:border-border/60 sm:bg-black/40 sm:shadow-panel sm:h-[calc(100vh-12rem)] z-30">
+          <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
             <ChatFirstInterface />
           </div>
         )}
@@ -385,12 +389,14 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
 
-        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30 flex flex-col gap-2">
-          <Button size="lg" leftIcon={<PlusCircle className="h-4 w-4" />} onClick={navigateToChat} className="shadow-lg">
-            <span className="hidden sm:inline">+ New Entry</span>
-            <span className="sm:hidden">+</span>
-          </Button>
-        </div>
+        {activeSurface !== 'chat' && (
+          <div className="hidden sm:flex fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30 flex flex-col gap-2">
+            <Button size="lg" leftIcon={<PlusCircle className="h-4 w-4" />} onClick={navigateToChat} className="shadow-lg">
+              <span className="hidden sm:inline">+ New Entry</span>
+              <span className="sm:hidden">+</span>
+            </Button>
+          </div>
+        )}
         <CreateChapterModal
           open={chapterModalOpen}
           onClose={() => setChapterModalOpen(false)}

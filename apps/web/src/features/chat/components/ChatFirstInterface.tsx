@@ -224,7 +224,7 @@ export const ChatFirstInterface = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen sm:h-full relative chat-container overflow-hidden min-h-0 bg-black w-full">
+    <div className="flex flex-col h-screen lg:h-full relative chat-container overflow-hidden min-h-0 bg-black w-full">
       {/* Minimal header - ChatGPT style */}
       <div className="border-b border-white/10 bg-black/40 backdrop-blur-sm px-4 sm:px-4 py-3 sm:py-2 flex items-center justify-between flex-shrink-0" style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
         <h2 className="text-xs sm:text-sm font-semibold text-white/90">Lore Book</h2>
@@ -284,7 +284,7 @@ export const ChatFirstInterface = () => {
       {/* Messages Area - flex-1 with min-h-0 to allow shrinking */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         {messages.length === 0 ? (
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto chat-scrollbar">
             <ChatEmptyState />
           </div>
         ) : (

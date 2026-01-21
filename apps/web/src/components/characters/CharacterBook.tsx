@@ -1795,11 +1795,11 @@ const MainCharacterSection = ({ user }: { user: any }) => {
   };
 
   return (
-    <div className="mb-6 pb-4 border-b border-amber-800/20">
-      <div className="flex items-center gap-3 mb-3">
-        <Star className="h-5 w-5 text-amber-600/80" />
-        <div>
-          <p className="text-sm font-semibold text-amber-900/60">
+    <div className="mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-amber-800/20">
+      <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+        <Star className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600/80 flex-shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs sm:text-sm font-semibold text-amber-900/60 break-words">
             Main Character: <span className="text-amber-900/80">{user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'You'}</span>
           </p>
         </div>
@@ -1807,23 +1807,23 @@ const MainCharacterSection = ({ user }: { user: any }) => {
       
       {/* Attributes */}
       {loadingAttributes ? (
-        <p className="text-xs text-amber-700/50 ml-8">Loading attributes...</p>
+        <p className="text-[10px] sm:text-xs text-amber-700/50 ml-6 sm:ml-8">Loading attributes...</p>
       ) : attributes.length > 0 ? (
-        <div className="ml-8 flex flex-wrap gap-2">
+        <div className="ml-6 sm:ml-8 flex flex-wrap gap-1.5 sm:gap-2">
           {attributes.map((attr) => (
             <Badge
               key={attr.id}
               variant="outline"
-              className={`${getAttributeColor(attr.attributeType)} text-xs px-2 py-1 flex items-center gap-1.5`}
+              className={`${getAttributeColor(attr.attributeType)} text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 flex items-center gap-1 sm:gap-1.5`}
               title={`${attr.attributeType}: ${attr.attributeValue} (${Math.round(attr.confidence * 100)}% confidence)`}
             >
               {getAttributeIcon(attr.attributeType)}
-              <span className="font-medium">{attr.attributeValue}</span>
+              <span className="font-medium truncate max-w-[100px] sm:max-w-none">{attr.attributeValue}</span>
             </Badge>
           ))}
         </div>
       ) : (
-        <p className="text-xs text-amber-700/50 ml-8 italic">No attributes detected yet. Attributes are automatically extracted from your conversations.</p>
+        <p className="text-[10px] sm:text-xs text-amber-700/50 ml-6 sm:ml-8 italic">No attributes detected yet. Attributes are automatically extracted from your conversations.</p>
       )}
     </div>
   );
@@ -2052,123 +2052,127 @@ export const CharacterBook = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* User Profile & Insights - Displayed first */}
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         <UserProfile />
       </div>
 
       {/* Character Search Bar and Navigation Tabs */}
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
           <Input
             type="text"
-            placeholder="Search characters by name, alias, tags, or role..."
+            placeholder="Search characters..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
             }}
-            className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40"
+            className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40 text-sm sm:text-base"
           />
         </div>
         
         {/* Navigation Tabs */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as CharacterCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto">
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto overflow-x-auto flex-nowrap">
             <TabsTrigger 
               value="all" 
-              className="flex items-center gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
             >
-              <Users className="h-4 w-4" />
+              <Users className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>All</span>
             </TabsTrigger>
             <TabsTrigger 
               value="family"
-              className="flex items-center gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <Heart className="h-4 w-4" />
+              <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Family</span>
             </TabsTrigger>
             <TabsTrigger 
               value="friends"
-              className="flex items-center gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <Users className="h-4 w-4" />
+              <Users className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Friends</span>
             </TabsTrigger>
             <TabsTrigger 
               value="mentors"
-              className="flex items-center gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <GraduationCap className="h-4 w-4" />
+              <GraduationCap className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Mentors</span>
             </TabsTrigger>
             <TabsTrigger 
               value="professional"
-              className="flex items-center gap-2 data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <Briefcase className="h-4 w-4" />
-              <span>Professional</span>
+              <Briefcase className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Professional</span>
+              <span className="sm:hidden">Pro</span>
             </TabsTrigger>
             <TabsTrigger 
               value="creative"
-              className="flex items-center gap-2 data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <Palette className="h-4 w-4" />
+              <Palette className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Creative</span>
             </TabsTrigger>
             <TabsTrigger 
               value="mentioned"
-              className="flex items-center gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <MessageSquare className="h-4 w-4" />
+              <MessageSquare className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Mentioned</span>
             </TabsTrigger>
             <TabsTrigger 
               value="direct"
-              className="flex items-center gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <User className="h-4 w-4" />
+              <User className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Direct</span>
             </TabsTrigger>
             <TabsTrigger 
               value="indirect"
-              className="flex items-center gap-2 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <Link2 className="h-4 w-4" />
+              <Link2 className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Indirect</span>
             </TabsTrigger>
             <TabsTrigger 
               value="unmet"
-              className="flex items-center gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <UserX className="h-4 w-4" />
+              <UserX className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Unmet</span>
             </TabsTrigger>
             <TabsTrigger 
               value="third_party"
-              className="flex items-center gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <Eye className="h-4 w-4" />
-              <span>Third Party</span>
+              <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Third Party</span>
+              <span className="sm:hidden">3rd</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
         
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
           <div>
-            <h2 className="text-xl font-semibold text-white">Character Book</h2>
-            <p className="text-sm text-white/60 mt-1">
+            <h2 className="text-lg sm:text-xl font-semibold text-white">Character Book</h2>
+            <p className="text-xs sm:text-sm text-white/60 mt-1">
               {characters.length} characters · {filteredCharacters.length} shown
-              {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
+              {totalPages > 1 && ` · Page ${currentPage}/${totalPages}`}
               {loading && ' · Loading...'}
             </p>
           </div>
           <Button 
-            leftIcon={<RefreshCw className="h-4 w-4" />} 
+            leftIcon={<RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />} 
             onClick={() => void loadCharacters()}
             disabled={loading}
+            size="sm"
+            className="w-full sm:w-auto text-xs sm:text-sm"
           >
             {loading ? 'Loading...' : 'Refresh'}
           </Button>
@@ -2176,37 +2180,37 @@ export const CharacterBook = () => {
       </div>
 
       {loading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <CharacterCardSkeleton key={i} />
           ))}
         </div>
       ) : filteredCharacters.length === 0 ? (
-        <div className="text-center py-12 text-white/60">
-          <User className="h-12 w-12 mx-auto mb-4 text-white/20" />
-          <p className="text-lg font-medium mb-2">No characters found</p>
-          <p className="text-sm">Try a different search term or mention characters in chat to auto-create them</p>
+        <div className="text-center py-8 sm:py-12 text-white/60 px-4">
+          <User className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 text-white/20" />
+          <p className="text-base sm:text-lg font-medium mb-2">No characters found</p>
+          <p className="text-xs sm:text-sm">Try a different search term or mention characters in chat to auto-create them</p>
         </div>
       ) : (
         <>
           {/* Book Page Container with Grid Inside */}
-          <div className="relative w-full min-h-[600px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden">
+          <div className="relative w-full min-h-[400px] sm:min-h-[500px] lg:min-h-[600px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden">
             {/* Page Content */}
-            <div className="p-8 flex flex-col">
+            <div className="p-4 sm:p-6 lg:p-8 flex flex-col">
               {/* Page Header */}
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-amber-800/20">
-                <div className="flex items-center gap-3">
-                  <BookOpen className="h-6 w-6 text-amber-600/60" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-amber-900/40 uppercase tracking-wider">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-amber-800/20">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600/60 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-semibold text-amber-900/40 uppercase tracking-wider">
                       Character Book
                     </h3>
-                    <p className="text-xs text-amber-700/50 mt-0.5">
-                      Page {currentPage} of {totalPages} · {filteredCharacters.length} characters
+                    <p className="text-[10px] sm:text-xs text-amber-700/50 mt-0.5">
+                      Page {currentPage}/{totalPages} · {filteredCharacters.length} characters
                     </p>
                   </div>
                 </div>
-                <div className="text-xs text-amber-700/40 font-mono">
+                <div className="text-[10px] sm:text-xs text-amber-700/40 font-mono flex-shrink-0">
                   {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               </div>
@@ -2215,7 +2219,7 @@ export const CharacterBook = () => {
               <MainCharacterSection user={user} />
 
               {/* Character Grid */}
-              <div className="flex-1 grid gap-4 mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedCharacters.map((character, index) => {
                   try {
                     return (
@@ -2234,21 +2238,21 @@ export const CharacterBook = () => {
               </div>
 
               {/* Page Footer with Navigation */}
-              <div className="flex items-center justify-between pt-4 border-t border-amber-800/20">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-amber-800/20">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={goToPrevious}
                   disabled={currentPage === 1}
-                  className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30"
+                  className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                   Previous
                 </Button>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-1 sm:gap-2 flex-wrap justify-center">
                   {/* Page indicators */}
-                  <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-amber-800/30">
+                  <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 bg-black/40 rounded-lg border border-amber-800/30 overflow-x-auto">
                     {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                       let pageNum: number;
                       if (totalPages <= 7) {
@@ -2265,7 +2269,7 @@ export const CharacterBook = () => {
                         <button
                           key={pageNum}
                           onClick={() => goToPage(pageNum)}
-                          className={`px-2 py-1 rounded text-sm transition ${
+                          className={`px-1.5 sm:px-2 py-1 rounded text-xs sm:text-sm transition touch-manipulation ${
                             currentPage === pageNum
                               ? 'bg-amber-600 text-white'
                               : 'text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10'
@@ -2276,7 +2280,7 @@ export const CharacterBook = () => {
                       );
                     })}
                   </div>
-                  <span className="text-sm text-amber-700/50">
+                  <span className="text-xs sm:text-sm text-amber-700/50 whitespace-nowrap">
                     {startIndex + 1}-{Math.min(endIndex, filteredCharacters.length)} of {filteredCharacters.length}
                   </span>
                 </div>
@@ -2286,10 +2290,10 @@ export const CharacterBook = () => {
                   size="sm"
                   onClick={goToNext}
                   disabled={currentPage === totalPages}
-                  className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30"
+                  className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
                   Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 ml-1" />
                 </Button>
               </div>
             </div>

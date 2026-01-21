@@ -165,8 +165,8 @@ export const ChatMessage = ({
         <div
           className={`relative inline-block max-w-full ${
             isUser
-              ? 'bg-white/10 rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-5'
-              : 'bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-5'
+              ? 'bg-white/10 rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
+              : 'bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
           }`}
         >
           {/* Message Actions Menu - ChatGPT style */}

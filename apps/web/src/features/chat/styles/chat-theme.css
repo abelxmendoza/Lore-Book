@@ -55,3 +55,50 @@
   background: rgba(168, 85, 247, 0.5);
 }
 
+/* Mobile safe area support */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Mobile touch targets */
+@media (max-width: 640px) {
+  .chat-composer button,
+  .chat-composer input[type="button"],
+  .chat-composer input[type="submit"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Chat composer overflow fixes */
+.chat-composer {
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+.chat-composer form {
+  overflow: visible;
+}
+
+.chat-composer textarea {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Scrollbar styling for textarea */
+.chat-composer textarea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-composer textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-composer textarea::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.chat-composer textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}

@@ -7,9 +7,11 @@
 
 import { config } from '../config/env';
 import { useMockData } from '../contexts/MockDataContext';
-import { Database } from 'lucide-react';
+import { Database, X } from 'lucide-react';
+import { useState } from 'react';
 
 export function DevBanner() {
+  const [isDismissed, setIsDismissed] = useState(false);
   let useMockData = false;
   let toggleMockData = () => {};
   
@@ -22,7 +24,7 @@ export function DevBanner() {
   }
 
   // Show in development OR if mock data is enabled (for showcasing)
-  if (!config.env.isDevelopment && !useMockData) {
+  if ((!config.env.isDevelopment && !useMockData) || isDismissed) {
     return null;
   }
 
@@ -49,6 +51,14 @@ export function DevBanner() {
       >
         <Database className="h-3.5 w-3.5" />
         <span className="text-xs font-semibold">{useMockData ? 'MOCK ON' : 'MOCK OFF'}</span>
+      </button>
+      <button
+        onClick={() => setIsDismissed(true)}
+        className="ml-1 p-1 rounded hover:bg-black/20 transition-colors touch-manipulation"
+        aria-label="Close development mode banner"
+        title="Close"
+      >
+        <X className="h-4 w-4" />
       </button>
     </div>
   );
