@@ -2128,19 +2128,19 @@ export const CharacterBook = () => {
       ) : (
         <>
           {/* Book Page Container with Grid Inside */}
-          <div className="relative w-full min-h-[400px] sm:min-h-[600px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden">
+          <div className="relative w-full min-h-[600px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden">
             {/* Page Content */}
-            <div className="p-4 sm:p-6 lg:p-8 flex flex-col">
+            <div className="p-8 flex flex-col">
               {/* Page Header */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-amber-800/20">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600/60" />
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-amber-800/20">
+                <div className="flex items-center gap-3">
+                  <BookOpen className="h-6 w-6 text-amber-600/60" />
                   <div>
-                    <h3 className="text-xs sm:text-sm font-semibold text-amber-900/40 uppercase tracking-wider">
+                    <h3 className="text-sm font-semibold text-amber-900/40 uppercase tracking-wider">
                       Character Book
                     </h3>
                     <p className="text-xs text-amber-700/50 mt-0.5">
-                      Page {currentPage} of {totalPages}
+                      Page {currentPage} of {totalPages} · {filteredCharacters.length} characters
                     </p>
                   </div>
                 </div>
@@ -2153,7 +2153,7 @@ export const CharacterBook = () => {
               <MainCharacterSection user={user} />
 
               {/* Character Grid */}
-              <div className="grid gap-2 sm:gap-3 md:gap-4 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 mb-4 sm:mb-6">
+              <div className="flex-1 grid gap-4 mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedCharacters.map((character, index) => {
                   try {
                     return (

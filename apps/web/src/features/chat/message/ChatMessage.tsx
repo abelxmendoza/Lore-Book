@@ -152,21 +152,21 @@ export const ChatMessage = ({
 
   return (
     <div
-      className={`flex gap-2 sm:gap-4 ${isUser ? 'justify-end' : 'justify-start'} group chat-message w-full`}
+      className={`flex gap-3 sm:gap-4 lg:gap-6 ${isUser ? 'justify-end' : 'justify-start'} group chat-message w-full mb-4 sm:mb-6 lg:mb-8`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
       {!isUser && (
-        <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary/10 flex items-center justify-center mt-1">
-          <Bot className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+        <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-1">
+          <Bot className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />
         </div>
       )}
-      <div className={`flex-1 max-w-[48rem] ${isUser ? 'flex justify-end' : ''}`}>
+      <div className={`flex-1 max-w-full ${isUser ? 'flex justify-end' : ''}`}>
         <div
           className={`relative inline-block max-w-full ${
             isUser
-              ? 'bg-white/10 rounded-2xl rounded-tr-sm px-3 py-2.5 sm:px-4 sm:py-3'
-              : 'bg-white/5 rounded-2xl rounded-tl-sm px-3 py-2.5 sm:px-4 sm:py-3'
+              ? 'bg-white/10 rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-5'
+              : 'bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-5'
           }`}
         >
           {/* Message Actions Menu - ChatGPT style */}
@@ -240,7 +240,7 @@ export const ChatMessage = ({
           {/* Main Content */}
           <div className="relative">
             {!isUser ? (
-              <div className="prose prose-invert prose-sm max-w-none">
+              <div className="prose prose-invert prose-base sm:prose-lg lg:prose-xl max-w-none prose-headings:text-white prose-p:text-white/90 prose-p:leading-relaxed prose-p:my-3 sm:prose-p:my-4 prose-a:text-primary prose-strong:text-white prose-code:text-white prose-pre:bg-black/40">
                 <MarkdownRenderer 
                   content={message.content} 
                   isStreaming={message.isStreaming} 
@@ -248,20 +248,20 @@ export const ChatMessage = ({
                 />
               </div>
             ) : (
-              <p className="text-sm sm:text-base text-white whitespace-pre-wrap leading-relaxed">
+              <p className="text-base sm:text-lg lg:text-xl text-white whitespace-pre-wrap leading-relaxed sm:leading-loose">
                 {message.content}
               </p>
             )}
             
             {/* Inline Citations - ChatGPT style */}
             {message.citations && message.citations.length > 0 && (
-              <div className="mt-3 pt-2 border-t border-white/10">
-                <div className="text-xs text-white/40 mb-1.5">Sources:</div>
-                <div className="flex flex-wrap gap-1.5">
+              <div className="mt-4 sm:mt-5 lg:mt-6 pt-3 sm:pt-4 border-t border-white/10">
+                <div className="text-sm sm:text-base text-white/40 mb-2 sm:mb-3">Sources:</div>
+                <div className="flex flex-wrap gap-2 sm:gap-3">
                   {message.citations.map((citation, idx) => (
                     <button
                       key={idx}
-                      className="text-xs border border-white/10 text-white/60 bg-white/5 cursor-pointer hover:border-white/20 hover:text-white/80 hover:bg-white/10 transition-all px-2 py-1 rounded-md"
+                      className="text-sm sm:text-base border border-white/10 text-white/60 bg-white/5 cursor-pointer hover:border-white/20 hover:text-white/80 hover:bg-white/10 transition-all px-3 sm:px-4 py-1.5 sm:py-2 rounded-md"
                       onClick={() => {
                         const source = message.sources?.find(s => s.id === citation.sourceId);
                         if (source && onSourceClick) {
@@ -280,27 +280,27 @@ export const ChatMessage = ({
 
           {/* Sources - Clickable Cards - More subtle ChatGPT style */}
           {message.sources && message.sources.length > 0 && (
-            <div className="pt-3 border-t border-white/10">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Sparkles className="h-3 w-3 text-white/50" />
-                <span className="text-xs font-medium text-white/50">Sources</span>
+            <div className="pt-4 sm:pt-5 lg:pt-6 border-t border-white/10">
+              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-white/50" />
+                <span className="text-sm sm:text-base font-medium text-white/50">Sources</span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2 sm:gap-3">
                 {message.sources.slice(0, 5).map((source, idx) => (
                   <button
                     key={idx}
                     onClick={() => onSourceClick?.(source)}
-                    className="px-2 py-1 rounded-md border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 cursor-pointer transition-colors text-xs text-white/70 hover:text-white"
+                    className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-md border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 cursor-pointer transition-colors text-sm sm:text-base text-white/70 hover:text-white"
                   >
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
                       <span className="text-white/60">{source.type}</span>
-                      <ExternalLink className="h-2.5 w-2.5 text-white/40" />
+                      <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4 text-white/40" />
                     </div>
-                    <div className="text-white/90 truncate max-w-[120px]" title={source.title}>
+                    <div className="text-white/90 truncate max-w-[150px] sm:max-w-[200px]" title={source.title}>
                       {source.title}
                     </div>
                     {source.date && (
-                      <div className="text-white/40 text-[10px]">
+                      <div className="text-white/40 text-xs sm:text-sm">
                         {new Date(source.date).toLocaleDateString()}
                       </div>
                     )}
@@ -312,10 +312,10 @@ export const ChatMessage = ({
 
           {/* Connections - Clickable */}
           {message.connections && message.connections.length > 0 && (
-            <div className="pt-3 border-t border-white/10">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Sparkles className="h-3 w-3 text-white/50" />
-                <span className="text-xs font-medium text-white/50">Connections</span>
+            <div className="pt-4 sm:pt-5 lg:pt-6 border-t border-white/10">
+              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-white/50" />
+                <span className="text-sm sm:text-base font-medium text-white/50">Connections</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {message.connections.map((conn, idx) => {
@@ -484,8 +484,9 @@ export const ChatMessage = ({
               </p>
             </div>
           )}
-        </CardContent>
-      </Card>
+          </div>
+        </div>
+      </div>
 
       {/* Entity Ambiguity Clarification Chips - shown below user messages */}
       {isUser && (message.ambiguities || message.disambiguation_prompt) && (
@@ -519,8 +520,8 @@ export const ChatMessage = ({
         </div>
       )}
       {isUser && (
-        <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary/10 flex items-center justify-center mt-1">
-          <UserIcon className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+        <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-1">
+          <UserIcon className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />
         </div>
       )}
     </div>

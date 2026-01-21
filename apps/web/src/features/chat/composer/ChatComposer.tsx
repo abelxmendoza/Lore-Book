@@ -106,8 +106,8 @@ export const ChatComposer = ({
       )}
 
       {/* Input Form - ChatGPT style */}
-      <form onSubmit={handleSubmit} className="mx-auto max-w-3xl px-3 sm:px-4 py-3 sm:py-4">
-        <div className="flex items-end gap-1.5 sm:gap-2">
+      <form onSubmit={handleSubmit} className="mx-auto max-w-4xl lg:max-w-5xl xl:max-w-6xl px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        <div className="flex items-end gap-2 sm:gap-3 lg:gap-4">
           <div className="flex-1 relative">
             <Textarea
               ref={textareaRef}
@@ -115,7 +115,7 @@ export const ChatComposer = ({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={loading || disabled}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl text-white placeholder:text-white/50 resize-none min-h-[48px] sm:min-h-[52px] max-h-[200px] overflow-y-auto text-sm sm:text-base px-3 sm:px-4 py-2.5 sm:py-3 pr-10 sm:pr-12 focus:border-white/20 focus:outline-none transition-colors"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl text-white placeholder:text-white/50 resize-none min-h-[56px] sm:min-h-[64px] lg:min-h-[72px] max-h-[300px] overflow-y-auto text-base sm:text-lg lg:text-xl px-4 sm:px-5 lg:px-6 py-3 sm:py-4 lg:py-5 pr-12 sm:pr-14 lg:pr-16 leading-relaxed sm:leading-loose focus:border-white/20 focus:outline-none transition-colors"
               style={{
                 borderColor: showHints ? `${moodColor}66` : undefined,
                 boxShadow: showHints ? `0 0 10px ${moodColor}22` : undefined
@@ -130,17 +130,17 @@ export const ChatComposer = ({
               />
             )}
           </div>
-          <div className="flex items-center gap-0.5 sm:gap-1">
+          <div className="flex items-center gap-1 sm:gap-2 lg:gap-3">
             <Button
               type="button"
               variant="ghost"
               size="icon"
               onClick={handleUploadClick}
               disabled={loading || disabled}
-              className={`text-white/50 hover:text-white h-8 w-8 sm:h-9 sm:w-9 ${showUpload ? 'text-primary' : ''}`}
+              className={`text-white/50 hover:text-white h-10 w-10 sm:h-12 sm:w-12 lg:h-14 lg:w-14 ${showUpload ? 'text-primary' : ''}`}
               title="Upload documents"
             >
-              <Paperclip className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <Paperclip className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
             </Button>
             <Button
               type="button"
@@ -148,21 +148,21 @@ export const ChatComposer = ({
               size="icon"
               onClick={handleChatGPTImportClick}
               disabled={loading || disabled}
-              className={`text-white/50 hover:text-white h-8 w-8 sm:h-9 sm:w-9 ${showChatGPTImport ? 'text-primary' : ''}`}
+              className={`text-white/50 hover:text-white h-10 w-10 sm:h-12 sm:w-12 lg:h-14 lg:w-14 ${showChatGPTImport ? 'text-primary' : ''}`}
               title="Import ChatGPT conversation"
             >
-              <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
             </Button>
             <Button 
               type="submit" 
               disabled={!input.trim() || loading || disabled}
-              className="h-8 w-8 sm:h-9 sm:w-9 p-0 bg-primary/20 hover:bg-primary/30 border border-primary/30 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="h-10 w-10 sm:h-12 sm:w-12 lg:h-14 lg:w-14 p-0 bg-primary/20 hover:bg-primary/30 border border-primary/30 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               title="Send message"
             >
               {loading ? (
-                <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin text-primary" />
+                <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 animate-spin text-primary" />
               ) : (
-                <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
+                <Send className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-primary" />
               )}
             </Button>
           </div>
