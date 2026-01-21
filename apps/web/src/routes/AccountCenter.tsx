@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   User, Mail, Shield, CreditCard, Activity, Download, Trash2, 
   Save, Edit2, Camera, Bell, Lock, Eye, EyeOff, Key, FileText,
-  Calendar, HardDrive, AlertTriangle, CheckCircle2, X, Loader2, LogIn, Sparkles
+  Calendar, HardDrive, AlertTriangle, CheckCircle2, X, Loader2, LogIn, Sparkles, ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../lib/supabase';
 import { useGuest } from '../contexts/GuestContext';
@@ -884,59 +884,31 @@ export default function AccountCenter() {
                   </div>
 
                   {/* Privacy Settings */}
-                  <div className="rounded-xl border border-border/60 bg-white/5 p-6">
+                  <div className="rounded-xl border border-green-500/60 bg-green-500/10 p-6">
                     <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                      <Eye className="h-5 w-5" />
-                      Privacy Settings
+                      <Shield className="h-5 w-5 text-green-400" />
+                      Privacy & Security
                     </h3>
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-white font-medium">Profile Visibility</p>
-                          <p className="text-sm text-white/60">Who can see your profile</p>
+                      <div className="flex items-start gap-3 p-4 bg-black/40 rounded-lg border border-green-500/30">
+                        <Shield className="h-5 w-5 text-green-400 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-white font-semibold mb-1">Your Lore Book is 100% Private</p>
+                          <p className="text-sm text-white/70">
+                            Everything you share is private to you only. Your memories, conversations, and data are encrypted and secure. 
+                            No one else can see your content unless you explicitly choose to publish it in the future.
+                          </p>
                         </div>
-                        <select
-                          value={privacySettings.profileVisibility}
-                          onChange={async (e) => {
-                            const newSettings = { ...privacySettings, profileVisibility: e.target.value as 'private' | 'public' | 'friends' };
-                            setPrivacySettings(newSettings);
-                            // Auto-save on change
-                            try {
-                              await updatePrivacySettings(newSettings);
-                            } catch (err: any) {
-                              console.error('Failed to save privacy settings:', err);
-                            }
-                          }}
-                          className="rounded-lg bg-black/40 border border-border/60 text-white px-4 py-2 focus:outline-none focus:border-primary/50"
-                        >
-                          <option value="private">Private</option>
-                          <option value="public">Public</option>
-                          <option value="friends">Friends Only</option>
-                        </select>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-white font-medium">Show Email</p>
-                          <p className="text-sm text-white/60">Display your email on your profile</p>
+                      <div className="flex items-start gap-3 p-4 bg-black/40 rounded-lg border border-primary/30">
+                        <Lock className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-white font-semibold mb-1">Like ChatGPT - Private by Default</p>
+                          <p className="text-sm text-white/70">
+                            Just like ChatGPT, your conversations and data are completely private. We never share, sell, or expose your personal information.
+                            Any future social features will be opt-in only.
+                          </p>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={privacySettings.showEmail}
-                            onChange={async (e) => {
-                              const newSettings = { ...privacySettings, showEmail: e.target.checked };
-                              setPrivacySettings(newSettings);
-                              // Auto-save on change
-                              try {
-                                await updatePrivacySettings(newSettings);
-                              } catch (err: any) {
-                                console.error('Failed to save privacy settings:', err);
-                              }
-                            }}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                        </label>
                       </div>
                     </div>
                   </div>

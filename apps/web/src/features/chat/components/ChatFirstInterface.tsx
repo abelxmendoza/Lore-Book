@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useChat } from '../hooks/useChat';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useConversationStore } from '../hooks/useConversationStore';
-import { ChatHeader } from './ChatHeader';
+import { Search as SearchIcon } from 'lucide-react';
 import { ChatEmptyState } from './ChatEmptyState';
 import { ChatMessageList } from '../message/ChatMessageList';
 import { ChatLoadingPulse } from './ChatLoadingPulse';
@@ -224,13 +224,28 @@ export const ChatFirstInterface = () => {
   };
 
   return (
-    <div className="flex flex-col h-full relative chat-container overflow-hidden min-h-0">
-      <ChatHeader
-        messageCount={messages.length}
-        onSearchClick={() => setShowSearch(!showSearch)}
-        onExportMarkdown={handleExportMarkdown}
-        onExportJSON={handleExportJSON}
-      />
+    <div className="flex flex-col h-full relative chat-container overflow-hidden min-h-0 bg-black">
+      {/* Minimal header - ChatGPT style */}
+      <div className="border-b border-white/10 bg-black/40 backdrop-blur-sm px-3 sm:px-4 py-2 flex items-center justify-between flex-shrink-0">
+        <h2 className="text-xs sm:text-sm font-semibold text-white/90">Lore Book</h2>
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            className="text-white/60 hover:text-white h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center rounded hover:bg-white/10 transition-colors"
+            title="Search conversation (⌘K)"
+          >
+            <SearchIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          </button>
+          {messages.length > 0 && (
+            <button
+              onClick={handleClearConversation}
+              className="text-xs text-white/40 hover:text-white/60 transition-colors px-1.5 sm:px-2"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Search Modal */}
       {showSearch && (
@@ -334,22 +349,6 @@ export const ChatFirstInterface = () => {
         />
       </div>
 
-      {/* Footer Actions - flex-shrink-0 to prevent shrinking */}
-      {messages.length > 0 && (
-        <div className="px-4 pb-2 flex items-center justify-between border-t border-border/30 pt-2 flex-shrink-0">
-          <button
-            onClick={handleClearConversation}
-            className="text-xs text-white/30 hover:text-white/50 transition-colors"
-          >
-            Clear conversation
-          </button>
-          <div className="flex items-center gap-3 text-xs text-white/30">
-            <span>Press ⌘K to search</span>
-            <span>•</span>
-            <span>Press ⌘/ for commands</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, Download, Trash2, AlertTriangle, Crown, ArrowLeft } from 'lucide-react';
+import { Shield, Download, Trash2, AlertTriangle, Crown, ArrowLeft, Lock, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
@@ -137,10 +137,22 @@ export const PrivacySettings = ({ onBack }: PrivacySettingsProps) => {
             Privacy & Security Settings
           </CardTitle>
           <CardDescription>
-            Control how your data is stored, shared, and protected
+            Your data is private to you. Control how it's stored and protected.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Privacy Assurance Banner */}
+          <div className="flex items-start gap-3 p-4 bg-green-500/10 rounded-lg border border-green-500/30">
+            <ShieldCheck className="h-5 w-5 text-green-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-white font-semibold mb-1">Your Data is Private to You</p>
+              <p className="text-sm text-white/70">
+                Like ChatGPT, everything you share is completely private. Your memories, conversations, and data are encrypted and secure. 
+                No one else can see your content unless you explicitly choose to publish it in the future.
+              </p>
+            </div>
+          </div>
+
           {/* Data Retention */}
           <div className="space-y-2">
             <Label htmlFor="retention">Data Retention Period (days)</Label>
@@ -184,7 +196,7 @@ export const PrivacySettings = ({ onBack }: PrivacySettingsProps) => {
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label htmlFor="analytics">Allow Analytics</Label>
-                <p className="text-sm text-white/60">Help improve the app with anonymous usage data</p>
+                <p className="text-sm text-white/60">Help improve the app with anonymous usage data (no personal information)</p>
               </div>
               <Switch
                 id="analytics"
@@ -196,21 +208,8 @@ export const PrivacySettings = ({ onBack }: PrivacySettingsProps) => {
 
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label htmlFor="dataSharing">Allow Data Sharing</Label>
-                <p className="text-sm text-white/60">Share anonymized data for research purposes</p>
-              </div>
-              <Switch
-                id="dataSharing"
-                checked={settings.allowDataSharing}
-                onCheckedChange={(checked) => setSettings({ ...settings, allowDataSharing: checked })}
-                aria-label="Toggle data sharing"
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
                 <Label htmlFor="encryption">Encrypt Sensitive Data</Label>
-                <p className="text-sm text-white/60">Encrypt sensitive information at rest</p>
+                <p className="text-sm text-white/60">Encrypt sensitive information at rest (recommended)</p>
               </div>
               <Switch
                 id="encryption"

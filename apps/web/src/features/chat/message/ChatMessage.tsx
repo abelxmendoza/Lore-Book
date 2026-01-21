@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, ThumbsUp, ThumbsDown } from 'lucide-react';
-import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
-import { Badge } from '../../../components/ui/badge';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { parseConnections } from '../../../utils/parseConnections';
 
@@ -120,15 +118,13 @@ export const ChatMessage = ({
   // System messages get special styling
   if (isSystem) {
     return (
-      <div className="flex justify-center my-4">
-        <Card className="max-w-[90%] bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-sm text-white/90">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <p>{message.content}</p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex justify-center my-4 w-full">
+        <div className="max-w-[48rem] bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg px-4 py-3 border border-primary/30">
+          <div className="flex items-center gap-2 text-sm text-white/90">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <p>{message.content}</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -156,126 +152,116 @@ export const ChatMessage = ({
 
   return (
     <div
-      className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'} group chat-message`}
+      className={`flex gap-2 sm:gap-4 ${isUser ? 'justify-end' : 'justify-start'} group chat-message w-full`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-          <Bot className="h-4 w-4 text-primary" />
+        <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary/10 flex items-center justify-center mt-1">
+          <Bot className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
         </div>
       )}
-      <Card
-        className={`max-w-[90%] sm:max-w-[80%] relative ${
-          isUser
-            ? 'chat-message-user'
-            : 'chat-message-assistant'
-        }`}
-      >
-        {/* Message Actions Menu */}
-        {showActions && (
-          <div className={`absolute ${isUser ? 'left-0' : 'right-0'} -top-8 flex gap-1 bg-black/90 border border-border/60 rounded-lg p-1 z-10 shadow-lg`}>
-            {!isUser && onRegenerate && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onRegenerate}
-                className="h-7 px-2 text-xs hover:bg-black/60"
-                title="Regenerate response"
-              >
-                <RotateCw className="h-3 w-3" />
-              </Button>
-            )}
-            {onCopy && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCopy}
-                className="h-7 px-2 text-xs hover:bg-black/60"
-                title={copied ? 'Copied!' : 'Copy message'}
-              >
-                <Copy className={`h-3 w-3 ${copied ? 'text-green-400' : ''}`} />
-              </Button>
-            )}
-            {!isUser && onFeedback && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleFeedback('positive')}
-                  className={`h-7 px-2 text-xs hover:bg-black/60 ${message.feedback === 'positive' ? 'text-green-400' : ''}`}
-                  title="Good response"
+      <div className={`flex-1 max-w-[48rem] ${isUser ? 'flex justify-end' : ''}`}>
+        <div
+          className={`relative inline-block max-w-full ${
+            isUser
+              ? 'bg-white/10 rounded-2xl rounded-tr-sm px-3 py-2.5 sm:px-4 sm:py-3'
+              : 'bg-white/5 rounded-2xl rounded-tl-sm px-3 py-2.5 sm:px-4 sm:py-3'
+          }`}
+        >
+          {/* Message Actions Menu - ChatGPT style */}
+          {showActions && (
+            <div className={`absolute ${isUser ? 'left-0' : 'right-0'} -top-9 sm:-top-10 flex gap-0.5 sm:gap-1 bg-black/80 backdrop-blur-sm rounded-lg p-0.5 sm:p-1 z-10 shadow-xl border border-white/10`}>
+              {!isUser && onRegenerate && (
+                <button
+                  onClick={onRegenerate}
+                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-white/70 hover:text-white active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation"
+                  title="Regenerate response"
                 >
-                  <ThumbsUp className="h-3 w-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleFeedback('negative')}
-                  className={`h-7 px-2 text-xs hover:bg-black/60 ${message.feedback === 'negative' ? 'text-red-400' : ''}`}
-                  title="Poor response"
+                  <RotateCw className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {onCopy && (
+                <button
+                  onClick={handleCopy}
+                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-white/70 hover:text-white active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation"
+                  title={copied ? 'Copied!' : 'Copy message'}
                 >
-                  <ThumbsDown className="h-3 w-3" />
-                </Button>
-              </>
-            )}
-            {isUser && onEdit && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onEdit}
-                className="h-7 px-2 text-xs hover:bg-black/60"
-                title="Edit message"
-              >
-                <Edit2 className="h-3 w-3" />
-              </Button>
-            )}
-            {onDelete && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onDelete}
-                className="h-7 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                title="Delete message"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
-        )}
+                  <Copy className={`h-3.5 w-3.5 ${copied ? 'text-green-400' : ''}`} />
+                </button>
+              )}
+              {!isUser && onFeedback && (
+                <>
+                  <button
+                    onClick={() => handleFeedback('positive')}
+                    className={`h-8 sm:h-7 px-2.5 sm:px-2 text-xs active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation ${message.feedback === 'positive' ? 'text-green-400' : 'text-white/70 hover:text-white'}`}
+                    title="Good response"
+                  >
+                    <ThumbsUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleFeedback('negative')}
+                    className={`h-8 sm:h-7 px-2.5 sm:px-2 text-xs active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation ${message.feedback === 'negative' ? 'text-red-400' : 'text-white/70 hover:text-white'}`}
+                    title="Poor response"
+                  >
+                    <ThumbsDown className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              )}
+              {isUser && onEdit && (
+                <button
+                  onClick={onEdit}
+                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-white/70 hover:text-white active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation"
+                  title="Edit message"
+                >
+                  <Edit2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={onDelete}
+                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-red-400/70 hover:text-red-400 active:bg-red-500/20 hover:bg-red-500/10 rounded transition-colors touch-manipulation"
+                  title="Delete message"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          )}
 
-        <CardContent className="p-4 space-y-3">
-          {/* Strategic Guidance */}
+          <div className="space-y-3">
+          {/* Strategic Guidance - More subtle */}
           {message.strategicGuidance && (
-            <div className="p-2 rounded-lg bg-fuchsia-500/10 border border-fuchsia-500/30 mb-2">
-              <p className="text-xs text-fuchsia-200 whitespace-pre-wrap">{message.strategicGuidance}</p>
+            <div className="p-3 rounded-lg bg-white/5 border border-white/10 mb-3">
+              <p className="text-xs text-white/80 whitespace-pre-wrap leading-relaxed">{message.strategicGuidance}</p>
             </div>
           )}
 
           {/* Main Content */}
           <div className="relative">
             {!isUser ? (
-              <MarkdownRenderer 
-                content={message.content} 
-                isStreaming={message.isStreaming} 
-                className={message.isStreaming ? 'chat-message-streaming' : ''}
-              />
+              <div className="prose prose-invert prose-sm max-w-none">
+                <MarkdownRenderer 
+                  content={message.content} 
+                  isStreaming={message.isStreaming} 
+                  className={message.isStreaming ? 'chat-message-streaming' : ''}
+                />
+              </div>
             ) : (
-              <p className="text-sm text-white whitespace-pre-wrap leading-relaxed">
+              <p className="text-sm sm:text-base text-white whitespace-pre-wrap leading-relaxed">
                 {message.content}
               </p>
             )}
             
-            {/* Inline Citations */}
+            {/* Inline Citations - ChatGPT style */}
             {message.citations && message.citations.length > 0 && (
-              <div className="mt-3 pt-2 border-t border-border/20">
-                <div className="text-xs text-white/50 mb-1.5">Sources:</div>
+              <div className="mt-3 pt-2 border-t border-white/10">
+                <div className="text-xs text-white/40 mb-1.5">Sources:</div>
                 <div className="flex flex-wrap gap-1.5">
                   {message.citations.map((citation, idx) => (
-                    <Badge
+                    <button
                       key={idx}
-                      variant="outline"
-                      className="text-xs border-primary/30 text-primary/70 bg-primary/5 cursor-pointer hover:border-primary/50 hover:text-primary hover:bg-primary/10 transition-all"
+                      className="text-xs border border-white/10 text-white/60 bg-white/5 cursor-pointer hover:border-white/20 hover:text-white/80 hover:bg-white/10 transition-all px-2 py-1 rounded-md"
                       onClick={() => {
                         const source = message.sources?.find(s => s.id === citation.sourceId);
                         if (source && onSourceClick) {
@@ -285,32 +271,32 @@ export const ChatMessage = ({
                     >
                       <ExternalLink className="h-3 w-3 mr-1 inline" />
                       {citation.text}
-                    </Badge>
+                    </button>
                   ))}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Sources - Clickable Cards */}
+          {/* Sources - Clickable Cards - More subtle ChatGPT style */}
           {message.sources && message.sources.length > 0 && (
-            <div className="pt-2 border-t border-border/30">
-              <div className="flex items-center gap-1 mb-2">
-                <Sparkles className="h-3 w-3 text-primary/70" />
-                <span className="text-xs font-semibold text-primary/70">Sources</span>
+            <div className="pt-3 border-t border-white/10">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles className="h-3 w-3 text-white/50" />
+                <span className="text-xs font-medium text-white/50">Sources</span>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {message.sources.slice(0, 5).map((source, idx) => (
-                  <div
+                  <button
                     key={idx}
                     onClick={() => onSourceClick?.(source)}
-                    className="px-2 py-1 rounded border border-border/30 bg-black/40 hover:border-primary/50 hover:bg-black/60 cursor-pointer transition-colors text-xs"
+                    className="px-2 py-1 rounded-md border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 cursor-pointer transition-colors text-xs text-white/70 hover:text-white"
                   >
                     <div className="flex items-center gap-1">
-                      <span className="text-primary/70">{source.type}</span>
-                      <ExternalLink className="h-2.5 w-2.5 text-primary/50" />
+                      <span className="text-white/60">{source.type}</span>
+                      <ExternalLink className="h-2.5 w-2.5 text-white/40" />
                     </div>
-                    <div className="text-white/80 truncate max-w-[120px]" title={source.title}>
+                    <div className="text-white/90 truncate max-w-[120px]" title={source.title}>
                       {source.title}
                     </div>
                     {source.date && (
@@ -318,7 +304,7 @@ export const ChatMessage = ({
                         {new Date(source.date).toLocaleDateString()}
                       </div>
                     )}
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -326,10 +312,10 @@ export const ChatMessage = ({
 
           {/* Connections - Clickable */}
           {message.connections && message.connections.length > 0 && (
-            <div className="pt-2 border-t border-border/30">
-              <div className="flex items-center gap-1 mb-2">
-                <Sparkles className="h-3 w-3 text-primary/70" />
-                <span className="text-xs font-semibold text-primary/70">Connections</span>
+            <div className="pt-3 border-t border-white/10">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles className="h-3 w-3 text-white/50" />
+                <span className="text-xs font-medium text-white/50">Connections</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {message.connections.map((conn, idx) => {
@@ -446,50 +432,46 @@ export const ChatMessage = ({
 
           {/* Continuity Warnings */}
           {message.continuityWarnings && message.continuityWarnings.length > 0 && (
-            <div className="pt-2 border-t border-border/30">
-              <div className="flex items-center gap-1 mb-1">
-                <span className="text-xs font-semibold text-yellow-400">⚠️ Continuity Check</span>
+            <div className="pt-3 border-t border-white/10">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-xs font-medium text-yellow-400/80">⚠️ Continuity Check</span>
               </div>
               {message.continuityWarnings.map((warning, idx) => (
-                <p key={idx} className="text-xs text-yellow-300/80 ml-4">{warning}</p>
+                <p key={idx} className="text-xs text-yellow-300/70 ml-4">{warning}</p>
               ))}
             </div>
           )}
 
           {/* Timeline Updates */}
           {message.timelineUpdates && message.timelineUpdates.length > 0 && (
-            <div className="pt-2 border-t border-border/30">
-              <div className="flex items-center gap-1 mb-1">
-                <span className="text-xs font-semibold text-green-400">✓ Updates</span>
+            <div className="pt-3 border-t border-white/10">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-xs font-medium text-green-400/80">✓ Updates</span>
               </div>
               {message.timelineUpdates.map((update, idx) => (
-                <p key={idx} className="text-xs text-green-300/80 ml-4">{update}</p>
+                <p key={idx} className="text-xs text-green-300/70 ml-4">{update}</p>
               ))}
             </div>
           )}
 
           {/* Extracted Dates */}
           {message.extractedDates && message.extractedDates.length > 0 && (
-            <div className="pt-2 border-t border-border/30">
-              <div className="flex items-center gap-1 mb-1">
-                <span className="text-xs font-semibold text-blue-400">📅 Dates Tracked</span>
+            <div className="pt-3 border-t border-white/10">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-xs font-medium text-blue-400/80">📅 Dates Tracked</span>
               </div>
               {message.extractedDates.map((dateInfo, idx) => (
-                <p key={idx} className="text-xs text-blue-300/80 ml-4">
+                <p key={idx} className="text-xs text-blue-300/70 ml-4">
                   {dateInfo.date}: {dateInfo.context}
                 </p>
               ))}
             </div>
           )}
 
-          <p className="text-xs text-white/40 mt-2">
-            {message.timestamp.toLocaleTimeString()}
-          </p>
-
-          {/* Expression Mode Transparency Footer */}
+          {/* Expression Mode Transparency Footer - More subtle */}
           {!isUser && message.metadata && (
-            <div className="mt-2 pt-2 border-t border-border/20">
-              <p className="text-xs text-white/40">
+            <div className="mt-3 pt-2 border-t border-white/5">
+              <p className="text-xs text-white/30">
                 {message.metadata.expression_mode && (
                   <span>Mode: {humanizeExpressionMode(message.metadata.expression_mode)}</span>
                 )}
@@ -537,8 +519,8 @@ export const ChatMessage = ({
         </div>
       )}
       {isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-          <UserIcon className="h-4 w-4 text-primary" />
+        <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary/10 flex items-center justify-center mt-1">
+          <UserIcon className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
         </div>
       )}
     </div>
