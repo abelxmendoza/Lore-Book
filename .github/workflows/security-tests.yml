@@ -122,7 +122,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/web
-        run: npm ci
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
 
       - name: Install Playwright browsers
         working-directory: apps/web

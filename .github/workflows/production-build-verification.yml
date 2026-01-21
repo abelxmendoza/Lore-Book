@@ -30,7 +30,7 @@ jobs:
       
       - name: Install dependencies
         working-directory: apps/web
-        run: npm ci
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
       
       - name: Run unit tests
         working-directory: apps/web
@@ -89,12 +89,13 @@ jobs:
           BASE_URL: http://localhost:4173
       
       - name: Upload build artifacts
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-output
           path: apps/web/dist
           retention-days: 7
+          if-no-files-found: ignore
       
       - name: Report results
         if: always()

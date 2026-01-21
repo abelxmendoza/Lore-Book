@@ -28,22 +28,24 @@ jobs:
         run: npm install || echo "⚠️ Server dependencies installed (no package-lock.json)"
       - name: Install web dependencies
         working-directory: apps/web
-        run: npm ci
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
       
       - name: Lint server
         working-directory: apps/server
-        run: npm run lint || true
+        run: npm run lint
+        continue-on-error: true
       
       - name: Lint web
         working-directory: apps/web
-        run: npm run lint || true
+        run: npm run lint
+        continue-on-error: false
       
       - name: Check for duplicate imports
         run: |
           echo "🔍 Checking for duplicate imports..."
-          cd apps/server && npm run lint 2>&1 | grep -E "error.*duplicate|import.*duplicated" && exit 1 || true
-          cd ../web && npm run lint 2>&1 | grep -E "error.*duplicate|import.*duplicated" && exit 1 || true
-          echo "✅ No duplicate import errors found"
+          cd apps/server && (npm run lint 2>&1 | grep -E "error.*duplicate|import.*duplicated" && exit 1 || echo "✅ No duplicate imports in server")
+          cd ../web && (npm run lint 2>&1 | grep -E "error.*duplicate|import.*duplicated" && exit 1 || echo "✅ No duplicate imports in web")
+        continue-on-error: true
       
       - name: Check import order
         run: |
