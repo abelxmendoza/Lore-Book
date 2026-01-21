@@ -1,7 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { useState, useEffect } from 'react';
-import { PlusCircle } from 'lucide-react';
+import { PlusCircle, Menu } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { config } from '../config/env';
@@ -13,6 +13,8 @@ import { CreateChapterModal } from '../components/CreateChapterModal';
 import { MemoryExplorer } from '../components/memory-explorer/MemoryExplorer';
 import { TimelineSearch } from '../components/search/TimelineSearch';
 import { Sidebar } from '../components/Sidebar';
+import { Button } from '../components/ui/button';
+import { Logo } from '../components/Logo';
 import { useLoreKeeper } from '../hooks/useLoreKeeper';
 import { useTaskEngine } from '../hooks/useTaskEngine';
 import { Footer } from '../components/Footer';
@@ -65,6 +67,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
   const location = useLocation();
   const [activeSurface, setActiveSurface] = useState<SurfaceKey>(defaultSurface || 'chat');
   const [chapterModalOpen, setChapterModalOpen] = useState(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
   // Sync route → surface (handles browser back/forward and direct navigation)
   useEffect(() => {
@@ -174,15 +177,15 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
   };
 
   const renderSearchSurface = () => (
-    <div className="h-full space-y-6">
-      <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel p-6">
+    <div className="h-full space-y-4 sm:space-y-6">
+      <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel p-4 sm:p-6">
         <div className="mb-4">
-          <h2 className="text-2xl font-semibold mb-2">Universal Timeline Search</h2>
-          <p className="text-sm text-white/60">Search across people, places, skills, jobs, projects, eras, and more</p>
+          <h2 className="text-xl sm:text-2xl font-semibold mb-2">Universal Timeline Search</h2>
+          <p className="text-xs sm:text-sm text-white/60">Search across people, places, skills, jobs, projects, eras, and more</p>
         </div>
         <TimelineSearch />
       </div>
-      <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-24rem)]">
+      <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-20rem)] sm:h-[calc(100vh-24rem)]">
         <MemoryExplorer />
       </div>
     </div>
@@ -190,6 +193,34 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
 
   console.log('[App] AppContent returning JSX', { activeSurface });
   
+  // Get surface display name
+  const getSurfaceName = (surface: SurfaceKey): string => {
+    const names: Record<SurfaceKey, string> = {
+      chat: 'Chat',
+      timeline: 'Omni Timeline',
+      search: 'Memory Explorer',
+      characters: 'Characters',
+      locations: 'Locations',
+      memoir: 'Biography Editor',
+      lorebook: 'Lore Book',
+      photos: 'Photo Album',
+      memories: 'Memories',
+      events: 'Events',
+      entities: 'Entities',
+      organizations: 'Organizations',
+      skills: 'Skills',
+      subscription: 'Subscription',
+      pricing: 'Pricing',
+      security: 'Privacy & Security',
+      'privacy-settings': 'Privacy Settings',
+      'privacy-policy': 'Privacy Policy',
+      discovery: 'Discovery Hub',
+      continuity: 'Continuity',
+      guide: 'User Guide'
+    };
+    return names[surface] || 'LoreKeeper';
+  };
+
   return (
     <div 
       ref={(el) => {
@@ -201,13 +232,39 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         }
       }}
       className={`flex bg-gradient-to-br from-black via-purple-950 to-black ${activeSurface === 'timeline' ? 'min-h-screen' : 'min-h-screen'}`}
+      style={{ 
+        paddingTop: 'env(safe-area-inset-top, 0)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0)',
+        paddingLeft: 'env(safe-area-inset-left, 0)',
+        paddingRight: 'env(safe-area-inset-right, 0)'
+      }}
     >
       <SkipLink />
+      
+      {/* Mobile Header */}
+      <header className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsMobileDrawerOpen(true)}
+            className="text-white/70 hover:text-white"
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <Logo size="sm" showText={false} />
+          <h1 className="text-lg font-semibold text-white">{getSurfaceName(activeSurface)}</h1>
+        </div>
+      </header>
+
       <Sidebar
         activeSurface={activeSurface}
         onSurfaceChange={setActiveSurface}
         onToggleDevMode={() => setDevMode((prev) => !prev)}
         devModeEnabled={devMode}
+        isMobileDrawerOpen={isMobileDrawerOpen}
+        onMobileDrawerClose={() => setIsMobileDrawerOpen(false)}
       />
       <main 
         ref={(el) => {
@@ -219,14 +276,14 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           }
         }}
         id="main-content" 
-        className="flex-1 text-white overflow-x-hidden flex flex-col space-y-6 p-6"
+        className="flex-1 text-white overflow-x-hidden flex flex-col space-y-4 sm:space-y-6 p-4 sm:p-6 pt-16 sm:pt-6"
         role="main"
         style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : {}}
       >
-        <header className="flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
+        <header className="hidden lg:flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
           <div>
-            <h1 className="text-2xl font-semibold">Welcome back</h1>
-            <p className="text-sm text-white/60">{entries.length} memories · {chapters.length} chapters</p>
+            <h1 className="text-xl sm:text-2xl font-semibold">Welcome back</h1>
+            <p className="text-xs sm:text-sm text-white/60">{entries.length} memories · {chapters.length} chapters</p>
           </div>
         </header>
 
@@ -234,7 +291,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         <TrialBanner />
 
         {activeSurface === 'chat' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-12rem)]">
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-8rem)] sm:h-[calc(100vh-12rem)]">
             <ChatFirstInterface />
           </div>
         )}
@@ -243,23 +300,23 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         {activeSurface === 'characters' && <CharacterBook />}
         {activeSurface === 'locations' && <LocationBook />}
         {activeSurface === 'memoir' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-12rem)]">
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-12rem)]">
             <BiographyEditor />
           </div>
         )}
                         {activeSurface === 'lorebook' && (
-                          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)]">
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)]">
                             <LoreBook />
                           </div>
                         )}
                         {activeSurface === 'photos' && (
-                          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
                             <PhotoAlbum />
                           </div>
                         )}
                         {/* 'memories' surface removed - use 'search' for Memory Explorer */}
                         {activeSurface === 'perceptions' && (
-                          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
                             <PerceptionsView showCreateButton={true} />
                           </div>
                         )}
@@ -269,33 +326,33 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                         {activeSurface === 'organizations' && <OrganizationsBook />}
                         {activeSurface === 'skills' && <SkillsBook />}
                         {activeSurface === 'subscription' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] p-6">
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] p-4 sm:p-6">
             <TrialBanner />
             <SubscriptionManagement />
           </div>
         )}
         {activeSurface === 'pricing' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto">
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto">
             <PricingPage onSurfaceChange={(surface) => setActiveSurface(surface as SurfaceKey)} />
           </div>
         )}
         {activeSurface === 'security' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <PrivacySecurityPage onSurfaceChange={(surface) => setActiveSurface(surface as SurfaceKey)} />
           </div>
         )}
         {activeSurface === 'privacy-settings' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <PrivacySettings onBack={() => setActiveSurface('security')} />
           </div>
         )}
         {activeSurface === 'privacy-policy' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <PrivacyPolicy onBack={() => setActiveSurface('security')} />
           </div>
         )}
         {activeSurface === 'discovery' && (
-          <div className="rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-4rem)] overflow-auto p-6">
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <DiscoveryHub />
           </div>
         )}
@@ -303,11 +360,11 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
 
         {/* Hide dev mode panel in production and timeline view */}
         {!config.env.isProduction && devMode && activeSurface !== 'timeline' && (
-          <div className="space-y-4 rounded-2xl border border-primary/40 bg-black/40 p-4 shadow-panel mb-0">
+          <div className="space-y-4 rounded-lg sm:rounded-2xl border border-primary/40 bg-black/40 p-4 shadow-panel mb-0">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs uppercase text-primary/70">Developer Diagnostics</p>
-                <p className="text-sm text-white/70">Raw fabric edges, agent logs, and embedding inspector.</p>
+                <p className="text-xs sm:text-sm text-white/70">Raw fabric edges, agent logs, and embedding inspector.</p>
               </div>
               <Button size="sm" variant="ghost" onClick={() => setDevMode(false)}>
                 Hide
@@ -322,9 +379,10 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
 
-        <div className="fixed bottom-6 right-6 z-30 flex flex-col gap-2">
-          <Button size="lg" leftIcon={<PlusCircle className="h-4 w-4" />} onClick={navigateToChat}>
-            + New Entry
+        <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-30 flex flex-col gap-2">
+          <Button size="lg" leftIcon={<PlusCircle className="h-4 w-4" />} onClick={navigateToChat} className="shadow-lg">
+            <span className="hidden sm:inline">+ New Entry</span>
+            <span className="sm:hidden">+</span>
           </Button>
         </div>
         <CreateChapterModal

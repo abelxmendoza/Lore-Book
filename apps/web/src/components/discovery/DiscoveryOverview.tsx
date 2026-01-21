@@ -207,12 +207,12 @@ export const DiscoveryOverview = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Analytical Panels</h1>
-        <p className="text-white/60">Toggle panels to explore different aspects of your data.</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">Analytical Panels</h1>
+        <p className="text-sm sm:text-base text-white/60">Toggle panels to explore different aspects of your data.</p>
       </div>
 
       {/* Panel Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {PANEL_CONFIGS.map((panel) => {
           const Icon = panel.icon;
           const isOpen = openPanel === panel.id;
@@ -221,23 +221,23 @@ export const DiscoveryOverview = () => {
             <button
               key={panel.id}
               onClick={() => handlePanelClick(panel.id)}
-              className={`text-left p-6 rounded-lg border transition-all ${
+              className={`text-left p-4 sm:p-6 rounded-lg sm:rounded-xl border transition-all ${
                 isOpen
                   ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
                   : 'border-border/60 bg-black/40 hover:border-primary/50 hover:bg-primary/5'
               }`}
             >
-              <div className="flex items-start gap-4">
-                <div className={`p-3 rounded-lg ${
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className={`p-2 sm:p-3 rounded-lg ${
                   isOpen ? 'bg-primary/20' : 'bg-primary/10'
                 }`}>
-                  <Icon className={`h-6 w-6 ${
+                  <Icon className={`h-5 w-5 sm:h-6 sm:w-6 ${
                     isOpen ? 'text-primary' : 'text-primary/70'
                   }`} />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-white mb-1">{panel.title}</h3>
-                  <p className="text-sm text-white/60">{panel.description}</p>
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">{panel.title}</h3>
+                  <p className="text-xs sm:text-sm text-white/60">{panel.description}</p>
                 </div>
               </div>
             </button>

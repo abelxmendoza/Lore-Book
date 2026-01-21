@@ -208,7 +208,7 @@ export const AIInsightModal = ({ isOpen, onClose, engineType, engineData }: AIIn
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-2xl max-h-[90vh] bg-black/95 border border-border/60 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        className="relative w-full max-w-2xl max-h-[90vh] bg-black/95 border border-border/60 rounded-none sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
@@ -217,13 +217,13 @@ export const AIInsightModal = ({ isOpen, onClose, engineType, engineData }: AIIn
         }}
       >
         {/* Header */}
-        <div className={`flex items-center justify-between p-6 border-b ${config.borderColor}`}>
+        <div className={`flex items-center justify-between p-4 sm:p-6 border-b ${config.borderColor}`}>
           <div className="flex items-center gap-3">
             <div className={`p-3 rounded-lg ${config.bgColor}`}>
               <Icon className={`h-6 w-6 ${config.color}`} />
             </div>
             <div>
-              <h2 id="ai-insight-modal-title" className="text-2xl font-semibold text-white">
+              <h2 id="ai-insight-modal-title" className="text-xl sm:text-2xl font-semibold text-white">
                 {config.title}
               </h2>
               <p className="text-sm text-white/60 mt-1">Personalized insight about your patterns</p>
@@ -235,7 +235,7 @@ export const AIInsightModal = ({ isOpen, onClose, engineType, engineData }: AIIn
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
           {/* What This Means */}
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">

@@ -30,8 +30,8 @@ export const Logo = ({ className, size = 'md', showText = true }: LogoProps) => 
       </div>
       {showText && (
         <div className="flex flex-col">
-          <span className="text-2xl font-bold text-primary tracking-wider drop-shadow-[0_0_8px_rgba(124,58,237,0.6)]">LORE</span>
-          <span className="text-2xl font-bold text-gray-300 tracking-wider">BOOK</span>
+          <span className="text-lg sm:text-xl lg:text-2xl font-bold text-primary tracking-wider drop-shadow-[0_0_8px_rgba(124,58,237,0.6)]">LORE</span>
+          <span className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-300 tracking-wider">BOOK</span>
         </div>
       )}
     </div>

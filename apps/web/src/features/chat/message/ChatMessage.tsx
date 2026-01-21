@@ -166,7 +166,7 @@ export const ChatMessage = ({
         </div>
       )}
       <Card
-        className={`max-w-[80%] relative ${
+        className={`max-w-[90%] sm:max-w-[80%] relative ${
           isUser
             ? 'chat-message-user'
             : 'chat-message-assistant'

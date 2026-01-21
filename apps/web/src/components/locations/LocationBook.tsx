@@ -574,7 +574,7 @@ export const LocationBook = () => {
           {/* Book Page Container with Grid Inside */}
           <div className="relative w-full min-h-[600px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden">
             {/* Page Content */}
-            <div className="p-8 flex flex-col">
+            <div className="p-4 sm:p-6 lg:p-8 flex flex-col">
               {/* Page Header */}
               <div className="flex items-center justify-between mb-6 pb-4 border-b border-amber-800/20">
                 <div className="flex items-center gap-3">

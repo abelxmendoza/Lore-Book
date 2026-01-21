@@ -510,41 +510,41 @@ export const UserProfile = () => {
               <User className="h-8 w-8 text-primary" />
             </div>
             <div className="flex-1">
-              <CardTitle className="text-2xl">Main Character</CardTitle>
+              <CardTitle className="text-xl sm:text-2xl">Main Character</CardTitle>
               <p className="text-sm text-white/60 mt-1">Your lore-building journey</p>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Key Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-black/40 rounded-lg p-3 border border-border/50">
               <div className="flex items-center gap-2 text-white/60 mb-1">
                 <FileText className="h-4 w-4" />
                 <span className="text-xs">Entries</span>
               </div>
-              <div className="text-2xl font-bold text-white">{stats.totalEntries}</div>
+              <div className="text-xl sm:text-2xl font-bold text-white">{stats.totalEntries}</div>
             </div>
             <div className="bg-black/40 rounded-lg p-3 border border-border/50">
               <div className="flex items-center gap-2 text-white/60 mb-1">
                 <Users className="h-4 w-4" />
                 <span className="text-xs">Characters</span>
               </div>
-              <div className="text-2xl font-bold text-white">{stats.totalCharacters}</div>
+              <div className="text-xl sm:text-2xl font-bold text-white">{stats.totalCharacters}</div>
             </div>
             <div className="bg-black/40 rounded-lg p-3 border border-border/50">
               <div className="flex items-center gap-2 text-white/60 mb-1">
                 <BookOpen className="h-4 w-4" />
                 <span className="text-xs">Chapters</span>
               </div>
-              <div className="text-2xl font-bold text-white">{stats.totalChapters}</div>
+              <div className="text-xl sm:text-2xl font-bold text-white">{stats.totalChapters}</div>
             </div>
             <div className="bg-black/40 rounded-lg p-3 border border-border/50">
               <div className="flex items-center gap-2 text-white/60 mb-1">
                 <Tag className="h-4 w-4" />
                 <span className="text-xs">Tags</span>
               </div>
-              <div className="text-2xl font-bold text-white">{stats.totalTags}</div>
+              <div className="text-xl sm:text-2xl font-bold text-white">{stats.totalTags}</div>
             </div>
           </div>
 
@@ -771,7 +771,7 @@ export const UserProfile = () => {
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-2xl font-bold text-white">{stats.entryFrequency.thisWeek}</div>
+                <div className="text-xl sm:text-2xl font-bold text-white">{stats.entryFrequency.thisWeek}</div>
                 <div className="text-xs text-white/50 mt-1">entries this week</div>
               </div>
               <div className="text-right">

@@ -1463,7 +1463,7 @@ User's message: ${message}`;
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <h2 className="text-3xl font-bold text-white tracking-tight">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
                     {editedCharacter.first_name && editedCharacter.last_name
                       ? `${editedCharacter.first_name} ${editedCharacter.last_name}`
                       : editedCharacter.name}

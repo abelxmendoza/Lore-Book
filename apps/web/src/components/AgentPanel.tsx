@@ -94,7 +94,7 @@ export const AgentPanel = () => {
             {loading ? 'Running cycle...' : 'Run All'}
           </Button>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <CardContent className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
           {agents.map((agent) => (
             <AgentCard key={agent.name} agent={agent} running={runningAgent === agent.name} onRun={() => runAgent(agent.name)} />
           ))}

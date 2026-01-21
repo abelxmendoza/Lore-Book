@@ -116,7 +116,7 @@ export const ReflectiveView: React.FC = () => {
             </h3>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
               {Object.entries(patterns.byType).map(([type, count]) => (
                 <div key={type} className="text-center">
                   <div className="text-2xl font-bold text-white">{count}</div>
@@ -228,9 +228,9 @@ export const ReflectiveView: React.FC = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <div className="text-sm text-white/70 mb-1">Recurrence Rate</div>
+                <div className="text-xs sm:text-sm text-white/70 mb-1">Recurrence Rate</div>
                 <div className="text-xl font-bold text-white">
                   {Math.round(stabilityMetrics.recurrence_rate * 100)}%
                 </div>

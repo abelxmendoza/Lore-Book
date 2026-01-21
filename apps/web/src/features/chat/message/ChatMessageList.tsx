@@ -43,7 +43,7 @@ export const ChatMessageList = ({
   return (
     <div 
       ref={containerRef}
-      className="flex-1 overflow-y-auto space-y-4 p-4 chat-scrollbar"
+      className="flex-1 overflow-y-auto space-y-3 sm:space-y-4 p-3 sm:p-4 chat-scrollbar"
     >
       {groupedMessages.map((group) => (
         <div key={group.date}>

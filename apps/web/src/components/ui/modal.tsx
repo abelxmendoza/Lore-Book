@@ -26,11 +26,11 @@ export const Modal = ({ isOpen, onClose, title, children, maxWidth = '2xl' }: Mo
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4"
       onClick={onClose}
     >
       <div
-        className={`relative w-full ${maxWidthClasses[maxWidth]} max-h-[90vh] bg-black/95 border border-border/60 rounded-2xl shadow-2xl overflow-hidden flex flex-col`}
+        className={`relative w-full h-full sm:h-auto ${maxWidth === 'full' ? 'max-w-full' : `sm:${maxWidthClasses[maxWidth]}`} sm:max-h-[90vh] bg-black/95 border-0 sm:border border-border/60 rounded-none sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col`}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
@@ -39,17 +39,17 @@ export const Modal = ({ isOpen, onClose, title, children, maxWidth = '2xl' }: Mo
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border/50">
-          <h2 id="modal-title" className="text-2xl font-semibold text-white">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-border/50">
+          <h2 id="modal-title" className="text-lg sm:text-2xl font-semibold text-white">
             {title}
           </h2>
-          <Button variant="ghost" onClick={onClose} className="p-2">
+          <Button variant="ghost" onClick={onClose} className="p-2 h-9 w-9 sm:h-11 sm:w-11">
             <X className="h-5 w-5" />
           </Button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {children}
         </div>
       </div>

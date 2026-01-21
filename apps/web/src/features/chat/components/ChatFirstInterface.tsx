@@ -224,7 +224,7 @@ export const ChatFirstInterface = () => {
   };
 
   return (
-    <div className="flex flex-col h-full relative chat-container overflow-hidden">
+    <div className="flex flex-col h-full relative chat-container overflow-hidden min-h-0">
       <ChatHeader
         messageCount={messages.length}
         onSearchClick={() => setShowSearch(!showSearch)}

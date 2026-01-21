@@ -214,49 +214,50 @@ export const SubscriptionTable = () => {
         />
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-purple-500/30">
-              <th
-                className="text-left py-3 px-4 text-white/70 font-medium cursor-pointer hover:text-white"
-                onClick={() => handleSort('email')}
-              >
-                Email <SortIcon field="email" />
-              </th>
-              <th
-                className="text-left py-3 px-4 text-white/70 font-medium cursor-pointer hover:text-white"
-                onClick={() => handleSort('plan')}
-              >
-                Plan <SortIcon field="plan" />
-              </th>
-              <th
-                className="text-left py-3 px-4 text-white/70 font-medium cursor-pointer hover:text-white"
-                onClick={() => handleSort('amount')}
-              >
-                Amount <SortIcon field="amount" />
-              </th>
-              <th
-                className="text-left py-3 px-4 text-white/70 font-medium cursor-pointer hover:text-white"
-                onClick={() => handleSort('renewalDate')}
-              >
-                Renews <SortIcon field="renewalDate" />
-              </th>
-              <th
-                className="text-left py-3 px-4 text-white/70 font-medium cursor-pointer hover:text-white"
-                onClick={() => handleSort('status')}
-              >
-                Status <SortIcon field="status" />
-              </th>
-              <th
-                className="text-left py-3 px-4 text-white/70 font-medium cursor-pointer hover:text-white"
-                onClick={() => handleSort('ltv')}
-              >
-                LTV <SortIcon field="ltv" />
-              </th>
-              <th className="text-left py-3 px-4 text-white/70 font-medium">Actions</th>
-            </tr>
-          </thead>
+      <div className="overflow-x-auto -mx-4 sm:mx-0">
+        <div className="inline-block min-w-full align-middle">
+          <table className="w-full text-xs sm:text-sm">
+            <thead>
+              <tr className="border-b border-purple-500/30">
+                <th
+                  className="text-left py-2 sm:py-3 px-2 sm:px-4 text-white/70 font-medium cursor-pointer hover:text-white whitespace-nowrap"
+                  onClick={() => handleSort('email')}
+                >
+                  Email <SortIcon field="email" />
+                </th>
+                <th
+                  className="text-left py-2 sm:py-3 px-2 sm:px-4 text-white/70 font-medium cursor-pointer hover:text-white whitespace-nowrap hidden sm:table-cell"
+                  onClick={() => handleSort('plan')}
+                >
+                  Plan <SortIcon field="plan" />
+                </th>
+                <th
+                  className="text-left py-2 sm:py-3 px-2 sm:px-4 text-white/70 font-medium cursor-pointer hover:text-white whitespace-nowrap"
+                  onClick={() => handleSort('amount')}
+                >
+                  Amount <SortIcon field="amount" />
+                </th>
+                <th
+                  className="text-left py-2 sm:py-3 px-2 sm:px-4 text-white/70 font-medium cursor-pointer hover:text-white whitespace-nowrap hidden md:table-cell"
+                  onClick={() => handleSort('renewalDate')}
+                >
+                  Renews <SortIcon field="renewalDate" />
+                </th>
+                <th
+                  className="text-left py-2 sm:py-3 px-2 sm:px-4 text-white/70 font-medium cursor-pointer hover:text-white whitespace-nowrap"
+                  onClick={() => handleSort('status')}
+                >
+                  Status <SortIcon field="status" />
+                </th>
+                <th
+                  className="text-left py-2 sm:py-3 px-2 sm:px-4 text-white/70 font-medium cursor-pointer hover:text-white whitespace-nowrap hidden lg:table-cell"
+                  onClick={() => handleSort('ltv')}
+                >
+                  LTV <SortIcon field="ltv" />
+                </th>
+                <th className="text-left py-2 sm:py-3 px-2 sm:px-4 text-white/70 font-medium whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
           <tbody>
             {filteredAndSorted.length === 0 ? (
               <tr>
@@ -270,27 +271,27 @@ export const SubscriptionTable = () => {
                   key={sub.id}
                   className="border-b border-purple-500/10 hover:bg-purple-500/5"
                 >
-                  <td className="py-3 px-4 text-white/80">{sub.email}</td>
-                  <td className="py-3 px-4 text-white/80 capitalize">{sub.plan}</td>
-                  <td className="py-3 px-4 text-white/80">
+                  <td className="py-2 sm:py-3 px-2 sm:px-4 text-white/80 text-xs sm:text-sm">{sub.email}</td>
+                  <td className="py-2 sm:py-3 px-2 sm:px-4 text-white/80 capitalize text-xs sm:text-sm hidden sm:table-cell">{sub.plan}</td>
+                  <td className="py-2 sm:py-3 px-2 sm:px-4 text-white/80 text-xs sm:text-sm">
                     {sub.amount > 0 ? formatCurrency(sub.amount) : 'Free'}
                   </td>
-                  <td className="py-3 px-4 text-white/80">
+                  <td className="py-2 sm:py-3 px-2 sm:px-4 text-white/80 text-xs sm:text-sm hidden md:table-cell">
                     {formatDate(sub.renewalDate)}
                   </td>
-                  <td className={`py-3 px-4 ${getStatusColor(sub.status)}`}>
+                  <td className={`py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm ${getStatusColor(sub.status)}`}>
                     {sub.status}
                   </td>
-                  <td className="py-3 px-4 text-white/80">
+                  <td className="py-2 sm:py-3 px-2 sm:px-4 text-white/80 text-xs sm:text-sm hidden lg:table-cell">
                     {formatCurrency(sub.ltv)}
                   </td>
-                  <td className="py-3 px-4">
-                    <div className="flex gap-2">
+                  <td className="py-2 sm:py-3 px-2 sm:px-4">
+                    <div className="flex gap-1 sm:gap-2">
                       {sub.status === 'past_due' && (
                         <button
                           onClick={() => handleResetBilling(sub.id)}
                           disabled={actionLoading === sub.id}
-                          className="p-1.5 rounded hover:bg-white/10 text-cyan-400 hover:text-cyan-300 disabled:opacity-50"
+                          className="p-1.5 rounded hover:bg-white/10 text-cyan-400 hover:text-cyan-300 disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center"
                           title="Reset billing retry"
                         >
                           <RotateCcw className="h-4 w-4" />
@@ -300,7 +301,7 @@ export const SubscriptionTable = () => {
                         <button
                           onClick={() => handleCancel(sub.id)}
                           disabled={actionLoading === sub.id}
-                          className="p-1.5 rounded hover:bg-white/10 text-red-400 hover:text-red-300 disabled:opacity-50"
+                          className="p-1.5 rounded hover:bg-white/10 text-red-400 hover:text-red-300 disabled:opacity-50 min-h-[44px] min-w-[44px] flex items-center justify-center"
                           title="Cancel subscription"
                         >
                           <X className="h-4 w-4" />
@@ -313,6 +314,7 @@ export const SubscriptionTable = () => {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
