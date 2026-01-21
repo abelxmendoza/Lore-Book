@@ -208,24 +208,65 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
   
   return (
     <Card 
-      className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden ${
+      className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden aspect-square sm:aspect-auto ${
         isUnmet ? 'opacity-75 border-dashed border-2' : ''
       }`}
       onClick={onClick}
     >
-      {/* Header with Avatar */}
-      <div className={`relative h-16 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center ${
-        isUnmet ? 'opacity-60' : ''
-      }`}>
-        <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-        <div className="relative z-10">
-          <CharacterAvatar url={character.avatar_url} name={character.name} size={40} />
+      {/* Mobile: Instagram-style square card with large avatar */}
+      <div className="sm:hidden relative w-full h-full flex flex-col">
+        {/* Avatar takes up most of the space */}
+        <div className={`relative flex-1 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center ${
+          isUnmet ? 'opacity-60' : ''
+        }`}>
+          <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
+          <div className="relative z-10">
+            <CharacterAvatar url={character.avatar_url} name={character.name} size={60} />
+          </div>
+          {/* Badges in corner */}
+          <div className="absolute top-1 right-1 z-10 flex flex-col gap-0.5 items-end">
+            {character.importance_level && (
+              <Badge 
+                variant="outline"
+                className={`${getImportanceColor(character.importance_level)} text-[7px] px-0.5 py-0`}
+              >
+                {getImportanceIcon(character.importance_level)}
+              </Badge>
+            )}
+            {!hasMet && (
+              <Badge 
+                variant="outline"
+                className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[7px] px-0.5 py-0"
+                title="Never met in person"
+              >
+                <UserX className="h-1.5 w-1.5" />
+              </Badge>
+            )}
+          </div>
         </div>
-        <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 items-end">
+        {/* Name at bottom */}
+        <div className="px-1.5 py-1 bg-black/60 border-t border-border/30">
+          <h3 className="text-[10px] font-semibold text-white truncate text-center">
+            {displayName}
+          </h3>
+        </div>
+      </div>
+
+      {/* Desktop: Full card layout */}
+      <div className="hidden sm:block">
+        {/* Header with Avatar */}
+        <div className={`relative h-16 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center ${
+          isUnmet ? 'opacity-60' : ''
+        }`}>
+          <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
+          <div className="relative z-10">
+            <CharacterAvatar url={character.avatar_url} name={character.name} size={40} />
+          </div>
+          <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 items-end">
           {character.importance_level && (
             <Badge 
               variant="outline"
-              className={`${getImportanceColor(character.importance_level)} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
+              className={`${getImportanceColor(character.importance_level)} text-[8px] sm:text-[10px] px-1 py-0.5 sm:px-1.5 flex items-center gap-0.5 sm:gap-1`}
             >
               {getImportanceIcon(character.importance_level)}
               <span className="hidden sm:inline">{getImportanceLabel(character.importance_level)}</span>
@@ -234,21 +275,21 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
           {!hasMet && (
             <Badge 
               variant="outline"
-              className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] px-1.5 py-0.5 flex items-center gap-0.5"
+              className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[8px] sm:text-[10px] px-1 py-0.5 sm:px-1.5 flex items-center gap-0.5"
               title="Never met in person"
             >
-              <UserX className="h-2.5 w-2.5" />
+              <UserX className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
               <span className="hidden sm:inline">Unmet</span>
             </Badge>
           )}
           {proximity !== 'direct' && (
             <Badge 
               variant="outline"
-              className={`${getProximityColor(proximity)} text-[10px] px-1.5 py-0.5 flex items-center gap-0.5`}
+              className={`${getProximityColor(proximity)} text-[8px] sm:text-[10px] px-1 py-0.5 sm:px-1.5 flex items-center gap-0.5`}
               title={`Connection: ${getProximityLabel(proximity)}`}
             >
-              {proximity === 'indirect' && <Link2 className="h-2.5 w-2.5" />}
-              {proximity === 'third_party' && <Eye className="h-2.5 w-2.5" />}
+              {proximity === 'indirect' && <Link2 className="h-2 w-2 sm:h-2.5 sm:w-2.5" />}
+              {proximity === 'third_party' && <Eye className="h-2 w-2 sm:h-2.5 sm:w-2.5" />}
               <span className="hidden sm:inline">{getProximityLabel(proximity)}</span>
             </Badge>
           )}
@@ -259,7 +300,7 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
                 character.status === 'inactive'
                   ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
                   : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-              } text-[10px] px-1.5 py-0.5`}
+              } text-[8px] sm:text-[10px] px-1 py-0.5 sm:px-1.5`}
             >
               {character.status}
             </Badge>
@@ -269,10 +310,10 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
               {/* Importance Badge */}
               <Badge 
                 variant="outline"
-                className={`${character.analytics.importance_score >= 70 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : character.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
+                className={`${character.analytics.importance_score >= 70 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : character.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[8px] sm:text-[10px] px-1 py-0.5 sm:px-1.5 flex items-center gap-0.5 sm:gap-1`}
                 title={`Importance: ${character.analytics.importance_score}/100`}
               >
-                {character.analytics.importance_score >= 70 ? <Star className="h-2.5 w-2.5" /> : character.analytics.importance_score >= 40 ? <Award className="h-2.5 w-2.5" /> : null}
+                {character.analytics.importance_score >= 70 ? <Star className="h-2 w-2 sm:h-2.5 sm:w-2.5" /> : character.analytics.importance_score >= 40 ? <Award className="h-2 w-2 sm:h-2.5 sm:w-2.5" /> : null}
                 {character.analytics.importance_score}
               </Badge>
               {/* Trend Indicator */}
@@ -290,11 +331,11 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
         </div>
       </div>
 
-      <CardHeader className="pb-1.5 pt-2.5 px-4">
-        <div className="flex items-start justify-between gap-2">
+      <CardHeader className="hidden sm:block pb-1.5 pt-2.5 px-4">
+        <div className="flex items-start justify-between gap-1 sm:gap-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h3 className="text-base font-semibold text-white truncate group-hover:text-primary transition-colors">
+            <div className="flex items-center gap-1 sm:gap-1.5">
+              <h3 className="text-sm sm:text-base font-semibold text-white truncate group-hover:text-primary transition-colors">
                 {displayName}
               </h3>
               {character.is_nickname && (
@@ -308,85 +349,85 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
               )}
             </div>
             {character.first_name && character.last_name && character.name !== displayName && (
-              <p className="text-xs text-white/40 mt-0.5 truncate">
+              <p className="text-[10px] sm:text-xs text-white/40 mt-0.5 truncate">
                 Also known as: {character.name}
               </p>
             )}
             {character.alias && character.alias.length > 0 && (
-              <p className="text-xs text-white/50 mt-0.5 truncate">
+              <p className="text-[10px] sm:text-xs text-white/50 mt-0.5 truncate">
                 {character.alias.join(', ')}
               </p>
             )}
           </div>
-          <ChevronRight className="h-3.5 w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0" />
+          <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0" />
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-2 pt-0 px-4 pb-3">
+      <CardContent className="hidden sm:block space-y-2 pt-0 px-4 pb-3">
         {character.summary && (
-          <p className="text-xs text-white/70 line-clamp-2 leading-snug">{character.summary}</p>
+          <p className="text-[10px] sm:text-xs text-white/70 line-clamp-2 leading-snug">{character.summary}</p>
         )}
         
         {/* Importance and Archetype Badges */}
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1 sm:gap-1.5">
           {character.importance_level && (
             <Badge 
               variant="outline" 
-              className={`${getImportanceColor(character.importance_level)} text-xs w-fit flex items-center gap-1`}
+              className={`${getImportanceColor(character.importance_level)} text-[10px] sm:text-xs w-fit flex items-center gap-0.5 sm:gap-1`}
             >
               {getImportanceIcon(character.importance_level)}
               {getImportanceLabel(character.importance_level)}
               {character.importance_score !== null && character.importance_score !== undefined && (
-                <span className="text-[10px] opacity-70">({Math.round(character.importance_score)})</span>
+                <span className="text-[8px] sm:text-[10px] opacity-70">({Math.round(character.importance_score)})</span>
               )}
             </Badge>
           )}
           {character.archetype && (
             <Badge 
               variant="outline" 
-              className={`${getArchetypeColor(character.archetype)} text-xs w-fit`}
+              className={`${getArchetypeColor(character.archetype)} text-[10px] sm:text-xs w-fit`}
             >
-              <Sparkles className="h-3 w-3 mr-1" />
+              <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />
               {character.archetype}
             </Badge>
           )}
         </div>
         
         {/* Metadata Row */}
-        <div className="flex flex-wrap gap-2 text-[10px] text-white/50">
+        <div className="flex flex-wrap gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] text-white/50">
           {character.pronouns && (
-            <div className="flex items-center gap-1">
-              <Users className="h-2.5 w-2.5" />
+            <div className="flex items-center gap-0.5 sm:gap-1">
+              <Users className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
               <span>{character.pronouns}</span>
             </div>
           )}
           {character.role && (
-            <div className="flex items-center gap-1">
-              <Tag className="h-2.5 w-2.5" />
-              <span className="truncate max-w-[80px]">{character.role}</span>
+            <div className="flex items-center gap-0.5 sm:gap-1">
+              <Tag className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              <span className="truncate max-w-[60px] sm:max-w-[80px]">{character.role}</span>
             </div>
           )}
           {!hasMet && (
-            <div className="flex items-center gap-1 text-orange-400/70" title="Never met in person">
-              <UserX className="h-2.5 w-2.5" />
-              <span>Unmet</span>
+            <div className="flex items-center gap-0.5 sm:gap-1 text-orange-400/70" title="Never met in person">
+              <UserX className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              <span className="hidden sm:inline">Unmet</span>
             </div>
           )}
           {proximity === 'third_party' && (
-            <div className="flex items-center gap-1 text-purple-400/70" title="Mentioned by others, don't know personally">
-              <Eye className="h-2.5 w-2.5" />
-              <span>Third Party</span>
+            <div className="flex items-center gap-0.5 sm:gap-1 text-purple-400/70" title="Mentioned by others, don't know personally">
+              <Eye className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              <span className="hidden sm:inline">Third Party</span>
             </div>
           )}
           {relationshipDepth === 'mentioned_only' && (
-            <div className="flex items-center gap-1 text-yellow-400/70" title="Only mentioned, no real relationship">
-              <EyeOff className="h-2.5 w-2.5" />
-              <span>Mentioned Only</span>
+            <div className="flex items-center gap-0.5 sm:gap-1 text-yellow-400/70" title="Only mentioned, no real relationship">
+              <EyeOff className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              <span className="hidden sm:inline">Mentioned Only</span>
             </div>
           )}
           {character.first_appearance && (
-            <div className="flex items-center gap-1">
-              <Calendar className="h-2.5 w-2.5" />
+            <div className="flex items-center gap-0.5 sm:gap-1">
+              <Calendar className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
               <span>{new Date(character.first_appearance).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
             </div>
           )}
@@ -581,6 +622,8 @@ export const CharacterProfileCard = ({ character, onClick }: CharacterProfileCar
           </div>
         )}
       </CardContent>
+      </div>
+      {/* End Desktop: Full card layout */}
     </Card>
   );
 };

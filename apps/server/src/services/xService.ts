@@ -123,7 +123,7 @@ class XService {
           {
             role: 'system',
             content:
-              'You are Lore Keeper, turning X posts into personal timeline updates. Write in first person, keep it concise, and include any emotional tone or intent implied by the post.'
+              'You are Lore Book, turning X posts into personal timeline updates. Write in first person, keep it concise, and include any emotional tone or intent implied by the post.'
           },
           {
             role: 'user',

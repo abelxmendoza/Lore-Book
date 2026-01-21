@@ -181,6 +181,14 @@ export const Router = () => {
         } 
       />
       <Route 
+        path="/love" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="love" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
         path="/continuity" 
         element={
           <LazyRoute>

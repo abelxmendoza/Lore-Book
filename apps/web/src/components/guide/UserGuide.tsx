@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   BookOpen, MessageSquareText, CalendarDays, Search, Users, MapPin, 
   BookMarked, Compass, Sparkles, Layers, GitBranch, Clock, Target,
-  ChevronRight, ChevronDown, Zap, Info, HelpCircle, ArrowLeft
+  ChevronRight, ChevronDown, Zap, Info, HelpCircle, ArrowLeft, Heart
 } from 'lucide-react';
 
 interface GuideSection {
@@ -37,9 +37,9 @@ const UserGuide: React.FC = () => {
       content: (
         <div className="space-y-4">
           <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Welcome to Lore Keeper</h3>
+            <h3 className="text-lg font-semibold text-white mb-2">Welcome to Lore Book</h3>
             <p className="text-white/70 mb-4">
-              Lore Keeper is your AI-powered journal that automatically organizes your life story into a comprehensive digital memoir. 
+              Lore Book is your AI-powered journal that automatically organizes your life story into a comprehensive digital memoir. 
               Just write naturally—we handle the rest.
             </p>
           </div>
@@ -60,7 +60,7 @@ const UserGuide: React.FC = () => {
               Pro Tip
             </h4>
             <p className="text-white/80">
-              The more you journal, the better Lore Keeper understands your story. Your AI companion learns your writing style, 
+              The more you journal, the better Lore Book understands your story. Your AI companion learns your writing style, 
               relationships, and life patterns to provide better insights and organization.
             </p>
           </div>
@@ -212,7 +212,7 @@ const UserGuide: React.FC = () => {
           <div>
             <h3 className="text-lg font-semibold text-white mb-2">Automatic Entity Tracking</h3>
             <p className="text-white/70 mb-4">
-              Lore Keeper automatically detects and tracks people and places mentioned in your journal entries. 
+              Lore Book automatically detects and tracks people and places mentioned in your journal entries. 
               No manual tagging required!
             </p>
           </div>
@@ -257,6 +257,88 @@ const UserGuide: React.FC = () => {
               <li>Update information</li>
               <li>See related memories and timelines</li>
             </ul>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'love-relationships',
+      title: 'Love & Relationships',
+      icon: <Heart className="w-5 h-5" />,
+      content: (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-2">Automatic Relationship Tracking</h3>
+            <p className="text-white/70 mb-4">
+              Lore Book automatically detects and tracks your romantic relationships, crushes, and situationships 
+              from your conversations. No manual forms—just chat naturally and we'll organize everything for you.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="bg-black/40 border border-border/60 rounded-lg p-4">
+              <h4 className="text-base font-semibold text-white mb-2 flex items-center gap-2">
+                <Heart className="w-4 h-4 text-pink-400" />
+                Relationship Types
+              </h4>
+              <ul className="space-y-2 text-sm text-white/70">
+                <li>• Active relationships (boyfriend, girlfriend, etc.)</li>
+                <li>• Past relationships (ex-partners)</li>
+                <li>• Situationships</li>
+                <li>• Crushes and infatuations</li>
+                <li>• All tracked automatically from chat</li>
+              </ul>
+            </div>
+
+            <div className="bg-black/40 border border-border/60 rounded-lg p-4">
+              <h4 className="text-base font-semibold text-white mb-2 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-pink-400" />
+                Key Features
+              </h4>
+              <ul className="space-y-2 text-sm text-white/70">
+                <li>• Relationship rankings and comparisons</li>
+                <li>• Pros, cons, red flags, green flags</li>
+                <li>• Timeline of dates and milestones</li>
+                <li>• Analytics and insights</li>
+                <li>• Chat-based editing (no forms!)</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="bg-pink-950/20 border border-pink-500/30 rounded-lg p-4">
+            <h4 className="text-base font-semibold text-pink-300 mb-2">How It Works</h4>
+            <ol className="list-decimal list-inside space-y-2 text-sm text-white/70">
+              <li><strong className="text-white">Just Chat</strong> - Mention relationships naturally in conversation</li>
+              <li><strong className="text-white">Auto-Detection</strong> - AI identifies romantic relationships automatically</li>
+              <li><strong className="text-white">View & Explore</strong> - Check the Love & Relationships section to see all tracked relationships</li>
+              <li><strong className="text-white">Get Insights</strong> - See rankings, analytics, and recommendations</li>
+              <li><strong className="text-white">Edit via Chat</strong> - Update relationship details by chatting about them</li>
+            </ol>
+          </div>
+
+          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
+            <h4 className="text-base font-semibold text-white mb-2">Relationship Rankings</h4>
+            <p className="text-white/70 text-sm mb-3">
+              Compare your relationships across different metrics:
+            </p>
+            <ul className="space-y-2 text-sm text-white/70">
+              <li>🏆 <strong className="text-white">Overall</strong> - Ranked by overall compatibility and health</li>
+              <li>💚 <strong className="text-white">Active</strong> - Rankings among current relationships</li>
+              <li>📊 <strong className="text-white">Compatibility</strong> - Sorted by compatibility score</li>
+              <li>⚡ <strong className="text-white">Intensity</strong> - Ranked by emotional intensity</li>
+              <li>❤️ <strong className="text-white">Health</strong> - Sorted by relationship health score</li>
+            </ul>
+          </div>
+
+          <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
+            <h4 className="text-base font-semibold text-primary mb-2 flex items-center gap-2">
+              <Info className="w-4 h-4" />
+              Pro Tip
+            </h4>
+            <p className="text-white/80 text-sm">
+              Click on any relationship to see detailed analytics, timeline of dates, pros and cons, and chat 
+              directly about that relationship. All updates happen through conversation—no manual forms required!
+            </p>
           </div>
         </div>
       )
@@ -383,7 +465,7 @@ const UserGuide: React.FC = () => {
             <ul className="space-y-3 text-white/70">
               <li>
                 <strong className="text-white">Write Naturally</strong> - Don't worry about structure or organization. 
-                Just write as you would in a traditional journal. Lore Keeper handles the rest.
+                Just write as you would in a traditional journal. Lore Book handles the rest.
               </li>
               <li>
                 <strong className="text-white">Include Details</strong> - The more context you provide (who, what, where, when, why), 
@@ -409,7 +491,7 @@ const UserGuide: React.FC = () => {
           </div>
 
           <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-3">Getting the Most Out of Lore Keeper</h4>
+            <h4 className="text-base font-semibold text-white mb-3">Getting the Most Out of Lore Book</h4>
             <ul className="space-y-2 text-white/70">
               <li>💬 <strong className="text-white">Chat Regularly</strong> - The more you interact, the better the AI understands you</li>
               <li>📝 <strong className="text-white">Journal Daily</strong> - Build a comprehensive memory bank</li>
@@ -440,7 +522,7 @@ const UserGuide: React.FC = () => {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-white">User Guide</h1>
-              <p className="text-white/60 mt-1">Everything you need to know about Lore Keeper</p>
+              <p className="text-white/60 mt-1">Everything you need to know about Lore Book</p>
             </div>
           </div>
         </div>
@@ -481,7 +563,7 @@ const UserGuide: React.FC = () => {
           <h3 className="text-lg font-semibold text-primary mb-2">Need More Help?</h3>
           <p className="text-white/80 text-sm">
             If you have questions or need assistance, you can always ask your AI companion in the Chat section. 
-            It's designed to help you navigate and make the most of Lore Keeper.
+            It's designed to help you navigate and make the most of Lore Book.
           </p>
         </div>
       </div>

@@ -1662,7 +1662,7 @@ export const dummyCharacters: Character[] = [
   }
 ];
 
-const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows
+const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 
 type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professional' | 'creative' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
 
@@ -2153,7 +2153,7 @@ export const CharacterBook = () => {
               <MainCharacterSection user={user} />
 
               {/* Character Grid */}
-              <div className="flex-1 grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-4 sm:mb-6">
+              <div className="grid gap-2 sm:gap-3 md:gap-4 grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 mb-4 sm:mb-6">
                 {paginatedCharacters.map((character, index) => {
                   try {
                     return (

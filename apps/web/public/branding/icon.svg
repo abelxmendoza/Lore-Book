@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
-  <title id="title">LoreKeeper Icon</title>
-  <desc id="desc">Neon monogram for LoreKeeper by Omega Technologies</desc>
+  <title id="title">Lore Book Icon</title>
+  <desc id="desc">Neon monogram for Lore Book by Omega Technologies</desc>
   <defs>
     <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#6B2EFF" />

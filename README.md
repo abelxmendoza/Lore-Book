@@ -91,6 +91,7 @@ LoreBook helps you:
 - ✅ **Timeline System** - 9-layer hierarchical timeline (Mythos → MicroActions), visual timeline page, emotion heatmap, highlights
 - ✅ **Character System** - Relationship tracking, knowledge base, auto-generated avatars, relationship graphs, character modals, main character display
 - ✅ **Location Tracking** - Location profiles, visit timelines, location modals
+- ✅ **Love & Relationships Tracking** - Automatically tracks romantic relationships, crushes, and situationships from conversations. Features include relationship rankings, analytics (pros/cons, red flags, green flags), timeline of dates, and chat-based editing
 - ✅ **Automatic Biography & Lorebooks** - Multi-version biography generation engine with PDF export, chapter navigation, and recommendations
 - ✅ **Resume Upload** - Upload resumes to populate memory bank, profile info, and verify skills with AI
 - ✅ **Multi-Persona Chat** - Gossip Buddy, Therapist, Historian, Strategist, Memory Bank personas

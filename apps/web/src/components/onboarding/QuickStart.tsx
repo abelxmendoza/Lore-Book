@@ -19,7 +19,7 @@ export const QuickStart = () => (
             <span>{item}</span>
           </div>
           <p className="mt-2 text-xs text-white/60">
-            LoreKeeper will tag and track everything for the opening chapter.
+            Lore Book will tag and track everything for the opening chapter.
           </p>
         </div>
       ))}

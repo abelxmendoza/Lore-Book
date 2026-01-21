@@ -5,7 +5,7 @@ const AboutPage = () => {
     <div className="min-h-screen bg-gradient-to-b from-black via-purple-950 to-black p-8 text-white">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex items-center gap-3">
-          <img src="/branding/logo-dark.svg" alt="LoreKeeper" className="h-12 w-12" />
+          <img src="/branding/logo-dark.svg" alt="Lore Book" className="h-12 w-12" />
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-primary/80">Omega Technologies</p>
             <h1 className="text-3xl font-bold">About Omega Technologies</h1>
@@ -14,7 +14,7 @@ const AboutPage = () => {
         <section className="space-y-2 text-white/80">
           <h2 className="text-xl font-semibold text-white">Mission</h2>
           <p>
-            We build resilient memory systems that help people preserve, understand, and act on their lived experiences. LoreKeeper is the Memory OS that remembers for you.
+            We build resilient memory systems that help people preserve, understand, and act on their lived experiences. Lore Book is the Memory OS that remembers for you.
           </p>
         </section>
         <section className="space-y-2 text-white/80">

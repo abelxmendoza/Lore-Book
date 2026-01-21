@@ -15,7 +15,7 @@ class OnboardingService {
   async initialize(userId: string): Promise<{ entry: MemoryEntry }> {
     const entry = await memoryService.saveEntry({
       userId,
-      content: 'Welcome to LoreKeeper. Book Zero has been created.',
+      content: 'Welcome to Lore Book. Book Zero has been created.',
       tags: ['onboarding', 'started_lorekeeper'],
       source: 'system'
     });

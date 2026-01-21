@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -12,8 +12,8 @@ import { cn } from '../lib/cn';
 import { getRouteFromSurface, surfaceToRoute } from '../utils/routeMapping';
 
 interface SidebarProps {
-  activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills';
-  onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills') => void;
+  activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills' | 'love';
+  onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills' | 'love') => void;
   onToggleDevMode?: () => void;
   devModeEnabled?: boolean;
   isMobileDrawerOpen?: boolean;
@@ -253,6 +253,20 @@ const SidebarContent = ({
           Discovery Hub
         </button>
         <button
+          onClick={() => handleSurfaceChange('love')}
+          aria-label="Open love and relationships"
+          aria-current={activeSurface === 'love' ? 'page' : undefined}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+            activeSurface === 'love'
+              ? 'border-pink-500 bg-pink-500/10 text-white'
+              : 'border-transparent text-white/70 hover:border-pink-500 hover:bg-pink-500/10'
+          )}
+        >
+          <Heart className="h-4 w-4 text-pink-400" aria-hidden="true" />
+          Love & Relationships
+        </button>
+        <button
           onClick={() => handleSurfaceChange('subscription')}
           aria-label="Open subscription management"
           aria-current={activeSurface === 'subscription' ? 'page' : undefined}
@@ -299,14 +313,20 @@ const SidebarContent = ({
           aria-label="Open account center"
           aria-current={isActiveRoute('/account') ? 'page' : undefined}
           className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+            "flex w-full items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all relative overflow-hidden group",
             isActiveRoute('/account')
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+              ? 'border-primary bg-gradient-to-r from-primary/20 to-purple-600/20 text-white shadow-lg shadow-primary/20'
+              : 'border-primary/60 bg-gradient-to-r from-primary/10 to-purple-600/10 text-white hover:border-primary hover:from-primary/20 hover:to-purple-600/20 hover:shadow-md hover:shadow-primary/10'
           )}
         >
-          <UserCog className="h-4 w-4 text-primary" aria-hidden="true" />
-          Account Center
+          {/* Animated background glow */}
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -translate-x-full group-hover:translate-x-full" />
+          <UserCog className="h-5 w-5 text-primary relative z-10" aria-hidden="true" />
+          <span className="relative z-10">Account Center</span>
+          {/* Badge indicator */}
+          <span className="ml-auto relative z-10 text-xs bg-primary/30 text-primary px-2 py-0.5 rounded-full border border-primary/50">
+            Profile & Settings
+          </span>
         </button>
         {/* Admin Console - Visible to admins in production, all users in development */}
         {(userIsAdmin || !config.env.isProduction) && (

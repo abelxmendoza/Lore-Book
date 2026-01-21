@@ -664,7 +664,7 @@ class OmegaChatService {
       recentBiometrics?: any[];
       topInterests?: any[];
     },
-    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     entityAnalytics?: any,
     entityConfidence?: number | null,
     analyticsGate?: any,
@@ -793,6 +793,41 @@ You have access to comprehensive relationship analytics calculated from conversa
 
 When explaining analytics, provide context about what these scores mean and why they might be at that level based on interaction patterns.
 `;
+      } else if (entityContext.type === 'ROMANTIC_RELATIONSHIP' && entityAnalytics) {
+        const rel = entityAnalytics.relationship;
+        const analytics = entityAnalytics.analytics;
+        entityAnalyticsContext += `
+**CURRENT ROMANTIC RELATIONSHIP CONTEXT**${confidenceNote} (for the relationship being discussed):${disclaimer}
+You are helping the user discuss and update information about a specific romantic relationship.
+
+RELATIONSHIP CONTEXT:
+- Person: ${entityAnalytics.personName || 'Unknown'}
+- Type: ${rel.relationship_type || 'Unknown'}
+- Status: ${rel.status || 'active'}
+- Started: ${rel.start_date ? new Date(rel.start_date).toLocaleDateString() : 'Unknown'}
+${rel.end_date ? `- Ended: ${new Date(rel.end_date).toLocaleDateString()}` : ''}
+${rel.is_situationship ? '- Situationship: Yes' : ''}
+${rel.exclusivity_status ? `- Exclusivity: ${rel.exclusivity_status}` : ''}
+
+CURRENT SCORES:
+- Affection: ${Math.round((analytics.affectionScore || rel.affection_score || 0.5) * 100)}%
+- Compatibility: ${Math.round((analytics.compatibilityScore || rel.compatibility_score || 0.5) * 100)}%
+- Health: ${Math.round((analytics.healthScore || rel.relationship_health || 0.5) * 100)}%
+- Intensity: ${Math.round((analytics.intensityScore || rel.emotional_intensity || 0.5) * 100)}%
+
+PROS (${analytics.pros?.length || rel.pros?.length || 0}): ${(analytics.pros || rel.pros || []).slice(0, 5).join(', ')}${(analytics.pros || rel.pros || []).length > 5 ? '...' : ''}
+CONS (${analytics.cons?.length || rel.cons?.length || 0}): ${(analytics.cons || rel.cons || []).slice(0, 5).join(', ')}${(analytics.cons || rel.cons || []).length > 5 ? '...' : ''}
+RED FLAGS (${analytics.redFlags?.length || rel.red_flags?.length || 0}): ${(analytics.redFlags || rel.red_flags || []).slice(0, 3).join(', ')}${(analytics.redFlags || rel.red_flags || []).length > 3 ? '...' : ''}
+GREEN FLAGS (${analytics.greenFlags?.length || rel.green_flags?.length || 0}): ${(analytics.greenFlags || rel.green_flags || []).slice(0, 3).join(', ')}${(analytics.greenFlags || rel.green_flags || []).length > 3 ? '...' : ''}
+
+INSTRUCTIONS:
+1. Answer questions about this relationship based on the context above
+2. If the user shares new information about the relationship, acknowledge it naturally
+3. If the user mentions pros/cons, red flags, green flags, or wants to update rankings, extract that information
+4. Be conversational and supportive when discussing relationships
+5. When updates are needed, they will be automatically extracted and applied - just acknowledge the conversation naturally
+6. Use the scores and analytics to provide insights when asked
+`;
       } else if (entityContext.type === 'LOCATION' && entityAnalytics) {
         entityAnalyticsContext += `
 **CURRENT LOCATION ANALYTICS**${confidenceNote} (for the location being discussed):${disclaimer}
@@ -829,7 +864,7 @@ When explaining analytics, provide context about what these scores mean and why 
       }
     }
 
-    return `You are a multi-faceted AI companion integrated into Lore Keeper. You seamlessly blend personas based on context:
+    return `You are a multi-faceted AI companion integrated into Lore Book. You seamlessly blend personas based on context:
 
 **YOUR PERSONAS** (adapt naturally based on conversation):
 
@@ -1130,7 +1165,7 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
     userId: string,
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string }
   ): Promise<StreamingChatResponse> {
     // ---- RECALL GATE: Check if this is a recall query (non-streaming, immediate response) ----
     try {
@@ -1846,7 +1881,7 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
     userId: string,
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string }
   ): Promise<OmegaChatResponse> {
     // Build RAG packet
     const ragPacket = await this.buildRAGPacket(userId, message);
@@ -1928,6 +1963,48 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
             if (entityConfidence !== null && entityConfidence < 0.5) {
               entityAnalytics = entityConfidenceService['softenAnalyticsLanguage'](entityAnalytics, entityConfidence);
             }
+          }
+        } else if (entityContext.type === 'ROMANTIC_RELATIONSHIP') {
+          // Load romantic relationship data
+          const { data: relationship } = await supabaseAdmin
+            .from('romantic_relationships')
+            .select('*')
+            .eq('id', entityContext.id)
+            .eq('user_id', userId)
+            .single();
+          
+          if (relationship) {
+            // Load person name
+            let personName = 'Unknown';
+            if (relationship.person_type === 'character') {
+              const { data: character } = await supabaseAdmin
+                .from('characters')
+                .select('name')
+                .eq('id', relationship.person_id)
+                .single();
+              personName = character?.name || 'Unknown';
+            }
+            
+            // Load analytics
+            const { romanticRelationshipAnalytics } = await import('./conversationCentered/romanticRelationshipAnalytics');
+            const analytics = await romanticRelationshipAnalytics.generateAnalytics(userId, entityContext.id);
+            
+            entityAnalytics = {
+              relationship,
+              personName,
+              analytics: analytics || {
+                pros: relationship.pros || [],
+                cons: relationship.cons || [],
+                redFlags: relationship.red_flags || [],
+                greenFlags: relationship.green_flags || [],
+                strengths: relationship.strengths || [],
+                weaknesses: relationship.weaknesses || [],
+                affectionScore: relationship.affection_score || 0.5,
+                compatibilityScore: relationship.compatibility_score || 0.5,
+                healthScore: relationship.relationship_health || 0.5,
+                intensityScore: relationship.emotional_intensity || 0.5,
+              }
+            };
           }
         }
       } catch (error) {
@@ -2589,7 +2666,7 @@ Examples of NOT memory-worthy:
     userId: string,
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
-    entityContext: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
+    entityContext: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string }
   ): Promise<void> {
     try {
       // Get or create a conversation session for entity-scoped chat

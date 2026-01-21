@@ -6,7 +6,7 @@ const options: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Lore Keeper API',
+      title: 'Lore Book API',
       version: '1.0.0',
       description: 'AI-powered journaling platform API by Omega Technologies',
       contact: {

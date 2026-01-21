@@ -156,7 +156,7 @@ export const ChatComposer = ({
           <div className="flex-1 relative">
             <Textarea
               ref={textareaRef}
-              placeholder="Message Lore Keeper... (Press ⌘/ for commands, Shift+Enter for new line)"
+              placeholder="Message Lore Book... (Press ⌘/ for commands, Shift+Enter for new line)"
               value={input}
               onChange={(e) => onInputChange(e.target.value)}
               disabled={loading || disabled}

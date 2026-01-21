@@ -51,36 +51,36 @@ export function DevelopmentNotice() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="dev-notice-title"
       aria-describedby="dev-notice-description"
     >
-      <div className="relative w-full max-w-2xl bg-gradient-to-br from-purple-900/95 via-black/95 to-purple-950/95 border-2 border-primary/50 rounded-2xl shadow-2xl p-8 space-y-6 animate-in fade-in zoom-in duration-300">
+      <div className="relative w-full max-w-2xl bg-gradient-to-br from-purple-900/95 via-black/95 to-purple-950/95 border-2 border-primary/50 rounded-lg sm:rounded-2xl shadow-2xl p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6 animate-in fade-in zoom-in duration-300 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
         {/* Close Button */}
         <button
           onClick={handleDismiss}
-          className="absolute top-4 right-4 text-white/60 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/10"
+          className="absolute top-2 right-2 sm:top-4 sm:right-4 text-white/60 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/10 z-10"
           aria-label="Dismiss development notice"
         >
-          <X className="h-5 w-5" />
+          <X className="h-4 w-4 sm:h-5 sm:w-5" />
         </button>
 
         {/* Header */}
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center flex-shrink-0">
-            <Rocket className="h-6 w-6 text-black" />
+        <div className="flex items-start gap-3 sm:gap-4 pr-8 sm:pr-0">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center flex-shrink-0">
+            <Rocket className="h-5 w-5 sm:h-6 sm:w-6 text-black" />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h2
               id="dev-notice-title"
-              className="text-2xl font-bold text-white mb-2 flex items-center gap-2"
+              className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2 flex items-center gap-2 flex-wrap"
             >
-              <Info className="h-6 w-6 text-primary" />
-              App Under Development
+              <Info className="h-5 w-5 sm:h-6 sm:w-6 text-primary flex-shrink-0" />
+              <span>App Under Development</span>
             </h2>
-            <p id="dev-notice-description" className="text-white/80 text-lg">
+            <p id="dev-notice-description" className="text-white/80 text-sm sm:text-base md:text-lg">
               Lore Book is still being built! You're seeing an early preview of the UI. 
               Some features may not be fully functional yet.
             </p>
@@ -88,24 +88,24 @@ export function DevelopmentNotice() {
         </div>
 
         {/* Content */}
-        <div className="space-y-4 text-white/70">
-          <div className="bg-black/40 border border-white/10 rounded-lg p-4 space-y-3">
-            <div className="flex items-start gap-3">
-              <Database className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-semibold text-white mb-1">Demo Data</p>
-                <p className="text-sm">
+        <div className="space-y-3 sm:space-y-4 text-white/70">
+          <div className="bg-black/40 border border-white/10 rounded-lg p-3 sm:p-4 space-y-3">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <Database className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Demo Data</p>
+                <p className="text-xs sm:text-sm">
                   Some features are using sample data to showcase the interface. 
                   Real functionality will be available once the backend is fully deployed.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3">
-              <Code className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-semibold text-white mb-1">Active Development</p>
-                <p className="text-sm">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <Code className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Active Development</p>
+                <p className="text-xs sm:text-sm">
                   We're continuously improving the app. Features may change, 
                   and some functionality may not be fully operational yet.
                 </p>
@@ -113,8 +113,8 @@ export function DevelopmentNotice() {
             </div>
           </div>
 
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
-            <p className="text-sm text-primary/90">
+          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4">
+            <p className="text-xs sm:text-sm text-primary/90">
               <strong>What works:</strong> You can explore the UI, navigate through different sections, 
               and see how the app will look and feel. The interface is fully functional for demonstration purposes.
             </p>
@@ -122,16 +122,16 @@ export function DevelopmentNotice() {
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-between pt-4 border-t border-white/10">
-          <p className="text-sm text-white/60">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 pt-3 sm:pt-4 border-t border-white/10">
+          <p className="text-xs sm:text-sm text-white/60 text-center sm:text-left">
             This notice can be dismissed and won't appear again
           </p>
           <Button
             onClick={handleDismiss}
-            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 w-full sm:w-auto whitespace-nowrap"
             aria-label="Got it, continue to app"
           >
-            Got it, let's explore!
+            <span className="text-sm sm:text-base">Got it, let's explore!</span>
           </Button>
         </div>
       </div>

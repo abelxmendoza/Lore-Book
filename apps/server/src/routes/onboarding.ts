@@ -71,7 +71,7 @@ router.post('/analyze-user', requireAuth, async (req: AuthenticatedRequest, res)
       messages: [
         {
           role: 'system',
-          content: `You are LoreKeeper, an AI-powered memory and journaling companion. A user has just described why they're using the app. 
+          content: `You are Lore Book, an AI-powered memory and journaling companion. A user has just described why they're using the app. 
 
 Your task:
 1. Generate a warm, personalized, and engaging response that acknowledges their goals and gets them excited about their journey
@@ -117,7 +117,7 @@ Be generous with personas - if the description suggests multiple personas, inclu
     const finalPersonas = detectedPersonas.length > 0 ? detectedPersonas : ['journaler'];
 
     res.json({
-      personalizedResponse: result.personalizedResponse || 'Welcome to LoreKeeper! We\'re excited to help you on your journey.',
+      personalizedResponse: result.personalizedResponse || 'Welcome to Lore Book! We\'re excited to help you on your journey.',
       personas: finalPersonas,
       confidence: result.confidence || {},
       reasoning: result.reasoning || 'Default persona assigned',
@@ -126,7 +126,7 @@ Be generous with personas - if the description suggests multiple personas, inclu
     logger.error({ error }, 'Failed to analyze user');
     // Default response if analysis fails
     res.json({
-      personalizedResponse: 'Welcome to LoreKeeper! We\'re excited to help you capture and understand your life\'s story.',
+      personalizedResponse: 'Welcome to Lore Book! We\'re excited to help you capture and understand your life\'s story.',
       personas: ['journaler'],
       confidence: { journaler: 0.5 },
       reasoning: 'Default persona due to analysis error',

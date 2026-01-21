@@ -18,7 +18,6 @@ import { Logo } from '../components/Logo';
 import { useLoreKeeper } from '../hooks/useLoreKeeper';
 import { useTaskEngine } from '../hooks/useTaskEngine';
 import { Footer } from '../components/Footer';
-import { Button } from '../components/ui/button';
 import { MockDataToggle } from '../components/settings/MockDataToggle';
 import { useMockData } from '../contexts/MockDataContext';
 import { ChatFirstInterface } from '../features/chat/components/ChatFirstInterface';
@@ -42,10 +41,11 @@ import { PrivacySettings } from '../components/security/PrivacySettings';
 import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
 import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
 import { GuestBanner } from '../components/guest/GuestBanner';
+import { LoveAndRelationshipsView } from '../components/love/LoveAndRelationshipsView';
 import { getSurfaceFromRoute } from '../utils/routeMapping';
 
 
-type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'memories' | 'events' | 'entities' | 'organizations' | 'skills' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide';
+type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'memories' | 'events' | 'entities' | 'organizations' | 'skills' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'love';
 
 interface AppContentProps {
   defaultSurface?: SurfaceKey;
@@ -216,9 +216,10 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       'privacy-policy': 'Privacy Policy',
       discovery: 'Discovery Hub',
       continuity: 'Continuity',
-      guide: 'User Guide'
+      guide: 'User Guide',
+      love: 'Love & Relationships'
     };
-    return names[surface] || 'LoreKeeper';
+    return names[surface] || 'Lore Book';
   };
 
   return (
@@ -354,6 +355,11 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         {activeSurface === 'discovery' && (
           <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <DiscoveryHub />
+          </div>
+        )}
+        {activeSurface === 'love' && (
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+            <LoveAndRelationshipsView />
           </div>
         )}
         {activeSurface === 'guide' && <UserGuide />}

@@ -140,7 +140,7 @@ app.use(requestIdMiddleware);
 // Swagger API documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Lore Keeper API Documentation',
+  customSiteTitle: 'Lore Book API Documentation',
 }));
 
 // Create protected routes router with auth middleware stack
@@ -215,7 +215,7 @@ if (process.env.ENABLE_ENGINE_SCHEDULER === 'true') {
 }
 
 const server = app.listen(config.port, () => {
-  logger.info(`Lore Keeper API listening on ${config.port}`);
+  logger.info(`Lore Book API listening on ${config.port}`);
 });
 
 server.on('error', (error: NodeJS.ErrnoException) => {

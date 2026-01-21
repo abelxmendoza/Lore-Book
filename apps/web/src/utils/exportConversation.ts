@@ -2,7 +2,7 @@ import type { Message } from '../components/chat/ChatMessage';
 
 export const exportConversationAsMarkdown = (messages: Message[]): string => {
   const date = new Date().toISOString().split('T')[0];
-  let markdown = `# Lore Keeper Chat Export\n\n`;
+  let markdown = `# Lore Book Chat Export\n\n`;
   markdown += `**Date:** ${date}\n`;
   markdown += `**Messages:** ${messages.length}\n\n`;
   markdown += `---\n\n`;

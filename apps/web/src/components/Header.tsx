@@ -8,10 +8,10 @@ export const Header = ({ onUpgrade }: HeaderProps) => {
   return (
     <header className="flex items-center justify-between border-b border-border/50 bg-black/60 px-6 py-4 backdrop-blur">
       <div className="flex items-center gap-3">
-        <img src="/branding/logo.svg" alt="LoreKeeper" className="h-10 w-10" />
+        <img src="/branding/logo.svg" alt="Lore Book" className="h-10 w-10" />
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-primary/80">Omega Technologies</p>
-          <h1 className="text-xl font-semibold text-white">LoreKeeper</h1>
+          <h1 className="text-xl font-semibold text-white">Lore Book</h1>
         </div>
       </div>
       <div className="flex items-center gap-4 text-sm text-white/70">

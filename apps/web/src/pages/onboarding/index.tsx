@@ -14,7 +14,7 @@ const OnboardingPage = () => {
       <div className="mx-auto max-w-6xl space-y-6">
         <header className="rounded-2xl border border-border/60 bg-black/50 p-6 shadow-panel">
           <p className="text-xs uppercase tracking-widest text-white/60">Onboarding</p>
-          <h1 className="text-3xl font-semibold">Welcome to LoreKeeper</h1>
+          <h1 className="text-3xl font-semibold">Welcome to Lore Book</h1>
           <p className="mt-2 text-sm text-white/70">
             Guided setup, import wizards, and a first-week briefing to seed your memory graph.
           </p>
@@ -29,7 +29,7 @@ const OnboardingPage = () => {
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-6 w-6" />
               <div>
-                <p className="font-semibold">Your LoreKeeper is ready</p>
+                <p className="font-semibold">Your Lore Book is ready</p>
                 <p className="text-sm text-white/70">Sample data is available if you skipped imports.</p>
               </div>
             </div>

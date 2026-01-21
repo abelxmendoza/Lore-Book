@@ -1506,6 +1506,57 @@ router.get(
 );
 
 /**
+ * GET /api/conversation/romantic-relationships/:id/ranking
+ * Get ranking information for a relationship
+ */
+router.get(
+  '/romantic-relationships/:id/ranking',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const { romanticRelationshipRanking } = await import('../services/conversationCentered/romanticRelationshipRanking');
+    const ranking = await romanticRelationshipRanking.getRanking(userId, id);
+
+    if (!ranking) {
+      return res.status(404).json({
+        success: false,
+        error: 'Ranking not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      rankAmongAll: ranking.rankAmongAll,
+      rankAmongActive: ranking.rankAmongActive,
+      totalRelationships: ranking.totalRelationships,
+      totalActive: ranking.totalActive,
+    });
+  })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships/calculate-rankings
+ * Calculate and update all relationship rankings
+ */
+router.post(
+  '/romantic-relationships/calculate-rankings',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    const { romanticRelationshipRanking } = await import('../services/conversationCentered/romanticRelationshipRanking');
+    await romanticRelationshipRanking.calculateRankings(userId);
+
+    res.json({
+      success: true,
+      message: 'Rankings calculated',
+    });
+  })
+);
+
+/**
  * GET /api/conversation/romantic-relationships/:id/dates
  * Get dates and milestones for a relationship
  */
@@ -1740,6 +1791,72 @@ router.post(
     res.json({
       success: true,
       message: 'Timelines rebuilt',
+    });
+  })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships/:id/chat
+ * Chat with relationship context - updates relationship through conversation
+ */
+router.post(
+  '/romantic-relationships/:id/chat',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { message, conversationHistory = [] } = req.body;
+
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // Verify relationship belongs to user
+    const { data: relationship } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    if (!relationship) {
+      return res.status(404).json({ error: 'Relationship not found' });
+    }
+
+    // Chat with relationship context
+    const response = await omegaChatService.chat(
+      userId,
+      message,
+      conversationHistory,
+      {
+        type: 'ROMANTIC_RELATIONSHIP',
+        id: id
+      }
+    );
+
+    // Extract and apply updates from conversation (fire and forget)
+    // This will be created in the next phase
+    try {
+      const { relationshipUpdateExtractor } = await import('../services/conversationCentered/relationshipUpdateExtractor');
+      relationshipUpdateExtractor
+        .extractAndApplyUpdates(userId, id, message, conversationHistory, response.answer)
+        .then(updated => {
+          if (updated) {
+            logger.debug({ userId, relationshipId: id }, 'Relationship updated from chat');
+          }
+        })
+        .catch(err => {
+          logger.debug({ err, userId, relationshipId: id }, 'Failed to extract relationship updates');
+        });
+    } catch (error) {
+      // Service not yet created, that's okay
+      logger.debug({ error }, 'Relationship update extractor not yet available');
+    }
+
+    res.json({
+      answer: response.answer,
+      updated: true, // Indicates updates may have been applied
+      metadata: response.metadata
     });
   })
 );

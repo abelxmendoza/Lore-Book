@@ -986,7 +986,7 @@ export const LoreBook = () => {
         </Button>
       </div>
 
-      {/* Ask Lore Keeper Chat Interface */}
+      {/* Ask Lore Book Chat Interface */}
       <div className="border-t border-border/60 bg-black/60 backdrop-blur-sm flex-shrink-0">
         <Button
           variant="ghost"
@@ -996,7 +996,7 @@ export const LoreBook = () => {
         >
           <div className="flex items-center gap-3">
             <MessageSquare className="h-5 w-5 text-primary" />
-            <span className="text-white font-medium">Ask Lore Keeper</span>
+            <span className="text-white font-medium">Ask Lore Book</span>
             <span className="text-xs text-white/50 hidden sm:inline">Get insights about your story</span>
           </div>
           {showChat ? (
