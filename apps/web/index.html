@@ -172,14 +172,19 @@
                 console.error('[HTML] Module script failed to load:', response.status, response.statusText);
                 const root = document.getElementById('root');
                 if (root) {
-                  root.innerHTML = `
-                    <div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh; font-family: monospace;">
-                      <h1 style="color: #ef4444;">🚨 Module Load Failed</h1>
-                      <p style="color: #fbbf24; font-size: 18px; margin: 20px 0;">JavaScript bundle failed to load</p>
-                      <p style="color: #94a3b8;">Status: ${response.status} ${response.statusText}</p>
-                      <p style="color: #94a3b8;">URL: ${moduleScript.src}</p>
-                    </div>
-                  `;
+                  // Escape HTML to prevent XSS
+                  const escapeHtml = function(text) {
+                    const div = document.createElement('div');
+                    div.textContent = text;
+                    return div.innerHTML;
+                  };
+                  root.innerHTML = 
+                    '<div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh; font-family: monospace;">' +
+                    '<h1 style="color: #ef4444;">🚨 Module Load Failed</h1>' +
+                    '<p style="color: #fbbf24; font-size: 18px; margin: 20px 0;">JavaScript bundle failed to load</p>' +
+                    '<p style="color: #94a3b8;">Status: ' + escapeHtml(response.status + ' ' + response.statusText) + '</p>' +
+                    '<p style="color: #94a3b8;">URL: ' + escapeHtml(moduleScript.src) + '</p>' +
+                    '</div>';
                 }
               }
             })

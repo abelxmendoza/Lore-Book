@@ -48,7 +48,7 @@ router.post('/verify-entry/:id', requireAuth, rateLimitMiddleware, async (req: A
 /**
  * Verify a specific claim
  */
-router.post('/verify-claim', requireAuth, validateBody(verifyClaimSchema), async (req: AuthenticatedRequest, res) => {
+router.post('/verify-claim', requireAuth, rateLimitMiddleware, validateBody(verifyClaimSchema), async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
     const { claim_type, subject, attribute, value } = req.body;
@@ -84,7 +84,7 @@ router.post('/verify-claim', requireAuth, validateBody(verifyClaimSchema), async
 /**
  * Get verification status for an entry
  */
-router.get('/status/:entryId', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/status/:entryId', requireAuth, rateLimitMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -110,7 +110,7 @@ router.get('/status/:entryId', requireAuth, async (req: AuthenticatedRequest, re
 /**
  * Get all contradictions
  */
-router.get('/contradictions', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/contradictions', requireAuth, rateLimitMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
 
@@ -152,7 +152,7 @@ router.get('/contradictions', requireAuth, async (req: AuthenticatedRequest, res
 /**
  * Resolve a contradiction
  */
-router.post('/resolve/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/resolve/:id', requireAuth, rateLimitMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
@@ -184,7 +184,7 @@ router.post('/resolve/:id', requireAuth, async (req: AuthenticatedRequest, res) 
 /**
  * Get verification statistics
  */
-router.get('/stats', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/stats', requireAuth, rateLimitMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
 
