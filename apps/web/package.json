@@ -72,6 +72,9 @@
     "vite": "^5.4.1",
     "zustand": "^4.5.4"
   },
+  "overrides": {
+    "preact": "^10.28.2"
+  },
   "devDependencies": {
     "@playwright/test": "^1.48.2",
     "@testing-library/cypress": "^10.1.0",
