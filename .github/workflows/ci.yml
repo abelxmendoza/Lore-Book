@@ -144,6 +144,7 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 30
+          if-no-files-found: ignore
 
   e2e-tests-cypress:
     name: E2E Tests (Cypress)

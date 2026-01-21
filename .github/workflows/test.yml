@@ -108,6 +108,7 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report/
           retention-days: 30
+          if-no-files-found: ignore
 
   lint:
     name: Lint
