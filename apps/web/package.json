@@ -73,7 +73,8 @@
     "zustand": "^4.5.4"
   },
   "overrides": {
-    "preact": "^10.28.2"
+    "preact": "^10.28.2",
+    "esbuild": "^0.25.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.2",
