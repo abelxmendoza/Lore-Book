@@ -386,6 +386,36 @@ export class ConversationIngestionPipeline {
         if (processed.splitEvents && processed.splitEvents.length > 0) {
           // Save split events as extracted units
           for (const splitUnit of processed.splitEvents) {
+            // Extract temporal context for split events
+            let temporalContext = splitUnit.temporal_context || {};
+            
+            if (!temporalContext.start_time && !temporalContext.end_time) {
+              const temporalRefs = await this.extractTemporalReferences(
+                normalized.normalized_text,
+                utteranceTexts[i]
+              );
+              
+              if (temporalRefs.length > 0) {
+                temporalContext = {
+                  ...temporalContext,
+                  start_time: temporalRefs[0].timestamp.toISOString(),
+                  precision: temporalRefs[0].precision,
+                  confidence: temporalRefs[0].confidence,
+                  original_text: temporalRefs[0].originalText
+                };
+              } else {
+                // Default to current time for real-time chat
+                temporalContext = {
+                  ...temporalContext,
+                  start_time: new Date().toISOString(),
+                  precision: 'minute',
+                  confidence: 0.7,
+                  inferred: true,
+                  source: 'current_time'
+                };
+              }
+            }
+
             const savedUnit = await this.saveExtractedUnit(
               userId,
               utteranceIds[i],
@@ -393,7 +423,7 @@ export class ConversationIngestionPipeline {
                 type: splitUnit.type,
                 content: splitUnit.content,
                 confidence: splitUnit.confidence,
-                temporal_context: splitUnit.temporal_context,
+                temporal_context: temporalContext,
                 entity_ids: splitUnit.entity_ids || [],
               },
               normalized,
@@ -411,10 +441,45 @@ export class ConversationIngestionPipeline {
 
           // Step 6: Save extracted units
           for (const unit of units.units) {
+            // Extract temporal context from the unit
+            let temporalContext = unit.temporal_context || {};
+            
+            // If no explicit time is found, try to extract temporal references
+            if (!temporalContext.start_time && !temporalContext.end_time) {
+              const temporalRefs = await this.extractTemporalReferences(
+                normalized.normalized_text,
+                utteranceTexts[i]
+              );
+              
+              if (temporalRefs.length > 0) {
+                // Use the extracted temporal reference
+                temporalContext = {
+                  ...temporalContext,
+                  start_time: temporalRefs[0].timestamp.toISOString(),
+                  precision: temporalRefs[0].precision,
+                  confidence: temporalRefs[0].confidence,
+                  original_text: temporalRefs[0].originalText
+                };
+              } else {
+                // Default to current time for real-time chat
+                temporalContext = {
+                  ...temporalContext,
+                  start_time: new Date().toISOString(),
+                  precision: 'minute', // More precise for real-time chat
+                  confidence: 0.7,
+                  inferred: true,
+                  source: 'current_time'
+                };
+              }
+            }
+
             const savedUnit = await this.saveExtractedUnit(
               userId,
               utteranceIds[i],
-              unit,
+              {
+                ...unit,
+                temporal_context: temporalContext
+              },
               normalized
             );
             unitIds.push(savedUnit.id);
@@ -1218,6 +1283,74 @@ export class ConversationIngestionPipeline {
       logger.error({ error, userId, threadId, rawText }, 'Failed to ingest message');
       throw error;
     }
+  }
+
+  /**
+   * Extract temporal references from text using TimeEngine
+   */
+  private async extractTemporalReferences(
+    normalizedText: string,
+    originalText: string
+  ): Promise<Array<{
+    timestamp: Date;
+    precision: import('../timeEngine').TimePrecision;
+    confidence: number;
+    originalText?: string;
+  }>> {
+    const { timeEngine } = await import('../timeEngine');
+    const references: Array<{
+      timestamp: Date;
+      precision: import('../timeEngine').TimePrecision;
+      confidence: number;
+      originalText?: string;
+    }> = [];
+
+    // Look for temporal expressions in the text
+    const temporalPatterns = [
+      /\b(today|yesterday|tomorrow|now|right now|just now)\b/gi,
+      /\b(last|next)\s+(week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi,
+      /\b(\d+)\s+(day|week|month|year)s?\s+ago\b/gi,
+      /\bin\s+(\d+)\s+(day|week|month|year)s?\b/gi,
+      /\b(a couple|a few)\s+(weeks?|months?|years?)\s+ago\b/gi,
+      /\bwhen i was (a kid|in (high school|college|university)|younger)\b/gi,
+      /\b(in|during)\s+(19|20)\d{2}\b/gi,
+      /\b(19|20)\d{2}\b/g,
+      /\bthe other day\b/gi,
+      /\blast year\b/gi,
+      /\bin (a few|a couple (of )?)weeks?\b/gi
+    ];
+
+    for (const pattern of temporalPatterns) {
+      const matches = originalText.match(pattern);
+      if (matches) {
+        for (const match of matches) {
+          const ref = timeEngine.parseTimestamp(match, undefined, true);
+          if (ref.confidence > 0.5) {
+            references.push({
+              timestamp: ref.timestamp,
+              precision: ref.precision,
+              confidence: ref.confidence,
+              originalText: ref.originalText || match
+            });
+          }
+        }
+      }
+    }
+
+    // If no patterns found but text suggests real-time (present tense, "just happened", etc.)
+    if (references.length === 0) {
+      const presentTenseIndicators = /\b(just|recently|now|currently|happening|happened|occurred)\b/gi;
+      if (presentTenseIndicators.test(normalizedText)) {
+        references.push({
+          timestamp: new Date(),
+          precision: 'minute',
+          confidence: 0.7,
+          originalText: 'current time'
+        });
+      }
+    }
+
+    return references;
   }
 
   /**

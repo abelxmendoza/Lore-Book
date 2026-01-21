@@ -407,7 +407,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           }}
         />
 
-        <Footer />
+        {activeSurface !== 'chat' && <Footer />}
       </main>
     </div>
   );

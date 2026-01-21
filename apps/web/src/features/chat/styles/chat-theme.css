@@ -60,8 +60,12 @@
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
-/* Mobile touch targets */
+/* Mobile touch targets and bottom spacing */
 @media (max-width: 640px) {
+  .chat-composer {
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0));
+  }
+  
   .chat-composer button,
   .chat-composer input[type="button"],
   .chat-composer input[type="submit"] {

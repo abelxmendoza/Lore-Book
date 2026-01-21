@@ -1459,20 +1459,21 @@ User's message: ${message}`;
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
-      <div className="bg-gradient-to-br from-black via-black/95 to-black border-2 border-primary/30 rounded-2xl w-full max-w-5xl h-[95vh] overflow-hidden flex flex-col shadow-2xl shadow-primary/20">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm">
+      <div className="bg-gradient-to-br from-black via-black/95 to-black border-0 sm:border-2 border-primary/30 rounded-none sm:rounded-2xl w-full h-full sm:h-[95vh] sm:max-w-5xl overflow-hidden flex flex-col shadow-2xl shadow-primary/20">
         {/* Enhanced Header */}
-        <div className="relative bg-gradient-to-r from-primary/20 via-purple-900/20 to-primary/20 border-b-2 border-primary/30 p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-4 flex-1">
-              <div className="relative">
+        <div className="relative bg-gradient-to-r from-primary/20 via-purple-900/20 to-primary/20 border-b-2 border-primary/30 p-3 sm:p-6">
+          <div className="flex items-start justify-between gap-2 sm:gap-4">
+            <div className="flex items-start gap-2 sm:gap-4 flex-1 min-w-0">
+              <div className="relative flex-shrink-0">
                 <CharacterAvatar 
                   url={editedCharacter.avatar_url} 
                   name={editedCharacter.name} 
-                  size={64}
+                  size={48}
+                  className="sm:w-16 sm:h-16"
                 />
                 {editedCharacter.status && (
-                  <div className="absolute -bottom-1 -right-1">
+                  <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1">
                     <Tooltip content={getStatusTooltip(editedCharacter.status)}>
                     <Badge 
                       className={`${
@@ -1481,7 +1482,7 @@ User's message: ${message}`;
                           : editedCharacter.status === 'unmet'
                           ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 border-dashed'
                           : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                        } text-xs px-2 py-0.5 cursor-help`}
+                        } text-[9px] sm:text-xs px-1 sm:px-2 py-0 sm:py-0.5 cursor-help`}
                     >
                       {editedCharacter.status === 'unmet' ? 'Unmet' : editedCharacter.status}
                     </Badge>
@@ -1490,8 +1491,8 @@ User's message: ${message}`;
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+                <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1 flex-wrap">
+                  <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-white tracking-tight break-words">
                     {editedCharacter.first_name && editedCharacter.last_name
                       ? `${editedCharacter.first_name} ${editedCharacter.last_name}`
                       : editedCharacter.name}
@@ -1500,87 +1501,94 @@ User's message: ${message}`;
                     <Tooltip content={getNicknameTooltip()}>
                     <Badge 
                       variant="outline" 
-                        className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs px-2 py-0.5 cursor-help"
+                        className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-[9px] sm:text-xs px-1 sm:px-2 py-0 sm:py-0.5 cursor-help"
                     >
-                      Nickname
+                      <span className="hidden sm:inline">Nickname</span>
+                      <span className="sm:hidden">N</span>
+                    </Badge>
+                    </Tooltip>
+                  )}
+                </div>
+                {/* Compact info row on mobile */}
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
+                  {editedCharacter.role && (
+                    <Tooltip content={getRoleTooltip(editedCharacter.role)}>
+                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 cursor-help flex items-center gap-1">
+                        <Tag className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                        <span className="truncate max-w-[80px] sm:max-w-none">{editedCharacter.role}</span>
+                      </Badge>
+                    </Tooltip>
+                  )}
+                  {editedCharacter.pronouns && (
+                    <Tooltip content={getPronounsTooltip(editedCharacter.pronouns)}>
+                      <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 cursor-help flex items-center gap-1">
+                        <Users className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                        {editedCharacter.pronouns}
+                      </Badge>
+                    </Tooltip>
+                  )}
+                  {editedCharacter.importance_level && (
+                    <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score)}>
+                    <Badge 
+                      variant="outline" 
+                        className={`${getImportanceColor(editedCharacter.importance_level)} text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 flex items-center gap-1 cursor-help`}
+                    >
+                      {getImportanceIcon(editedCharacter.importance_level)}
+                      <span className="hidden sm:inline">{getImportanceLabel(editedCharacter.importance_level)}</span>
+                      {editedCharacter.importance_score !== null && editedCharacter.importance_score !== undefined && (
+                        <span className="text-[8px] sm:text-xs opacity-70 hidden sm:inline">({Math.round(editedCharacter.importance_score)})</span>
+                      )}
                     </Badge>
                     </Tooltip>
                   )}
                 </div>
                 {editedCharacter.first_name && editedCharacter.last_name && editedCharacter.name !== `${editedCharacter.first_name} ${editedCharacter.last_name}` && (
-                  <p className="text-sm text-white/60 mb-1">
-                    Display name: {editedCharacter.name}
+                  <p className="text-[10px] sm:text-sm text-white/60 mb-0.5 sm:mb-1 truncate">
+                    Display: {editedCharacter.name}
                   </p>
                 )}
                 {editedCharacter.alias && editedCharacter.alias.length > 0 && (
-                  <p className="text-base text-white/70 mb-2">
-                    <span className="text-white/50">Also known as:</span> {editedCharacter.alias.join(', ')}
+                  <p className="text-[10px] sm:text-base text-white/70 mb-1 sm:mb-2 truncate">
+                    <span className="text-white/50 hidden sm:inline">Also known as: </span>
+                    <span className="text-white/50 sm:hidden">AKA: </span>
+                    {editedCharacter.alias.join(', ')}
                   </p>
                 )}
-                <div className="flex items-center gap-3 flex-wrap">
-                  {editedCharacter.importance_level && (
-                    <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score)}>
-                    <Badge 
-                      variant="outline" 
-                        className={`${getImportanceColor(editedCharacter.importance_level)} text-sm px-3 py-1 flex items-center gap-1.5 cursor-help`}
-                    >
-                      {getImportanceIcon(editedCharacter.importance_level)}
-                      <span>{getImportanceLabel(editedCharacter.importance_level)}</span>
-                      {editedCharacter.importance_score !== null && editedCharacter.importance_score !== undefined && (
-                        <span className="text-xs opacity-70">({Math.round(editedCharacter.importance_score)})</span>
-                      )}
-                    </Badge>
-                    </Tooltip>
-                  )}
-                  {editedCharacter.role && (
-                    <Tooltip content={getRoleTooltip(editedCharacter.role)}>
-                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-sm px-3 py-1 cursor-help flex items-center gap-1.5">
-                        <Tag className="h-3 w-3" />
-                      {editedCharacter.role}
-                    </Badge>
-                    </Tooltip>
-                  )}
-                  {editedCharacter.archetype && (
+                {/* Archetype badge - show separately on mobile */}
+                {editedCharacter.archetype && (
+                  <div className="mt-1 sm:mt-0">
                     <Tooltip content={getArchetypeTooltip(editedCharacter.archetype)}>
-                      <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-sm px-3 py-1 cursor-help flex items-center gap-1.5">
-                        <Sparkles className="h-3 w-3" />
-                      {editedCharacter.archetype}
-                    </Badge>
+                      <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 cursor-help flex items-center gap-1 w-fit">
+                        <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                        <span className="truncate max-w-[100px] sm:max-w-none">{editedCharacter.archetype}</span>
+                      </Badge>
                     </Tooltip>
-                  )}
-                  {editedCharacter.pronouns && (
-                    <Tooltip content={getPronounsTooltip(editedCharacter.pronouns)}>
-                      <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-sm px-3 py-1 cursor-help flex items-center gap-1.5">
-                        <Users className="h-3 w-3" />
-                      {editedCharacter.pronouns}
-                    </Badge>
-                    </Tooltip>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
-            <Button variant="ghost" onClick={onClose} className="flex-shrink-0 hover:bg-white/10">
-              <X className="h-5 w-5" />
+            <Button variant="ghost" onClick={onClose} className="flex-shrink-0 hover:bg-white/10 h-8 w-8 sm:h-10 sm:w-10 p-0">
+              <X className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
           </div>
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           {/* Tab Navigation */}
-          <div className="flex border-b border-border/60 overflow-x-auto flex-shrink-0">
+          <div className="flex flex-wrap border-b border-border/60 flex-shrink-0">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition whitespace-nowrap ${
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium transition whitespace-nowrap ${
                     activeTab === tab.key
                       ? 'border-b-2 border-primary text-white'
                       : 'text-white/60 hover:text-white'
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span>{tab.label}</span>
                 </button>
               );
@@ -3114,16 +3122,6 @@ User's message: ${message}`;
           />
         </div>
 
-        <div className="flex items-center justify-end gap-2 p-6 border-t border-border/60 flex-shrink-0">
-          <Button variant="outline" onClick={onClose}>
-            Close
-          </Button>
-          {activeTab !== 'info' && (
-          <Button onClick={handleSave} disabled={loading} leftIcon={<Save className="h-4 w-4" />}>
-            {loading ? 'Saving...' : 'Save Changes'}
-          </Button>
-          )}
-        </div>
       </div>
 
       {/* Memory Detail Modal */}

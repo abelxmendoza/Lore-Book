@@ -23,7 +23,7 @@ import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 
-const ITEMS_PER_PAGE = 24; // Increased for better performance with large datasets
+const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 const ITEMS_PER_PAGE_OPTIONS = [12, 24, 48, 96];
 
 type EventCategory = 'all' | 'recent' | 'high_confidence' | 'low_confidence' | 'with_people' | 'with_locations';
@@ -472,7 +472,7 @@ export const EventsBook: React.FC = () => {
     <div className="space-y-6">
       {/* Header with Search and Controls */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
             <Input
@@ -480,28 +480,28 @@ export const EventsBook: React.FC = () => {
               placeholder="Search events by title, summary, type, people, locations, or activities..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40"
+              className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40 text-sm sm:text-base"
             />
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* View Mode Toggle */}
             <div className="flex items-center gap-1 bg-black/40 border border-border/50 rounded-lg p-1">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setViewMode('grid')}
-                className={`h-8 px-3 ${viewMode === 'grid' ? 'bg-primary/20 text-primary' : 'text-white/60'}`}
+                className={`h-7 sm:h-8 px-2 sm:px-3 ${viewMode === 'grid' ? 'bg-primary/20 text-primary' : 'text-white/60'}`}
               >
-                <Grid3x3 className="h-4 w-4" />
+                <Grid3x3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setViewMode('list')}
-                className={`h-8 px-3 ${viewMode === 'list' ? 'bg-primary/20 text-primary' : 'text-white/60'}`}
+                className={`h-7 sm:h-8 px-2 sm:px-3 ${viewMode === 'list' ? 'bg-primary/20 text-primary' : 'text-white/60'}`}
               >
-                <List className="h-4 w-4" />
+                <List className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
             </div>
 
@@ -509,7 +509,7 @@ export const EventsBook: React.FC = () => {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="h-9 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="h-9 px-2 sm:px-3 bg-black/40 border border-border/50 rounded-lg text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 flex-shrink-0"
             >
               <option value="date_desc">Newest First</option>
               <option value="date_asc">Oldest First</option>
@@ -525,37 +525,38 @@ export const EventsBook: React.FC = () => {
               variant="outline"
               size="sm"
               onClick={() => setShowFilters(!showFilters)}
-              className={`relative ${activeFilterCount > 0 ? 'border-primary/50 bg-primary/10' : ''}`}
+              className={`relative text-xs sm:text-sm ${activeFilterCount > 0 ? 'border-primary/50 bg-primary/10' : ''}`}
             >
-              <SlidersHorizontal className="h-4 w-4 mr-2" />
-              Filters
+              <SlidersHorizontal className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Filters</span>
+              <span className="sm:hidden">Filter</span>
               {activeFilterCount > 0 && (
-                <span className="ml-2 px-1.5 py-0.5 bg-primary text-white text-xs rounded-full">
+                <span className="ml-1 sm:ml-2 px-1 sm:px-1.5 py-0.5 bg-primary text-white text-[10px] sm:text-xs rounded-full">
                   {activeFilterCount}
                 </span>
               )}
             </Button>
 
-            {/* Items Per Page */}
+            {/* Items Per Page - Hidden on mobile */}
             <select
               value={itemsPerPage}
               onChange={(e) => {
                 setItemsPerPage(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              className="h-9 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="hidden sm:block h-9 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             >
               {ITEMS_PER_PAGE_OPTIONS.map(opt => (
                 <option key={opt} value={opt}>{opt} per page</option>
               ))}
             </select>
 
-            {/* Show Example Button */}
+            {/* Show Example Button - Hidden on mobile */}
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowExample(!showExample)}
-              className={showExample ? 'border-primary/50 bg-primary/10' : ''}
+              className={`hidden sm:flex ${showExample ? 'border-primary/50 bg-primary/10' : ''}`}
               title="Show example card with labels"
             >
               <HelpCircle className="h-4 w-4 mr-2" />
@@ -565,9 +566,10 @@ export const EventsBook: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              leftIcon={<RefreshCw className="h-4 w-4" />} 
+              leftIcon={<RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />} 
               onClick={() => void loadEvents()}
               disabled={loading}
+              className="text-xs sm:text-sm"
             >
               {loading ? 'Loading...' : 'Refresh'}
             </Button>
@@ -631,48 +633,42 @@ export const EventsBook: React.FC = () => {
 
         {/* Quick Category Tabs */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as EventCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto">
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1">
             <TabsTrigger 
               value="all" 
-              className="flex items-center gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
             >
-              <Calendar className="h-4 w-4" />
-              All
+              <Calendar className="h-3 w-3 sm:h-4 sm:w-4" /> <span>All</span>
             </TabsTrigger>
             <TabsTrigger 
               value="recent" 
-              className="flex items-center gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
             >
-              <Clock className="h-4 w-4" />
-              Recent
+              <Clock className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Recent</span>
             </TabsTrigger>
             <TabsTrigger 
               value="high_confidence" 
-              className="flex items-center gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
             >
-              <Star className="h-4 w-4" />
-              High Confidence
+              <Star className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">High Confidence</span><span className="sm:hidden">High</span>
             </TabsTrigger>
             <TabsTrigger 
               value="low_confidence" 
-              className="flex items-center gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
             >
-              <AlertTriangle className="h-4 w-4" />
-              Low Confidence
+              <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Low Confidence</span><span className="sm:hidden">Low</span>
             </TabsTrigger>
             <TabsTrigger 
               value="with_people" 
-              className="flex items-center gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
             >
-              <Users className="h-4 w-4" />
-              With People
+              <Users className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">With People</span><span className="sm:hidden">People</span>
             </TabsTrigger>
             <TabsTrigger 
               value="with_locations" 
-              className="flex items-center gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
             >
-              <MapPin className="h-4 w-4" />
-              With Location
+              <MapPin className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">With Location</span><span className="sm:hidden">Location</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -1086,22 +1082,22 @@ export const EventsBook: React.FC = () => {
 
       {/* Events Display */}
       {loading ? (
-        <div className={`grid gap-4 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
+        <div className={`grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
           {Array.from({ length: itemsPerPage }).map((_, i) => (
             <Card key={i} className="bg-black/40 border-border/50 h-64 animate-pulse" />
           ))}
         </div>
       ) : filteredEvents.length === 0 ? (
-        <div className="text-center py-12 text-white/60">
-          <Sparkles className="h-12 w-12 mx-auto mb-4 text-white/20" />
-          <p className="text-lg font-medium mb-2">No events found</p>
-          <p className="text-sm">Try adjusting your filters or search term</p>
+        <div className="text-center py-8 sm:py-12 text-white/60 px-4">
+          <Sparkles className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 text-white/20" />
+          <p className="text-base sm:text-lg font-medium mb-2">No events found</p>
+          <p className="text-xs sm:text-sm">Try adjusting your filters or search term</p>
           {activeFilterCount > 0 && (
             <Button
               variant="outline"
               size="sm"
               onClick={clearFilters}
-              className="mt-4"
+              className="mt-4 text-xs sm:text-sm"
             >
               Clear All Filters
             </Button>
@@ -1110,29 +1106,29 @@ export const EventsBook: React.FC = () => {
       ) : (
         <>
           {/* Book Page Container with Grid Inside */}
-          <div className="relative w-full min-h-[600px] bg-gradient-to-br from-blue-50/5 via-purple-100/5 to-pink-50/5 rounded-lg border-2 border-blue-800/30 shadow-2xl overflow-hidden">
+          <div className="relative w-full min-h-[400px] sm:min-h-[500px] lg:min-h-[600px] bg-gradient-to-br from-blue-50/5 via-purple-100/5 to-pink-50/5 rounded-lg border-2 border-blue-800/30 shadow-2xl overflow-hidden">
             {/* Page Content */}
-            <div className="p-8 flex flex-col">
+            <div className="p-4 sm:p-6 lg:p-8 flex flex-col">
               {/* Page Header */}
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-blue-800/20">
-                <div className="flex items-center gap-3">
-                  <BookOpen className="h-6 w-6 text-blue-600/60" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-blue-900/40 uppercase tracking-wider">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-blue-800/20">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600/60 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-semibold text-blue-900/40 uppercase tracking-wider">
                       Events Book
                     </h3>
-                    <p className="text-xs text-blue-700/50 mt-0.5">
-                      Page {currentPage} of {totalPages} · {filteredEvents.length} events
+                    <p className="text-[10px] sm:text-xs text-blue-700/50 mt-0.5">
+                      Page {currentPage}/{totalPages} · {filteredEvents.length} events
                     </p>
                   </div>
                 </div>
-                <div className="text-xs text-blue-700/40 font-mono">
+                <div className="text-[10px] sm:text-xs text-blue-700/40 font-mono flex-shrink-0">
                   {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               </div>
 
               {/* Event Grid */}
-              <div className={`flex-1 grid gap-4 mb-6 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
+              <div className={`flex-1 grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
                 {paginatedEvents.length > 0 ? (
                   paginatedEvents.map((event, index) => {
                     try {
@@ -1158,21 +1154,21 @@ export const EventsBook: React.FC = () => {
               </div>
 
               {/* Page Footer with Navigation */}
-              <div className="flex items-center justify-between pt-4 border-t border-blue-800/20">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-blue-800/20">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={goToPrevious}
                   disabled={currentPage === 1}
-                  className="text-blue-700/60 hover:text-blue-600 hover:bg-blue-500/10 disabled:opacity-30"
+                  className="text-blue-700/60 hover:text-blue-600 hover:bg-blue-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                   Previous
                 </Button>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-1 sm:gap-2 flex-wrap justify-center">
                   {/* Page indicators */}
-                  <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-blue-800/30">
+                  <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 bg-black/40 rounded-lg border border-blue-800/30 overflow-x-auto">
                     {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                       let pageNum: number;
                       if (totalPages <= 7) {
@@ -1189,7 +1185,7 @@ export const EventsBook: React.FC = () => {
                         <button
                           key={pageNum}
                           onClick={() => goToPage(pageNum)}
-                          className={`px-2 py-1 rounded text-sm transition ${
+                          className={`px-1.5 sm:px-2 py-1 rounded text-xs sm:text-sm transition touch-manipulation ${
                             currentPage === pageNum
                               ? 'bg-blue-600 text-white'
                               : 'text-blue-700/60 hover:text-blue-600 hover:bg-blue-500/10'
@@ -1200,6 +1196,9 @@ export const EventsBook: React.FC = () => {
                       );
                     })}
                   </div>
+                  <span className="text-xs sm:text-sm text-blue-700/50 whitespace-nowrap">
+                    {startIndex + 1}-{Math.min(endIndex, filteredEvents.length)} of {filteredEvents.length}
+                  </span>
                 </div>
 
                 <Button
@@ -1207,13 +1206,17 @@ export const EventsBook: React.FC = () => {
                   size="sm"
                   onClick={goToNext}
                   disabled={currentPage === totalPages}
-                  className="text-blue-700/60 hover:text-blue-600 hover:bg-blue-500/10 disabled:opacity-30"
+                  className="text-blue-700/60 hover:text-blue-600 hover:bg-blue-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
                   Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 ml-1" />
                 </Button>
               </div>
             </div>
+
+            {/* Book Binding Effect */}
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-900/40 via-blue-800/30 to-blue-900/40" />
+            <div className="absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-900/40 via-blue-800/30 to-blue-900/40" />
           </div>
         </>
       )}

@@ -42,12 +42,17 @@ export class LocationResolver {
 
         let match: ResolvedLocation | null = null;
 
-        // Find matching existing location
+        // Find matching existing location (fuzzy match)
         for (const ex of existing) {
           if (this.matcher.isDuplicate(loc, ex)) {
             match = ex;
             break;
           }
+        }
+
+        // If no fuzzy match, try context-based matching
+        if (!match) {
+          match = await this.findContextMatch(ctx.user.id, loc, existing);
         }
 
         if (match) {
@@ -83,6 +88,59 @@ export class LocationResolver {
     } catch (error) {
       logger.error({ error, userId: ctx.user?.id }, 'Failed to process locations');
       return [];
+    }
+  }
+
+  /**
+   * Find context-based match for a location
+   * Checks for same type + proximity target + temporal proximity
+   */
+  private async findContextMatch(
+    userId: string,
+    extracted: ExtractedLocation,
+    existing: ResolvedLocation[]
+  ): Promise<ResolvedLocation | null> {
+    try {
+      // Extract context from raw text if available
+      const rawText = extracted.raw || '';
+      
+      // Look for proximity indicators and character associations
+      const proximityPattern = /\b(by|near|at|in)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)'s\s+(house|home|place)\b/gi;
+      const proximityMatch = rawText.match(proximityPattern);
+      
+      if (!proximityMatch && !extracted.type) {
+        return null; // No context to match on
+      }
+
+      // Check existing locations for context matches
+      for (const ex of existing) {
+        // Same type
+        if (extracted.type && ex.type && extracted.type.toLowerCase() === ex.type.toLowerCase()) {
+          // Check if proximity targets match (if available)
+          if (ex.metadata && typeof ex.metadata === 'object') {
+            const exProximityTarget = (ex.metadata as any).proximity_target;
+            if (exProximityTarget && proximityMatch) {
+              const extractedTarget = proximityMatch[0].replace(/^(by|near|at|in)\s+/i, '').trim();
+              if (exProximityTarget.toLowerCase().includes(extractedTarget.toLowerCase()) ||
+                  extractedTarget.toLowerCase().includes(exProximityTarget.toLowerCase())) {
+                // Temporal proximity check - within 30 days
+                const exCreated = ex.created_at ? new Date(ex.created_at) : null;
+                if (exCreated) {
+                  const daysDiff = Math.abs((Date.now() - exCreated.getTime()) / (1000 * 60 * 60 * 24));
+                  if (daysDiff < 30) {
+                    return ex; // Context match within temporal window
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return null;
+    } catch (error) {
+      logger.warn({ error }, 'Context matching failed');
+      return null;
     }
   }
 }

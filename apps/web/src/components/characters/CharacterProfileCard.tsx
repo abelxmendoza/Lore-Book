@@ -236,186 +236,166 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
   
   return (
     <Card 
-      className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden aspect-square sm:aspect-auto ${
+      className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden h-full ${
         isUnmet ? 'opacity-75 border-dashed border-2' : ''
       }`}
       onClick={onClick}
     >
-      {/* Mobile: Instagram-style square card with large avatar */}
-      <div className="sm:hidden relative w-full h-full flex flex-col">
-        {/* Avatar takes up most of the space */}
-        <div className={`relative flex-1 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center ${
-          isUnmet ? 'opacity-60' : ''
-        }`}>
-          <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-          <div className="relative z-10">
-            <CharacterAvatar url={character.avatar_url} name={character.name} size={60} />
-          </div>
-          {/* Badges in corner */}
-          <div className="absolute top-1 right-1 z-10 flex flex-col gap-0.5 items-end">
-            {character.importance_level && (
-              <Badge 
-                variant="outline"
-                className={`${getImportanceColor(character.importance_level)} text-[7px] px-0.5 py-0`}
-              >
-                {getImportanceIcon(character.importance_level)}
-              </Badge>
-            )}
-            {!hasMet && (
-              <Badge 
-                variant="outline"
-                className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[7px] px-0.5 py-0"
-                title="Never met in person"
-              >
-                <UserX className="h-1.5 w-1.5" />
-              </Badge>
-            )}
-          </div>
-        </div>
-        {/* Name at bottom */}
-        <div className="px-1.5 py-1 bg-black/60 border-t border-border/30">
-          <h3 className="text-[10px] font-semibold text-white truncate text-center">
-            {displayName}
-          </h3>
-        </div>
-      </div>
-
-      {/* Desktop: Full card layout */}
-      <div className="hidden sm:block">
+      {/* Full card layout - same for mobile and desktop */}
+      <div>
         {/* Header with Avatar */}
-        <div className={`relative h-16 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center ${
+        <div className={`relative h-10 sm:h-14 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center ${
           isUnmet ? 'opacity-60' : ''
         }`}>
           <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
           <div className="relative z-10">
-            <CharacterAvatar url={character.avatar_url} name={character.name} size={40} />
+            <CharacterAvatar url={character.avatar_url} name={character.name} size={28} className="sm:w-9 sm:h-9" />
           </div>
-          <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 items-end">
+          <div className="absolute top-0.5 right-0.5 sm:top-1.5 sm:right-1.5 z-10 flex flex-col gap-0.5 items-end">
           {character.importance_level && (
             <Badge 
               variant="outline"
-              className={`${getImportanceColor(character.importance_level)} text-[8px] sm:text-[10px] px-1 py-0.5 sm:px-1.5 flex items-center gap-0.5 sm:gap-1`}
+              className={`${getImportanceColor(character.importance_level)} text-[7px] sm:text-[10px] px-0.5 py-0 sm:px-1 sm:py-0.5 flex items-center gap-0 sm:gap-1`}
+              title={`${getImportanceLabel(character.importance_level)}${character.importance_score !== null && character.importance_score !== undefined ? ` (${Math.round(character.importance_score)})` : ''}`}
             >
               {getImportanceIcon(character.importance_level)}
               <span className="hidden sm:inline">{getImportanceLabel(character.importance_level)}</span>
             </Badge>
           )}
-          {!hasMet && (
+          {/* Only show high importance analytics badge on mobile - too cluttered otherwise */}
+          {character.analytics && character.analytics.importance_score >= 70 && (
             <Badge 
               variant="outline"
-              className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[8px] sm:text-[10px] px-1 py-0.5 sm:px-1.5 flex items-center gap-0.5"
-              title="Never met in person"
+              className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[7px] sm:text-[10px] px-0.5 py-0 sm:px-1 sm:py-0.5 flex items-center gap-0 sm:gap-1"
+              title={`High Importance: ${character.analytics.importance_score}/100`}
             >
-              <UserX className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
-              <span className="hidden sm:inline">Unmet</span>
+              <Star className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+              <span className="hidden sm:inline">{character.analytics.importance_score}</span>
             </Badge>
           )}
-          {proximity !== 'direct' && (
-            <Badge 
-              variant="outline"
-              className={`${getProximityColor(proximity)} text-[8px] sm:text-[10px] px-1 py-0.5 sm:px-1.5 flex items-center gap-0.5`}
-              title={`Connection: ${getProximityLabel(proximity)}`}
-            >
-              {proximity === 'indirect' && <Link2 className="h-2 w-2 sm:h-2.5 sm:w-2.5" />}
-              {proximity === 'third_party' && <Eye className="h-2 w-2 sm:h-2.5 sm:w-2.5" />}
-              <span className="hidden sm:inline">{getProximityLabel(proximity)}</span>
-            </Badge>
-          )}
-          {character.status && character.status !== 'active' && (
-            <Badge 
-              variant="outline"
-              className={`${
-                character.status === 'inactive'
-                  ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                  : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-              } text-[8px] sm:text-[10px] px-1 py-0.5 sm:px-1.5`}
-            >
-              {character.status}
-            </Badge>
-          )}
-          {character.analytics && (
-            <>
-              {/* Importance Badge */}
+          {/* Hide other badges on mobile - too cluttered */}
+          <div className="hidden sm:flex flex-col gap-0.5 items-end">
+            {!hasMet && (
               <Badge 
                 variant="outline"
-                className={`${character.analytics.importance_score >= 70 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : character.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[8px] sm:text-[10px] px-1 py-0.5 sm:px-1.5 flex items-center gap-0.5 sm:gap-1`}
+                className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] px-1 py-0.5 flex items-center gap-0"
+                title="Never met in person"
+              >
+                <UserX className="h-2.5 w-2.5" />
+                <span>Unmet</span>
+              </Badge>
+            )}
+            {proximity !== 'direct' && (
+              <Badge 
+                variant="outline"
+                className={`${getProximityColor(proximity)} text-[10px] px-1 py-0.5 flex items-center gap-0`}
+                title={`Connection: ${getProximityLabel(proximity)}`}
+              >
+                {proximity === 'indirect' && <Link2 className="h-2.5 w-2.5" />}
+                {proximity === 'third_party' && <Eye className="h-2.5 w-2.5" />}
+                <span>{getProximityLabel(proximity)}</span>
+              </Badge>
+            )}
+            {character.status && character.status !== 'active' && (
+              <Badge 
+                variant="outline"
+                className={`${
+                  character.status === 'inactive'
+                    ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                    : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                } text-[10px] px-1 py-0.5`}
+              >
+                {character.status}
+              </Badge>
+            )}
+            {character.analytics && character.analytics.importance_score < 70 && (
+              <Badge 
+                variant="outline"
+                className={`${character.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[10px] px-1 py-0.5 flex items-center gap-1`}
                 title={`Importance: ${character.analytics.importance_score}/100`}
               >
-                {character.analytics.importance_score >= 70 ? <Star className="h-2 w-2 sm:h-2.5 sm:w-2.5" /> : character.analytics.importance_score >= 40 ? <Award className="h-2 w-2 sm:h-2.5 sm:w-2.5" /> : null}
+                {character.analytics.importance_score >= 40 ? <Award className="h-2.5 w-2.5" /> : null}
                 {character.analytics.importance_score}
               </Badge>
-              {/* Trend Indicator */}
-              {character.analytics.trend === 'deepening' && (
-                <TrendingUp className="h-3 w-3 text-green-400" title="Relationship deepening" />
-              )}
-              {character.analytics.trend === 'weakening' && (
-                <TrendingDown className="h-3 w-3 text-red-400" title="Relationship weakening" />
-              )}
-              {character.analytics.trend === 'stable' && (
-                <Minus className="h-3 w-3 text-gray-400" title="Stable relationship" />
-              )}
-            </>
-          )}
+            )}
+            {/* Trend Indicator */}
+            {character.analytics?.trend === 'deepening' && (
+              <TrendingUp className="h-3 w-3 text-green-400" title="Relationship deepening" />
+            )}
+            {character.analytics?.trend === 'weakening' && (
+              <TrendingDown className="h-3 w-3 text-red-400" title="Relationship weakening" />
+            )}
+            {character.analytics?.trend === 'stable' && (
+              <Minus className="h-3 w-3 text-gray-400" title="Stable relationship" />
+            )}
+          </div>
         </div>
       </div>
 
-      <CardHeader className="hidden sm:block pb-1.5 pt-2.5 px-4">
+      <CardHeader className="pb-1 pt-1.5 sm:pt-2 px-2 sm:px-4">
         <div className="flex items-start justify-between gap-1 sm:gap-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1 sm:gap-1.5">
-              <h3 className="text-sm sm:text-base font-semibold text-white truncate group-hover:text-primary transition-colors">
+            <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
+              <h3 className="text-[10px] sm:text-sm md:text-base font-semibold text-white break-words group-hover:text-primary transition-colors leading-tight">
                 {displayName}
               </h3>
               {character.is_nickname && (
                 <Badge 
                   variant="outline" 
-                  className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-[9px] px-1.5 py-0"
+                  className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-[8px] sm:text-[9px] px-1 sm:px-1.5 py-0"
                   title="Generated nickname"
                 >
-                  Nickname
+                  <span className="hidden sm:inline">Nickname</span>
+                  <span className="sm:hidden">N</span>
                 </Badge>
               )}
             </div>
+            {/* Show role prominently on mobile */}
+            {character.role && (
+              <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 break-words">
+                {character.role}
+              </p>
+            )}
             {character.first_name && character.last_name && character.name !== displayName && (
-              <p className="text-[10px] sm:text-xs text-white/40 mt-0.5 truncate">
+              <p className="text-[9px] sm:text-xs text-white/40 mt-0.5 truncate hidden sm:block">
                 Also known as: {character.name}
               </p>
             )}
             {character.alias && character.alias.length > 0 && (
-              <p className="text-[10px] sm:text-xs text-white/50 mt-0.5 truncate">
+              <p className="text-[9px] sm:text-xs text-white/50 mt-0.5 truncate hidden sm:block">
                 {character.alias.join(', ')}
               </p>
             )}
           </div>
-          <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0" />
+          <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0 mt-0.5" />
         </div>
       </CardHeader>
       
-      <CardContent className="hidden sm:block space-y-2 pt-0 px-4 pb-3">
+      <CardContent className="space-y-1 sm:space-y-2 pt-0 px-2 sm:px-4 pb-1.5 sm:pb-3">
         {character.summary && (
-          <p className="text-[10px] sm:text-xs text-white/70 line-clamp-2 leading-snug">{character.summary}</p>
+          <p className="text-[9px] sm:text-xs text-white/70 line-clamp-1 sm:line-clamp-2 leading-tight sm:leading-snug hidden sm:block">{character.summary}</p>
         )}
         
-        {/* Importance and Archetype Badges */}
-        <div className="flex flex-wrap gap-1 sm:gap-1.5">
+        {/* Importance and Archetype Badges - Hide on mobile, show on desktop */}
+        <div className="hidden sm:flex flex-wrap gap-0.5 sm:gap-1.5">
           {character.importance_level && (
             <Badge 
               variant="outline" 
-              className={`${getImportanceColor(character.importance_level)} text-[10px] sm:text-xs w-fit flex items-center gap-0.5 sm:gap-1`}
+              className={`${getImportanceColor(character.importance_level)} text-xs w-fit flex items-center gap-1`}
             >
               {getImportanceIcon(character.importance_level)}
               {getImportanceLabel(character.importance_level)}
               {character.importance_score !== null && character.importance_score !== undefined && (
-                <span className="text-[8px] sm:text-[10px] opacity-70">({Math.round(character.importance_score)})</span>
+                <span className="text-[10px] opacity-70">({Math.round(character.importance_score)})</span>
               )}
             </Badge>
           )}
           {character.archetype && (
             <Badge 
               variant="outline" 
-              className={`${getArchetypeColor(character.archetype)} text-[10px] sm:text-xs w-fit`}
+              className={`${getArchetypeColor(character.archetype)} text-xs w-fit`}
             >
-              <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />
+              <Sparkles className="h-3 w-3 mr-1" />
               {character.archetype}
             </Badge>
           )}
@@ -473,7 +453,7 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
         )}
         
         {/* Metadata Row */}
-        <div className="flex flex-wrap gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] text-white/50">
+        <div className="flex flex-wrap gap-1 sm:gap-2 text-[8px] sm:text-[10px] text-white/50 hidden sm:flex">
           {character.pronouns && (
             <div className="flex items-center gap-0.5 sm:gap-1">
               <Users className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
@@ -513,18 +493,19 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
         </div>
 
         {character.tags && character.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/30">
+          <div className="flex flex-wrap gap-0.5 sm:gap-1 pt-1 sm:pt-1.5 border-t border-border/30">
             {character.tags.slice(0, 3).map((tag) => (
               <Badge
                 key={tag}
                 variant="outline"
-                className="px-2 py-0.5 text-xs bg-primary/5 text-primary/80 border-primary/20 hover:bg-primary/10 transition-colors"
+                className="px-1 sm:px-2 py-0 sm:py-0.5 text-[8px] sm:text-xs bg-primary/5 text-primary/80 border-primary/20 hover:bg-primary/10 transition-colors"
+                title={tag}
               >
                 {tag}
               </Badge>
             ))}
             {character.tags.length > 3 && (
-              <Badge variant="outline" className="px-2 py-0.5 text-xs text-white/40 border-border/30">
+              <Badge variant="outline" className="px-1 sm:px-2 py-0 sm:py-0.5 text-[8px] sm:text-xs text-white/40 border-border/30" title={`${character.tags.length - 3} more tags`}>
                 +{character.tags.length - 3}
               </Badge>
             )}
@@ -532,7 +513,7 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
         )}
 
         {character.social_media && Object.keys(character.social_media).length > 0 && (
-          <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-border/30">
+          <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-border/30 hidden sm:flex">
             {character.social_media.instagram && (
               <a
                 href={`https://instagram.com/${character.social_media.instagram.replace('@', '')}`}

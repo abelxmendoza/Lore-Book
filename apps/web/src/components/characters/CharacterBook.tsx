@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, Star, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, Star, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag } from 'lucide-react';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
@@ -1666,6 +1666,7 @@ export const dummyCharacters: Character[] = [
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 
 type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professional' | 'creative' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
+type ImportanceFilter = 'all' | 'important' | 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
 
 type CharacterAttribute = {
   id: string;
@@ -1835,6 +1836,11 @@ export const CharacterBook = () => {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
+  const [importanceFilter, setImportanceFilter] = useState<ImportanceFilter>('all');
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+    minor: false,
+    background: false
+  });
   const [relationships, setRelationships] = useState<Map<string, RomanticRelationship>>(new Map());
   
   // Register mock data with service on mount
@@ -1949,6 +1955,18 @@ export const CharacterBook = () => {
     // Filter out places - only show actual characters (people)
     let filtered = characters.filter(char => char.archetype !== 'place');
     
+    // Filter by importance level
+    if (importanceFilter !== 'all') {
+      if (importanceFilter === 'important') {
+        filtered = filtered.filter(char => {
+          const level = char.importance_level || 'minor';
+          return ['protagonist', 'major', 'supporting'].includes(level);
+        });
+      } else {
+        filtered = filtered.filter(char => (char.importance_level || 'minor') === importanceFilter);
+      }
+    }
+    
     // Filter by category
     if (activeCategory !== 'all') {
       filtered = filtered.filter(char => {
@@ -1999,12 +2017,31 @@ export const CharacterBook = () => {
     }
     
     return filtered;
-  }, [characters, searchTerm, activeCategory]);
+  }, [characters, searchTerm, activeCategory, importanceFilter]);
 
-  // Reset to page 1 when search or category changes
+  // Group characters by importance level
+  const groupedByImportance = useMemo(() => {
+    const groups: Record<string, Character[]> = {};
+    filteredCharacters.forEach(char => {
+      const level = char.importance_level || 'minor';
+      if (!groups[level]) groups[level] = [];
+      groups[level].push(char);
+    });
+    return groups;
+  }, [filteredCharacters]);
+
+  const levelLabels: Record<string, string> = {
+    protagonist: 'Protagonist',
+    major: 'Major Characters',
+    supporting: 'Supporting Characters',
+    minor: 'Minor Characters',
+    background: 'Background Characters'
+  };
+
+  // Reset to page 1 when search, category, or importance filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, activeCategory]);
+  }, [searchTerm, activeCategory, importanceFilter]);
 
   // Calculate pagination - always use grid pagination (multiple characters per page)
   const totalPages = Math.ceil(filteredCharacters.length / ITEMS_PER_PAGE);
@@ -2073,9 +2110,27 @@ export const CharacterBook = () => {
           />
         </div>
         
+        {/* Importance Filter */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-white/60">Filter by Importance:</label>
+          <select
+            value={importanceFilter}
+            onChange={(e) => setImportanceFilter(e.target.value as ImportanceFilter)}
+            className="bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"
+          >
+            <option value="all">All Characters</option>
+            <option value="important">Important Only</option>
+            <option value="protagonist">Protagonist</option>
+            <option value="major">Major</option>
+            <option value="supporting">Supporting</option>
+            <option value="minor">Minor</option>
+            <option value="background">Background</option>
+          </select>
+        </div>
+
         {/* Navigation Tabs */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as CharacterCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto overflow-x-auto flex-nowrap">
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1">
             <TabsTrigger 
               value="all" 
               className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
@@ -2162,8 +2217,10 @@ export const CharacterBook = () => {
           <div>
             <h2 className="text-lg sm:text-xl font-semibold text-white">Character Book</h2>
             <p className="text-xs sm:text-sm text-white/60 mt-1">
-              {characters.length} characters · {filteredCharacters.length} shown
-              {totalPages > 1 && ` · Page ${currentPage}/${totalPages}`}
+              {characters.length} total characters · {filteredCharacters.length} shown
+              {Object.entries(groupedByImportance).map(([level, chars]) => (
+                <span key={level}> · {levelLabels[level] || level}: {chars.length}</span>
+              ))}
               {loading && ' · Loading...'}
             </p>
           </div>
@@ -2180,7 +2237,7 @@ export const CharacterBook = () => {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <CharacterCardSkeleton key={i} />
           ))}
@@ -2218,23 +2275,59 @@ export const CharacterBook = () => {
               {/* Main Character Section */}
               <MainCharacterSection user={user} />
 
-              {/* Character Grid */}
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {paginatedCharacters.map((character, index) => {
-                  try {
+              {/* Character Grid - Grouped by Importance */}
+              <div className="flex-1 space-y-4 mb-4 sm:mb-6">
+                {Object.entries(groupedByImportance)
+                  .sort(([a], [b]) => {
+                    const order: Record<string, number> = {
+                      protagonist: 0,
+                      major: 1,
+                      supporting: 2,
+                      minor: 3,
+                      background: 4
+                    };
+                    return (order[a] ?? 5) - (order[b] ?? 5);
+                  })
+                  .map(([level, chars]) => {
+                    const isCollapsed = collapsedSections[level] ?? (['minor', 'background'].includes(level));
+                    
+                    // Skip empty groups
+                    if (chars.length === 0) return null;
+                    
                     return (
-                      <CharacterProfileCard
-                        key={character.id || `char-${index}`}
-                        character={character}
-                        onClick={() => {
-                          setSelectedCharacter(character);
-                        }}
-                      />
+                      <div key={level} className="space-y-2">
+                        <button
+                          onClick={() => setCollapsedSections(prev => ({ ...prev, [level]: !prev[level] }))}
+                          className="flex items-center gap-2 text-sm font-semibold text-amber-900/60 hover:text-amber-800/80 transition-colors"
+                        >
+                          <ChevronDown 
+                            className={`h-4 w-4 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
+                          />
+                          <span>{levelLabels[level] || level.charAt(0).toUpperCase() + level.slice(1)}</span>
+                          <span className="text-xs text-amber-700/50">({chars.length})</span>
+                        </button>
+                        {!isCollapsed && (
+                          <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            {chars.map((character, index) => {
+                              try {
+                                return (
+                                  <CharacterProfileCard
+                                    key={character.id || `char-${index}`}
+                                    character={character}
+                                    onClick={() => {
+                                      setSelectedCharacter(character);
+                                    }}
+                                  />
+                                );
+                              } catch {
+                                return null;
+                              }
+                            })}
+                          </div>
+                        )}
+                      </div>
                     );
-                  } catch {
-                    return null;
-                  }
-                })}
+                  })}
               </div>
 
               {/* Page Footer with Navigation */}

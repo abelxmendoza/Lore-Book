@@ -4,6 +4,14 @@ import type { MemoryEntry } from '../../types';
 import { embeddingService } from '../embeddingService';
 import { entityConfidenceService } from '../entityConfidenceService';
 import { supabaseAdmin } from '../supabaseClient';
+import { bm25Search } from '../rag/bm25Search';
+import { contextCompressor } from '../rag/contextCompressor';
+import { entityRelationshipBoosting } from '../rag/entityRelationshipBoosting';
+import { intentRouter } from '../rag/intentRouter';
+import { multiVectorRetrieval } from '../rag/multiVectorRetrieval';
+import { queryRewriter } from '../rag/queryRewriter';
+import { reranker } from '../rag/reranker';
+import { temporalWeighting } from '../rag/temporalWeighting';
 
 import type { MemoryContext } from './chatTypes';
 
@@ -14,41 +22,26 @@ import type { MemoryContext } from './chatTypes';
  */
 export class MemoryRetriever {
   /**
-   * Retrieve memory context for a user
+   * Retrieve memory context for a user (ENHANCED with RAG optimizations)
    * @param userId - User ID
    * @param max - Maximum number of entries to retrieve
    * @param query - Optional query for semantic search
+   * @param conversationHistory - Optional conversation history for context
    */
-  async retrieve(userId: string, max = 20, query?: string): Promise<MemoryContext> {
+  async retrieve(
+    userId: string,
+    max = 20,
+    query?: string,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+  ): Promise<MemoryContext> {
     try {
-      logger.debug({ userId, max, hasQuery: !!query }, 'Retrieving memory context');
+      logger.debug({ userId, max, hasQuery: !!query }, 'Retrieving memory context (enhanced RAG)');
 
       let entries: MemoryEntry[] = [];
 
-      // STEP 1: Use semantic search if query provided, otherwise get recent entries
+      // STEP 1: Enhanced retrieval with RAG optimizations
       if (query && query.trim().length > 0) {
-        // Get semantically relevant entries
-        const relevantEntries = await this.searchRelevantEntries(userId, query, Math.floor(max * 0.6));
-        
-        // Also get some recent entries for context
-        const { data: recentEntries } = await supabaseAdmin
-          .from('journal_entries')
-          .select('*')
-          .eq('user_id', userId)
-          .order('timestamp', { ascending: false })
-          .limit(Math.floor(max * 0.4));
-
-        // Combine and deduplicate by ID
-        const entryMap = new Map<string, MemoryEntry>();
-        relevantEntries.forEach((e) => {
-          if (e.id) entryMap.set(e.id, e);
-        });
-        (recentEntries || []).forEach((e: MemoryEntry) => {
-          if (e.id && !entryMap.has(e.id)) entryMap.set(e.id, e);
-        });
-
-        entries = Array.from(entryMap.values());
-        logger.debug({ userId, relevantCount: relevantEntries.length, totalCount: entries.length }, 'Retrieved entries via semantic search');
+        entries = await this.enhancedRetrieve(userId, query, max, conversationHistory);
       } else {
         // Fallback to recent entries
         const { data: entriesData, error: entriesError } = await supabaseAdmin
@@ -161,6 +154,123 @@ export class MemoryRetriever {
         values: {},
         vibes: {},
       };
+    }
+  }
+
+  /**
+   * Enhanced retrieval with all RAG optimizations
+   */
+  private async enhancedRetrieve(
+    userId: string,
+    query: string,
+    limit: number,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<MemoryEntry[]> {
+    try {
+      // Step 1: Rewrite and expand query
+      const rewritten = await queryRewriter.rewriteQuery(query, conversationHistory);
+      
+      // Step 2: Route to optimal strategy
+      const strategy = await intentRouter.routeQuery(query, conversationHistory);
+      
+      // Step 3: Perform hybrid search
+      const [semanticResults, keywordResults, entityResults] = await Promise.all([
+        // Semantic search
+        this.searchRelevantEntries(userId, rewritten.original, Math.floor(limit * strategy.weights!.semantic * 2)),
+        // BM25 keyword search
+        bm25Search.search(userId, rewritten.original, Math.floor(limit * strategy.weights!.keyword * 2)),
+        // Entity search (if entities found)
+        rewritten.entities.length > 0
+          ? entityRelationshipBoosting.boostByEntities(
+              await this.searchRelevantEntries(userId, rewritten.entities.join(' '), limit),
+              rewritten.entities,
+              userId
+            )
+          : Promise.resolve([])
+      ]);
+
+      // Step 4: Combine results using Reciprocal Rank Fusion
+      const combined = reranker.reciprocalRankFusion([
+        semanticResults.map((e, i) => ({ id: e.id || '', score: 1 - (i / semanticResults.length) })),
+        keywordResults.map((e, i) => ({ id: e.id, score: 1 - (i / keywordResults.length) })),
+        entityResults.map((e, i) => ({ id: e.id || '', score: (e as any).entityBoost || 1 - (i / entityResults.length) }))
+      ]);
+
+      // Step 5: Get full entries for top results
+      const topIds = combined.slice(0, limit * 2).map(r => r.id);
+      const { data: topEntries } = await supabaseAdmin
+        .from('journal_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .in('id', topIds);
+
+      let entries = (topEntries || []) as MemoryEntry[];
+
+      // Step 6: Apply temporal weighting
+      const temporalType = temporalWeighting.detectTemporalType(query);
+      entries = entries.map(entry => {
+        const weight = temporalWeighting.calculateWeight(entry, {
+          queryType: temporalType,
+          decayFunction: 'exponential',
+          halfLife: temporalType === 'recent' ? 30 : 90
+        });
+        return {
+          ...entry,
+          _temporalWeight: weight
+        };
+      });
+
+      // Step 7: Apply entity boosting
+      const entityBoosted = await entityRelationshipBoosting.boostByEntities(
+        entries,
+        rewritten.entities,
+        userId
+      );
+
+      // Step 8: Rerank if enabled
+      let finalEntries = entityBoosted;
+      if (strategy.useReranking) {
+        const reranked = await reranker.rerank(query, entityBoosted, limit);
+        finalEntries = reranked;
+      }
+
+      // Step 9: Apply final scoring and sort
+      finalEntries = finalEntries
+        .map(entry => {
+          const semanticScore = (entry as any).similarity || 0.5;
+          const temporalWeight = (entry as any)._temporalWeight || 1.0;
+          const entityBoost = (entry as any).entityBoost || 1.0;
+          const rerankScore = (entry as any).rerankScore || 0.5;
+
+          const finalScore = 
+            semanticScore * strategy.weights!.semantic +
+            temporalWeight * strategy.weights!.temporal +
+            entityBoost * strategy.weights!.entity +
+            rerankScore * 0.3;
+
+          return {
+            ...entry,
+            _finalScore: finalScore
+          };
+        })
+        .sort((a, b) => (b as any)._finalScore - (a as any)._finalScore)
+        .slice(0, limit);
+
+      logger.debug(
+        {
+          userId,
+          query,
+          strategy: strategy.method,
+          retrieved: finalEntries.length,
+          intent: rewritten.intent
+        },
+        'Enhanced retrieval completed'
+      );
+
+      return finalEntries;
+    } catch (error) {
+      logger.error({ error, query }, 'Enhanced retrieval failed, falling back to basic search');
+      return this.searchRelevantEntries(userId, query, limit);
     }
   }
 

@@ -164,12 +164,18 @@ If no unnamed characters are found, return {"unnamedCharacters": []}.`
           continue;
         }
 
-        // Generate a unique nickname
+        // Generate a unique nickname with conversation context
+        const conversationContext = conversationHistory
+          .map(m => `${m.role}: ${m.content}`)
+          .join('\n');
+        
         const nickname = await this.generateUniqueNickname(
           userId,
           unnamedChar,
           existingNames,
-          existingAliases
+          existingAliases,
+          conversationContext,
+          message
         );
 
         if (nickname) {
@@ -208,45 +214,60 @@ If no unnamed characters are found, return {"unnamedCharacters": []}.`
     userId: string,
     character: UnnamedCharacter,
     existingNames: Set<string>,
-    existingAliases: Set<string>
+    existingAliases: Set<string>,
+    conversationContext?: string,
+    currentMessage?: string
   ): Promise<string | null> {
     try {
-      // Use AI to generate creative, unique nicknames
+      // Get existing characters to understand relationships
+      const { data: existingCharacters } = await supabaseAdmin
+        .from('characters')
+        .select('id, name, role, summary')
+        .eq('user_id', userId);
+
+      // Build context about related characters
+      const relatedCharsContext = character.associatedWith && character.associatedWith.length > 0
+        ? `Related characters mentioned: ${character.associatedWith.join(', ')}`
+        : '';
+
+      // Use AI to generate contextual nickname
       const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0.8,
         messages: [
           {
             role: 'system',
-            content: `Generate a unique, creative nickname for a character based on their description and role.
+            content: `Generate a unique, contextual nickname for an unnamed character based on their description, role, and relationships.
 
 Guidelines:
-- Make it memorable and fitting to their description
-- Use 1-3 words
-- Be creative but not too abstract
-- Consider their role/relationship (e.g., "The Mentor", "Coffee Shop Friend", "Gym Buddy")
-- Use descriptive words that capture their essence
-- Avoid generic names like "Friend" or "Person"
-- Make it feel personal and specific
+- Include relationship context when available (e.g., "Josh's Startup Cofounder", "Recruiter that sent you to Josh")
+- Use descriptive phrases that capture their connection to other characters or situations
+- Make it specific and memorable (3-6 words is ideal)
+- Include the character they're associated with in the nickname when relevant
+- Use action/relationship words (e.g., "that sent", "who works with", "from", "at")
+- Avoid generic names like "The Recruiter" or "The Co-Founder" - be more specific
 
 Examples:
-- "The Wise One" (for a mentor)
-- "Sunset Runner" (for someone met at sunset)
-- "Code Whisperer" (for a tech colleague)
-- "Midnight Philosopher" (for a late-night conversation partner)
-- "The Listener" (for a supportive friend)
+- "Josh's Startup Cofounder" (for a co-founder mentioned by Josh)
+- "Recruiter that sent you to Josh" (for a recruiter who connected you to Josh)
+- "Sarah's Friend from College" (for someone mentioned by Sarah)
+- "The Mentor at Tech Startup" (for a mentor at a specific company)
+- "Coffee Shop Owner I Met Yesterday" (for someone met at a specific place/time)
 
 Return only the nickname, no quotes or explanation.`
           },
           {
             role: 'user',
-            content: `Generate a nickname for:
+            content: `Generate a contextual nickname for:
 Role: ${character.role || 'unknown'}
 Relationship: ${character.relationship || 'unknown'}
 Description: ${character.description || 'no description'}
 Context: ${character.context}
+${relatedCharsContext}
+${conversationContext ? `Full conversation context: ${conversationContext}` : ''}
+${currentMessage ? `Current message: ${currentMessage}` : ''}
 
-Generate a unique nickname:`
+Generate a unique, contextual nickname that includes relationship information:`
           }
         ]
       });
@@ -257,8 +278,8 @@ Generate a unique nickname:`
       nickname = nickname.replace(/^["']|["']$/g, '').trim();
 
       if (!nickname || nickname.length < 2) {
-        // Fallback to role-based nickname
-        nickname = this.generateFallbackNickname(character);
+        // Fallback to contextual nickname
+        nickname = this.generateContextualFallbackNickname(character);
       }
 
       // Ensure uniqueness
@@ -277,19 +298,43 @@ Generate a unique nickname:`
       return uniqueNickname;
     } catch (error) {
       logger.warn({ error, character }, 'Failed to generate nickname, using fallback');
-      return this.generateFallbackNickname(character);
+      return this.generateContextualFallbackNickname(character);
     }
   }
 
   /**
-   * Generate fallback nickname based on role/description
+   * Generate contextual fallback nickname based on role/description and relationships
    */
-  private generateFallbackNickname(character: UnnamedCharacter): string {
+  private generateContextualFallbackNickname(character: UnnamedCharacter): string {
     const role = character.role?.toLowerCase() || '';
     const description = (character.description || '').toLowerCase();
+    const associatedWith = character.associatedWith || [];
     
-    // Role-based nicknames
+    // If associated with characters, include them in nickname
+    if (associatedWith.length > 0) {
+      const primaryAssoc = associatedWith[0];
+      
+      if (role === 'co-founder' || role === 'cofounder') {
+        return `${primaryAssoc}'s Startup Cofounder`;
+      }
+      if (role === 'recruiter') {
+        return `Recruiter that sent you to ${primaryAssoc}`;
+      }
+      if (role === 'friend') {
+        return `${primaryAssoc}'s Friend`;
+      }
+      if (role === 'colleague') {
+        return `${primaryAssoc}'s Colleague`;
+      }
+      
+      return `${primaryAssoc}'s ${role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Contact'}`;
+    }
+    
+    // Role-based nicknames without associations
     const roleNicknames: Record<string, string> = {
+      'recruiter': 'The Recruiter',
+      'co-founder': 'The Cofounder',
+      'cofounder': 'The Cofounder',
       'friend': 'The Friend',
       'colleague': 'The Colleague',
       'mentor': 'The Mentor',
@@ -302,14 +347,11 @@ Generate a unique nickname:`
     }
 
     // Description-based
-    if (description.includes('wise') || description.includes('smart')) {
-      return 'The Wise One';
+    if (description.includes('startup') || description.includes('company')) {
+      return 'The Startup Contact';
     }
-    if (description.includes('creative') || description.includes('artist')) {
-      return 'The Creative';
-    }
-    if (description.includes('supportive') || description.includes('kind')) {
-      return 'The Supporter';
+    if (description.includes('recruiter') || description.includes('hiring')) {
+      return 'The Recruiter';
     }
 
     // Default

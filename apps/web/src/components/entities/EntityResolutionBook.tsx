@@ -21,7 +21,7 @@ import { EntityDetailModal } from './EntityDetailModal';
 import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { format, subDays } from 'date-fns';
 
-const ITEMS_PER_PAGE = 24;
+const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 const ITEMS_PER_PAGE_OPTIONS = [12, 24, 48, 96];
 
 type SortOption = 'usage_desc' | 'usage_asc' | 'name_asc' | 'name_desc' | 'confidence_desc' | 'confidence_asc' | 'recent';
@@ -396,8 +396,8 @@ export const EntityResolutionBook: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Entity Search Bar and Navigation Tabs */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-4">
+      <div className="space-y-3 sm:space-y-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
             <Input
@@ -407,16 +407,16 @@ export const EntityResolutionBook: React.FC = () => {
               onChange={(e) => {
                 setSearchTerm(e.target.value);
               }}
-              className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40"
+              className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40 text-sm sm:text-base"
             />
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* Sort */}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="h-9 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="h-9 px-2 sm:px-3 bg-black/40 border border-border/50 rounded-lg text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 flex-shrink-0"
             >
               <option value="usage_desc">Most Used</option>
               <option value="usage_asc">Least Used</option>
@@ -432,25 +432,26 @@ export const EntityResolutionBook: React.FC = () => {
               variant="outline"
               size="sm"
               onClick={() => setShowFilters(!showFilters)}
-              className={`relative ${activeFilterCount > 0 ? 'border-primary/50 bg-primary/10' : ''}`}
+              className={`relative text-xs sm:text-sm ${activeFilterCount > 0 ? 'border-primary/50 bg-primary/10' : ''}`}
             >
-              <SlidersHorizontal className="h-4 w-4 mr-2" />
-              Filters
+              <SlidersHorizontal className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Filters</span>
+              <span className="sm:hidden">Filter</span>
               {activeFilterCount > 0 && (
-                <span className="ml-2 px-1.5 py-0.5 bg-primary text-white text-xs rounded-full">
+                <span className="ml-1 sm:ml-2 px-1 sm:px-1.5 py-0.5 bg-primary text-white text-[10px] sm:text-xs rounded-full">
                   {activeFilterCount}
                 </span>
               )}
             </Button>
 
-            {/* Items Per Page */}
+            {/* Items Per Page - Hidden on mobile */}
             <select
               value={itemsPerPage}
               onChange={(e) => {
                 setItemsPerPage(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              className="h-9 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="hidden sm:block h-9 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             >
               {ITEMS_PER_PAGE_OPTIONS.map(opt => (
                 <option key={opt} value={opt}>{opt} per page</option>
@@ -465,7 +466,7 @@ export const EntityResolutionBook: React.FC = () => {
                 onClick={() => setViewMode('grid')}
                 className={`h-7 px-2 ${viewMode === 'grid' ? 'bg-primary/20 text-primary' : 'text-white/60'}`}
               >
-                <Grid3x3 className="h-4 w-4" />
+                <Grid3x3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
               <Button
                 variant="ghost"
@@ -473,16 +474,17 @@ export const EntityResolutionBook: React.FC = () => {
                 onClick={() => setViewMode('list')}
                 className={`h-7 px-2 ${viewMode === 'list' ? 'bg-primary/20 text-primary' : 'text-white/60'}`}
               >
-                <List className="h-4 w-4" />
+                <List className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
             </div>
 
             <Button
               variant="outline"
               size="sm"
-              leftIcon={<RefreshCw className="h-4 w-4" />} 
+              leftIcon={<RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />} 
               onClick={() => void loadData()}
               disabled={loading}
+              className="text-xs sm:text-sm"
             >
               {loading ? 'Loading...' : 'Refresh'}
             </Button>
@@ -491,50 +493,52 @@ export const EntityResolutionBook: React.FC = () => {
         
         {/* Navigation Tabs */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as EntityCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto">
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1">
             <TabsTrigger 
               value="all" 
-              className="flex items-center gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
             >
-              <Hash className="h-4 w-4" />
+              <Hash className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>All</span>
             </TabsTrigger>
             <TabsTrigger 
               value="people"
-              className="flex items-center gap-2 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <User className="h-4 w-4" />
+              <User className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>People</span>
             </TabsTrigger>
             <TabsTrigger 
               value="locations"
-              className="flex items-center gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <MapPin className="h-4 w-4" />
+              <MapPin className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Locations</span>
             </TabsTrigger>
             <TabsTrigger 
               value="organizations"
-              className="flex items-center gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <Building2 className="h-4 w-4" />
-              <span>Organizations</span>
+              <Building2 className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Organizations</span>
+              <span className="sm:hidden">Orgs</span>
             </TabsTrigger>
             <TabsTrigger 
               value="concepts"
-              className="flex items-center gap-2 data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-yellow-500/20 data-[state=active]:text-yellow-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <Lightbulb className="h-4 w-4" />
+              <Lightbulb className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Concepts</span>
             </TabsTrigger>
             <TabsTrigger 
               value="conflicts"
-              className="flex items-center gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400 text-xs sm:text-sm flex-shrink-0"
             >
-              <AlertTriangle className="h-4 w-4" />
-              <span>Possible Duplicates</span>
+              <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Possible Duplicates</span>
+              <span className="sm:hidden">Duplicates</span>
               {conflictCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 bg-orange-500/30 rounded text-xs">
+                <span className="ml-1 px-1 sm:px-1.5 py-0.5 bg-orange-500/30 rounded text-[10px] sm:text-xs">
                   {conflictCount}
                 </span>
               )}
@@ -764,10 +768,10 @@ export const EntityResolutionBook: React.FC = () => {
           </Card>
         )}
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
           <div>
-            <h2 className="text-xl font-semibold text-white">Entity Resolution Book</h2>
-            <p className="text-sm text-white/60 mt-1">
+            <h2 className="text-lg sm:text-xl font-semibold text-white">Entity Resolution Book</h2>
+            <p className="text-xs sm:text-sm text-white/60 mt-1">
               Showing {startIndex + 1}-{Math.min(endIndex, filteredEntities.length)} of {filteredEntities.length} entities
               {filteredEntities.length !== entities.length && (
                 <span className="ml-2 text-primary">({entities.length} total)</span>
@@ -775,58 +779,56 @@ export const EntityResolutionBook: React.FC = () => {
               {entitiesWithConflicts > 0 && ` · ${entitiesWithConflicts} with conflicts`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={showAdvanced ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              leftIcon={<Settings className="h-4 w-4" />}
-              className={showAdvanced ? 'bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border-orange-500/30' : ''}
-            >
-              {showAdvanced ? 'Advanced Mode' : 'Show All'}
-            </Button>
-          </div>
+          <Button
+            variant={showAdvanced ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            leftIcon={<Settings className="h-3 w-3 sm:h-4 sm:w-4" />}
+            className={`w-full sm:w-auto text-xs sm:text-sm ${showAdvanced ? 'bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border-orange-500/30' : ''}`}
+          >
+            {showAdvanced ? 'Advanced Mode' : 'Show All'}
+          </Button>
         </div>
       </div>
 
       {loading ? (
-        <div className={`grid gap-4 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
+        <div className={`grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
           {Array.from({ length: itemsPerPage }).map((_, i) => (
             <Card key={i} className="bg-black/40 border-border/50 h-64 animate-pulse" />
           ))}
         </div>
       ) : filteredEntities.length === 0 ? (
-        <div className="text-center py-12 text-white/60">
-          <Sparkles className="h-12 w-12 mx-auto mb-4 text-white/20" />
-          <p className="text-lg font-medium mb-2">No entities found</p>
-          <p className="text-sm">Try a different search term or category</p>
+        <div className="text-center py-8 sm:py-12 text-white/60 px-4">
+          <Sparkles className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 text-white/20" />
+          <p className="text-base sm:text-lg font-medium mb-2">No entities found</p>
+          <p className="text-xs sm:text-sm">Try a different search term or category</p>
         </div>
       ) : (
         <>
           {/* Book Page Container with Grid Inside */}
-          <div className="relative w-full min-h-[600px] bg-gradient-to-br from-indigo-50/5 via-purple-100/5 to-pink-50/5 rounded-lg border-2 border-indigo-800/30 shadow-2xl overflow-hidden">
+          <div className="relative w-full min-h-[400px] sm:min-h-[500px] lg:min-h-[600px] bg-gradient-to-br from-indigo-50/5 via-purple-100/5 to-pink-50/5 rounded-lg border-2 border-indigo-800/30 shadow-2xl overflow-hidden">
             {/* Page Content */}
-            <div className="p-8 flex flex-col">
+            <div className="p-4 sm:p-6 lg:p-8 flex flex-col">
               {/* Page Header */}
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-indigo-800/20">
-                <div className="flex items-center gap-3">
-                  <BookOpen className="h-6 w-6 text-indigo-600/60" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-indigo-900/40 uppercase tracking-wider">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-indigo-800/20">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-600/60 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-semibold text-indigo-900/40 uppercase tracking-wider">
                       Entity Resolution Book
                     </h3>
-                    <p className="text-xs text-indigo-700/50 mt-0.5">
-                      Page {currentPage} of {totalPages}
+                    <p className="text-[10px] sm:text-xs text-indigo-700/50 mt-0.5">
+                      Page {currentPage}/{totalPages} · {filteredEntities.length} entities
                     </p>
                   </div>
                 </div>
-                <div className="text-xs text-indigo-700/40 font-mono">
+                <div className="text-[10px] sm:text-xs text-indigo-700/40 font-mono flex-shrink-0">
                   {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               </div>
 
               {/* Entity Grid/List */}
-              <div className={`flex-1 grid gap-4 mb-6 ${
+              <div className={`flex-1 grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 ${
                 viewMode === 'grid' 
                   ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' 
                   : 'grid-cols-1'
@@ -849,21 +851,21 @@ export const EntityResolutionBook: React.FC = () => {
               </div>
 
               {/* Page Footer with Navigation */}
-              <div className="flex items-center justify-between pt-4 border-t border-indigo-800/20">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-indigo-800/20">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={goToPrevious}
                   disabled={currentPage === 1}
-                  className="text-indigo-700/60 hover:text-indigo-600 hover:bg-indigo-500/10 disabled:opacity-30"
+                  className="text-indigo-700/60 hover:text-indigo-600 hover:bg-indigo-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                   Previous
                 </Button>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-1 sm:gap-2 flex-wrap justify-center">
                   {/* Page indicators */}
-                  <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-indigo-800/30">
+                  <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 bg-black/40 rounded-lg border border-indigo-800/30 overflow-x-auto">
                     {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                       let pageNum: number;
                       if (totalPages <= 7) {
@@ -880,7 +882,7 @@ export const EntityResolutionBook: React.FC = () => {
                         <button
                           key={pageNum}
                           onClick={() => goToPage(pageNum)}
-                          className={`px-2 py-1 rounded text-sm transition ${
+                          className={`px-1.5 sm:px-2 py-1 rounded text-xs sm:text-sm transition touch-manipulation ${
                             currentPage === pageNum
                               ? 'bg-indigo-600 text-white'
                               : 'text-indigo-700/60 hover:text-indigo-600 hover:bg-indigo-500/10'
@@ -891,7 +893,7 @@ export const EntityResolutionBook: React.FC = () => {
                       );
                     })}
                   </div>
-                  <span className="text-sm text-indigo-700/50">
+                  <span className="text-xs sm:text-sm text-indigo-700/50 whitespace-nowrap">
                     {startIndex + 1}-{Math.min(endIndex, filteredEntities.length)} of {filteredEntities.length}
                   </span>
                 </div>
@@ -901,10 +903,10 @@ export const EntityResolutionBook: React.FC = () => {
                   size="sm"
                   onClick={goToNext}
                   disabled={currentPage === totalPages}
-                  className="text-indigo-700/60 hover:text-indigo-600 hover:bg-indigo-500/10 disabled:opacity-30"
+                  className="text-indigo-700/60 hover:text-indigo-600 hover:bg-indigo-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
                   Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 ml-1" />
                 </Button>
               </div>
             </div>

@@ -1,7 +1,12 @@
+import OpenAI from 'openai';
+
+import { config } from '../../config';
 import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
 
 import type { ExtractedLocation } from './types';
+
+const openai = new OpenAI({ apiKey: config.openAiKey });
 
 /**
  * Extracts locations from journal entries
@@ -139,6 +144,64 @@ export class LocationExtractor {
     }
 
     return 'unknown';
+  }
+
+  /**
+   * Detect unnamed locations using LLM
+   */
+  async detectUnnamedLocations(
+    text: string,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+  ): Promise<Array<{
+    type: string;
+    description: string;
+    context: string;
+    associatedWith?: string[];
+    eventContext?: string;
+    proximity?: string;
+    proximityTarget?: string;
+  }>> {
+    try {
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel,
+        temperature: 0.7,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `Detect unnamed locations in text. Look for:
+- "this [place]", "that [place]", "the [place]" without specific names
+- Generic place types (park, restaurant, shop, cafe, etc.)
+- Locations described by proximity or events
+
+Return JSON:
+{
+  "unnamedLocations": [
+    {
+      "type": "park|restaurant|shop|cafe|etc",
+      "description": "brief description",
+      "context": "the specific mention",
+      "associatedWith": ["character or location names"],
+      "eventContext": "event that happened there (if mentioned)",
+      "proximity": "by|near|at|in",
+      "proximityTarget": "what it's near/by"
+    }
+  ]
+}`
+          },
+          {
+            role: 'user',
+            content: `Text: ${text}\n\nDetect unnamed locations:`
+          }
+        ]
+      });
+
+      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+      return response.unnamedLocations || [];
+    } catch (error) {
+      logger.warn({ error }, 'Failed to detect unnamed locations');
+      return [];
+    }
   }
 }
 

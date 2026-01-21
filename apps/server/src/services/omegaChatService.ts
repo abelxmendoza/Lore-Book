@@ -318,13 +318,13 @@ class OmegaChatService {
       logger.warn({ error }, 'Failed to get HQI results, using empty');
     }
 
-    // Get related entries for Memory Fabric with error handling
+    // Get related entries for Memory Fabric with error handling (using enhanced retrieval)
     let relatedEntries: ResolvedMemoryEntry[] = [];
     try {
-      relatedEntries = await memoryService.searchEntriesWithCorrections(userId, {
-        search: message,
-        limit: 20
-      });
+      // Use enhanced retrieval from memoryRetriever
+      const { memoryRetriever } = await import('./chat/memoryRetriever');
+      const memoryContext = await memoryRetriever.retrieve(userId, 20, message, []);
+      relatedEntries = memoryContext.entries as ResolvedMemoryEntry[];
     } catch (error) {
       logger.warn({ error }, 'Failed to get related entries, using empty');
     }
@@ -1791,6 +1791,25 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       })
       .catch(err => {
         logger.debug({ err }, 'Failed to extract nicknames from conversation');
+      });
+
+    // Detect unnamed locations and generate nicknames (fire and forget)
+    const { locationNicknameService } = await import('./locationNicknameService');
+    locationNicknameService.detectAndGenerateNicknames(userId, message, conversationHistory)
+      .then(async (locations) => {
+        for (const loc of locations) {
+          try {
+            const created = await locationNicknameService.createLocationWithNickname(userId, loc);
+            if (created) {
+              logger.info({ userId, locationId: created.id, nickname: created.name }, 'Created location with auto-generated nickname');
+            }
+          } catch (error) {
+            logger.debug({ error, location: loc }, 'Failed to create location with nickname');
+          }
+        }
+      })
+      .catch(err => {
+        logger.debug({ err }, 'Failed to extract location nicknames from conversation');
       });
 
     // Detect memory suggestion (proactive memory capture)

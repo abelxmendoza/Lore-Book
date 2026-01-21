@@ -24,6 +24,9 @@ export interface ResolvedLocation {
   user_id?: string;
   created_at?: string;
   updated_at?: string;
+  metadata?: Record<string, any>;
+  proximity_target?: string;
+  associated_character_ids?: string[];
 }
 
 export interface LocationMention {

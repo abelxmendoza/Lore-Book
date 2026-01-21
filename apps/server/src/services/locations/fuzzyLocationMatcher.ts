@@ -40,8 +40,24 @@ export class FuzzyLocationMatcher {
       // Type match bonus
       const typeMatch = extracted.type === existing.type ? 0.1 : 0;
 
+      // Context match bonus (proximity target, character associations)
+      let contextMatch = 0;
+      if (existing.metadata && typeof existing.metadata === 'object') {
+        const exProximityTarget = (existing.metadata as any).proximity_target || existing.proximity_target;
+        const exAssociatedChars = (existing.metadata as any).associated_character_ids || existing.associated_character_ids || [];
+        
+        // Check if raw text mentions same proximity target
+        if (exProximityTarget && extracted.raw) {
+          const rawLower = extracted.raw.toLowerCase();
+          const targetLower = exProximityTarget.toLowerCase();
+          if (rawLower.includes(targetLower) || targetLower.includes(rawLower.split(' ')[0])) {
+            contextMatch = 0.15; // Strong context match
+          }
+        }
+      }
+
       // Combined score
-      const score = vectorSim * 0.65 + textSim * 0.25 + typeMatch;
+      const score = vectorSim * 0.60 + textSim * 0.20 + typeMatch + contextMatch;
 
       logger.debug(
         {

@@ -35,6 +35,9 @@ export class LocationStorage {
         user_id: l.user_id,
         created_at: l.created_at,
         updated_at: l.updated_at,
+        metadata: l.metadata || {},
+        proximity_target: l.proximity_target,
+        associated_character_ids: l.associated_character_ids || [],
       }));
     } catch (error) {
       logger.error({ error }, 'Failed to load locations');

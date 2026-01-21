@@ -18,7 +18,7 @@ import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 import type { Skill, SkillCategory } from '../../types/skill';
 import { format, subDays } from 'date-fns';
 
-const ITEMS_PER_PAGE = 24;
+const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 const ITEMS_PER_PAGE_OPTIONS = [12, 24, 48, 96];
 
 type SkillCategoryFilter = 'all' | SkillCategory | 'recent' | 'high_level' | 'low_level' | 'active' | 'inactive';
@@ -420,7 +420,7 @@ export const SkillsBook: React.FC = () => {
                     }}
                     onFocus={() => setShowSuggestions(true)}
                     onKeyDown={handleSearchKeyDown}
-                    className="bg-black/40 border-white/20 text-white"
+                    className="bg-black/40 border-white/20 text-white text-sm sm:text-base"
                   />
                   {searchTerm && (
                     <Button
@@ -565,12 +565,12 @@ export const SkillsBook: React.FC = () => {
           setActiveCategory(v as SkillCategoryFilter);
           setCurrentPage(1);
         }}>
-          <TabsList className="bg-black/40 border-white/10">
+          <TabsList className="bg-black/40 border-white/10 p-1 h-auto flex flex-wrap gap-1">
             {availableCategories.map(category => (
               <TabsTrigger
                 key={category}
                 value={category}
-                className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary"
+                className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
               >
                 {category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </TabsTrigger>
@@ -643,15 +643,15 @@ export const SkillsBook: React.FC = () => {
 
         {paginatedSkills.length === 0 ? (
           <Card className="bg-black/40 border-white/10">
-            <CardContent className="p-12 text-center">
-              <Zap className="h-12 w-12 text-white/20 mx-auto mb-4" />
-              <p className="text-white/60">No skills found matching your filters.</p>
+            <CardContent className="p-8 sm:p-12 text-center">
+              <Zap className="h-10 w-10 sm:h-12 sm:w-12 text-white/20 mx-auto mb-3 sm:mb-4" />
+              <p className="text-xs sm:text-sm text-white/60">No skills found matching your filters.</p>
             </CardContent>
           </Card>
         ) : (
           <div className={
             viewMode === 'grid'
-              ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'
+              ? 'grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
               : 'space-y-4'
           }>
             {paginatedSkills.map(skill => (
@@ -667,8 +667,8 @@ export const SkillsBook: React.FC = () => {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between">
-            <p className="text-white/60 text-sm">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
+            <p className="text-white/60 text-xs sm:text-sm">
               Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, sortedSkills.length)} of {sortedSkills.length}
             </p>
             <div className="flex items-center gap-2">
@@ -677,23 +677,23 @@ export const SkillsBook: React.FC = () => {
                 size="sm"
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="border-white/20"
+                className="border-white/20 text-xs sm:text-sm"
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
                 Previous
               </Button>
-              <span className="text-white/60 text-sm">
-                Page {currentPage} of {totalPages}
+              <span className="text-white/60 text-xs sm:text-sm">
+                Page {currentPage}/{totalPages}
               </span>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="border-white/20"
+                className="border-white/20 text-xs sm:text-sm"
               >
                 Next
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
               </Button>
             </div>
           </div>

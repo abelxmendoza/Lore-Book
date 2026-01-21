@@ -40,14 +40,26 @@ class TimeEngine {
 
   /**
    * Parse a timestamp string to Date with normalization
+   * @param defaultToNow - If true, default to current time with higher confidence when no time is found (for real-time chat)
    */
-  parseTimestamp(input: string | Date, precision?: TimePrecision): TemporalReference {
+  parseTimestamp(input: string | Date, precision?: TimePrecision, defaultToNow: boolean = true): TemporalReference {
     if (input instanceof Date) {
       return {
         type: 'absolute',
         timestamp: input,
         precision: precision || 'second',
         confidence: 1.0
+      };
+    }
+
+    // If input is empty or just whitespace, default to now
+    if (!input || !input.trim()) {
+      return {
+        type: 'relative',
+        timestamp: new Date(),
+        precision: precision || 'day',
+        originalText: input || '',
+        confidence: defaultToNow ? 0.8 : 0.1 // Higher confidence when defaulting to now
       };
     }
 
@@ -73,19 +85,19 @@ class TimeEngine {
       return relative;
     }
 
-    // Fallback: try to extract date from text
+    // Try to extract date from text
     const extracted = this.extractDateFromText(input);
     if (extracted) {
       return extracted;
     }
 
-    // Default to current time with low confidence
+    // Default to current time with higher confidence when defaultToNow is true
     return {
-      type: 'fuzzy',
+      type: 'relative',
       timestamp: new Date(),
-      precision: 'day',
+      precision: precision || 'day',
       originalText: input,
-      confidence: 0.1
+      confidence: defaultToNow ? 0.7 : 0.1 // Higher confidence for real-time chat
     };
   }
 
@@ -112,7 +124,7 @@ class TimeEngine {
     const now = new Date();
 
     // Today
-    if (lower === 'today' || lower === 'now') {
+    if (lower === 'today' || lower === 'now' || lower === 'right now' || lower === 'just now') {
       return {
         type: 'relative',
         timestamp: now,
@@ -141,6 +153,144 @@ class TimeEngine {
         precision: 'day',
         originalText: input,
         confidence: 0.9
+      };
+    }
+
+    // "The other day" - typically 2-3 days ago
+    if (lower.match(/the other day/)) {
+      return {
+        type: 'relative',
+        timestamp: addDays(now, -2),
+        precision: 'day',
+        originalText: input,
+        confidence: 0.7
+      };
+    }
+
+    // "A couple months ago" / "couple of months ago"
+    const coupleMonthsMatch = lower.match(/a couple (of )?months? ago/);
+    if (coupleMonthsMatch) {
+      return {
+        type: 'relative',
+        timestamp: addMonths(now, -2),
+        precision: 'month',
+        originalText: input,
+        confidence: 0.75
+      };
+    }
+
+    // "A few months ago" / "few months ago"
+    const fewMonthsMatch = lower.match(/a few months? ago/);
+    if (fewMonthsMatch) {
+      return {
+        type: 'relative',
+        timestamp: addMonths(now, -3),
+        precision: 'month',
+        originalText: input,
+        confidence: 0.75
+      };
+    }
+
+    // "A couple weeks ago"
+    const coupleWeeksMatch = lower.match(/a couple (of )?weeks? ago/);
+    if (coupleWeeksMatch) {
+      return {
+        type: 'relative',
+        timestamp: addDays(now, -14),
+        precision: 'day',
+        originalText: input,
+        confidence: 0.75
+      };
+    }
+
+    // "A few weeks ago"
+    const fewWeeksMatch = lower.match(/a few weeks? ago/);
+    if (fewWeeksMatch) {
+      return {
+        type: 'relative',
+        timestamp: addDays(now, -21),
+        precision: 'day',
+        originalText: input,
+        confidence: 0.75
+      };
+    }
+
+    // "Last year"
+    if (lower.match(/last year/)) {
+      return {
+        type: 'relative',
+        timestamp: addYears(now, -1),
+        precision: 'year',
+        originalText: input,
+        confidence: 0.9
+      };
+    }
+
+    // "In a few weeks" / "in a couple weeks"
+    const inFewWeeksMatch = lower.match(/in (a few|a couple (of )?)weeks?/);
+    if (inFewWeeksMatch) {
+      return {
+        type: 'relative',
+        timestamp: addDays(now, 14),
+        precision: 'day',
+        originalText: input,
+        confidence: 0.75
+      };
+    }
+
+    // "When I was..." patterns (kid, in high school, in college, etc.)
+    const lifeStageMatch = lower.match(/when i was (a kid|in (high school|college|university|grad school|middle school|elementary school)|younger|young)/);
+    if (lifeStageMatch) {
+      // Estimate based on typical ages
+      const stage = lifeStageMatch[1];
+      let yearsAgo = 20; // Default to ~20 years ago
+      
+      if (stage.includes('kid') || stage.includes('elementary')) {
+        yearsAgo = 25;
+      } else if (stage.includes('middle school')) {
+        yearsAgo = 20;
+      } else if (stage.includes('high school')) {
+        yearsAgo = 15;
+      } else if (stage.includes('college') || stage.includes('university')) {
+        yearsAgo = 10;
+      } else if (stage.includes('grad school')) {
+        yearsAgo = 5;
+      }
+      
+      return {
+        type: 'relative',
+        timestamp: addYears(now, -yearsAgo),
+        precision: 'year',
+        originalText: input,
+        confidence: 0.6 // Lower confidence due to estimation
+      };
+    }
+
+    // Year references: "in 2024", "in 2025", "2008", etc.
+    const yearMatch = lower.match(/\b(19|20)\d{2}\b/);
+    if (yearMatch) {
+      const year = parseInt(yearMatch[0]);
+      const yearDate = new Date(year, 0, 1);
+      return {
+        type: 'absolute',
+        timestamp: yearDate,
+        precision: 'year',
+        originalText: input,
+        confidence: 0.85
+      };
+    }
+
+    // "In 2024" / "in 2025" (future years)
+    const inYearMatch = lower.match(/in (19|20)\d{2}/);
+    if (inYearMatch) {
+      const year = parseInt(inYearMatch[1] + inYearMatch[0].slice(-2));
+      const yearDate = new Date(year, 0, 1);
+      return {
+        type: 'absolute',
+        timestamp: yearDate,
+        precision: 'year',
+        originalText: input,
+        confidence: 0.85
       };
     }
 

@@ -466,6 +466,15 @@ export const Sidebar = ({
       >
         <div className="flex items-center justify-between p-4 border-b border-border/60 lg:hidden">
           <Logo size="md" showText={true} />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMobileDrawerClose}
+            className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </Button>
         </div>
         <div className="p-4 lg:hidden">
           <SidebarContent
@@ -475,18 +484,6 @@ export const Sidebar = ({
             devModeEnabled={devModeEnabled}
             onMobileDrawerClose={onMobileDrawerClose}
           />
-        </div>
-        <div className="lg:hidden border-t border-border/60 p-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onMobileDrawerClose}
-            className="w-full text-white/70 hover:text-white justify-center"
-            aria-label="Close menu"
-          >
-            <X className="h-5 w-5 mr-2" />
-            <span>Close</span>
-          </Button>
         </div>
       </aside>
     </>
