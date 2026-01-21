@@ -187,6 +187,7 @@ jobs:
           name: cypress-screenshots
           path: apps/web/cypress/screenshots
           retention-days: 30
+          if-no-files-found: ignore
 
       - name: Upload Cypress videos
         if: always()
@@ -195,6 +196,7 @@ jobs:
           name: cypress-videos
           path: apps/web/cypress/videos
           retention-days: 30
+          if-no-files-found: ignore
 
   integration-tests:
     name: Integration Tests
