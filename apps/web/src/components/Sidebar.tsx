@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -12,8 +12,8 @@ import { cn } from '../lib/cn';
 import { getRouteFromSurface, surfaceToRoute } from '../utils/routeMapping';
 
 interface SidebarProps {
-  activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills' | 'love';
-  onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills' | 'love') => void;
+  activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills' | 'love' | 'quests';
+  onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills' | 'love' | 'quests') => void;
   onToggleDevMode?: () => void;
   devModeEnabled?: boolean;
   isMobileDrawerOpen?: boolean;
@@ -270,6 +270,20 @@ const SidebarContent = ({
         >
           <Heart className="h-4 w-4 text-pink-400" aria-hidden="true" />
           Love & Relationships
+        </button>
+        <button
+          onClick={() => handleSurfaceChange('quests')}
+          aria-label="Open quests"
+          aria-current={activeSurface === 'quests' ? 'page' : undefined}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+            activeSurface === 'quests'
+              ? 'border-primary bg-primary/10 text-white'
+              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+          )}
+        >
+          <Target className="h-4 w-4 text-primary" aria-hidden="true" />
+          Quests
         </button>
         <button
           onClick={() => handleSurfaceChange('subscription')}

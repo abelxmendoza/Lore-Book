@@ -5,6 +5,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
+import { detectContentType } from '../utils/contentTypeDetection';
 
 import { memoirService } from './memoirService';
 import { memoryService } from './memoryService';
@@ -14,7 +15,14 @@ import { supabaseAdmin } from './supabaseClient';
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
 type DocumentAnalysis = {
-  entries: Array<{ content: string; date: string; tags?: string[] }>;
+  entries: Array<{ 
+    content: string; 
+    date: string; 
+    tags?: string[];
+    content_type?: string;
+    preserve_original_language?: boolean;
+    original_content?: string;
+  }>;
   characters: Array<{ name: string; description?: string; relationships?: string[] }>;
   memoirSections: Array<{ title: string; content: string; period?: { from: string; to: string } }>;
   languageStyle: string;
@@ -84,7 +92,22 @@ class DocumentService {
       messages: [
         {
           role: 'system',
-          content: `You are analyzing a personal document (memoir, journal, contact list, etc.) to extract structured information.
+          content: `You are analyzing a personal document (memoir, journal, autobiography, diary, biography, etc.) to extract structured information.
+
+CRITICAL: Detect and preserve special content types that require original language preservation:
+- Testimonies: Personal statements, "why I wrote this", explanations of purpose, personal stories
+- Advice: Direct advice, wisdom, guidance to readers ("remember to", "don't forget", "if I could tell you")
+- Messages to Readers: Direct addresses like "Dear reader", "To those who...", "If you're reading this", "Dear future self"
+- Dedications: Book dedications, acknowledgments ("I dedicate", "To my", "For my")
+- Prefaces/Epilogues: Opening/closing statements in books
+- Manifestos: Personal declarations, statements of intent, principles
+- Vows/Promises: Commitments, promises, vows ("I vow", "I promise", "I declare")
+- Declarations: Formal personal statements
+
+For these content types:
+1. Mark with content_type field (one of: testimony, advice, message_to_reader, dedication, acknowledgment, preface, epilogue, manifesto, vow, promise, declaration)
+2. Set preserve_original_language: true
+3. Store EXACT original wording in original_content field (same as content if unchanged)
 
 Extract:
 1. Journal entries with dates (if available) or infer chronological order
@@ -95,12 +118,28 @@ Extract:
 
 Return JSON with this structure:
 {
-  "entries": [{"content": "...", "date": "YYYY-MM-DD", "tags": ["tag1"]}],
+  "entries": [
+    {
+      "content": "...",
+      "date": "YYYY-MM-DD",
+      "tags": ["tag1"],
+      "content_type": "standard" | "testimony" | "advice" | "message_to_reader" | etc (optional, auto-detected if missing),
+      "preserve_original_language": true/false (optional, auto-detected if missing),
+      "original_content": "exact original text" (optional, defaults to content)
+    }
+  ],
   "characters": [{"name": "...", "description": "...", "relationships": ["..."]}],
   "memoirSections": [{"title": "...", "content": "...", "period": {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"}}],
   "languageStyle": "description of writing style and tone",
   "keyThemes": ["theme1", "theme2"]
-}`
+}
+
+Detection patterns to look for:
+- "Dear reader", "To the reader", "If you're reading this" → message_to_reader
+- "Why I wrote", "My testimony", "I want to share" → testimony
+- "I advise", "Remember", "Don't forget", "To anyone" → advice
+- "I dedicate", "To my", "For my" → dedication
+- "I vow", "I promise", "I declare" → vow/promise/declaration`
         },
         {
           role: 'user',
@@ -157,18 +196,44 @@ Return JSON with this structure:
 
   private async createEntriesFromDocument(
     userId: string,
-    entries: Array<{ content: string; date: string; tags?: string[] }>
+    entries: Array<{ 
+      content: string; 
+      date: string; 
+      tags?: string[];
+      content_type?: string;
+      preserve_original_language?: boolean;
+      original_content?: string;
+    }>
   ): Promise<number> {
     let created = 0;
     for (const entry of entries) {
       try {
+        // Auto-detect content type if not provided by AI analysis
+        const detected = entry.content_type 
+          ? { 
+              type: entry.content_type, 
+              preserveOriginal: entry.preserve_original_language ?? false,
+              confidence: 0.9 // High confidence if AI detected it
+            }
+          : detectContentType(entry.content);
+        
+        // Use original_content if provided, otherwise use content
+        const originalContent = entry.original_content || entry.content;
+        
         await memoryService.saveEntry({
           userId,
           content: entry.content,
           date: entry.date,
           tags: entry.tags || [],
           source: 'document_upload',
-          metadata: { imported: true }
+          content_type: detected.type,
+          original_content: originalContent,
+          preserve_original_language: detected.preserveOriginal,
+          metadata: { 
+            imported: true,
+            detection_confidence: detected.confidence,
+            auto_detected: !entry.content_type
+          }
         });
         created++;
       } catch (error) {

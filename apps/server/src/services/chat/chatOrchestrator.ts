@@ -4,6 +4,7 @@ import { config } from '../../config';
 import { openai } from '../../lib/openai';
 import { logger } from '../../logger';
 import { extractTags, shouldPersistMessage } from '../../utils/keywordDetector';
+import { detectContentType } from '../../utils/contentTypeDetection';
 import { memoryService } from '../memoryService';
 
 import { chatPersona } from './chatPersona';
@@ -76,14 +77,21 @@ export class ChatOrchestrator {
       let entryId: string | undefined;
       if (shouldPersistMessage(message)) {
         try {
+          // Auto-detect content type for special content
+          const detected = detectContentType(message);
+          
           const savedEntry = await memoryService.saveEntry({
             userId,
             content: message,
             tags: extractTags(message),
             source: 'chat-memory',
+            content_type: detected.type,
+            original_content: detected.preserveOriginal ? message : null,
+            preserve_original_language: detected.preserveOriginal,
             metadata: {
               autoCaptured: true,
               conversationContext: true,
+              detection_confidence: detected.confidence
             },
           });
           entryId = savedEntry.id;
@@ -144,15 +152,22 @@ export class ChatOrchestrator {
       // 6. Auto-save message as journal entry (all chat messages are automatically saved)
       let entryId: string | undefined;
       if (shouldPersistMessage(message)) {
+        // Auto-detect content type for special content
+        const detected = detectContentType(message);
+        
         memoryService.saveEntry({
           userId,
           content: message,
           tags: extractTags(message),
           source: 'chat-memory',
+          content_type: detected.type,
+          original_content: detected.preserveOriginal ? message : null,
+          preserve_original_language: detected.preserveOriginal,
           metadata: {
             autoCaptured: true,
             conversationContext: true,
             fromStreamingChat: true,
+            detection_confidence: detected.confidence
           },
         })
           .then((savedEntry) => {

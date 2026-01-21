@@ -20,6 +20,7 @@ import type { Achievement, AchievementStatistics } from '../types/achievement';
 import type { ReactionPatterns } from '../types/reaction';
 import type { PatternInsight, StabilityMetrics } from '../api/perceptionReactionEngine';
 import type { MemoryProposal } from '../hooks/useMemoryReviewQueue';
+import type { Quest, QuestBoard, QuestAnalytics, QuestSuggestion } from '../types/quest';
 import { generateMockTimelines, generateMockChronologyEntries } from '../mocks/timelineMockData';
 
 /**
@@ -126,6 +127,10 @@ class MockDataRegistry {
   private stabilityMetrics: StabilityMetrics | null = null;
   private recoveryTimeData: Array<{ date: string; recovery_time: number; intensity: number }> = [];
   private memoryProposals: MemoryProposal[] = [];
+  private quests: Quest[] = [];
+  private questBoard: QuestBoard | null = null;
+  private questAnalytics: QuestAnalytics | null = null;
+  private questSuggestions: QuestSuggestion[] = [];
   private isInitialized = false;
 
   /**
@@ -208,6 +213,22 @@ class MockDataRegistry {
     this.memoryProposals = proposals;
   }
 
+  registerQuests(quests: Quest[]) {
+    this.quests = quests;
+  }
+
+  registerQuestBoard(board: QuestBoard) {
+    this.questBoard = board;
+  }
+
+  registerQuestAnalytics(analytics: QuestAnalytics) {
+    this.questAnalytics = analytics;
+  }
+
+  registerQuestSuggestions(suggestions: QuestSuggestion[]) {
+    this.questSuggestions = suggestions;
+  }
+
   /**
    * Get mock data
    */
@@ -269,6 +290,22 @@ class MockDataRegistry {
 
   getMemoryProposals(): MemoryProposal[] {
     return [...this.memoryProposals];
+  }
+
+  getQuests(): Quest[] {
+    return [...this.quests];
+  }
+
+  getQuestBoard(): QuestBoard | null {
+    return this.questBoard ? { ...this.questBoard } : null;
+  }
+
+  getQuestAnalytics(): QuestAnalytics | null {
+    return this.questAnalytics ? { ...this.questAnalytics } : null;
+  }
+
+  getQuestSuggestions(): QuestSuggestion[] {
+    return [...this.questSuggestions];
   }
 }
 

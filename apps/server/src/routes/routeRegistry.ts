@@ -80,6 +80,7 @@ import { perspectivesRouter } from './perspectives';
 import { memoryReviewQueueRouter } from './memoryReviewQueue';
 import { predictionsRouter } from './predictions';
 import { goalsRouter } from './goals';
+import { questRouter } from './quests';
 import { memoryEngineRouter } from './memoryEngine';
 import { knowledgeGraphRouter } from './knowledgeGraph';
 import { searchRouter } from './search';
@@ -196,6 +197,7 @@ export const routeRegistry: RouteEntry[] = [
   { path: '/api/decisions', router: decisionsRouter },
   { path: '/api/predictions', router: predictionsRouter },
   { path: '/api/goals', router: goalsRouter },
+  { path: '/api/quests', router: questRouter },
   { path: '/api/privacy', router: privacyRouter },
   { path: '/api/hqi', router: hqiRouter },
   { path: '/api/search', router: searchRouter },

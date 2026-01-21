@@ -1,0 +1,132 @@
+/* Kindle-Style Book Page Animations and Styling */
+
+.book-page {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1a;
+  color: rgba(255, 255, 255, 0.9);
+  transition: transform 0.3s ease-in-out;
+  will-change: transform;
+}
+
+.book-page-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 60px 80px;
+  max-width: 100%;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .book-page-content {
+    padding: 40px 20px;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .book-page-content {
+    padding: 50px 40px;
+  }
+}
+
+/* Slide animations */
+.page-slide-in-from-right {
+  animation: slideInFromRight 0.3s ease-in-out;
+}
+
+.page-slide-in-from-left {
+  animation: slideInFromLeft 0.3s ease-in-out;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Page header */
+.book-page-header {
+  margin-bottom: 40px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.book-section-title {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.95);
+  margin-bottom: 8px;
+  font-family: 'Georgia', serif;
+}
+
+.book-section-period {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+/* Page text */
+.book-page-text {
+  flex: 1;
+  font-family: 'Georgia', serif;
+  text-align: justify;
+  text-justify: inter-word;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.7;
+  word-spacing: 0.1em;
+  letter-spacing: 0.01em;
+}
+
+/* Page footer */
+.book-page-footer {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: center;
+}
+
+.book-page-number {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: 'Georgia', serif;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .book-page {
+    transition: none;
+  }
+  
+  .page-slide-in-from-right,
+  .page-slide-in-from-left {
+    animation: none;
+  }
+}
+
+/* Touch feedback */
+.book-page:active {
+  opacity: 0.95;
+}

@@ -1,3 +1,17 @@
+export type ContentType = 
+  | 'standard'
+  | 'testimony'
+  | 'advice'
+  | 'message_to_reader'
+  | 'dedication'
+  | 'acknowledgment'
+  | 'preface'
+  | 'epilogue'
+  | 'manifesto'
+  | 'vow'
+  | 'promise'
+  | 'declaration';
+
 export type MemoryCard = {
   id: string;
   title: string;
@@ -17,6 +31,9 @@ export type MemoryCard = {
   arcTitle?: string;
   characters: string[];
   linkedMemories?: LinkedMemory[];
+  content_type?: ContentType | string | null;
+  original_content?: string | null;
+  preserve_original_language?: boolean;
 };
 
 export type LinkedMemory = {
@@ -55,6 +72,9 @@ export function memoryEntryToCard(entry: {
   mood?: string | null;
   chapter_id?: string | null;
   source: string;
+  content_type?: ContentType | string | null;
+  original_content?: string | null;
+  preserve_original_language?: boolean;
   metadata?: Record<string, unknown>;
 }): MemoryCard {
   const title = entry.summary || entry.content.substring(0, 60) + (entry.content.length > 60 ? '...' : '');
@@ -99,7 +119,10 @@ export function memoryEntryToCard(entry: {
     source,
     sourceIcon: sourceIcons[source] || '📖',
     chapterId: entry.chapter_id || undefined,
-    characters
+    characters,
+    content_type: entry.content_type,
+    original_content: entry.original_content || undefined,
+    preserve_original_language: entry.preserve_original_language || false
   };
 }
 

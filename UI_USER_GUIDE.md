@@ -53,6 +53,7 @@ LoreBook has a clean, organized interface with:
 **Biography** 📖 - Auto-generated life stories  
 **Truth Seeker** ✅ - Fact checking and verification  
 **Tasks** ✓ - Goal and milestone tracking  
+**Quests** 🎯 - Unified quest system for goals, todos, and achievements  
 **Settings** ⚙️ - Account and privacy settings
 
 ### Header Actions
@@ -577,6 +578,175 @@ The Task Engine helps you track goals and milestones.
 - **Progress Monitoring**: See progress over time
 - **Task Timeline**: View tasks in timeline context
 - **AI Assistance**: Get help with task planning
+
+---
+
+## Quest System
+
+The Quest System is a unified way to track goals, todos, and quests—treating your life like an RPG with main quests, side quests, daily quests, and achievements.
+
+### Quest Types
+
+#### Main Quests
+- **Major Life Goals**: Important objectives that define your journey
+- **High Priority**: Focus on these for maximum impact
+- **Long-term**: Often span weeks or months
+- Examples: "Build Personal Portfolio Website", "Complete React Course"
+
+#### Side Quests
+- **Secondary Goals**: Personal projects and interests
+- **Flexible Priority**: Can be paused or worked on when time allows
+- **Varied Duration**: Can be short or long-term
+- Examples: "Organize Home Office", "Learn TypeScript"
+
+#### Daily Quests
+- **Recurring Tasks**: Habits and daily routines
+- **Consistency Focus**: Build streaks and maintain habits
+- **Quick Wins**: Usually take 30 minutes or less
+- Examples: "Daily Exercise Routine", "Morning Meditation"
+
+#### Achievements
+- **Long-term Accomplishments**: Major milestones and goals
+- **Progress Tracking**: Track progress over time
+- **Celebration**: Mark significant achievements
+- Examples: "Read 12 Books This Year", "Complete 30-Day Challenge"
+
+### Quest Board
+
+The Quest Board organizes all your quests:
+
+- **Main Quests Section**: Your most important objectives
+- **Side Quests Section**: Secondary goals and projects
+- **Daily Quests Section**: Recurring habits and routines
+- **Completed Quests Section**: Your "Hall of Fame" of achievements
+
+### Quest Ranking System
+
+Each quest is ranked across multiple dimensions:
+
+#### Priority (1-10)
+- How urgent the quest is
+- Higher priority quests appear first
+- Use for time-sensitive goals
+
+#### Importance (1-10)
+- How significant the quest is to you
+- Reflects personal values and goals
+- Helps prioritize what truly matters
+
+#### Impact (1-10)
+- How much the quest will change your life
+- Measures long-term value
+- High impact quests are worth extra effort
+
+#### Difficulty (1-10)
+- How challenging the quest is
+- Helps set realistic expectations
+- Adjusts effort estimates
+
+#### Effort Hours
+- Estimated time to complete
+- Helps with planning and scheduling
+- Track actual vs estimated time
+
+### Quest Features
+
+#### Progress Tracking
+- **Progress Percentage**: Visual progress bars
+- **Milestones**: Break quests into smaller steps
+- **Time Tracking**: Track time spent on quests
+- **Completion Dates**: Estimated vs actual dates
+
+#### Quest Statuses
+- **Active**: Currently working on
+- **Paused**: Temporarily on hold
+- **Completed**: Successfully finished
+- **Abandoned**: No longer pursuing
+- **Archived**: Completed and archived
+
+#### Quest Details
+- **Title & Description**: Clear quest objectives
+- **Tags & Categories**: Organize and filter quests
+- **Reward Description**: What you'll gain
+- **Motivation Notes**: Why this quest matters
+- **Related Goals/Tasks**: Link to existing goals or tasks
+
+#### Quest Actions
+- **Start Quest**: Begin working on a quest
+- **Pause Quest**: Temporarily pause progress
+- **Complete Quest**: Mark as finished with notes
+- **Abandon Quest**: Stop pursuing with reason
+- **Update Progress**: Update progress percentage
+- **Add Reflection**: Add notes and insights
+
+### Quest Dependencies
+
+Link quests that depend on each other:
+- **Prerequisites**: Quests that must be completed first
+- **Blocking**: Quests that block others
+- **Sequential**: Quests that follow a sequence
+- **Parallel**: Quests that can be done together
+
+### Quest Analytics
+
+View comprehensive analytics:
+- **Completion Rate**: Overall quest completion statistics
+- **Quest Type Distribution**: See breakdown by type
+- **Average Completion Time**: How long quests take
+- **Most Impactful Quests**: Highest impact achievements
+- **Activity Timeline**: Quest activity over time
+- **Success Rate by Type**: Completion rates by quest type
+- **Priority/Importance/Impact Distribution**: Visual charts
+
+### Quest Suggestions
+
+AI-powered quest suggestions:
+- **From Journal Entries**: Automatically extracted from your writing
+- **Confidence Scores**: How confident the AI is in the suggestion
+- **Source Entry Preview**: See the entry that inspired the suggestion
+- **One-Click Creation**: Convert suggestions to quests instantly
+
+### Quest History
+
+"Hall of Fame" view of completed quests:
+- **Completed Quest Cards**: Beautiful cards showing achievements
+- **Filter Options**: Filter by date range, type, category
+- **Search**: Find specific completed quests
+- **Reflection Notes**: See your reflections on completed quests
+- **Achievement Badges**: Visual indicators of accomplishments
+
+### Integration with Goals & Tasks
+
+- **Convert Goals to Quests**: Transform goals into quests
+- **Convert Tasks to Quests**: Turn tasks into quests
+- **Link Quests to Goals**: Connect quests to existing goals
+- **Link Quests to Tasks**: Connect quests to existing tasks
+
+### Creating Quests
+
+1. **Click "Create Quest"** on the Quest Board
+2. **Fill in Quest Details**:
+   - Title and description
+   - Quest type (main, side, daily, achievement)
+   - Priority, importance, impact, difficulty
+   - Effort hours estimate
+   - Category and tags
+   - Reward description
+   - Motivation notes
+3. **Set Dependencies** (optional): Link to other quests
+4. **Link to Goals/Tasks** (optional): Connect to existing items
+5. **Save**: Your quest is now active!
+
+### Quest Best Practices
+
+1. **Start Small**: Begin with daily quests to build momentum
+2. **Set Clear Milestones**: Break large quests into smaller steps
+3. **Track Progress**: Regularly update progress percentage
+4. **Add Reflections**: Note insights when completing quests
+5. **Review Analytics**: Use analytics to understand your patterns
+6. **Use Suggestions**: Let AI suggest quests from your journal entries
+7. **Link Related Items**: Connect quests to goals and tasks
+8. **Celebrate Wins**: Review your Quest History regularly
 
 ---
 

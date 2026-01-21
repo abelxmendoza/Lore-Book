@@ -4,6 +4,10 @@ import { z } from 'zod';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { biographyGenerationEngine, biographyRecommendationEngine, BIOGRAPHY_VERSIONS, type BiographySpec } from '../services/biographyGeneration';
+import { bookCapacityCalculator } from '../services/biographyGeneration/bookCapacityCalculator';
+import { contentAvailabilityService } from '../services/biographyGeneration/contentAvailabilityService';
+import { bookVersionManager } from '../services/biographyGeneration/bookVersionManager';
+import { autoCompilationService } from '../services/biographyGeneration/autoCompilationService';
 import { dateAssignmentService } from '../services/dateAssignmentService';
 import { lorebookRecommendationEngine } from '../services/lorebook/lorebookRecommendationEngine';
 import { lorebookSearchParser } from '../services/lorebook/lorebookSearchParser';
@@ -401,6 +405,88 @@ router.get('/recommendations', requireAuth, async (req: AuthenticatedRequest, re
 });
 
 /**
+ * GET /api/biography/stats
+ * Get comprehensive lore statistics
+ */
+router.get('/stats', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const stats = await contentAvailabilityService.getContentStats(req.user!.id);
+    res.json({ stats });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to get content stats');
+    res.status(500).json({ error: 'Failed to get content stats' });
+  }
+});
+
+/**
+ * GET /api/biography/capacity
+ * Get book generation capacity for a spec
+ * Query params: scope, domain, depth, targetPages
+ */
+router.get('/capacity', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { scope, domain, depth, targetPages } = req.query;
+
+    const spec: BiographySpec = {
+      scope: (scope as any) || 'full_life',
+      domain: domain as any,
+      tone: 'neutral',
+      depth: (depth as any) || 'detailed',
+      audience: 'self',
+      includeIntrospection: true
+    };
+
+    const targetPagesNum = targetPages ? parseInt(targetPages as string) : undefined;
+
+    const capacity = await bookCapacityCalculator.calculateBookCapacity(
+      req.user!.id,
+      spec,
+      targetPagesNum
+    );
+
+    res.json({ capacity, spec });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to get book capacity');
+    res.status(500).json({ error: 'Failed to get book capacity' });
+  }
+});
+
+/**
+ * GET /api/biography/capacity/:targetPages
+ * Check capacity for specific page target
+ */
+router.get('/capacity/:targetPages', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const targetPages = parseInt(req.params.targetPages);
+    if (isNaN(targetPages) || targetPages < 1) {
+      return res.status(400).json({ error: 'Invalid target pages' });
+    }
+
+    const { scope, domain, depth } = req.query;
+
+    const spec: BiographySpec = {
+      scope: (scope as any) || 'full_life',
+      domain: domain as any,
+      tone: 'neutral',
+      depth: (depth as any) || 'detailed',
+      audience: 'self',
+      includeIntrospection: true
+    };
+
+    const capacity = await bookCapacityCalculator.calculateBookCapacity(
+      req.user!.id,
+      spec,
+      targetPages
+    );
+
+    res.json({ capacity, targetPages, spec });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to check capacity for target');
+    res.status(500).json({ error: 'Failed to check capacity' });
+  }
+});
+
+/**
  * POST /api/biography/search
  * Intelligent search for lorebooks - parses natural language query
  */
@@ -426,6 +512,107 @@ router.post('/search', requireAuth, async (req: AuthenticatedRequest, res) => {
     logger.error({ error, userId: req.user!.id }, 'Failed to search lorebooks');
     res.status(500).json({ 
       error: 'Failed to search lorebooks',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * GET /api/biography/versions/:lorebookName
+ * Get version history for a lorebook
+ */
+router.get('/versions/:lorebookName', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { lorebookName } = req.params;
+    const versions = await bookVersionManager.getVersionHistory(lorebookName, req.user!.id);
+    res.json({ versions });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id, lorebookName: req.params.lorebookName }, 'Failed to get version history');
+    res.status(500).json({ error: 'Failed to get version history' });
+  }
+});
+
+/**
+ * POST /api/biography/versions/generate
+ * Generate a new version from base biography
+ */
+const generateVersionSchema = z.object({
+  baseBiographyId: z.string().uuid(),
+  versionType: z.enum(['safe', 'explicit', 'private'])
+});
+
+router.post('/versions/generate', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = generateVersionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+    }
+
+    const { baseBiographyId, versionType } = parsed.data;
+    const version = await bookVersionManager.generateVersion(req.user!.id, baseBiographyId, versionType);
+
+    res.json({ biography: version });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to generate version');
+    res.status(500).json({ 
+      error: 'Failed to generate version',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * POST /api/biography/versions/compare
+ * Compare two versions
+ */
+const compareVersionsSchema = z.object({
+  biographyId1: z.string().uuid(),
+  biographyId2: z.string().uuid()
+});
+
+router.post('/versions/compare', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = compareVersionsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+    }
+
+    const { biographyId1, biographyId2 } = parsed.data;
+    const comparison = await bookVersionManager.compareVersions(
+      biographyId1,
+      biographyId2,
+      req.user!.id
+    );
+
+    res.json({ comparison });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to compare versions');
+    res.status(500).json({ 
+      error: 'Failed to compare versions',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * POST /api/biography/versions/auto-compile
+ * Auto-compile all versions at once
+ */
+router.post('/versions/auto-compile', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = generateBiographySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+    }
+
+    const spec: BiographySpec = parsed.data;
+    const versions = await autoCompilationService.autoCompileVersions(req.user!.id, spec);
+
+    res.json({ versions });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to auto-compile versions');
+    res.status(500).json({ 
+      error: 'Failed to auto-compile versions',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }

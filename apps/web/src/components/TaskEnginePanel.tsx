@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlarmClock, ArrowRight, CalendarDays, CheckCircle2, ListChecks, PlugZap, Sparkles } from 'lucide-react';
+import { AlarmClock, ArrowRight, CalendarDays, CheckCircle2, ListChecks, PlugZap, Sparkles, Target } from 'lucide-react';
 
 import type { TaskBriefing, TaskEvent, TaskRecord } from '../hooks/useTaskEngine';
 import { Badge } from './ui/badge';
@@ -80,7 +80,21 @@ export const TaskEnginePanel = ({
           <h3 className="text-lg font-semibold text-white">LoreKeeper Tasks</h3>
           <p className="text-xs text-white/40">Auto-capture tasks from chat, MS To Do, and priority rules.</p>
         </div>
-        <Badge className="bg-primary/20 text-primary">{activeTasks.length} open</Badge>
+        <div className="flex items-center gap-2">
+          <Badge className="bg-primary/20 text-primary">{activeTasks.length} open</Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const route = '/quests';
+              window.location.href = route;
+            }}
+            className="text-xs"
+          >
+            <Target className="h-3 w-3 mr-1" />
+            Quests
+          </Button>
+        </div>
       </div>
 
       <div className="mt-4 space-y-3">

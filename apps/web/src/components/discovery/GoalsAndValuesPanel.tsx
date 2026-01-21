@@ -17,6 +17,8 @@ import { GoalRow } from './goals/GoalRow';
 import { ValuesPrioritySection } from './goals/ValuesPrioritySection';
 import { DriftSection } from './goals/DriftSection';
 import { useMockData } from '../../contexts/MockDataContext';
+import { useQuests } from '../../hooks/useQuests';
+import { Button } from '../ui/button';
 import { mockDataService } from '../../services/mockDataService';
 import { MOCK_GOALS_VALUES_DATA } from '../../mocks/goalsValues';
 
@@ -204,10 +206,26 @@ export const GoalsAndValuesPanel = () => {
         {/* Goals List */}
         <Card className="bg-black/40 border-border/60">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-white">Active Goals</CardTitle>
-            <CardDescription className="text-white/60">
-              Select goals to view in the alignment timeline
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-semibold text-white">Active Goals</CardTitle>
+                <CardDescription className="text-white/60">
+                  Select goals to view in the alignment timeline
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const route = '/quests';
+                  window.location.href = route;
+                }}
+                className="text-xs"
+              >
+                <Target className="h-3 w-3 mr-1" />
+                View Quests
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {activeGoals.length > 0 ? (

@@ -99,6 +99,7 @@ LoreBook helps you:
 - ✅ **Continuity Engine** ⭐ - The Jarvis of your life. Detects contradictions, emotional arcs, identity drift, abandoned goals, repeating loops, and thematic changes. Automatically runs after every journal entry.
 - ✅ **Truth Seeker** - Automatic fact checking and contradiction detection
 - ✅ **Task Engine** - Task management with Microsoft To-Do integration
+- ✅ **Quest System** ⭐ - Unified system for tracking goals, todos, and quests with main quests, side quests, daily quests, and achievements. Features priority/importance/impact ranking, progress tracking, milestones, quest board view, analytics, suggestions, and history
 - ✅ **Autopilot** - Strategic guidance panels (daily/weekly/monthly)
 - ✅ **Essence Profiles** - Automatic extraction of hopes, dreams, fears, strengths, values, traits
 - ✅ **Auto-Tagging** - AI-powered classification for entries (tags, lane, hierarchy)
@@ -479,6 +480,39 @@ LoreBook seamlessly blends five personas based on context, becoming exactly what
 - Task timeline links
 - Task briefing and event tracking
 - Task completion and management
+
+#### 🎯 **Quest System** ⭐ **New Feature**
+- **Unified Quest Management**: Track goals, todos, and quests in one place
+- **Quest Types**: 
+  - **Main Quests**: Major life goals and important objectives
+  - **Side Quests**: Secondary goals and personal projects
+  - **Daily Quests**: Recurring daily tasks and habits
+  - **Achievements**: Long-term accomplishments and milestones
+- **Multi-Dimensional Ranking**: 
+  - **Priority**: How urgent the quest is (1-10)
+  - **Importance**: How significant it is to you (1-10)
+  - **Impact**: How much it will change your life (1-10)
+  - **Difficulty**: How challenging it is (1-10)
+  - **Effort**: Estimated hours to complete
+- **Progress Tracking**: 
+  - Progress percentage with visual progress bars
+  - Milestones with achievement tracking
+  - Time spent tracking
+  - Estimated vs actual completion dates
+- **Quest Board View**: Organized view showing all quests by type and status
+- **Quest Analytics**: 
+  - Completion rates and statistics
+  - Quest type distribution
+  - Average completion times
+  - Most impactful quests
+  - Activity timeline
+- **Quest Suggestions**: AI-powered suggestions based on your journal entries
+- **Quest History**: "Hall of Fame" view of completed quests with reflections
+- **Quest Dependencies**: Link quests that depend on each other
+- **Integration**: Convert goals and tasks to quests, link quests to existing goals/tasks
+- **Quest Statuses**: Active, Paused, Completed, Abandoned, Archived
+- **Reflections**: Add notes and reflections when completing quests
+- **Rewards & Motivation**: Track rewards and motivation notes for each quest
 
 #### 🧠 **Discovery Hub** - Deep Intelligence Panels
 - **10 Analytical Panels** - Toggle panels to explore different aspects of your life intelligence
@@ -1077,6 +1111,7 @@ psql "your-db-url" -f migrations/your_migration.sql
 - `/api/orchestrator/*` - Comprehensive context orchestration
 - `/api/autopilot/*` - Daily/weekly/monthly strategic guidance
 - `/api/tasks` - Task management with Microsoft To-Do integration
+- `/api/quests` - Quest system (CRUD, actions, board, analytics, suggestions, history, dependencies, linking)
 - `/api/insights` - AI insights and predictions
 - `/api/identity` - Identity pulse and persona tracking
 - `/api/essence` - Essence profile and evolution tracking

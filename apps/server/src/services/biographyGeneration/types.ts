@@ -89,6 +89,7 @@ export interface BiographySpec {
   depth: BiographyDepth;
   audience: BiographyAudience;
   includeIntrospection: boolean;
+  version?: 'main' | 'safe' | 'explicit' | 'private'; // Build flag for content filtering
   themes?: string[]; // Optional theme filters
   peopleIds?: string[]; // Optional people filters
   characterIds?: string[]; // Character-based lorebooks
@@ -135,6 +136,80 @@ export interface TimelineChapter {
 }
 
 /**
+ * Timeline Hierarchy - Full hierarchy structure
+ */
+export interface TimelineHierarchy {
+  sagas: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    start_date: string;
+    end_date?: string | null;
+    arcs: Array<{
+      id: string;
+      title: string;
+      description?: string;
+      start_date: string;
+      end_date?: string | null;
+      chapters: TimelineChapter[];
+    }>;
+  }>;
+}
+
+/**
+ * Preserved Content Placement
+ */
+export interface PreservedContentPlacement {
+  atomId: string;
+  chapterId: string;
+  position: 'opening' | 'middle' | 'closing' | 'standalone';
+  contentType: string;
+  reasoning?: string; // Why it was placed here
+}
+
+/**
+ * Time Period
+ */
+export interface TimePeriod {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  chapters: string[]; // Chapter IDs
+  themes: string[];
+  summary?: string;
+}
+
+/**
+ * Void Period - A period with no known content
+ */
+export interface VoidPeriod {
+  id: string;
+  start: string;
+  end: string;
+  durationDays: number;
+  type: 'short_gap' | 'medium_gap' | 'long_silence' | 'void';
+  significance: 'low' | 'medium' | 'high';
+  context?: {
+    beforePeriod?: string; // What happened before
+    afterPeriod?: string; // What happened after
+    estimatedActivity?: string; // What might have happened
+    surroundingThemes?: string[]; // Themes from surrounding periods
+  };
+  fillStrategy?: 'prompt_user' | 'infer_context' | 'acknowledge_void';
+}
+
+/**
+ * Void Context - Contextual information about a void period
+ */
+export interface VoidContext {
+  beforeAtoms: NarrativeAtom[];
+  afterAtoms: NarrativeAtom[];
+  inferredThemes: string[];
+  estimatedActivity: string;
+}
+
+/**
  * BiographyChapter - Final chapter structure
  * Generated from timeline chapters - links source structure to narrative output
  */
@@ -150,6 +225,110 @@ export interface BiographyChapter {
   timelineChapters?: TimelineChapter[]; // Full timeline chapter data (optional)
   atoms: NarrativeAtom[]; // Source atoms from timeline chapters
   themes: string[];
+  preservedContent?: PreservedContentPlacement[];
+  timePeriodId?: string;
+  timelineHierarchy?: {
+    sagaId?: string;
+    arcId?: string;
+    eraId?: string;
+  };
+  isVoidChapter?: boolean;
+  voidPeriodId?: string;
+  voidMetadata?: {
+    durationDays: number;
+    type: string;
+    prompts?: string[];
+  };
+}
+
+/**
+ * Prioritized Atom - Atom with priority scoring
+ */
+export interface PrioritizedAtom extends NarrativeAtom {
+  priorityScore: number;
+  recencyScore: number;
+  uniquenessScore: number;
+}
+
+/**
+ * Prioritization Options
+ */
+export interface PrioritizationOptions {
+  depth: BiographyDepth;
+  preserveAll?: boolean; // If true, include all atoms regardless of score
+  maxAtomsPerChapter?: number;
+}
+
+/**
+ * Fallback Options
+ */
+export interface FallbackOptions {
+  maxRetries?: number;
+  retryDelayMs?: number;
+  useCache?: boolean;
+  useTemplates?: boolean;
+}
+
+/**
+ * Quality Report
+ */
+export interface QualityReport {
+  overallScore: number; // 0-1
+  temporalAccuracy: number;
+  sourceFidelity: number;
+  completeness: number;
+  conflictAwareness: number;
+  warnings: string[];
+  checks: {
+    temporal: TemporalCheck;
+    fidelity: FidelityCheck;
+    conflicts: ConflictReport;
+    completeness: CompletenessCheck;
+  };
+}
+
+/**
+ * Temporal Check
+ */
+export interface TemporalCheck {
+  isValid: boolean;
+  outOfOrderChapters: string[];
+  score: number;
+}
+
+/**
+ * Fidelity Check
+ */
+export interface FidelityCheck {
+  score: number;
+  mismatches: Array<{
+    chapterId: string;
+    generatedText: string;
+    sourceAtom: string;
+    issue: string;
+  }>;
+}
+
+/**
+ * Conflict Report
+ */
+export interface ConflictReport {
+  conflictsFound: number;
+  conflicts: Array<{
+    chapterId: string;
+    conflictingAtoms: string[];
+    description: string;
+  }>;
+  score: number;
+}
+
+/**
+ * Completeness Check
+ */
+export interface CompletenessCheck {
+  score: number;
+  missingImportantAtoms: string[];
+  coverage: number; // Percentage of important atoms included
 }
 
 /**
@@ -178,5 +357,18 @@ export interface Biography {
     lorebookVersion?: number; // Version number for Core Lorebooks
     atomHashes?: string[]; // Reference hashes to NarrativeAtoms used
     memorySnapshotAt?: string; // When memory was queried (ISO date)
+    // Enhanced metadata
+    timePeriods?: TimePeriod[]; // Time periods detected
+    timelineHierarchy?: TimelineHierarchy; // Full timeline hierarchy
+    voidPeriods?: VoidPeriod[]; // Void periods detected
+    voidCount?: number; // Number of void chapters
+    quality?: {
+      overallScore: number;
+      temporalAccuracy: number;
+      sourceFidelity: number;
+      completeness: number;
+      conflictAwareness: number;
+      warnings: string[];
+    };
   };
 }

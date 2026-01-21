@@ -4,6 +4,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
 import { extractTags, shouldPersistMessage } from '../utils/keywordDetector';
+import { detectContentType } from '../utils/contentTypeDetection';
 
 import { correctionService } from './correctionService';
 import { memoryService } from './memoryService';
@@ -41,14 +42,21 @@ class ChatService {
 
     // Auto-save message as journal entry (all chat messages are automatically saved)
     if (shouldPersistMessage(message)) {
+      // Auto-detect content type for special content
+      const detected = detectContentType(message);
+      
       await memoryService.saveEntry({
         userId,
         content: message,
         tags: extractTags(message),
         source: 'chat',
+        content_type: detected.type,
+        original_content: detected.preserveOriginal ? message : null,
+        preserve_original_language: detected.preserveOriginal,
         metadata: { 
           autoCaptured: true,
-          fromLegacyChat: true
+          fromLegacyChat: true,
+          detection_confidence: detected.confidence
         }
       });
     }

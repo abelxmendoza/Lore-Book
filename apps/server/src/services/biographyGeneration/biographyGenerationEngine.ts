@@ -15,6 +15,13 @@ import { supabaseAdmin } from '../supabaseClient';
 
 import { filterSensitiveAtoms, filterBiographyText } from './contentFilter';
 import { buildAtomsFromTimeline } from './narrativeAtomBuilder';
+import { preservedContentPlacer } from './preservedContentPlacer';
+import { timePeriodAnalyzer } from './timePeriodAnalyzer';
+import { themeAnalyzer } from './themeAnalyzer';
+import { voidAwarenessService } from './voidAwarenessService';
+import { atomPrioritizer } from './atomPrioritizer';
+import { fallbackGenerator } from './fallbackGenerator';
+import { qualityValidator } from './qualityValidator';
 import type {
   NarrativeAtom,
   NarrativeGraph,
@@ -23,6 +30,7 @@ import type {
   BiographyChapter,
   ChapterCluster,
   TimelineChapter,
+  TimelineHierarchy,
   Domain
 } from './types';
 
@@ -49,6 +57,10 @@ export class BiographyGenerationEngine {
         throw new Error('No atoms found matching specification');
       }
 
+      // 3a. Detect voids in timeline
+      const timelineSpan = this.calculateTimelineSpan(filteredAtoms, spec);
+      const voidPeriods = voidAwarenessService.detectVoids(filteredAtoms, timelineSpan);
+
       // 3. Load timeline chapters (source structure)
       const timelineChapters = await this.loadTimelineChapters(userId, spec);
 
@@ -59,8 +71,17 @@ export class BiographyGenerationEngine {
         spec
       );
 
-      // 5. Order chapters
-      const orderedChapters = this.orderChapters(chapterClusters, spec);
+      // 4a. Create void chapters for significant gaps
+      const voidChapters = voidAwarenessService.createVoidChapters(
+        voidPeriods.filter(v => v.significance !== 'low'),
+        spec
+      );
+
+      // Merge void chapters into chapter clusters
+      const allChapters = [...chapterClusters, ...voidChapters];
+
+      // 5. Order chapters (including void chapters)
+      const orderedChapters = this.orderChapters(allChapters, spec);
 
       // 6. Generate chapter titles from timeline chapters
       const chaptersWithTitles = await this.generateChapterTitlesFromTimeline(
@@ -72,11 +93,57 @@ export class BiographyGenerationEngine {
       // 7. Generate chapter narratives
       const chapters = await this.generateChapterNarratives(chaptersWithTitles, spec);
 
-      // 7. Generate biography title (needs chapters and atoms for context)
+      // 7a. Detect time periods and assign to chapters
+      const timelineHierarchy = await this.loadTimelineHierarchy(userId, spec);
+      const timePeriods = timePeriodAnalyzer.detectTimePeriods(chaptersWithTitles, timelineHierarchy, voidPeriods);
+      
+      // Assign time period IDs to chapters
+      for (const period of timePeriods) {
+        for (const chapterId of period.chapters) {
+          const chapter = chapters.find(ch => ch.id === chapterId);
+          if (chapter) {
+            chapter.timePeriodId = period.id;
+          }
+        }
+      }
+
+      // 8. Generate biography title (needs chapters and atoms for context)
       const biographyTitle = await this.generateBiographyTitle(userId, spec, filteredAtoms, chapters);
 
-      // 8. Assemble biography
-      const biography = this.assembleBiography(chapters, spec, filteredAtoms.length, filteredAtoms, biographyTitle);
+      // 9. Assemble biography
+      // Generate atom hashes for version tracking
+      const atomHashes = filteredAtoms.map(atom => atom.id);
+      const voidCount = chapters.filter(ch => ch.isVoidChapter).length;
+      const biography = this.assembleBiography(
+        chapters,
+        spec,
+        filteredAtoms.length,
+        filteredAtoms,
+        biographyTitle,
+        atomHashes,
+        timePeriods,
+        timelineHierarchy,
+        voidPeriods,
+        voidCount
+      );
+
+      // 9a. Validate quality
+      const qualityReport = await qualityValidator.validateBiography(biography, filteredAtoms);
+      
+      // Add quality metrics to metadata
+      biography.metadata.quality = {
+        overallScore: qualityReport.overallScore,
+        temporalAccuracy: qualityReport.temporalAccuracy,
+        sourceFidelity: qualityReport.sourceFidelity,
+        completeness: qualityReport.completeness,
+        conflictAwareness: qualityReport.conflictAwareness,
+        warnings: qualityReport.warnings
+      };
+
+      // Log warnings if quality is low
+      if (qualityReport.overallScore < 0.7) {
+        logger.warn({ qualityReport, userId }, 'Biography quality below threshold');
+      }
 
       // 9. Save biography
       await this.saveBiography(userId, biography);
@@ -246,13 +313,16 @@ export class BiographyGenerationEngine {
     atoms: NarrativeAtom[],
     spec: BiographySpec
   ): NarrativeAtom[] {
+    // Default to 'main' if version not specified
+    const version = spec.version || 'main';
+
     // Private and explicit versions: no filtering
-    if (spec.version === 'private' || spec.version === 'explicit') {
+    if (version === 'private' || version === 'explicit') {
       return atoms;
     }
 
     // Safe version: filter sensitive content
-    if (spec.version === 'safe') {
+    if (version === 'safe') {
       return atoms.filter(atom => {
         // Filter high sensitivity
         if (atom.sensitivity > 0.7) return false;
@@ -270,6 +340,29 @@ export class BiographyGenerationEngine {
       if (atom.sensitivity > 0.9) return false;
       return true;
     });
+  }
+
+  /**
+   * Calculate timeline span from atoms or spec
+   */
+  private calculateTimelineSpan(
+    atoms: NarrativeAtom[],
+    spec: BiographySpec
+  ): { start: string; end: string } {
+    if (spec.timeRange) {
+      return spec.timeRange;
+    }
+    
+    if (atoms.length === 0) {
+      const now = new Date();
+      return { start: now.toISOString(), end: now.toISOString() };
+    }
+    
+    const dates = atoms.map(a => new Date(a.timestamp).getTime());
+    return {
+      start: new Date(Math.min(...dates)).toISOString(),
+      end: new Date(Math.max(...dates)).toISOString()
+    };
   }
 
   /**
@@ -442,20 +535,365 @@ export class BiographyGenerationEngine {
   }
 
   /**
-   * Order chapters
+   * Load timeline hierarchy (Sagas → Arcs → Chapters)
    */
-  private orderChapters(
-    clusters: ChapterCluster[],
+  private async loadTimelineHierarchy(
+    userId: string,
+    spec: BiographySpec
+  ): Promise<TimelineHierarchy> {
+    try {
+      // Load sagas
+      const { data: sagas, error: sagasError } = await supabaseAdmin
+        .from('timeline_sagas')
+        .select('id, title, description, start_date, end_date, era_id')
+        .eq('user_id', userId)
+        .order('start_date', { ascending: true });
+
+      if (sagasError) {
+        logger.error({ error: sagasError }, 'Failed to load sagas');
+        return { sagas: [] };
+      }
+
+      if (!sagas || sagas.length === 0) {
+        return { sagas: [] };
+      }
+
+      // Filter sagas by spec if time range is specified
+      let filteredSagas = sagas;
+      if (spec.timeRange) {
+        filteredSagas = sagas.filter(saga => {
+          const sagaStart = new Date(saga.start_date);
+          const sagaEnd = saga.end_date ? new Date(saga.end_date) : new Date();
+          const specStart = new Date(spec.timeRange!.start);
+          const specEnd = new Date(spec.timeRange!.end);
+          return (sagaStart >= specStart && sagaStart <= specEnd) ||
+                 (sagaEnd >= specStart && sagaEnd <= specEnd) ||
+                 (sagaStart <= specStart && sagaEnd >= specEnd);
+        });
+      }
+
+      // Load arcs for each saga
+      const sagasWithArcs = await Promise.all(
+        filteredSagas.map(async (saga) => {
+          const { data: arcs, error: arcsError } = await supabaseAdmin
+            .from('timeline_arcs')
+            .select('id, title, description, start_date, end_date, saga_id')
+            .eq('saga_id', saga.id)
+            .eq('user_id', userId)
+            .order('start_date', { ascending: true });
+
+          if (arcsError) {
+            logger.error({ error: arcsError, sagaId: saga.id }, 'Failed to load arcs');
+            return { ...saga, arcs: [] };
+          }
+
+          // Load chapters for each arc
+          const arcsWithChapters = await Promise.all(
+            (arcs || []).map(async (arc) => {
+              const { data: chapters, error: chaptersError } = await supabaseAdmin
+                .from('chapters')
+                .select('id, title, start_date, end_date, description, summary, parent_id, user_id, created_at, updated_at')
+                .eq('parent_id', arc.id)
+                .eq('user_id', userId)
+                .order('start_date', { ascending: true });
+
+              if (chaptersError) {
+                logger.error({ error: chaptersError, arcId: arc.id }, 'Failed to load chapters');
+                return { ...arc, chapters: [] };
+              }
+
+              return {
+                ...arc,
+                chapters: (chapters || []).map(ch => ({
+                  id: ch.id,
+                  title: ch.title,
+                  start_date: ch.start_date,
+                  end_date: ch.end_date,
+                  description: ch.description,
+                  summary: ch.summary,
+                  parent_id: ch.parent_id,
+                  user_id: ch.user_id,
+                  created_at: ch.created_at,
+                  updated_at: ch.updated_at
+                })) as TimelineChapter[]
+              };
+            })
+          );
+
+          return {
+            id: saga.id,
+            title: saga.title,
+            description: saga.description || undefined,
+            start_date: saga.start_date,
+            end_date: saga.end_date || undefined,
+            arcs: arcsWithChapters
+          };
+        })
+      );
+
+      return { sagas: sagasWithArcs };
+    } catch (error) {
+      logger.error({ error }, 'Failed to load timeline hierarchy');
+      return { sagas: [] };
+    }
+  }
+
+  /**
+   * Load timeline chapters (flattened from hierarchy)
+   */
+  private async loadTimelineChapters(
+    userId: string,
+    spec: BiographySpec
+  ): Promise<TimelineChapter[]> {
+    try {
+      const hierarchy = await this.loadTimelineHierarchy(userId, spec);
+      
+      // Flatten chapters from all arcs
+      const chapters: TimelineChapter[] = [];
+      hierarchy.sagas.forEach(saga => {
+        saga.arcs.forEach(arc => {
+          chapters.push(...arc.chapters);
+        });
+      });
+
+      // If no chapters from hierarchy, try direct query
+      if (chapters.length === 0) {
+        const { data: directChapters, error } = await supabaseAdmin
+          .from('chapters')
+          .select('id, title, start_date, end_date, description, summary, parent_id, user_id, created_at, updated_at')
+          .eq('user_id', userId)
+          .order('start_date', { ascending: true });
+
+        if (error) {
+          logger.error({ error }, 'Failed to load chapters directly');
+          return [];
+        }
+
+        return (directChapters || []).map(ch => ({
+          id: ch.id,
+          title: ch.title,
+          start_date: ch.start_date,
+          end_date: ch.end_date,
+          description: ch.description,
+          summary: ch.summary,
+          parent_id: ch.parent_id,
+          user_id: ch.user_id,
+          created_at: ch.created_at,
+          updated_at: ch.updated_at
+        })) as TimelineChapter[];
+      }
+
+      return chapters;
+    } catch (error) {
+      logger.error({ error }, 'Failed to load timeline chapters');
+      return [];
+    }
+  }
+
+  /**
+   * Cluster atoms into chapters using timeline chapters as structure
+   */
+  private clusterAtomsIntoChaptersFromTimeline(
+    atoms: NarrativeAtom[],
+    timelineChapters: TimelineChapter[],
+    spec: BiographySpec
+  ): Array<ChapterCluster & { timelineChapterId?: string; timelineChapter?: TimelineChapter }> {
+    if (atoms.length === 0) return [];
+
+    const clusters: Array<ChapterCluster & { timelineChapterId?: string; timelineChapter?: TimelineChapter }> = [];
+    const usedAtoms = new Set<string>();
+
+    // Primary clustering: Use timeline chapters as structure
+    for (const timelineChapter of timelineChapters) {
+      const chapterStart = new Date(timelineChapter.start_date);
+      const chapterEnd = timelineChapter.end_date ? new Date(timelineChapter.end_date) : new Date();
+
+      // Find atoms that fall within this timeline chapter
+      const chapterAtoms = atoms.filter(atom => {
+        if (usedAtoms.has(atom.id)) return false;
+        const atomDate = new Date(atom.timestamp);
+        return atomDate >= chapterStart && atomDate <= chapterEnd;
+      });
+
+      if (chapterAtoms.length > 0) {
+        // Prioritize atoms before clustering
+        const prioritizedAtoms = atomPrioritizer.prioritizeAtoms(chapterAtoms, {
+          depth: spec.depth,
+          preserveAll: false // Except preserved content
+        });
+
+        // Select top N atoms based on chapter time span and depth
+        const maxAtoms = atomPrioritizer.getMaxAtomsForDepth(spec.depth);
+        const selectedAtoms = atomPrioritizer.selectAtomsForChapter(
+          prioritizedAtoms,
+          { start: chapterStart.toISOString(), end: chapterEnd.toISOString() },
+          maxAtoms
+        );
+
+        // Mark atoms as used
+        selectedAtoms.forEach(atom => usedAtoms.add(atom.id));
+
+        // Extract themes from selected atoms
+        const themes = new Set<string>();
+        selectedAtoms.forEach(atom => {
+          atom.domains.forEach(domain => themes.add(domain));
+          if (atom.tags) {
+            atom.tags.forEach(tag => themes.add(tag));
+          }
+        });
+
+        // Calculate time span from selected atoms
+        const atomDates = selectedAtoms.map(a => new Date(a.timestamp).getTime());
+        const minDate = new Date(Math.min(...atomDates));
+        const maxDate = new Date(Math.max(...atomDates));
+
+        clusters.push({
+          id: `cluster-${timelineChapter.id}`,
+          atoms: selectedAtoms,
+          dominantThemes: Array.from(themes),
+          timeSpan: {
+            start: minDate.toISOString(),
+            end: maxDate.toISOString()
+          },
+          significance: selectedAtoms.length > 0 
+            ? selectedAtoms.reduce((sum, a) => sum + a.significance, 0) / selectedAtoms.length 
+            : 0,
+          timelineChapterId: timelineChapter.id,
+          timelineChapter: timelineChapter
+        });
+      }
+    }
+
+    // Secondary clustering: Thematic cross-cutting for remaining atoms
+    const remainingAtoms = atoms.filter(atom => !usedAtoms.has(atom.id));
+    if (remainingAtoms.length > 0 && spec.scope !== 'time_range') {
+      // Use existing clusterAtomsIntoChapters for remaining atoms
+      const thematicClusters = this.clusterAtomsIntoChapters(remainingAtoms, spec);
+      clusters.push(...thematicClusters);
+    } else if (remainingAtoms.length > 0) {
+      // For time_range scope, create clusters for remaining atoms
+      const remainingClusters = this.clusterAtomsIntoChapters(remainingAtoms, spec);
+      clusters.push(...remainingClusters);
+    }
+
+    return clusters;
+  }
+
+  /**
+   * Create thematic chapters (cross-cutting themes)
+   */
+  private createThematicChapters(
+    atoms: NarrativeAtom[],
+    timelineChapters: TimelineChapter[],
     spec: BiographySpec
   ): ChapterCluster[] {
+    // Only create thematic chapters if hybrid structure is allowed
+    if (spec.scope === 'time_range') {
+      return []; // Strict chronological for time ranges
+    }
+
+    // Identify cross-cutting themes by analyzing atoms directly
+    // Group atoms by timeline chapter for theme analysis
+    const chapterAtomMap = new Map<string, NarrativeAtom[]>();
+    timelineChapters.forEach(tc => {
+      const chapterAtoms = atoms.filter(a => {
+        const atomDate = new Date(a.timestamp);
+        const chapterStart = new Date(tc.start_date);
+        const chapterEnd = tc.end_date ? new Date(tc.end_date) : new Date();
+        return atomDate >= chapterStart && atomDate <= chapterEnd;
+      });
+      if (chapterAtoms.length > 0) {
+        chapterAtomMap.set(tc.id, chapterAtoms);
+      }
+    });
+
+    // Extract themes from all atoms and find cross-cutting ones
+    const allThemes = themeAnalyzer.extractDominantThemes(atoms, { maxThemes: 20 });
+    
+    // Find themes that appear in multiple chapters
+    const crossCuttingThemes: string[] = [];
+    for (const theme of allThemes) {
+      let chapterCount = 0;
+      for (const [chapterId, chapterAtoms] of chapterAtomMap) {
+        const hasTheme = chapterAtoms.some(atom => 
+          atom.domains.includes(theme as Domain) ||
+          atom.tags?.includes(theme) ||
+          atom.content.toLowerCase().includes(theme.toLowerCase())
+        );
+        if (hasTheme) chapterCount++;
+      }
+      if (chapterCount >= 2) {
+        crossCuttingThemes.push(theme);
+      }
+    }
+
+    const thematicClusters: ChapterCluster[] = [];
+
+    for (const theme of crossCuttingThemes.slice(0, 3)) { // Limit to top 3 themes
+      const themeAtoms = atoms.filter(atom => {
+        return atom.domains.includes(theme as Domain) ||
+               atom.tags?.includes(theme) ||
+               atom.content.toLowerCase().includes(theme.toLowerCase());
+      });
+
+      if (themeAtoms.length >= 3) { // Minimum 3 atoms for thematic chapter
+        const atomDates = themeAtoms.map(a => new Date(a.timestamp).getTime());
+        const minDate = new Date(Math.min(...atomDates));
+        const maxDate = new Date(Math.max(...atomDates));
+
+        thematicClusters.push({
+          id: `thematic-${theme}`,
+          atoms: themeAtoms,
+          dominantThemes: [theme],
+          timeSpan: {
+            start: minDate.toISOString(),
+            end: maxDate.toISOString()
+          },
+          significance: themeAtoms.reduce((sum, a) => sum + a.significance, 0) / themeAtoms.length
+        });
+      }
+    }
+
+    return thematicClusters;
+  }
+
+  /**
+   * Order chapters (enhanced with hybrid ordering)
+   */
+  private orderChapters(
+    clusters: Array<ChapterCluster & { timelineChapterId?: string; timelineChapter?: TimelineChapter }>,
+    spec: BiographySpec
+  ): Array<ChapterCluster & { timelineChapterId?: string; timelineChapter?: TimelineChapter }> {
     if (spec.scope === 'full_life' || spec.scope === 'time_range') {
-      // Chronological order
-      return clusters.sort((a, b) => 
-        new Date(a.timeSpan.start).getTime() - new Date(b.timeSpan.start).getTime()
-      );
-    } else {
+      // Primary: Chronological order
+      // Secondary: Maintain timeline hierarchy structure
+      return clusters.sort((a, b) => {
+        // First, sort by time
+        const timeDiff = new Date(a.timeSpan.start).getTime() - new Date(b.timeSpan.start).getTime();
+        if (Math.abs(timeDiff) > 7 * 24 * 60 * 60 * 1000) { // More than 7 days difference
+          return timeDiff;
+        }
+        // If close in time, maintain hierarchy order if available
+        if (a.timelineChapterId && b.timelineChapterId) {
+          // Try to maintain arc/chapter order
+          return 0; // Keep original order for same-time chapters
+        }
+        return timeDiff;
+      });
+    } else if (spec.scope === 'thematic') {
       // Thematic order (by significance)
       return clusters.sort((a, b) => b.significance - a.significance);
+    } else {
+      // Domain scope: Hybrid - primary chronological, secondary thematic grouping
+      return clusters.sort((a, b) => {
+        // Primary: Chronological
+        const timeDiff = new Date(a.timeSpan.start).getTime() - new Date(b.timeSpan.start).getTime();
+        if (Math.abs(timeDiff) > 30 * 24 * 60 * 60 * 1000) { // More than 30 days
+          return timeDiff;
+        }
+        // Secondary: Significance for close chapters
+        return b.significance - a.significance;
+      });
     }
   }
 
@@ -497,7 +935,7 @@ export class BiographyGenerationEngine {
             if (timelineChapter.parent_id) {
               try {
                 const { data: arc } = await supabaseAdmin
-                  .from('arcs')
+                  .from('timeline_arcs')
                   .select('title, saga_id')
                   .eq('id', timelineChapter.parent_id)
                   .single();
@@ -507,7 +945,7 @@ export class BiographyGenerationEngine {
                   
                   if (arc.saga_id) {
                     const { data: saga } = await supabaseAdmin
-                      .from('sagas')
+                      .from('timeline_sagas')
                       .select('title')
                       .eq('id', arc.saga_id)
                       .single();
@@ -647,7 +1085,7 @@ Generate an enhanced chapter title that reflects the timeline context, events, a
         // Get parent arc if available
         if (cluster.timelineChapter.parent_id) {
           const { data: arc } = await supabaseAdmin
-            .from('arcs')
+            .from('timeline_arcs')
             .select('title, saga_id')
             .eq('id', cluster.timelineChapter.parent_id)
             .single();
@@ -658,7 +1096,7 @@ Generate an enhanced chapter title that reflects the timeline context, events, a
             // Get parent saga if available
             if (arc.saga_id) {
               const { data: saga } = await supabaseAdmin
-                .from('sagas')
+                .from('timeline_sagas')
                 .select('title, era_id')
                 .eq('id', arc.saga_id)
                 .single();
@@ -669,7 +1107,7 @@ Generate an enhanced chapter title that reflects the timeline context, events, a
                 // Get parent era if available
                 if (saga.era_id) {
                   const { data: era } = await supabaseAdmin
-                    .from('eras')
+                    .from('timeline_eras')
                     .select('title')
                     .eq('id', saga.era_id)
                     .single();
@@ -773,19 +1211,186 @@ Examples: "Forged in Backyard Fights", "Learning to Build Instead of Break", "Wh
   }
 
   /**
-   * Generate chapter narratives
+   * Generate chapter narratives (enhanced with preserved content placement)
    */
   private async generateChapterNarratives(
-    clusters: Array<ChapterCluster & { title: string; timelineChapterId?: string; timelineChapter?: TimelineChapter }>,
+    clusters: Array<ChapterCluster & { title: string; timelineChapterId?: string; timelineChapter?: TimelineChapter; isVoidChapter?: boolean; voidPeriodId?: string }>,
     spec: BiographySpec
   ): Promise<BiographyChapter[]> {
     const chapters: BiographyChapter[] = [];
 
-    for (const cluster of clusters) {
+    // Separate void chapters from regular chapters
+    const voidChapters = clusters.filter(c => c.isVoidChapter);
+    const regularClusters = clusters.filter(c => !c.isVoidChapter);
+
+    // Extract all preserved atoms across regular clusters only
+    const allPreservedAtoms = regularClusters.flatMap(c => 
+      c.atoms.filter(a => (a.metadata as any)?.preserve_original_language === true)
+    );
+
+    // Get intelligent placement for preserved content (only for regular clusters)
+    const placementMap = await preservedContentPlacer.placePreservedContent(
+      allPreservedAtoms,
+      regularClusters,
+      spec
+    );
+
+    // Process void chapters first
+    for (const cluster of voidChapters) {
       try {
-        // Build context from atoms (only LLM call)
+        if (!cluster.voidPeriodId) continue;
+
+        // Get void period information (we need to get this from the void periods detected earlier)
+        // For now, we'll generate based on cluster metadata
+        const voidStart = new Date(cluster.timeSpan.start);
+        const voidEnd = new Date(cluster.timeSpan.end);
+        const durationDays = Math.ceil(
+          (voidEnd.getTime() - voidStart.getTime()) / (1000 * 60 * 60 * 24)
+        );
+
+        const startDateStr = voidStart.toLocaleDateString('en-US', { 
+          month: 'long', 
+          year: 'numeric',
+          day: 'numeric'
+        });
+        const endDateStr = voidEnd.toLocaleDateString('en-US', { 
+          month: 'long', 
+          year: 'numeric',
+          day: 'numeric'
+        });
+
+        const months = Math.ceil(durationDays / 30);
+        const years = Math.floor(durationDays / 365);
+
+        // Generate void-aware narrative with retry and fallback
+        let text = await fallbackGenerator.callWithFallback(
+          async () => {
+            const completion = await openai.chat.completions.create({
+              model: config.defaultModel || 'gpt-4o-mini',
+              temperature: 0.7,
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are a biographer writing about a gap in someone's life story. Acknowledge the void honestly, use context from surrounding periods, and provide prompts to help fill the gap. Write in first person, as if the subject is reflecting on this missing period.`
+                },
+                {
+                  role: 'user',
+                  content: `Chapter Title: ${cluster.title}
+
+Between ${startDateStr} and ${endDateStr}, there are no recorded memories in the Lore Book. This period spans approximately ${durationDays} days${months >= 1 ? ` (about ${months} month${months > 1 ? 's' : ''})` : ''}${years >= 1 ? ` (about ${years} year${years > 1 ? 's' : ''})` : ''}.
+
+Themes from surrounding periods: ${cluster.dominantThemes.join(', ') || 'Unknown'}
+
+Write a narrative that:
+1. Acknowledges this gap explicitly and honestly
+2. Reflects on what might have happened during this period based on surrounding context
+3. Provides thoughtful prompts/questions to help the person remember and fill this void
+4. Maintains the ${spec.tone} tone appropriate for ${spec.audience} audience
+5. Writes in first person as if the subject is reflecting on this missing time
+
+Make it feel like a natural part of the biography, not just a placeholder.`
+                }
+              ],
+              max_tokens: spec.depth === 'summary' ? 300 : spec.depth === 'detailed' ? 600 : 1000
+            });
+            const generatedText = completion.choices[0]?.message?.content || '';
+            // Fallback if AI doesn't generate content
+            if (!generatedText || generatedText.trim().length < 50) {
+              throw new Error('Generated text too short');
+            }
+            return generatedText;
+          },
+          () => {
+            // Fallback for void chapters
+            return `Between ${startDateStr} and ${endDateStr}, there are no recorded memories in my Lore Book. This period spans approximately ${durationDays} days. 
+
+What happened during this time? Consider:
+- Major life changes
+- Significant events or milestones
+- Relationships that developed or changed
+- Challenges or growth experiences
+- Creative projects, work changes, or personal transformations
+
+This gap in my story represents a period I haven't yet captured. What memories from this time should be preserved?`;
+          },
+          `Generate void narrative for chapter: ${cluster.title}`
+        );
+
+        // Generate prompts for this void
+        const prompts = voidAwarenessService.generateVoidPrompts({
+          id: cluster.voidPeriodId,
+          start: cluster.timeSpan.start,
+          end: cluster.timeSpan.end,
+          durationDays,
+          type: durationDays < 30 ? 'short_gap' : durationDays < 180 ? 'medium_gap' : 'long_silence',
+          significance: durationDays >= 180 ? 'high' : durationDays >= 30 ? 'medium' : 'low'
+        });
+
+        chapters.push({
+          id: cluster.id,
+          title: cluster.title,
+          text,
+          timeSpan: cluster.timeSpan,
+          timelineChapterIds: [],
+          atoms: [],
+          themes: cluster.dominantThemes,
+          isVoidChapter: true,
+          voidPeriodId: cluster.voidPeriodId,
+          voidMetadata: {
+            durationDays,
+            type: durationDays < 30 ? 'short_gap' : durationDays < 180 ? 'medium_gap' : 'long_silence',
+            prompts
+          }
+        });
+      } catch (error) {
+        logger.error({ error }, 'Failed to generate void chapter narrative');
+        // Fallback for void chapters
+        const voidStart = new Date(cluster.timeSpan.start);
+        const voidEnd = new Date(cluster.timeSpan.end);
+        const durationDays = Math.ceil(
+          (voidEnd.getTime() - voidStart.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        
+        chapters.push({
+          id: cluster.id,
+          title: cluster.title,
+          text: `Between ${voidStart.toLocaleDateString()} and ${voidEnd.toLocaleDateString()}, there are no recorded memories. This period spans approximately ${durationDays} days. What happened during this time?`,
+          timeSpan: cluster.timeSpan,
+          timelineChapterIds: [],
+          atoms: [],
+          themes: cluster.dominantThemes,
+          isVoidChapter: true,
+          voidPeriodId: cluster.voidPeriodId,
+          voidMetadata: {
+            durationDays,
+            type: durationDays < 30 ? 'short_gap' : durationDays < 180 ? 'medium_gap' : 'long_silence',
+            prompts: ['What happened during this period?']
+          }
+        });
+      }
+    }
+
+    // Process regular chapters
+    for (const cluster of regularClusters) {
+      try {
+        // Get preserved content for this chapter
+        const preservedInChapter = placementMap.get(cluster.id) || [];
+        const openingContent = preservedInChapter.filter(p => p.position === 'opening');
+        const middleContent = preservedInChapter.filter(p => p.position === 'middle');
+        const closingContent = preservedInChapter.filter(p => p.position === 'closing');
+
+        // Separate preserved content from regular content
+        const preservedAtomIds = new Set(preservedInChapter.map(p => p.atom.id));
+        const preservedAtoms = cluster.atoms.filter(a => 
+          preservedAtomIds.has(a.id)
+        );
+        const regularAtoms = cluster.atoms.filter(a => 
+          !preservedAtomIds.has(a.id)
+        );
+
+        // Build context from regular atoms (for LLM processing)
         // Format for biographical writing - provide temporal context
-        const atomSummaries = cluster.atoms
+        const atomSummaries = regularAtoms
           .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
           .map((a, index, array) => {
             const date = new Date(a.timestamp);
@@ -811,6 +1416,27 @@ Examples: "Forged in Backyard Fights", "Learning to Build Instead of Break", "Wh
           })
           .join('\n');
 
+        // Format preserved content by position (verbatim, no LLM processing)
+        const formatPreservedContent = (placements: Array<{ atom: NarrativeAtom; position: string }>) => {
+          return placements
+            .sort((a, b) => new Date(a.atom.timestamp).getTime() - new Date(b.atom.timestamp).getTime())
+            .map(p => {
+              const contentType = (p.atom.metadata as any)?.content_type || 'preserved';
+              const date = new Date(p.atom.timestamp);
+              const dateStr = date.toLocaleDateString('en-US', { 
+                month: 'long', 
+                year: 'numeric',
+                day: date.getDate() === 1 ? undefined : 'numeric'
+              });
+              return `[${contentType.toUpperCase()}, ${dateStr}]\n${p.atom.content}`;
+            })
+            .join('\n\n---\n\n');
+        };
+
+        const openingPreservedContent = formatPreservedContent(openingContent);
+        const middlePreservedContent = formatPreservedContent(middleContent);
+        const closingPreservedContent = formatPreservedContent(closingContent);
+
         // Add timeline chapter context if available
         const timelineContext = cluster.timelineChapter
           ? `\nTimeline Chapter: ${cluster.timelineChapter.title}${cluster.timelineChapter.description ? `\nDescription: ${cluster.timelineChapter.description}` : ''}${cluster.timelineChapter.summary ? `\nSummary: ${cluster.timelineChapter.summary}` : ''}`
@@ -822,13 +1448,16 @@ Examples: "Forged in Backyard Fights", "Learning to Build Instead of Break", "Wh
           ? 'Include introspection and inner thoughts.' 
           : 'Focus on external events and actions.';
 
-        const completion = await openai.chat.completions.create({
-          model: config.defaultModel,
-          temperature: 0.7,
-          messages: [
-            {
-              role: 'system',
-              content: `You are a skilled biographer writing a ${spec.depth} biography chapter in ${spec.tone} tone for ${spec.audience} audience.
+        // Wrap LLM call with retry and fallback
+        let text = await fallbackGenerator.callWithFallback(
+          async () => {
+            const completion = await openai.chat.completions.create({
+              model: config.defaultModel,
+              temperature: 0.7,
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are a skilled biographer writing a ${spec.depth} biography chapter in ${spec.tone} tone for ${spec.audience} audience.
 
 ${toneInstructions}
 ${audienceInstructions}
@@ -856,30 +1485,89 @@ ${introspection}
 - Use natural time transitions
 - Create a sense of story and progression
 - Make it read like someone is recounting their life story`
-            },
-            {
-              role: 'user',
-              content: `Chapter Title: ${cluster.title}${timelineContext}
+                },
+                {
+                  role: 'user',
+                  content: `Chapter Title: ${cluster.title}${timelineContext}
 
-**Raw Events (transform these into biographical prose):**
+${openingPreservedContent ? `**OPENING PRESERVED CONTENT (include at the beginning, verbatim, do not rewrite):**
+${openingPreservedContent}
+
+` : ''}**Raw Events (transform these into biographical prose):**
 ${atomSummaries}
 
-**Your Task:**
-Transform the events above into flowing biographical narrative prose. Write as if the subject is telling their own story. Make it read like a memoir chapter, not a timeline or list of events. Use natural temporal transitions and weave the events into a cohesive narrative.`
-            }
-          ],
-          max_tokens: spec.depth === 'summary' ? 500 : spec.depth === 'detailed' ? 1000 : 2000
-        });
+${middlePreservedContent ? `**MIDDLE PRESERVED CONTENT (integrate naturally in the middle, verbatim, do not rewrite):**
+${middlePreservedContent}
 
-        let text = completion.choices[0]?.message?.content || '';
+` : ''}${closingPreservedContent ? `**CLOSING PRESERVED CONTENT (include at the end, verbatim, do not rewrite):**
+${closingPreservedContent}
+
+` : ''}**Your Task:**
+${openingPreservedContent ? 'First, include the opening preserved content EXACTLY as written. Then, ' : ''}Transform the events above into flowing biographical narrative prose. Write as if the subject is telling their own story. Make it read like a memoir chapter, not a timeline or list of events.${middlePreservedContent ? ' Integrate the middle preserved content naturally within the narrative flow, keeping it in its original wording.' : ''}${closingPreservedContent ? ' End with the closing preserved content EXACTLY as written.' : ''} Use natural temporal transitions and weave the events into a cohesive narrative.`
+                }
+              ],
+              max_tokens: spec.depth === 'summary' ? 500 : spec.depth === 'detailed' ? 1000 : 2000
+            });
+            return completion.choices[0]?.message?.content || '';
+          },
+          () => {
+            // Fallback: use template-based generation
+            const fallbackChapter = fallbackGenerator.generateTemplateBased(cluster, spec);
+            return fallbackChapter.text;
+          },
+          `Generate narrative for chapter: ${cluster.title}`
+        );
 
         // Apply text-level filtering (version-aware)
-        if (spec.version === 'safe') {
+        const version = spec.version || 'main';
+        if (version === 'safe') {
           text = filterBiographyText(text, {
             filterSensitive: true,
             audience: 'public',
             includeIntrospection: false
           });
+        }
+
+        // Build preserved content placements metadata
+        const preservedContentPlacements = preservedInChapter.map(p => ({
+          atomId: p.atom.id,
+          chapterId: cluster.id,
+          position: p.position,
+          contentType: (p.atom.metadata as any)?.content_type || 'standard',
+          reasoning: `Placed at ${p.position} based on content type and narrative relevance`
+        }));
+
+        // Get timeline hierarchy metadata
+        let timelineHierarchyMetadata: { sagaId?: string; arcId?: string; eraId?: string } | undefined;
+        if (cluster.timelineChapter?.parent_id) {
+          try {
+            const { data: arc } = await supabaseAdmin
+              .from('timeline_arcs')
+              .select('id, saga_id')
+              .eq('id', cluster.timelineChapter.parent_id)
+              .single();
+            
+            if (arc) {
+              timelineHierarchyMetadata = { arcId: arc.id };
+              
+              if (arc.saga_id) {
+                timelineHierarchyMetadata.sagaId = arc.saga_id;
+                
+                // Try to get era_id from saga
+                const { data: saga } = await supabaseAdmin
+                  .from('timeline_sagas')
+                  .select('era_id')
+                  .eq('id', arc.saga_id)
+                  .single();
+                
+                if (saga?.era_id) {
+                  timelineHierarchyMetadata.eraId = saga.era_id;
+                }
+              }
+            }
+          } catch (error) {
+            logger.debug({ error }, 'Failed to get timeline hierarchy metadata');
+          }
         }
 
         chapters.push({
@@ -890,13 +1578,16 @@ Transform the events above into flowing biographical narrative prose. Write as i
           timelineChapterIds: cluster.timelineChapterId ? [cluster.timelineChapterId] : [],
           timelineChapters: cluster.timelineChapter ? [cluster.timelineChapter] : undefined,
           atoms: cluster.atoms,
-          themes: cluster.dominantThemes
+          themes: cluster.dominantThemes,
+          preservedContent: preservedContentPlacements.length > 0 ? preservedContentPlacements : undefined,
+          timelineHierarchy: timelineHierarchyMetadata,
+          isVoidChapter: false
         });
       } catch (error) {
         logger.error({ error }, 'Failed to generate chapter narrative');
-        // Fallback: use atom summaries
+        // Fallback: use atom content
         const text = cluster.atoms
-          .map(a => a.content || a.summary || '')
+          .map(a => a.content || '')
           .filter(Boolean)
           .join('\n\n');
         
@@ -908,7 +1599,10 @@ Transform the events above into flowing biographical narrative prose. Write as i
           timelineChapterIds: cluster.timelineChapterId ? [cluster.timelineChapterId] : [],
           timelineChapters: cluster.timelineChapter ? [cluster.timelineChapter] : undefined,
           atoms: cluster.atoms,
-          themes: cluster.dominantThemes
+          themes: cluster.dominantThemes,
+          preservedContent: undefined,
+          isVoidChapter: false,
+          timelineHierarchy: undefined
         });
       }
     }
@@ -956,7 +1650,12 @@ Transform the events above into flowing biographical narrative prose. Write as i
     spec: BiographySpec,
     atomCount: number,
     filteredAtoms: any[] = [],
-    generatedTitle?: string
+    generatedTitle?: string,
+    atomHashes: string[] = [],
+    timePeriods?: any[],
+    timelineHierarchy?: TimelineHierarchy,
+    voidPeriods?: any[],
+    voidCount?: number
   ): Biography {
     const title = generatedTitle || this.getFallbackTitle(spec);
     const subtitle = this.generateBiographySubtitle(spec);
@@ -965,21 +1664,24 @@ Transform the events above into flowing biographical narrative prose. Write as i
     const finalTitle = (spec as any).lorebookName || title;
 
     // List which filters were applied
+    const version = spec.version || 'main';
     const filtersApplied: string[] = [];
-    if (spec.version === 'safe') {
+    if (version === 'safe') {
       filtersApplied.push('sensitivity-filter', 'high-emotion-filter', 'conflict-filter');
-    } else if (spec.version === 'main') {
+    } else if (version === 'main') {
       filtersApplied.push('extreme-sensitivity-filter');
     }
 
-    // Generate atom hashes for reference tracking (if available)
-    const atomHashes: string[] = [];
+    // Use provided atom hashes or generate from filtered atoms
+    const finalAtomHashes = atomHashes.length > 0 
+      ? atomHashes 
+      : filteredAtoms.map(atom => atom.id);
 
     return {
       id: `bio-${Date.now()}`,
       title: finalTitle,
       subtitle,
-      version: spec.version, // Build flag used
+      version: spec.version || 'main', // Build flag used
       chapters,
       metadata: {
         domain: spec.domain,
@@ -990,8 +1692,12 @@ Transform the events above into flowing biographical narrative prose. Write as i
         isCoreLorebook: (spec as any).isCoreLorebook || false,
         lorebookName: (spec as any).lorebookName,
         lorebookVersion: (spec as any).lorebookVersion || 1,
-        atomHashes, // Reference hashes to NarrativeAtoms used
-        memorySnapshotAt: new Date().toISOString() // When memory was queried
+        atomHashes: finalAtomHashes, // Reference hashes to NarrativeAtoms used
+        memorySnapshotAt: new Date().toISOString(), // When memory was queried
+        timePeriods: timePeriods || [], // Time periods detected
+        timelineHierarchy: timelineHierarchy || undefined, // Full timeline hierarchy
+        voidPeriods: voidPeriods || [], // Void periods detected
+        voidCount: voidCount || 0 // Number of void chapters
       }
     };
   }
@@ -1095,21 +1801,21 @@ The title should reflect the specific lorebook, timeline period, and key themes/
       // Find eras, sagas, and arcs that overlap with this date range
       const [erasResult, sagasResult, arcsResult] = await Promise.all([
         supabaseAdmin
-          .from('eras')
+          .from('timeline_eras')
           .select('title')
           .eq('user_id', userId)
           .lte('start_date', endDate)
           .or(`end_date.is.null,end_date.gte.${startDate}`)
           .limit(3),
         supabaseAdmin
-          .from('sagas')
+          .from('timeline_sagas')
           .select('title')
           .eq('user_id', userId)
           .lte('start_date', endDate)
           .or(`end_date.is.null,end_date.gte.${startDate}`)
           .limit(3),
         supabaseAdmin
-          .from('arcs')
+          .from('timeline_arcs')
           .select('title')
           .eq('user_id', userId)
           .lte('start_date', endDate)
@@ -1198,6 +1904,19 @@ The title should reflect the specific lorebook, timeline period, and key themes/
    */
   private async saveBiography(userId: string, biography: Biography): Promise<void> {
     try {
+      // Generate atom snapshot hash if atoms are available
+      let atomSnapshotHash: string | null = null;
+      if (biography.metadata.atomHashes && biography.metadata.atomHashes.length > 0) {
+        try {
+          const { bookVersionManager } = await import('./bookVersionManager');
+          atomSnapshotHash = bookVersionManager.generateAtomSnapshotHash(
+            biography.metadata.atomHashes.map(hash => ({ id: hash }))
+          );
+        } catch (error) {
+          logger.debug({ error }, 'Failed to generate atom snapshot hash');
+        }
+      }
+
       await supabaseAdmin
         .from('biographies')
         .insert({
@@ -1210,6 +1929,8 @@ The title should reflect the specific lorebook, timeline period, and key themes/
           is_core_lorebook: biography.metadata.isCoreLorebook || false,
           lorebook_name: biography.metadata.lorebookName,
           lorebook_version: biography.metadata.lorebookVersion || 1,
+          memory_snapshot_at: biography.metadata.memorySnapshotAt || new Date().toISOString(),
+          atom_snapshot_hash: atomSnapshotHash,
           created_at: new Date().toISOString()
         });
     } catch (error) {

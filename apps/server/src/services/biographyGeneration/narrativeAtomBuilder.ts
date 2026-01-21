@@ -101,6 +101,14 @@ export async function buildAtomsFromTimeline(userId: string): Promise<NarrativeA
       const significance = calculateSignificance(entry);
       const sensitivity = calculateSensitivity(entry);
       
+      // For preserved content types, use original_content or full content
+      // For other entries, use summary or truncated content
+      const isPreserved = (entry as any).preserve_original_language === true;
+      const preservedContent = (entry as any).original_content || entry.content;
+      const atomContent = isPreserved 
+        ? preservedContent // Use full original content for preserved entries
+        : (entry.summary || entry.content?.substring(0, 200) || ''); // Pre-summarized text for others
+      
       // Create atom (AST node)
       const atom: NarrativeAtom = {
         id: `atom-${entry.id}`,
@@ -112,7 +120,7 @@ export async function buildAtomsFromTimeline(userId: string): Promise<NarrativeA
         significance,
         peopleIds,
         tags: entry.tags || [],
-        content: entry.summary || entry.content?.substring(0, 200) || '', // Pre-summarized text
+        content: atomContent,
         timelineIds: [entry.id],
         sourceRefs: [entry.id],
         metadata: {
@@ -121,6 +129,8 @@ export async function buildAtomsFromTimeline(userId: string): Promise<NarrativeA
           locationIds,
           eventIds,
           skillIds,
+          preserve_original_language: isPreserved,
+          content_type: (entry as any).content_type,
         }
       };
       

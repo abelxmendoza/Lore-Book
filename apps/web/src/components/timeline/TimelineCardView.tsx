@@ -4,6 +4,7 @@ import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { timeEngine } from '../../utils/timeEngine';
 import { TimeDisplay } from '../time/TimeDisplay';
+import { ContentTypeBadge } from '../content/ContentTypeBadge';
 import type { TimelineResponse } from '../../hooks/useLoreKeeper';
 
 type TimelineCardViewProps = {
@@ -36,6 +37,8 @@ export const TimelineCardView = ({ timeline, density, onEntryClick }: TimelineCa
       mood?: string;
       chapter_id?: string;
       chapter_title?: string;
+      content_type?: string | null;
+      preserve_original_language?: boolean;
     }> = [];
 
     timeline.chapters.forEach(chapter => {
@@ -49,7 +52,9 @@ export const TimelineCardView = ({ timeline, density, onEntryClick }: TimelineCa
             tags: entry.tags || [],
             mood: entry.mood,
             chapter_id: chapter.id,
-            chapter_title: chapter.title
+            chapter_title: chapter.title,
+            content_type: (entry as any).content_type,
+            preserve_original_language: (entry as any).preserve_original_language
           });
         });
       });
@@ -63,7 +68,9 @@ export const TimelineCardView = ({ timeline, density, onEntryClick }: TimelineCa
           content: entry.content || '',
           summary: entry.summary,
           tags: entry.tags || [],
-          mood: entry.mood
+          mood: entry.mood,
+          content_type: (entry as any).content_type,
+          preserve_original_language: (entry as any).preserve_original_language
         });
       });
     });
@@ -227,11 +234,20 @@ export const TimelineCardView = ({ timeline, density, onEntryClick }: TimelineCa
                   className="text-xs text-white/50 truncate"
                 />
               </div>
-              {entry.mood && (
-                <Badge className="bg-purple-500/20 text-purple-200 text-xs flex-shrink-0">
-                  {entry.mood}
-                </Badge>
-              )}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {(entry as any).content_type && (entry as any).content_type !== 'standard' && (
+                  <ContentTypeBadge
+                    contentType={(entry as any).content_type}
+                    preserveOriginal={(entry as any).preserve_original_language}
+                    size="sm"
+                  />
+                )}
+                {entry.mood && (
+                  <Badge className="bg-purple-500/20 text-purple-200 text-xs">
+                    {entry.mood}
+                  </Badge>
+                )}
+              </div>
             </div>
 
             {/* Chapter Badge */}

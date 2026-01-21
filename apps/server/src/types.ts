@@ -1,4 +1,18 @@
-export type MemorySource = 'chat' | 'manual' | 'api' | 'system' | 'photo' | 'calendar' | 'x';
+export type MemorySource = 'chat' | 'manual' | 'api' | 'system' | 'photo' | 'calendar' | 'x' | 'document_upload';
+
+export type ContentType = 
+  | 'standard'
+  | 'testimony'
+  | 'advice'
+  | 'message_to_reader'
+  | 'dedication'
+  | 'acknowledgment'
+  | 'preface'
+  | 'epilogue'
+  | 'manifesto'
+  | 'vow'
+  | 'promise'
+  | 'declaration';
 
 export type MemoryEntry = {
   id: string;
@@ -10,6 +24,9 @@ export type MemoryEntry = {
   mood?: string | null;
   summary?: string | null;
   source: MemorySource;
+  content_type?: ContentType;
+  original_content?: string | null;
+  preserve_original_language?: boolean;
   metadata?: Record<string, unknown>;
   embedding?: number[] | null;
   similarity?: number;

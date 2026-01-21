@@ -42,10 +42,11 @@ import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
 import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
 import { GuestBanner } from '../components/guest/GuestBanner';
 import { LoveAndRelationshipsView } from '../components/love/LoveAndRelationshipsView';
+import { QuestBoard } from '../components/quests/QuestBoard';
 import { getSurfaceFromRoute } from '../utils/routeMapping';
 
 
-type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'memories' | 'events' | 'entities' | 'organizations' | 'skills' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'love';
+type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'memories' | 'events' | 'entities' | 'organizations' | 'skills' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'love' | 'quests';
 
 interface AppContentProps {
   defaultSurface?: SurfaceKey;
@@ -217,7 +218,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       discovery: 'Discovery Hub',
       continuity: 'Continuity',
       guide: 'User Guide',
-      love: 'Love & Relationships'
+      love: 'Love & Relationships',
+      quests: 'Quests'
     };
     return names[surface] || 'Lore Book';
   };
@@ -364,6 +366,11 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         {activeSurface === 'love' && (
           <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
             <LoveAndRelationshipsView />
+          </div>
+        )}
+        {activeSurface === 'quests' && (
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+            <QuestBoard />
           </div>
         )}
         {activeSurface === 'guide' && <UserGuide />}

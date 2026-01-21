@@ -28,6 +28,9 @@ export type SaveEntryPayload = {
   mood?: string | null;
   summary?: string | null;
   source?: MemorySource;
+  content_type?: string;
+  original_content?: string | null;
+  preserve_original_language?: boolean;
   metadata?: Record<string, unknown>;
   relationships?: EntryRelationship[];
 };
@@ -40,8 +43,9 @@ class MemoryService {
       metadata.relationships = payload.relationships;
     }
     // Auto-generate summary if not provided
+    // Skip auto-summary for preserved content types (they should keep original wording)
     let summary = payload.summary;
-    if (!summary && payload.content && payload.content.length > 20) {
+    if (!summary && payload.content && payload.content.length > 20 && !payload.preserve_original_language) {
       try {
         summary = await titleGenerationService.generateEntrySummary(
           payload.userId,
@@ -63,6 +67,9 @@ class MemoryService {
       mood: payload.mood ?? null,
       summary: summary ?? null,
       source: payload.source ?? 'manual',
+      content_type: payload.content_type as any,
+      original_content: payload.original_content ?? null,
+      preserve_original_language: payload.preserve_original_language ?? false,
       metadata
     };
 
@@ -208,6 +215,9 @@ class MemoryService {
     if (updates.mood !== undefined) updateData.mood = updates.mood;
     if (updates.summary !== undefined) updateData.summary = updates.summary;
     if (updates.source !== undefined) updateData.source = updates.source;
+    if (updates.content_type !== undefined) updateData.content_type = updates.content_type;
+    if (updates.original_content !== undefined) updateData.original_content = updates.original_content;
+    if (updates.preserve_original_language !== undefined) updateData.preserve_original_language = updates.preserve_original_language;
     if (updates.metadata !== undefined) {
       updateData.metadata = { ...updateData.metadata as Record<string, unknown>, ...updates.metadata };
     }

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, ChevronUp, ChevronDown, Type, AlignJustify, Search, Sparkles, Loader2, Download } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, ChevronUp, ChevronDown, Type, AlignJustify, Search, Sparkles, Loader2, Download, Menu, X } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -15,7 +15,30 @@ import { QuerySuggestions } from './QuerySuggestions';
 import { fetchJson } from '../../lib/api';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
-import type { Biography, BiographySpec } from '../../../server/src/services/biographyGeneration/types';
+import { BookPage } from './BookPage';
+import { useSwipeGesture } from '../../hooks/useSwipeGesture';
+import { calculatePagesForSection, fontSizeToPixels, lineHeightToMultiplier, getViewportDimensions, type BookPage as BookPageType } from '../../utils/pageCalculator';
+import { LorebookStats } from './LorebookStats';
+
+// Biography types (define locally to avoid server import)
+type Biography = {
+  id: string;
+  user_id: string;
+  lorebook_name: string;
+  spec: any;
+  outline: any;
+  sections: any[];
+  created_at: string;
+  updated_at: string;
+};
+
+type BiographySpec = {
+  scope: string;
+  depth: string;
+  tone?: string;
+  audience?: string;
+  version?: string;
+};
 
 type MemoirSection = {
   id: string;
@@ -216,6 +239,16 @@ export const LoreBook = () => {
   const [characters, setCharacters] = useState<Array<{ id: string; name: string }>>([]);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [skills, setSkills] = useState<Array<{ id: string; name: string }>>([]);
+  
+  // Page-based state
+  const [allPages, setAllPages] = useState<BookPageType[]>([]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [animationDirection, setAnimationDirection] = useState<'none' | 'next' | 'prev'>('none');
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [showStats, setShowStats] = useState(false); // Mobile sidebar state
+  const [viewportDimensions, setViewportDimensions] = useState(getViewportDimensions());
+  const pageContainerRef = useRef<HTMLDivElement>(null);
 
   // Load entities for query suggestions
   useEffect(() => {
@@ -320,6 +353,107 @@ export const LoreBook = () => {
     loadRecommendations();
   }, []);
 
+  // Helper function to flatten sections
+  const flattenSections = (sections: MemoirSection[]): MemoirSection[] => {
+    const result: MemoirSection[] = [];
+    const sorted = [...sections].sort((a, b) => a.order - b.order);
+    
+    for (const section of sorted) {
+      result.push(section);
+      if (section.children && section.children.length > 0) {
+        result.push(...flattenSections(section.children));
+      }
+    }
+    return result;
+  };
+
+  // Handle viewport resize
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportDimensions(getViewportDimensions());
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Calculate pages when outline, sections, or settings change
+  useEffect(() => {
+    if (!outline || !outline.sections || outline.sections.length === 0) {
+      setAllPages([]);
+      setCurrentPageIndex(0);
+      return;
+    }
+
+    const flatSections = flattenSections(outline.sections);
+    const allCalculatedPages: BookPageType[] = [];
+
+    flatSections.forEach((section, sectionIndex) => {
+      if (!section.content) return;
+
+      const containerEl = pageContainerRef.current;
+      if (!containerEl) {
+        // Fallback calculation
+        const pages = calculatePagesForSection(section.content, sectionIndex, {
+          fontSize: fontSizeToPixels(fontSize),
+          lineHeight: lineHeightToMultiplier(lineHeight),
+          containerHeight: viewportDimensions.height - 200, // Account for headers/footers
+          containerWidth: viewportDimensions.width > 1024 ? viewportDimensions.width - 400 : viewportDimensions.width - 40,
+          marginTop: 60,
+          marginBottom: 80,
+          marginLeft: viewportDimensions.width > 1024 ? 80 : 20,
+          marginRight: viewportDimensions.width > 1024 ? 80 : 20,
+          padding: 20
+        });
+        allCalculatedPages.push(...pages);
+        return;
+      }
+
+      const rect = containerEl.getBoundingClientRect();
+      const isMobile = viewportDimensions.width < 768;
+      const isTablet = viewportDimensions.width >= 768 && viewportDimensions.width < 1024;
+
+      const pages = calculatePagesForSection(section.content, sectionIndex, {
+        fontSize: fontSizeToPixels(fontSize),
+        lineHeight: lineHeightToMultiplier(lineHeight),
+        containerHeight: rect.height || viewportDimensions.height - 200,
+        containerWidth: isMobile 
+          ? viewportDimensions.width - 40 
+          : isTablet 
+          ? viewportDimensions.width - 300 
+          : rect.width || viewportDimensions.width - 400,
+        marginTop: isMobile ? 40 : 60,
+        marginBottom: isMobile ? 60 : 80,
+        marginLeft: isMobile ? 20 : isTablet ? 40 : 80,
+        marginRight: isMobile ? 20 : isTablet ? 40 : 80,
+        padding: isMobile ? 16 : 20
+      });
+
+      allCalculatedPages.push(...pages);
+    });
+
+    setAllPages(allCalculatedPages);
+    
+    // Reset to first page if current page is out of bounds
+    if (currentPageIndex >= allCalculatedPages.length) {
+      setCurrentPageIndex(0);
+    }
+  }, [outline, fontSize, lineHeight, viewportDimensions]);
+
+  // Update current page index when section changes (for section-based navigation)
+  useEffect(() => {
+    if (allPages.length === 0) return;
+
+    // Find first page of current section
+    const firstPageOfSection = allPages.findIndex(
+      page => page.sectionIndex === currentSectionIndex
+    );
+    
+    if (firstPageOfSection >= 0) {
+      setCurrentPageIndex(firstPageOfSection);
+    }
+  }, [currentSectionIndex, allPages]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -341,19 +475,6 @@ export const LoreBook = () => {
       </div>
     );
   }
-
-  const flattenSections = (sections: MemoirSection[]): MemoirSection[] => {
-    const result: MemoirSection[] = [];
-    const sorted = [...sections].sort((a, b) => a.order - b.order);
-    
-    for (const section of sorted) {
-      result.push(section);
-      if (section.children && section.children.length > 0) {
-        result.push(...flattenSections(section.children));
-      }
-    }
-    return result;
-  };
 
   if (loading) {
     return (
@@ -378,27 +499,126 @@ export const LoreBook = () => {
   }
 
   const flatSections = outline ? flattenSections(outline.sections) : [];
-  const currentSection = flatSections[currentSectionIndex];
+  const currentPage = allPages.length > 0 && currentPageIndex < allPages.length ? allPages[currentPageIndex] : null;
+  const currentSection = currentPage 
+    ? (flatSections[currentPage.sectionIndex] || flatSections[currentSectionIndex])
+    : flatSections[currentSectionIndex];
   const totalSections = flatSections.length;
 
-  const goToPrevious = () => {
-    if (currentSectionIndex > 0) {
-      setCurrentSectionIndex(currentSectionIndex - 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Page navigation functions
+  const goToPreviousPage = useCallback(() => {
+    if (isAnimating) return;
+    
+    if (currentPageIndex > 0) {
+      setIsAnimating(true);
+      setAnimationDirection('prev');
+      const newIndex = currentPageIndex - 1;
+      setCurrentPageIndex(newIndex);
+      
+      // Update section index if we moved to a different section
+      const newPage = allPages[newIndex];
+      if (newPage && newPage.sectionIndex !== currentSectionIndex) {
+        setCurrentSectionIndex(newPage.sectionIndex);
+      }
     }
-  };
+  }, [currentPageIndex, allPages, currentSectionIndex, isAnimating]);
 
-  const goToNext = () => {
-    if (currentSectionIndex < totalSections - 1) {
-      setCurrentSectionIndex(currentSectionIndex + 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  const goToNextPage = useCallback(() => {
+    if (isAnimating) return;
+    
+    if (currentPageIndex < allPages.length - 1) {
+      setIsAnimating(true);
+      setAnimationDirection('next');
+      const newIndex = currentPageIndex + 1;
+      setCurrentPageIndex(newIndex);
+      
+      // Update section index if we moved to a different section
+      const newPage = allPages[newIndex];
+      if (newPage && newPage.sectionIndex !== currentSectionIndex) {
+        setCurrentSectionIndex(newPage.sectionIndex);
+      }
     }
-  };
+  }, [currentPageIndex, allPages, currentSectionIndex, isAnimating]);
 
-  const goToSection = (index: number) => {
-    setCurrentSectionIndex(index);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const goToPage = useCallback((index: number) => {
+    if (isAnimating || index < 0 || index >= allPages.length) return;
+    
+    const direction = index > currentPageIndex ? 'next' : index < currentPageIndex ? 'prev' : 'none';
+    setIsAnimating(true);
+    setAnimationDirection(direction);
+    setCurrentPageIndex(index);
+    
+    // Update section index
+    const newPage = allPages[index];
+    if (newPage && newPage.sectionIndex !== currentSectionIndex) {
+      setCurrentSectionIndex(newPage.sectionIndex);
+    }
+  }, [currentPageIndex, allPages, currentSectionIndex, isAnimating]);
+
+  const handleAnimationEnd = useCallback(() => {
+    setIsAnimating(false);
+    setAnimationDirection('none');
+  }, []);
+
+  // Legacy section navigation (for sidebar)
+  const goToSection = useCallback((index: number) => {
+    if (allPages.length === 0) {
+      setCurrentSectionIndex(index);
+      return;
+    }
+    
+    // Find first page of the section
+    const firstPageOfSection = allPages.findIndex(
+      page => page.sectionIndex === index
+    );
+    
+    if (firstPageOfSection >= 0) {
+      goToPage(firstPageOfSection);
+    } else {
+      setCurrentSectionIndex(index);
+    }
+  }, [allPages, goToPage]);
+
+  // Swipe gesture handlers
+  const swipeHandlers = useSwipeGesture({
+    onSwipeLeft: goToNextPage,
+    onSwipeRight: goToPreviousPage,
+    threshold: 50
+  });
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if typing in input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (isAnimating) return;
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          goToPreviousPage();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          goToNextPage();
+          break;
+        case 'Home':
+          e.preventDefault();
+          goToPage(0);
+          break;
+        case 'End':
+          e.preventDefault();
+          goToPage(allPages.length - 1);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [goToPreviousPage, goToNextPage, goToPage, allPages.length, isAnimating]);
 
   // Calculate approximate page count for a section
   const calculatePageCount = (section: MemoirSection): number => {
@@ -793,27 +1013,49 @@ export const LoreBook = () => {
         </div>
       </div>
 
-      {/* Header */}
-      <div className="border-b border-border/60 bg-black/40 backdrop-blur-sm px-8 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-4">
+      {/* Header - Kindle Style */}
+      <div className="border-b border-white/10 bg-[#1a1a1a] backdrop-blur-sm px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-3 sm:gap-4">
+          {/* Mobile Menu Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowSidebar(!showSidebar)}
+            className="lg:hidden text-white/70 hover:text-white"
+            aria-label="Toggle sidebar"
+          >
+            {showSidebar ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </Button>
+          
           <div className="flex items-center gap-2">
-            <BookMarked className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold text-white">{outline.title || 'My Lore Book'}</h1>
+            <BookMarked className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+            <h1 className="text-lg sm:text-xl font-bold text-white">{outline.title || 'My Lore Book'}</h1>
           </div>
-          <div className="text-sm text-white/50 bg-black/40 px-3 py-1 rounded-full border border-border/30">
-            Section {currentSectionIndex + 1} of {totalSections}
-          </div>
+          {allPages.length > 0 && (
+            <div className="hidden sm:flex text-xs sm:text-sm text-white/50 bg-black/40 px-2 sm:px-3 py-1 rounded-full border border-white/10">
+              Page {currentPageIndex + 1} of {allPages.length}
+            </div>
+          )}
         </div>
         
-        {/* Reading Controls */}
-        <div className="flex items-center gap-3">
+        {/* Header Actions */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={() => setShowStats(!showStats)}
+            className="px-3 py-1.5 bg-black/60 border border-white/10 rounded-md text-xs text-white hover:bg-black/80 transition-colors sm:text-sm"
+            title="View Statistics"
+          >
+            Stats
+          </button>
+
+          {/* Reading Controls */}
           {/* Font Size */}
-          <div className="flex items-center gap-2 bg-black/60 border border-border/50 rounded-lg px-3 py-1.5">
-            <Type className="h-4 w-4 text-white/50" />
+          <div className="flex items-center gap-1 sm:gap-2 bg-black/60 border border-white/10 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5">
+            <Type className="h-3 w-3 sm:h-4 sm:w-4 text-white/50" />
             <select
               value={fontSize}
               onChange={(e) => setFontSize(e.target.value as typeof fontSize)}
-              className="bg-transparent border-none text-sm text-white focus:outline-none cursor-pointer"
+              className="bg-transparent border-none text-xs sm:text-sm text-white focus:outline-none cursor-pointer"
             >
               <option value="sm" className="bg-black">Small</option>
               <option value="base" className="bg-black">Normal</option>
@@ -823,7 +1065,7 @@ export const LoreBook = () => {
           </div>
           
           {/* Line Height */}
-          <div className="flex items-center gap-2 bg-black/60 border border-border/50 rounded-lg px-3 py-1.5">
+          <div className="hidden sm:flex items-center gap-2 bg-black/60 border border-white/10 rounded-lg px-3 py-1.5">
             <AlignJustify className="h-4 w-4 text-white/50" />
             <select
               value={lineHeight}
@@ -838,19 +1080,43 @@ export const LoreBook = () => {
         </div>
       </div>
 
-      {/* Main Content Area with Sidebar */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Chapter Navigation */}
-        <div className="w-64 flex-shrink-0 border-r border-border/60 bg-black/30 overflow-y-auto">
+      {/* Stats Panel */}
+      {showStats && (
+        <div className="border-b border-white/10 bg-black/30 backdrop-blur-sm px-4 py-4 sm:px-8">
+          <LorebookStats />
+        </div>
+      )}
+
+      {/* Main Content Area with Sidebar - Kindle Style */}
+      <div className="flex-1 flex overflow-hidden relative bg-[#1a1a1a]">
+        {/* Left Sidebar - Chapter Navigation (Desktop) */}
+        <div className={`${
+          showSidebar ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-50 w-64 flex-shrink-0 border-r border-white/10 bg-[#1a1a1a] overflow-y-auto transition-transform duration-300 ease-in-out`}>
           <div className="p-4">
-            <h3 className="text-sm font-semibold text-white/80 mb-3 uppercase tracking-wider">Chapters</h3>
+            <div className="flex items-center justify-between mb-3 lg:hidden">
+              <h3 className="text-sm font-semibold text-white/80 uppercase tracking-wider">Chapters</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowSidebar(false)}
+                className="text-white/70 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <h3 className="hidden lg:block text-sm font-semibold text-white/80 mb-3 uppercase tracking-wider">Chapters</h3>
             <nav className="space-y-1">
               {flatSections.map((section, index) => {
-                const pageCount = calculatePageCount(section);
+                const sectionPages = allPages.filter(p => p.sectionIndex === index);
+                const pageCount = sectionPages.length || calculatePageCount(section);
                 return (
                   <button
                     key={section.id || index}
-                    onClick={() => goToSection(index)}
+                    onClick={() => {
+                      goToSection(index);
+                      setShowSidebar(false);
+                    }}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-all ${
                       index === currentSectionIndex
                         ? 'bg-primary/20 text-primary border border-primary/30'
@@ -886,90 +1152,161 @@ export const LoreBook = () => {
           </div>
         </div>
 
-        {/* Book Content - Larger reading area */}
-        <div className="flex-1 overflow-x-hidden">
-          <div className="max-w-7xl mx-auto px-16 py-32">
-          {/* Section Title */}
-          {currentSection && (
-            <div className="mb-12">
-              <h2 className="text-6xl font-bold text-white mb-8 border-b border-primary/30 pb-8">
-                {currentSection.title}
-              </h2>
-              {currentSection.period && (
-                <p className="text-sm text-white/50 italic">
-                  {new Date(currentSection.period.from).toLocaleDateString()} - {currentSection.period.to ? new Date(currentSection.period.to).toLocaleDateString() : 'Present'}
-                </p>
-              )}
-            </div>
-          )}
+        {/* Sidebar Overlay (Mobile) */}
+        {showSidebar && (
+          <div
+            className="lg:hidden fixed inset-0 bg-black/50 z-40"
+            onClick={() => setShowSidebar(false)}
+          />
+        )}
 
-          {/* Section Content */}
-          {currentSection && (
-            <div 
-              className={`prose prose-invert max-w-none ${fontSizeClasses[fontSize]} ${lineHeightClasses[lineHeight]}`}
-              style={{
-                color: 'rgba(255, 255, 255, 0.9)',
-                fontFamily: 'Georgia, serif'
-              }}
-            >
-              <div 
-                className="whitespace-pre-wrap"
-                style={{
-                  fontSize: fontSize === 'sm' ? '1rem' : fontSize === 'base' ? '1.25rem' : fontSize === 'lg' ? '1.5rem' : '1.75rem',
-                  lineHeight: lineHeight === 'normal' ? 1.7 : lineHeight === 'relaxed' ? 2 : 2.3,
-                  textAlign: 'justify',
-                  textJustify: 'inter-word',
-                  maxWidth: '100%'
-                }}
-              >
-                {currentSection.content || (
-                  <span className="text-white/40 italic">This section is empty. Start writing to fill it with your story.</span>
-                )}
+        {/* Book Content - Kindle Style Reading Area */}
+        <div 
+          ref={pageContainerRef}
+          className="flex-1 overflow-hidden relative"
+          {...swipeHandlers}
+        >
+          {/* Touch Zones for Mobile Navigation */}
+          <div className="absolute inset-0 flex z-10 pointer-events-none" role="navigation" aria-label="Page navigation">
+            <button
+              type="button"
+              className="w-[30%] h-full cursor-pointer pointer-events-auto focus:outline-none focus:ring-2 focus:ring-primary/50"
+              onClick={goToPreviousPage}
+              disabled={currentPageIndex === 0 || isAnimating}
+              aria-label="Previous page"
+              tabIndex={0}
+            />
+            <div className="flex-1" />
+            <button
+              type="button"
+              className="w-[30%] h-full cursor-pointer pointer-events-auto focus:outline-none focus:ring-2 focus:ring-primary/50"
+              onClick={goToNextPage}
+              disabled={currentPageIndex >= allPages.length - 1 || isAnimating}
+              aria-label="Next page"
+              tabIndex={0}
+            />
+          </div>
+
+          {/* Page Container with Slide Animation */}
+          <div 
+            className="absolute inset-0 flex items-center justify-center"
+            role="main"
+            aria-label="Book content"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {allPages.length > 0 && currentPageIndex < allPages.length ? (
+              <div className="w-full h-full flex items-center justify-center p-4 sm:p-8 lg:p-16">
+                <BookPage
+                  content={allPages[currentPageIndex].content}
+                  pageNumber={allPages[currentPageIndex].pageNumber}
+                  totalPages={allPages[currentPageIndex].totalPagesInSection}
+                  sectionTitle={flatSections[allPages[currentPageIndex].sectionIndex]?.title}
+                  sectionPeriod={flatSections[allPages[currentPageIndex].sectionIndex]?.period}
+                  fontSize={fontSize}
+                  lineHeight={lineHeight}
+                  animationDirection={animationDirection}
+                  onAnimationEnd={handleAnimationEnd}
+                  className="w-full max-w-4xl"
+                />
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="text-center text-white/60 p-8" role="status" aria-live="polite">
+                <BookOpen className="h-16 w-16 mx-auto mb-4 text-white/40" aria-hidden="true" />
+                <p>No pages available</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Navigation Footer */}
-      <div className="border-t border-border/60 bg-black/40 backdrop-blur-sm px-8 py-4 flex items-center justify-between flex-shrink-0">
+      {/* Navigation Footer - Kindle Style */}
+      <div className="border-t border-white/10 bg-[#1a1a1a] backdrop-blur-sm px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between flex-shrink-0">
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          onClick={goToPrevious}
-          disabled={currentSectionIndex === 0}
+          onClick={goToPreviousPage}
+          disabled={currentPageIndex === 0 || isAnimating}
+          className="text-white/70 hover:text-white disabled:opacity-30"
           leftIcon={<ChevronLeft className="h-4 w-4" />}
-          aria-label="Previous section"
+          aria-label="Previous page"
         >
-          Previous
+          <span className="hidden sm:inline">Previous</span>
         </Button>
 
-        <div className="flex items-center gap-2 px-4 py-2 bg-black/60 rounded-full border border-border/30 overflow-x-auto max-w-[60%]">
-          {flatSections.map((section, index) => (
-            <button
-              key={index}
-              onClick={() => goToSection(index)}
-              className={`rounded-full transition-all flex-shrink-0 ${
-                index === currentSectionIndex
-                  ? 'bg-primary w-8 h-2'
-                  : 'bg-white/20 hover:bg-white/40 w-2 h-2'
-              }`}
-              title={section?.title}
-              aria-label={`Go to section: ${section?.title}`}
-            />
-          ))}
+        {/* Page Progress Indicator */}
+        <div className="flex flex-col items-center gap-1 flex-1 max-w-[60%]">
+          <div className="text-xs sm:text-sm text-white/60">
+            Page {currentPageIndex + 1} of {allPages.length}
+            {allPages.length > 0 && (
+              <span className="ml-2 text-white/40">
+                ({Math.round(((currentPageIndex + 1) / allPages.length) * 100)}%)
+              </span>
+            )}
+          </div>
+          {/* Progress Bar */}
+          {allPages.length > 0 && (
+            <div className="w-full max-w-xs h-1 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300"
+                style={{ width: `${((currentPageIndex + 1) / allPages.length) * 100}%` }}
+              />
+            </div>
+          )}
+          {/* Section Dots (Mobile) */}
+          <div className="flex items-center gap-1 sm:hidden px-2 py-1 bg-black/60 rounded-full border border-white/10 overflow-x-auto max-w-full">
+            {flatSections.map((section, index) => {
+              const sectionPages = allPages.filter(p => p.sectionIndex === index);
+              const firstPageIndex = allPages.findIndex(p => p.sectionIndex === index);
+              const isCurrentSection = allPages[currentPageIndex]?.sectionIndex === index;
+              
+              return (
+                <button
+                  key={index}
+                  onClick={() => goToSection(index)}
+                  className={`rounded-full transition-all flex-shrink-0 ${
+                    isCurrentSection
+                      ? 'bg-primary w-6 h-2'
+                      : 'bg-white/20 hover:bg-white/40 w-2 h-2'
+                  }`}
+                  title={section?.title}
+                  aria-label={`Go to section: ${section?.title}`}
+                />
+              );
+            })}
+          </div>
+          {/* Section Dots (Desktop) */}
+          <div className="hidden sm:flex items-center gap-1 px-4 py-2 bg-black/60 rounded-full border border-white/10 overflow-x-auto max-w-full">
+            {flatSections.map((section, index) => {
+              const isCurrentSection = allPages[currentPageIndex]?.sectionIndex === index;
+              
+              return (
+                <button
+                  key={index}
+                  onClick={() => goToSection(index)}
+                  className={`rounded-full transition-all flex-shrink-0 ${
+                    isCurrentSection
+                      ? 'bg-primary w-8 h-2'
+                      : 'bg-white/20 hover:bg-white/40 w-2 h-2'
+                  }`}
+                  title={section?.title}
+                  aria-label={`Go to section: ${section?.title}`}
+                />
+              );
+            })}
+          </div>
         </div>
 
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          onClick={goToNext}
-          disabled={currentSectionIndex === totalSections - 1}
+          onClick={goToNextPage}
+          disabled={currentPageIndex >= allPages.length - 1 || isAnimating}
+          className="text-white/70 hover:text-white disabled:opacity-30"
           rightIcon={<ChevronRight className="h-4 w-4" />}
-          aria-label="Next section"
+          aria-label="Next page"
         >
-          Next
+          <span className="hidden sm:inline">Next</span>
         </Button>
       </div>
 
