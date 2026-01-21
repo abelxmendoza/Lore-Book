@@ -218,6 +218,11 @@ export class LearningExtractor {
    * Extract name of the learning (skill/knowledge/concept name)
    */
   private extractName(text: string, type: LearningType): string {
+    // Limit input length to prevent ReDoS attacks
+    if (text.length > 1000) {
+      text = text.substring(0, 1000);
+    }
+    
     // Try to extract the name after learning indicators
     // Using more specific patterns with word boundaries to prevent ReDoS
     const patterns = [

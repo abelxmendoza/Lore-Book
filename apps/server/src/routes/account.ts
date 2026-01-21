@@ -7,6 +7,7 @@ import zlib from 'zlib';
 import { Router } from 'express';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { rateLimitMiddleware } from '../middleware/rateLimit';
 import { logSecurityEvent } from '../services/securityLog';
 import { supabaseAdmin } from '../services/supabaseClient';
 
@@ -72,7 +73,7 @@ accountRouter.get('/export', requireAuth, async (req: AuthenticatedRequest, res)
 });
 
 // Delete endpoint
-accountRouter.post('/delete', requireAuth, async (req: AuthenticatedRequest, res) => {
+accountRouter.post('/delete', requireAuth, rateLimitMiddleware, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   
   if (req.body?.scope === 'sessions') {

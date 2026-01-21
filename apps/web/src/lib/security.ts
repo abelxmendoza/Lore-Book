@@ -25,6 +25,7 @@ export const sanitizeHtml = (dirty: string): string => {
 
 /**
  * Sanitize user input (removes potentially dangerous characters)
+ * Uses iterative replacement to handle nested/incomplete script tags
  */
 export const sanitizeInput = (input: string): string => {
   if (typeof input !== 'string') return '';
@@ -32,14 +33,23 @@ export const sanitizeInput = (input: string): string => {
   // Remove null bytes and control characters
   let sanitized = input.replace(/[\x00-\x1F\x7F]/g, '');
   
-  // Remove script tags and event handlers (basic protection)
-  // Improved regex to handle edge cases like </script >, </script foo="bar">, etc.
-  // Match opening script tag, any content, and closing tag (including malformed ones)
-  sanitized = sanitized.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*[^>]*>/gi, '');
-  // Also handle self-closing script tags
-  sanitized = sanitized.replace(/<script\b[^>]*\/>/gi, '');
-  // Remove event handlers with word boundary to prevent ReDoS
-  sanitized = sanitized.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
+  // Remove script tags iteratively until no more matches (handles nested/incomplete tags)
+  let previous;
+  do {
+    previous = sanitized;
+    // Match opening script tag, any content, and closing tag (including malformed ones)
+    sanitized = sanitized.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*[^>]*>/gi, '');
+    // Also handle self-closing script tags
+    sanitized = sanitized.replace(/<script\b[^>]*\/>/gi, '');
+    // Remove any remaining <script (incomplete tags)
+    sanitized = sanitized.replace(/<script\b[^>]*>/gi, '');
+  } while (sanitized !== previous);
+  
+  // Remove event handlers iteratively
+  do {
+    previous = sanitized;
+    sanitized = sanitized.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
+  } while (sanitized !== previous);
   
   return sanitized.trim();
 };
