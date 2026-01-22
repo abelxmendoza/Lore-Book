@@ -39,7 +39,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'major',
     importance_score: 87,
     is_nickname: false,
-    summary: 'My closest friend and confidante. We met in college and have been inseparable ever since. Sarah is incredibly supportive, honest, and always knows how to make me laugh.',
+    summary: 'My closest friend and confidante since college. Sarah works in tech and was one of the first people I told about my decision to transition from software development to creative work. She\'s been incredibly supportive throughout my creative renaissance, often meeting me at coffee shops to work on our respective projects. She knows Alex (my boyfriend) and Marcus (my mentor), and we all sometimes hang out together. Sarah is honest, loyal, and always knows how to make me laugh when I\'m stressed about my creative projects.',
     tags: ['friendship', 'support', 'honesty', 'loyalty'],
     metadata: {
       relationship_type: 'friend',
@@ -66,7 +66,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'major',
     importance_score: 82,
     is_nickname: false,
-    summary: 'A wise mentor who has guided me through many career and life decisions. Marcus has decades of experience and always provides thoughtful, nuanced advice.',
+    summary: 'A wise mentor who has guided me through my career transition from tech to creative work. Marcus was the one who encouraged me to pursue my passion for music production and writing when I was stuck in my corporate job. He introduced me to Alex Rivera for music collaboration and has been a constant source of support. Marcus knows Sarah (my best friend) and we often discuss my creative projects and relationship journey. His decades of experience and thoughtful advice have been invaluable during this period of self-discovery.',
     tags: ['mentorship', 'wisdom', 'career', 'guidance'],
     metadata: {
       relationship_type: 'coach',
@@ -93,7 +93,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'supporting',
     importance_score: 65,
     is_nickname: false,
-    summary: 'A talented creative collaborator I\'ve worked with on several projects. Alex brings fresh perspectives and we complement each other\'s skills well.',
+    summary: 'A talented music producer and creative collaborator. Alex Rivera and I work together on music production projects in my home studio. Marcus introduced us about 3 years ago, and we\'ve been collaborating ever since. They\'ve been instrumental in helping me learn music production during my creative renaissance. Alex knows about my relationship with Alex (my boyfriend) and is supportive of my creative journey. We often bounce ideas off each other and they push me to try new creative approaches.',
     tags: ['collaboration', 'creativity', 'professional', 'innovation'],
     metadata: {
       relationship_type: 'professional',
@@ -120,7 +120,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'protagonist',
     importance_score: 95,
     is_nickname: false,
-    summary: 'My sibling and one of the most important people in my life. We\'ve grown closer over the years and now have deep, meaningful conversations about life, dreams, and everything in between.',
+    summary: 'My sibling and one of the most important people in my life. Jordan has been incredibly supportive of my transition from tech to creative work, often going on runs with me in Golden Gate Park when I need to clear my head. They know Sarah (my best friend) and have met Alex (my boyfriend) a few times. Jordan was there for me when my relationship with Taylor ended and has been a constant source of wisdom and support throughout my creative renaissance journey.',
     tags: ['family', 'sibling', 'support', 'connection'],
     metadata: {
       relationship_type: 'family',
@@ -170,7 +170,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'supporting',
     importance_score: 58,
     is_nickname: false,
-    summary: 'A close friend from my photography class. David has an incredible eye for composition and always pushes me to see things from new angles.',
+    summary: 'A close friend from my photography class. David has an incredible eye for composition and always pushes me to see things from new angles. We often go on photo walks together in Golden Gate Park, and he\'s been supportive of my creative transition. He knows Sarah and we sometimes all hang out together. David\'s photography skills have inspired me to incorporate more visual elements into my creative work.',
     tags: ['photography', 'creativity', 'friendship', 'art'],
     metadata: {
       relationship_type: 'friend',
@@ -196,7 +196,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'major',
     importance_score: 79,
     is_nickname: false,
-    summary: 'A brilliant writer I met at a workshop. Her feedback is always insightful and she\'s helped me improve my craft significantly.',
+    summary: 'A brilliant writer I met at a workshop during my creative transition. Sophia\'s feedback on my writing has been incredibly insightful, and she\'s helped me improve my craft significantly. She introduced me to the writing group where I met Emma, and she\'s been a mentor figure in my creative renaissance. Sophia knows about my music production work and often encourages me to blend different creative mediums.',
     tags: ['writing', 'mentorship', 'creativity', 'feedback'],
     metadata: {
       relationship_type: 'professional',
@@ -223,7 +223,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'minor',
     importance_score: 42,
     is_nickname: false,
-    summary: 'A friend from my writing group. We share a passion for storytelling and often exchange feedback on each other\'s work. Her perspective is always valuable.',
+    summary: 'A friend from my writing group that Sophia introduced me to. Emma and I share a passion for storytelling and often exchange feedback on each other\'s work. We sometimes meet at coffee shops to write together, and her perspective is always valuable. She knows about my relationship with Alex and my creative projects.',
     tags: ['friendship', 'writing', 'creativity', 'community'],
     metadata: {
       relationship_type: 'friend',
@@ -249,7 +249,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'supporting',
     importance_score: 72,
     is_nickname: false,
-    summary: 'My therapist who has helped me navigate anxiety and build emotional resilience. His approach is evidence-based and compassionate.',
+    summary: 'My therapist who has helped me navigate anxiety and build emotional resilience during my career transition. Dr. Mitchell has been particularly helpful in processing my breakup with Taylor and the intense relationship I had with Morgan. His evidence-based and compassionate approach has supported me through the creative renaissance period. He knows about my relationship with Alex and has been encouraging about my creative pursuits.',
     tags: ['therapy', 'mental-health', 'growth', 'support'],
     metadata: {
       relationship_type: 'professional',
@@ -1676,7 +1676,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'protagonist',
     importance_score: 95,
     is_nickname: false,
-    summary: 'My boyfriend. We\'ve been together for 6 months and it\'s been amazing. He\'s supportive, makes me laugh, and we share similar values. Great communication and he respects my boundaries.',
+    summary: 'My boyfriend of 6 months. We met at a coffee shop downtown when I was working on a writing project during my creative transition. Alex is incredibly supportive of my shift from tech to creative work - he even helped me set up my home studio. He\'s met Sarah (my best friend) and Jordan (my sibling), and they all get along well. We often go on walks in Golden Gate Park together, and he makes me laugh even when I\'m stressed about music production deadlines. Great communication, shares my values, and respects my creative process.',
     tags: ['romantic', 'boyfriend', 'active', 'love', 'relationship'],
     metadata: {
       relationship_type: 'boyfriend',
@@ -1703,7 +1703,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'major',
     importance_score: 75,
     is_nickname: false,
-    summary: 'Someone I have a crush on. They\'re very attractive, creative, and we have interesting conversations. I\'m not entirely sure if they feel the same way, but there\'s definitely chemistry.',
+    summary: 'Someone I have a crush on from the local art scene. We met at a gallery opening about a month ago where I was networking for my creative work. Jordan (they/them) is very attractive, creative, and we had an interesting conversation about art and music. I\'m not entirely sure if they feel the same way, but there\'s definitely chemistry. I\'ve seen them at a few more gallery events since then. Sarah knows about this crush and thinks I should just ask them out, but I\'m being cautious since I\'m in a relationship with Alex.',
     tags: ['romantic', 'crush', 'active', 'attraction'],
     metadata: {
       relationship_type: 'crush',
@@ -1730,7 +1730,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'supporting',
     importance_score: 65,
     is_nickname: false,
-    summary: 'We\'re in a situationship - it\'s fun and there\'s no pressure, but I\'m not sure where it\'s going. Good physical chemistry but there\'s a lack of emotional intimacy and unclear boundaries.',
+    summary: 'We\'re in a situationship that started about 3 months ago from a dating app. Sam is fun to be around and there\'s no pressure, which was refreshing after my intense relationship with Morgan. We\'ve hung out at coffee shops and gone to a few music events together. Good physical chemistry but there\'s a lack of emotional intimacy and unclear boundaries. I\'m not sure where it\'s going, especially now that I\'m with Alex. Sarah thinks I should end it, but part of me likes having something casual.',
     tags: ['romantic', 'situationship', 'active', 'casual'],
     metadata: {
       relationship_type: 'situationship',
@@ -1757,7 +1757,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'supporting',
     importance_score: 40,
     is_nickname: false,
-    summary: 'My ex-girlfriend. We had amazing adventures together and great physical chemistry, but we had communication issues and different life goals. The relationship ended about a year ago due to jealousy problems and different values about commitment.',
+    summary: 'My ex-girlfriend from 2 years ago. We had amazing adventures together - we traveled a lot and she pushed me out of my comfort zone. Great physical chemistry, but we had communication issues and different life goals. She wanted stability and a traditional career path, while I was starting to feel the pull toward creative work. The relationship ended about a year ago due to jealousy problems and different values about commitment. Jordan was there for me during the breakup. I learned a lot from that relationship about what I actually want.',
     tags: ['romantic', 'ex', 'past', 'ended'],
     metadata: {
       relationship_type: 'ex_girlfriend',
@@ -1784,7 +1784,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'supporting',
     importance_score: 55,
     is_nickname: false,
-    summary: 'An ex-lover from a few years ago. We had the deepest emotional connection I\'ve ever felt - incredible intellectual conversations and we understood each other on a profound level. But it was too intense, with unhealthy codependency patterns that eventually burned us both out.',
+    summary: 'An ex-lover from 3 years ago, before my relationship with Taylor. We had the deepest emotional connection I\'ve ever felt - incredible intellectual conversations about philosophy, art, and life. We understood each other on a profound level and spent hours talking in coffee shops and parks. But it was too intense, with unhealthy codependency patterns. We were both working in tech then, and the relationship burned us both out. It ended when I realized I needed space to figure out who I was. That relationship taught me about boundaries and the importance of maintaining my own identity.',
     tags: ['romantic', 'ex', 'past', 'intense', 'ended'],
     metadata: {
       relationship_type: 'ex_lover',
@@ -1811,7 +1811,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'major',
     importance_score: 80,
     is_nickname: false,
-    summary: 'Someone I\'m infatuated with. They\'re extremely attractive, charismatic, and charming - they make me feel butterflies. I don\'t really know them well yet, so it might just be infatuation rather than a real connection.',
+    summary: 'Someone I\'m infatuated with. We met at a music event about 2 weeks ago where Alex Rivera was performing. Casey is extremely attractive, charismatic, and charming - they make me feel butterflies. They\'re also into music production, which is exciting. I don\'t really know them well yet, so it might just be infatuation rather than a real connection. Sarah thinks I have a pattern of getting infatuated with creative people. I\'m trying to focus on my relationship with Alex, but Casey keeps showing up at events I attend.',
     tags: ['romantic', 'infatuation', 'active', 'attraction', 'obsession'],
     metadata: {
       relationship_type: 'infatuation',

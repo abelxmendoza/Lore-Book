@@ -21,25 +21,28 @@ export const dummyLocations: LocationProfile[] = [
     id: 'dummy-loc-1',
     name: 'San Francisco Tech Hub',
     visitCount: 12,
-    firstVisited: '2024-01-15T10:00:00Z',
+    firstVisited: '2022-03-15T10:00:00Z',
     lastVisited: '2024-03-20T14:30:00Z',
     coordinates: { lat: 37.7749, lng: -122.4194 },
     relatedPeople: [
       { id: 'person-1', name: 'Sarah Chen', total_mentions: 45, entryCount: 8 },
-      { id: 'person-2', name: 'Marcus', total_mentions: 30, entryCount: 5 }
+      { id: 'person-2', name: 'Marcus Johnson', total_mentions: 30, entryCount: 5 }
     ],
     tagCounts: [
       { tag: 'work', count: 8 },
       { tag: 'meeting', count: 5 },
-      { tag: 'networking', count: 3 }
+      { tag: 'networking', count: 3 },
+      { tag: 'career-transition', count: 4 }
     ],
     chapters: [
       { id: 'ch-1', title: 'Tech Adventures', count: 6 },
-      { id: 'ch-2', title: 'Career Growth', count: 4 }
+      { id: 'ch-2', title: 'Career Growth', count: 4 },
+      { id: 'ch-creative', title: 'Creative Renaissance', count: 2 }
     ],
     moods: [
       { mood: 'excited', count: 5 },
-      { mood: 'focused', count: 4 }
+      { mood: 'focused', count: 4 },
+      { mood: 'nostalgic', count: 3 }
     ],
     entries: [],
     sources: ['journal', 'calendar']
@@ -47,48 +50,65 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-2',
     name: 'Golden Gate Park',
-    visitCount: 8,
-    firstVisited: '2024-02-01T09:00:00Z',
+    visitCount: 25,
+    firstVisited: '2023-08-01T09:00:00Z',
     lastVisited: '2024-03-15T16:00:00Z',
     coordinates: { lat: 37.7694, lng: -122.4862 },
     relatedPeople: [
-      { id: 'person-1', name: 'Sarah Chen', total_mentions: 45, entryCount: 6 }
+      { id: 'person-1', name: 'Alex', total_mentions: 35, entryCount: 12 },
+      { id: 'person-2', name: 'Jordan Kim', total_mentions: 20, entryCount: 8 },
+      { id: 'person-3', name: 'Sarah Chen', total_mentions: 15, entryCount: 5 },
+      { id: 'person-4', name: 'David Martinez', total_mentions: 8, entryCount: 3 }
     ],
     tagCounts: [
-      { tag: 'nature', count: 6 },
-      { tag: 'relaxation', count: 4 },
-      { tag: 'exercise', count: 3 }
+      { tag: 'nature', count: 12 },
+      { tag: 'relaxation', count: 10 },
+      { tag: 'exercise', count: 8 },
+      { tag: 'dates', count: 6 },
+      { tag: 'photography', count: 5 }
     ],
     chapters: [
-      { id: 'ch-3', title: 'Weekend Escapes', count: 5 }
+      { id: 'ch-3', title: 'Weekend Escapes', count: 8 },
+      { id: 'ch-relationship', title: 'Relationship Journey', count: 6 },
+      { id: 'ch-creative', title: 'Creative Renaissance', count: 4 }
     ],
     moods: [
-      { mood: 'peaceful', count: 5 },
-      { mood: 'energized', count: 3 }
+      { mood: 'peaceful', count: 12 },
+      { mood: 'energized', count: 8 },
+      { mood: 'happy', count: 5 }
     ],
     entries: [],
     sources: ['journal', 'photo']
   },
   {
     id: 'dummy-loc-3',
-    name: 'Home Office',
-    visitCount: 45,
-    firstVisited: '2024-01-01T08:00:00Z',
+    name: 'Home Studio',
+    visitCount: 120,
+    firstVisited: '2023-06-01T08:00:00Z',
     lastVisited: '2024-03-25T18:00:00Z',
     coordinates: null,
-    relatedPeople: [],
+    relatedPeople: [
+      { id: 'person-1', name: 'Alex Rivera', total_mentions: 85, entryCount: 35 },
+      { id: 'person-2', name: 'Alex', total_mentions: 25, entryCount: 12 },
+      { id: 'person-3', name: 'Marcus Johnson', total_mentions: 15, entryCount: 8 }
+    ],
     tagCounts: [
-      { tag: 'work', count: 30 },
-      { tag: 'focus', count: 25 },
-      { tag: 'productivity', count: 20 }
+      { tag: 'music-production', count: 60 },
+      { tag: 'creative-work', count: 45 },
+      { tag: 'collaboration', count: 35 },
+      { tag: 'writing', count: 20 },
+      { tag: 'focus', count: 40 }
     ],
     chapters: [
-      { id: 'ch-1', title: 'Tech Adventures', count: 20 },
-      { id: 'ch-2', title: 'Career Growth', count: 15 }
+      { id: 'ch-creative', title: 'Creative Renaissance', count: 50 },
+      { id: 'ch-music', title: 'Music Production Saga', count: 35 },
+      { id: 'ch-writing', title: 'Writing Journey', count: 20 }
     ],
     moods: [
-      { mood: 'focused', count: 20 },
-      { mood: 'productive', count: 15 }
+      { mood: 'focused', count: 45 },
+      { mood: 'creative', count: 40 },
+      { mood: 'accomplished', count: 25 },
+      { mood: 'frustrated', count: 10 }
     ],
     entries: [],
     sources: ['journal', 'task']
@@ -96,24 +116,32 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-4',
     name: 'Coffee Shop Downtown',
-    visitCount: 23,
-    firstVisited: '2024-01-10T08:00:00Z',
+    visitCount: 45,
+    firstVisited: '2023-09-10T08:00:00Z',
     lastVisited: '2024-03-22T15:00:00Z',
     coordinates: { lat: 37.7849, lng: -122.4094 },
     relatedPeople: [
-      { id: 'person-3', name: 'Alex Rivera', total_mentions: 15, entryCount: 4 }
+      { id: 'person-1', name: 'Alex', total_mentions: 60, entryCount: 20 },
+      { id: 'person-2', name: 'Sarah Chen', total_mentions: 35, entryCount: 15 },
+      { id: 'person-3', name: 'Emma Thompson', total_mentions: 20, entryCount: 8 },
+      { id: 'person-4', name: 'Sophia Anderson', total_mentions: 15, entryCount: 6 }
     ],
     tagCounts: [
-      { tag: 'coffee', count: 15 },
-      { tag: 'work', count: 8 },
-      { tag: 'social', count: 5 }
+      { tag: 'coffee', count: 30 },
+      { tag: 'writing', count: 25 },
+      { tag: 'work', count: 20 },
+      { tag: 'social', count: 15 },
+      { tag: 'dates', count: 8 }
     ],
     chapters: [
-      { id: 'ch-4', title: 'Daily Routines', count: 12 }
+      { id: 'ch-4', title: 'Daily Routines', count: 18 },
+      { id: 'ch-relationship', title: 'Relationship Journey', count: 12 },
+      { id: 'ch-creative', title: 'Creative Renaissance', count: 15 }
     ],
     moods: [
-      { mood: 'calm', count: 12 },
-      { mood: 'creative', count: 8 }
+      { mood: 'calm', count: 20 },
+      { mood: 'creative', count: 18 },
+      { mood: 'happy', count: 7 }
     ],
     entries: [],
     sources: ['journal', 'calendar']
@@ -170,26 +198,29 @@ export const dummyLocations: LocationProfile[] = [
     id: 'dummy-loc-7',
     name: 'Local Library',
     visitCount: 18,
-    firstVisited: '2024-01-20T10:00:00Z',
+    firstVisited: '2023-11-20T10:00:00Z',
     lastVisited: '2024-03-18T16:00:00Z',
     coordinates: { lat: 37.7549, lng: -122.4394 },
     relatedPeople: [
-      { id: 'person-5', name: 'Sophia Anderson', total_mentions: 8, entryCount: 2 }
+      { id: 'person-1', name: 'Sophia Anderson', total_mentions: 12, entryCount: 5 },
+      { id: 'person-2', name: 'Emma Thompson', total_mentions: 8, entryCount: 3 }
     ],
     tagCounts: [
       { tag: 'study', count: 12 },
       { tag: 'quiet', count: 10 },
-      { tag: 'learning', count: 8 }
+      { tag: 'learning', count: 8 },
+      { tag: 'writing', count: 6 }
     ],
     chapters: [
-      { id: 'ch-7', title: 'Learning Journey', count: 12 }
+      { id: 'ch-7', title: 'Learning Journey', count: 12 },
+      { id: 'ch-creative', title: 'Creative Renaissance', count: 6 }
     ],
     moods: [
       { mood: 'focused', count: 12 },
       { mood: 'calm', count: 8 }
     ],
     entries: [],
-    sources: ['journal']
+    sources: ['journal', 'calendar']
   },
   {
     id: 'dummy-loc-8',
@@ -244,28 +275,31 @@ export const dummyLocations: LocationProfile[] = [
   },
   {
     id: 'dummy-loc-10',
-    name: 'Art Gallery',
-    visitCount: 7,
-    firstVisited: '2024-02-05T14:00:00Z',
-    lastVisited: '2024-03-15T16:00:00Z',
-    coordinates: { lat: 37.7749, lng: -122.4094 },
+    name: 'Art Gallery - Mission District',
+    visitCount: 8,
+    firstVisited: '2024-02-20T18:00:00Z',
+    lastVisited: '2024-03-18T19:00:00Z',
+    coordinates: { lat: 37.7599, lng: -122.4148 },
     relatedPeople: [
-      { id: 'person-8', name: 'River Song', total_mentions: 6, entryCount: 2 }
+      { id: 'person-1', name: 'Jordan', total_mentions: 25, entryCount: 6 },
+      { id: 'person-2', name: 'Sarah Chen', total_mentions: 8, entryCount: 2 }
     ],
     tagCounts: [
-      { tag: 'art', count: 6 },
-      { tag: 'culture', count: 5 },
-      { tag: 'inspiration', count: 4 }
+      { tag: 'art', count: 8 },
+      { tag: 'networking', count: 6 },
+      { tag: 'social', count: 5 },
+      { tag: 'creative', count: 4 }
     ],
     chapters: [
-      { id: 'ch-10', title: 'Creative Exploration', count: 5 }
+      { id: 'ch-relationship', title: 'Relationship Journey', count: 4 },
+      { id: 'ch-creative', title: 'Creative Renaissance', count: 4 }
     ],
     moods: [
       { mood: 'inspired', count: 5 },
-      { mood: 'reflective', count: 3 }
+      { mood: 'excited', count: 3 }
     ],
     entries: [],
-    sources: ['journal', 'photo']
+    sources: ['journal', 'calendar']
   },
   {
     id: 'dummy-loc-11',
