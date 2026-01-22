@@ -22,6 +22,12 @@ const PrivacyPolicy = lazy(() => import('../routes/PrivacyPolicy'));
 const UserGuide = lazy(() => import('../components/guide/UserGuide'));
 const Perceptions = lazy(() => import('../routes/Perceptions'));
 
+// Lazy load landing pages
+const Landing = lazy(() => import('../routes/Landing'));
+const Features = lazy(() => import('../routes/Features'));
+const Investors = lazy(() => import('../routes/Investors'));
+const About = lazy(() => import('../routes/About'));
+
 // Loading fallback component
 const LoadingFallback = () => (
   <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-black via-purple-950 to-black">
@@ -49,6 +55,40 @@ export const Router = () => {
   // #endregion
   return (
     <Routes>
+      {/* Landing Pages - Public routes */}
+      <Route 
+        path="/home" 
+        element={
+          <LazyRoute>
+            <Landing />
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/features" 
+        element={
+          <LazyRoute>
+            <Features />
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/investors" 
+        element={
+          <LazyRoute>
+            <Investors />
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/about" 
+        element={
+          <LazyRoute>
+            <About />
+          </LazyRoute>
+        } 
+      />
+
       {/* Root — defaults to chat */}
       <Route 
         path="/" 
