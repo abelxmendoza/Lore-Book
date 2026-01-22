@@ -393,10 +393,47 @@ export class QuestService {
           return bDate - aDate; // Most recent first
         });
 
+      // Calculate today's quests (mentioned today or due today)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todaysQuests = allQuests.filter(q => {
+        // Mentioned today
+        if (q.last_activity_at) {
+          const lastActivity = new Date(q.last_activity_at);
+          lastActivity.setHours(0, 0, 0, 0);
+          if (lastActivity.getTime() === today.getTime()) return true;
+        }
+        // Due today
+        if (q.estimated_completion_date) {
+          const dueDate = new Date(q.estimated_completion_date);
+          dueDate.setHours(0, 0, 0, 0);
+          if (dueDate.getTime() === today.getTime()) return true;
+        }
+        return false;
+      }).sort((a, b) => this.calculateQuestScore(b) - this.calculateQuestScore(a));
+
+      // Calculate this week's quests (due within 7 days)
+      const weekEnd = new Date(today);
+      weekEnd.setDate(today.getDate() + 7);
+      const thisWeeksQuests = allQuests.filter(q => {
+        if (q.estimated_completion_date && q.status !== 'completed' && q.status !== 'archived') {
+          const dueDate = new Date(q.estimated_completion_date);
+          dueDate.setHours(0, 0, 0, 0);
+          return dueDate >= today && dueDate <= weekEnd;
+        }
+        return false;
+      }).sort((a, b) => {
+        const aDate = a.estimated_completion_date ? new Date(a.estimated_completion_date).getTime() : 0;
+        const bDate = b.estimated_completion_date ? new Date(b.estimated_completion_date).getTime() : 0;
+        return aDate - bDate; // Soonest first
+      });
+
       return {
+        todays_quests: todaysQuests,
+        this_weeks_quests: thisWeeksQuests,
         main_quests: mainQuests,
         side_quests: sideQuests,
-        daily_quests: dailyQuests,
+        daily_quests: dailyQuests, // Keep for backward compatibility
         completed_quests: completedQuests,
         total_count: allQuests.length,
       };
@@ -531,6 +568,238 @@ export class QuestService {
     // TODO: Implement LLM-based quest extraction from journal entries
     // For now, return empty array
     return [];
+  }
+
+  /**
+   * Update quest progress from extracted progress updates
+   * Matches quest titles and updates progress automatically
+   */
+  async updateProgressFromExtraction(
+    userId: string,
+    progressUpdates: Array<{ questTitle: string; progress: number; confidence: number }>
+  ): Promise<Array<{ questId: string; updated: boolean; reason: string }>> {
+    const results: Array<{ questId: string; updated: boolean; reason: string }> = [];
+
+    try {
+      // Get all active quests for the user
+      const allQuests = await questStorage.getQuests(userId, { status: 'active' });
+
+      for (const update of progressUpdates) {
+        if (update.confidence < 0.7) {
+          // Skip low confidence updates
+          continue;
+        }
+
+        // Find matching quest by title (fuzzy match)
+        const matchingQuest = allQuests.find(q => {
+          const questTitleLower = q.title.toLowerCase();
+          const updateTitleLower = update.questTitle.toLowerCase();
+          return questTitleLower.includes(updateTitleLower) || updateTitleLower.includes(questTitleLower);
+        });
+
+        if (matchingQuest) {
+          try {
+            await this.updateProgress(userId, matchingQuest.id, update.progress);
+            results.push({
+              questId: matchingQuest.id,
+              updated: true,
+              reason: `Progress updated to ${update.progress}% from chat message`,
+            });
+            logger.debug({ questId: matchingQuest.id, progress: update.progress, userId }, 'Auto-updated quest progress from chat');
+          } catch (error) {
+            logger.warn({ error, questId: matchingQuest.id, userId }, 'Failed to update quest progress from extraction');
+            results.push({
+              questId: matchingQuest.id,
+              updated: false,
+              reason: 'Failed to update progress',
+            });
+          }
+        }
+      }
+
+      return results;
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to update progress from extraction');
+      return results;
+    }
+  }
+
+  /**
+   * Abandon conflicting quests based on life changes
+   * Matches quest titles and abandons them automatically
+   */
+  async abandonConflictingQuests(
+    userId: string,
+    abandonedQuests: Array<{ questTitle: string; reason: string; confidence: number }>
+  ): Promise<Array<{ questId: string; abandoned: boolean; reason: string }>> {
+    const results: Array<{ questId: string; abandoned: boolean; reason: string }> = [];
+
+    try {
+      // Get all active quests for the user
+      const allQuests = await questStorage.getQuests(userId, { status: 'active' });
+
+      for (const abandoned of abandonedQuests) {
+        if (abandoned.confidence < 0.7) {
+          // Skip low confidence detections
+          continue;
+        }
+
+        // Find matching quest by title (fuzzy match)
+        const matchingQuest = allQuests.find(q => {
+          const questTitleLower = q.title.toLowerCase();
+          const abandonedTitleLower = abandoned.questTitle.toLowerCase();
+          return questTitleLower.includes(abandonedTitleLower) || abandonedTitleLower.includes(questTitleLower);
+        });
+
+        if (matchingQuest) {
+          try {
+            await this.abandonQuest(userId, matchingQuest.id, abandoned.reason);
+            results.push({
+              questId: matchingQuest.id,
+              abandoned: true,
+              reason: abandoned.reason,
+            });
+            logger.debug({ questId: matchingQuest.id, reason: abandoned.reason, userId }, 'Auto-abandoned quest due to life change');
+          } catch (error) {
+            logger.warn({ error, questId: matchingQuest.id, userId }, 'Failed to abandon quest');
+            results.push({
+              questId: matchingQuest.id,
+              abandoned: false,
+              reason: 'Failed to abandon quest',
+            });
+          }
+        }
+      }
+
+      return results;
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to abandon conflicting quests');
+      return results;
+    }
+  }
+
+  /**
+   * Pause quests based on life changes
+   */
+  async pauseQuestsFromLifeChanges(
+    userId: string,
+    pausedQuests: Array<{ questTitle: string; reason: string; confidence: number }>
+  ): Promise<Array<{ questId: string; paused: boolean; reason: string }>> {
+    const results: Array<{ questId: string; paused: boolean; reason: string }> = [];
+
+    try {
+      // Get all active quests for the user
+      const allQuests = await questStorage.getQuests(userId, { status: 'active' });
+
+      for (const paused of pausedQuests) {
+        if (paused.confidence < 0.7) {
+          // Skip low confidence detections
+          continue;
+        }
+
+        // Find matching quest by title (fuzzy match)
+        const matchingQuest = allQuests.find(q => {
+          const questTitleLower = q.title.toLowerCase();
+          const pausedTitleLower = paused.questTitle.toLowerCase();
+          return questTitleLower.includes(pausedTitleLower) || pausedTitleLower.includes(questTitleLower);
+        });
+
+        if (matchingQuest) {
+          try {
+            await this.pauseQuest(userId, matchingQuest.id);
+            results.push({
+              questId: matchingQuest.id,
+              paused: true,
+              reason: paused.reason,
+            });
+            logger.debug({ questId: matchingQuest.id, reason: paused.reason, userId }, 'Auto-paused quest due to life change');
+          } catch (error) {
+            logger.warn({ error, questId: matchingQuest.id, userId }, 'Failed to pause quest');
+            results.push({
+              questId: matchingQuest.id,
+              paused: false,
+              reason: 'Failed to pause quest',
+            });
+          }
+        }
+      }
+
+      return results;
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to pause quests from life changes');
+      return results;
+    }
+  }
+
+  /**
+   * Convert abandoned quest to goal
+   */
+  async convertAbandonedQuestToGoal(userId: string, questId: string, chatContext?: string): Promise<string | null> {
+    try {
+      const quest = await questStorage.getQuest(userId, questId);
+      if (!quest || quest.status !== 'abandoned') {
+        logger.warn({ questId, userId, status: quest?.status }, 'Quest not found or not abandoned, cannot convert to goal');
+        return null;
+      }
+
+      // Import goal storage dynamically to avoid circular dependencies
+      const { GoalStorage } = await import('../goals/goalStorage');
+      const { GoalStatus } = await import('../goals/types');
+      const goalStorage = new GoalStorage();
+
+      // Map quest category to goal type
+      const goalTypeMap: Record<string, string> = {
+        career: 'CAREER',
+        health: 'HEALTH',
+        relationships: 'RELATIONSHIP',
+        creative: 'CREATIVE',
+        financial: 'FINANCIAL',
+        personal: 'PERSONAL',
+        personal_growth: 'PERSONAL',
+        education: 'PERSONAL',
+      };
+
+      const goalType = goalTypeMap[quest.category || ''] || 'PERSONAL';
+
+      // Create abandoned goal
+      const goal = {
+        id: uuid(),
+        user_id: userId,
+        title: quest.title,
+        description: quest.description || `Abandoned quest: ${quest.title}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_action_at: new Date().toISOString(),
+        status: 'abandoned' as GoalStatus,
+        milestones: quest.milestones?.map(m => ({
+          id: uuid(),
+          description: m.description,
+          achieved: m.achieved,
+          achieved_at: m.achieved_at,
+        })) || [],
+        probability: 0, // Abandoned goals have 0 probability
+        dependencies: [],
+        source: 'quest' as const,
+        source_id: questId,
+        metadata: {
+          original_quest_id: questId,
+          original_quest_type: quest.quest_type,
+          original_priority: quest.priority,
+          original_importance: quest.importance,
+          original_impact: quest.impact,
+          abandoned_at: quest.abandoned_at,
+          chat_context: chatContext,
+        },
+      };
+
+      await goalStorage.saveGoals([goal]);
+      logger.debug({ questId, goalId: goal.id, userId }, 'Converted abandoned quest to goal');
+
+      return goal.id;
+    } catch (error) {
+      logger.error({ error, questId, userId }, 'Failed to convert abandoned quest to goal');
+      return null;
+    }
   }
 }
 

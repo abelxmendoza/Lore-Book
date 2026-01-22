@@ -30,7 +30,7 @@ export const Modal = ({ isOpen, onClose, title, children, maxWidth = '2xl' }: Mo
       onClick={onClose}
     >
       <div
-        className={`relative w-full h-full sm:h-auto ${maxWidth === 'full' ? 'max-w-full' : `sm:${maxWidthClasses[maxWidth]}`} sm:max-h-[90vh] bg-black/95 border-0 sm:border border-border/60 rounded-none sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col`}
+        className={`relative w-full h-full sm:h-auto ${maxWidth === 'full' ? 'max-w-full' : `sm:${maxWidthClasses[maxWidth]}`} sm:max-h-[90vh] ${maxWidth === 'lg' ? 'sm:max-h-[700px] sm:max-w-lg' : ''} ${maxWidth === 'xl' ? 'sm:max-h-[85vh] sm:max-w-2xl' : ''} ${maxWidth === '2xl' ? 'sm:max-h-[90vh] sm:max-w-4xl' : ''} ${maxWidth === 'md' ? 'sm:max-h-[500px] sm:max-w-md' : ''} bg-black/95 border-0 sm:border border-border/60 rounded-none sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col`}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {

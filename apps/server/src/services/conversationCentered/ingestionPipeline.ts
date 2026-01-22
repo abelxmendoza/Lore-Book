@@ -40,6 +40,8 @@ import { interestDetector } from './interestDetector';
 import { interestTracker } from './interestTracker';
 // import { memoryReviewQueueService } from '../memoryReviewQueueService';
 import type { Message, Utterance, ExtractedUnit, NormalizationResult } from '../../types/conversationCentered';
+import { questExtractor } from '../quests/questExtractor';
+import { questService } from '../quests/questService';
 
 /**
  * Main ingestion pipeline for conversation messages
@@ -1045,6 +1047,137 @@ export class ConversationIngestionPipeline {
           })
           .catch(err => {
             logger.debug({ err }, 'Interest detection failed (non-blocking)');
+          });
+      }
+
+      // Step 12.12: Auto-detect and manage quests from user messages (async, non-blocking)
+      if (sender === 'USER' && rawText.length > 10) {
+        // 12.12.1: Extract new quests
+        questExtractor
+          .extractQuestsFromMessage(userId, rawText, conversationHistory)
+          .then(async (extractedQuests) => {
+            if (extractedQuests.length > 0) {
+              for (const quest of extractedQuests) {
+                try {
+                  // Check if a similar quest already exists (by title)
+                  const { questStorage } = await import('../quests/questStorage');
+                  const existingQuests = await questStorage.getQuests(userId, {
+                    search: quest.title.substring(0, 30), // Search by first 30 chars of title
+                    status: ['active', 'paused'], // Only check active/paused quests
+                  });
+
+                  // Check for duplicates (similar title)
+                  const isDuplicate = existingQuests.some(
+                    (q: any) => q.title.toLowerCase() === quest.title.toLowerCase() && q.status !== 'completed'
+                  );
+
+                  if (!isDuplicate) {
+                    // Create the quest
+                    await questService.createQuest(userId, {
+                      title: quest.title,
+                      description: quest.description,
+                      quest_type: quest.quest_type,
+                      priority: quest.priority,
+                      importance: quest.importance,
+                      impact: quest.impact,
+                      category: quest.category,
+                      source: 'extracted',
+                      metadata: {
+                        extracted_from_message: messageId,
+                        extracted_at: new Date().toISOString(),
+                      },
+                    });
+
+                    logger.info(
+                      { userId, questTitle: quest.title, questType: quest.quest_type },
+                      'Auto-detected and created quest from chat message'
+                    );
+                  } else {
+                    logger.debug(
+                      { userId, questTitle: quest.title },
+                      'Skipped duplicate quest detection'
+                    );
+                  }
+                } catch (err) {
+                  logger.debug({ err, questTitle: quest.title }, 'Failed to create auto-detected quest');
+                }
+              }
+            }
+          })
+          .catch(err => {
+            logger.debug({ err }, 'Quest extraction failed (non-blocking)');
+          });
+
+        // 12.12.2: Extract progress updates and update existing quests
+        questExtractor
+          .extractProgressUpdates(userId, rawText, conversationHistory)
+          .then(async (progressUpdates) => {
+            if (progressUpdates.length > 0) {
+              const results = await questService.updateProgressFromExtraction(userId, progressUpdates);
+              if (results.some(r => r.updated)) {
+                logger.info(
+                  { userId, updatedCount: results.filter(r => r.updated).length },
+                  'Auto-updated quest progress from chat message'
+                );
+              }
+            }
+          })
+          .catch(err => {
+            logger.debug({ err }, 'Progress update extraction failed (non-blocking)');
+          });
+
+        // 12.12.3: Detect life changes and handle conflicting quests
+        questExtractor
+          .detectLifeChanges(userId, rawText, conversationHistory)
+          .then(async (lifeChanges) => {
+            if (lifeChanges.abandonedQuests.length > 0 || lifeChanges.pausedQuests.length > 0) {
+              // Abandon conflicting quests
+              if (lifeChanges.abandonedQuests.length > 0) {
+                const abandonResults = await questService.abandonConflictingQuests(userId, lifeChanges.abandonedQuests);
+                
+                // Convert abandoned quests to goals
+                for (const result of abandonResults) {
+                  if (result.abandoned) {
+                    try {
+                      const goalId = await questService.convertAbandonedQuestToGoal(
+                        userId,
+                        result.questId,
+                        lifeChanges.overallReason || result.reason
+                      );
+                      if (goalId) {
+                        logger.info(
+                          { userId, questId: result.questId, goalId },
+                          'Converted abandoned quest to goal'
+                        );
+                      }
+                    } catch (error) {
+                      logger.warn({ error, userId, questId: result.questId }, 'Failed to convert abandoned quest to goal');
+                    }
+                  }
+                }
+
+                if (abandonResults.some(r => r.abandoned)) {
+                  logger.info(
+                    { userId, abandonedCount: abandonResults.filter(r => r.abandoned).length },
+                    'Auto-abandoned quests due to life changes'
+                  );
+                }
+              }
+
+              // Pause quests
+              if (lifeChanges.pausedQuests.length > 0) {
+                const pauseResults = await questService.pauseQuestsFromLifeChanges(userId, lifeChanges.pausedQuests);
+                if (pauseResults.some(r => r.paused)) {
+                  logger.info(
+                    { userId, pausedCount: pauseResults.filter(r => r.paused).length },
+                    'Auto-paused quests due to life changes'
+                  );
+                }
+              }
+            }
+          })
+          .catch(err => {
+            logger.debug({ err }, 'Life change detection failed (non-blocking)');
           });
       }
 

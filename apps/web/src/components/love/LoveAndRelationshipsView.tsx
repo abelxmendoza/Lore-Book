@@ -173,29 +173,29 @@ export const LoveAndRelationshipsView = () => {
     <div className="space-y-6">
       {/* Hero Section */}
       <Card className="border-pink-500/30 bg-gradient-to-br from-pink-950/20 via-purple-950/20 to-pink-950/20">
-        <CardHeader>
-          <div className="flex items-center justify-between">
+        <CardHeader className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0">
             <div>
-              <CardTitle className="flex items-center gap-3 text-2xl text-white mb-2">
-                <Heart className="w-7 h-7 text-pink-400" />
+              <CardTitle className="flex items-center gap-2 sm:gap-3 text-lg sm:text-2xl text-white mb-2">
+                <Heart className="w-5 h-5 sm:w-7 sm:h-7 text-pink-400" />
                 Your Love Story
               </CardTitle>
-              <p className="text-white/70 text-sm">
+              <p className="text-white/70 text-xs sm:text-sm">
                 {relationships.length} relationship{relationships.length !== 1 ? 's' : ''} tracked
                 {activeRelationships.length > 0 && ` · ${activeRelationships.length} active`}
                 {crushes.length > 0 && ` · ${crushes.length} crush${crushes.length !== 1 ? 'es' : ''}`}
                 {shouldUseMockData && (
-                  <span className="ml-2 text-xs text-yellow-400/80">(Mock Data)</span>
+                  <span className="ml-2 text-[10px] sm:text-xs text-yellow-400/80">(Mock Data)</span>
                 )}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {shouldUseMockData && (
-                <Badge variant="outline" className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
-                  <span className="text-xs">Demo</span>
+                <Badge variant="outline" className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30 text-[10px] sm:text-xs">
+                  <span>Demo</span>
                 </Badge>
               )}
-              <Badge variant="outline" className="bg-pink-500/20 text-pink-300 border-pink-500/30">
+              <Badge variant="outline" className="bg-pink-500/20 text-pink-300 border-pink-500/30 text-[10px] sm:text-xs">
                 <Sparkles className="w-3 h-3 mr-1" />
                 AI-Powered
               </Badge>
@@ -220,45 +220,46 @@ export const LoveAndRelationshipsView = () => {
 
       {/* Filter Tabs */}
       <Tabs value={activeFilter} onValueChange={(v) => setActiveFilter(v as FilterType)}>
-        <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto">
+        <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex-wrap">
           <TabsTrigger 
             value="all" 
-            className="flex items-center gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[60px] sm:min-w-0"
           >
-            <Users className="h-4 w-4" />
+            <Users className="h-3 w-3 sm:h-4 sm:w-4" />
             <span>All</span>
           </TabsTrigger>
           <TabsTrigger 
             value="active"
-            className="flex items-center gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-green-500/20 data-[state=active]:text-green-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[70px] sm:min-w-0"
           >
-            <Heart className="h-4 w-4" />
+            <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
             <span>Active</span>
           </TabsTrigger>
           <TabsTrigger 
             value="past"
-            className="flex items-center gap-2 data-[state=active]:bg-gray-500/20 data-[state=active]:text-gray-400"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-gray-500/20 data-[state=active]:text-gray-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[60px] sm:min-w-0"
           >
             <span>Past</span>
           </TabsTrigger>
           <TabsTrigger 
             value="situationships"
-            className="flex items-center gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[100px] sm:min-w-0"
           >
-            <span>Situationships</span>
+            <span className="hidden sm:inline">Situationships</span>
+            <span className="sm:hidden">Situations</span>
           </TabsTrigger>
           <TabsTrigger 
             value="crushes"
-            className="flex items-center gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[70px] sm:min-w-0"
           >
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="h-3 w-3 sm:h-4 sm:w-4" />
             <span>Crushes</span>
           </TabsTrigger>
           <TabsTrigger 
             value="rankings"
-            className="flex items-center gap-2 data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[80px] sm:min-w-0"
           >
-            <TrendingUp className="h-4 w-4" />
+            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" />
             <span>Rankings</span>
           </TabsTrigger>
         </TabsList>

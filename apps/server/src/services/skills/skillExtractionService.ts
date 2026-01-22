@@ -4,6 +4,7 @@ import { config } from '../../config';
 import { logger } from '../../logger';
 
 import { skillService, type SkillCategory } from './skillService';
+import { skillDetailsExtractionService } from './skillDetailsExtractionService';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 
@@ -124,6 +125,10 @@ ${content.substring(0, 2000)}`;
             `Mentioned in journal entry`
           );
           results.push({ skill: existing, created: false });
+          
+          // Trigger detail extraction asynchronously (don't block)
+          skillDetailsExtractionService.extractSkillDetails(userId, existing.id)
+            .catch(err => logger.error({ err, userId, skillId: existing.id }, 'Failed to auto-extract skill details'));
         } else {
           // Create new skill
           const newSkill = await skillService.createSkill(userId, {
@@ -134,6 +139,14 @@ ${content.substring(0, 2000)}`;
             confidence_score: extracted.confidence
           });
           results.push({ skill: newSkill, created: true });
+          
+          // Trigger detail extraction asynchronously for new skills (don't block)
+          skillDetailsExtractionService.extractSkillDetails(userId, newSkill.id)
+            .then(details => {
+              // Save extracted details
+              return skillService.updateSkillDetails(userId, newSkill.id, details);
+            })
+            .catch(err => logger.error({ err, userId, skillId: newSkill.id }, 'Failed to auto-extract skill details'));
         }
       }
 

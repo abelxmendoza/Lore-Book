@@ -121,6 +121,31 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
   const [attributes, setAttributes] = useState<CharacterAttribute[]>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
 
+  // Calculate interest levels
+  const calculateTheirInterest = (rel: RomanticRelationship): number => {
+    const compatibility = rel.compatibility_score || 0.5;
+    const health = rel.relationship_health || 0.5;
+    const intensity = rel.emotional_intensity || 0.5;
+    
+    let theirInterest = (compatibility * 0.4) + (health * 0.4) + (intensity * 0.2);
+    
+    // Reduce for past relationships
+    if (!rel.is_current || rel.status === 'ended') {
+      theirInterest *= 0.7;
+    }
+    
+    return Math.min(1.0, Math.max(0.0, theirInterest));
+  };
+
+  const getInterestColor = (score: number) => {
+    if (score >= 0.7) return 'text-green-400 bg-green-500/20 border-green-500/30';
+    if (score >= 0.4) return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/30';
+    return 'text-red-400 bg-red-500/20 border-red-500/30';
+  };
+
+  const yourInterest = relationship ? relationship.affection_score : null;
+  const theirInterest = relationship ? calculateTheirInterest(relationship) : null;
+
   // Load attributes for this character
   useEffect(() => {
     const loadAttributes = async () => {
@@ -149,6 +174,8 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
       'colleague': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
       'protagonist': 'bg-primary/20 text-primary border-primary/30',
       'collaborator': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+      'romantic': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+      'past_romantic': 'bg-gray-500/20 text-gray-400 border-gray-500/30',
     };
     return colors[archetype?.toLowerCase() || ''] || 'bg-primary/20 text-primary border-primary/30';
   };
@@ -401,52 +428,66 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
           )}
         </div>
         
-        {/* Relationship Badge */}
+        {/* Relationship Badge and Interest Levels */}
         {relationship && (
-          <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-border/30">
-            <Badge 
-              variant="outline" 
-              className={`text-[10px] sm:text-xs ${
-                relationship.status === 'active' 
-                  ? 'bg-green-500/20 text-green-300 border-green-500/30' 
-                  : relationship.status === 'ended'
-                  ? 'bg-gray-500/20 text-gray-300 border-gray-500/30'
-                  : relationship.status === 'on_break'
-                  ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
-                  : 'bg-white/10 text-white/70 border-white/20'
-              }`}
-            >
-              <Heart 
-                className="w-3 h-3 mr-1" 
-                style={{
-                  fill: relationship.is_current && relationship.status === 'active' 
-                    ? `rgba(244, 114, 182, ${relationship.affection_score})` 
-                    : 'transparent',
-                  stroke: 'currentColor',
-                  strokeWidth: 2
-                }}
-              />
-              {relationship.relationship_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-            </Badge>
-            {relationship.is_situationship && (
-              <Badge variant="outline" className="text-[10px] sm:text-xs bg-purple-500/20 text-purple-300 border-purple-500/30">
-                Situationship
+          <div className="space-y-1.5 sm:space-y-2 pt-1 border-t border-border/30">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge 
+                variant="outline" 
+                className={`text-[10px] sm:text-xs ${
+                  relationship.status === 'active' 
+                    ? 'bg-green-500/20 text-green-300 border-green-500/30' 
+                    : relationship.status === 'ended'
+                    ? 'bg-gray-500/20 text-gray-300 border-gray-500/30'
+                    : relationship.status === 'on_break'
+                    ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+                    : 'bg-white/10 text-white/70 border-white/20'
+                }`}
+              >
+                <Heart 
+                  className="w-3 h-3 mr-1" 
+                  style={{
+                    fill: relationship.is_current && relationship.status === 'active' 
+                      ? `rgba(244, 114, 182, ${relationship.affection_score})` 
+                      : 'transparent',
+                    stroke: 'currentColor',
+                    strokeWidth: 2
+                  }}
+                />
+                {relationship.relationship_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </Badge>
-            )}
-            {relationship.is_current && relationship.status === 'active' && (
-              <div className="flex items-center gap-1 text-[9px] sm:text-[10px]">
-                <span className="text-white/60">Compatibility:</span>
-                <span className={`font-semibold ${
-                  relationship.compatibility_score >= 0.7 ? 'text-green-400' :
-                  relationship.compatibility_score >= 0.5 ? 'text-yellow-400' : 'text-red-400'
-                }`}>
-                  {Math.round(relationship.compatibility_score * 100)}%
-                </span>
-                {relationship.compatibility_score >= 0.7 ? (
-                  <TrendingUp className="w-2.5 h-2.5 text-green-400" />
-                ) : relationship.compatibility_score < 0.4 ? (
-                  <TrendingDown className="w-2.5 h-2.5 text-red-400" />
-                ) : null}
+              {relationship.is_situationship && (
+                <Badge variant="outline" className="text-[10px] sm:text-xs bg-purple-500/20 text-purple-300 border-purple-500/30">
+                  Situationship
+                </Badge>
+              )}
+            </div>
+            
+            {/* Interest Levels */}
+            {(yourInterest !== null || theirInterest !== null) && (
+              <div className="grid grid-cols-2 gap-2">
+                {yourInterest !== null && (
+                  <div className={`p-1.5 sm:p-2 rounded border ${getInterestColor(yourInterest)}`}>
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <Heart className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                      <span className="text-[8px] sm:text-[9px] font-medium">Your Interest</span>
+                    </div>
+                    <div className="text-xs sm:text-sm font-bold">
+                      {Math.round(yourInterest * 100)}%
+                    </div>
+                  </div>
+                )}
+                {theirInterest !== null && (
+                  <div className={`p-1.5 sm:p-2 rounded border ${getInterestColor(theirInterest)}`}>
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <Users className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                      <span className="text-[8px] sm:text-[9px] font-medium">Their Interest</span>
+                    </div>
+                    <div className="text-xs sm:text-sm font-bold">
+                      {Math.round(theirInterest * 100)}%
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

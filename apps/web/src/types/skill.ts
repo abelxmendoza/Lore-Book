@@ -3,6 +3,84 @@
 
 export type SkillCategory = 'professional' | 'creative' | 'physical' | 'social' | 'intellectual' | 'emotional' | 'practical' | 'artistic' | 'technical' | 'other';
 
+export interface SkillMetadata {
+  // Learning Context
+  learned_from?: Array<{
+    character_id: string;
+    character_name: string;
+    relationship_type: 'teacher' | 'mentor' | 'peer' | 'self-taught';
+    first_mentioned: string;
+    evidence_entry_ids: string[];
+  }>;
+  
+  practiced_with?: Array<{
+    character_id: string;
+    character_name: string;
+    practice_count: number;
+    last_practiced: string;
+    evidence_entry_ids: string[];
+  }>;
+  
+  // Timeline Context
+  learned_when?: {
+    date: string;
+    entry_id: string;
+    context: string;
+  };
+  
+  why_started?: {
+    reason: string;
+    entry_id: string;
+    extracted_at: string;
+  };
+  
+  // Timeline Hierarchy Links
+  arcs?: Array<{
+    arc_id: string;
+    arc_title: string;
+    start_date: string;
+    end_date?: string;
+  }>;
+  
+  sagas?: Array<{
+    saga_id: string;
+    saga_title: string;
+    start_date: string;
+    end_date?: string;
+  }>;
+  
+  eras?: Array<{
+    era_id: string;
+    era_title: string;
+    start_date: string;
+    end_date?: string;
+  }>;
+  
+  // Location Context
+  learned_at?: Array<{
+    location_id: string;
+    location_name: string;
+    first_mentioned: string;
+    evidence_entry_ids: string[];
+  }>;
+  
+  practiced_at?: Array<{
+    location_id: string;
+    location_name: string;
+    practice_count: number;
+    last_practiced: string;
+    evidence_entry_ids: string[];
+  }>;
+  
+  // Calculated Fields
+  years_practiced?: number;
+  learning_timeline?: Array<{
+    date: string;
+    event: string;
+    entry_id: string;
+  }>;
+}
+
 export interface Skill {
   id: string;
   user_id: string;
@@ -18,7 +96,9 @@ export interface Skill {
   auto_detected: boolean;
   confidence_score: number;
   is_active: boolean;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, unknown> & {
+    skill_details?: SkillMetadata;
+  };
   created_at: string;
   updated_at: string;
 }

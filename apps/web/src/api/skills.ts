@@ -1,5 +1,5 @@
 import { fetchJson } from '../lib/api';
-import type { Skill, CreateSkillInput, UpdateSkillInput, SkillProgress, SkillCategory } from '../types/skill';
+import type { Skill, CreateSkillInput, UpdateSkillInput, SkillProgress, SkillCategory, SkillMetadata } from '../types/skill';
 
 export const skillsApi = {
   /**
@@ -102,5 +102,34 @@ export const skillsApi = {
     await fetchJson(`/api/skills/${skillId}`, {
       method: 'DELETE'
     });
+  },
+
+  /**
+   * Get skill with enriched details
+   */
+  async getSkillDetails(skillId: string): Promise<Skill> {
+    const response = await fetchJson<{ skill: Skill }>(`/api/skills/${skillId}/details`);
+    return response.skill;
+  },
+
+  /**
+   * Extract skill details from journal entries
+   */
+  async extractSkillDetails(skillId: string): Promise<SkillMetadata> {
+    const response = await fetchJson<{ details: SkillMetadata }>(`/api/skills/${skillId}/details/extract`, {
+      method: 'POST'
+    });
+    return response.details;
+  },
+
+  /**
+   * Update skill details
+   */
+  async updateSkillDetails(skillId: string, updates: Partial<SkillMetadata>): Promise<Skill> {
+    const response = await fetchJson<{ skill: Skill }>(`/api/skills/${skillId}/details`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates)
+    });
+    return response.skill;
   }
 };

@@ -430,6 +430,10 @@ export const mockDataService = {
       recoveryData?: Array<{ date: string; recovery_time: number; intensity: number }>
     ) => mockDataRegistry.registerReactions(patterns, insights, metrics, recoveryData),
     memoryProposals: (data: MemoryProposal[]) => mockDataRegistry.registerMemoryProposals(data),
+    quests: (data: Quest[]) => mockDataRegistry.registerQuests(data),
+    questBoard: (data: QuestBoard) => mockDataRegistry.registerQuestBoard(data),
+    questAnalytics: (data: QuestAnalytics) => mockDataRegistry.registerQuestAnalytics(data),
+    questSuggestions: (data: QuestSuggestion[]) => mockDataRegistry.registerQuestSuggestions(data),
   },
 
   /**
@@ -450,6 +454,10 @@ export const mockDataService = {
     stabilityMetrics: () => mockDataRegistry.getStabilityMetrics(),
     recoveryTimeData: () => mockDataRegistry.getRecoveryTimeData(),
     memoryProposals: () => mockDataRegistry.getMemoryProposals(),
+    quests: () => mockDataRegistry.getQuests(),
+    questBoard: () => mockDataRegistry.getQuestBoard(),
+    questAnalytics: () => mockDataRegistry.getQuestAnalytics(),
+    questSuggestions: () => mockDataRegistry.getQuestSuggestions(),
   },
 
   /**

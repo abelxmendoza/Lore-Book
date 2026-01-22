@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { skillDetailsExtractionService, type SkillMetadata } from './skillDetailsExtractionService';
 
 export type SkillCategory = 'professional' | 'creative' | 'physical' | 'social' | 'intellectual' | 'emotional' | 'practical' | 'artistic' | 'technical' | 'other';
 
@@ -334,6 +335,125 @@ class SkillService {
       }
     } catch (error) {
       logger.error({ error, userId, skillId }, 'Failed to delete skill');
+      throw error;
+    }
+  }
+
+  /**
+   * Get skill with enriched details
+   */
+  async getSkillDetails(userId: string, skillId: string): Promise<Skill> {
+    try {
+      const skill = await this.getSkill(userId, skillId);
+      if (!skill) {
+        throw new Error('Skill not found');
+      }
+
+      // If metadata already has skill_details, return as is
+      // Otherwise, extract details
+      const metadata = skill.metadata || {};
+      if (!metadata.skill_details) {
+        // Extract details and merge into metadata
+        const details = await skillDetailsExtractionService.extractSkillDetails(userId, skillId);
+        metadata.skill_details = details;
+
+        // Save extracted details to database
+        await supabaseAdmin
+          .from('skills')
+          .update({
+            metadata,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', skillId)
+          .eq('user_id', userId);
+
+        return {
+          ...skill,
+          metadata
+        };
+      }
+
+      return skill;
+    } catch (error) {
+      logger.error({ error, userId, skillId }, 'Failed to get skill details');
+      throw error;
+    }
+  }
+
+  /**
+   * Extract skill details from journal entries
+   */
+  async extractSkillDetails(userId: string, skillId: string): Promise<SkillMetadata> {
+    try {
+      const details = await skillDetailsExtractionService.extractSkillDetails(userId, skillId);
+
+      // Save to skill metadata
+      const skill = await this.getSkill(userId, skillId);
+      if (!skill) {
+        throw new Error('Skill not found');
+      }
+
+      const metadata = skill.metadata || {};
+      metadata.skill_details = details;
+
+      await supabaseAdmin
+        .from('skills')
+        .update({
+          metadata,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', skillId)
+        .eq('user_id', userId);
+
+      return details;
+    } catch (error) {
+      logger.error({ error, userId, skillId }, 'Failed to extract skill details');
+      throw error;
+    }
+  }
+
+  /**
+   * Update skill details metadata
+   */
+  async updateSkillDetails(
+    userId: string,
+    skillId: string,
+    updates: Partial<SkillMetadata>
+  ): Promise<Skill> {
+    try {
+      const skill = await this.getSkill(userId, skillId);
+      if (!skill) {
+        throw new Error('Skill not found');
+      }
+
+      const metadata = skill.metadata || {};
+      const existingDetails = (metadata.skill_details as SkillMetadata) || {};
+      const updatedDetails: SkillMetadata = {
+        ...existingDetails,
+        ...updates
+      };
+
+      metadata.skill_details = updatedDetails;
+
+      const { data, error } = await supabaseAdmin
+        .from('skills')
+        .update({
+          metadata,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', skillId)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, userId, skillId, updates }, 'Failed to update skill details');
+        throw error;
+      }
+
+      return data as Skill;
+    } catch (error) {
+      logger.error({ error, userId, skillId, updates }, 'Failed to update skill details');
       throw error;
     }
   }

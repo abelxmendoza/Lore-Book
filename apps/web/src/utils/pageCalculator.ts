@@ -45,11 +45,15 @@ export function calculatePagesForSection(
   // Calculate line height in pixels
   const lineHeightPx = options.fontSize * options.lineHeight;
   
-  // Estimate lines per page
-  const linesPerPage = Math.floor(availableHeight / lineHeightPx);
+  // Estimate lines per page - account for header/footer space
+  // Optimize for ebook reading experience
+  const headerFooterSpace = 60; // Space for section title and page number
+  const textAreaHeight = Math.max(availableHeight - headerFooterSpace, availableHeight * 0.90); // Use 90% of available height for content
+  const linesPerPage = Math.max(1, Math.floor(textAreaHeight / lineHeightPx));
   
-  // Estimate characters per line (rough estimate: ~60-80 chars per line for readable text)
-  const avgCharsPerLine = Math.floor(availableWidth / (options.fontSize * 0.6)); // Rough estimate
+  // Estimate characters per line - more accurate calculation
+  // Average character width is approximately 0.6 * font size for most fonts
+  const avgCharsPerLine = Math.floor(availableWidth / (options.fontSize * 0.55)); // Slightly more accurate
   const charsPerPage = linesPerPage * avgCharsPerLine;
   
   // Split content into pages, respecting paragraph boundaries
@@ -200,15 +204,15 @@ export function getViewportDimensions(): { width: number; height: number } {
 
 /**
  * Calculate font size in pixels from size name
+ * Must match BookPage component font sizes
  */
 export function fontSizeToPixels(size: 'sm' | 'base' | 'lg' | 'xl'): number {
-  const baseFontSize = 16; // Base browser font size
-  
+  // Match BookPage component font sizes exactly
   const sizes = {
-    sm: baseFontSize * 0.875, // 14px
-    base: baseFontSize, // 16px
-    lg: baseFontSize * 1.125, // 18px
-    xl: baseFontSize * 1.25 // 20px
+    sm: 18,
+    base: 22,
+    lg: 26,
+    xl: 30
   };
   
   return sizes[size];
@@ -216,12 +220,14 @@ export function fontSizeToPixels(size: 'sm' | 'base' | 'lg' | 'xl'): number {
 
 /**
  * Calculate line height multiplier from name
+ * Must match BookPage component line heights
  */
 export function lineHeightToMultiplier(height: 'normal' | 'relaxed' | 'loose'): number {
+  // Match BookPage component line heights exactly
   const multipliers = {
-    normal: 1.5,
-    relaxed: 1.7,
-    loose: 2.0
+    normal: 1.7,
+    relaxed: 1.9,
+    loose: 2.2
   };
   
   return multipliers[height];

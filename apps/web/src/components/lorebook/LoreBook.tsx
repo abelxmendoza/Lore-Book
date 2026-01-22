@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, ChevronUp, ChevronDown, Type, AlignJustify, Search, Sparkles, Loader2, Download, Menu, X } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -222,7 +222,7 @@ export const LoreBook = () => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
-  const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('base');
+  const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('xl');
   const [lineHeight, setLineHeight] = useState<'normal' | 'relaxed' | 'loose'>('relaxed');
   const [showChat, setShowChat] = useState(false); // Hidden by default for reading focus
   const [searchQuery, setSearchQuery] = useState('');
@@ -286,17 +286,9 @@ export const LoreBook = () => {
           console.warn('Failed to load memoir outline:', error);
         }
 
-        // Use mock data only if toggle is enabled and no real data
-        if (!loadedOutline && isMockDataEnabled) {
+        // Use mock data if no real data is available (always show something)
+        if (!loadedOutline) {
           loadedOutline = dummyBook;
-        } else if (!loadedOutline) {
-          loadedOutline = {
-            id: 'default',
-            title: 'My Lore Book',
-            sections: [],
-            lastUpdated: new Date().toISOString(),
-            autoUpdate: false
-          };
         }
 
         setOutline(loadedOutline);
@@ -311,26 +303,15 @@ export const LoreBook = () => {
             description: ch.summary || '',
             summary: ch.summary || ''
           })));
-        } else if (isMockDataEnabled) {
-          setChapters(dummyChapters);
         } else {
-          setChapters([]);
+          // Always show mock chapters if no real data
+          setChapters(dummyChapters);
         }
       } catch (error) {
         console.error('Failed to load lore book data:', error);
-        if (isMockDataEnabled) {
+        // Always fallback to mock data
           setOutline(dummyBook);
           setChapters(dummyChapters);
-        } else {
-          setOutline({
-            id: 'default',
-            title: 'My Lore Book',
-            sections: [],
-            lastUpdated: new Date().toISOString(),
-            autoUpdate: false
-          });
-          setChapters([]);
-        }
       } finally {
         setLoading(false);
       }
@@ -385,60 +366,127 @@ export const LoreBook = () => {
       return;
     }
 
-    const flatSections = flattenSections(outline.sections);
-    const allCalculatedPages: BookPageType[] = [];
+    let resizeObserver: ResizeObserver | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
 
-    flatSections.forEach((section, sectionIndex) => {
-      if (!section.content) return;
+    // Wait for container to have a proper size
+    const calculatePages = () => {
+      const flatSections = flattenSections(outline.sections);
+      const allCalculatedPages: BookPageType[] = [];
 
-      const containerEl = pageContainerRef.current;
-      if (!containerEl) {
-        // Fallback calculation
+      flatSections.forEach((section, sectionIndex) => {
+        if (!section.content) return;
+
+        const containerEl = pageContainerRef.current;
+        const isMobile = viewportDimensions.width < 768;
+        const isTablet = viewportDimensions.width >= 768 && viewportDimensions.width < 1024;
+        
+        // Calculate available height - use more of the viewport
+        // Account for: header (~64px), footer (~64px), search bar (~60px), and minimal padding
+        const headerFooterHeight = 180; // Account for all UI elements
+        const containerRect = containerEl?.getBoundingClientRect();
+        const measuredHeight = containerRect?.height || 0;
+        
+        // Use measured height if available and reasonable (>100px), otherwise use viewport calculation
+        // Maximize content area for better reading experience
+        const fallbackHeight = Math.max(
+          viewportDimensions.height - headerFooterHeight,
+          Math.min(viewportDimensions.height * 0.85, 800) // Use 85% of viewport or max 800px for better readability
+        );
+        const availableHeight = measuredHeight > 100
+          ? measuredHeight
+          : fallbackHeight;
+        
+        // Calculate available width
+        const availableWidth = containerEl && containerEl.getBoundingClientRect().width > 0
+          ? containerEl.getBoundingClientRect().width
+          : isMobile 
+            ? viewportDimensions.width - 40 
+            : isTablet 
+            ? viewportDimensions.width - 300 
+            : viewportDimensions.width - 400;
+
+        const fontSizePx = fontSizeToPixels(fontSize);
+        const lineHeightMult = lineHeightToMultiplier(lineHeight);
+
         const pages = calculatePagesForSection(section.content, sectionIndex, {
-          fontSize: fontSizeToPixels(fontSize),
-          lineHeight: lineHeightToMultiplier(lineHeight),
-          containerHeight: viewportDimensions.height - 200, // Account for headers/footers
-          containerWidth: viewportDimensions.width > 1024 ? viewportDimensions.width - 400 : viewportDimensions.width - 40,
-          marginTop: 60,
-          marginBottom: 80,
-          marginLeft: viewportDimensions.width > 1024 ? 80 : 20,
-          marginRight: viewportDimensions.width > 1024 ? 80 : 20,
-          padding: 20
+          fontSize: fontSizePx,
+          lineHeight: lineHeightMult,
+          containerHeight: availableHeight,
+          containerWidth: availableWidth,
+          marginTop: isMobile ? 10 : 12, // Further reduced margins for maximum content space
+          marginBottom: isMobile ? 20 : 24, // Further reduced margins
+          marginLeft: isMobile ? 12 : isTablet ? 20 : 40,
+          marginRight: isMobile ? 12 : isTablet ? 20 : 40,
+          padding: isMobile ? 8 : 10 // Further reduced padding for more content
         });
+
         allCalculatedPages.push(...pages);
-        return;
-      }
-
-      const rect = containerEl.getBoundingClientRect();
-      const isMobile = viewportDimensions.width < 768;
-      const isTablet = viewportDimensions.width >= 768 && viewportDimensions.width < 1024;
-
-      const pages = calculatePagesForSection(section.content, sectionIndex, {
-        fontSize: fontSizeToPixels(fontSize),
-        lineHeight: lineHeightToMultiplier(lineHeight),
-        containerHeight: rect.height || viewportDimensions.height - 200,
-        containerWidth: isMobile 
-          ? viewportDimensions.width - 40 
-          : isTablet 
-          ? viewportDimensions.width - 300 
-          : rect.width || viewportDimensions.width - 400,
-        marginTop: isMobile ? 40 : 60,
-        marginBottom: isMobile ? 60 : 80,
-        marginLeft: isMobile ? 20 : isTablet ? 40 : 80,
-        marginRight: isMobile ? 20 : isTablet ? 40 : 80,
-        padding: isMobile ? 16 : 20
       });
 
-      allCalculatedPages.push(...pages);
-    });
+      setAllPages(allCalculatedPages);
+      
+      // Reset to first page if current page is out of bounds
+      if (currentPageIndex >= allCalculatedPages.length) {
+        setCurrentPageIndex(0);
+      }
+    };
 
-    setAllPages(allCalculatedPages);
-    
-    // Reset to first page if current page is out of bounds
-    if (currentPageIndex >= allCalculatedPages.length) {
-      setCurrentPageIndex(0);
+    // Use ResizeObserver to wait for container to have proper dimensions
+    const containerEl = pageContainerRef.current;
+    if (!containerEl) {
+      // Fallback: use setTimeout if container doesn't exist yet
+      timeoutId = setTimeout(() => {
+        calculatePages();
+      }, 100);
+      return;
     }
-  }, [outline, fontSize, lineHeight, viewportDimensions]);
+
+    // Try immediate calculation first
+    const tryCalculate = () => {
+      const rect = containerEl.getBoundingClientRect();
+      
+      // If container has height, calculate immediately
+      if (rect.height > 100) {
+        calculatePages();
+        if (resizeObserver) {
+          resizeObserver.disconnect();
+          resizeObserver = null;
+        }
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      }
+    };
+
+    // Try immediately
+    tryCalculate();
+
+    // Also set up ResizeObserver to catch when container gets size
+    resizeObserver = new ResizeObserver(() => {
+      tryCalculate();
+    });
+    resizeObserver.observe(containerEl);
+
+    // Fallback timeout in case ResizeObserver doesn't fire
+    timeoutId = setTimeout(() => {
+      calculatePages();
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+      }
+    }, 500);
+
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [outline, fontSize, lineHeight, viewportDimensions, currentPageIndex, flattenSections]);
 
   // Update current page index when section changes (for section-based navigation)
   useEffect(() => {
@@ -454,58 +502,24 @@ export const LoreBook = () => {
     }
   }, [currentSectionIndex, allPages]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  // Helper to get flat sections - memoize to prevent recalculation
+  const flatSections = useMemo(() => {
+    return outline ? flattenSections(outline.sections || []) : [];
+  }, [outline]);
 
-  if (!outline) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center text-white/60">
-          <BookOpen className="h-12 w-12 mx-auto mb-4 text-white/40" />
-          <p>No lore book available</p>
-          {isMockDataEnabled && (
-            <p className="text-xs text-yellow-400/80 mt-2">Mock data toggle is enabled</p>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const currentPage = useMemo(() => {
+    return allPages.length > 0 && currentPageIndex < allPages.length ? allPages[currentPageIndex] : null;
+  }, [allPages, currentPageIndex]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  const currentSection = useMemo(() => {
+    return currentPage 
+      ? (flatSections[currentPage.sectionIndex] || flatSections[currentSectionIndex])
+      : flatSections[currentSectionIndex];
+  }, [currentPage, flatSections, currentSectionIndex]);
 
-  if (!outline) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center text-white/60">
-          <BookOpen className="h-12 w-12 mx-auto mb-4 text-white/40" />
-          <p>No lore book available</p>
-          {isMockDataEnabled && (
-            <p className="text-xs text-yellow-400/80 mt-2">Mock data toggle is enabled</p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  const flatSections = outline ? flattenSections(outline.sections) : [];
-  const currentPage = allPages.length > 0 && currentPageIndex < allPages.length ? allPages[currentPageIndex] : null;
-  const currentSection = currentPage 
-    ? (flatSections[currentPage.sectionIndex] || flatSections[currentSectionIndex])
-    : flatSections[currentSectionIndex];
   const totalSections = flatSections.length;
 
-  // Page navigation functions
+  // Page navigation functions - MUST be before early returns
   const goToPreviousPage = useCallback(() => {
     if (isAnimating) return;
     
@@ -563,7 +577,7 @@ export const LoreBook = () => {
   // Legacy section navigation (for sidebar)
   const goToSection = useCallback((index: number) => {
     if (allPages.length === 0) {
-      setCurrentSectionIndex(index);
+    setCurrentSectionIndex(index);
       return;
     }
     
@@ -893,7 +907,7 @@ export const LoreBook = () => {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col bg-gradient-to-br from-black via-purple-950/20 to-black">
+    <div className="h-screen w-full flex flex-col bg-gradient-to-br from-black via-purple-950/20 to-black overflow-hidden" style={{ minHeight: '100vh', height: '100vh' }}>
       {/* Search Bar Section - Above the book */}
       <div className="border-b border-border/50 p-4 bg-black/30">
         <div className="max-w-4xl mx-auto">
@@ -1034,7 +1048,7 @@ export const LoreBook = () => {
           {allPages.length > 0 && (
             <div className="hidden sm:flex text-xs sm:text-sm text-white/50 bg-black/40 px-2 sm:px-3 py-1 rounded-full border border-white/10">
               Page {currentPageIndex + 1} of {allPages.length}
-            </div>
+          </div>
           )}
         </div>
         
@@ -1047,8 +1061,8 @@ export const LoreBook = () => {
           >
             Stats
           </button>
-
-          {/* Reading Controls */}
+        
+        {/* Reading Controls */}
           {/* Font Size */}
           <div className="flex items-center gap-1 sm:gap-2 bg-black/60 border border-white/10 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5">
             <Type className="h-3 w-3 sm:h-4 sm:w-4 text-white/50" />
@@ -1088,7 +1102,7 @@ export const LoreBook = () => {
       )}
 
       {/* Main Content Area with Sidebar - Kindle Style */}
-      <div className="flex-1 flex overflow-hidden relative bg-[#1a1a1a]">
+      <div className="flex-1 flex overflow-hidden relative bg-[#1a1a1a] min-h-0" style={{ height: '100%', minHeight: 0 }}>
         {/* Left Sidebar - Chapter Navigation (Desktop) */}
         <div className={`${
           showSidebar ? 'translate-x-0' : '-translate-x-full'
@@ -1163,7 +1177,8 @@ export const LoreBook = () => {
         {/* Book Content - Kindle Style Reading Area */}
         <div 
           ref={pageContainerRef}
-          className="flex-1 overflow-hidden relative"
+          className="flex-1 overflow-hidden relative min-h-0"
+          style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}
           {...swipeHandlers}
         >
           {/* Touch Zones for Mobile Navigation */}
@@ -1196,7 +1211,7 @@ export const LoreBook = () => {
             aria-atomic="true"
           >
             {allPages.length > 0 && currentPageIndex < allPages.length ? (
-              <div className="w-full h-full flex items-center justify-center p-4 sm:p-8 lg:p-16">
+              <div className="w-full h-full flex items-stretch justify-center p-2 sm:p-4 lg:p-6" style={{ minHeight: '100%', height: '100%' }}>
                 <BookPage
                   content={allPages[currentPageIndex].content}
                   pageNumber={allPages[currentPageIndex].pageNumber}
@@ -1207,15 +1222,15 @@ export const LoreBook = () => {
                   lineHeight={lineHeight}
                   animationDirection={animationDirection}
                   onAnimationEnd={handleAnimationEnd}
-                  className="w-full max-w-4xl"
+                  className="w-full h-full max-w-[100%] sm:max-w-[95%] md:max-w-[90%] lg:max-w-5xl xl:max-w-6xl"
                 />
               </div>
             ) : (
               <div className="text-center text-white/60 p-8" role="status" aria-live="polite">
                 <BookOpen className="h-16 w-16 mx-auto mb-4 text-white/40" aria-hidden="true" />
                 <p>No pages available</p>
-              </div>
-            )}
+            </div>
+          )}
           </div>
         </div>
       </div>
@@ -1261,10 +1276,10 @@ export const LoreBook = () => {
               const isCurrentSection = allPages[currentPageIndex]?.sectionIndex === index;
               
               return (
-                <button
-                  key={index}
-                  onClick={() => goToSection(index)}
-                  className={`rounded-full transition-all flex-shrink-0 ${
+            <button
+              key={index}
+              onClick={() => goToSection(index)}
+              className={`rounded-full transition-all flex-shrink-0 ${
                     isCurrentSection
                       ? 'bg-primary w-6 h-2'
                       : 'bg-white/20 hover:bg-white/40 w-2 h-2'
@@ -1286,12 +1301,12 @@ export const LoreBook = () => {
                   onClick={() => goToSection(index)}
                   className={`rounded-full transition-all flex-shrink-0 ${
                     isCurrentSection
-                      ? 'bg-primary w-8 h-2'
-                      : 'bg-white/20 hover:bg-white/40 w-2 h-2'
-                  }`}
-                  title={section?.title}
-                  aria-label={`Go to section: ${section?.title}`}
-                />
+                  ? 'bg-primary w-8 h-2'
+                  : 'bg-white/20 hover:bg-white/40 w-2 h-2'
+              }`}
+              title={section?.title}
+              aria-label={`Go to section: ${section?.title}`}
+            />
               );
             })}
           </div>

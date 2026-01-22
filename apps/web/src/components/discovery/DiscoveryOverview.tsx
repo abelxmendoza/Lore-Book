@@ -6,7 +6,6 @@ import {
   Heart, 
   Compass,
   X,
-  Award,
   Users,
   Activity,
   AlertCircle,
@@ -21,7 +20,6 @@ import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
 import { XpAnalyticsPanel } from './XpAnalyticsPanel';
 import { SoulProfilePanel } from './SoulProfilePanel';
-import { AchievementsPanel } from './AchievementsPanel';
 import { RelationshipsAnalyticsPanel } from './RelationshipsAnalyticsPanel';
 import { ContinuityDashboard } from '../continuity/ContinuityDashboard';
 import { ShadowAnalyticsPanel } from './ShadowAnalyticsPanel';
@@ -155,13 +153,6 @@ const PANEL_CONFIGS: PanelConfig[] = [
     description: 'How am I progressing in my skills? Your life XP, levels, streaks, and skill development.',
     icon: Zap,
     component: XpAnalyticsPanel
-  },
-  {
-    id: 'achievements',
-    title: 'Achievements',
-    description: 'Unlocked milestones and accomplishments in your journey.',
-    icon: Award,
-    component: AchievementsPanel
   },
   {
     id: 'reactions-resilience',

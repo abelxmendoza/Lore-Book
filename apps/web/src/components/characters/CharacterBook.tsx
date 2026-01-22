@@ -1660,6 +1660,170 @@ export const dummyCharacters: Character[] = [
     },
     memory_count: 12,
     relationship_count: 3
+  },
+  
+  // === ROMANTIC RELATIONSHIPS ===
+  {
+    id: 'char-001',
+    name: 'Alex',
+    first_name: 'Alex',
+    last_name: null,
+    alias: ['Alex'],
+    pronouns: 'he/him',
+    archetype: 'romantic',
+    role: 'Boyfriend',
+    status: 'active',
+    importance_level: 'protagonist',
+    importance_score: 95,
+    is_nickname: false,
+    summary: 'My boyfriend. We\'ve been together for 6 months and it\'s been amazing. He\'s supportive, makes me laugh, and we share similar values. Great communication and he respects my boundaries.',
+    tags: ['romantic', 'boyfriend', 'active', 'love', 'relationship'],
+    metadata: {
+      relationship_type: 'boyfriend',
+      closeness_score: 92,
+      affection_score: 0.92,
+      compatibility_score: 0.95,
+      relationship_health: 0.90,
+      first_met: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    },
+    social_media: {},
+    memory_count: 45,
+    relationship_count: 1
+  },
+  {
+    id: 'char-002',
+    name: 'Jordan',
+    first_name: 'Jordan',
+    last_name: null,
+    alias: ['Jordan'],
+    pronouns: 'they/them',
+    archetype: 'romantic',
+    role: 'Crush',
+    status: 'active',
+    importance_level: 'major',
+    importance_score: 75,
+    is_nickname: false,
+    summary: 'Someone I have a crush on. They\'re very attractive, creative, and we have interesting conversations. I\'m not entirely sure if they feel the same way, but there\'s definitely chemistry.',
+    tags: ['romantic', 'crush', 'active', 'attraction'],
+    metadata: {
+      relationship_type: 'crush',
+      closeness_score: 75,
+      affection_score: 0.75,
+      compatibility_score: 0.70,
+      relationship_health: 0.65,
+      first_met: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    },
+    social_media: {},
+    memory_count: 18,
+    relationship_count: 1
+  },
+  {
+    id: 'char-003',
+    name: 'Sam',
+    first_name: 'Sam',
+    last_name: null,
+    alias: ['Sam'],
+    pronouns: 'they/them',
+    archetype: 'romantic',
+    role: 'Situationship',
+    status: 'active',
+    importance_level: 'supporting',
+    importance_score: 65,
+    is_nickname: false,
+    summary: 'We\'re in a situationship - it\'s fun and there\'s no pressure, but I\'m not sure where it\'s going. Good physical chemistry but there\'s a lack of emotional intimacy and unclear boundaries.',
+    tags: ['romantic', 'situationship', 'active', 'casual'],
+    metadata: {
+      relationship_type: 'situationship',
+      closeness_score: 65,
+      affection_score: 0.65,
+      compatibility_score: 0.60,
+      relationship_health: 0.55,
+      first_met: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    },
+    social_media: {},
+    memory_count: 22,
+    relationship_count: 1
+  },
+  {
+    id: 'char-004',
+    name: 'Taylor',
+    first_name: 'Taylor',
+    last_name: null,
+    alias: ['Taylor'],
+    pronouns: 'she/her',
+    archetype: 'past_romantic',
+    role: 'Ex-Girlfriend',
+    status: 'inactive',
+    importance_level: 'supporting',
+    importance_score: 40,
+    is_nickname: false,
+    summary: 'My ex-girlfriend. We had amazing adventures together and great physical chemistry, but we had communication issues and different life goals. The relationship ended about a year ago due to jealousy problems and different values about commitment.',
+    tags: ['romantic', 'ex', 'past', 'ended'],
+    metadata: {
+      relationship_type: 'ex_girlfriend',
+      closeness_score: 40,
+      affection_score: 0.40,
+      compatibility_score: 0.65,
+      relationship_health: 0.45,
+      first_met: new Date(Date.now() - 730 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    },
+    social_media: {},
+    memory_count: 38,
+    relationship_count: 1
+  },
+  {
+    id: 'char-005',
+    name: 'Morgan',
+    first_name: 'Morgan',
+    last_name: null,
+    alias: ['Morgan'],
+    pronouns: 'they/them',
+    archetype: 'past_romantic',
+    role: 'Ex-Lover',
+    status: 'inactive',
+    importance_level: 'supporting',
+    importance_score: 55,
+    is_nickname: false,
+    summary: 'An ex-lover from a few years ago. We had the deepest emotional connection I\'ve ever felt - incredible intellectual conversations and we understood each other on a profound level. But it was too intense, with unhealthy codependency patterns that eventually burned us both out.',
+    tags: ['romantic', 'ex', 'past', 'intense', 'ended'],
+    metadata: {
+      relationship_type: 'ex_lover',
+      closeness_score: 55,
+      affection_score: 0.55,
+      compatibility_score: 0.70,
+      relationship_health: 0.50,
+      first_met: new Date(Date.now() - 1095 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    },
+    social_media: {},
+    memory_count: 52,
+    relationship_count: 1
+  },
+  {
+    id: 'char-006',
+    name: 'Casey',
+    first_name: 'Casey',
+    last_name: null,
+    alias: ['Casey'],
+    pronouns: 'they/them',
+    archetype: 'romantic',
+    role: 'Infatuation',
+    status: 'active',
+    importance_level: 'major',
+    importance_score: 80,
+    is_nickname: false,
+    summary: 'Someone I\'m infatuated with. They\'re extremely attractive, charismatic, and charming - they make me feel butterflies. I don\'t really know them well yet, so it might just be infatuation rather than a real connection.',
+    tags: ['romantic', 'infatuation', 'active', 'attraction', 'obsession'],
+    metadata: {
+      relationship_type: 'infatuation',
+      closeness_score: 80,
+      affection_score: 0.80,
+      compatibility_score: 0.65,
+      relationship_health: 0.60,
+      first_met: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    },
+    social_media: {},
+    memory_count: 12,
+    relationship_count: 1
   }
 ];
 
@@ -2314,6 +2478,7 @@ export const CharacterBook = () => {
                                   <CharacterProfileCard
                                     key={character.id || `char-${index}`}
                                     character={character}
+                                    relationship={relationships.get(character.id)}
                                     onClick={() => {
                                       setSelectedCharacter(character);
                                     }}

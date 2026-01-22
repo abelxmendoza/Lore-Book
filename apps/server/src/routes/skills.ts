@@ -191,4 +191,53 @@ router.delete('/:skillId', requireAuth, async (req: AuthenticatedRequest, res) =
   }
 });
 
+/**
+ * Get skill with enriched details
+ */
+router.get('/:skillId/details', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { skillId } = req.params;
+
+    const skill = await skillService.getSkillDetails(userId, skillId);
+    res.json({ skill });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get skill details');
+    res.status(500).json({ error: 'Failed to get skill details' });
+  }
+});
+
+/**
+ * Extract skill details from journal entries
+ */
+router.post('/:skillId/details/extract', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { skillId } = req.params;
+
+    const details = await skillService.extractSkillDetails(userId, skillId);
+    res.json({ details });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to extract skill details');
+    res.status(500).json({ error: 'Failed to extract skill details' });
+  }
+});
+
+/**
+ * Update skill details
+ */
+router.patch('/:skillId/details', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { skillId } = req.params;
+    const updates = req.body;
+
+    const skill = await skillService.updateSkillDetails(userId, skillId, updates);
+    res.json({ skill });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to update skill details');
+    res.status(500).json({ error: 'Failed to update skill details' });
+  }
+});
+
 export default router;

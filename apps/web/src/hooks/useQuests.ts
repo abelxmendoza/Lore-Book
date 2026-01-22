@@ -20,7 +20,7 @@ export function useQuests(filters?: QuestFilters) {
     try {
       // Use mock data if enabled
       if (isMockDataEnabled) {
-        mockDataService.registerQuests(MOCK_QUESTS);
+        mockDataService.register.quests(MOCK_QUESTS);
         let filteredQuests = [...MOCK_QUESTS];
 
         // Apply filters
@@ -88,7 +88,7 @@ export function useQuests(filters?: QuestFilters) {
       // Fallback to mock data on error if not already using it
       if (!isMockDataEnabled) {
         console.log('Falling back to mock quest data');
-        mockDataService.registerQuests(MOCK_QUESTS);
+        mockDataService.register.quests(MOCK_QUESTS);
         setQuests(MOCK_QUESTS);
       } else {
         setError('Failed to fetch quests');
@@ -109,6 +109,7 @@ export function useQuests(filters?: QuestFilters) {
  * Hook to fetch a single quest
  */
 export function useQuest(questId: string) {
+  const { isMockDataEnabled } = useMockData();
   const [quest, setQuest] = useState<Quest | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,15 +119,41 @@ export function useQuest(questId: string) {
     setLoading(true);
     setError(null);
     try {
+      // Use mock data if enabled
+      if (isMockDataEnabled) {
+        // Find quest in mock data
+        const mockQuest = MOCK_QUESTS.find(q => q.id === questId);
+        if (mockQuest) {
+          setQuest(mockQuest);
+          setLoading(false);
+          return;
+        } else {
+          setError('Quest not found');
+          setLoading(false);
+          return;
+        }
+      }
+
       const result = await fetchJson<{ quest: Quest }>(`/api/quests/${questId}`);
       setQuest(result.quest);
     } catch (err) {
       console.error('Failed to fetch quest:', err);
-      setError('Failed to fetch quest');
+      // Fallback to mock data on error if not already using it
+      if (!isMockDataEnabled) {
+        console.log('Falling back to mock quest data');
+        const mockQuest = MOCK_QUESTS.find(q => q.id === questId);
+        if (mockQuest) {
+          setQuest(mockQuest);
+        } else {
+          setError('Failed to fetch quest');
+        }
+      } else {
+        setError('Failed to fetch quest');
+      }
     } finally {
       setLoading(false);
     }
-  }, [questId]);
+  }, [questId, isMockDataEnabled]);
 
   useEffect(() => {
     fetchQuest();
@@ -148,38 +175,47 @@ export function useQuestBoard() {
     setLoading(true);
     setError(null);
     
-    // Always use mock data for now (until backend is ready)
-    // Small delay to simulate loading
-    await new Promise(resolve => setTimeout(resolve, 300));
-    mockDataService.registerQuestBoard(MOCK_QUEST_BOARD);
-    setBoard(MOCK_QUEST_BOARD);
-    setLoading(false);
-    
-    // Uncomment below when backend is ready:
-    /*
-    // Use mock data if enabled
-    if (isMockDataEnabled) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      mockDataService.registerQuestBoard(MOCK_QUEST_BOARD);
-      setBoard(MOCK_QUEST_BOARD);
-      setLoading(false);
-      return;
-    }
-
     try {
-      const result = await fetchJson<QuestBoard>('/api/quests/board');
-      setBoard(result);
+      // Always use mock data for now (until backend is ready)
+      // Small delay to simulate loading
+      await new Promise(resolve => setTimeout(resolve, 100));
+      mockDataService.register.questBoard(MOCK_QUEST_BOARD);
+      setBoard(MOCK_QUEST_BOARD);
       setLoading(false);
+      
+      // Uncomment below when backend is ready:
+      /*
+      // Use mock data if enabled
+      if (isMockDataEnabled) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        mockDataService.register.questBoard(MOCK_QUEST_BOARD);
+        setBoard(MOCK_QUEST_BOARD);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const result = await fetchJson<QuestBoard>('/api/quests/board');
+        setBoard(result);
+        setLoading(false);
+      } catch (err) {
+        console.error('Failed to fetch quest board:', err);
+        // Always fallback to mock data on error
+        console.log('Falling back to mock quest board data');
+        mockDataService.register.questBoard(MOCK_QUEST_BOARD);
+        setBoard(MOCK_QUEST_BOARD);
+        setLoading(false);
+      }
+      */
     } catch (err) {
-      console.error('Failed to fetch quest board:', err);
-      // Always fallback to mock data on error
-      console.log('Falling back to mock quest board data');
-      mockDataService.registerQuestBoard(MOCK_QUEST_BOARD);
+      console.error('Error loading quest board:', err);
+      setError('Failed to load quest board');
+      // Fallback to mock data even on error
+      mockDataService.register.questBoard(MOCK_QUEST_BOARD);
       setBoard(MOCK_QUEST_BOARD);
       setLoading(false);
     }
-    */
-  }, [isMockDataEnabled]);
+  }, []);
 
   useEffect(() => {
     fetchBoard();
@@ -203,7 +239,7 @@ export function useQuestAnalytics() {
     try {
       // Use mock data if enabled
       if (isMockDataEnabled) {
-        mockDataService.registerQuestAnalytics(MOCK_QUEST_ANALYTICS);
+        mockDataService.register.questAnalytics(MOCK_QUEST_ANALYTICS);
         setAnalytics(MOCK_QUEST_ANALYTICS);
         return;
       }
@@ -215,7 +251,7 @@ export function useQuestAnalytics() {
       // Fallback to mock data on error if not already using it
       if (!isMockDataEnabled) {
         console.log('Falling back to mock quest analytics data');
-        mockDataService.registerQuestAnalytics(MOCK_QUEST_ANALYTICS);
+        mockDataService.register.questAnalytics(MOCK_QUEST_ANALYTICS);
         setAnalytics(MOCK_QUEST_ANALYTICS);
       } else {
         setError('Failed to fetch quest analytics');
@@ -236,6 +272,7 @@ export function useQuestAnalytics() {
  * Hook to fetch quest history
  */
 export function useQuestHistory(questId: string) {
+  const { isMockDataEnabled } = useMockData();
   const [history, setHistory] = useState<QuestHistory[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -245,15 +282,27 @@ export function useQuestHistory(questId: string) {
     setLoading(true);
     setError(null);
     try {
+      // Use mock data if enabled (return empty history for now)
+      if (isMockDataEnabled) {
+        setHistory([]);
+        setLoading(false);
+        return;
+      }
+
       const result = await fetchJson<{ history: QuestHistory[] }>(`/api/quests/${questId}/history`);
       setHistory(result.history || []);
     } catch (err) {
       console.error('Failed to fetch quest history:', err);
-      setError('Failed to fetch quest history');
+      // For mock data, return empty history or generate some mock history
+      if (!isMockDataEnabled) {
+        setHistory([]);
+      } else {
+        setError('Failed to fetch quest history');
+      }
     } finally {
       setLoading(false);
     }
-  }, [questId]);
+  }, [questId, isMockDataEnabled]);
 
   useEffect(() => {
     fetchHistory();
@@ -277,7 +326,7 @@ export function useQuestSuggestions() {
     try {
       // Use mock data if enabled
       if (isMockDataEnabled) {
-        mockDataService.registerQuestSuggestions(MOCK_QUEST_SUGGESTIONS);
+        mockDataService.register.questSuggestions(MOCK_QUEST_SUGGESTIONS);
         setSuggestions(MOCK_QUEST_SUGGESTIONS);
         return;
       }
@@ -289,7 +338,7 @@ export function useQuestSuggestions() {
       // Fallback to mock data on error if not already using it
       if (!isMockDataEnabled) {
         console.log('Falling back to mock quest suggestions data');
-        mockDataService.registerQuestSuggestions(MOCK_QUEST_SUGGESTIONS);
+        mockDataService.register.questSuggestions(MOCK_QUEST_SUGGESTIONS);
         setSuggestions(MOCK_QUEST_SUGGESTIONS);
       } else {
         setError('Failed to fetch quest suggestions');

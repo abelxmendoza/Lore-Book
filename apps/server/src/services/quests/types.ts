@@ -154,9 +154,11 @@ export interface UpdateQuestInput {
 }
 
 export interface QuestBoard {
+  todays_quests: Quest[];
+  this_weeks_quests: Quest[];
   main_quests: Quest[];
   side_quests: Quest[];
-  daily_quests: Quest[];
+  daily_quests: Quest[]; // Keep for backward compatibility
   completed_quests: Quest[];
   total_count: number;
 }

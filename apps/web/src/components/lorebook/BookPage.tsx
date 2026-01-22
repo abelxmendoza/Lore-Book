@@ -47,7 +47,7 @@ export const BookPage = ({
     return () => {
       page.removeEventListener('transitionend', handleTransitionEnd);
     };
-  }, [onAnimationEnd]);
+  }, [onAnimationEnd, fontSize, lineHeight, content]);
 
   const fontSizeClasses = {
     sm: 'text-sm',
@@ -63,16 +63,16 @@ export const BookPage = ({
   };
 
   const fontSizePx = {
-    sm: 14,
-    base: 16,
-    lg: 18,
-    xl: 20
+    sm: 18,
+    base: 22,
+    lg: 26,
+    xl: 30
   };
 
   const lineHeightMultiplier = {
-    normal: 1.5,
-    relaxed: 1.7,
-    loose: 2.0
+    normal: 1.7,
+    relaxed: 1.9,
+    loose: 2.2
   };
 
   // Animation classes

@@ -4,35 +4,50 @@
   position: relative;
   width: 100%;
   height: 100%;
+  min-height: 100%; /* Use full container height */
   display: flex;
   flex-direction: column;
   background: #1a1a1a;
   color: rgba(255, 255, 255, 0.9);
   transition: transform 0.3s ease-in-out;
   will-change: transform;
+  overflow: hidden; /* Prevent content overflow */
 }
 
 .book-page-content {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  padding: 60px 80px;
+  padding: 24px 48px; /* Comfortable padding for reading */
   max-width: 100%;
   height: 100%;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: visible; /* Let content flow naturally */
+  box-sizing: border-box;
 }
 
 /* Mobile adjustments */
 @media (max-width: 768px) {
   .book-page-content {
-    padding: 40px 20px;
+    padding: 16px 20px; /* Comfortable padding for mobile reading */
+  }
+  
+  .book-page {
+    min-height: 100%;
   }
 }
 
 /* Tablet adjustments */
 @media (min-width: 768px) and (max-width: 1024px) {
   .book-page-content {
-    padding: 50px 40px;
+    padding: 20px 40px; /* Comfortable padding for tablet reading */
+  }
+}
+
+/* Large desktop adjustments */
+@media (min-width: 1536px) {
+  .book-page-content {
+    padding: 32px 96px; /* Generous padding for large screens */
   }
 }
 
@@ -69,17 +84,32 @@
 
 /* Page header */
 .book-page-header {
-  margin-bottom: 40px;
-  padding-bottom: 20px;
+  margin-bottom: 12px; /* Reduced from 24px */
+  padding-bottom: 8px; /* Reduced from 16px */
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
 }
 
 .book-section-title {
-  font-size: 2.5rem;
+  font-size: 3rem;
   font-weight: bold;
   color: rgba(255, 255, 255, 0.95);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   font-family: 'Georgia', serif;
+}
+
+/* Mobile section title */
+@media (max-width: 768px) {
+  .book-section-title {
+    font-size: 2rem;
+  }
+}
+
+/* Large desktop section title */
+@media (min-width: 1536px) {
+  .book-section-title {
+    font-size: 3.5rem;
+  }
 }
 
 .book-section-period {
@@ -90,22 +120,27 @@
 
 /* Page text */
 .book-page-text {
-  flex: 1;
+  flex: 1 1 auto; /* Take up all available space */
   font-family: 'Georgia', serif;
   text-align: justify;
   text-justify: inter-word;
   color: rgba(255, 255, 255, 0.9);
-  line-height: 1.7;
-  word-spacing: 0.1em;
-  letter-spacing: 0.01em;
+  line-height: 1.9;
+  word-spacing: 0.12em;
+  letter-spacing: 0.015em;
+  overflow: visible; /* Don't scroll, let content flow */
+  min-height: 0; /* Allow flex item to shrink */
+  display: block; /* Change from flex to block for better text flow */
+  width: 100%;
 }
 
 /* Page footer */
 .book-page-footer {
-  margin-top: 40px;
-  padding-top: 20px;
+  margin-top: 12px; /* Reduced from 24px */
+  padding-top: 8px; /* Reduced from 16px */
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   text-align: center;
+  flex-shrink: 0;
 }
 
 .book-page-number {

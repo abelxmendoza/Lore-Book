@@ -292,28 +292,35 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-          <TabsList className="grid w-full grid-cols-5 bg-black/40 border border-border/50">
-            <TabsTrigger value="overview" className="flex items-center gap-2">
-              <Heart className="w-4 h-4" />
-              <span className="hidden sm:inline">Overview</span>
-            </TabsTrigger>
-            <TabsTrigger value="timeline" className="flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              <span className="hidden sm:inline">Timeline</span>
-            </TabsTrigger>
-            <TabsTrigger value="pros-cons" className="flex items-center gap-2">
-              <List className="w-4 h-4" />
-              <span className="hidden sm:inline">Pros & Cons</span>
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />
-              <span className="hidden sm:inline">Analytics</span>
-            </TabsTrigger>
-            <TabsTrigger value="chat" className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4" />
-              <span className="hidden sm:inline">Chat</span>
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto overflow-y-hidden scrollbar-hide [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <TabsList className="inline-flex min-w-max sm:grid sm:w-full sm:grid-cols-5 bg-black/40 border border-border/50 flex-wrap sm:flex-nowrap">
+              <TabsTrigger value="overview" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0">
+                <Heart className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden min-[375px]:inline sm:inline">Overview</span>
+                <span className="min-[375px]:hidden">Over</span>
+              </TabsTrigger>
+              <TabsTrigger value="timeline" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0">
+                <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden min-[375px]:inline sm:inline">Timeline</span>
+                <span className="min-[375px]:hidden">Time</span>
+              </TabsTrigger>
+              <TabsTrigger value="pros-cons" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0">
+                <List className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden min-[375px]:inline sm:inline">Pros & Cons</span>
+                <span className="min-[375px]:hidden">Pros</span>
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0">
+                <BarChart3 className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden min-[375px]:inline sm:inline">Analytics</span>
+                <span className="min-[375px]:hidden">Stats</span>
+              </TabsTrigger>
+              <TabsTrigger value="chat" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0">
+                <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden min-[375px]:inline sm:inline">Chat</span>
+                <span className="min-[375px]:hidden">Chat</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="mt-6 space-y-6">

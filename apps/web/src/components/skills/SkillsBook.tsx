@@ -5,7 +5,7 @@
 // =====================================================
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Zap, Search, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Filter, X, Grid3x3, List, SlidersHorizontal, TrendingUp, Star, Award, Calendar, Sparkles, Clock, Flame } from 'lucide-react';
+import { Zap, Search, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Filter, X, SlidersHorizontal, TrendingUp, Star, Award, Calendar, Sparkles, Clock, Flame } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -18,12 +18,10 @@ import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 import type { Skill, SkillCategory } from '../../types/skill';
 import { format, subDays } from 'date-fns';
 
-const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
-const ITEMS_PER_PAGE_OPTIONS = [12, 24, 48, 96];
+const ITEMS_PER_PAGE = 12; // Fixed at 12 per page
 
 type SkillCategoryFilter = 'all' | SkillCategory | 'recent' | 'high_level' | 'low_level' | 'active' | 'inactive';
 type SortOption = 'name_asc' | 'name_desc' | 'level_desc' | 'level_asc' | 'xp_desc' | 'xp_asc' | 'practice_desc' | 'practice_asc' | 'recent';
-type ViewMode = 'grid' | 'list';
 
 // Generate mock skills for demonstration
 const generateMockSkills = (): Skill[] => {
@@ -86,9 +84,7 @@ export const SkillsBook: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<SkillCategoryFilter>('all');
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(ITEMS_PER_PAGE);
   const [sortBy, setSortBy] = useState<SortOption>('name_asc');
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [showFilters, setShowFilters] = useState(false);
   const [filterLevelMin, setFilterLevelMin] = useState(1);
   const [filterLevelMax, setFilterLevelMax] = useState(20);
@@ -228,12 +224,12 @@ export const SkillsBook: React.FC = () => {
   }, [filteredSkills, sortBy]);
 
   const paginatedSkills = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    const end = start + itemsPerPage;
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
     return sortedSkills.slice(start, end);
-  }, [sortedSkills, currentPage, itemsPerPage]);
+  }, [sortedSkills, currentPage]);
 
-  const totalPages = Math.ceil(sortedSkills.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedSkills.length / ITEMS_PER_PAGE);
 
   // Generate autocomplete suggestions based on search term
   const autocompleteSuggestions = useMemo(() => {
@@ -378,26 +374,6 @@ export const SkillsBook: React.FC = () => {
                 {sortedSkills.length} skill{sortedSkills.length !== 1 ? 's' : ''} found
               </p>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowFilters(!showFilters)}
-              className="border-white/20"
-            >
-              <SlidersHorizontal className="h-4 w-4 mr-2" />
-              Filters
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={loadSkills}
-              className="border-white/20"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
           </div>
         </div>
 
@@ -579,25 +555,7 @@ export const SkillsBook: React.FC = () => {
         </Tabs>
 
         {/* View Controls */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Button
-              variant={viewMode === 'grid' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('grid')}
-              className="border-white/20"
-            >
-              <Grid3x3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('list')}
-              className="border-white/20"
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
+        <div className="flex items-center justify-end">
           <div className="flex items-center gap-2">
             <select
               value={sortBy}
@@ -616,18 +574,6 @@ export const SkillsBook: React.FC = () => {
               <option value="practice_desc">Practice (High-Low)</option>
               <option value="practice_asc">Practice (Low-High)</option>
               <option value="recent">Recently Practiced</option>
-            </select>
-            <select
-              value={itemsPerPage}
-              onChange={(e) => {
-                setItemsPerPage(parseInt(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="bg-black/40 border border-white/20 text-white rounded px-3 py-1 text-sm"
-            >
-              {ITEMS_PER_PAGE_OPTIONS.map(opt => (
-                <option key={opt} value={opt}>{opt} per page</option>
-              ))}
             </select>
           </div>
         </div>
@@ -649,11 +595,7 @@ export const SkillsBook: React.FC = () => {
             </CardContent>
           </Card>
         ) : (
-          <div className={
-            viewMode === 'grid'
-              ? 'grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-              : 'space-y-4'
-          }>
+          <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {paginatedSkills.map(skill => (
               <SkillProfileCard
                 key={skill.id}
@@ -669,7 +611,7 @@ export const SkillsBook: React.FC = () => {
         {totalPages > 1 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
             <p className="text-white/60 text-xs sm:text-sm">
-              Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, sortedSkills.length)} of {sortedSkills.length}
+              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, sortedSkills.length)} of {sortedSkills.length}
             </p>
             <div className="flex items-center gap-2">
               <Button

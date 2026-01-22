@@ -312,7 +312,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
                         {activeSurface === 'lorebook' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)]">
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] h-full">
                             <LoreBook />
                           </div>
                         )}
