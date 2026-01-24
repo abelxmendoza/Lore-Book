@@ -25,6 +25,19 @@ import { eventImpactDetector } from './eventImpactDetector';
 import { eventCausalDetector } from './eventCausalDetector';
 import { entityRelationshipDetector } from './entityRelationshipDetector';
 import { entityScopeService } from './entityScopeService';
+import {
+  validateRelationship,
+  writeRelationship,
+  getResolvablePairs,
+  hasAnyDirectEdgePossible,
+  ASSERTED_THRESHOLD,
+  EPISODIC_THRESHOLD,
+  logValidationFailure,
+  toErEntityType,
+  type ExtractedRelationship,
+  type RelationshipType as ErRelationshipType,
+  type TargetTable,
+} from '../../er';
 import { entityAttributeDetector } from './entityAttributeDetector';
 import { skillNetworkBuilder } from './skillNetworkBuilder';
 import { groupNetworkBuilder } from './groupNetworkBuilder';
@@ -380,120 +393,148 @@ export class ConversationIngestionPipeline {
         logger.debug({ error }, 'Failed to resolve entities for enrichment, continuing without');
       }
 
-      // Step 4.2: Detect entity relationships and scopes
-      // This happens after entity extraction so we have entity IDs
+      // Step 4.2: Detect entity relationships and scopes (ER-constrained path)
+      // Build resolvedMap with ER types, gate on hasAnyDirectEdgePossible, validate, threshold, writeRelationship
       if (resolvedEntities.length >= 2) {
         try {
-          // Map entity types to our EntityType format
-          const entitiesForDetection = resolvedEntities.map(e => ({
-            id: e.id,
-            name: '', // Will be fetched if needed
-            type: (e.type === 'PERSON' || e.type === 'CHARACTER' ? 'character' : 'omega_entity') as 'character' | 'omega_entity',
-          }));
-
-          // Get entity names for detection
-          const entityNames = await Promise.all(
-            entitiesForDetection.map(async (e) => {
-              try {
-                if (e.type === 'character') {
-                  const { data: char } = await supabaseAdmin
-                    .from('characters')
-                    .select('name')
-                    .eq('id', e.id)
-                    .single();
-                  return { ...e, name: char?.name || '' };
-                } else {
-                  const { data: entity } = await supabaseAdmin
-                    .from('omega_entities')
-                    .select('primary_name')
-                    .eq('id', e.id)
-                    .single();
-                  return { ...e, name: entity?.primary_name || '' };
-                }
-              } catch (error) {
-                return { ...e, name: '' };
-              }
-            })
+          const resolvedMap = new Map(
+            resolvedEntities.map(e => [e.id, { id: e.id, type: toErEntityType(e.type) }])
           );
+          const pairs = getResolvablePairs(resolvedMap);
+          if (!hasAnyDirectEdgePossible(pairs)) {
+            // Skip relationship extraction when no direct edge is possible for any pair
+          } else {
+            // Map entity types to our EntityType format for detector
+            const entitiesForDetection = resolvedEntities.map(e => ({
+              id: e.id,
+              name: '', // Will be fetched if needed
+              type: (e.type === 'PERSON' || e.type === 'CHARACTER' ? 'character' : 'omega_entity') as 'character' | 'omega_entity',
+            }));
 
-          const entitiesWithNames = entityNames.filter(e => e.name);
-
-          if (entitiesWithNames.length >= 2) {
-            const detection = await entityRelationshipDetector.detectRelationshipsAndScopes(
-              userId,
-              rawText,
-              entitiesWithNames,
-              messageId,
-              undefined // journal entry ID if available
+            // Get entity names for detection
+            const entityNames = await Promise.all(
+              entitiesForDetection.map(async (e) => {
+                try {
+                  if (e.type === 'character') {
+                    const { data: char } = await supabaseAdmin
+                      .from('characters')
+                      .select('name')
+                      .eq('id', e.id)
+                      .single();
+                    return { ...e, name: char?.name || '' };
+                  } else {
+                    const { data: entity } = await supabaseAdmin
+                      .from('omega_entities')
+                      .select('primary_name')
+                      .eq('id', e.id)
+                      .single();
+                    return { ...e, name: entity?.primary_name || '' };
+                  }
+                } catch (error) {
+                  return { ...e, name: '' };
+                }
+              })
             );
 
-            // Save relationships
-            for (const relationship of detection.relationships) {
-              await entityRelationshipDetector.saveRelationship(userId, relationship);
+            const entitiesWithNames = entityNames.filter(e => e.name);
 
-              // Add entities to scope groups
-              if (relationship.scope) {
-                await entityScopeService.addEntityToScopeGroup(
-                  userId,
-                  relationship.fromEntityId,
-                  relationship.fromEntityType,
-                  relationship.scope
-                );
-                await entityScopeService.addEntityToScopeGroup(
-                  userId,
-                  relationship.toEntityId,
-                  relationship.toEntityType,
-                  relationship.scope
-                );
-              }
-            }
-
-            // Save scopes
-            for (const scope of detection.scopes) {
-              await entityRelationshipDetector.saveScope(userId, scope);
-
-              // Add to scope group
-              await entityScopeService.addEntityToScopeGroup(
+            if (entitiesWithNames.length >= 2) {
+              const detection = await entityRelationshipDetector.detectRelationshipsAndScopes(
                 userId,
-                scope.entityId,
-                scope.entityType,
-                scope.scope,
-                scope.scopeContext
+                rawText,
+                entitiesWithNames,
+                messageId,
+                undefined // journal entry ID if available
               );
-            }
 
-            // Detect attributes (Step 4.3)
-            if (entitiesWithNames.length > 0) {
-              try {
-                const attributes = await entityAttributeDetector.detectAttributes(
-                  userId,
-                  rawText,
-                  entitiesWithNames,
-                  messageId,
-                  undefined
-                );
+              // Validate, threshold, and write via ER writeRelationship (replaces saveRelationship on this path)
+              for (const rel of detection.relationships) {
+                const extracted = {
+                  fromTempId: rel.fromEntityId,
+                  toTempId: rel.toEntityId,
+                  relationship: rel.relationshipType as ErRelationshipType,
+                  kind: rel.kind,
+                  confidence: rel.confidence,
+                };
+                const validation = validateRelationship(extracted, resolvedMap);
+                if (!validation.ok) {
+                  logValidationFailure(validation.code, extracted);
+                  continue;
+                }
+                if (rel.kind === 'ASSERTED' && rel.confidence < ASSERTED_THRESHOLD) continue;
+                if (rel.kind === 'EPISODIC' && rel.confidence < EPISODIC_THRESHOLD) continue;
+                const targetTable = (validation as { ok: true; targetTable: TargetTable }).targetTable;
+                const ctx = { userId, memoryId: undefined };
+                await writeRelationship(userId, targetTable, extracted, resolvedMap, ctx, {
+                  scope: rel.scope,
+                  evidenceSourceIds: rel.evidenceSourceIds,
+                  evidence: rel.evidence,
+                });
 
-                if (attributes.length > 0) {
-                  logger.debug(
-                    { userId, attributesFound: attributes.length },
-                    'Detected entity attributes'
+                // Add entities to scope groups
+                if (rel.scope) {
+                  await entityScopeService.addEntityToScopeGroup(
+                    userId,
+                    rel.fromEntityId,
+                    rel.fromEntityType,
+                    rel.scope
+                  );
+                  await entityScopeService.addEntityToScopeGroup(
+                    userId,
+                    rel.toEntityId,
+                    rel.toEntityType,
+                    rel.scope
                   );
                 }
-              } catch (error) {
-                logger.debug({ error }, 'Attribute detection failed, continuing');
               }
-            }
 
-            if (detection.relationships.length > 0 || detection.scopes.length > 0) {
-              logger.debug(
-                {
+              // Save scopes
+              for (const scope of detection.scopes) {
+                await entityRelationshipDetector.saveScope(userId, scope);
+
+                // Add to scope group
+                await entityScopeService.addEntityToScopeGroup(
                   userId,
-                  messageId,
-                  relationships: detection.relationships.length,
-                  scopes: detection.scopes.length,
-                },
-                'Detected entity relationships and scopes'
-              );
+                  scope.entityId,
+                  scope.entityType,
+                  scope.scope,
+                  scope.scopeContext
+                );
+              }
+
+              // Detect attributes (Step 4.3)
+              if (entitiesWithNames.length > 0) {
+                try {
+                  const attributes = await entityAttributeDetector.detectAttributes(
+                    userId,
+                    rawText,
+                    entitiesWithNames,
+                    messageId,
+                    undefined
+                  );
+
+                  if (attributes.length > 0) {
+                    logger.debug(
+                      { userId, attributesFound: attributes.length },
+                      'Detected entity attributes'
+                    );
+                  }
+                } catch (error) {
+                  logger.debug({ error }, 'Attribute detection failed, continuing');
+                }
+              }
+
+              if (detection.relationships.length > 0 || detection.scopes.length > 0) {
+                logger.debug(
+                  {
+                    userId,
+                    messageId,
+                    relationships: detection.relationships.length,
+                    scopes: detection.scopes.length,
+                  },
+                  'Detected entity relationships and scopes'
+                );
+              }
             }
           }
         } catch (error) {
@@ -718,6 +759,7 @@ export class ConversationIngestionPipeline {
             // Step 6.8: Entity Relationship Detection (for units with entities)
             // Detect relationships between entities mentioned in this unit
             try {
+              const memoryId = conversionResult.journalEntries[0] ?? undefined;
               const unitEntityIds = unit.entity_ids || [];
 
               if (unitEntityIds.length >= 2) {
@@ -761,42 +803,59 @@ export class ConversationIngestionPipeline {
                 }>;
 
                 if (validEntities.length >= 2) {
-                  const detection = await entityRelationshipDetector.detectRelationshipsAndScopes(
-                    userId,
-                    unit.content || normalized.normalized_text,
-                    validEntities,
-                    messageId,
-                    undefined
+                  const resolvedMap = new Map(
+                    validEntities.map(e => [e.id, { id: e.id, type: toErEntityType(e.type) }])
                   );
+                  const pairs = getResolvablePairs(resolvedMap);
+                  if (!hasAnyDirectEdgePossible(pairs)) {
+                    // Skip: no detect, no write, no scope.
+                  } else {
+                    const detection = await entityRelationshipDetector.detectRelationshipsAndScopes(
+                      userId,
+                      unit.content || normalized.normalized_text,
+                      validEntities,
+                      messageId,
+                      undefined
+                    );
 
-                  // Save relationships and scopes
-                  for (const relationship of detection.relationships) {
-                    await entityRelationshipDetector.saveRelationship(userId, relationship);
-                    if (relationship.scope) {
+                    for (const rel of detection.relationships) {
+                      const extracted: ExtractedRelationship = {
+                        fromTempId: rel.fromEntityId,
+                        toTempId: rel.toEntityId,
+                        relationship: rel.relationshipType as ErRelationshipType,
+                        kind: rel.kind,
+                        confidence: rel.confidence,
+                      };
+                      const validation = validateRelationship(extracted, resolvedMap);
+                      if (!validation.ok) {
+                        logValidationFailure(validation.code, extracted);
+                        continue;
+                      }
+                      if (rel.kind === 'ASSERTED' && rel.confidence < ASSERTED_THRESHOLD) continue;
+                      if (rel.kind === 'EPISODIC' && rel.confidence < EPISODIC_THRESHOLD) continue;
+                      const targetTable = (validation as { ok: true; targetTable: TargetTable }).targetTable;
+                      const ctx = { userId, memoryId };
+                      await writeRelationship(userId, targetTable, extracted, resolvedMap, ctx, {
+                        scope: rel.scope,
+                        evidenceSourceIds: rel.evidenceSourceIds,
+                        evidence: rel.evidence,
+                      });
+                      if (rel.scope) {
+                        await entityScopeService.addEntityToScopeGroup(userId, rel.fromEntityId, rel.fromEntityType, rel.scope);
+                        await entityScopeService.addEntityToScopeGroup(userId, rel.toEntityId, rel.toEntityType, rel.scope);
+                      }
+                    }
+
+                    for (const scope of detection.scopes) {
+                      await entityRelationshipDetector.saveScope(userId, scope);
                       await entityScopeService.addEntityToScopeGroup(
                         userId,
-                        relationship.fromEntityId,
-                        relationship.fromEntityType,
-                        relationship.scope
-                      );
-                      await entityScopeService.addEntityToScopeGroup(
-                        userId,
-                        relationship.toEntityId,
-                        relationship.toEntityType,
-                        relationship.scope
+                        scope.entityId,
+                        scope.entityType,
+                        scope.scope,
+                        scope.scopeContext
                       );
                     }
-                  }
-
-                  for (const scope of detection.scopes) {
-                    await entityRelationshipDetector.saveScope(userId, scope);
-                    await entityScopeService.addEntityToScopeGroup(
-                      userId,
-                      scope.entityId,
-                      scope.entityType,
-                      scope.scope,
-                      scope.scopeContext
-                    );
                   }
                 }
               }

@@ -14,6 +14,8 @@
 3. [Complete ERD Diagrams](#complete-erd-diagrams)
 4. [Relationship Details](#relationship-details)
 5. [Entity Definitions](#entity-definitions)
+6. [ER Schema Module (apps/server/src/er)](#er-schema-module-appsserverer)
+7. [Phase 2: Extending RelationshipType and DirectEdgeMatrix](#phase-2-extending-relationshiptype-and-directedgematrix)
 
 ---
 
@@ -1453,6 +1455,30 @@ FROM resolved_events re
 JOIN event_continuity_links ecl ON re.id = ecl.current_event_id
 WHERE ecl.past_event_id = ?
 ```
+
+---
+
+## ER Schema Module (apps/server/src/er)
+
+**`apps/server/src/er`** is the single source of truth for ER-constrained NLP:
+
+- **EntityType**, **RelationshipType**, **RelationshipKind** — allowed types for extraction and validation
+- **DirectEdgeMatrix** — which (from, to, relationship, kind) may write to which target table
+- **getTargetTable** — resolves a direct edge to `character_relationships`, `entity_relationships`, `event_mentions`, `location_mentions`, or `character_memories`
+- **writeRelationship** — implements writes to all five target tables; the table **entity_relationships** is used (the blueprint name `entity_relationship_edges` maps here)
+
+Validation (`validateEntity`, `validateRelationship`), gating (`getResolvablePairs`, `hasAnyDirectEdgePossible`), and the JSON schema for relationship extraction (`getRelationshipExtractionJsonSchema`) are defined in `erSchema.ts`. The ingestion pipeline uses the ER path: it does not call `entityRelationshipDetector.saveRelationship` for the ER flow; it uses `validateRelationship` and `writeRelationship` instead.
+
+---
+
+## Phase 2: Extending RelationshipType and DirectEdgeMatrix
+
+**Phase 2** will:
+
+1. **Extend RelationshipType** in `erSchema.ts` with the full set from `entityRelationshipDetector` (100+ snake_case types, e.g. `works_for`, `friend_of`, `mentor_of`, `recruits_for`).
+2. **relationshipTypeToKind** — provide a static map for each type → `ASSERTED` | `EPISODIC` (most social/professional → ASSERTED, episodic/mention patterns → EPISODIC).
+3. **DirectEdgeMatrix** — add rules for each new type: mostly → `entity_relationships`; PERSON↔PERSON ASSERTED → `character_relationships`; episodic/mention patterns → `event_mentions`, `location_mentions`, `character_memories` as per the ER.
+4. **Backfill / compatibility** — existing `entity_relationships.relationship_type` and `character_relationships.relationship_type` may be `snake_case`. Decide: (a) accept both in reads and write canonical (e.g. UPPERCASE) for new rows, or (b) add `toStoredRelationshipType(rt)` to convert to `snake_case` for DB. Apply consistently in `writeRelationship`.
 
 ---
 
