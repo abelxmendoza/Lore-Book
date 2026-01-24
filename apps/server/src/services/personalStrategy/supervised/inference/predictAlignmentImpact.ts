@@ -1,4 +1,4 @@
-import { logger } from '../../../logger';
+import { logger } from '../../../../logger';
 import type { RLStateVector, ActionType } from '../../types';
 import { AlignmentRegressor } from '../models/alignmentRegressor';
 import type { AlignmentImpactPrediction } from '../types';

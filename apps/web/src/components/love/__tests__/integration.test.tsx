@@ -15,7 +15,11 @@ import {
 
 // Mock dependencies
 vi.mock('../../../contexts/MockDataContext', () => ({
-  useMockData: vi.fn()
+  useMockData: vi.fn(),
+  getGlobalMockDataEnabled: () => false,
+  setGlobalMockDataEnabled: vi.fn(),
+  subscribeToMockDataState: vi.fn(() => vi.fn()),
+  MockDataProvider: ({ children }: { children?: unknown }) => children,
 }));
 
 vi.mock('../../../mocks/romanticRelationships', () => ({

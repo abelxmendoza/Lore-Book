@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render } from '@testing-library/react';
 import { ChatComposer } from '../ChatComposer';
 import { useMoodEngine } from '../../../hooks/useMoodEngine';
 import { useAutoTagger } from '../../../hooks/useAutoTagger';
@@ -53,11 +52,10 @@ describe('ChatComposer - Debounced Mood Evaluation', () => {
   });
 
   it('should debounce mood evaluation API calls', async () => {
-    const user = userEvent.setup({ delay: null });
     const onInputChange = vi.fn();
     const onSubmit = vi.fn();
 
-    render(
+    const { rerender } = render(
       <ChatComposer
         input=""
         onInputChange={onInputChange}
@@ -66,36 +64,31 @@ describe('ChatComposer - Debounced Mood Evaluation', () => {
       />
     );
 
-    const textarea = screen.getByPlaceholderText(/Message Lore Book/i);
+    // Simulate parent updating input (controlled component)
+    rerender(
+      <ChatComposer
+        input="hello"
+        onInputChange={onInputChange}
+        onSubmit={onSubmit}
+        loading={false}
+      />
+    );
 
-    // Type multiple characters quickly
-    await user.type(textarea, 'h');
-    await user.type(textarea, 'e');
-    await user.type(textarea, 'l');
-    await user.type(textarea, 'l');
-    await user.type(textarea, 'o');
-
-    // Fast-forward time but not enough to trigger debounce
+    // Fast-forward time but not enough to trigger debounce (500ms)
     vi.advanceTimersByTime(400);
-
-    // Should not have called evaluate yet (debounce is 500ms)
     expect(mockEvaluate).not.toHaveBeenCalled();
 
-    // Fast-forward past the debounce threshold
+    // Fast-forward past the debounce threshold (callback runs synchronously; no waitFor with fake timers)
     vi.advanceTimersByTime(200);
-    vi.runAllTimers();
-
-    // Now it should have been called once
     expect(mockEvaluate).toHaveBeenCalledTimes(1);
     expect(mockEvaluate).toHaveBeenCalledWith('hello');
-  }, 10000);
+  });
 
   it('should reset debounce timer on each keystroke', async () => {
-    const user = userEvent.setup({ delay: null });
     const onInputChange = vi.fn();
     const onSubmit = vi.fn();
 
-    render(
+    const { rerender } = render(
       <ChatComposer
         input=""
         onInputChange={onInputChange}
@@ -104,32 +97,27 @@ describe('ChatComposer - Debounced Mood Evaluation', () => {
       />
     );
 
-    const textarea = screen.getByPlaceholderText(/Message Lore Book/i);
-
-    // Type 'h'
-    await user.type(textarea, 'h');
+    // Simulate typing: h -> he -> hel with pauses shorter than 500ms
+    rerender(<ChatComposer input="h" onInputChange={onInputChange} onSubmit={onSubmit} loading={false} />);
     vi.advanceTimersByTime(400);
 
-    // Type 'e' before debounce completes
-    await user.type(textarea, 'e');
+    rerender(<ChatComposer input="he" onInputChange={onInputChange} onSubmit={onSubmit} loading={false} />);
     vi.advanceTimersByTime(400);
 
-    // Type 'l' before debounce completes
-    await user.type(textarea, 'l');
+    rerender(<ChatComposer input="hel" onInputChange={onInputChange} onSubmit={onSubmit} loading={false} />);
     vi.advanceTimersByTime(500);
     vi.runAllTimers();
 
     // Should only be called once after the final debounce period
     expect(mockEvaluate).toHaveBeenCalledTimes(1);
     expect(mockEvaluate).toHaveBeenCalledWith('hel');
-  }, 10000);
+  });
 
   it('should call non-API operations immediately', async () => {
-    const user = userEvent.setup({ delay: null });
     const onInputChange = vi.fn();
     const onSubmit = vi.fn();
 
-    render(
+    const { rerender } = render(
       <ChatComposer
         input=""
         onInputChange={onInputChange}
@@ -138,22 +126,25 @@ describe('ChatComposer - Debounced Mood Evaluation', () => {
       />
     );
 
-    const textarea = screen.getByPlaceholderText(/Message Lore Book/i);
+    rerender(
+      <ChatComposer
+        input="test"
+        onInputChange={onInputChange}
+        onSubmit={onSubmit}
+        loading={false}
+      />
+    );
 
-    await user.type(textarea, 'test');
-    vi.runAllTimers();
-
-    // These should be called immediately (not debounced)
-    expect(mockRefreshSuggestions).toHaveBeenCalled();
-    expect(mockAnalyze).toHaveBeenCalled();
-  }, 10000);
+    // Non-API operations (refreshSuggestions, analyze) run immediately in useEffect
+    expect(mockRefreshSuggestions).toHaveBeenCalledWith('test');
+    expect(mockAnalyze).toHaveBeenCalledWith('test');
+  });
 
   it('should clear debounce timer on unmount', async () => {
-    const user = userEvent.setup({ delay: null });
     const onInputChange = vi.fn();
     const onSubmit = vi.fn();
 
-    const { unmount } = render(
+    const { rerender, unmount } = render(
       <ChatComposer
         input=""
         onInputChange={onInputChange}
@@ -162,20 +153,25 @@ describe('ChatComposer - Debounced Mood Evaluation', () => {
       />
     );
 
-    const textarea = screen.getByPlaceholderText(/Message Lore Book/i);
-    await user.type(textarea, 'test');
+    rerender(
+      <ChatComposer
+        input="test"
+        onInputChange={onInputChange}
+        onSubmit={onSubmit}
+        loading={false}
+      />
+    );
 
-    // Unmount before debounce completes
+    // Unmount before 500ms debounce completes
     unmount();
     vi.advanceTimersByTime(500);
     vi.runAllTimers();
 
-    // Should not have called evaluate after unmount
+    // evaluate should not run after unmount (cleanup clears the timer)
     expect(mockEvaluate).not.toHaveBeenCalled();
   }, 10000);
 
   it('should reset mood score immediately when input is cleared', async () => {
-    const user = userEvent.setup({ delay: null });
     const onInputChange = vi.fn();
     const onSubmit = vi.fn();
 

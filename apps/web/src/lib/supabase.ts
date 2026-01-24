@@ -12,8 +12,8 @@ const getConfig = (): { config: SupabaseConfig | null; debug: { url: string; key
   
   const issues: string[] = [];
   
-  // Debug logging (only in development)
-  if (import.meta.env.DEV) {
+  // Debug logging (only in development, skip in test to reduce noise)
+  if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
     console.log('[Supabase Config Debug]', {
       url: url ? `${url.substring(0, 30)}...` : 'MISSING',
       keyPresent: !!key,
@@ -38,7 +38,7 @@ const getConfig = (): { config: SupabaseConfig | null; debug: { url: string; key
     issues.push('VITE_SUPABASE_ANON_KEY appears to be too short (expected JWT token)');
   }
 
-  if (issues.length > 0 && import.meta.env.DEV) {
+  if (issues.length > 0 && import.meta.env.DEV && import.meta.env.MODE !== 'test') {
     console.error('[Supabase Config] Configuration issues:', issues);
   }
 

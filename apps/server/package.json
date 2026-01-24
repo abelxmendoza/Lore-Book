@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "lint": "eslint src",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "check-env": "tsx scripts/check-env.ts"
   },
   "dependencies": {
@@ -44,6 +45,7 @@
     "@types/uuid": "^11.0.0",
     "@typescript-eslint/eslint-plugin": "^8.53.1",
     "@typescript-eslint/parser": "^8.53.1",
+    "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.9.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.29.1",

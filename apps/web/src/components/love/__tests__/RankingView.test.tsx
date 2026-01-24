@@ -8,7 +8,11 @@ import { getMockRankings } from '../../../mocks/romanticRelationships';
 
 // Mock the dependencies
 vi.mock('../../../contexts/MockDataContext', () => ({
-  useMockData: vi.fn()
+  useMockData: vi.fn(),
+  getGlobalMockDataEnabled: () => false,
+  setGlobalMockDataEnabled: vi.fn(),
+  subscribeToMockDataState: vi.fn(() => vi.fn()),
+  MockDataProvider: ({ children }: { children?: unknown }) => children,
 }));
 
 vi.mock('../../../mocks/romanticRelationships', () => ({
@@ -112,7 +116,7 @@ describe('RankingView', () => {
       expect(screen.getByText(/overall/i)).toBeInTheDocument();
     });
     
-    // Test that category tabs are present - use getAllByText since there may be multiple matches
+    // Category names appear in tabs, intro copy, and in each card's score labels; use getAllByText
     expect(screen.getAllByText(/active/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/compatibility/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/intensity/i).length).toBeGreaterThan(0);
@@ -146,24 +150,15 @@ describe('RankingView', () => {
       expect(screen.getByText('Alex')).toBeInTheDocument();
     });
     
-    // Find and click compare button - if it exists
-    const compareButtons = screen.queryAllByText(/compare/i);
-    if (compareButtons.length > 0) {
-      compareButtons[0].click();
-      
-      // Should show comparison mode or comparison UI - check for any comparison-related text
-      await waitFor(() => {
-        // Check for comparison-related content (might be different text)
-        const comparisonText = screen.queryByText(/comparison|compare|vs|versus/i);
-        // If comparison mode exists, it should be visible, otherwise skip this assertion
-        if (comparisonText) {
-          expect(comparisonText).toBeInTheDocument();
-        }
-      }, { timeout: 2000 });
-    } else {
-      // If compare button doesn't exist, skip this test assertion
-      expect(true).toBe(true);
-    }
+    // Comparison Mode requires 2+ selected; click Compare on two cards
+    const compareButtons = screen.getAllByText(/^compare$/i);
+    expect(compareButtons.length).toBeGreaterThanOrEqual(2);
+    compareButtons[0].click();
+    compareButtons[1].click();
+
+    await waitFor(() => {
+      expect(screen.getByText(/comparison mode/i)).toBeInTheDocument();
+    });
   });
 
   it('shows mock data indicator when using mock data', async () => {

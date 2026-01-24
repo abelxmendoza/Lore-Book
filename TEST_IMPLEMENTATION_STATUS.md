@@ -1,6 +1,6 @@
 # Test Implementation Status
 
-**Last Updated**: 2025-01-27  
+**Last Updated**: 2025-01-23 (routes: evolution, summary, decisions, subscription, corrections, memoryGraph, memoryLadder, predictions, identity, peoplePlaces, journal, time; services: evolutionService, correctionService, memoryGraphService)  
 **Goal**: 80%+ test coverage across entire codebase
 
 ## ✅ Completed
@@ -13,9 +13,38 @@
 - ✅ Coverage reporting configured
 
 ### Backend Route Tests Created
+- ✅ `account.test.ts` - Account export, delete (incl. vi.doMock fix for delete when run with other route tests)
+- ✅ `achievements.test.ts` - Achievements list, templates, check
+- ✅ `analytics.test.ts` - Analytics identity pulse
+- ✅ `autopilot.test.ts` - Autopilot daily, weekly
 - ✅ `biography.test.ts` - Biography routes (main lifestory, generate, list, sections)
+- ✅ `calendar.test.ts` - Calendar sync
+- ✅ `canon.test.ts` - Canon alignment
 - ✅ `chapters.test.ts` - Chapter CRUD operations, extract-info
+- ✅ `essence.test.ts` - Essence profile, extract, skills, evolution, refine
+- ✅ `goals.test.ts` - Goals and values CRUD, priority, status, extract
 - ✅ `insights.test.ts` - Insights generation, filtering, dismissal
+- ✅ `onboarding.test.ts` - Onboarding init, briefing
+- ✅ `agents.test.ts` - Agents status
+- ✅ `persona.test.ts` - Persona, description
+- ✅ `photos.test.ts` - Photos list (GET)
+- ✅ `diagnostics.test.ts` - Diagnostics, CORS (public)
+- ✅ `quests.test.ts` - Quests list
+- ✅ `recommendations.test.ts` - Active recommendations, history, stats
+- ✅ `search.test.ts` - Universal search
+- ✅ `user.test.ts` - User profile
+
+### Backend Middleware Tests
+- ✅ `sanitize.test.ts` - inputSanitizer (SQL pattern stripping)
+- ✅ `csrf.test.ts`, `rateLimit.test.ts`, `requestValidation.test.ts`, `secureHeaders.test.ts`
+- ✅ `auditLogger.test.ts` - audit logging on finish
+- ✅ `validateRequest.test.ts` - validateRequest, validateBody
+- ✅ `roleGuard.test.ts` - requireAdmin, requireDev (roleGuard helpers)
+- ✅ `intrusionDetection.test.ts` - intrusionDetection
+- ✅ `auth.test.ts` - authMiddleware (Bearer, 401, req.user)
+- ✅ `featureFlags.test.ts` - getActiveFlags, isFeatureEnabled
+- ✅ `rbac.test.ts` - requireRole, requireAdmin, requireDevAccess, requireExperimental
+- ✅ `subscription.test.ts` - checkSubscription, requirePremium, checkEntryLimit, checkAiRequestLimit, attachUsageData
 
 ### Existing Backend Tests
 - ✅ `characters.test.ts` - Character routes
@@ -27,6 +56,7 @@
 - ✅ `omegaMemory.test.ts` - Omega memory routes
 
 ### Existing Backend Service Tests
+- ✅ `essenceProfileService.test.ts` - Essence profile getProfile
 - ✅ `omegaChatService.test.ts` - Chat service
 - ✅ `memoryService.test.ts` - Memory service
 - ✅ `locationService.test.ts` - Location service
@@ -35,19 +65,22 @@
 - ✅ `continuityService.test.ts` - Continuity service
 - ✅ `peoplePlacesService.test.ts` - People/places service
 - ✅ `insightReflectionService.test.ts` - Insight service
+- ✅ `evolutionService.test.ts` - Evolution analyze (default + openai path)
+- ✅ `correctionService.test.ts` - applyCorrections, getEntryWithCorrections, addCorrection
+- ✅ `memoryGraphService.test.ts` - buildGraph
 - ✅ And 20+ more service tests
 
 ### Frontend Tests
-- ✅ Component tests (15 test files)
+- ✅ Component tests (Header, SkipLink, ErrorBoundary, DevelopmentNotice, etc.)
 - ✅ Hook tests (useTaskEngine, useLoreKeeper)
 - ✅ Integration tests
-- ✅ E2E tests (4 spec files)
+- ✅ E2E tests (6 Playwright spec files)
 
 ## 🚧 In Progress
 
 ### Backend Route Tests (High Priority)
-- ⚠️ `perceptions.test.ts` - Perception tracking routes
-- ⚠️ `skills.test.ts` - Skill tracking routes
+- ✅ `perceptions.test.ts` - Perception tracking (list, about, evolution, lens, review-needed, create, update, delete, extract-from-chat)
+- ✅ `skills.test.ts` - Skill tracking (list, get, create, update, xp, progress, extract, delete, details)
 - ⚠️ `organizations.test.ts` - Organization management routes
 - ⚠️ `continuity.test.ts` - Continuity engine routes
 - ⚠️ `events.test.ts` - Event management routes
@@ -69,19 +102,19 @@ High Priority:
 - [ ] `/api/events` - Event management
 - [ ] `/api/timeline-hierarchy` - Timeline hierarchy
 - [ ] `/api/corrections` - Corrections dashboard
-- [ ] `/api/canon` - Canon detection
+- [ ] `/api/canon` - Canon detection (✅ done)
 
 Medium Priority:
-- [ ] `/api/photos` - Photo management
+- [ ] `/api/photos` - Photo management (✅ done)
 - [ ] `/api/romantic` - Romantic relationships
 - [ ] `/api/interests` - Interest tracking
 - [ ] `/api/workouts` - Workout tracking
 - [ ] `/api/biometrics` - Biometric data
-- [ ] `/api/essence` - Essence profile
-- [ ] `/api/persona` - Persona management
+- [ ] `/api/essence` - Essence profile (✅ done)
+- [ ] `/api/persona` - Persona management (✅ done)
 - [ ] `/api/identity` - Identity tracking
-- [ ] `/api/values` - Values tracking
-- [ ] `/api/goals` - Goals management
+- [ ] `/api/values` - Values tracking (covered in goals)
+- [ ] `/api/goals` - Goals management (✅ done)
 - [ ] `/api/habits` - Habits tracking
 - [ ] `/api/health` - Health tracking
 - [ ] `/api/financial` - Financial tracking
@@ -94,9 +127,11 @@ Medium Priority:
 - [ ] `/api/growth` - Growth tracking
 - [ ] `/api/learning` - Learning tracking
 - [ ] `/api/wisdom` - Wisdom engine
-- [ ] `/api/recommendations` - Recommendations
-- [ ] `/api/search` - Search functionality
-- [ ] `/api/analytics` - Analytics
+- [ ] `/api/recommendations` - Recommendations (✅ done)
+- [ ] `/api/search` - Search functionality (✅ done)
+- [ ] `/api/account` - Account export/delete (✅ done)
+- [ ] `/api/user` - User profile (✅ done, GET /profile)
+- [ ] `/api/analytics` - Analytics (✅ done)
 - [ ] `/api/insights` - Insights (✅ done)
 - [ ] `/api/biography` - Biography (✅ done)
 - [ ] `/api/chapters` - Chapters (✅ done)
@@ -228,7 +263,7 @@ describe('Component', () => {
 ```bash
 cd apps/server
 npm test                    # Run all tests
-npm test -- --coverage      # Run with coverage
+npm run test:coverage       # Run with coverage (requires @vitest/coverage-v8)
 npm test routes/            # Run route tests only
 npm test services/          # Run service tests only
 ```
@@ -246,11 +281,11 @@ npm run test:e2e            # Run E2E tests
 ## 📈 Progress Tracking
 
 - **Total Routes**: 100+
-- **Routes Tested**: 8 (8%)
+- **Routes Tested**: 34 (34%) — account, achievements, analytics, autopilot, canon, calendar, diagnostics, onboarding, agents, persona, photos, quests, search, essence, goals, user, recommendations, perceptions, skills, + existing
 - **Total Services**: 50+
-- **Services Tested**: 25+ (50%)
+- **Services Tested**: 29+ (58%) — evolutionService, correctionService, memoryGraphService, + existing
 - **Total Components**: 100+
-- **Components Tested**: 15 (15%)
+- **Components Tested**: 17+ (17%) — Header, SkipLink added
 - **Total Hooks**: 20+
 - **Hooks Tested**: 2 (10%)
 

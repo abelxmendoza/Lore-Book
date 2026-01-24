@@ -1,4 +1,4 @@
-import { logger } from '../../../logger';
+import { logger } from '../../../../logger';
 import { PatternClassifier } from '../models/patternClassifier';
 import type { ModelMetadata } from '../types';
 

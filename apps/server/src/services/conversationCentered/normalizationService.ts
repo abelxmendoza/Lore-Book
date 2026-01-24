@@ -152,7 +152,6 @@ export class NormalizationService {
       "omg": "oh my god",
       "wtf": "what the f***",
       "smh": "shaking my head",
-      "tbh": "to be honest",
     };
 
     // Normalize slang (case-insensitive)
@@ -188,6 +187,18 @@ export class NormalizationService {
       spanish_terms: spanishTerms.length > 0 ? spanishTerms : undefined,
       refinement_level: refinementLevel,
       original_preserved: refinementLevel === 'preserve' || corrections.length === 0,
+    };
+    }
+
+    // Light: only critical fixes
+    normalized = this.fixCriticalIssuesOnly(normalized, corrections);
+    return {
+      normalized_text: normalized,
+      corrections,
+      language: this.detectLanguage(normalized),
+      spanish_terms: this.detectLanguage(normalized).includes('es') ? this.extractSpanishTerms(normalized) : undefined,
+      refinement_level: refinementLevel,
+      original_preserved: true,
     };
   }
 

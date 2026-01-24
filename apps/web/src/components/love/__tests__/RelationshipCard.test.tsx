@@ -43,17 +43,9 @@ describe('RelationshipCard', () => {
   it('displays relationship scores', () => {
     const onClick = vi.fn();
     render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
-    
-    // Scores might be rendered in multiple places or formatted differently
-    // Check that at least one instance exists
-    expect(screen.getAllByText('95%').length).toBeGreaterThan(0); // compatibility_score
-    expect(screen.getAllByText('90%').length).toBeGreaterThan(0); // relationship_health
-    // Affection might be 92% or formatted differently
-    const affectionElements = screen.queryAllByText('92%');
-    if (affectionElements.length === 0) {
-      // Check if it's displayed as a percentage in a different format
-      expect(screen.getByText(/92|95|90/)).toBeInTheDocument();
-    }
+    // Card shows Compatibility and Health only (not affection)
+    expect(screen.getByText('95%')).toBeInTheDocument(); // compatibility_score
+    expect(screen.getByText('90%')).toBeInTheDocument(); // relationship_health
   });
 
   it('displays status badge', () => {
@@ -66,22 +58,25 @@ describe('RelationshipCard', () => {
   it('displays red flags when present', () => {
     const relationshipWithRedFlags = {
       ...mockRelationship,
-      red_flags: ['Avoids commitment']
+      red_flags: ['Avoids commitment'],
+      green_flags: [] as string[]
     };
     const onClick = vi.fn();
-    render(<RelationshipCard relationship={relationshipWithRedFlags} onClick={onClick} />);
-    
-    // The card shows the count, not the actual flag text
-    expect(screen.getByText('1')).toBeInTheDocument();
+    const { container } = render(<RelationshipCard relationship={relationshipWithRedFlags} onClick={onClick} />);
+    // Card shows red-flags count, not the full text
+    const redBlock = container.querySelector('[class*="text-red-300"]');
+    expect(redBlock).toBeInTheDocument();
+    expect(redBlock).toHaveTextContent('1');
   });
 
   it('displays green flags when present', () => {
     const onClick = vi.fn();
-    render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
-    
-    // The card shows the count, not the actual flag text
-    // Check for the count (1 green flag)
-    expect(screen.getByText('1')).toBeInTheDocument();
+    const { container } = render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
+    // Card shows green-flags count; [class*="text-green-300"] also matches the status Badge ("active"),
+    // so find the Flags Summary block whose text is "1" (the count)
+    const greenBlocks = container.querySelectorAll('[class*="text-green-300"]');
+    const greenFlagsBlock = [...greenBlocks].find((el) => el.textContent?.trim() === '1');
+    expect(greenFlagsBlock).toBeDefined();
   });
 
   it('calls onClick when clicked', () => {
@@ -98,10 +93,8 @@ describe('RelationshipCard', () => {
   it('displays duration when start_date is provided', () => {
     const onClick = vi.fn();
     render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
-    
-    // Should show duration value (e.g., "2 years", "3 months", "15 days")
-    // The component shows the duration value, not a "Duration:" label
-    expect(screen.getByText(/\d+\s+(days?|months?|years?)/i)).toBeInTheDocument();
+    // Card shows duration value (e.g. "1 years") and start date, not a "duration" label
+    expect(screen.getByText(/\d+ (days|months|years)/)).toBeInTheDocument();
   });
 
   it('handles missing person name gracefully', () => {
@@ -111,9 +104,7 @@ describe('RelationshipCard', () => {
     };
     const onClick = vi.fn();
     render(<RelationshipCard relationship={relationshipWithoutName} onClick={onClick} />);
-    
-    // Should fallback to relationship type (formatted as "Boyfriend")
-    // There may be multiple instances, so use getAllByText
+    // Fallback to relationship type; "Boyfriend" appears in h3 and in type line
     expect(screen.getAllByText(/boyfriend/i).length).toBeGreaterThan(0);
   });
 });

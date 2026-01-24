@@ -9,10 +9,20 @@ vi.mock('../../hooks/useLoreKeeper', () => ({
 }));
 
 vi.mock('../../contexts/MockDataContext', () => ({
-  useMockData: () => ({ useMockData: false })
+  useMockData: () => ({ useMockData: false }),
+  getGlobalMockDataEnabled: () => false,
+  setGlobalMockDataEnabled: vi.fn(),
+  subscribeToMockDataState: vi.fn(() => vi.fn()),
+  MockDataProvider: ({ children }: { children?: unknown }) => children,
 }));
 
 vi.mock('../../lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } }))
+    }
+  },
   useAuth: () => ({ user: { id: 'user-1' } })
 }));
 
@@ -96,7 +106,7 @@ describe('CharacterBook', () => {
     }, { timeout: 3000 });
   });
 
-  it('should show loading state', () => {
+  it('should show loading state', async () => {
     mockUseLoreKeeper.mockReturnValue({
       characters: [],
       entries: [],
@@ -111,9 +121,11 @@ describe('CharacterBook', () => {
     } as any);
 
     render(<CharacterBook />);
-    // Check for loading indicator - either "Loading..." button text or skeleton cards
-    const loadingText = screen.queryAllByText(/Loading/i);
-    expect(loadingText.length).toBeGreaterThan(0);
+    // Wait for async effects to settle, then check for loading indicator
+    await waitFor(() => {
+      const loadingText = screen.queryAllByText(/Loading/i);
+      expect(loadingText.length).toBeGreaterThan(0);
+    });
   });
 });
 

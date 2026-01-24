@@ -22,6 +22,7 @@
     "test:coverage:threshold": "node scripts/check-coverage-threshold.js",
     "test:unit": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:vitest": "vitest run && vitest run --config vitest.integration.config.ts",
     "test:build": "node scripts/build-validation.test.js",
     "test:chunk-deps": "node scripts/chunk-dependency-check.js",
     "test:black-screen": "vitest run --config vitest.integration.config.ts src/**/*.integration.test.tsx src/**/*.integration.test.ts",

@@ -285,7 +285,7 @@ if (!rootElement) {
     createRoot(rootElement).render(
       <StrictMode>
         <ErrorBoundary>
-          <BrowserRouter>
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <MockDataProvider>
               <GuestProvider>
                 <EntityModalProvider>

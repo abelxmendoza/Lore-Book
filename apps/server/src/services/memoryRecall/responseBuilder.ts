@@ -106,7 +106,9 @@ export class ResponseBuilder {
     // Add entry summaries with epistemic awareness
     if (result.entries.length > 0) {
       parts.push('\n\n**Relevant moments:**');
-      result.entries.slice(0, 3).forEach((entry, index) => {
+      const entries = result.entries.slice(0, 3);
+      for (let index = 0; index < entries.length; index++) {
+        const entry = entries[index];
         const date = new Date(entry.date).toLocaleDateString();
         const preview = entry.content.substring(0, 100);
         const knowledgeType = entry.metadata?.knowledge_type as string | undefined;

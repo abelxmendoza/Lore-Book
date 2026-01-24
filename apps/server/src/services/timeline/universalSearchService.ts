@@ -107,24 +107,6 @@ export class UniversalSearchService {
   }
 
   /**
-   * Return empty response structure
-   */
-  private emptyResponse(): UniversalSearchResponse {
-    return {
-      life: [],
-      people: [],
-      locations: [],
-      skills: [],
-      projects: [],
-      jobs: [],
-      eras: [],
-      arcs: [],
-      sagas: [],
-      relationships: []
-    };
-  }
-
-  /**
    * Search general life timeline events
    */
   private async searchLifeTimeline(userId: string, query: string): Promise<UniversalSearchResult[]> {

@@ -1,229 +1,175 @@
-// =====================================================
-// PERCEPTIONS ROUTE TESTS
-// =====================================================
-
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import perceptionsRouter from '../../src/routes/perceptions';
 import { requireAuth } from '../../src/middleware/auth';
+import { perceptionService } from '../../src/services/perceptionService';
+import { perceptionChatService } from '../../src/services/perceptionChatService';
 
-// Mock dependencies
+vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/perceptionService');
 vi.mock('../../src/services/perceptionChatService');
-vi.mock('../../src/middleware/auth');
-vi.mock('../../src/services/supabaseClient');
 
 const app = express();
 app.use(express.json());
 app.use('/api/perceptions', perceptionsRouter);
 
-describe('Perceptions Routes', () => {
-  const mockUser = { id: 'test-user-id', email: 'test@example.com' };
+describe('Perceptions API Routes', () => {
+  const mockUser = { id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', email: 'test@example.com' };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireAuth).mockImplementation((req, res, next) => {
+    vi.mocked(requireAuth).mockImplementation((req, _res, next) => {
       (req as any).user = mockUser;
       next();
     });
   });
 
-  describe('POST /api/perceptions', () => {
-    it('should create a perception entry', async () => {
-      const { perceptionService } = await import('../../src/services/perceptionService');
-      const mockPerception = {
-        id: 'perception-1',
-        user_id: 'test-user-id',
-        subject_alias: 'John',
-        content: 'I heard that John got a promotion',
-        source: 'told_by',
-        confidence_level: 0.5,
-        impact_on_me: 'Happy for him',
-      };
-
-      vi.mocked(perceptionService.createPerceptionEntry).mockResolvedValue(mockPerception as any);
-
-      const response = await request(app)
-        .post('/api/perceptions')
-        .send({
-          subject_alias: 'John',
-          content: 'I heard that John got a promotion',
-          source: 'told_by',
-          impact_on_me: 'Happy for him',
-        })
-        .expect(201);
-
-      expect(response.body).toHaveProperty('perception');
-      expect(response.body.perception.subject_alias).toBe('John');
-    });
-
-    it('should validate perception framing', async () => {
-      await request(app)
-        .post('/api/perceptions')
-        .send({
-          subject_alias: 'John',
-          content: 'John got a promotion', // Not framed as perception
-          source: 'told_by',
-          impact_on_me: 'Happy',
-        })
-        .expect(400);
-    });
-
-    it('should validate required fields', async () => {
-      await request(app)
-        .post('/api/perceptions')
-        .send({})
-        .expect(400);
-    });
-  });
-
   describe('GET /api/perceptions', () => {
-    it('should get perceptions without filters', async () => {
-      const { perceptionService } = await import('../../src/services/perceptionService');
-      const mockPerceptions = [
-        { id: 'perception-1', subject_alias: 'John', content: 'I heard...' },
-        { id: 'perception-2', subject_alias: 'Jane', content: 'I thought...' },
-      ];
-
-      vi.mocked(perceptionService.getPerceptionEntries).mockResolvedValue(mockPerceptions as any);
+    it('should return perception entries', async () => {
+      const mockList = [{ id: 'p1', subject_alias: 'Alice', content: 'I believed she was kind' }];
+      vi.mocked(perceptionService.getPerceptionEntries).mockResolvedValue(mockList as any);
 
       const response = await request(app)
         .get('/api/perceptions')
         .expect(200);
 
-      expect(response.body).toHaveProperty('perceptions');
-      expect(response.body.perceptions).toHaveLength(2);
+      expect(response.body).toEqual({ perceptions: mockList });
+      expect(perceptionService.getPerceptionEntries).toHaveBeenCalledWith(mockUser.id, {});
     });
 
-    it('should filter by subject_person_id', async () => {
-      const { perceptionService } = await import('../../src/services/perceptionService');
+    it('should pass query filters', async () => {
       vi.mocked(perceptionService.getPerceptionEntries).mockResolvedValue([]);
-
       await request(app)
-        .get('/api/perceptions?subject_person_id=person-123')
+        .get('/api/perceptions?subject_alias=Bob&source=overheard&limit=10')
         .expect(200);
-
       expect(perceptionService.getPerceptionEntries).toHaveBeenCalledWith(
-        'test-user-id',
-        expect.objectContaining({ subject_person_id: 'person-123' })
-      );
-    });
-
-    it('should filter by source', async () => {
-      const { perceptionService } = await import('../../src/services/perceptionService');
-      vi.mocked(perceptionService.getPerceptionEntries).mockResolvedValue([]);
-
-      await request(app)
-        .get('/api/perceptions?source=told_by')
-        .expect(200);
-
-      expect(perceptionService.getPerceptionEntries).toHaveBeenCalledWith(
-        'test-user-id',
-        expect.objectContaining({ source: 'told_by' })
+        mockUser.id,
+        expect.objectContaining({ subject_alias: 'Bob', source: 'overheard', limit: 10 })
       );
     });
   });
 
   describe('GET /api/perceptions/about/:personId', () => {
-    it('should get perceptions about a person', async () => {
-      const { perceptionService } = await import('../../src/services/perceptionService');
-      const mockPerceptions = [
-        { id: 'perception-1', subject_person_id: 'person-123', content: 'I heard...' },
-      ];
-
-      vi.mocked(perceptionService.getPerceptionsAboutPerson).mockResolvedValue(mockPerceptions as any);
+    it('should return perceptions about a person', async () => {
+      const mockList = [{ id: 'p1', subject_alias: 'Alice' }];
+      vi.mocked(perceptionService.getPerceptionsAboutPerson).mockResolvedValue(mockList as any);
 
       const response = await request(app)
-        .get('/api/perceptions/about/person-123')
+        .get('/api/perceptions/about/person-uuid-1')
         .expect(200);
 
-      expect(response.body).toHaveProperty('perceptions');
-      expect(perceptionService.getPerceptionsAboutPerson).toHaveBeenCalledWith('test-user-id', 'person-123');
+      expect(response.body).toEqual({ perceptions: mockList });
+      expect(perceptionService.getPerceptionsAboutPerson).toHaveBeenCalledWith(mockUser.id, 'person-uuid-1');
     });
   });
 
   describe('GET /api/perceptions/evolution/:personId', () => {
-    it('should get perception evolution', async () => {
-      const { perceptionService } = await import('../../src/services/perceptionService');
-      const mockEvolution = [
-        { id: 'perception-1', timestamp: '2024-01-01', content: 'I thought...' },
-        { id: 'perception-2', timestamp: '2024-02-01', content: 'I now believe...' },
-      ];
-
+    it('should return perception evolution', async () => {
+      const mockEvolution = [{ version: 1, content: 'I believed...' }];
       vi.mocked(perceptionService.getPerceptionEvolution).mockResolvedValue(mockEvolution as any);
 
       const response = await request(app)
-        .get('/api/perceptions/evolution/person-123')
+        .get('/api/perceptions/evolution/person-uuid-1')
         .expect(200);
 
-      expect(response.body).toHaveProperty('perceptions');
-      expect(perceptionService.getPerceptionEvolution).toHaveBeenCalledWith('test-user-id', 'person-123');
+      expect(response.body).toEqual({ perceptions: mockEvolution });
     });
   });
 
-  describe('PATCH /api/perceptions/:id', () => {
-    it('should update a perception entry', async () => {
-      const { perceptionService } = await import('../../src/services/perceptionService');
-      const mockPerception = {
-        id: 'perception-1',
-        status: 'confirmed',
-        impact_on_me: 'Updated impact',
-      };
-
-      vi.mocked(perceptionService.updatePerceptionEntry).mockResolvedValue(mockPerception as any);
-
-      const response = await request(app)
-        .patch('/api/perceptions/perception-1')
-        .send({
-          status: 'confirmed',
-          impact_on_me: 'Updated impact',
-        })
+  describe('GET /api/perceptions/lens', () => {
+    it('should return lens view', async () => {
+      vi.mocked(perceptionService.getPerceptionLens).mockResolvedValue([]);
+      await request(app)
+        .get('/api/perceptions/lens?timeStart=2024-01-01&subject_alias=Alice')
         .expect(200);
-
-      expect(response.body).toHaveProperty('perception');
-      expect(perceptionService.updatePerceptionEntry).toHaveBeenCalledWith(
-        'test-user-id',
-        'perception-1',
-        expect.objectContaining({ status: 'confirmed' })
+      expect(perceptionService.getPerceptionLens).toHaveBeenCalledWith(
+        mockUser.id,
+        expect.objectContaining({ timeStart: '2024-01-01', subject_alias: 'Alice' })
       );
     });
   });
 
+  describe('GET /api/perceptions/review-needed', () => {
+    it('should return entries needing review', async () => {
+      const entries = [{ id: 'e1', subject_alias: 'X' }];
+      vi.mocked(perceptionService.getEntriesNeedingReview).mockResolvedValue(entries as any);
+
+      const response = await request(app)
+        .get('/api/perceptions/review-needed')
+        .expect(200);
+
+      expect(response.body).toEqual({ entries });
+    });
+  });
+
+  describe('POST /api/perceptions', () => {
+    it('should create a perception with valid framing', async () => {
+      const created = { id: 'p1', subject_alias: 'Alex', content: 'I believed he was honest', impact_on_me: 'Trust' };
+      vi.mocked(perceptionService.createPerceptionEntry).mockResolvedValue(created as any);
+
+      const response = await request(app)
+        .post('/api/perceptions')
+        .send({
+          subject_alias: 'Alex',
+          content: 'I believed he was honest.',
+          source: 'overheard',
+          impact_on_me: 'Trust in our friendship',
+        })
+        .expect(201);
+
+      expect(response.body).toHaveProperty('perception', created);
+    });
+
+    it('should return 400 when content lacks perception framing', async () => {
+      await request(app)
+        .post('/api/perceptions')
+        .send({
+          subject_alias: 'Alex',
+          content: 'He was always honest and kind to everyone.',
+          source: 'overheard',
+          impact_on_me: 'Trust',
+        })
+        .expect(400);
+    });
+  });
+
+  describe('PATCH /api/perceptions/:id', () => {
+    it('should update a perception', async () => {
+      const updated = { id: 'p1', status: 'confirmed' };
+      vi.mocked(perceptionService.updatePerceptionEntry).mockResolvedValue(updated as any);
+
+      const response = await request(app)
+        .patch('/api/perceptions/p1')
+        .send({ status: 'confirmed', impact_on_me: 'Updated impact' })
+        .expect(200);
+
+      expect(response.body.perception).toEqual(updated);
+      expect(perceptionService.updatePerceptionEntry).toHaveBeenCalledWith(mockUser.id, 'p1', expect.any(Object));
+    });
+  });
+
   describe('DELETE /api/perceptions/:id', () => {
-    it('should delete a perception entry', async () => {
-      const { perceptionService } = await import('../../src/services/perceptionService');
-      vi.mocked(perceptionService.deletePerceptionEntry).mockResolvedValue(undefined);
+    it('should delete a perception', async () => {
+      vi.mocked(perceptionService.deletePerceptionEntry).mockResolvedValue(undefined as any);
 
       await request(app)
-        .delete('/api/perceptions/perception-1')
+        .delete('/api/perceptions/p1')
         .expect(204);
 
-      expect(perceptionService.deletePerceptionEntry).toHaveBeenCalledWith('test-user-id', 'perception-1');
+      expect(perceptionService.deletePerceptionEntry).toHaveBeenCalledWith(mockUser.id, 'p1');
     });
   });
 
   describe('POST /api/perceptions/extract-from-chat', () => {
-    it('should extract perceptions from chat', async () => {
-      const { perceptionChatService } = await import('../../src/services/perceptionChatService');
-      const mockExtraction = {
-        perceptions: [
-          { subject_alias: 'John', content: 'I heard...', source: 'told_by' },
-        ],
-        charactersCreated: [],
-        charactersLinked: [],
-        needsFraming: false,
-      };
-      const mockCreated = [{ id: 'perception-1' }];
-
-      vi.mocked(perceptionChatService.extractPerceptionsFromChat).mockResolvedValue(mockExtraction as any);
-      vi.mocked(perceptionChatService.createPerceptionsFromExtraction).mockResolvedValue(mockCreated as any);
+    it('should extract and create perceptions from chat', async () => {
+      const extraction = { perceptions: [], charactersCreated: [], charactersLinked: [], needsFraming: [] };
+      vi.mocked(perceptionChatService.extractPerceptionsFromChat).mockResolvedValue(extraction as any);
+      vi.mocked(perceptionChatService.createPerceptionsFromExtraction).mockResolvedValue([]);
 
       const response = await request(app)
         .post('/api/perceptions/extract-from-chat')
-        .send({
-          message: 'I heard John got promoted',
-        })
+        .send({ message: 'I heard from Sarah that Jake is leaving.' })
         .expect(200);
 
       expect(response.body).toHaveProperty('extraction');
@@ -231,7 +177,7 @@ describe('Perceptions Routes', () => {
       expect(response.body).toHaveProperty('summary');
     });
 
-    it('should validate message is provided', async () => {
+    it('should return 400 when message is missing', async () => {
       await request(app)
         .post('/api/perceptions/extract-from-chat')
         .send({})

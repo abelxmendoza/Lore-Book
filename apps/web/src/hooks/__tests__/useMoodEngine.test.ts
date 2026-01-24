@@ -61,6 +61,7 @@ describe('useMoodEngine', () => {
   });
 
   it('should reset to neutral when evaluating empty text', async () => {
+    vi.mocked(fetchJson).mockResolvedValue({ mood: -2 });
     const { result } = renderHook(() => useMoodEngine());
 
     // Set a mood first
@@ -83,7 +84,7 @@ describe('useMoodEngine', () => {
 
     expect(result.current.mood.score).toBe(0);
     expect(result.current.mood.label).toBe('Neutral');
-    // Empty text should not trigger API call
+    // Empty text should not trigger API call (clearAllMocks ran before evaluate(''))
     expect(fetchJson).not.toHaveBeenCalled();
   });
 

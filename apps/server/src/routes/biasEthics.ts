@@ -92,6 +92,23 @@ router.get('/bias', authenticate, async (req, res) => {
 // ============================================================================
 
 /**
+ * GET /api/bias-ethics/ethics/pending
+ * Get pending reviews
+ */
+router.get('/ethics/pending', authenticate, async (req, res) => {
+  try {
+    const userId = req.user!.id;
+
+    const reviews = await ethicsReviewService.getPendingReviews(userId);
+
+    res.json({ reviews });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get pending reviews');
+    res.status(500).json({ error: 'Failed to get pending reviews' });
+  }
+});
+
+/**
  * GET /api/bias-ethics/ethics/:entryId
  * Get ethics review for an entry
  */
@@ -168,23 +185,6 @@ router.put('/ethics/:reviewId/status', authenticate, async (req, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to update review status');
     res.status(500).json({ error: 'Failed to update review status' });
-  }
-});
-
-/**
- * GET /api/bias-ethics/ethics/pending
- * Get pending reviews
- */
-router.get('/ethics/pending', authenticate, async (req, res) => {
-  try {
-    const userId = req.user!.id;
-
-    const reviews = await ethicsReviewService.getPendingReviews(userId);
-
-    res.json({ reviews });
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to get pending reviews');
-    res.status(500).json({ error: 'Failed to get pending reviews' });
   }
 });
 

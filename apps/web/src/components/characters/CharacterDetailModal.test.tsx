@@ -19,6 +19,10 @@ vi.mock('../../lib/api', () => ({
 
 vi.mock('../../contexts/MockDataContext', () => ({
   useMockData: () => ({ useMockData: false }),
+  getGlobalMockDataEnabled: () => false,
+  setGlobalMockDataEnabled: vi.fn(),
+  subscribeToMockDataState: vi.fn(() => vi.fn()),
+  MockDataProvider: ({ children }: { children?: unknown }) => children,
 }));
 
 const mockCharacter: Character = {

@@ -74,27 +74,33 @@ accountRouter.get('/export', requireAuth, async (req: AuthenticatedRequest, res)
 
 // Delete endpoint
 accountRouter.post('/delete', rateLimitMiddleware, requireAuth, async (req: AuthenticatedRequest, res) => {
-  const userId = req.user!.id;
-  
-  if (req.body?.scope === 'sessions') {
-    logSecurityEvent('session_revocation_requested', { userId, ip: req.ip });
-    return res.status(202).json({ status: 'scheduled', message: 'Other sessions will be revoked.' });
-  }
-  
-  for (const table of exportTables) {
-    const { error } = await supabaseAdmin.from(table).delete().eq('user_id', userId);
-    if (error) {
-      logSecurityEvent('delete_error', { table, userId, error: error.message });
-      return res.status(500).json({ error: `Failed to delete data for ${table}` });
+  try {
+    const userId = req.user!.id;
+
+    if (req.body?.scope === 'sessions') {
+      logSecurityEvent('session_revocation_requested', { userId, ip: req.ip });
+      return res.status(202).json({ status: 'scheduled', message: 'Other sessions will be revoked.' });
     }
-  }
 
-  // Also delete timeline directory if it exists
-  const userTimelineDir = path.join(timelineRoot, userId);
-  if (fs.existsSync(userTimelineDir)) {
-    fs.rmSync(userTimelineDir, { recursive: true, force: true });
-  }
+    for (const table of exportTables) {
+      const { error } = await supabaseAdmin.from(table).delete().eq('user_id', userId);
+      if (error) {
+        logSecurityEvent('delete_error', { table, userId, error: error.message });
+        return res.status(500).json({ error: `Failed to delete data for ${table}` });
+      }
+    }
 
-  logSecurityEvent('account_data_deleted', { userId, ip: req.ip });
-  res.status(202).json({ status: 'scheduled', message: 'Account data deletion queued.' });
+    // Also delete timeline directory if it exists
+    const userTimelineDir = path.join(timelineRoot, userId);
+    if (fs.existsSync(userTimelineDir)) {
+      fs.rmSync(userTimelineDir, { recursive: true, force: true });
+    }
+
+    logSecurityEvent('account_data_deleted', { userId, ip: req.ip });
+    return res.status(202).json({ status: 'scheduled', message: 'Account data deletion queued.' });
+  } catch (e) {
+    const err = e as Error;
+    logSecurityEvent('delete_error', { error: err.message, stack: err.stack });
+    return res.status(500).json({ error: 'Account deletion failed.' });
+  }
 });

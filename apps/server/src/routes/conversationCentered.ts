@@ -60,7 +60,11 @@ router.post(
       event_context: z.string().uuid().optional(), // Event ID if scoped to an event
     });
 
-    const body = schema.parse(req.body);
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+    const body = parsed.data;
     const userId = req.user!.id;
 
     const result = await conversationIngestionPipeline.ingestMessage(

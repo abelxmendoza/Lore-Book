@@ -128,7 +128,11 @@ if (typeof window !== 'undefined') {
  */
 export const generateCacheKey = (url: string, options?: RequestInit): string => {
   const method = options?.method || 'GET';
-  const body = options?.body ? JSON.stringify(options.body) : '';
+  const body = options?.body
+    ? typeof options.body === 'string'
+      ? options.body
+      : JSON.stringify(options.body)
+    : '';
   return `${method}:${url}:${body}`;
 };
 

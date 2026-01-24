@@ -24,9 +24,12 @@ export const useChat = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom (guard for JSDOM: scrollIntoView may be missing or not a function)
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = messagesEndRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
   }, []);
 
   useEffect(() => {

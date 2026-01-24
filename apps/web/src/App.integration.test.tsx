@@ -5,16 +5,18 @@ import { BrowserRouter } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { EntityModalProvider } from './contexts/EntityModalContext';
 import { GuestProvider } from './contexts/GuestContext';
+import { MockDataProvider } from './contexts/MockDataContext';
 import App from './pages/App';
 
-// Mock all external dependencies
+// Mock all external dependencies (supabase for api.fetchJson; useAuth for Sidebar)
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
       onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } }))
     }
-  }
+  },
+  useAuth: () => ({ user: null, loading: false })
 }));
 
 vi.mock('../lib/monitoring', () => ({
@@ -53,13 +55,15 @@ describe('App Integration Tests - Black Screen Prevention', () => {
 
   it('should render App component without crashing', async () => {
     const { container } = render(
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <App />
-            </EntityModalProvider>
-          </GuestProvider>
+          <MockDataProvider>
+            <GuestProvider>
+              <EntityModalProvider>
+                <App />
+              </EntityModalProvider>
+            </GuestProvider>
+          </MockDataProvider>
         </ErrorBoundary>
       </BrowserRouter>
     );
@@ -74,13 +78,15 @@ describe('App Integration Tests - Black Screen Prevention', () => {
 
   it('should render main content area', async () => {
     render(
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <App />
-            </EntityModalProvider>
-          </GuestProvider>
+          <MockDataProvider>
+            <GuestProvider>
+              <EntityModalProvider>
+                <App />
+              </EntityModalProvider>
+            </GuestProvider>
+          </MockDataProvider>
         </ErrorBoundary>
       </BrowserRouter>
     );
@@ -109,13 +115,15 @@ describe('App Integration Tests - Black Screen Prevention', () => {
     delete import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     const { container } = render(
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <App />
-            </EntityModalProvider>
-          </GuestProvider>
+          <MockDataProvider>
+            <GuestProvider>
+              <EntityModalProvider>
+                <App />
+              </EntityModalProvider>
+            </GuestProvider>
+          </MockDataProvider>
         </ErrorBoundary>
       </BrowserRouter>
     );
@@ -141,7 +149,7 @@ describe('App Integration Tests - Black Screen Prevention', () => {
     };
 
     render(
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ErrorBoundary>
           <ThrowError />
         </ErrorBoundary>
@@ -163,13 +171,15 @@ describe('App Integration Tests - Black Screen Prevention', () => {
   it('should render without requiring authentication', async () => {
     // App should render even without auth
     const { container } = render(
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <App />
-            </EntityModalProvider>
-          </GuestProvider>
+          <MockDataProvider>
+            <GuestProvider>
+              <EntityModalProvider>
+                <App />
+              </EntityModalProvider>
+            </GuestProvider>
+          </MockDataProvider>
         </ErrorBoundary>
       </BrowserRouter>
     );

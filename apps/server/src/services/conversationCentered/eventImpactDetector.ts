@@ -7,7 +7,7 @@ import OpenAI from 'openai';
 
 import { config } from '../../config';
 import { logger } from '../../logger';
-import { supabaseAdmin } from '../../supabaseClient';
+import { supabaseAdmin } from '../supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
 

@@ -1,4 +1,4 @@
-import { logger } from '../../../logger';
+import { logger } from '../../../../logger';
 import { AlignmentRegressor } from '../models/alignmentRegressor';
 import type { ModelMetadata } from '../types';
 

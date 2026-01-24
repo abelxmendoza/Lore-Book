@@ -4,16 +4,18 @@ import { BrowserRouter } from 'react-router-dom';
 import { ErrorBoundary } from './ErrorBoundary';
 import { GuestProvider } from '../contexts/GuestContext';
 import { EntityModalProvider } from '../contexts/EntityModalContext';
+import { MockDataProvider } from '../contexts/MockDataContext';
 import App from '../pages/App';
 
-// Mock all dependencies
+// Mock all dependencies (supabase for api.fetchJson; useAuth for Sidebar)
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
       onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } }))
     }
-  }
+  },
+  useAuth: () => ({ user: null, loading: false })
 }));
 
 vi.mock('../hooks/useLoreKeeper', () => ({
@@ -44,13 +46,15 @@ describe('App Edge Cases', () => {
     delete import.meta.env.VITE_SUPABASE_URL;
 
     const { container } = render(
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <App />
-            </EntityModalProvider>
-          </GuestProvider>
+          <MockDataProvider>
+            <GuestProvider>
+              <EntityModalProvider>
+                <App />
+              </EntityModalProvider>
+            </GuestProvider>
+          </MockDataProvider>
         </ErrorBoundary>
       </BrowserRouter>
     );
@@ -77,13 +81,15 @@ describe('App Edge Cases', () => {
     );
 
     const { container } = render(
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <App />
-            </EntityModalProvider>
-          </GuestProvider>
+          <MockDataProvider>
+            <GuestProvider>
+              <EntityModalProvider>
+                <App />
+              </EntityModalProvider>
+            </GuestProvider>
+          </MockDataProvider>
         </ErrorBoundary>
       </BrowserRouter>
     );
@@ -101,13 +107,15 @@ describe('App Edge Cases', () => {
     );
 
     const { container } = render(
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ErrorBoundary>
-          <GuestProvider>
-            <EntityModalProvider>
-              <App />
-            </EntityModalProvider>
-          </GuestProvider>
+          <MockDataProvider>
+            <GuestProvider>
+              <EntityModalProvider>
+                <App />
+              </EntityModalProvider>
+            </GuestProvider>
+          </MockDataProvider>
         </ErrorBoundary>
       </BrowserRouter>
     );

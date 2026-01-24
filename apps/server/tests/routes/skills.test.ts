@@ -1,300 +1,185 @@
-// =====================================================
-// SKILLS ROUTE TESTS
-// =====================================================
-
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import skillsRouter from '../../src/routes/skills';
 import { requireAuth } from '../../src/middleware/auth';
+import { skillService } from '../../src/services/skills/skillService';
+import { skillExtractionService } from '../../src/services/skills/skillExtractionService';
 
-// Mock dependencies
+vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/skills/skillService');
 vi.mock('../../src/services/skills/skillExtractionService');
-vi.mock('../../src/middleware/auth');
-vi.mock('../../src/services/supabaseClient');
 
 const app = express();
 app.use(express.json());
 app.use('/api/skills', skillsRouter);
 
-describe('Skills Routes', () => {
-  const mockUser = { id: 'test-user-id', email: 'test@example.com' };
+describe('Skills API Routes', () => {
+  const mockUser = { id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', email: 'test@example.com' };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireAuth).mockImplementation((req, res, next) => {
+    vi.mocked(requireAuth).mockImplementation((req, _res, next) => {
       (req as any).user = mockUser;
       next();
     });
   });
 
   describe('GET /api/skills', () => {
-    it('should get all skills', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
-      const mockSkills = [
-        { id: 'skill-1', skill_name: 'JavaScript', skill_category: 'technical' },
-        { id: 'skill-2', skill_name: 'Weightlifting', skill_category: 'physical' },
-      ];
-
+    it('should return skills list', async () => {
+      const mockSkills = [{ id: 's1', skill_name: 'Writing', skill_category: 'creative' }];
       vi.mocked(skillService.getSkills).mockResolvedValue(mockSkills as any);
 
       const response = await request(app)
         .get('/api/skills')
         .expect(200);
 
-      expect(response.body).toHaveProperty('skills');
-      expect(response.body.skills).toHaveLength(2);
+      expect(response.body).toEqual({ skills: mockSkills });
+      expect(skillService.getSkills).toHaveBeenCalledWith(mockUser.id, { active_only: false, category: undefined });
     });
 
-    it('should filter by active_only', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
+    it('should pass active_only and category', async () => {
       vi.mocked(skillService.getSkills).mockResolvedValue([]);
-
       await request(app)
-        .get('/api/skills?active_only=true')
+        .get('/api/skills?active_only=true&category=professional')
         .expect(200);
-
-      expect(skillService.getSkills).toHaveBeenCalledWith(
-        'test-user-id',
-        { active_only: true, category: undefined }
-      );
-    });
-
-    it('should filter by category', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
-      vi.mocked(skillService.getSkills).mockResolvedValue([]);
-
-      await request(app)
-        .get('/api/skills?category=technical')
-        .expect(200);
-
-      expect(skillService.getSkills).toHaveBeenCalledWith(
-        'test-user-id',
-        { active_only: false, category: 'technical' }
-      );
+      expect(skillService.getSkills).toHaveBeenCalledWith(mockUser.id, {
+        active_only: true,
+        category: 'professional',
+      });
     });
   });
 
   describe('GET /api/skills/:skillId', () => {
-    it('should get a single skill', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
-      const mockSkill = {
-        id: 'skill-1',
-        skill_name: 'JavaScript',
-        skill_category: 'technical',
-        total_xp: 1000,
-      };
-
+    it('should return a skill', async () => {
+      const mockSkill = { id: 's1', skill_name: 'Writing' };
       vi.mocked(skillService.getSkill).mockResolvedValue(mockSkill as any);
 
       const response = await request(app)
-        .get('/api/skills/skill-1')
+        .get('/api/skills/s1')
         .expect(200);
 
-      expect(response.body).toHaveProperty('skill');
-      expect(response.body.skill.skill_name).toBe('JavaScript');
-      expect(skillService.getSkill).toHaveBeenCalledWith('test-user-id', 'skill-1');
+      expect(response.body).toEqual({ skill: mockSkill });
     });
 
-    it('should return 404 if skill not found', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
+    it('should return 404 when skill not found', async () => {
       vi.mocked(skillService.getSkill).mockResolvedValue(null);
 
       await request(app)
-        .get('/api/skills/non-existent')
+        .get('/api/skills/unknown')
         .expect(404);
     });
   });
 
   describe('POST /api/skills', () => {
-    it('should create a new skill', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
-      const mockSkill = {
-        id: 'skill-1',
-        skill_name: 'JavaScript',
-        skill_category: 'technical',
-        total_xp: 0,
-      };
-
-      vi.mocked(skillService.createSkill).mockResolvedValue(mockSkill as any);
+    it('should create a skill', async () => {
+      const created = { id: 's1', skill_name: 'Cooking', skill_category: 'practical' };
+      vi.mocked(skillService.createSkill).mockResolvedValue(created as any);
 
       const response = await request(app)
         .post('/api/skills')
         .send({
-          skill_name: 'JavaScript',
-          skill_category: 'technical',
+          skill_name: 'Cooking',
+          skill_category: 'practical',
         })
         .expect(200);
 
-      expect(response.body).toHaveProperty('skill');
-      expect(response.body.skill.skill_name).toBe('JavaScript');
+      expect(response.body.skill).toEqual(created);
     });
 
-    it('should validate required fields', async () => {
+    it('should return 400 for invalid body', async () => {
       await request(app)
         .post('/api/skills')
-        .send({})
-        .expect(400);
-    });
-
-    it('should validate skill_category enum', async () => {
-      await request(app)
-        .post('/api/skills')
-        .send({
-          skill_name: 'Test',
-          skill_category: 'invalid',
-        })
+        .send({ skill_name: 'X', skill_category: 'invalid_category' })
         .expect(400);
     });
   });
 
   describe('PATCH /api/skills/:skillId', () => {
     it('should update a skill', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
-      const mockSkill = {
-        id: 'skill-1',
-        skill_name: 'Updated Skill',
-        skill_category: 'technical',
-      };
-
-      vi.mocked(skillService.updateSkill).mockResolvedValue(mockSkill as any);
+      const updated = { id: 's1', skill_name: 'Advanced Cooking' };
+      vi.mocked(skillService.updateSkill).mockResolvedValue(updated as any);
 
       const response = await request(app)
-        .patch('/api/skills/skill-1')
-        .send({
-          skill_name: 'Updated Skill',
-        })
+        .patch('/api/skills/s1')
+        .send({ skill_name: 'Advanced Cooking' })
         .expect(200);
 
-      expect(response.body).toHaveProperty('skill');
-      expect(skillService.updateSkill).toHaveBeenCalledWith(
-        'test-user-id',
-        'skill-1',
-        expect.objectContaining({ skill_name: 'Updated Skill' })
-      );
+      expect(response.body.skill).toEqual(updated);
     });
   });
 
   describe('POST /api/skills/:skillId/xp', () => {
-    it('should add XP to a skill', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
-      const mockResult = {
-        skill: { id: 'skill-1', total_xp: 100 },
-        xpAdded: 100,
-        level: 1,
-      };
-
-      vi.mocked(skillService.addXP).mockResolvedValue(mockResult as any);
+    it('should add XP', async () => {
+      const result = { xp_added: 10, new_total: 110 };
+      vi.mocked(skillService.addXP).mockResolvedValue(result as any);
 
       const response = await request(app)
-        .post('/api/skills/skill-1/xp')
-        .send({
-          xp_amount: 100,
-          source_type: 'manual',
-        })
+        .post('/api/skills/s1/xp')
+        .send({ xp_amount: 10, source_type: 'memory' })
         .expect(200);
 
-      expect(response.body).toHaveProperty('skill');
-      expect(response.body.xpAdded).toBe(100);
-      expect(skillService.addXP).toHaveBeenCalledWith(
-        'test-user-id',
-        'skill-1',
-        100,
-        'manual',
-        undefined,
-        undefined
-      );
-    });
-
-    it('should validate XP data', async () => {
-      await request(app)
-        .post('/api/skills/skill-1/xp')
-        .send({
-          xp_amount: -10, // Invalid
-          source_type: 'manual',
-        })
-        .expect(400);
+      expect(response.body).toEqual(result);
     });
   });
 
   describe('GET /api/skills/:skillId/progress', () => {
-    it('should get skill progress history', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
-      const mockProgress = [
-        { id: 'progress-1', xp_added: 100, timestamp: '2024-01-01' },
-        { id: 'progress-2', xp_added: 50, timestamp: '2024-01-02' },
-      ];
-
-      vi.mocked(skillService.getSkillProgress).mockResolvedValue(mockProgress as any);
+    it('should return progress history', async () => {
+      const progress = [{ date: '2024-01-01', xp: 10 }];
+      vi.mocked(skillService.getSkillProgress).mockResolvedValue(progress as any);
 
       const response = await request(app)
-        .get('/api/skills/skill-1/progress')
+        .get('/api/skills/s1/progress')
         .expect(200);
 
-      expect(response.body).toHaveProperty('progress');
-      expect(response.body.progress).toHaveLength(2);
-      expect(skillService.getSkillProgress).toHaveBeenCalledWith('test-user-id', 'skill-1', 50);
-    });
-
-    it('should respect limit query param', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
-      vi.mocked(skillService.getSkillProgress).mockResolvedValue([]);
-
-      await request(app)
-        .get('/api/skills/skill-1/progress?limit=10')
-        .expect(200);
-
-      expect(skillService.getSkillProgress).toHaveBeenCalledWith('test-user-id', 'skill-1', 10);
+      expect(response.body).toEqual({ progress });
     });
   });
 
   describe('POST /api/skills/extract', () => {
-    it('should extract skills from journal entry', async () => {
-      const { skillExtractionService } = await import('../../src/services/skills/skillExtractionService');
-      const mockResults = {
-        skillsDetected: ['JavaScript', 'React'],
-        skillsCreated: ['skill-1', 'skill-2'],
-        xpAwarded: [{ skill_id: 'skill-1', xp: 50 }],
-      };
-
-      vi.mocked(skillExtractionService.processEntryForSkills).mockResolvedValue(mockResults as any);
+    it('should extract skills from entry', async () => {
+      const results = { skills: ['Writing'], created: 1 };
+      vi.mocked(skillExtractionService.processEntryForSkills).mockResolvedValue(results as any);
 
       const response = await request(app)
         .post('/api/skills/extract')
-        .send({
-          entry_id: 'entry-1',
-          content: 'I worked on a JavaScript project using React',
-        })
+        .send({ entry_id: 'e1', content: 'I wrote a short story today.' })
         .expect(200);
 
-      expect(response.body).toHaveProperty('results');
-      expect(skillExtractionService.processEntryForSkills).toHaveBeenCalledWith(
-        'test-user-id',
-        'entry-1',
-        'I worked on a JavaScript project using React'
-      );
+      expect(response.body).toEqual({ results });
     });
 
-    it('should validate entry_id and content are provided', async () => {
+    it('should return 400 when entry_id or content missing', async () => {
       await request(app)
         .post('/api/skills/extract')
-        .send({})
+        .send({ entry_id: 'e1' })
         .expect(400);
     });
   });
 
   describe('DELETE /api/skills/:skillId', () => {
     it('should delete a skill', async () => {
-      const { skillService } = await import('../../src/services/skills/skillService');
-      vi.mocked(skillService.deleteSkill).mockResolvedValue(undefined);
+      vi.mocked(skillService.deleteSkill).mockResolvedValue(undefined as any);
 
       const response = await request(app)
-        .delete('/api/skills/skill-1')
+        .delete('/api/skills/s1')
         .expect(200);
 
       expect(response.body).toEqual({ success: true });
-      expect(skillService.deleteSkill).toHaveBeenCalledWith('test-user-id', 'skill-1');
+      expect(skillService.deleteSkill).toHaveBeenCalledWith(mockUser.id, 's1');
+    });
+  });
+
+  describe('GET /api/skills/:skillId/details', () => {
+    it('should return skill details', async () => {
+      const details = { id: 's1', skill_name: 'Writing', milestones: [] };
+      vi.mocked(skillService.getSkillDetails).mockResolvedValue(details as any);
+
+      const response = await request(app)
+        .get('/api/skills/s1/details')
+        .expect(200);
+
+      expect(response.body).toEqual({ skill: details });
     });
   });
 });

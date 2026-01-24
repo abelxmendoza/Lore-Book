@@ -11,13 +11,13 @@ export const legalRouter = Router();
 // Apply rate limiting to prevent DoS attacks on file system access
 legalRouter.use(rateLimitMiddleware);
 
-const legalDir = path.resolve(process.cwd(), 'legal');
+const getLegalDir = () => path.resolve(process.cwd(), 'legal');
 
 // Explicitly apply rate limiting to each route for CodeQL detection
 legalRouter.get('/terms', rateLimitMiddleware, (_req, res) => {
-  res.sendFile(path.join(legalDir, 'TERMS.md'));
+  res.sendFile(path.join(getLegalDir(), 'TERMS.md'));
 });
 
 legalRouter.get('/privacy', rateLimitMiddleware, (_req, res) => {
-  res.sendFile(path.join(legalDir, 'PRIVACY.md'));
+  res.sendFile(path.join(getLegalDir(), 'PRIVACY.md'));
 });

@@ -44,8 +44,7 @@ describe('RelationshipAnalytics', () => {
         analytics={mockAnalytics}
       />
     );
-    
-    // Use getAllByText since there may be multiple matches
+    // Each metric appears in the main cards and in Score Overview, so use getAllByText
     expect(screen.getAllByText(/affection/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/compatibility/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/health/i).length).toBeGreaterThan(0);
@@ -59,12 +58,11 @@ describe('RelationshipAnalytics', () => {
         analytics={mockAnalytics}
       />
     );
-    
-    // Use getAllByText since there may be multiple matches (e.g., in charts and cards)
-    expect(screen.getAllByText('92%').length).toBeGreaterThan(0); // affectionScore * 100
-    expect(screen.getAllByText('95%').length).toBeGreaterThan(0); // compatibilityScore * 100
-    expect(screen.getAllByText('90%').length).toBeGreaterThan(0); // healthScore * 100
-    expect(screen.getAllByText('88%').length).toBeGreaterThan(0); // intensityScore * 100
+    // Each score appears in the main cards and in Score Overview, so use getAllByText
+    expect(screen.getAllByText('92%').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('95%').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('90%').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('88%').length).toBeGreaterThan(0);
   });
 
   it('displays strengths and weaknesses', () => {
@@ -90,9 +88,8 @@ describe('RelationshipAnalytics', () => {
     );
     
     expect(screen.getByText(/ai insights/i)).toBeInTheDocument();
-    // Check if insights are displayed - they might be in a list format
-    const insights = screen.getAllByText(/strong compatibility/i);
-    expect(insights.length).toBeGreaterThan(0);
+    // Insight text may include a bullet prefix in the list item
+    expect(screen.getByText(/strong compatibility/i)).toBeInTheDocument();
   });
 
   it('displays recommendations when provided', () => {
