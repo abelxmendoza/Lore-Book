@@ -43,6 +43,28 @@
   animation: pulse 2s ease-in-out infinite;
 }
 
+/* Animated progress / loading feel */
+@keyframes loadingShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.chat-loading-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.12) 45%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0.12) 55%,
+    transparent 100%
+  );
+  background-size: 50% 100%;
+  animation: loadingShimmer 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
 /* Smooth transitions */
 .chat-message {
   transition: all 0.2s ease-out;

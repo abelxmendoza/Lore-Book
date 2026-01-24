@@ -1428,6 +1428,17 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       logger.debug({ error }, 'Failed to load essence profile, continuing without');
     }
 
+    // Load identity core profile for context (most recent)
+    let identityCoreProfile: any = null;
+    try {
+      const { IdentityStorage } = await import('./identityCore/identityStorage');
+      const storage = new IdentityStorage();
+      const profiles = await storage.getProfiles(userId);
+      identityCoreProfile = profiles[0] || null;
+    } catch (error) {
+      logger.debug({ error }, 'Failed to load identity core profile, continuing without');
+    }
+
     // Check for essence refinement intent (fire and forget - doesn't block chat)
     essenceRefinementEngine.handleChatMessage(userId, message, {
       activePanel: 'SoulProfile', // Could be dynamic based on current UI state
@@ -1540,10 +1551,11 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
     // =====================================================
     // MEMORY RECALL DETECTION
     // =====================================================
-    const isRecallQuery = this.isRecallQuery(message);
+    const { isRecallQuery } = await import('./memoryRecall/recallDetector');
+    const isRecall = isRecallQuery(message);
     let recallResult: any = null;
-    
-    if (isRecallQuery) {
+
+    if (isRecall) {
       try {
         const { memoryRecallEngine } = await import('./memoryRecall/recallEngine');
         const { personaController } = await import('./personaController');
@@ -1655,6 +1667,11 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       // Fail silently - never interrupt chat flow
       logger.debug({ error, userId }, 'Entity ambiguity detection failed, continuing without');
     }
+
+    // Entity analytics (chatStream does not fetch yet; pass null so buildSystemPrompt skips entity block)
+    let entityAnalytics: any = null;
+    let entityConfidence: number | null = null;
+    let analyticsGate: any = null;
 
     // RL: Select optimal persona blend
     let personaBlend;
@@ -2102,6 +2119,17 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       essenceProfile = await essenceProfileService.getProfile(userId);
     } catch (error) {
       logger.debug({ error }, 'Failed to load essence profile, continuing without');
+    }
+
+    // Load identity core profile for context (most recent)
+    let identityCoreProfile: any = null;
+    try {
+      const { IdentityStorage } = await import('./identityCore/identityStorage');
+      const storage = new IdentityStorage();
+      const profiles = await storage.getProfiles(userId);
+      identityCoreProfile = profiles[0] || null;
+    } catch (error) {
+      logger.debug({ error }, 'Failed to load identity core profile, continuing without');
     }
 
     // Check continuity
