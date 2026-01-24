@@ -15,12 +15,13 @@
 import { logger } from '../../logger';
 import { openai } from '../openaiClient';
 
-export type ChatMode = 
+export type ChatMode =
   | 'EMOTIONAL_EXISTENTIAL'  // Mode 1: Thoughts, fears, insecurities
   | 'MEMORY_RECALL'          // Mode 2: Factual questions
   | 'NARRATIVE_RECALL'       // Mode 3: Complex stories
   | 'EXPERIENCE_INGESTION'   // Mode 4: Lived experiences (macro: duration, context, narrative arc)
   | 'ACTION_LOG'             // Mode 5: Atomic actions (micro: verb-forward, instant)
+  | 'NEEDS_CLARIFICATION'    // Ambiguous milestone/achievement: ask what they mean before ingesting
   | 'MIXED'                  // Requires disambiguation
   | 'UNKNOWN';               // Can't determine - fall through to normal chat
 
@@ -79,9 +80,29 @@ class ModeRouterService {
    * Fast pattern-based mode detection (<50ms)
    */
   private quickModeCheck(message: string): ModeRoutingResult {
-    const text = message.toLowerCase();
+    const text = message.toLowerCase().trim();
     const messageLength = message.length;
-    
+
+    // NEEDS_CLARIFICATION: Milestone/achievement-ish but ambiguous (app vs life, or vague).
+    // Ask what they mean before ingesting. Run before greeting/meta so
+    // "I got the chat working. Does it work?" gets clarify, not plain UNKNOWN.
+    if (this.looksLikeAmbiguousMilestoneOrExperience(text, messageLength)) {
+      return {
+        mode: 'NEEDS_CLARIFICATION',
+        confidence: 0.9,
+        reasoning: 'Ambiguous milestone or achievement; ask for clarification before ingesting',
+      };
+    }
+
+    // Greetings, meta-questions about the app, and small talk → UNKNOWN (normal chat)
+    if (this.isGreetingOrMetaOrSmallTalk(text, messageLength)) {
+      return {
+        mode: 'UNKNOWN',
+        confidence: 0.9,
+        reasoning: 'Greeting, meta-question, or small talk; use normal chat',
+      };
+    }
+
     // ACTION_LOG: Verb-forward, instant, single moment (check before experience)
     if (this.looksLikeAction(message)) {
       return {
@@ -219,6 +240,46 @@ class ModeRouterService {
   }
 
   /**
+   * Milestone/achievement-ish but ambiguous: could be about the app or a life event.
+   * E.g. "I got the chat working. Does it work?" or "I finally got X working" (short).
+   * Ask for clarification before ingesting. Excludes clear experiences (last night, we, long story).
+   */
+  private looksLikeAmbiguousMilestoneOrExperience(text: string, messageLength: number): boolean {
+    const hasMilestonePhrase = /\b(got|got it|have) .+ (working|to work)\b|(i |so |and )?(just |finally |actually )?(got|have) .+ (working|to work)\b/i.test(text);
+    if (!hasMilestonePhrase) return false;
+
+    const hasMetaPhrase = /\b(does it work|is it working|is this working|can you hear me|are you there)\b/i.test(text);
+    const hasStrongExperienceMarkers = /(last night|yesterday|that weekend|we |they |everyone|people |group |together )/i.test(text) || messageLength > 200;
+    const isShort = messageLength < 150;
+
+    return hasMetaPhrase || (isShort && !hasStrongExperienceMarkers);
+  }
+
+  /**
+   * Greetings, thanks, meta-questions about the app/assistant, and short small talk.
+   * These should be UNKNOWN so they get normal conversational responses.
+   */
+  private isGreetingOrMetaOrSmallTalk(text: string, messageLength: number): boolean {
+    // Very short greetings and sign-offs
+    const greetings = /^(hi|hey|hello|howdy|yo|sup|hey there|hi there|hello there|greetings?|good (morning|afternoon|evening)|gm|gn|bye|goodbye|thanks|thank you|thank u|thx|ty|ok|okay|k|cool|nice|great|awesome|sure|yep|nope|yes|no)\s*[!.?]*$/i;
+    if (greetings.test(text)) return true;
+
+    // Meta-questions about the app or assistant (as full message or as substring, e.g. "...Does it work?")
+    const metaFull = /\b(does it work|is it working|is this working|can you hear me|are you there|are you (here|online|working)|is (this|the) (chat|app) working|(can|does) (the )?(chat|app|this) work|(is|does) (anything|something) (working|work))\s*[!.?]*$/i;
+    if (metaFull.test(text)) return true;
+    const metaSubstring = /\b(does it work|is it working|is this working|can you hear me|are you there)\b/i;
+    if (metaSubstring.test(text)) return true;
+
+    // "I got X working", "I finally got X" as meta/update about the app (short, no story arc)
+    if (messageLength < 120 && /\b(i )?(just |finally |actually )?(got|got it|have) .* (working|to work|working today)\s*[!.?]*$/i.test(text)) return true;
+
+    // Frustrated meta: "all you (keep )?saying is X", "you only say X", "it (only |just )?(keeps? )?says? X"
+    if (/\b(all you (keep )?saying is|you only say|you keep saying|it (only |just )?(keeps? )?says?)\s/i.test(text)) return true;
+
+    return false;
+  }
+
+  /**
    * LLM-based mode detection (for ambiguous cases)
    */
   private async llmModeCheck(
@@ -230,15 +291,17 @@ class ModeRouterService {
 Message: "${message}"
 
 Modes:
-1. EMOTIONAL_EXISTENTIAL - Thoughts, fears, insecurities, existential questions. Short, present-tense, emotional. Example: "I feel behind", "Do you think I can get this job?"
-2. MEMORY_RECALL - Specific factual questions: "What did I eat?", "When did X happen?", "Do you remember Y?"
-3. NARRATIVE_RECALL - Complex story questions: "What happened with X?", "Tell me about Y", "What's the story behind Z?"
-4. EXPERIENCE_INGESTION - User describing a time-bounded experience (party, night out, trip, event with duration, multiple people, location, story arc). Example: "Last night I went to a show, met these people, things got weird..."
-5. ACTION_LOG - User describing a single atomic action (verb-forward, instant, moment: "I said X", "I walked away", "I froze")
+1. UNKNOWN - Use for: greetings ("hi", "hello", "hey"), thanks ("thanks", "thank you"), meta-questions about the app or you ("Does it work?", "Is this working?", "Can you hear me?", "Are you there?"), and general small talk or conversation that does NOT clearly fit 2-5. These get a normal conversational reply.
+2. EMOTIONAL_EXISTENTIAL - Thoughts, fears, insecurities, existential questions. Short, present-tense, clearly emotional. Example: "I feel behind", "Do you think I can get this job?" NOT for: greetings, or frustration about the app ("it's not working", "you only say X").
+3. MEMORY_RECALL - Specific factual questions: "What did I eat?", "When did X happen?", "Do you remember Y?"
+4. NARRATIVE_RECALL - Complex story questions: "What happened with X?", "Tell me about Y", "What's the story behind Z?"
+5. EXPERIENCE_INGESTION - User describing a time-bounded experience (party, night out, trip, event with duration, multiple people, location, story arc). Example: "Last night I went to a show, met these people, things got weird..." NOT: "I got the chat working" or short updates.
+6. ACTION_LOG - ONLY when the user is clearly logging a single, past-tense, verb-forward moment: "I said X", "I walked away", "I froze". NOT: greetings, "Does it work?", "I got X working", questions, or general updates.
 
-Key distinction:
-- Experience = container, has duration, context, narrative arc
-- Action = atomic unit, verb-forward, instant, no arc
+Key rules:
+- When in doubt between ACTION_LOG/EXPERIENCE and UNKNOWN, choose UNKNOWN.
+- Greetings, thanks, and meta-questions about the app are always UNKNOWN.
+- Action = strict "I [verb]ed" / "I [verb]ed X" instant moment, no arc.
 
 Respond with JSON:
 {
@@ -259,7 +322,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {
@@ -284,6 +347,12 @@ Respond with JSON:
     quick: ModeRoutingResult,
     llm: ModeRoutingResult
   ): ModeRoutingResult {
+    // Quick check said UNKNOWN with high confidence (greeting/meta/small talk) → use it
+    // so we don't let the LLM override to ACTION_LOG or EXPERIENCE for "hi", "Does it work?", etc.
+    if (quick.mode === 'UNKNOWN' && quick.confidence >= 0.8) {
+      return quick;
+    }
+
     // If both agree, high confidence
     if (quick.mode === llm.mode && quick.mode !== 'UNKNOWN') {
       return {
@@ -297,7 +366,13 @@ Respond with JSON:
     if (quick.confidence > llm.confidence) {
       return quick;
     }
-    
+
+    // When quick is UNKNOWN (low) and LLM says ACTION_LOG or EXPERIENCE with only moderate confidence,
+    // prefer UNKNOWN so borderline cases get normal chat
+    if (quick.mode === 'UNKNOWN' && (llm.mode === 'ACTION_LOG' || llm.mode === 'EXPERIENCE_INGESTION') && llm.confidence < 0.75) {
+      return { ...quick, confidence: 0.6, reasoning: 'Overriding LLM ACTION_LOG/EXPERIENCE when confidence < 0.75; use normal chat' };
+    }
+
     // If LLM is higher but still low, might be mixed
     if (llm.confidence < 0.6 && quick.mode !== 'UNKNOWN') {
       return {
@@ -310,7 +385,7 @@ Respond with JSON:
         ],
       };
     }
-    
+
     return llm;
   }
 }

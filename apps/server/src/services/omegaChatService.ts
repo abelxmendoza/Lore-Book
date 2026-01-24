@@ -1832,6 +1832,19 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       }
     }
 
+    // If the user is answering a clarifying question (last assistant message was one), nudge the model
+    const lastAssistant = [...conversationHistory].reverse().find(m => m.role === 'assistant');
+    if (lastAssistant && lastAssistant.content) {
+      const c = lastAssistant.content.toLowerCase();
+      const looksLikeClarify = c.length < 300 && (c.endsWith('?') || c.includes('?')) &&
+        (/\b(what do you mean|do you mean|are you talking about)\b/i.test(c));
+      if (looksLikeClarify) {
+        systemPrompt += `
+
+**FOLLOW-UP TO CLARIFYING QUESTION**: The user is answering your previous clarifying question about something they did or achieved. Acknowledge what they said (including any milestone or progress) and respond helpfully to any frustration or follow-up they have (e.g. what "the way I want" or similar looks like, or how you can help).`;
+      }
+    }
+
     // Prepare messages
     const messages = [
       { role: 'system' as const, content: systemPrompt },
@@ -2367,6 +2380,19 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       } catch (error) {
         // Fail silently - belief challenges are optional
         logger.debug({ error }, 'Belief challenge check failed, continuing without');
+      }
+    }
+
+    // If the user is answering a clarifying question (last assistant message was one), nudge the model
+    const lastAssistantNonStream = [...conversationHistory].reverse().find(m => m.role === 'assistant');
+    if (lastAssistantNonStream && lastAssistantNonStream.content) {
+      const c = lastAssistantNonStream.content.toLowerCase();
+      const looksLikeClarify = c.length < 300 && (c.endsWith('?') || c.includes('?')) &&
+        (/\b(what do you mean|do you mean|are you talking about)\b/i.test(c));
+      if (looksLikeClarify) {
+        systemPrompt += `
+
+**FOLLOW-UP TO CLARIFYING QUESTION**: The user is answering your previous clarifying question about something they did or achieved. Acknowledge what they said (including any milestone or progress) and respond helpfully to any frustration or follow-up they have (e.g. what "the way I want" or similar looks like, or how you can help).`;
       }
     }
 

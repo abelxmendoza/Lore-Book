@@ -45,7 +45,10 @@ class ModeHandlers {
       
       case 'ACTION_LOG':
         return await this.handleActionLog(userId, message, options);
-      
+
+      case 'NEEDS_CLARIFICATION':
+        return await this.handleNeedsClarification(message);
+
       case 'MIXED':
         return {
           content: "I'm not sure if you're asking me to remember something, sharing a thought, or telling me about something that happened. Can you clarify?",
@@ -254,6 +257,35 @@ class ModeHandlers {
   }
 
   /**
+   * NEEDS_CLARIFICATION: Ambiguous milestone/achievement.
+   * Ask what they mean before ingesting. No save, no ingest—client has it in conversationHistory.
+   */
+  private async handleNeedsClarification(message: string): Promise<ModeHandlerResponse> {
+    const text = message.toLowerCase();
+    // Try to extract "X" from "got X working" / "have X working" / "finally got X working"
+    const gotMatch = text.match(/(?:got|have|got it) (\S+(?:\s+\S+){0,4}?) (?:working|to work)/i);
+    const phrase = gotMatch ? gotMatch[1].trim() : null;
+
+    let content: string;
+    if (phrase) {
+      if (/\b(chat|app|lorebook|lore book)\b/i.test(phrase)) {
+        content = `What do you mean by getting ${phrase} working? Are you talking about getting Lore Book to respond, or something else you did?`;
+      } else {
+        content = `What do you mean by getting ${phrase} working? Are you talking about something in the app, or something you did or achieved?`;
+      }
+    } else {
+      content = "What do you mean? Are you talking about the app, or something you did or achieved?";
+    }
+
+    return {
+      content,
+      response_mode: 'CLARIFY',
+      confidence: 0.9,
+      metadata: { clarification: true },
+    };
+  }
+
+  /**
    * Mode 5: Action Log
    * Logs atomic actions (micro: verb-forward, instant)
    * Silent - no user interruption
@@ -296,9 +328,9 @@ class ModeHandlers {
         });
       }
 
-      // Silent response - actions log without interruption
+      // Minimal ack so the user sees a response (fully empty looks like "no reply")
       return {
-        content: '', // Empty - silent logging
+        content: 'Noted.',
         response_mode: 'SILENT_LOG',
         confidence: 0.9,
         metadata: {
@@ -307,9 +339,8 @@ class ModeHandlers {
       };
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to handle action log mode');
-      // Even on error, return silent response
       return {
-        content: '',
+        content: 'Noted.',
         response_mode: 'SILENT_LOG',
         confidence: 0.8,
       };
