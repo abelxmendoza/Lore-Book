@@ -75,6 +75,12 @@ describe('Engine Storage', () => {
         duration: 100,
       };
 
+      // Mock the fetch for existing results
+      mockSingle.mockResolvedValue({
+        data: null,
+        error: { code: 'PGRST116' }, // Not found
+      });
+
       await saveEngineResult('user-123', 'health', result);
 
       expect(mockUpsert).toHaveBeenCalled();

@@ -1567,7 +1567,7 @@ User's message: ${message}`;
                 )}
               </div>
             </div>
-            <Button variant="ghost" onClick={onClose} className="flex-shrink-0 hover:bg-white/10 h-8 w-8 sm:h-10 sm:w-10 p-0">
+            <Button variant="ghost" onClick={onClose} className="flex-shrink-0 hover:bg-white/10 h-8 w-8 sm:h-10 sm:w-10 p-0" aria-label="Close">
               <X className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
           </div>

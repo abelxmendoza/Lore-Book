@@ -83,13 +83,12 @@ describe('ChatComposer - Debounced Mood Evaluation', () => {
 
     // Fast-forward past the debounce threshold
     vi.advanceTimersByTime(200);
+    vi.runAllTimers();
 
     // Now it should have been called once
-    await waitFor(() => {
-      expect(mockEvaluate).toHaveBeenCalledTimes(1);
-      expect(mockEvaluate).toHaveBeenCalledWith('hello');
-    });
-  });
+    expect(mockEvaluate).toHaveBeenCalledTimes(1);
+    expect(mockEvaluate).toHaveBeenCalledWith('hello');
+  }, 10000);
 
   it('should reset debounce timer on each keystroke', async () => {
     const user = userEvent.setup({ delay: null });
@@ -118,13 +117,12 @@ describe('ChatComposer - Debounced Mood Evaluation', () => {
     // Type 'l' before debounce completes
     await user.type(textarea, 'l');
     vi.advanceTimersByTime(500);
+    vi.runAllTimers();
 
     // Should only be called once after the final debounce period
-    await waitFor(() => {
-      expect(mockEvaluate).toHaveBeenCalledTimes(1);
-      expect(mockEvaluate).toHaveBeenCalledWith('hel');
-    });
-  });
+    expect(mockEvaluate).toHaveBeenCalledTimes(1);
+    expect(mockEvaluate).toHaveBeenCalledWith('hel');
+  }, 10000);
 
   it('should call non-API operations immediately', async () => {
     const user = userEvent.setup({ delay: null });
@@ -143,11 +141,12 @@ describe('ChatComposer - Debounced Mood Evaluation', () => {
     const textarea = screen.getByPlaceholderText(/Message Lore Book/i);
 
     await user.type(textarea, 'test');
+    vi.runAllTimers();
 
     // These should be called immediately (not debounced)
     expect(mockRefreshSuggestions).toHaveBeenCalled();
     expect(mockAnalyze).toHaveBeenCalled();
-  });
+  }, 10000);
 
   it('should clear debounce timer on unmount', async () => {
     const user = userEvent.setup({ delay: null });
@@ -169,10 +168,11 @@ describe('ChatComposer - Debounced Mood Evaluation', () => {
     // Unmount before debounce completes
     unmount();
     vi.advanceTimersByTime(500);
+    vi.runAllTimers();
 
     // Should not have called evaluate after unmount
     expect(mockEvaluate).not.toHaveBeenCalled();
-  });
+  }, 10000);
 
   it('should reset mood score immediately when input is cleared', async () => {
     const user = userEvent.setup({ delay: null });

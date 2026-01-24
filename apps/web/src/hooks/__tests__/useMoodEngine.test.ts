@@ -64,17 +64,26 @@ describe('useMoodEngine', () => {
     const { result } = renderHook(() => useMoodEngine());
 
     // Set a mood first
+    vi.mocked(fetchJson).mockResolvedValue({ mood: -2 });
     await act(async () => {
       await result.current.evaluate('I feel sad');
     });
 
-    // Then evaluate empty text
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // Clear the mock call history
+    vi.clearAllMocks();
+
+    // Then evaluate empty text - this should NOT call the API
     await act(async () => {
       await result.current.evaluate('');
     });
 
     expect(result.current.mood.score).toBe(0);
     expect(result.current.mood.label).toBe('Neutral');
+    // Empty text should not trigger API call
     expect(fetchJson).not.toHaveBeenCalled();
   });
 

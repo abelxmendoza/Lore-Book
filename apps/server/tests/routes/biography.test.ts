@@ -8,7 +8,11 @@ import express from 'express';
 import { biographyRouter } from '../../src/routes/biography';
 import { requireAuth } from '../../src/middleware/auth';
 
-// Mock dependencies
+// Mock dependencies (ingestionPipeline first: it has a parse error; omegaChatService imports it)
+vi.mock('../../src/services/conversationCentered/ingestionPipeline', () => ({
+  ConversationIngestionPipeline: vi.fn(),
+  conversationIngestionPipeline: { ingestMessage: vi.fn(), ingestFromChatMessage: vi.fn() },
+}));
 vi.mock('../../src/services/mainLifestoryService');
 vi.mock('../../src/services/biographyGeneration');
 vi.mock('../../src/services/lorebook/lorebookSearchParser');

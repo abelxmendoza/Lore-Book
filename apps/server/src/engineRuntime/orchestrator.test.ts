@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EngineOrchestrator } from './orchestrator';
 import { buildEngineContext } from './contextBuilder';
 import { saveEngineResults } from './storage';
+import { ENGINE_REGISTRY } from './engineRegistry';
 import { DependencyGraph } from '../services/engineRegistry/dependencyGraph';
 import { sensemakingOrchestrator } from '../services/engineGovernance';
 
@@ -173,10 +174,16 @@ describe('EngineOrchestrator', () => {
     });
 
     it('should use all data for chronology and legacy engines', async () => {
-      const mockRegistry = {
+      // hasEngine reads from ENGINE_REGISTRY; add chronology so runSingle doesn't return "not found"
+      (ENGINE_REGISTRY as any).chronology = vi.fn().mockResolvedValue({ graph: {} });
+
+      const customRegistry = {
         chronology: vi.fn().mockResolvedValue({ graph: {} }),
       };
-      const customOrchestrator = new EngineOrchestrator(mockRegistry as any);
+      const customOrchestrator = new EngineOrchestrator(customRegistry as any);
+
+      vi.clearAllMocks();
+      (buildEngineContext as any).mockResolvedValue(mockContext);
 
       await customOrchestrator.runSingle('user-123', 'chronology');
 

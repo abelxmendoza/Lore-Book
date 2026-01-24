@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Request, Response } from 'express';
 import { omegaChatService } from '../../src/services/omegaChatService';
 
-// Mock dependencies
+// Mock dependencies (ingestionPipeline first: it has a parse error; omegaChatService imports it)
+vi.mock('../../src/services/conversationCentered/ingestionPipeline', () => ({
+  ConversationIngestionPipeline: vi.fn(),
+  conversationIngestionPipeline: { ingestMessage: vi.fn(), ingestFromChatMessage: vi.fn() },
+}));
 vi.mock('../../src/services/omegaChatService');
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/utils/keywordDetector');

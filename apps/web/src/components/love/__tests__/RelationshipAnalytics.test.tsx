@@ -45,10 +45,11 @@ describe('RelationshipAnalytics', () => {
       />
     );
     
-    expect(screen.getByText(/affection/i)).toBeInTheDocument();
-    expect(screen.getByText(/compatibility/i)).toBeInTheDocument();
-    expect(screen.getByText(/health/i)).toBeInTheDocument();
-    expect(screen.getByText(/intensity/i)).toBeInTheDocument();
+    // Use getAllByText since there may be multiple matches
+    expect(screen.getAllByText(/affection/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/compatibility/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/health/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/intensity/i).length).toBeGreaterThan(0);
   });
 
   it('displays score percentages correctly', () => {
@@ -59,10 +60,11 @@ describe('RelationshipAnalytics', () => {
       />
     );
     
-    expect(screen.getByText('92%')).toBeInTheDocument(); // affectionScore * 100
-    expect(screen.getByText('95%')).toBeInTheDocument(); // compatibilityScore * 100
-    expect(screen.getByText('90%')).toBeInTheDocument(); // healthScore * 100
-    expect(screen.getByText('88%')).toBeInTheDocument(); // intensityScore * 100
+    // Use getAllByText since there may be multiple matches (e.g., in charts and cards)
+    expect(screen.getAllByText('92%').length).toBeGreaterThan(0); // affectionScore * 100
+    expect(screen.getAllByText('95%').length).toBeGreaterThan(0); // compatibilityScore * 100
+    expect(screen.getAllByText('90%').length).toBeGreaterThan(0); // healthScore * 100
+    expect(screen.getAllByText('88%').length).toBeGreaterThan(0); // intensityScore * 100
   });
 
   it('displays strengths and weaknesses', () => {
@@ -88,7 +90,9 @@ describe('RelationshipAnalytics', () => {
     );
     
     expect(screen.getByText(/ai insights/i)).toBeInTheDocument();
-    expect(screen.getByText('Strong compatibility')).toBeInTheDocument();
+    // Check if insights are displayed - they might be in a list format
+    const insights = screen.getAllByText(/strong compatibility/i);
+    expect(insights.length).toBeGreaterThan(0);
   });
 
   it('displays recommendations when provided', () => {

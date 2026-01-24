@@ -76,7 +76,7 @@ describe('LoveAndRelationshipsView', () => {
   it('shows loading state initially', () => {
     render(<LoveAndRelationshipsView />);
     
-    // Should show loading initially
+    // Should show loading initially - the text is "Loading your love story..."
     expect(screen.getByText(/loading your love story/i)).toBeInTheDocument();
   });
 
@@ -84,13 +84,24 @@ describe('LoveAndRelationshipsView', () => {
     render(<LoveAndRelationshipsView />);
     
     await waitFor(() => {
-      expect(screen.getByText(/all/i)).toBeInTheDocument();
-      expect(screen.getByText(/active/i)).toBeInTheDocument();
-      expect(screen.getByText(/past/i)).toBeInTheDocument();
-      expect(screen.getByText(/situationships/i)).toBeInTheDocument();
-      expect(screen.getByText(/crushes/i)).toBeInTheDocument();
-      expect(screen.getByText(/rankings/i)).toBeInTheDocument();
+      expect(screen.getByText('Alex')).toBeInTheDocument();
     });
+    
+    // Find tabs by role to avoid multiple matches
+    const allTabs = screen.getAllByText(/all/i);
+    const activeTabs = screen.getAllByText(/active/i);
+    const pastTabs = screen.getAllByText(/past/i);
+    const situationshipsTabs = screen.getAllByText(/situationships/i);
+    const crushesTabs = screen.getAllByText(/crushes/i);
+    const rankingsTabs = screen.getAllByText(/rankings/i);
+    
+    // Check that at least one tab exists for each filter
+    expect(allTabs.length).toBeGreaterThan(0);
+    expect(activeTabs.length).toBeGreaterThan(0);
+    expect(pastTabs.length).toBeGreaterThan(0);
+    expect(situationshipsTabs.length).toBeGreaterThan(0);
+    expect(crushesTabs.length).toBeGreaterThan(0);
+    expect(rankingsTabs.length).toBeGreaterThan(0);
   });
 
   it('filters relationships by active filter', async () => {
@@ -98,10 +109,16 @@ describe('LoveAndRelationshipsView', () => {
     
     await waitFor(() => {
       expect(screen.getByText('Alex')).toBeInTheDocument();
+      // Initial load with 'all' filter
+      expect(getMockRomanticRelationshipsByFilter).toHaveBeenCalledWith('all');
     });
     
-    // Click active filter
-    const activeTab = screen.getByText(/active/i);
+    // Clear previous calls
+    vi.clearAllMocks();
+    
+    // Click active filter - find by role to avoid multiple matches
+    const activeTabs = screen.getAllByText(/active/i);
+    const activeTab = activeTabs.find(el => el.getAttribute('role') === 'tab' || el.closest('[role="tab"]')) || activeTabs[0];
     activeTab.click();
     
     await waitFor(() => {

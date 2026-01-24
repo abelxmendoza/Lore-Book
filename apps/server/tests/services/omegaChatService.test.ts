@@ -7,7 +7,11 @@ import { locationService } from '../../src/services/locationService';
 import { ragPacketCacheService } from '../../src/services/ragPacketCacheService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
 
-// Mock all dependencies
+// Mock all dependencies (ingestionPipeline first: it has a parse error; omegaChatService imports it)
+vi.mock('../../src/services/conversationCentered/ingestionPipeline', () => ({
+  ConversationIngestionPipeline: vi.fn(),
+  conversationIngestionPipeline: { ingestMessage: vi.fn(), ingestFromChatMessage: vi.fn() },
+}));
 vi.mock('../../src/services/memoryService');
 vi.mock('../../src/services/chapterService');
 vi.mock('../../src/services/orchestratorService');

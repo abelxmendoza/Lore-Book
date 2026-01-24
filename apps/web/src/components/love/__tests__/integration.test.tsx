@@ -97,9 +97,11 @@ describe('Love & Relationships Integration Tests', () => {
     const user = userEvent.setup();
     render(<LoveAndRelationshipsView />);
     
-    // Step 1: Load relationships
+    // Step 1: Load relationships (default filter is 'all')
     await waitFor(() => {
       expect(screen.getByText('Alex')).toBeInTheDocument();
+      // Initial load should call with 'all' filter
+      expect(getMockRomanticRelationshipsByFilter).toHaveBeenCalledWith('all');
     });
     
     // Step 2: Filter by active — use role=tab and name to avoid matching "1 active" in the header
@@ -107,6 +109,7 @@ describe('Love & Relationships Integration Tests', () => {
     await user.click(activeTab);
     
     await waitFor(() => {
+      // Should be called with 'active' after clicking the active tab
       expect(getMockRomanticRelationshipsByFilter).toHaveBeenCalledWith('active');
     });
     
@@ -136,8 +139,10 @@ describe('Love & Relationships Integration Tests', () => {
     
     await waitFor(() => {
       expect(screen.getByText('Alex')).toBeInTheDocument();
+      // Initial load with 'all' filter
+      expect(getMockRomanticRelationshipsByFilter).toHaveBeenCalledWith('all');
     });
-    
+
     // Tab accessible names (value and label may differ, e.g. Situationships vs Situations)
     const filterTabNames: Record<string, RegExp | string> = {
       active: /^active$/i,
@@ -157,6 +162,9 @@ describe('Love & Relationships Integration Tests', () => {
           expect(getMockRomanticRelationshipsByFilter).toHaveBeenCalledWith(filter);
         }
       });
+      
+      // Clear mocks after each filter to test them independently
+      vi.clearAllMocks();
     }
   });
 

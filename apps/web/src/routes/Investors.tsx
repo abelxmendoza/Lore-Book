@@ -8,7 +8,6 @@ import {
   TrendingUp,
   Shield,
   Zap,
-  Users,
   Target,
   Database,
   DollarSign,
@@ -187,9 +186,11 @@ export default function Investors() {
             <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center px-2 sm:px-0">Team</h2>
             <div className="rounded-lg border border-border/60 bg-black/40 p-4 sm:p-6 md:p-8 max-w-3xl mx-auto">
               <div className="flex flex-col sm:flex-row items-start space-y-4 sm:space-y-0 sm:space-x-6">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0 mx-auto sm:mx-0">
-                  <Users className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
-                </div>
+                <img
+                  src="/branding/mePro.JPG"
+                  alt="Abel Mendoza, Founder"
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover flex-shrink-0 mx-auto sm:mx-0 border-2 border-white/10"
+                />
                 <div className="flex-1 text-center sm:text-left">
                   <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">Abel Mendoza</h3>
                   <p className="text-sm sm:text-base text-white/70 mb-3 sm:mb-4">

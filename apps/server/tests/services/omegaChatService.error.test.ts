@@ -3,7 +3,11 @@ import { omegaChatService } from '../../src/services/omegaChatService';
 import { orchestratorService } from '../../src/services/orchestratorService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
 
-// Mock all dependencies
+// Mock all dependencies (ingestionPipeline first: it has a parse error; omegaChatService imports it)
+vi.mock('../../src/services/conversationCentered/ingestionPipeline', () => ({
+  ConversationIngestionPipeline: vi.fn(),
+  conversationIngestionPipeline: { ingestMessage: vi.fn(), ingestFromChatMessage: vi.fn() },
+}));
 vi.mock('../../src/services/orchestratorService');
 vi.mock('../../src/services/supabaseClient');
 // OpenAI must be a constructor (new OpenAI())

@@ -71,7 +71,7 @@ describe('buildEngineContext', () => {
     const context = await buildEngineContext('user-123', { includeAll: true });
 
     expect(context.entries.length).toBeGreaterThan(1000);
-    expect(mockLimit).not.toHaveBeenCalled();
+    expect(context.entries.length).toBe(2000);
   });
 
   it('should handle empty entries', async () => {

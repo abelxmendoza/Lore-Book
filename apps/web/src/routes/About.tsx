@@ -10,7 +10,6 @@ import {
   Shield,
   Heart,
   Code,
-  Users,
   Sparkles,
 } from 'lucide-react';
 
@@ -93,9 +92,11 @@ export default function About() {
             <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center px-2 sm:px-0">Team</h2>
             <div className="rounded-xl sm:rounded-2xl border border-border/60 bg-black/40 backdrop-blur-sm p-4 sm:p-6 md:p-8">
               <div className="flex flex-col sm:flex-row items-start space-y-4 sm:space-y-0 sm:space-x-6">
-                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0 mx-auto sm:mx-0">
-                  <Users className="h-10 w-10 sm:h-12 sm:w-12 text-white" />
-                </div>
+                <img
+                  src="/branding/mePro.JPG"
+                  alt="Abel Mendoza, Founder"
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover flex-shrink-0 mx-auto sm:mx-0 border-2 border-white/10"
+                />
                 <div className="flex-1 text-center sm:text-left">
                   <h3 className="text-xl sm:text-2xl font-semibold text-white mb-2 sm:mb-3">Abel Mendoza</h3>
                   <p className="text-sm sm:text-base text-white/70 mb-3 sm:mb-4 leading-relaxed">

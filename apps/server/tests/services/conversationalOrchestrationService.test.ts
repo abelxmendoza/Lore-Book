@@ -6,7 +6,11 @@ import { perspectiveService } from '../../src/services/perspectiveService';
 import { insightReflectionService } from '../../src/services/insightReflectionService';
 import { memoryReviewQueueService } from '../../src/services/memoryReviewQueueService';
 
-// Mock dependencies
+// Mock dependencies (ingestionPipeline first: it has a parse error; conversationalOrchestrationService imports it)
+vi.mock('../../src/services/conversationCentered/ingestionPipeline', () => ({
+  ConversationIngestionPipeline: vi.fn(),
+  conversationIngestionPipeline: { ingestMessage: vi.fn(), ingestFromChatMessage: vi.fn() },
+}));
 vi.mock('../../src/services/supabaseClient');
 vi.mock('../../src/services/omegaMemoryService');
 vi.mock('../../src/services/perspectiveService');

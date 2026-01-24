@@ -351,6 +351,29 @@ export default function Landing() {
           }}
         />
 
+        {/* Team / Founder */}
+        <section className="py-12 sm:py-16 px-4 sm:px-6 lg:px-8 bg-black/20">
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center px-2 sm:px-0">Team</h2>
+            <div className="rounded-xl border border-border/60 bg-black/40 backdrop-blur-sm p-4 sm:p-6 md:p-8">
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
+                <img
+                  src="/branding/mePro.JPG"
+                  alt="Abel Mendoza, Founder"
+                  className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover flex-shrink-0 border-2 border-white/10"
+                />
+                <div className="flex-1 text-center sm:text-left">
+                  <h3 className="text-xl sm:text-2xl font-semibold text-white mb-2">Abel Mendoza</h3>
+                  <p className="text-sm sm:text-base text-white/70 leading-relaxed">
+                    Founder & Lead Developer. Crafting AI-first storytelling infrastructure with care for privacy and agency.
+                    Building LoreBook as a lifelong digital companion that understands complete life stories.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Investor CTA */}
         <section className="py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center">
