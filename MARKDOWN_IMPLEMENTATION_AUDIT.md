@@ -190,24 +190,45 @@ This audit checks major documentation files against actual code implementation. 
 
 ## 9. Engine Registry (apps/server/src/engineRuntime/engineRegistry.ts)
 
-### Status: ⚠️ **Partially Implemented**
+### Status: ✅ **Fully Implemented**
 
-**Placeholder Engines** (Not Implemented):
-- ❌ chronology
-- ❌ continuity
-- ❌ implicitMotive
-- ❌ health
-- ❌ financial
-- ❌ habits
-- ❌ decisions
-- ❌ resilience
-- ❌ influence
-- ❌ growth
-- ❌ legacy
+**All Engines Implemented**:
+- ✅ chronology - ChronologyEngine (processes events)
+- ✅ continuity - ContinuityService (runs continuity analysis)
+- ✅ health - HealthEngine
+- ✅ financial - FinancialEngine
+- ✅ habits - HabitEngine
+- ✅ decisions - DecisionEngine
+- ✅ resilience - ResilienceEngine
+- ✅ influence - InfluenceEngine
+- ✅ growth - GrowthEngine
+- ✅ legacy - LegacyEngine
+- ✅ values - ValuesEngine
+- ✅ dreams - DreamsEngine
+- ✅ recommendation - RecommendationEngine
+- ✅ storyOfSelf - StoryOfSelfEngine
+- ✅ innerDialogue - InnerDialogueEngine
+- ✅ alternateSelf - AlternateSelfEngine
+- ✅ cognitiveBias - CognitiveBiasEngine
+- ✅ distortion - DistortionEngine
+- ✅ shadow - ShadowEngine
+- ✅ will - WillEngine
+- ✅ identityCore - IdentityCoreEngine
+- ✅ archetype - ArchetypeEngine
+- ✅ paracosm - ParacosmEngine
+- ✅ social - SocialEngine
+- ✅ goals - GoalsEngine
+- ✅ eq - EQEngine
 
-**Status**: These engines are registered but return "Engine not yet implemented" messages.
+**Status**: All engines are fully implemented and connected. Engines run automatically on new entries and are scheduled daily at 2 AM.
 
-**Note**: This is intentional - engines are registered but not yet built. Documentation should clarify this.
+**Features**:
+- Parallel execution with dependency-aware batching
+- Concurrency limits (default: 5 engines at once)
+- Context optimization (default: 1000 entries or 90 days)
+- Sensemaking orchestrator integration
+- TTL-based result caching (24 hours)
+- Retry logic with exponential backoff
 
 ---
 

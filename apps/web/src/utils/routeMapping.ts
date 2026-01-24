@@ -26,7 +26,8 @@ export type SurfaceKey =
   | 'privacy-settings'
   | 'guide'
   | 'love'
-  | 'quests';
+  | 'quests'
+  | 'gaps';
 
 /**
  * Map from route path to surface key
@@ -56,6 +57,7 @@ export const routeToSurface: Record<string, SurfaceKey> = {
   '/guide': 'guide',
   '/love': 'love',
   '/quests': 'quests',
+  '/gaps': 'gaps',
 };
 
 /**
@@ -84,6 +86,7 @@ export const surfaceToRoute: Record<SurfaceKey, string> = {
   'guide': '/guide',
   'love': '/love',
   'quests': '/quests',
+  'gaps': '/gaps',
 };
 
 /**

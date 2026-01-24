@@ -62,19 +62,20 @@ export class EssenceRefinementEngine {
   async handleChatMessage(
     userId: string,
     chatMessage: string,
-    context: RefinementContext = {}
+    context: RefinementContext = {},
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<RefinementResult> {
     try {
-      // 1. Detect refinement intent
-      const intentResult = await this.detectRefinementIntent(chatMessage);
+      // 1. Detect refinement intent (with conversation history context)
+      const intentResult = await this.detectRefinementIntent(chatMessage, conversationHistory);
       
       if (intentResult.intent === 'unclear' || intentResult.confidence < this.INTENT_CONFIDENCE_THRESHOLD) {
         // Not a refinement message, exit silently
         return { silentProfileUpdate: false };
       }
 
-      // 2. Resolve target insight
-      const insightResult = await this.resolveTargetInsight(userId, chatMessage, context, intentResult.intent);
+      // 2. Resolve target insight (with conversation history context)
+      const insightResult = await this.resolveTargetInsight(userId, chatMessage, context, intentResult.intent, conversationHistory);
       
       if (insightResult.clarificationRequest) {
         return { clarificationRequest: insightResult.clarificationRequest };
@@ -112,10 +113,11 @@ export class EssenceRefinementEngine {
 
   /**
    * 1. INTENT DETECTION
-   * Uses LLM to classify refinement intent
+   * Uses LLM to classify refinement intent (with conversation history for context)
    */
   private async detectRefinementIntent(
-    chatMessage: string
+    chatMessage: string,
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<{ intent: RefinementIntent; confidence: number; metadata?: any }> {
     try {
       const completion = await openai.chat.completions.create({
@@ -131,27 +133,39 @@ Possible intents:
 - "affirm" - User confirms an insight is accurate
 - "downgrade_confidence" - User says something is less true, outdated, or not as strong
 - "reject" - User explicitly disagrees or says "that's not me"
-- "time_bound" - User says something was only true during a specific time period
-- "scope_refine" - User says something is true but only in a specific context (e.g., "only at work")
-- "split_insight" - User says something is "half true" or partially accurate
+- "time_bound" - User says something was only true during a specific time period (e.g., "that was true in 2023 but not now", "only when I was younger")
+- "scope_refine" - User says something is true but only in a specific context (e.g., "only at work", "just with my family")
+- "split_insight" - User says something is "half true", "partially accurate", or "both true and false"
 - "unclear" - Message doesn't clearly express refinement intent
+
+Temporal reasoning:
+- Look for time references: "used to", "back then", "in 2023", "when I was", "now", "currently"
+- Extract temporal scope: validFrom, validTo, era
+- If user says "that was true but not anymore", use time_bound intent
 
 Return JSON:
 {
   "intent": "affirm" | "downgrade_confidence" | "reject" | "time_bound" | "scope_refine" | "split_insight" | "unclear",
   "confidence": 0.0-1.0,
   "metadata": {
-    "temporalScope"?: {"validFrom": "...", "validTo": "...", "era": "..."},
-    "domainScope"?: "professional" | "personal" | "work" | "relationships" | etc.,
-    "refinementText"?: "refined version of the insight"
+    "temporalScope"?: {"validFrom": "YYYY-MM-DD or relative time", "validTo": "YYYY-MM-DD or relative time", "era": "description"},
+    "domainScope"?: "professional" | "personal" | "work" | "relationships" | "social" | "creative" | etc.,
+    "refinementText"?: "refined version of the insight",
+    "reason": "brief explanation of why this intent was detected"
   }
 }
 
-Be conservative. Only return high confidence if intent is clear.`
+Be conservative. Only return high confidence (>0.6) if intent is clear. Use conversation history for context.`
           },
+          ...(conversationHistory && conversationHistory.length > 0
+            ? conversationHistory.slice(-3).map(msg => ({
+                role: msg.role === 'user' ? 'user' as const : 'assistant' as const,
+                content: msg.content
+              }))
+            : []),
           {
             role: 'user',
-            content: `User message: "${chatMessage}"`
+            content: `Current user message: "${chatMessage}"`
           }
         ]
       });
@@ -171,13 +185,14 @@ Be conservative. Only return high confidence if intent is clear.`
 
   /**
    * 2. INSIGHT RESOLUTION
-   * Resolves which insight the user is referring to
+   * Resolves which insight the user is referring to (with conversation history for context)
    */
   private async resolveTargetInsight(
     userId: string,
     chatMessage: string,
     context: RefinementContext,
-    intent: RefinementIntent
+    intent: RefinementIntent,
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<{ insight?: { id: string; category: string; text: string; confidence: number }; clarificationRequest?: string }> {
     try {
       const profile = await essenceProfileService.getProfile(userId);
@@ -203,9 +218,12 @@ Be conservative. Only return high confidence if intent is clear.`
           }
         }
 
-        // Try semantic similarity on last surfaced insights
+        // Try semantic similarity on last surfaced insights (with conversation context)
+        const conversationContext = conversationHistory 
+          ? conversationHistory.slice(-2).map(m => m.content).join(' ')
+          : '';
         const semanticMatch = await this.findSemanticMatch(
-          chatMessage,
+          `${conversationContext} ${chatMessage}`,
           context.lastSurfacedInsights.map(i => ({ id: i.id, text: i.text, category: i.category }))
         );
         if (semanticMatch && semanticMatch.score > this.INSIGHT_SIMILARITY_THRESHOLD) {
@@ -224,9 +242,12 @@ Be conservative. Only return high confidence if intent is clear.`
         return { clarificationRequest: 'Which part of your Soul Profile are you referring to?' };
       }
 
-      // Try semantic similarity on all visible insights
+      // Try semantic similarity on all visible insights (with conversation context)
+      const conversationContext = conversationHistory 
+        ? conversationHistory.slice(-2).map(m => m.content).join(' ')
+        : '';
       const semanticMatch = await this.findSemanticMatch(
-        chatMessage,
+        `${conversationContext} ${chatMessage}`,
         visibleInsights.map(i => ({ id: i.id, text: i.text, category: i.category }))
       );
 
@@ -299,7 +320,9 @@ Be conservative. Only return high confidence if intent is clear.`
 
       case 'time_bound':
         // Extract temporal scope and lower present confidence
-        metadata.temporalScope = intentMetadata.temporalScope || {};
+        // Enhanced temporal reasoning: parse relative dates, extract eras
+        const temporalScope = this.parseTemporalScope(intentMetadata.temporalScope, chatMessage);
+        metadata.temporalScope = temporalScope;
         const timeBoundConfidence = Math.max(insight.confidence - 0.2, 0.3);
         metadata.confidenceChange = timeBoundConfidence - insight.confidence;
         await this.updateInsightWithTemporalScope(
@@ -308,7 +331,7 @@ Be conservative. Only return high confidence if intent is clear.`
           insight.id,
           insight.category,
           timeBoundConfidence,
-          intentMetadata.temporalScope
+          temporalScope
         );
         metadata.refinementText = insight.text;
         break;
@@ -715,6 +738,40 @@ Be conservative. Only return high confidence if intent is clear.`
       logger.error({ error }, 'Failed to save full profile');
       throw error;
     }
+  }
+
+  /**
+   * Parse temporal scope from metadata and chat message
+   * Handles relative dates, eras, and time periods
+   */
+  private parseTemporalScope(metadataScope: any, chatMessage: string): any {
+    const scope: any = { ...metadataScope };
+
+    // Extract relative time references from message
+    const now = new Date();
+    const relativePatterns = [
+      { pattern: /(in|during|back in) (\d{4})/i, extract: (match: RegExpMatchArray) => ({ year: parseInt(match[2]) }) },
+      { pattern: /(when i was|when i lived|during my)/i, extract: () => ({ relative: 'past_life_period' }) },
+      { pattern: /(used to|formerly|previously)/i, extract: () => ({ relative: 'past' }) },
+      { pattern: /(now|currently|these days|presently)/i, extract: () => ({ relative: 'present' }) },
+      { pattern: /(last year|(\d+) years? ago)/i, extract: (match: RegExpMatchArray) => {
+        const yearsAgo = match[2] ? parseInt(match[2]) : 1;
+        const date = new Date(now);
+        date.setFullYear(date.getFullYear() - yearsAgo);
+        return { validTo: date.toISOString().split('T')[0] };
+      }},
+    ];
+
+    for (const { pattern, extract } of relativePatterns) {
+      const match = chatMessage.match(pattern);
+      if (match) {
+        const extracted = extract(match);
+        Object.assign(scope, extracted);
+        break;
+      }
+    }
+
+    return scope;
   }
 }
 

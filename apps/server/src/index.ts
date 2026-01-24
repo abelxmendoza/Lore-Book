@@ -203,15 +203,19 @@ try {
   logger.warn({ error }, 'Failed to register background jobs, continuing anyway');
 }
 
-// Start engine scheduler (if enabled)
-if (process.env.ENABLE_ENGINE_SCHEDULER === 'true') {
+// Start engine scheduler
+// Runs daily at 2 AM to recalculate engines for all users
+// Can be disabled by setting DISABLE_ENGINE_SCHEDULER=true
+if (process.env.DISABLE_ENGINE_SCHEDULER !== 'true') {
   try {
     const { startEngineScheduler } = await import('./engineRuntime/scheduler');
     startEngineScheduler();
-    logger.info('Engine scheduler started');
+    logger.info('Engine scheduler started (runs daily at 2 AM)');
   } catch (error) {
     logger.warn({ error }, 'Failed to start engine scheduler, continuing anyway');
   }
+} else {
+  logger.info('Engine scheduler disabled (DISABLE_ENGINE_SCHEDULER=true)');
 }
 
 const server = app.listen(config.port, () => {

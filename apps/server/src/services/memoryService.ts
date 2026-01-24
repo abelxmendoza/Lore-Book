@@ -99,6 +99,16 @@ class MemoryService {
       logger.warn({ serviceError }, 'Entry saved but failed to track people/places');
     }
 
+    // Trigger engine processing for new entry (fire and forget - non-blocking)
+    try {
+      const { onNewEntry } = await import('../engineRuntime/triggers');
+      onNewEntry(payload.userId, entry.id).catch((err) => {
+        logger.warn({ error: err, userId: payload.userId, entryId: entry.id }, 'Engine trigger failed');
+      });
+    } catch (error) {
+      logger.debug({ error }, 'Engine triggers not available, skipping');
+    }
+
     // Auto-extract skills from entry (fire and forget - non-blocking)
     // Only for non-encrypted entries with sufficient content
     if (!isEncrypted && payload.content && payload.content.length > 50) {

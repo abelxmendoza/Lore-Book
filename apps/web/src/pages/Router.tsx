@@ -16,6 +16,7 @@ const AccountCenter = lazy(() => import('../routes/AccountCenter'));
 
 // Lazy load public routes
 const Login = lazy(() => import('../routes/Login'));
+const AuthCallback = lazy(() => import('../routes/AuthCallback'));
 const NotFound = lazy(() => import('../routes/NotFound'));
 const Terms = lazy(() => import('../routes/Terms'));
 const PrivacyPolicy = lazy(() => import('../routes/PrivacyPolicy'));
@@ -237,6 +238,14 @@ export const Router = () => {
         } 
       />
       <Route 
+        path="/gaps" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="gaps" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
         path="/continuity" 
         element={
           <LazyRoute>
@@ -283,6 +292,14 @@ export const Router = () => {
         element={
           <LazyRoute>
             <Login />
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/auth/callback" 
+        element={
+          <LazyRoute>
+            <AuthCallback />
           </LazyRoute>
         } 
       />

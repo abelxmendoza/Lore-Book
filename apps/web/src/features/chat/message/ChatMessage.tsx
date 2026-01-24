@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { parseConnections } from '../../../utils/parseConnections';
@@ -101,11 +101,33 @@ export const ChatMessage = ({
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-    onCopy?.();
+  const handleCopy = async () => {
+    try {
+      // Get plain text content (strip markdown if needed)
+      const textToCopy = message.content;
+      await navigator.clipboard.writeText(textToCopy);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      onCopy?.();
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = message.content;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        onCopy?.();
+      } catch (err) {
+        console.error('Fallback copy failed:', err);
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const handleFeedback = (feedback: 'positive' | 'negative') => {
@@ -238,7 +260,21 @@ export const ChatMessage = ({
           )}
 
           {/* Main Content */}
-          <div className="relative">
+          <div className="relative group/content">
+            {/* Copy button - always visible for assistant messages */}
+            {!isUser && onCopy && (
+              <button
+                onClick={handleCopy}
+                className="absolute -right-12 top-0 h-8 w-8 flex items-center justify-center rounded-md hover:bg-white/10 active:bg-white/20 text-white/60 hover:text-white transition-all opacity-70 hover:opacity-100"
+                title={copied ? 'Copied!' : 'Copy response'}
+              >
+                {copied ? (
+                  <Check className="h-4 w-4 text-green-400" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </button>
+            )}
             {!isUser ? (
               <div className="prose prose-invert prose-base sm:prose-lg lg:prose-xl max-w-none prose-headings:text-white prose-p:text-white/90 prose-p:leading-relaxed prose-p:my-3 sm:prose-p:my-4 prose-a:text-primary prose-strong:text-white prose-code:text-white prose-pre:bg-black/40">
                 <MarkdownRenderer 

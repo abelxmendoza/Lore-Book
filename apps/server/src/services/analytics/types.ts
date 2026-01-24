@@ -14,7 +14,8 @@ export type AnalyticsModuleType =
   | 'xp'
   | 'life_map'
   | 'search'
-  | 'characters';
+  | 'characters'
+  | 'rpg';
 
 export interface AnalyticsPayload {
   metrics: Record<string, any>;

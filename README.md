@@ -1148,6 +1148,7 @@ psql "your-db-url" -f migrations/your_migration.sql
 - `/api/temporal-events/*` - Temporal Event Resolution Engine (resolve, events, event by ID)
 - `/api/engines/*` - Engine Manifest System (list, search, get-blueprint, sync)
 - `/api/engine-registry/*` - Engine Registry & Health System (list, health, run, run-all)
+- `/api/engine-runtime/*` - Engine Runtime System (summary, cached, run single engine, list engines)
 - `/api/chronology/*` - Chronology Engine (analyze, gaps, causality, narrative)
 - `/api/analytics/*` - Analytics modules (identity, relationships, characters, sagas, fabric, insights, predictions, shadow, xp, life-map)
 - `/api/recommendations/*` - Recommendation Engine (get, history, show, dismiss, act, refresh, stats)

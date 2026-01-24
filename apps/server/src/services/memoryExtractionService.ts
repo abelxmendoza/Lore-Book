@@ -168,12 +168,55 @@ class MemoryExtractionService {
         logger.error({ error }, 'Failed to build knowledge graph edges');
       });
 
+    // Check for identity signals and trigger Identity Core Engine (fire-and-forget)
+    this.triggerIdentityExtraction(input.userId, journalEntry, savedComponents).catch(error => {
+      logger.debug({ error, entryId: journalEntry.id }, 'Identity extraction failed (non-blocking)');
+    });
+
     return {
       journalEntry,
       components: savedComponents,
       timelineLinks,
       extractionConfidence: detection.confidence,
     };
+  }
+
+  /**
+   * Trigger identity extraction if entry contains identity signals
+   */
+  private async triggerIdentityExtraction(
+    userId: string,
+    journalEntry: MemoryEntry,
+    components: MemoryComponent[]
+  ): Promise<void> {
+    try {
+      // Quick check: does entry text contain identity signal patterns?
+      const { IdentitySignalExtractor } = await import('./identityCore/identitySignals');
+      const signalExtractor = new IdentitySignalExtractor();
+      
+      // Create entry-like object for signal extraction
+      const entryForExtraction = {
+        id: journalEntry.id,
+        text: journalEntry.content,
+        timestamp: journalEntry.date,
+      };
+
+      const signals = signalExtractor.extract([entryForExtraction]);
+
+      if (signals.length > 0) {
+        logger.debug({ userId, entryId: journalEntry.id, signalCount: signals.length }, 'Identity signals detected, triggering Identity Core Engine');
+        
+        // Trigger Identity Core Engine processing (fire-and-forget)
+        const { IdentityCoreEngine } = await import('./identityCore/identityCoreEngine');
+        const identityEngine = new IdentityCoreEngine();
+        
+        // Process from single entry (incremental mode)
+        await identityEngine.processFromEntry(userId, entryForExtraction, components);
+      }
+    } catch (error) {
+      logger.debug({ error, entryId: journalEntry.id }, 'Failed to trigger identity extraction');
+      // Don't throw - this is fire-and-forget
+    }
   }
 
   /**

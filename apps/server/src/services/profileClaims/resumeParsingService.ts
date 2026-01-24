@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto';
 
+import mammoth from 'mammoth';
 import OpenAI from 'openai';
+import pdfParse from 'pdf-parse';
 
 import { config } from '../../config';
 import { logger } from '../../logger';
@@ -43,7 +45,7 @@ export interface ExtractedClaim {
 class ResumeParsingService {
   /**
    * Extract text from a file buffer
-   * Currently supports TXT. PDF/DOC support can be added later with libraries like pdf-parse, mammoth
+   * Supports TXT, PDF, and DOCX formats
    */
   async extractTextFromFile(
     fileBuffer: Buffer,
@@ -54,19 +56,43 @@ class ResumeParsingService {
         return fileBuffer.toString('utf-8');
       }
 
-      // TODO: Add PDF/DOC parsing
-      // For now, throw error for unsupported types
       if (fileType === 'pdf') {
-        throw new Error('PDF parsing not yet implemented. Please convert to TXT first.');
+        try {
+          const pdfData = await pdfParse(fileBuffer);
+          return pdfData.text;
+        } catch (error) {
+          logger.error({ error, fileType }, 'Failed to parse PDF file');
+          throw new Error('Failed to parse PDF file. The file may be corrupted or encrypted.');
+        }
       }
-      if (fileType === 'doc' || fileType === 'docx') {
-        throw new Error('DOC/DOCX parsing not yet implemented. Please convert to TXT first.');
+
+      if (fileType === 'docx') {
+        try {
+          const result = await mammoth.extractRawText({ buffer: fileBuffer });
+          return result.value;
+        } catch (error) {
+          logger.error({ error, fileType }, 'Failed to parse DOCX file');
+          throw new Error('Failed to parse DOCX file. The file may be corrupted.');
+        }
+      }
+
+      if (fileType === 'doc') {
+        // DOC format (old Microsoft Word) is harder to parse
+        // Mammoth doesn't support it, would need a different library
+        // For now, suggest conversion to DOCX
+        throw new Error(
+          'DOC format (old Microsoft Word) is not supported. Please convert to DOCX or PDF format.'
+        );
       }
 
       throw new Error(`Unsupported file type: ${fileType}`);
     } catch (error) {
+      // Re-throw if it's already our custom error
+      if (error instanceof Error && error.message.includes('Failed to parse') || error.message.includes('not supported')) {
+        throw error;
+      }
       logger.error({ error, fileType }, 'Failed to extract text from file');
-      throw error;
+      throw new Error(`Failed to extract text from ${fileType} file: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

@@ -235,5 +235,153 @@ export class IdentityStorage {
       return [];
     }
   }
+
+  /**
+   * Link identity signals to memory components (bidirectional)
+   */
+  async linkSignalsToComponents(signals: any[], components: any[]): Promise<void> {
+    try {
+      // Create links in identity_signal_memory_component_links table
+      for (const signal of signals) {
+        if (!signal.id) continue;
+
+        for (const component of components) {
+          if (!component.id) continue;
+
+          // Insert link (ignore duplicates)
+          await supabaseAdmin
+            .from('identity_signal_memory_component_links')
+            .insert({
+              signal_id: signal.id,
+              component_id: component.id,
+            })
+            .then(({ error }) => {
+              if (error && error.code !== '23505') { // Ignore duplicate key errors
+                logger.debug({ error, signalId: signal.id, componentId: component.id }, 'Failed to link signal to component');
+              }
+            });
+        }
+      }
+
+      logger.debug({ signalCount: signals.length, componentCount: components.length }, 'Linked signals to components');
+    } catch (error) {
+      logger.error({ error }, 'Error linking signals to components');
+      // Don't throw - this is non-critical
+    }
+  }
+
+  /**
+   * Update existing profile
+   */
+  async updateProfile(profileId: string, profile: Partial<IdentityCoreProfile>): Promise<any> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('identity_core_profiles')
+        .update({
+          dimensions: profile.dimensions,
+          conflicts: profile.conflicts,
+          stability: profile.stability,
+          projection: profile.projection,
+          summary: profile.summary,
+          profile_data: profile,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', profileId)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, profileId }, 'Error updating profile');
+        throw error;
+      }
+
+      return { data };
+    } catch (error) {
+      logger.error({ error, profileId }, 'Error updating profile');
+      throw error;
+    }
+  }
+
+  /**
+   * Create timeline events for identity changes
+   */
+  async createTimelineEvents(
+    userId: string,
+    profileId: string,
+    dimensions: any[],
+    conflicts: any[],
+    stability: any
+  ): Promise<void> {
+    try {
+      const events: any[] = [];
+
+      // Event for each dimension
+      for (const dim of dimensions) {
+        events.push({
+          user_id: userId,
+          profile_id: profileId,
+          event_type: 'dimension_added',
+          description: `Identity dimension "${dim.name}" detected (score: ${((dim.score || 0) * 100).toFixed(0)}%)`,
+          metadata: {
+            dimension_name: dim.name,
+            dimension_score: dim.score,
+            signal_count: dim.signals?.length || 0,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Event for each conflict
+      for (const conflict of conflicts) {
+        events.push({
+          user_id: userId,
+          profile_id: profileId,
+          event_type: 'conflict_detected',
+          description: `Identity conflict detected: ${conflict.conflictName} (tension: ${((conflict.tension || 0) * 100).toFixed(0)}%)`,
+          metadata: {
+            conflict_name: conflict.conflictName,
+            positive_side: conflict.positiveSide,
+            negative_side: conflict.negativeSide,
+            tension: conflict.tension,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Event for stability shift
+      if (stability.volatility !== undefined) {
+        const volatilityStatus = stability.volatility > 0.7 ? 'High volatility (identity shifting)' :
+                                  stability.volatility > 0.4 ? 'Moderate volatility (exploring)' :
+                                  'Stable identity';
+        events.push({
+          user_id: userId,
+          profile_id: profileId,
+          event_type: 'stability_shift',
+          description: `Identity stability: ${volatilityStatus}`,
+          metadata: {
+            volatility: stability.volatility,
+            anchor_count: stability.anchors?.length || 0,
+            unstable_trait_count: stability.unstableTraits?.length || 0,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Insert events (ignore if table doesn't exist)
+      if (events.length > 0) {
+        await supabaseAdmin
+          .from('identity_timeline_events')
+          .insert(events)
+          .then(({ error }) => {
+            if (error && error.code !== '42P01') {
+              logger.debug({ error }, 'Failed to create identity timeline events');
+            }
+          });
+      }
+    } catch (error) {
+      logger.debug({ error }, 'Failed to create identity timeline events (table may not exist)');
+      // Don't throw - this is non-critical
+    }
+  }
 }
 

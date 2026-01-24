@@ -11,6 +11,8 @@ import { TimelineLanes } from './TimelineLanes';
 import { MemoryHoverPreview } from './MemoryHoverPreview';
 import { MemoryPanel } from './MemoryPanel';
 import { EmotionHeatmap } from './EmotionHeatmap';
+import { VoidMemoryOverlay } from './VoidMemoryOverlay';
+import { VoidDetailsModal } from '../voids/VoidDetailsModal';
 
 const LANES = ['life', 'robotics', 'mma', 'work', 'creative'];
 
@@ -29,6 +31,8 @@ export const TimelinePage = () => {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showHighlightsOnly, setShowHighlightsOnly] = useState(false);
   const [showConnections, setShowConnections] = useState(true);
+  const [selectedVoid, setSelectedVoid] = useState<any>(null);
+  const [showVoidModal, setShowVoidModal] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -453,6 +457,17 @@ export const TimelinePage = () => {
             showConnections={showConnections}
           />
 
+          {/* Void Memory Overlay */}
+          <VoidMemoryOverlay
+            startDate={startDate}
+            endDate={endDate}
+            pixelsPerDay={pixelsPerDay}
+            onVoidClick={(voidPeriod) => {
+              setSelectedVoid(voidPeriod);
+              setShowVoidModal(true);
+            }}
+          />
+
           {/* Emotion Heatmap Overlay */}
           {showHeatmap && (
             <EmotionHeatmap
@@ -491,6 +506,22 @@ export const TimelinePage = () => {
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-primary/90 text-white px-4 py-2 rounded-lg shadow-lg z-50">
           <p className="text-sm font-medium">Linking Mode: Click another memory to create a link</p>
         </div>
+      )}
+
+      {/* Void Details Modal */}
+      {showVoidModal && selectedVoid && (
+        <VoidDetailsModal
+          voidPeriod={selectedVoid}
+          onClose={() => {
+            setShowVoidModal(false);
+            setSelectedVoid(null);
+          }}
+          onFillGap={(voidPeriod) => {
+            const dateText = new Date(voidPeriod.start).toISOString().split('T')[0];
+            const promptText = voidPeriod.prompts[0] ? encodeURIComponent(voidPeriod.prompts[0]) : '';
+            window.location.href = `/?surface=chat&date=${dateText}${promptText ? `&prompt=${promptText}` : ''}`;
+          }}
+        />
       )}
     </div>
   );

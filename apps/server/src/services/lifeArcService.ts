@@ -164,21 +164,6 @@ export class LifeArcService {
           : undefined,
       };
 
-      // NEW: Aggregate entity confidence for this arc
-      const arcConfidences = await this.aggregateArcConfidence(userId, events);
-      const avgArcConfidence = arcConfidences.length > 0
-        ? arcConfidences.reduce((a, b) => a + b, 0) / arcConfidences.length
-        : 0.5;
-
-      // NEW: Add confidence metadata to narrative summary
-      const narrativeSummaryWithConfidence: NarrativeSummary = {
-        ...narrativeSummary,
-        confidence: avgArcConfidence,
-        uncertainty_note: avgArcConfidence < 0.5
-          ? "This arc contains high ambiguity overall"
-          : undefined,
-      };
-
       return {
         timeframe,
         event_groups: eventGroups,

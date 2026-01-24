@@ -1,9 +1,8 @@
 import { randomUUID } from 'crypto';
 
-import OpenAI from 'openai';
-
 import { config } from '../config';
 import { logger } from '../logger';
+import { openai } from '../lib/openai';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
 import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/keywordDetector';
 
@@ -41,8 +40,6 @@ import { ChatPersonaRL } from './reinforcementLearning/chatPersonaRL';
 import { supabaseAdmin } from './supabaseClient';
 import { taskEngineService } from './taskEngineService';
 import { timeEngine } from './timeEngine';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type ChatSource = {
   type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
@@ -130,6 +127,52 @@ export type StreamingChatResponse = {
 
 class OmegaChatService {
   private personaRL: ChatPersonaRL;
+
+  /**
+   * Process passing thought (fire-and-forget, non-blocking)
+   * Detects thought type, checks insecurity patterns, generates response
+   */
+  private async processPassingThought(
+    userId: string,
+    message: string,
+    messageId: string
+  ): Promise<void> {
+    try {
+      // Quick check: is this likely a passing thought?
+      // Short messages (<200 chars) that aren't questions are candidates
+      if (message.length > 200 || message.includes('?')) {
+        return; // Probably not a passing thought
+      }
+
+      const { thoughtOrchestrationService } = await import('./thoughtOrchestration/thoughtOrchestrationService');
+      
+      // Process thought (target <300ms)
+      const result = await thoughtOrchestrationService.processThought(
+        userId,
+        message,
+        { messageId }
+      );
+
+      // If it's an insecurity with a response, we could optionally:
+      // 1. Include response in chat metadata
+      // 2. Show as a gentle interruption
+      // 3. Store for later reference
+      // For now, just process and store - UI can query separately
+      
+      logger.debug(
+        { 
+          userId, 
+          thoughtType: result.classification.type,
+          posture: result.response.posture,
+          processingTime: result.processing_time_ms 
+        },
+        'Passing thought processed'
+      );
+    } catch (error) {
+      // Fail silently - never interrupt chat flow
+      logger.debug({ err: error }, 'Thought processing failed');
+    }
+  }
 
   constructor() {
     this.personaRL = new ChatPersonaRL();
@@ -656,6 +699,7 @@ class OmegaChatService {
       timelineHierarchy?: any;
       allPeoplePlaces?: any[];
       essenceProfile?: any;
+      identityCoreProfile?: any;
       characterAttributesMap?: Record<string, any[]>;
       romanticRelationships?: any[];
       corrections?: any[];
@@ -757,6 +801,9 @@ class OmegaChatService {
 
     // Build essence profile context
     const essenceContext = loreData?.essenceProfile ? this.buildEssenceContext(loreData.essenceProfile) : '';
+
+    // Build Identity Core context
+    const identityCoreContext = loreData?.identityCoreProfile ? this.buildIdentityCoreContext(loreData.identityCoreProfile) : '';
 
     // Build entity analytics context if provided (with confidence gating)
     let entityAnalyticsContext = '';
@@ -911,6 +958,7 @@ ${timelineHierarchyKnowledge ? `**TIMELINE HIERARCHY:**\n${timelineHierarchyKnow
 ${identityKnowledge ? `**IDENTITY:**\n${identityKnowledge}\n\n` : ''}
 ${continuityKnowledge ? `**CONTINUITY:**\n${continuityKnowledge}\n\n` : ''}
 ${essenceContext ? `**ESSENCE PROFILE - WHAT YOU KNOW ABOUT THEIR CORE SELF:**\n${essenceContext}\n\n` : ''}
+${identityCoreContext ? `**IDENTITY CORE - ARCHETYPAL DIMENSIONS & CONFLICTS:**\n${identityCoreContext}\n\n` : ''}
 ${entityAnalyticsContext ? `**CURRENT ENTITY ANALYTICS:**\n${entityAnalyticsContext}\n\n` : ''}
 
 ${loreData?.romanticRelationships && loreData.romanticRelationships.length > 0 ? `**ROMANTIC RELATIONSHIPS (${loreData.romanticRelationships.length} total):**
@@ -1159,6 +1207,84 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
   }
 
   /**
+   * Extract identity signals from chat message
+   */
+  private async extractIdentityFromChatMessage(
+    userId: string,
+    message: string,
+    messageId?: string
+  ): Promise<void> {
+    try {
+      // Quick check: does message contain identity signal patterns?
+      const { IdentitySignalExtractor } = await import('./identityCore/identitySignals');
+      const signalExtractor = new IdentitySignalExtractor();
+      
+      // Create entry-like object for signal extraction
+      const entryForExtraction = {
+        id: messageId || `chat-${Date.now()}`,
+        text: message,
+        timestamp: new Date().toISOString(),
+      };
+
+      const signals = await signalExtractor.extract([entryForExtraction]);
+
+      if (signals.length > 0) {
+        logger.debug({ userId, messageId, signalCount: signals.length }, 'Identity signals detected in chat message');
+        
+        // Trigger Identity Core Engine processing (fire-and-forget)
+        const { IdentityCoreEngine } = await import('./identityCore/identityCoreEngine');
+        const identityEngine = new IdentityCoreEngine();
+        
+        // Process from chat message (incremental mode)
+        await identityEngine.processFromEntry(userId, entryForExtraction);
+      }
+    } catch (error) {
+      logger.debug({ error, messageId }, 'Failed to extract identity from chat message');
+      // Don't throw - this is fire-and-forget
+    }
+  }
+
+  /**
+   * Build Identity Core context string for system prompt
+   */
+  private buildIdentityCoreContext(profile: any): string {
+    const parts: string[] = [];
+    
+    if (profile.dimensions && profile.dimensions.length > 0) {
+      const dimensionNames = profile.dimensions
+        .sort((a: any, b: any) => (b.score || 0) - (a.score || 0))
+        .slice(0, 5)
+        .map((d: any) => `${d.name} (${((d.score || 0) * 100).toFixed(0)}%)`);
+      parts.push(`Identity Dimensions: ${dimensionNames.join(', ')}`);
+    }
+    
+    if (profile.conflicts && profile.conflicts.length > 0) {
+      const conflictNames = profile.conflicts
+        .slice(0, 3)
+        .map((c: any) => `${c.conflictName || c.positiveSide} vs ${c.negativeSide}`);
+      parts.push(`Internal Conflicts: ${conflictNames.join('; ')}`);
+    }
+    
+    if (profile.stability) {
+      const volatility = profile.stability.volatility || 0;
+      const status = volatility > 0.7 ? 'High volatility (identity shifting)' : 
+                     volatility > 0.4 ? 'Moderate volatility (exploring)' : 
+                     'Stable identity';
+      parts.push(`Identity Stability: ${status}`);
+      
+      if (profile.stability.anchors && profile.stability.anchors.length > 0) {
+        parts.push(`Core Anchors: ${profile.stability.anchors.slice(0, 3).join(', ')}`);
+      }
+    }
+    
+    if (profile.projection && profile.projection.predictedIdentity) {
+      parts.push(`Identity Trajectory: ${profile.projection.predictedIdentity}`);
+    }
+    
+    return parts.length > 0 ? parts.join('\n') : '';
+  }
+
+  /**
    * Chat with streaming support
    */
   async chatStream(
@@ -1167,6 +1293,56 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string }
   ): Promise<StreamingChatResponse> {
+    // =====================================================
+    // MODE ROUTER (NEW - FIRST GATE)
+    // =====================================================
+    try {
+      const { modeRouterService } = await import('./modeRouter/modeRouterService');
+      const { modeHandlers } = await import('./modeRouter/modeHandlers');
+      const { formatModeResponse } = await import('./modeRouter/responseFormatter');
+      
+      const routing = await modeRouterService.routeMessage(userId, message, conversationHistory);
+      
+      // Route to appropriate handler if mode is known
+      if (routing.mode !== 'UNKNOWN') {
+        // For EXPERIENCE_INGESTION and ACTION_LOG, we need messageId - save message first
+        let messageId: string | undefined;
+        if (routing.mode === 'EXPERIENCE_INGESTION' || routing.mode === 'ACTION_LOG') {
+          const sessionId = await this.getOrCreateChatSession(userId);
+          const { data: savedMessage, error: saveError } = await supabaseAdmin
+            .from('chat_messages')
+            .insert({
+              user_id: userId,
+              session_id: sessionId,
+              role: 'user',
+              content: message,
+            })
+            .select('id')
+            .single();
+          
+          if (!saveError && savedMessage) {
+            messageId = savedMessage.id;
+          } else {
+            logger.warn({ error: saveError, mode: routing.mode }, 'Failed to save message for ingestion/logging');
+          }
+        }
+        
+        // Handle mode
+        const handlerResponse = await modeHandlers.handleMode(
+          routing.mode,
+          userId,
+          message,
+          { messageId, conversationHistory }
+        );
+        
+        // Format and return response
+        return formatModeResponse(handlerResponse, routing.mode);
+      }
+    } catch (error) {
+      logger.warn({ error, userId, message }, 'Mode routing failed, falling back to normal chat');
+      // Fall through to existing chat flow
+    }
+
     // ---- RECALL GATE: Check if this is a recall query (non-streaming, immediate response) ----
     try {
       const { isRecallQuery, shouldForceArchivist } = await import('./memoryRecall/recallDetector');
@@ -1258,7 +1434,7 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       lastSurfacedInsights: essenceProfile 
         ? this.getRecentInsights(essenceProfile)
         : undefined
-    }).then(result => {
+    }, conversationHistory).then(result => {
       if (result.clarificationRequest) {
         // Could inject clarification into chat response, but for now just log
         logger.debug({ userId, clarification: result.clarificationRequest }, 'Refinement clarification needed');
@@ -1538,6 +1714,7 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
         timelineHierarchy: ragPacket.timelineHierarchy,
         allPeoplePlaces: ragPacket.allPeoplePlaces,
         essenceProfile: essenceProfile,
+        identityCoreProfile: identityCoreProfile,
         characterAttributesMap: ragPacket.characterAttributesMap,
         romanticRelationships: ragPacket.romanticRelationships,
         corrections: ragPacket.corrections,
@@ -2089,6 +2266,7 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
         timelineHierarchy: ragPacket.timelineHierarchy,
         allPeoplePlaces: ragPacket.allPeoplePlaces,
         essenceProfile: essenceProfile,
+        identityCoreProfile: identityCoreProfile,
         characterAttributesMap: ragPacket.characterAttributesMap,
         romanticRelationships: ragPacket.romanticRelationships,
         corrections: ragPacket.corrections,

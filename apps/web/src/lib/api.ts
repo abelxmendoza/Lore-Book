@@ -133,11 +133,58 @@ export const fetchJson = async <T>(
     }
     
     return data;
-      } catch (error) {
-        if (timeoutId) clearTimeout(timeoutId);
+  } catch (error) {
+    if (timeoutId) clearTimeout(timeoutId);
     
     // Network errors (backend not running)
-    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+    const isNetworkError = 
+      (error instanceof TypeError && (
+        error.message.includes('Failed to fetch') ||
+        error.message.includes('NetworkError') ||
+        error.message.includes('ERR_CONNECTION_REFUSED') ||
+        error.message.includes('ERR_INTERNET_DISCONNECTED') ||
+        error.message.includes('ERR_NETWORK_CHANGED')
+      )) ||
+      (error instanceof Error && error.name === 'NetworkError') ||
+      (error instanceof DOMException && error.name === 'NetworkError');
+    
+    if (isNetworkError) {
+      // Log detailed error info for debugging
+      if (config.env.isDevelopment) {
+        log.error('Network error detected:', {
+          error: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : 'Unknown',
+          url: typeof input === 'string' ? input : 'Request',
+          apiBaseUrl,
+          timestamp: new Date().toISOString(),
+        });
+        
+        // Check if backend is actually reachable
+        try {
+          const healthController = new AbortController();
+          const healthTimeout = setTimeout(() => healthController.abort(), 2000);
+          const healthCheck = await fetch(`${apiBaseUrl}/api/health`, { 
+            method: 'GET',
+            signal: healthController.signal
+          }).catch(() => null);
+          clearTimeout(healthTimeout);
+          
+          if (!healthCheck || !healthCheck.ok) {
+            log.error('Backend health check failed. Server may not be running.', {
+              expectedUrl: `${apiBaseUrl}/api/health`,
+              suggestion: 'Run: cd apps/server && npm run dev'
+            });
+          }
+        } catch (healthError) {
+          // Health check also failed, backend is definitely down
+          log.error('Backend server is not running.', {
+            expectedUrl: apiBaseUrl,
+            suggestion: 'Start the backend server: cd apps/server && npm run dev',
+            originalError: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+      
       // Allow mock data fallback when enabled (dev or production with global toggle)
       if ((config.dev.allowMockData || globalMockEnabled) && shouldUseMock && options?.mockData) {
         if (config.env.isDevelopment || globalMockEnabled) {
@@ -146,11 +193,26 @@ export const fetchJson = async <T>(
         return options.mockData;
       }
       
-      const networkError = new Error(
+      const networkError = createAppError(
         config.dev.verboseErrors 
-          ? 'Cannot connect to backend server. Make sure it\'s running on http://localhost:4000'
-          : 'Unable to connect to server. Please try again later.'
+          ? `Cannot connect to backend server at ${apiBaseUrl}. Make sure it's running.`
+          : 'Unable to connect to server. Please try again later.',
+        'network',
+        {
+          code: 'CONNECTION_REFUSED',
+          userMessage: config.dev.verboseErrors
+            ? `Backend server is not running. Start it with: cd apps/server && npm run dev`
+            : 'Unable to connect to server. Please check your connection and try again.',
+          retryable: true,
+          context: {
+            url: typeof input === 'string' ? input : 'Request',
+            apiBaseUrl,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          },
+          originalError: error instanceof Error ? error : new Error(String(error)),
+        }
       );
+      
       if (options?.onError) options.onError(networkError);
       throw networkError;
     }

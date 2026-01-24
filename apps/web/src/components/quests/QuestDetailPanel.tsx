@@ -54,7 +54,7 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
   };
 
   return (
-    <div className="h-full bg-black/40 border-l-0 sm:border-l border-primary/20 backdrop-blur-sm flex flex-col min-h-0 overflow-hidden">
+    <div className="h-full sm:h-full bg-black/40 border-l-0 sm:border-l border-primary/20 backdrop-blur-sm flex flex-col min-h-0 overflow-hidden">
       {/* Cyberpunk Header - Desktop Only */}
       <div className="hidden sm:block sticky top-0 z-10 bg-black/80 border-b border-primary/30 backdrop-blur-md flex-shrink-0">
         <div className="p-3 sm:p-4 sm:p-6">
@@ -193,7 +193,7 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 sm:p-6 space-y-3 sm:space-y-4 sm:space-y-6 min-h-0" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 sm:p-6 space-y-3 sm:space-y-4 sm:space-y-6 min-h-0 scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent" style={{ WebkitOverflowScrolling: 'touch' }}>
         {/* Description */}
         {quest.description && (
           <div className="bg-black/30 border border-primary/20 rounded p-2.5 sm:p-3 sm:p-4 holo-border">

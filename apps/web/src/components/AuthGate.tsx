@@ -35,7 +35,16 @@ const AuthScreen = ({ onEmailLogin, onGuestLogin }: { onEmailLogin: (email: stri
     setError(null);
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+      const { error } = await supabase.auth.signInWithOAuth({ 
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
+        }
+      });
       if (error) {
         console.error('[Auth] Google OAuth error:', error);
         // Check for specific error codes

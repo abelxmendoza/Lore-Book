@@ -443,7 +443,7 @@ export const QuestBoard = () => {
           </div>
 
           {/* Quest List */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden p-1.5 sm:p-2 sm:p-4 space-y-1.5 sm:space-y-2 min-h-0" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-1.5 sm:p-2 sm:p-4 space-y-1.5 sm:space-y-2 min-h-0 scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent" style={{ WebkitOverflowScrolling: 'touch' }}>
             {displayedQuests.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
                 <div className="text-primary/40 text-2xl mb-4 font-mono">[NO QUESTS]</div>
@@ -541,7 +541,7 @@ export const QuestBoard = () => {
           
           {/* Scrollable content */}
           <div 
-            className="flex-1 overflow-hidden min-h-0"
+            className="flex-1 overflow-hidden min-h-0 flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <QuestDetailPanel 

@@ -71,12 +71,18 @@ export async function saveEngineResult(
 
 /**
  * Get cached engine results for a user
+ * @param userId - User ID
+ * @param maxAgeHours - Maximum age of cached results in hours (default: 24)
+ * @returns Engine results or null if not found or stale
  */
-export async function getEngineResults(userId: string): Promise<EngineResults | null> {
+export async function getEngineResults(
+  userId: string,
+  maxAgeHours: number = 24
+): Promise<EngineResults | null> {
   try {
     const { data, error } = await supabaseAdmin
       .from('engine_results')
-      .select('results')
+      .select('results, updated_at')
       .eq('user_id', userId)
       .single();
 
@@ -89,7 +95,26 @@ export async function getEngineResults(userId: string): Promise<EngineResults | 
       return null;
     }
 
-    return data?.results || null;
+    if (!data) {
+      return null;
+    }
+
+    // Check if results are stale
+    if (data.updated_at) {
+      const updatedAt = new Date(data.updated_at);
+      const now = new Date();
+      const ageHours = (now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60);
+
+      if (ageHours > maxAgeHours) {
+        logger.debug(
+          { userId, ageHours, maxAgeHours },
+          'Engine results are stale, returning null'
+        );
+        return null;
+      }
+    }
+
+    return data.results || null;
   } catch (error) {
     logger.error({ error, userId }, 'Error getting engine results');
     return null;

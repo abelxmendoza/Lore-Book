@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { config } from '../config/env';
 
 type StreamChunk = {
   type: 'metadata' | 'chunk' | 'done' | 'error';
@@ -29,23 +30,50 @@ export const useChatStream = () => {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
 
-      const response = await fetch('/api/chat/stream', {
+      // Use the configured API URL
+      const apiUrl = config.api.url || 'http://localhost:4000';
+      const url = `${apiUrl}/api/chat/stream`;
+
+      console.log('[useChatStream] Calling:', url);
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         credentials: 'include',
+        mode: 'cors', // Explicitly set CORS mode
         body: JSON.stringify({
           message,
           conversationHistory,
           ...(entityContext ? { entityContext } : {})
         }),
         signal: abortController.signal
+      }).catch((fetchError) => {
+        console.error('[useChatStream] Fetch error:', {
+          error: fetchError,
+          message: fetchError.message,
+          name: fetchError.name,
+          url,
+          apiUrl,
+          timestamp: new Date().toISOString(),
+        });
+        
+        // Provide more helpful error message
+        const errorMessage = fetchError.message.includes('Failed to fetch') || 
+                            fetchError.message.includes('NetworkError') ||
+                            fetchError.message.includes('ERR_CONNECTION_REFUSED')
+          ? `Backend server is not running. Start it with: cd apps/server && npm run dev`
+          : `Network error: ${fetchError.message}. Make sure the backend server is running on ${apiUrl}`;
+        
+        throw new Error(errorMessage);
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('[useChatStream] HTTP error:', response.status, errorText);
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
 
       const reader = response.body?.getReader();

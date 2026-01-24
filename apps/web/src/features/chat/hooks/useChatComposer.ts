@@ -4,8 +4,8 @@ import { useAutoTagger } from '../../../hooks/useAutoTagger';
 import { useCharacterIndexer } from '../../../hooks/useCharacterIndexer';
 import { getCommandSuggestions, parseSlashCommand } from '../../../utils/slashCommands';
 
-export const useChatComposer = (onSubmit: (message: string) => void) => {
-  const [input, setInput] = useState('');
+export const useChatComposer = (onSubmit: (message: string) => void, initialValue?: string | null) => {
+  const [input, setInput] = useState(initialValue || '');
   const [showCommandSuggestions, setShowCommandSuggestions] = useState(false);
   const [commandSuggestions, setCommandSuggestions] = useState<Array<{ command: string; description: string }>>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

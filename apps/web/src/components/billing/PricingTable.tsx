@@ -10,10 +10,10 @@ const tiers = [
     features: ['Limited AI calls', 'Starter timeline', 'Community access']
   },
   {
-    id: 'pro',
-    name: 'Pro Tier',
-    price: '$29',
-    features: ['Full access', 'Encryption optional', 'X integration', 'Season/Saga engines']
+    id: 'premium',
+    name: 'Premium Tier',
+    price: '$15/month',
+    features: ['Unlimited journal entries', 'Unlimited AI requests', 'Advanced timeline visualization', 'All premium features', 'Priority support', 'Early access to new features', 'Export to PDF/eBook', 'Advanced analytics']
   },
   {
     id: 'founder',

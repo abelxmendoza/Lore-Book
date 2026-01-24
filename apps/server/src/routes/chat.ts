@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { Response } from 'express';
 import { z } from 'zod';
 
 import { logger } from '../logger';
@@ -25,8 +26,41 @@ const chatSchema = z.object({
   }).optional()
 });
 
+// Optional auth middleware for testing
+const optionalAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  // If DISABLE_AUTH_FOR_DEV is set, use dev user
+  const isDevelopment = process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
+  const allowDevBypass = isDevelopment && process.env.DISABLE_AUTH_FOR_DEV === 'true';
+  
+  if (allowDevBypass && !req.user) {
+    req.user = {
+      id: '00000000-0000-0000-0000-000000000000',
+      email: 'dev@example.com',
+      lastSignInAt: new Date().toISOString()
+    };
+    return next();
+  }
+  
+  // Try to authenticate, but don't fail if no auth
+  try {
+    await requireAuth(req, res, () => next());
+  } catch {
+    // If auth fails, use dev user for testing
+    if (isDevelopment) {
+      req.user = {
+        id: '00000000-0000-0000-0000-000000000000',
+        email: 'dev@example.com',
+        lastSignInAt: new Date().toISOString()
+      };
+      next();
+    } else {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+  }
+};
+
 // Streaming endpoint
-router.post('/stream', requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/stream', optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -34,7 +68,7 @@ router.post('/stream', requireAuth, checkAiRequestLimit, async (req: Authenticat
     }
 
     const { message, conversationHistory = [], entityContext } = parsed.data;
-    const userId = req.user!.id;
+    const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
     // Set up SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -76,7 +110,7 @@ router.post('/stream', requireAuth, checkAiRequestLimit, async (req: Authenticat
 });
 
 // Non-streaming endpoint (fallback)
-router.post('/', requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/', optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -84,7 +118,7 @@ router.post('/', requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequ
     }
 
     const { message, conversationHistory = [], stream, entityContext } = parsed.data;
-    const userId = req.user!.id;
+    const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
     // If streaming requested but endpoint is /, redirect to /stream
     if (stream) {
@@ -107,6 +141,49 @@ router.post('/', requireAuth, checkAiRequestLimit, async (req: AuthenticatedRequ
     res.status(500).json({
       error: 'Failed to process chat message',
       message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Test OpenAI connection endpoint
+router.get('/test-openai', optionalAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { openai } = await import('../lib/openai');
+    const { config } = await import('../config');
+    
+    if (!config.openAiKey || config.openAiKey === '' || config.openAiKey.startsWith('sk-xxx')) {
+      return res.status(400).json({
+        error: 'OpenAI API key not configured',
+        message: 'Please set OPENAI_API_KEY in your .env file. Get your key from https://platform.openai.com/api-keys'
+      });
+    }
+
+    // Test with a simple completion
+    const testCompletion = await openai.chat.completions.create({
+      model: config.defaultModel || 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: 'Say "Hello, OpenAI is working!" if you can read this.' }
+      ],
+      max_tokens: 20,
+      temperature: 0.7
+    });
+
+    const response = testCompletion.choices[0]?.message?.content || 'No response';
+    
+    res.json({
+      success: true,
+      message: 'OpenAI API is working!',
+      response,
+      model: config.defaultModel,
+      apiKeyConfigured: !!config.openAiKey
+    });
+  } catch (error) {
+    logger.error({ error }, 'OpenAI test failed');
+    res.status(500).json({
+      error: 'OpenAI API test failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      hint: 'Check that OPENAI_API_KEY is set correctly in your .env file'
     });
   }
 });

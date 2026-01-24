@@ -81,6 +81,7 @@ import { memoryReviewQueueRouter } from './memoryReviewQueue';
 import { predictionsRouter } from './predictions';
 import { goalsRouter } from './goals';
 import { questRouter } from './quests';
+import rpgRouter from './rpg';
 import { memoryEngineRouter } from './memoryEngine';
 import { knowledgeGraphRouter } from './knowledgeGraph';
 import { searchRouter } from './search';
@@ -145,6 +146,9 @@ import { summaryRouter } from './summary';
 import { timelineRouter } from './timeline';
 import { timelineHierarchyRouter } from './timelineHierarchy';
 import willRouter from './will';
+import { voidRouter } from './voids';
+import biasEthicsRouter from './biasEthics';
+import thoughtsRouter from './thoughts';
 
 export interface RouteEntry {
   path: string;
@@ -198,6 +202,7 @@ export const routeRegistry: RouteEntry[] = [
   { path: '/api/predictions', router: predictionsRouter },
   { path: '/api/goals', router: goalsRouter },
   { path: '/api/quests', router: questRouter },
+  { path: '/api/rpg', router: rpgRouter },
   { path: '/api/privacy', router: privacyRouter },
   { path: '/api/hqi', router: hqiRouter },
   { path: '/api/search', router: searchRouter },
@@ -302,6 +307,9 @@ export const routeRegistry: RouteEntry[] = [
   { path: '/api/will', router: willRouter },
   { path: '/api/continuity-profile', router: continuityProfileRouter },
   { path: '/api/strategy', router: personalStrategyRouter },
+  { path: '/api/voids', router: voidRouter },
+  { path: '/api/bias-ethics', router: biasEthicsRouter, requiresAuth: true, description: 'Bias detection, ethics review, and consent tracking' },
+  { path: '/api/thoughts', router: thoughtsRouter, requiresAuth: true, description: 'Thought classification and response generation' },
 ];
 
 /**

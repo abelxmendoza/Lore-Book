@@ -266,47 +266,81 @@ export class TimelineSyncService {
   }
 
   /**
-   * Fetch and normalize identity changes from engine results
+   * Fetch and normalize identity changes from engine results and identity_timeline_events
    */
   private async fetchIdentityChanges(userId: string): Promise<NormalizedTimelineEvent[]> {
-    // Fetch from engine_results table where engine_id is identity-related
-    const { data: results, error } = await supabaseAdmin
-      .from('engine_results')
-      .select('*')
-      .eq('user_id', userId)
-      .in('engine_id', ['identity_core', 'archetype'])
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      if (error.code === '42P01') {
-        return [];
-      }
-      logger.warn({ error, userId }, 'Failed to fetch identity changes');
-      return [];
-    }
-
     const events: NormalizedTimelineEvent[] = [];
 
-    for (const result of results || []) {
-      try {
-        const data = result.data as any;
-        if (data.changes && Array.isArray(data.changes)) {
-          for (const change of data.changes) {
-            events.push(...normalizeIdentityEvent({
-              id: `${result.id}-${change.id || Date.now()}`,
-              date: change.date || result.created_at,
-              dimension: change.dimension || result.engine_id,
-              oldValue: change.old_value,
-              newValue: change.new_value,
-              description: change.description,
-              confidence: change.confidence,
-              metadata: { engine_result_id: result.id, ...change }
-            }));
+    // Fetch from engine_results table where engine_id is identity-related
+    try {
+      const { data: results, error } = await supabaseAdmin
+        .from('engine_results')
+        .select('*')
+        .eq('user_id', userId)
+        .in('engine_id', ['identity_core', 'archetype'])
+        .order('created_at', { ascending: true });
+
+      if (error && error.code !== '42P01') {
+        logger.warn({ error, userId }, 'Failed to fetch identity changes from engine_results');
+      } else if (results) {
+        for (const result of results) {
+          try {
+            const data = result.data as any;
+            if (data.changes && Array.isArray(data.changes)) {
+              for (const change of data.changes) {
+                events.push(...normalizeIdentityEvent({
+                  id: `${result.id}-${change.id || Date.now()}`,
+                  date: change.date || result.created_at,
+                  dimension: change.dimension || result.engine_id,
+                  oldValue: change.old_value,
+                  newValue: change.new_value,
+                  description: change.description,
+                  confidence: change.confidence,
+                  metadata: { engine_result_id: result.id, ...change }
+                }));
+              }
+            }
+          } catch (err) {
+            logger.debug({ error: err, resultId: result.id }, 'Failed to parse identity change');
           }
         }
-      } catch (err) {
-        logger.debug({ error: err, resultId: result.id }, 'Failed to parse identity change');
       }
+    } catch (err) {
+      logger.debug({ error: err }, 'engine_results table may not exist');
+    }
+
+    // Fetch from identity_timeline_events table
+    try {
+      const { data: timelineEvents, error: timelineError } = await supabaseAdmin
+        .from('identity_timeline_events')
+        .select('*')
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: true });
+
+      if (timelineError && timelineError.code !== '42P01') {
+        logger.warn({ error: timelineError, userId }, 'Failed to fetch identity timeline events');
+      } else if (timelineEvents) {
+        for (const event of timelineEvents) {
+          try {
+            events.push({
+              id: event.id,
+              type: 'identity_change',
+              date: event.timestamp,
+              title: event.description,
+              description: event.description,
+              metadata: {
+                event_type: event.event_type,
+                profile_id: event.profile_id,
+                ...event.metadata
+              }
+            });
+          } catch (err) {
+            logger.debug({ error: err, eventId: event.id }, 'Failed to parse identity timeline event');
+          }
+        }
+      }
+    } catch (err) {
+      logger.debug({ error: err }, 'identity_timeline_events table may not exist');
     }
 
     return events;

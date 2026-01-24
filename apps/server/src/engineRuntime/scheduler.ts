@@ -37,8 +37,9 @@ export function startEngineScheduler(): void {
       logger.info({ userCount: users.length }, 'Running engines for all users');
 
       // Run engines for each user (in parallel, but with rate limiting)
+      // Use save=true to cache results for chat system
       const promises = users.map((user) =>
-        orchestrator.runAll(user.id).catch((err) => {
+        orchestrator.runAll(user.id, true).catch((err) => {
           logger.error({ error: err, userId: user.id }, 'Error running scheduled engines');
         })
       );

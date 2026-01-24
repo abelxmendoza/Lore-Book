@@ -39,18 +39,31 @@ export const dummyCharacters: Character[] = [
     importance_level: 'major',
     importance_score: 87,
     is_nickname: false,
-    summary: 'My closest friend and confidante since college. Sarah works in tech and was one of the first people I told about my decision to transition from software development to creative work. She\'s been incredibly supportive throughout my creative renaissance, often meeting me at coffee shops to work on our respective projects. She knows Alex (my boyfriend) and Marcus (my mentor), and we all sometimes hang out together. Sarah is honest, loyal, and always knows how to make me laugh when I\'m stressed about my creative projects.',
+    summary: 'My closest friend and confidante since college. Sarah works in tech and was one of the first people I told about my decision to transition from software development to creative work. She\'s been incredibly supportive throughout my creative renaissance, often meeting me at coffee shops to work on our respective projects. We\'ve had 24 writing sessions together at the coffee shop. She knows Alex (my boyfriend) and Marcus (my mentor), and we all sometimes hang out together. Sarah is honest, loyal, and always knows how to make me laugh when I\'m stressed about my creative projects.',
     tags: ['friendship', 'support', 'honesty', 'loyalty'],
     metadata: {
       relationship_type: 'friend',
       closeness_score: 95,
-      first_met: '2018-09-15'
+      first_met: '2018-09-15',
+      relationships: {
+        'char-alex-boyfriend': { type: 'friend', closeness: 75 },
+        'dummy-2': { type: 'friend', closeness: 70 }, // Marcus
+        'dummy-3': { type: 'friend', closeness: 65 }, // Alex Rivera
+      },
+      locations: {
+        'loc-coffee-shop': { visit_count: 24, first_visit: '2022-01-15T00:00:00Z', last_visit: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() },
+        'loc-home-studio': { visit_count: 12, first_visit: '2022-08-01T00:00:00Z', last_visit: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() },
+        'loc-central-park': { visit_count: 8, first_visit: '2023-06-15T00:00:00Z', last_visit: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() },
+      },
+      skills: {
+        'skill-creative-writing': { role: 'practiced_with', level_contribution: 7 },
+      },
     },
     social_media: {
       email: 'sarah.chen@example.com',
       instagram: '@sarah_life'
     },
-    memory_count: 24,
+    memory_count: 24, // Matches 24 coffee shop visits
     relationship_count: 8
   },
   {
@@ -66,18 +79,26 @@ export const dummyCharacters: Character[] = [
     importance_level: 'major',
     importance_score: 82,
     is_nickname: false,
-    summary: 'A wise mentor who has guided me through my career transition from tech to creative work. Marcus was the one who encouraged me to pursue my passion for music production and writing when I was stuck in my corporate job. He introduced me to Alex Rivera for music collaboration and has been a constant source of support. Marcus knows Sarah (my best friend) and we often discuss my creative projects and relationship journey. His decades of experience and thoughtful advice have been invaluable during this period of self-discovery.',
+    summary: 'A wise mentor who has guided me through my career transition from tech to creative work. Marcus was the one who encouraged me to pursue my passion for music production and writing when I was stuck in my corporate job. He introduced me to Alex Rivera for music collaboration 1.5 years ago and has been a constant source of support. We\'ve had 20 mentorship meetings at the coffee shop. Marcus knows Sarah (my best friend) and we often discuss my creative projects and relationship journey. His decades of experience and thoughtful advice have been invaluable during this period of self-discovery.',
     tags: ['mentorship', 'wisdom', 'career', 'guidance'],
     metadata: {
       relationship_type: 'coach',
       closeness_score: 85,
-      first_met: '2020-03-10'
+      first_met: '2020-03-10',
+      relationships: {
+        'dummy-1': { type: 'friend', closeness: 70 }, // Sarah
+        'dummy-3': { type: 'friend', closeness: 80 }, // Alex Rivera
+        'char-alex-boyfriend': { type: 'friend', closeness: 70 },
+      },
+      locations: {
+        'loc-coffee-shop': { visit_count: 20, first_visit: '2020-03-15T00:00:00Z', last_visit: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString() },
+      },
     },
     social_media: {
       email: 'marcus@example.com',
       linkedin: 'marcus-johnson'
     },
-    memory_count: 18,
+    memory_count: 18, // Matches mentorship meetings
     relationship_count: 5
   },
   {
@@ -90,22 +111,68 @@ export const dummyCharacters: Character[] = [
     archetype: 'collaborator',
     role: 'Creative Collaborator',
     status: 'active',
-    importance_level: 'supporting',
-    importance_score: 65,
+    importance_level: 'major',
+    importance_score: 78,
     is_nickname: false,
-    summary: 'A talented music producer and creative collaborator. Alex Rivera and I work together on music production projects in my home studio. Marcus introduced us about 3 years ago, and we\'ve been collaborating ever since. They\'ve been instrumental in helping me learn music production during my creative renaissance. Alex knows about my relationship with Alex (my boyfriend) and is supportive of my creative journey. We often bounce ideas off each other and they push me to try new creative approaches.',
+    summary: 'A talented music producer and creative collaborator. Alex Rivera and I work together on music production projects in my home studio. Marcus introduced us 1.5 years ago, and we\'ve been collaborating ever since. They\'ve been instrumental in helping me learn music production during my creative renaissance. We\'ve had 45 studio sessions together, and they helped me produce my first EP. Alex knows about my relationship with Alex (my boyfriend) and is supportive of my creative journey.',
     tags: ['collaboration', 'creativity', 'professional', 'innovation'],
     metadata: {
       relationship_type: 'professional',
-      closeness_score: 75,
-      first_met: '2021-07-20'
+      closeness_score: 78,
+      first_met: '2022-07-20', // 1.5 years ago
+      relationships: {
+        'dummy-2': { type: 'friend', closeness: 80 }, // Marcus
+        'dummy-1': { type: 'friend', closeness: 65 }, // Sarah
+      },
+      locations: {
+        'loc-home-studio': { visit_count: 45, first_visit: '2022-07-20T00:00:00Z', last_visit: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString() },
+        'loc-coffee-shop': { visit_count: 8, first_visit: '2023-01-15T00:00:00Z', last_visit: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() },
+      },
+      skills: {
+        'skill-music-production': { role: 'teacher', level_contribution: 8 },
+        'skill-audio-engineering': { role: 'teacher', level_contribution: 5 },
+      },
     },
     social_media: {
       github: 'alex-dev',
       website: 'alexrivera.dev'
     },
-    memory_count: 12,
+    memory_count: 45, // Updated to match 45 studio sessions
     relationship_count: 3
+  },
+  {
+    id: 'char-alex-boyfriend',
+    name: 'Alex',
+    first_name: 'Alex',
+    last_name: '',
+    alias: ['Alex'],
+    pronouns: 'he/him',
+    archetype: 'romantic',
+    role: 'Boyfriend',
+    status: 'active',
+    importance_level: 'protagonist',
+    importance_score: 95,
+    is_nickname: false,
+    summary: 'My boyfriend of 6 months. We met through Sarah at a coffee shop a year ago. He\'s incredibly supportive of my creative journey, often visiting my home studio to listen to my music. He makes me laugh, remembers the little things, and we share a love for hiking and nature. Our relationship has been growing stronger, and he was the first person I called when I had the EP concept breakthrough.',
+    tags: ['romantic', 'supportive', 'relationship', 'creative'],
+    metadata: {
+      relationship_type: 'romantic',
+      closeness_score: 92,
+      first_met: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1 year ago
+      relationships: {
+        'dummy-1': { type: 'friend', closeness: 75 }, // Sarah
+        'dummy-2': { type: 'friend', closeness: 70 }, // Marcus
+      },
+      locations: {
+        'loc-home-studio': { visit_count: 18, first_visit: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString(), last_visit: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString() },
+        'loc-coffee-shop': { visit_count: 15, first_visit: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(), last_visit: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() },
+        'loc-central-park': { visit_count: 6, first_visit: new Date(Date.now() - 150 * 24 * 60 * 60 * 1000).toISOString(), last_visit: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() },
+        'loc-mountain-trail': { visit_count: 6, first_visit: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString(), last_visit: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString() },
+      },
+    },
+    social_media: {},
+    memory_count: 32, // Matches relationship timeline
+    relationship_count: 5
   },
   {
     id: 'dummy-4',

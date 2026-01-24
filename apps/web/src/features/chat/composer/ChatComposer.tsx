@@ -7,7 +7,7 @@ import { CommandSuggestions } from './CommandSuggestions';
 import { ComposerHints } from './ComposerHints';
 import { MoodIndicator } from './MoodIndicator';
 import { TagSuggestions } from './TagSuggestions';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { DocumentUpload } from '../components/DocumentUpload';
 import { ChatGPTImport } from '../components/ChatGPTImport';
 
@@ -16,13 +16,17 @@ type ChatComposerProps = {
   loading: boolean;
   disabled?: boolean;
   onUploadComplete?: () => void;
+  initialPrompt?: string | null;
+  initialDate?: string | null;
 };
 
 export const ChatComposer = ({
   onSubmit,
   loading,
   disabled = false,
-  onUploadComplete
+  onUploadComplete,
+  initialPrompt,
+  initialDate
 }: ChatComposerProps) => {
   const {
     input,
@@ -38,7 +42,18 @@ export const ChatComposer = ({
     handleSubmit,
     handleKeyDown,
     insertSuggestion
-  } = useChatComposer(onSubmit);
+  } = useChatComposer(onSubmit, initialPrompt);
+
+  // Pre-fill input with initial prompt if provided
+  useEffect(() => {
+    if (initialPrompt && !input) {
+      setInput(initialPrompt);
+      // Focus textarea after setting input
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
+    }
+  }, [initialPrompt, input, setInput]);
 
   const [showUpload, setShowUpload] = useState(false);
   const [showChatGPTImport, setShowChatGPTImport] = useState(false);
@@ -62,6 +77,15 @@ export const ChatComposer = ({
           suggestions={commandSuggestions}
           onSelect={insertSuggestion}
         />
+      )}
+
+      {/* Date Indicator */}
+      {initialDate && (
+        <div className="px-3 sm:px-4 py-2 border-b border-yellow-500/30 bg-yellow-500/5">
+          <div className="px-2 py-1 text-xs text-yellow-400/80 bg-yellow-500/10 border border-yellow-500/30 rounded">
+            Filling gap from {new Date(initialDate).toLocaleDateString()}
+          </div>
+        </div>
       )}
 
       {/* Hints Bar */}

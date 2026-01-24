@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useChat } from '../hooks/useChat';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useConversationStore } from '../hooks/useConversationStore';
@@ -25,6 +25,7 @@ import '../styles/message-animations.css';
 
 export const ChatFirstInterface = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const conversationStore = useConversationStore();
   const { messageRefs, registerMessageRef, loadConversation, setMessages } = conversationStore;
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
@@ -47,11 +48,33 @@ export const ChatFirstInterface = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [searchMessageId, setSearchMessageId] = useState<string | null>(null);
   const [showWorkSummary, setShowWorkSummary] = useState(false);
+  const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
+  const [initialDate, setInitialDate] = useState<string | null>(null);
 
   // Load conversation on mount
   useEffect(() => {
     loadConversation();
   }, [loadConversation]);
+
+  // Read URL params for pre-filling (date and prompt)
+  useEffect(() => {
+    const dateParam = searchParams.get('date');
+    const promptParam = searchParams.get('prompt');
+    
+    if (dateParam) {
+      setInitialDate(dateParam);
+    }
+    
+    if (promptParam) {
+      const decodedPrompt = decodeURIComponent(promptParam);
+      setInitialPrompt(decodedPrompt);
+      // Clear the URL params after reading
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('date');
+      newSearchParams.delete('prompt');
+      navigate({ search: newSearchParams.toString() }, { replace: true });
+    }
+  }, [searchParams, navigate]);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -336,6 +359,8 @@ export const ChatFirstInterface = () => {
           onSubmit={sendMessage}
           loading={isLoading}
           disabled={isGuest && !canSendChatMessage()}
+          initialPrompt={initialPrompt}
+          initialDate={initialDate}
           onUploadComplete={async () => {
             // Refresh all data
             await Promise.all([

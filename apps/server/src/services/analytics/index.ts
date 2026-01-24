@@ -15,6 +15,7 @@ export { shadowEngineModule } from './shadowEngine';
 export { xpEngineModule } from './xpEngine';
 export { lifeMapModule } from './lifeMap';
 export { searchEngineModule } from './searchEngine';
+export { rpgAnalyticsModule } from './rpgAnalytics';
 
 export type { AnalyticsPayload, AnalyticsModuleType } from './types';
 

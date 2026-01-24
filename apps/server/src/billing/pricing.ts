@@ -1,6 +1,6 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-export type SubscriptionTier = 'free' | 'pro' | 'founder';
+export type SubscriptionTier = 'free' | 'premium' | 'founder';
 
 export const pricingTable: Record<SubscriptionTier, { name: string; price: number; features: string[] }> = {
   free: {
@@ -8,10 +8,10 @@ export const pricingTable: Record<SubscriptionTier, { name: string; price: numbe
     price: 0,
     features: ['Limited AI calls', 'Community access', 'No encryption', 'Starter timeline']
   },
-  pro: {
-    name: 'Pro Tier',
-    price: 29,
-    features: ['Full access', 'Encryption optional', 'X integration', 'Season/Saga engines']
+  premium: {
+    name: 'Premium Tier',
+    price: 15,
+    features: ['Unlimited journal entries', 'Unlimited AI requests', 'Advanced timeline visualization', 'All premium features', 'Priority support', 'Early access to new features', 'Export to PDF/eBook', 'Advanced analytics']
   },
   founder: {
     name: 'Founder Tier',

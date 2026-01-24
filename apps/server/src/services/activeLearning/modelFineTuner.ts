@@ -25,11 +25,18 @@ export type FineTunedModel = {
 /**
  * Fine-tunes models on user-specific data
  * 
- * NOTE: This is a placeholder implementation. Actual fine-tuning would require:
- * - ML infrastructure (e.g., Hugging Face, AWS SageMaker)
- * - Model storage and versioning
- * - Deployment pipeline
- * - Model evaluation metrics
+ * STATUS: This is a planned future feature. See docs/FUTURE_FEATURES.md for details.
+ * 
+ * Current implementation:
+ * - Training data collection: ✅ Working (trainingDataCollector.ts)
+ * - User corrections tracking: ✅ Working (correctionTracker.ts)
+ * - Model fine-tuning: ❌ Not yet implemented
+ * 
+ * Why not implemented:
+ * - Requires ML infrastructure (Hugging Face, AWS SageMaker, or local transformers)
+ * - Needs model storage and versioning system
+ * - Requires deployment pipeline
+ * - Needs evaluation metrics and monitoring
  */
 export class ModelFineTuner {
   /**
@@ -63,83 +70,72 @@ export class ModelFineTuner {
   /**
    * Start fine-tuning process
    * 
-   * NOTE: This is a placeholder. Actual implementation would:
-   * 1. Load training dataset
-   * 2. Prepare data for model training
-   * 3. Fine-tune model (e.g., DistilBERT for entity extraction)
-   * 4. Evaluate model
-   * 5. Deploy model if accuracy is acceptable
+   * STATUS: Not yet implemented. See docs/FUTURE_FEATURES.md for implementation plan.
    */
   async startFineTuning(userId: string, modelType: ModelType): Promise<FineTunedModel | null> {
-    // Check if fine-tuning is possible
+    logger.info(
+      { userId, modelType },
+      'Model fine-tuning requested but not yet implemented. See docs/FUTURE_FEATURES.md'
+    );
+
+    // Check if fine-tuning would be possible (for informational purposes)
     const canFineTune = await this.canFineTune(userId, modelType);
     if (!canFineTune) {
       logger.warn(
         { userId, modelType },
-        'Not enough training data for fine-tuning'
+        'Not enough training data for fine-tuning (when implemented)'
       );
       return null;
     }
 
-    // Get training dataset
+    // Get training dataset info
     const dataset = await trainingDataCollector.getDataset(userId, modelType);
     if (!dataset) {
       logger.warn({ userId, modelType }, 'No training dataset found');
       return null;
     }
 
-    logger.info(
-      { userId, modelType, sampleCount: dataset.sample_count },
-      'Starting fine-tuning process (placeholder)'
+    // Return informative error
+    throw new Error(
+      `Model fine-tuning is a planned future feature. ` +
+      `Training data is being collected (${dataset.sample_count} samples). ` +
+      `See docs/FUTURE_FEATURES.md for implementation plan.`
     );
-
-    // TODO: Actual fine-tuning implementation
-    // This would involve:
-    // 1. Loading base model (e.g., DistilBERT)
-    // 2. Preparing training data
-    // 3. Fine-tuning model
-    // 4. Evaluating model
-    // 5. Saving model
-    // 6. Deploying model
-
-    // Placeholder return
-    return {
-      id: `model-${userId}-${modelType}-${Date.now()}`,
-      user_id: userId,
-      model_type: modelType,
-      status: 'pending',
-      training_samples: dataset.sample_count,
-      created_at: new Date().toISOString(),
-    };
   }
 
   /**
    * Get fine-tuning status
+   * 
+   * STATUS: Not yet implemented. Returns 'pending' for all requests.
    */
   async getFineTuningStatus(userId: string, modelType: ModelType): Promise<FineTuningStatus> {
-    // TODO: Check actual fine-tuning status from ML infrastructure
-    const canFineTune = await this.canFineTune(userId, modelType);
-    return canFineTune ? 'completed' : 'pending';
+    logger.debug(
+      { userId, modelType },
+      'Fine-tuning status requested but not yet implemented'
+    );
+    return 'pending';
   }
 
   /**
    * Deploy fine-tuned model
+   * 
+   * STATUS: Not yet implemented. See docs/FUTURE_FEATURES.md for implementation plan.
    */
   async deployModel(userId: string, modelType: ModelType): Promise<boolean> {
-    logger.info({ userId, modelType }, 'Deploying fine-tuned model (placeholder)');
-
-    // TODO: Actual deployment implementation
-    // This would involve:
-    // 1. Loading fine-tuned model
-    // 2. Setting up inference endpoint
-    // 3. Updating routing to use fine-tuned model
-    // 4. Monitoring model performance
-
-    return true;
+    logger.info(
+      { userId, modelType },
+      'Model deployment requested but not yet implemented. See docs/FUTURE_FEATURES.md'
+    );
+    throw new Error(
+      `Model deployment is a planned future feature. ` +
+      `See docs/FUTURE_FEATURES.md for implementation plan.`
+    );
   }
 
   /**
    * Get model performance metrics
+   * 
+   * STATUS: Not yet implemented. Returns empty metrics.
    */
   async getModelMetrics(userId: string, modelType: ModelType): Promise<{
     accuracy?: number;
@@ -147,7 +143,10 @@ export class ModelFineTuner {
     recall?: number;
     f1?: number;
   }> {
-    // TODO: Get actual metrics from model evaluation
+    logger.debug(
+      { userId, modelType },
+      'Model metrics requested but not yet implemented'
+    );
     return {};
   }
 }

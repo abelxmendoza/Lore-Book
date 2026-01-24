@@ -32,6 +32,7 @@ import { SubscriptionManagement } from '../components/subscription/SubscriptionM
 import { PerceptionsView } from '../components/perceptions/PerceptionsView';
 import { TrialBanner } from '../components/subscription/TrialBanner';
 import { PricingPage } from '../components/subscription/PricingPage';
+import { ConnectionStatus } from '../components/ConnectionStatus';
 import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage';
 import { EventsBook } from '../components/events/EventsBook';
 import { EntityResolutionBook } from '../components/entities/EntityResolutionBook';
@@ -43,10 +44,11 @@ import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
 import { GuestBanner } from '../components/guest/GuestBanner';
 import { LoveAndRelationshipsView } from '../components/love/LoveAndRelationshipsView';
 import { QuestBoard } from '../components/quests/QuestBoard';
+import { KnowledgeGapDashboard } from '../components/voids/KnowledgeGapDashboard';
 import { getSurfaceFromRoute } from '../utils/routeMapping';
 
 
-type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'memories' | 'events' | 'entities' | 'organizations' | 'skills' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'love' | 'quests';
+type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'memories' | 'events' | 'entities' | 'organizations' | 'skills' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'love' | 'quests' | 'gaps';
 
 interface AppContentProps {
   defaultSurface?: SurfaceKey;
@@ -368,11 +370,16 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             <LoveAndRelationshipsView />
           </div>
         )}
-        {activeSurface === 'quests' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
-            <QuestBoard />
-          </div>
-        )}
+                        {activeSurface === 'quests' && (
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+                            <QuestBoard />
+                          </div>
+                        )}
+                        {activeSurface === 'gaps' && (
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto">
+                            <KnowledgeGapDashboard />
+                          </div>
+                        )}
         {activeSurface === 'guide' && <UserGuide />}
 
         {/* Hide dev mode panel in production and timeline view */}
@@ -416,6 +423,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
 
         {activeSurface !== 'chat' && <Footer />}
       </main>
+      <ConnectionStatus />
     </div>
   );
 };

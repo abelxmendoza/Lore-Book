@@ -22,6 +22,30 @@ import type { PatternInsight, StabilityMetrics } from '../api/perceptionReaction
 import type { MemoryProposal } from '../hooks/useMemoryReviewQueue';
 import type { Quest, QuestBoard, QuestAnalytics, QuestSuggestion } from '../types/quest';
 import { generateMockTimelines, generateMockChronologyEntries } from '../mocks/timelineMockData';
+import type { UnifiedNarrativeData } from '../mocks/unifiedNarrativeData';
+import {
+  getCharacterRelationships,
+  getCharacterLocations,
+  getCharacterSkills,
+  getCharacterEvents,
+  getCharacterMemories,
+  getLocationCharacters,
+  getLocationEvents,
+  getSkillCharacters,
+  getSkillEvents,
+  getEventCharacters,
+  getEventLocations,
+  getEventSkills,
+  getEventMemories,
+  getMemoryCharacters,
+  getMemoryLocations,
+  getMemorySkills,
+  getMemoryEvents,
+  getEntityRelationships,
+  type CharacterRelationship,
+  type LocationVisit,
+  type SkillRelationship,
+} from '../mocks/entityRelationshipDiagrams';
 
 /**
  * Metadata to track whether data is mock or real
@@ -131,6 +155,7 @@ class MockDataRegistry {
   private questBoard: QuestBoard | null = null;
   private questAnalytics: QuestAnalytics | null = null;
   private questSuggestions: QuestSuggestion[] = [];
+  private unifiedNarrativeData: UnifiedNarrativeData | null = null;
   private isInitialized = false;
 
   /**
@@ -229,6 +254,10 @@ class MockDataRegistry {
     this.questSuggestions = suggestions;
   }
 
+  registerUnifiedNarrative(data: UnifiedNarrativeData) {
+    this.unifiedNarrativeData = data;
+  }
+
   /**
    * Get mock data
    */
@@ -306,6 +335,10 @@ class MockDataRegistry {
 
   getQuestSuggestions(): QuestSuggestion[] {
     return [...this.questSuggestions];
+  }
+
+  getUnifiedNarrative(): UnifiedNarrativeData | null {
+    return this.unifiedNarrativeData;
   }
 }
 
@@ -434,6 +467,7 @@ export const mockDataService = {
     questBoard: (data: QuestBoard) => mockDataRegistry.registerQuestBoard(data),
     questAnalytics: (data: QuestAnalytics) => mockDataRegistry.registerQuestAnalytics(data),
     questSuggestions: (data: QuestSuggestion[]) => mockDataRegistry.registerQuestSuggestions(data),
+    unifiedNarrative: (data: UnifiedNarrativeData) => mockDataRegistry.registerUnifiedNarrative(data),
   },
 
   /**
@@ -458,6 +492,7 @@ export const mockDataService = {
     questBoard: () => mockDataRegistry.getQuestBoard(),
     questAnalytics: () => mockDataRegistry.getQuestAnalytics(),
     questSuggestions: () => mockDataRegistry.getQuestSuggestions(),
+    unifiedNarrative: () => mockDataRegistry.getUnifiedNarrative(),
   },
 
   /**
@@ -558,5 +593,47 @@ export const mockDataService = {
    * Get metadata for current data state
    */
   getMetadata: (isMock: boolean): DataMetadata => createDataMetadata(isMock),
+
+  /**
+   * Entity relationship query methods
+   */
+  relationships: {
+    getCharacterRelationships: (characterId: string): CharacterRelationship[] => 
+      getCharacterRelationships(characterId),
+    getCharacterLocations: (characterId: string): LocationVisit[] => 
+      getCharacterLocations(characterId),
+    getCharacterSkills: (characterId: string): SkillRelationship[] => 
+      getCharacterSkills(characterId),
+    getCharacterEvents: (characterId: string) => 
+      getCharacterEvents(characterId),
+    getCharacterMemories: (characterId: string) => 
+      getCharacterMemories(characterId),
+    getLocationCharacters: (locationId: string) => 
+      getLocationCharacters(locationId),
+    getLocationEvents: (locationId: string) => 
+      getLocationEvents(locationId),
+    getSkillCharacters: (skillId: string) => 
+      getSkillCharacters(skillId),
+    getSkillEvents: (skillId: string) => 
+      getSkillEvents(skillId),
+    getEventCharacters: (eventId: string) => 
+      getEventCharacters(eventId),
+    getEventLocations: (eventId: string) => 
+      getEventLocations(eventId),
+    getEventSkills: (eventId: string) => 
+      getEventSkills(eventId),
+    getEventMemories: (eventId: string) => 
+      getEventMemories(eventId),
+    getMemoryCharacters: (memoryId: string) => 
+      getMemoryCharacters(memoryId),
+    getMemoryLocations: (memoryId: string) => 
+      getMemoryLocations(memoryId),
+    getMemorySkills: (memoryId: string) => 
+      getMemorySkills(memoryId),
+    getMemoryEvents: (memoryId: string) => 
+      getMemoryEvents(memoryId),
+    getEntityRelationships: (entityType: 'character' | 'location' | 'skill' | 'event' | 'memory', entityId: string) => 
+      getEntityRelationships(entityType, entityId),
+  },
 };
 
