@@ -73,7 +73,7 @@ accountRouter.get('/export', requireAuth, async (req: AuthenticatedRequest, res)
 });
 
 // Delete endpoint
-accountRouter.post('/delete', requireAuth, rateLimitMiddleware, async (req: AuthenticatedRequest, res) => {
+accountRouter.post('/delete', rateLimitMiddleware, requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
   
   if (req.body?.scope === 'sessions') {

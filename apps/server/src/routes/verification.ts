@@ -21,7 +21,7 @@ const verifyClaimSchema = z.object({
 /**
  * Verify a specific entry
  */
-router.post('/verify-entry/:id', requireAuth, rateLimitMiddleware, async (req: AuthenticatedRequest, res) => {
+router.post('/verify-entry/:id', rateLimitMiddleware, requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;

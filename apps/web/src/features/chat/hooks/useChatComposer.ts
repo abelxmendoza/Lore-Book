@@ -14,10 +14,11 @@ export const useChatComposer = (onSubmit: (message: string) => void, initialValu
   const autoTagger = useAutoTagger();
   const characterIndexer = useCharacterIndexer();
 
-  // Analyze input for mood, tags, and characters
+  // Analyze input for mood, tags, and characters (debounced to avoid excessive API calls)
   useEffect(() => {
+    // Immediate updates for non-API operations
     if (input.trim()) {
-      moodEngine.evaluate(input);
+      // Non-API operations can run immediately
       autoTagger.refreshSuggestions(input);
       characterIndexer.analyze(input);
       
@@ -35,6 +36,17 @@ export const useChatComposer = (onSubmit: (message: string) => void, initialValu
       characterIndexer.analyze('');
       setShowCommandSuggestions(false);
     }
+
+    // Debounce mood evaluation (API call) - only run after user stops typing
+    const debounceTimer = setTimeout(() => {
+      if (input.trim()) {
+        moodEngine.evaluate(input);
+      }
+    }, 500); // Wait 500ms after last keystroke
+
+    return () => {
+      clearTimeout(debounceTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input]); // Only depend on input - the methods are stable useCallback refs
 

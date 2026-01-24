@@ -92,9 +92,11 @@ describe('Love & Relationships Integration Tests', () => {
       expect(screen.getByText('Alex')).toBeInTheDocument();
     });
     
-    // Step 2: Filter by active
-    const activeTab = screen.getByText(/active/i);
-    fireEvent.click(activeTab);
+    // Step 2: Filter by active - find the tab button specifically (role="tab")
+    const activeTabs = screen.getAllByText(/active/i);
+    const activeTab = activeTabs.find(el => el.getAttribute('role') === 'tab' || el.closest('[role="tab"]'));
+    expect(activeTab).toBeDefined();
+    fireEvent.click(activeTab!);
     
     await waitFor(() => {
       expect(getMockRomanticRelationshipsByFilter).toHaveBeenCalledWith('active');
@@ -131,8 +133,11 @@ describe('Love & Relationships Integration Tests', () => {
     const filters = ['active', 'past', 'situationships', 'crushes', 'rankings'];
     
     for (const filter of filters) {
-      const filterTab = screen.getByText(new RegExp(filter, 'i'));
-      fireEvent.click(filterTab);
+      // Find the tab button specifically (role="tab") to avoid matching other text
+      const filterTabs = screen.getAllByText(new RegExp(filter, 'i'));
+      const filterTab = filterTabs.find(el => el.getAttribute('role') === 'tab' || el.closest('[role="tab"]'));
+      expect(filterTab).toBeDefined();
+      fireEvent.click(filterTab!);
       
       await waitFor(() => {
         if (filter !== 'rankings') {

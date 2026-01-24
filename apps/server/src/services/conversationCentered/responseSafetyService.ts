@@ -115,10 +115,11 @@ export class ResponseSafetyService {
     }
 
     // Fear signals (hypothetical scenarios, future anxiety)
-    if (
-      /\b(if.*happened|would|might|worried|afraid|fear|anxious|scared|terrified)\b/i.test(message) &&
-      !/\b(if.*died.*would go homeless)\b/i.test(message) // Already covered by dependency
-    ) {
+    // SECURITY: Split complex regex to avoid ReDoS - check dependency pattern first with limited lookahead
+    const hasDependencyPattern = /\bif\s+\w+\s+died\s+would\s+go\s+homeless\b/i.test(message);
+    const hasFearKeywords = /\b(if\s+\w+\s+happened|would|might|worried|afraid|fear|anxious|scared|terrified)\b/i.test(message);
+    
+    if (hasFearKeywords && !hasDependencyPattern) {
       stressSignals.push({
         type: 'fear',
         intensity: this.inferIntensity(message, 'fear'),

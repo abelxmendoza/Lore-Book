@@ -124,7 +124,9 @@ Rank these entries by relevance:`
       // Term frequency score
       let termScore = 0;
       queryTerms.forEach(term => {
-        const matches = (text.match(new RegExp(term, 'g')) || []).length;
+        // SECURITY: Escape regex special characters to prevent injection
+        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const matches = (text.match(new RegExp(escapedTerm, 'g')) || []).length;
         termScore += matches;
       });
       termScore = termScore / queryTerms.length;

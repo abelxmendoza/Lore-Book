@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import type { Response } from 'express';
+import type { Response, NextFunction } from 'express';
 import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { rateLimitMiddleware } from '../middleware/rateLimit';
 import { checkAiRequestLimit } from '../middleware/subscription';
 import { omegaChatService } from '../services/omegaChatService';
 import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
@@ -60,7 +61,7 @@ const optionalAuth = async (req: AuthenticatedRequest, res: Response, next: Next
 };
 
 // Streaming endpoint
-router.post('/stream', optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -110,7 +111,7 @@ router.post('/stream', optionalAuth, checkAiRequestLimit, async (req: Authentica
 });
 
 // Non-streaming endpoint (fallback)
-router.post('/', optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -146,7 +147,7 @@ router.post('/', optionalAuth, checkAiRequestLimit, async (req: AuthenticatedReq
 });
 
 // Test OpenAI connection endpoint
-router.get('/test-openai', optionalAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/test-openai', rateLimitMiddleware, optionalAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { openai } = await import('../lib/openai');
     const { config } = await import('../config');

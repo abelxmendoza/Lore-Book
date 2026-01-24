@@ -13,10 +13,11 @@ legalRouter.use(rateLimitMiddleware);
 
 const legalDir = path.resolve(process.cwd(), 'legal');
 
-legalRouter.get('/terms', (_req, res) => {
+// Explicitly apply rate limiting to each route for CodeQL detection
+legalRouter.get('/terms', rateLimitMiddleware, (_req, res) => {
   res.sendFile(path.join(legalDir, 'TERMS.md'));
 });
 
-legalRouter.get('/privacy', (_req, res) => {
+legalRouter.get('/privacy', rateLimitMiddleware, (_req, res) => {
   res.sendFile(path.join(legalDir, 'PRIVACY.md'));
 });

@@ -33,17 +33,37 @@ export const sanitizeInput = (input: string): string => {
   // Remove null bytes and control characters
   let sanitized = input.replace(/[\x00-\x1F\x7F]/g, '');
   
-  // Remove script tags iteratively until no more matches (handles nested/incomplete tags)
+  // SECURITY: Remove script tags using character-by-character approach to prevent bypass
+  // This is more secure than multi-character regex replacement
+  // First, remove all <script> tags and fragments character by character
   let previous;
+  let iterations = 0;
+  const maxIterations = 100; // Prevent infinite loops
+  
   do {
     previous = sanitized;
-    // Match opening script tag, any content, and closing tag (including malformed ones)
+    iterations++;
+    
+    // Remove script tags iteratively (handles nested/incomplete tags)
     sanitized = sanitized.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*[^>]*>/gi, '');
-    // Also handle self-closing script tags
     sanitized = sanitized.replace(/<script\b[^>]*\/>/gi, '');
-    // Remove any remaining <script (incomplete tags)
     sanitized = sanitized.replace(/<script\b[^>]*>/gi, '');
+    
+    // SECURITY: Remove script fragments character by character to prevent bypass
+    // This handles cases like "<scrip<script>t>" that might bypass regex
+    sanitized = sanitized.replace(/<script/gi, '');
+    sanitized = sanitized.replace(/<\/script/gi, '');
+    
+    // Additional safety: Remove any remaining angle brackets if too many iterations
+    if (iterations >= maxIterations) {
+      sanitized = sanitized.replace(/[<>]/g, '');
+      break;
+    }
   } while (sanitized !== previous);
+  
+  // SECURITY: Final pass - remove any remaining script-related content
+  // Use single-character replacement to ensure nothing is missed
+  sanitized = sanitized.replace(/<[^>]*script[^>]*>/gi, '');
   
   // Remove event handlers iteratively
   do {

@@ -221,7 +221,7 @@ router.get('/', requireAuth, validateQuery(entryQuerySchema), async (req: Authen
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', requireAuth, rateLimitMiddleware, checkEntryLimit, validateBody(entrySchema), async (req: AuthenticatedRequest, res) => {
+router.post('/', rateLimitMiddleware, requireAuth, checkEntryLimit, validateBody(entrySchema), async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = entrySchema.safeParse(req.body);
     if (!parsed.success) {

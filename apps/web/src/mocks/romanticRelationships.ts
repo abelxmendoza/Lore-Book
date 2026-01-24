@@ -103,12 +103,14 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
         'We share a love for hiking and nature',
         'He makes me feel safe and understood',
         'Great sense of humor',
-        'We balance each other out perfectly'
+        'We balance each other out perfectly',
+        'Fun to be around'
       ],
       cons: [
         'He works long hours sometimes',
         'Not always great at planning dates',
-        'Can be a bit messy'
+        'Can be a bit messy',
+        'Can be forgetful'
       ],
       red_flags: [],
       green_flags: [

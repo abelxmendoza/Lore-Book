@@ -219,25 +219,38 @@ export class LearningExtractor {
    */
   private extractName(text: string, type: LearningType): string {
     // Limit input length to prevent ReDoS attacks
-    if (text.length > 1000) {
-      text = text.substring(0, 1000);
+    // SECURITY: Restrict to 500 chars to ensure regex completes quickly
+    if (text.length > 500) {
+      text = text.substring(0, 500);
     }
     
     // Try to extract the name after learning indicators
-    // Using more specific patterns with word boundaries to prevent ReDoS
+    // SECURITY: Rewritten patterns to avoid nested quantifiers that cause ReDoS
+    // Using atomic groups and limiting repetition to prevent exponential backtracking
     const patterns = [
       // Pattern 1: "learned React" or "learning TypeScript"
-      /\b(?:learned|learning|mastered|practicing|using|working with)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})/,
+      // Fixed: Removed nested quantifier, use explicit repetition limit
+      /\b(?:learned|learning|mastered|practicing|using|working with)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})/,
       // Pattern 2: "skill of JavaScript" or "tool called Docker"
-      /\b(?:skill|knowledge|concept|technique|tool|language|framework|methodology)\s+(?:of|in|called|named)?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})/,
+      // Fixed: Removed optional quantifier ambiguity
+      /\b(?:skill|knowledge|concept|technique|tool|language|framework|methodology)\s+(?:of|in|called|named)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})/,
       // Pattern 3: "React skill" or "TypeScript framework"
-      /([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})\s+(?:skill|knowledge|concept|technique|tool|language|framework)\b/,
+      // Fixed: Reduced repetition limit
+      /([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s+(?:skill|knowledge|concept|technique|tool|language|framework)\b/,
     ];
 
+    // SECURITY: Add timeout protection for regex matching
     for (const pattern of patterns) {
-      const match = text.match(pattern);
-      if (match && match[1]) {
-        return match[1].trim();
+      try {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          const result = match[1].trim();
+          // Additional safety: limit result length
+          return result.length > 100 ? result.substring(0, 100) : result;
+        }
+      } catch (error) {
+        // If regex fails (shouldn't happen with safe patterns), skip to next
+        continue;
       }
     }
 

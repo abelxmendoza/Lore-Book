@@ -97,7 +97,8 @@ describe('RelationshipTimeline', () => {
     );
     
     expect(screen.getByText(/milestones & dates/i)).toBeInTheDocument();
-    expect(screen.getByText(/first date/i)).toBeInTheDocument();
+    // Multiple elements contain "first date" (heading and description), so use getAllByText
+    expect(screen.getAllByText(/first date/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/first kiss/i)).toBeInTheDocument();
   });
 

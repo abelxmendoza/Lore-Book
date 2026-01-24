@@ -286,7 +286,7 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
               </Badge>
             </DialogTitle>
           </div>
-          <Button variant="ghost" onClick={onClose} className="p-2 h-9 w-9 sm:h-11 sm:w-11">
+          <Button variant="ghost" onClick={onClose} className="p-2 h-9 w-9 sm:h-11 sm:w-11" aria-label="Close">
             <X className="h-5 w-5" />
           </Button>
         </DialogHeader>

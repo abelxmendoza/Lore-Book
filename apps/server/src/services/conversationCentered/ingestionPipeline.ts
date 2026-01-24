@@ -1179,7 +1179,7 @@ export class ConversationIngestionPipeline {
           .catch(err => {
             logger.debug({ err }, 'Life change detection failed (non-blocking)');
           });
-      }
+      } // End of Step 12.12 quest extraction block
 
       // Step 11: Detect skill and group relationships (async, non-blocking)
       // Detect skill relationships if skills are mentioned
@@ -1265,7 +1265,9 @@ export class ConversationIngestionPipeline {
       // Step 11.3: Detect romantic relationships (async, non-blocking)
       if (unitIds.length > 0) {
         try {
-          this.detectRomanticRelationshipsAsync(userId, rawText, unitIds, messageId).catch(err => {
+          // SECURITY: Store promise in variable to avoid esbuild parsing issues
+          const romanticDetectionPromise = this.detectRomanticRelationshipsAsync(userId, rawText, unitIds, messageId);
+          romanticDetectionPromise.catch((err: unknown) => {
             logger.debug({ err }, 'Romantic relationship detection failed');
           });
         } catch (err) {
@@ -1374,63 +1376,60 @@ export class ConversationIngestionPipeline {
 
             if (relationship) {
               // Detect date events
-              romanticRelationshipDetector
-                .detectDateEvent(userId, rawText, relationship.id, rel.personId, messageId)
-                .catch(err => {
-                  logger.debug({ err }, 'Date event detection failed');
-                });
+              const dateEventPromise = romanticRelationshipDetector
+                .detectDateEvent(userId, rawText, relationship.id, rel.personId, messageId);
+              void dateEventPromise.catch(err => {
+                logger.debug({ err }, 'Date event detection failed');
+              });
 
               // Detect breakups
-              breakupDetector
-                .detectBreakup(userId, rawText, relationship.id, rel.personId, messageId)
-                .then(breakup => {
-                  if (breakup) {
-                    logger.debug({ userId, relationshipId: relationship.id }, 'Detected breakup');
-                  }
-                })
-                .catch(err => {
-                  logger.debug({ err }, 'Breakup detection failed');
-                });
+              const breakupPromise = breakupDetector
+                .detectBreakup(userId, rawText, relationship.id, rel.personId, messageId);
+              void breakupPromise.then(breakup => {
+                if (breakup) {
+                  logger.debug({ userId, relationshipId: relationship.id }, 'Detected breakup');
+                }
+              }).catch(err => {
+                logger.debug({ err }, 'Breakup detection failed');
+              });
 
               // Detect love declarations
-              breakupDetector
-                .detectLoveDeclaration(userId, rawText, relationship.id, rel.personId, messageId)
-                .catch(err => {
-                  logger.debug({ err }, 'Love declaration detection failed');
-                });
+              const loveDeclarationPromise = breakupDetector
+                .detectLoveDeclaration(userId, rawText, relationship.id, rel.personId, messageId);
+              void loveDeclarationPromise.catch(err => {
+                logger.debug({ err }, 'Love declaration detection failed');
+              });
 
               // Detect drift (async, less frequent)
               if (Math.random() < 0.1) {
-                relationshipDriftDetector
-                  .detectDrift(userId, relationship.id, rel.personId, rel.personType)
-                  .then(drift => {
-                    if (drift) {
-                      logger.debug(
-                        { userId, relationshipId: relationship.id, driftType: drift.driftType },
-                        'Detected relationship drift'
-                      );
-                    }
-                  })
-                  .catch(err => {
-                    logger.debug({ err }, 'Drift detection failed');
-                  });
+                const driftPromise = relationshipDriftDetector
+                  .detectDrift(userId, relationship.id, rel.personId, rel.personType);
+                void driftPromise.then(drift => {
+                  if (drift) {
+                    logger.debug(
+                      { userId, relationshipId: relationship.id, driftType: drift.driftType },
+                      'Detected relationship drift'
+                    );
+                  }
+                }).catch(err => {
+                  logger.debug({ err }, 'Drift detection failed');
+                });
               }
 
               // Detect cycles (less frequent, weekly check)
               if (Math.random() < 0.05) {
-                relationshipCycleDetector
-                  .detectCycles(userId, relationship.id, rel.personId, rel.personType)
-                  .then(cycles => {
-                    if (cycles.length > 0) {
-                      logger.debug(
-                        { userId, relationshipId: relationship.id, cyclesFound: cycles.length },
-                        'Detected relationship cycles'
-                      );
-                    }
-                  })
-                  .catch(err => {
-                    logger.debug({ err }, 'Cycle detection failed');
-                  });
+                const cyclesPromise = relationshipCycleDetector
+                  .detectCycles(userId, relationship.id, rel.personId, rel.personType);
+                void cyclesPromise.then(cycles => {
+                  if (cycles.length > 0) {
+                    logger.debug(
+                      { userId, relationshipId: relationship.id, cyclesFound: cycles.length },
+                      'Detected relationship cycles'
+                    );
+                  }
+                }).catch(err => {
+                  logger.debug({ err }, 'Cycle detection failed');
+                });
               }
             }
           }
