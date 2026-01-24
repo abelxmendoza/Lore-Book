@@ -60,3 +60,21 @@ vite.config.js
 .cache/
 .parcel-cache/
 .vercel
+
+# Build / test / accidental artifacts in app roots
+# (empty files or launcher junk: often from scripts/tests writing to cwd with wrong path)
+apps/server/POST
+apps/server/GET
+apps/server/Account
+apps/server/should
+apps/server/tsx
+apps/server/server@0.1.0
+apps/server/tsc_err.txt
+apps/server/COVERAGE.md
+apps/web/POST
+apps/web/GET
+apps/web/Account
+apps/web/Essence
+apps/web/should
+apps/web/vitest
+apps/web/server@0.1.0
