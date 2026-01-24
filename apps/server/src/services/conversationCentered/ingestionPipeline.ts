@@ -117,6 +117,150 @@ export class ConversationIngestionPipeline {
     }
   }
 
+  /** Detect romantic relationships asynchronously (non-blocking). */
+  private async detectRomanticRelationshipsAsync(
+    userId: string,
+    rawText: string,
+    unitIds: string[],
+    messageId: string
+  ): Promise<void> {
+    try {
+      // Get entities mentioned in this message
+      const entitiesWithNames = await Promise.all(
+        unitIds.map(async (entityId) => {
+          try {
+            // Try character first
+            const { data: character } = await supabaseAdmin
+              .from('characters')
+              .select('id, name')
+              .eq('id', entityId)
+              .eq('user_id', userId)
+              .single();
+
+            if (character) {
+              return { id: character.id, name: character.name, type: 'character' as const };
+            }
+
+            // Try omega entity
+            const { data: entity } = await supabaseAdmin
+              .from('omega_entities')
+              .select('id, primary_name')
+              .eq('id', entityId)
+              .eq('user_id', userId)
+              .single();
+
+            if (entity) {
+              return { id: entity.id, name: entity.primary_name, type: 'omega_entity' as const };
+            }
+
+            return null;
+          } catch (error) {
+            return null;
+          }
+        })
+      );
+
+      const validEntities = entitiesWithNames.filter(e => e !== null) as Array<{
+        id: string;
+        name: string;
+        type: 'character' | 'omega_entity';
+      }>;
+
+      if (validEntities.length > 0) {
+        const relationships = await romanticRelationshipDetector.detectRelationships(
+          userId,
+          rawText,
+          validEntities,
+          messageId
+        );
+
+        if (relationships.length > 0) {
+          logger.debug(
+            { userId, relationshipsFound: relationships.length },
+            'Detected romantic relationships'
+          );
+
+          // For each detected relationship, try to detect date events
+          for (const rel of relationships) {
+            // Get relationship ID
+            const relationshipResult = await supabaseAdmin
+              .from('romantic_relationships')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('person_id', rel.personId)
+              .eq('person_type', rel.personType)
+              .eq('relationship_type', rel.relationshipType)
+              .eq('status', rel.status)
+              .single();
+
+            const relationship = relationshipResult.data;
+
+            if (relationship) {
+              // Detect date events
+              const dateEventPromise = romanticRelationshipDetector
+                .detectDateEvent(userId, rawText, relationship.id, rel.personId, messageId);
+              void dateEventPromise.catch(err => {
+                logger.debug({ err }, 'Date event detection failed');
+              });
+
+              // Detect breakups
+              const breakupPromise = breakupDetector
+                .detectBreakup(userId, rawText, relationship.id, rel.personId, messageId);
+              void breakupPromise.then(breakup => {
+                if (breakup) {
+                  logger.debug({ userId, relationshipId: relationship.id }, 'Detected breakup');
+                }
+              }).catch(err => {
+                logger.debug({ err }, 'Breakup detection failed');
+              });
+
+              // Detect love declarations
+              const loveDeclarationPromise = breakupDetector
+                .detectLoveDeclaration(userId, rawText, relationship.id, rel.personId, messageId);
+              void loveDeclarationPromise.catch(err => {
+                logger.debug({ err }, 'Love declaration detection failed');
+              });
+
+              // Detect drift (async, less frequent)
+              if (Math.random() < 0.1) {
+                const driftPromise = relationshipDriftDetector
+                  .detectDrift(userId, relationship.id, rel.personId, rel.personType);
+                void driftPromise.then(drift => {
+                  if (drift) {
+                    logger.debug(
+                      { userId, relationshipId: relationship.id, driftType: drift.driftType },
+                      'Detected relationship drift'
+                    );
+                  }
+                }).catch(err => {
+                  logger.debug({ err }, 'Drift detection failed');
+                });
+              }
+
+              // Detect cycles (less frequent, weekly check)
+              if (Math.random() < 0.05) {
+                const cyclesPromise = relationshipCycleDetector
+                  .detectCycles(userId, relationship.id, rel.personId, rel.personType);
+                void cyclesPromise.then(cycles => {
+                  if (cycles.length > 0) {
+                    logger.debug(
+                      { userId, relationshipId: relationship.id, cyclesFound: cycles.length },
+                      'Detected relationship cycles'
+                    );
+                  }
+                }).catch(err => {
+                  logger.debug({ err }, 'Cycle detection failed');
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      logger.debug({ err }, 'Romantic relationship detection failed (non-blocking)');
+    }
+  }
+
   /**
    * Ingest a message through the full pipeline
    * @param eventContext - Optional event ID if this message is scoped to a specific event
@@ -139,6 +283,23 @@ export class ConversationIngestionPipeline {
     unitIds: string[];
   }> {
     try {
+      return await this.ingestMessageCore(userId, threadId, sender, rawText, conversationHistory, eventContext, entityContext);
+    } catch (err) {
+      logger.error({ error: err, userId, threadId, rawText }, 'Failed to ingest message');
+      throw err;
+    }
+  }
+
+  /** Core ingestion logic. Extracted to avoid esbuild parse errors on large try block. */
+  private async ingestMessageCore(
+    userId: string,
+    threadId: string,
+    sender: 'USER' | 'AI',
+    rawText: string,
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    eventContext?: string,
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
+  ): Promise<{ messageId: string; utteranceIds: string[]; unitIds: string[] }> {
       // Step 1: Save message (if not already saved)
       // Note: In practice, message might already be saved by chat service
       // This is a placeholder - adjust based on your chat service implementation
@@ -1283,162 +1444,10 @@ export class ConversationIngestionPipeline {
       }
 
       // Return the results
-      return {
-        messageId,
-        utteranceIds,
-        unitIds,
-      };
-    } catch (error) {
-      logger.error({ error, userId, threadId, rawText }, 'Failed to ingest message');
-      throw error;
-    }
+      return { messageId, utteranceIds, unitIds };
   }
 
-  /**
-   * Detect romantic relationships asynchronously (non-blocking)
-   */
-  private async detectRomanticRelationshipsAsync(
-    userId: string,
-    rawText: string,
-    unitIds: string[],
-    messageId: string
-  ): Promise<void> {
-    try {
-      // Get entities mentioned in this message
-      const entitiesWithNames = await Promise.all(
-        unitIds.map(async (entityId) => {
-          try {
-            // Try character first
-            const { data: character } = await supabaseAdmin
-              .from('characters')
-              .select('id, name')
-              .eq('id', entityId)
-              .eq('user_id', userId)
-              .single();
-
-            if (character) {
-              return { id: character.id, name: character.name, type: 'character' as const };
-            }
-
-            // Try omega entity
-            const { data: entity } = await supabaseAdmin
-              .from('omega_entities')
-              .select('id, primary_name')
-              .eq('id', entityId)
-              .eq('user_id', userId)
-              .single();
-
-            if (entity) {
-              return { id: entity.id, name: entity.primary_name, type: 'omega_entity' as const };
-            }
-
-            return null;
-          } catch (error) {
-            return null;
-          }
-        })
-      );
-
-      const validEntities = entitiesWithNames.filter(e => e !== null) as Array<{
-        id: string;
-        name: string;
-        type: 'character' | 'omega_entity';
-      }>;
-
-      if (validEntities.length > 0) {
-        const relationships = await romanticRelationshipDetector.detectRelationships(
-          userId,
-          rawText,
-          validEntities,
-          messageId
-        );
-
-        if (relationships.length > 0) {
-          logger.debug(
-            { userId, relationshipsFound: relationships.length },
-            'Detected romantic relationships'
-          );
-
-          // For each detected relationship, try to detect date events
-          for (const rel of relationships) {
-            // Get relationship ID
-            const relationshipResult = await supabaseAdmin
-              .from('romantic_relationships')
-              .select('id')
-              .eq('user_id', userId)
-              .eq('person_id', rel.personId)
-              .eq('person_type', rel.personType)
-              .eq('relationship_type', rel.relationshipType)
-              .eq('status', rel.status)
-              .single();
-            
-            const relationship = relationshipResult.data;
-
-            if (relationship) {
-              // Detect date events
-              const dateEventPromise = romanticRelationshipDetector
-                .detectDateEvent(userId, rawText, relationship.id, rel.personId, messageId);
-              void dateEventPromise.catch(err => {
-                logger.debug({ err }, 'Date event detection failed');
-              });
-
-              // Detect breakups
-              const breakupPromise = breakupDetector
-                .detectBreakup(userId, rawText, relationship.id, rel.personId, messageId);
-              void breakupPromise.then(breakup => {
-                if (breakup) {
-                  logger.debug({ userId, relationshipId: relationship.id }, 'Detected breakup');
-                }
-              }).catch(err => {
-                logger.debug({ err }, 'Breakup detection failed');
-              });
-
-              // Detect love declarations
-              const loveDeclarationPromise = breakupDetector
-                .detectLoveDeclaration(userId, rawText, relationship.id, rel.personId, messageId);
-              void loveDeclarationPromise.catch(err => {
-                logger.debug({ err }, 'Love declaration detection failed');
-              });
-
-              // Detect drift (async, less frequent)
-              if (Math.random() < 0.1) {
-                const driftPromise = relationshipDriftDetector
-                  .detectDrift(userId, relationship.id, rel.personId, rel.personType);
-                void driftPromise.then(drift => {
-                  if (drift) {
-                    logger.debug(
-                      { userId, relationshipId: relationship.id, driftType: drift.driftType },
-                      'Detected relationship drift'
-                    );
-                  }
-                }).catch(err => {
-                  logger.debug({ err }, 'Drift detection failed');
-                });
-              }
-
-              // Detect cycles (less frequent, weekly check)
-              if (Math.random() < 0.05) {
-                const cyclesPromise = relationshipCycleDetector
-                  .detectCycles(userId, relationship.id, rel.personId, rel.personType);
-                void cyclesPromise.then(cycles => {
-                  if (cycles.length > 0) {
-                    logger.debug(
-                      { userId, relationshipId: relationship.id, cyclesFound: cycles.length },
-                      'Detected relationship cycles'
-                    );
-                  }
-                }).catch(err => {
-                  logger.debug({ err }, 'Cycle detection failed');
-                });
-              }
-            }
-          }
-        }
-      }
-    } catch (err) {
-      logger.debug({ err }, 'Romantic relationship detection failed (non-blocking)');
-    }
-  }
+  _dummy(): void {}
 
   /**
    * Extract temporal references from text using TimeEngine

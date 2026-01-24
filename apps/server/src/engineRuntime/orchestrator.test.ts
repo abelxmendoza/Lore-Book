@@ -4,19 +4,21 @@ import { buildEngineContext } from './contextBuilder';
 import { saveEngineResults } from './storage';
 import { DependencyGraph } from '../services/engineRegistry/dependencyGraph';
 import { sensemakingOrchestrator } from '../services/engineGovernance';
-import { ENGINE_REGISTRY } from './engineRegistry';
 
-// Mock dependencies
+// Hoist so vi.mock factory can reference it
+const { mockEngineRegistry } = vi.hoisted(() => ({
+  mockEngineRegistry: {
+    health: vi.fn().mockResolvedValue({ status: 'healthy' }),
+    financial: vi.fn().mockResolvedValue({ balance: 1000 }),
+    habits: vi.fn().mockResolvedValue({ streaks: [] }),
+    chronology: vi.fn().mockResolvedValue({ graph: {} }),
+  },
+}));
+
 vi.mock('./contextBuilder');
 vi.mock('./storage');
 vi.mock('../services/engineRegistry/dependencyGraph');
 vi.mock('../services/engineGovernance');
-const mockEngineRegistry: any = {
-  health: vi.fn().mockResolvedValue({ status: 'healthy' }),
-  financial: vi.fn().mockResolvedValue({ balance: 1000 }),
-  habits: vi.fn().mockResolvedValue({ streaks: [] }),
-};
-
 vi.mock('./engineRegistry', () => ({
   ENGINE_REGISTRY: mockEngineRegistry,
   hasEngine: vi.fn((name: string) => name in mockEngineRegistry),
@@ -47,7 +49,7 @@ describe('EngineOrchestrator', () => {
       resolveOrder: vi.fn().mockResolvedValue(['health', 'financial', 'habits']),
       getDependencies: vi.fn().mockResolvedValue([]),
     };
-    (DependencyGraph as any).mockImplementation(() => mockDependencyGraph);
+    (DependencyGraph as any).mockImplementation(function (this: any) { return mockDependencyGraph; });
 
     // Mock sensemaking orchestrator
     (sensemakingOrchestrator.decideEnginesToRun as any) = vi.fn().mockResolvedValue([

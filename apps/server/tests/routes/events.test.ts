@@ -35,7 +35,7 @@ describe('Events Routes', () => {
 
   describe('POST /api/events/resolve', () => {
     it('should resolve events from journal entries', async () => {
-      resetInstances(); // Reset before setting up mocks
+      resetInstances();
       const { EventResolver } = await import('../../src/services/events/eventResolver');
       const mockResolver = {
         process: vi.fn().mockResolvedValue([
@@ -44,8 +44,7 @@ describe('Events Routes', () => {
         ]),
       };
 
-      // Mock the EventResolver constructor
-      vi.mocked(EventResolver).mockImplementation(() => mockResolver as any);
+      vi.mocked(EventResolver).mockImplementation(function (this: any) { return mockResolver; });
 
       const response = await request(app)
         .post('/api/events/resolve')
@@ -62,13 +61,11 @@ describe('Events Routes', () => {
     });
 
     it('should handle entries from context', async () => {
-      resetInstances(); // Reset before setting up mocks
+      resetInstances();
       const { EventResolver } = await import('../../src/services/events/eventResolver');
-      const mockResolver = {
-        process: vi.fn().mockResolvedValue([]),
-      };
+      const mockResolver = { process: vi.fn().mockResolvedValue([]) };
 
-      vi.mocked(EventResolver).mockImplementation(() => mockResolver as any);
+      vi.mocked(EventResolver).mockImplementation(function (this: any) { return mockResolver; });
 
       await request(app)
         .post('/api/events/resolve')
@@ -85,7 +82,7 @@ describe('Events Routes', () => {
 
   describe('GET /api/events', () => {
     it('should get all events for user', async () => {
-      resetInstances(); // Reset before setting up mocks
+      resetInstances();
       const { EventStorage } = await import('../../src/services/events/storageService');
       const mockStorage = {
         loadAll: vi.fn().mockResolvedValue([
@@ -94,7 +91,7 @@ describe('Events Routes', () => {
         ]),
       };
 
-      vi.mocked(EventStorage).mockImplementation(() => mockStorage as any);
+      vi.mocked(EventStorage).mockImplementation(function (this: any) { return mockStorage; });
 
       const response = await request(app)
         .get('/api/events')
@@ -106,7 +103,7 @@ describe('Events Routes', () => {
     });
 
     it('should filter by date range', async () => {
-      resetInstances(); // Reset before setting up mocks
+      resetInstances();
       const { EventStorage } = await import('../../src/services/events/storageService');
       const mockStorage = {
         loadAll: vi.fn().mockResolvedValue([
@@ -114,7 +111,7 @@ describe('Events Routes', () => {
         ]),
       };
 
-      vi.mocked(EventStorage).mockImplementation(() => mockStorage as any);
+      vi.mocked(EventStorage).mockImplementation(function (this: any) { return mockStorage; });
 
       const response = await request(app)
         .get('/api/events?start_date=2024-01-01&end_date=2024-01-31')
@@ -132,7 +129,7 @@ describe('Events Routes', () => {
 
   describe('GET /api/events/:id', () => {
     it('should get a specific event', async () => {
-      resetInstances(); // Reset before setting up mocks
+      resetInstances();
       const { EventStorage } = await import('../../src/services/events/storageService');
       const mockStorage = {
         loadAll: vi.fn().mockResolvedValue([
@@ -141,7 +138,7 @@ describe('Events Routes', () => {
         ]),
       };
 
-      vi.mocked(EventStorage).mockImplementation(() => mockStorage as any);
+      vi.mocked(EventStorage).mockImplementation(function (this: any) { return mockStorage; });
 
       const response = await request(app)
         .get('/api/events/event-1')
@@ -152,13 +149,11 @@ describe('Events Routes', () => {
     });
 
     it('should return 404 if event not found', async () => {
-      resetInstances(); // Reset before setting up mocks
+      resetInstances();
       const { EventStorage } = await import('../../src/services/events/storageService');
-      const mockStorage = {
-        loadAll: vi.fn().mockResolvedValue([]),
-      };
+      const mockStorage = { loadAll: vi.fn().mockResolvedValue([]) };
 
-      vi.mocked(EventStorage).mockImplementation(() => mockStorage as any);
+      vi.mocked(EventStorage).mockImplementation(function (this: any) { return mockStorage; });
 
       await request(app)
         .get('/api/events/non-existent')

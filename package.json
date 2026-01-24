@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "test:security": "cd apps/server && npm test middleware/ integration/privacy.test.ts",
-    "test:e2e:security": "cd apps/web && npm run test:e2e security.spec.ts",
+    "test:e2e:security": "cd apps/web && npm run test:e2e:security",
     "test:all": "npm run test:security && npm run test:e2e:security",
     "find-unused": "cd apps/server && node scripts/find-unused-code.js",
     "lint:fix": "cd apps/server && npm run lint -- --fix && cd ../web && npm run lint -- --fix",

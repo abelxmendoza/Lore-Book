@@ -267,6 +267,7 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
         isUnmet ? 'opacity-75 border-dashed border-2' : ''
       }`}
       onClick={onClick}
+      data-testid="character-card"
     >
       {/* Full card layout - same for mobile and desktop */}
       <div>

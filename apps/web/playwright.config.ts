@@ -39,15 +39,21 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: process.env.CI ? 'npm run preview' : 'npm run dev',
-    url: process.env.CI ? 'http://localhost:4173' : 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-    env: {
-      // Disable dev notice in E2E tests
-      VITE_SHOW_DEV_NOTICE: 'false',
-    },
-  },
+  // When E2E_EXTERNAL_SERVER=1, an external process (e.g. start-server-and-test) starts
+  // the dev/preview server; we skip starting webServer to avoid "Process from config.webServer
+  // was not able to start. Exit code: 1" when the built-in spawn fails.
+  ...(process.env.E2E_EXTERNAL_SERVER
+    ? {}
+    : {
+        webServer: {
+          command: process.env.CI ? 'npm run preview' : 'npm run dev',
+          url: process.env.CI ? 'http://localhost:4173' : 'http://localhost:5173',
+          reuseExistingServer: !process.env.CI,
+          timeout: 120 * 1000,
+          env: {
+            VITE_SHOW_DEV_NOTICE: 'false',
+          },
+        },
+      }),
 });
 

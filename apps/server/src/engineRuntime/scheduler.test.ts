@@ -39,7 +39,10 @@ describe('Engine Scheduler', () => {
       runAll: mockRunAll,
     };
 
-    (EngineOrchestrator as any).mockImplementation(() => mockOrchestrator);
+    // Must be a constructor (scheduler does new EngineOrchestrator())
+    (EngineOrchestrator as any).mockImplementation(function (this: any) {
+      return mockOrchestrator;
+    });
 
     mockSelect = vi.fn().mockResolvedValue({
       data: [

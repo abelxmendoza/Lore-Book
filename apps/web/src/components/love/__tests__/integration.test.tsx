@@ -2,9 +2,16 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '../../../test/utils';
+import userEvent from '@testing-library/user-event';
 import { LoveAndRelationshipsView } from '../LoveAndRelationshipsView';
 import { useMockData } from '../../../contexts/MockDataContext';
-import { getMockRomanticRelationshipsByFilter, getMockRomanticRelationshipById, getMockDateEvents, getMockRelationshipAnalytics } from '../../../mocks/romanticRelationships';
+import {
+  getMockRomanticRelationshipsByFilter,
+  getMockRomanticRelationshipById,
+  getMockDateEvents,
+  getMockRelationshipAnalytics,
+  getMockRankings,
+} from '../../../mocks/romanticRelationships';
 
 // Mock dependencies
 vi.mock('../../../contexts/MockDataContext', () => ({
@@ -16,7 +23,8 @@ vi.mock('../../../mocks/romanticRelationships', () => ({
   getMockRomanticRelationshipById: vi.fn(),
   getMockDateEvents: vi.fn(),
   getMockRelationshipAnalytics: vi.fn(),
-  getMockRomanticRelationships: vi.fn()
+  getMockRomanticRelationships: vi.fn(),
+  getMockRankings: vi.fn(),
 }));
 
 vi.mock('../../../lib/api', () => ({
@@ -82,9 +90,11 @@ describe('Love & Relationships Integration Tests', () => {
     (getMockRomanticRelationshipById as any).mockReturnValue(mockRelationships[0]);
     (getMockDateEvents as any).mockReturnValue([]);
     (getMockRelationshipAnalytics as any).mockReturnValue(mockAnalytics);
+    (getMockRankings as any).mockReturnValue(mockRelationships);
   });
 
   it('completes full flow: load → filter → open detail → view analytics', async () => {
+    const user = userEvent.setup();
     render(<LoveAndRelationshipsView />);
     
     // Step 1: Load relationships
@@ -92,11 +102,9 @@ describe('Love & Relationships Integration Tests', () => {
       expect(screen.getByText('Alex')).toBeInTheDocument();
     });
     
-    // Step 2: Filter by active - find the tab button specifically (role="tab")
-    const activeTabs = screen.getAllByText(/active/i);
-    const activeTab = activeTabs.find(el => el.getAttribute('role') === 'tab' || el.closest('[role="tab"]'));
-    expect(activeTab).toBeDefined();
-    fireEvent.click(activeTab!);
+    // Step 2: Filter by active — use role=tab and name to avoid matching "1 active" in the header
+    const activeTab = screen.getByRole('tab', { name: /^active$/i });
+    await user.click(activeTab);
     
     await waitFor(() => {
       expect(getMockRomanticRelationshipsByFilter).toHaveBeenCalledWith('active');
@@ -123,21 +131,26 @@ describe('Love & Relationships Integration Tests', () => {
   });
 
   it('switches between different filters', async () => {
+    const user = userEvent.setup();
     render(<LoveAndRelationshipsView />);
     
     await waitFor(() => {
       expect(screen.getByText('Alex')).toBeInTheDocument();
     });
     
-    // Test each filter
-    const filters = ['active', 'past', 'situationships', 'crushes', 'rankings'];
+    // Tab accessible names (value and label may differ, e.g. Situationships vs Situations)
+    const filterTabNames: Record<string, RegExp | string> = {
+      active: /^active$/i,
+      past: /^past$/i,
+      situationships: /situationships|situations/i,
+      crushes: /^crushes$/i,
+      rankings: /^rankings$/i,
+    };
     
-    for (const filter of filters) {
-      // Find the tab button specifically (role="tab") to avoid matching other text
-      const filterTabs = screen.getAllByText(new RegExp(filter, 'i'));
-      const filterTab = filterTabs.find(el => el.getAttribute('role') === 'tab' || el.closest('[role="tab"]'));
-      expect(filterTab).toBeDefined();
-      fireEvent.click(filterTab!);
+    for (const filter of ['active', 'past', 'situationships', 'crushes', 'rankings'] as const) {
+      const name = filterTabNames[filter];
+      const tab = screen.getByRole('tab', { name });
+      await user.click(tab);
       
       await waitFor(() => {
         if (filter !== 'rankings') {

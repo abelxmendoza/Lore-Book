@@ -7,6 +7,9 @@ import { IdentityDimensionBuilder } from '../../src/services/identityCore/identi
 vi.mock('../../src/services/identityCore/identityStorage');
 vi.mock('../../src/services/identityCore/identitySignals');
 vi.mock('../../src/services/identityCore/identityDimensions');
+vi.mock('../../src/services/embeddingService', () => ({
+  embeddingService: { embedText: vi.fn().mockResolvedValue(new Array(1536).fill(0.1)) },
+}));
 
 describe('IdentityCoreEngine', () => {
   let engine: IdentityCoreEngine;
@@ -38,9 +41,10 @@ describe('IdentityCoreEngine', () => {
       build: vi.fn().mockResolvedValue([]),
     };
 
-    vi.mocked(IdentityStorage).mockImplementation(() => mockStorage as any);
-    vi.mocked(IdentitySignalExtractor).mockImplementation(() => mockSignalExtractor as any);
-    vi.mocked(IdentityDimensionBuilder).mockImplementation(() => mockDimensionBuilder as any);
+    // Must be constructors (IdentityCoreEngine does new IdentitySignalExtractor(), etc.)
+    vi.mocked(IdentityStorage).mockImplementation(function (this: any) { return mockStorage; });
+    vi.mocked(IdentitySignalExtractor).mockImplementation(function (this: any) { return mockSignalExtractor; });
+    vi.mocked(IdentityDimensionBuilder).mockImplementation(function (this: any) { return mockDimensionBuilder; });
 
     engine = new IdentityCoreEngine();
   });

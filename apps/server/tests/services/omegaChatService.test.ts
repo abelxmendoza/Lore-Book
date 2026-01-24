@@ -14,25 +14,20 @@ vi.mock('../../src/services/orchestratorService');
 vi.mock('../../src/services/locationService');
 vi.mock('../../src/services/ragPacketCacheService');
 vi.mock('../../src/services/supabaseClient');
+// OpenAI must be a constructor (new OpenAI()); use function not arrow/vi.fn
+const { openaiCreateFn } = vi.hoisted(() => ({ openaiCreateFn: vi.fn() }));
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    chat: {
-      completions: {
-        create: vi.fn().mockResolvedValue({
-          choices: [{
-            message: {
-              content: 'Test response'
-            }
-          }]
-        })
-      }
-    }
-  }))
+  default: function OpenAI() {
+    return { chat: { completions: { create: openaiCreateFn } } };
+  },
 }));
 
 describe('OmegaChatService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    openaiCreateFn.mockResolvedValue({
+      choices: [{ message: { content: 'Test response' } }],
+    });
   });
 
   describe('chat', () => {

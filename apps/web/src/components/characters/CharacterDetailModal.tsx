@@ -1459,7 +1459,7 @@ User's message: ${message}`;
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm" data-testid="character-modal" role="dialog" aria-modal="true">
       <div className="bg-gradient-to-br from-black via-black/95 to-black border-0 sm:border-2 border-primary/30 rounded-none sm:rounded-2xl w-full h-full sm:h-[95vh] sm:max-w-5xl overflow-hidden flex flex-col shadow-2xl shadow-primary/20">
         {/* Enhanced Header */}
         <div className="relative bg-gradient-to-r from-primary/20 via-purple-900/20 to-primary/20 border-b-2 border-primary/30 p-3 sm:p-6">

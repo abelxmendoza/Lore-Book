@@ -6,14 +6,12 @@ import { supabaseAdmin } from '../../src/services/supabaseClient';
 // Mock all dependencies
 vi.mock('../../src/services/orchestratorService');
 vi.mock('../../src/services/supabaseClient');
+// OpenAI must be a constructor (new OpenAI())
+const { openaiCreateFn } = vi.hoisted(() => ({ openaiCreateFn: vi.fn() }));
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    chat: {
-      completions: {
-        create: vi.fn()
-      }
-    }
-  }))
+  default: function OpenAI() {
+    return { chat: { completions: { create: openaiCreateFn } } };
+  },
 }));
 
 describe('OmegaChatService Error Handling', () => {

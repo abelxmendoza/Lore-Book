@@ -28,7 +28,10 @@ describe('Engine Triggers', () => {
       runAll: mockRunAll,
     };
 
-    (EngineOrchestrator as any).mockImplementation(() => mockOrchestrator);
+    // Must be a constructor (triggers does new EngineOrchestrator())
+    (EngineOrchestrator as any).mockImplementation(function (this: any) {
+      return mockOrchestrator;
+    });
   });
 
   afterEach(() => {

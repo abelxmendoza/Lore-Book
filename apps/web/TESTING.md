@@ -53,12 +53,17 @@ npm run test:e2e:headed
 #### Cypress
 Cypress provides interactive E2E testing with time-travel debugging.
 
-**Run Cypress tests:**
+**Run Cypress tests** (starts the dev server automatically):
 ```bash
 npm run test:cypress
 ```
 
-**Open Cypress UI:**
+To run Cypress without starting the server (when `npm run dev` is already running):
+```bash
+npm run cypress:run
+```
+
+**Open Cypress UI** (start `npm run dev` in another terminal first):
 ```bash
 npm run test:cypress:open
 ```
@@ -181,3 +186,38 @@ The CI pipeline includes:
 - Use `page.pause()` to pause execution
 - Use `--debug` flag for debug mode
 - Check `playwright-report/` for detailed reports
+
+## Troubleshooting
+
+### `npm install` fails at Cypress (`node index.js --exec install`)
+
+Cypress’s postinstall (binary download) can fail due to Node.js from Snap, network/proxy, or permissions.
+
+**Option 1 – Skip Cypress binary during install, then install when needed:**
+
+```bash
+rm -rf node_modules
+npm run install:skip-cypress-binary
+```
+
+When you want to run Cypress tests:
+
+```bash
+npm run cypress:install-binary
+npm run test:cypress
+```
+
+**Option 2 – Use foreground scripts (can help with Snap Node on Linux):**
+
+```bash
+rm -rf node_modules
+npm run install:foreground-scripts
+```
+
+**Option 3 – Use Node 20 via nvm** (avoids Snap-related issues):
+
+```bash
+nvm use 20   # or nvm use if .nvmrc exists
+rm -rf node_modules
+npm install
+```

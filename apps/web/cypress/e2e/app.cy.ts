@@ -10,14 +10,18 @@ describe('Lore Keeper App - Core Functionality', () => {
   });
 
   it('should display the sidebar navigation', () => {
-    cy.get('aside, nav').should('be.visible');
-    cy.contains('Chat').should('be.visible');
-    cy.contains('Timeline').should('be.visible');
+    // Desktop aside is first; assert nav buttons only (avoid mobile header h1 with lg:hidden)
+    cy.get('aside').first().should('be.visible');
+    cy.get('aside').first().within(() => {
+      cy.get('button').contains('Chat').should('be.visible');
+      cy.get('button').contains('Timeline').should('be.visible'); // "Omni Timeline"
+      cy.get('button').contains('Characters').should('be.visible');
+    });
   });
 
   it('should navigate between surfaces', () => {
-    // Navigate to Timeline
-    cy.contains('Timeline').click();
+    // Navigate to Timeline (sidebar label is "Omni Timeline")
+    cy.contains('Omni Timeline').click();
     cy.url().should('include', '/timeline');
     cy.waitForApp();
 
@@ -33,8 +37,17 @@ describe('Lore Keeper App - Core Functionality', () => {
   });
 
   it('should handle keyboard shortcuts', () => {
-    // Cmd/Ctrl + K should open search
-    cy.get('body').type('{meta}k');
+    // Cmd/Ctrl + K should open search — dispatch keydown on document (main/body aren’t typeable)
+    cy.window().then((win) => {
+      const isMac = win.navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      win.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'k',
+        metaKey: isMac,
+        ctrlKey: !isMac,
+        code: 'KeyK',
+        bubbles: true,
+      }));
+    });
     cy.url().should('include', '/search');
   });
 

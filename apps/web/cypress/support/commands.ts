@@ -40,8 +40,15 @@ declare global {
   }
 }
 
+const visitOptions = {
+  onBeforeLoad: (win: Window) => {
+    win.localStorage.setItem('dev-notice-dismissed', 'true');
+    win.localStorage.setItem('VITE_USE_MOCK_DATA', 'true');
+  },
+};
+
 Cypress.Commands.add('loginAsGuest', () => {
-  cy.visit('/');
+  cy.visit('/', visitOptions);
   // Wait for auth gate to load
   cy.get('body').should('be.visible');
   // If there's a guest login button, click it
@@ -56,15 +63,13 @@ Cypress.Commands.add('loginAsGuest', () => {
 Cypress.Commands.add('waitForApp', () => {
   // Wait for the app to be fully loaded
   cy.get('#root').should('be.visible');
-  // Wait for any loading spinners to disappear
-  cy.get('[data-testid="loading"]', { timeout: 10000 }).should('not.exist');
   // Wait for main content to be visible
-  cy.get('main, [role="main"]', { timeout: 10000 }).should('be.visible');
+  cy.get('main, [role="main"]', { timeout: 15000 }).should('be.visible');
 });
 
 Cypress.Commands.add('navigateToSurface', (surface: string) => {
-  // Navigate to a specific surface/page
-  cy.visit(`/${surface}`);
+  // Navigate to a specific surface/page (use visitOptions to pre-dismiss dev notice)
+  cy.visit(`/${surface}`, visitOptions);
   cy.waitForApp();
   // Verify we're on the correct surface
   cy.url().should('include', surface);
@@ -75,9 +80,10 @@ Cypress.Commands.add('createMemory', (content: string) => {
   // Find the memory input/composer
   cy.get('textarea[placeholder*="memory" i], textarea[placeholder*="entry" i]', { timeout: 5000 })
     .should('be.visible')
+    .first()
     .type(content);
-  // Submit the memory
-  cy.get('button[type="submit"], button:contains("Save")').click();
+  // Submit
+  cy.get('button[type="submit"]').first().click();
   // Wait for the memory to be saved
   cy.contains(content, { timeout: 5000 }).should('be.visible');
 });

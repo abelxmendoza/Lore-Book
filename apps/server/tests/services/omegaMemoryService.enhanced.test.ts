@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { omegaMemoryService } from '../../src/services/omegaMemoryService';
 import { embeddingService } from '../../src/services/embeddingService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
-import OpenAI from 'openai';
 
 // Mock dependencies
 vi.mock('../../src/services/supabaseClient');
@@ -36,14 +35,11 @@ const { mockOpenAICreate } = vi.hoisted(() => {
     mockOpenAICreate: vi.fn()
   };
 });
+// OpenAI must be a constructor (PeoplePlacesService, etc. do new OpenAI())
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    chat: {
-      completions: {
-        create: mockOpenAICreate
-      }
-    }
-  }))
+  default: function OpenAI() {
+    return { chat: { completions: { create: mockOpenAICreate } } };
+  },
 }));
 vi.mock('../../src/config', () => ({
   config: {

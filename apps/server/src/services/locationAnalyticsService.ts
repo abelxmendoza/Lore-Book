@@ -177,7 +177,6 @@ export class LocationAnalyticsService {
         visit_frequency: Math.round(visit_frequency),
         recency_score: Math.round(recency_score),
         total_visits,
-        visit_frequency,
         importance_score: Math.round(importance_score),
         priority_score: Math.round(priority_score),
         relevance_score: Math.round(relevance_score),

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { omegaMemoryService } from '../../src/services/omegaMemoryService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
-import OpenAI from 'openai';
 
 // Mock dependencies
 vi.mock('../../src/services/supabaseClient');
@@ -10,26 +9,12 @@ vi.mock('../../src/services/embeddingService', () => ({
     embedText: vi.fn().mockResolvedValue(new Array(1536).fill(0.1))
   }
 }));
-// Mock OpenAI - the instance is created at module load, so we need to mock it properly
-// Make it return a contradiction detection result
+// OpenAI must be a constructor; PeoplePlacesService (via memoryService) does new OpenAI()
+const { openaiCreateFn } = vi.hoisted(() => ({ openaiCreateFn: vi.fn() }));
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    chat: {
-      completions: {
-        create: vi.fn().mockResolvedValue({
-          choices: [{
-            message: {
-              content: JSON.stringify({
-                is_contradiction: true,
-                confidence: 0.9,
-                reason: 'Opposite statements'
-              })
-            }
-          }]
-        })
-      }
-    }
-  }))
+  default: function OpenAI() {
+    return { chat: { completions: { create: openaiCreateFn } } };
+  },
 }));
 vi.mock('../../src/config', () => ({
   config: {
@@ -55,6 +40,17 @@ vi.mock('../../src/logger', () => ({
 describe('OmegaMemoryService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    openaiCreateFn.mockResolvedValue({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            is_contradiction: true,
+            confidence: 0.9,
+            reason: 'Opposite statements',
+          }),
+        },
+      }],
+    });
   });
 
   describe('resolveEntities', () => {

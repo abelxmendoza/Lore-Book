@@ -27,16 +27,19 @@ export const useKeyboardShortcuts = (shortcuts: ShortcutConfig[]) => {
 
       for (const shortcut of shortcuts) {
         const keyMatch = event.key.toLowerCase() === shortcut.key.toLowerCase();
-        const ctrlMatch = shortcut.ctrl ? event.ctrlKey : !event.ctrlKey;
-        const metaMatch = shortcut.meta ? event.metaKey : !event.metaKey;
         const shiftMatch = shortcut.shift === undefined ? true : shortcut.shift === event.shiftKey;
         const altMatch = shortcut.alt === undefined ? true : shortcut.alt === event.altKey;
 
-        // Handle Cmd on Mac vs Ctrl on Windows/Linux
+        // Cmd on Mac vs Ctrl on Windows/Linux: meta:true means Cmd+K (Mac) or Ctrl+K (Win/Linux)
         const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-        const modifierMatch = isMac
-          ? (shortcut.meta ? event.metaKey : !event.metaKey) && (shortcut.ctrl ? false : !event.ctrlKey)
-          : (shortcut.ctrl ? event.ctrlKey : !event.ctrlKey) && (shortcut.meta ? false : !event.metaKey);
+        let modifierMatch: boolean;
+        if (shortcut.meta) {
+          modifierMatch = isMac ? (event.metaKey && !event.ctrlKey) : (event.ctrlKey && !event.metaKey);
+        } else if (shortcut.ctrl) {
+          modifierMatch = event.ctrlKey;
+        } else {
+          modifierMatch = !event.ctrlKey && !event.metaKey;
+        }
 
         if (keyMatch && modifierMatch && shiftMatch && altMatch) {
           event.preventDefault();

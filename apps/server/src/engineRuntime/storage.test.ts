@@ -44,9 +44,9 @@ describe('Engine Storage', () => {
 
       expect(mockUpsert).toHaveBeenCalled();
       const upsertData = mockUpsert.mock.calls[0][0];
-      expect(upsertData).toHaveLength(2);
-      expect(upsertData[0].user_id).toBe('user-123');
-      expect(upsertData[0].engine_name).toBe('health');
+      expect(upsertData.user_id).toBe('user-123');
+      expect(upsertData.results).toEqual(results);
+      expect(upsertData.updated_at).toBeDefined();
     });
 
     it('should include updated_at timestamp', async () => {
@@ -57,17 +57,13 @@ describe('Engine Storage', () => {
       await saveEngineResults('user-123', results);
 
       const upsertData = mockUpsert.mock.calls[0][0];
-      expect(upsertData[0].updated_at).toBeDefined();
+      expect(upsertData.updated_at).toBeDefined();
     });
 
     it('should handle errors gracefully', async () => {
-      mockUpsert.mockResolvedValue({
-        data: null,
-        error: { message: 'Database error' },
-      });
+      mockUpsert.mockRejectedValue(new Error('Database error'));
 
-      // Should not throw
-      await expect(saveEngineResults('user-123', {})).resolves.not.toThrow();
+      await expect(saveEngineResults('user-123', {})).rejects.toThrow('Database error');
     });
   });
 
@@ -84,8 +80,8 @@ describe('Engine Storage', () => {
       expect(mockUpsert).toHaveBeenCalled();
       const upsertData = mockUpsert.mock.calls[0][0];
       expect(upsertData.user_id).toBe('user-123');
-      expect(upsertData.engine_name).toBe('health');
-      expect(upsertData.result_data).toEqual(result);
+      expect(upsertData.results).toEqual({ health: result });
+      expect(upsertData.updated_at).toBeDefined();
     });
   });
 
@@ -133,9 +129,7 @@ describe('Engine Storage', () => {
 
       mockSingle.mockResolvedValue({
         data: {
-          user_id: 'user-123',
-          engine_name: 'health',
-          result_data: { success: true },
+          results: { health: { success: true } },
           updated_at: recentDate.toISOString(),
         },
         error: null,
@@ -144,6 +138,7 @@ describe('Engine Storage', () => {
       const results = await getEngineResults('user-123', 1); // 1 hour TTL
 
       expect(results).not.toBeNull();
+      expect(results).toEqual({ health: { success: true } });
     });
 
     it('should return null if no results found', async () => {

@@ -59,11 +59,14 @@ describe('buildEngineContext', () => {
   });
 
   it('should load all entries when includeAll is true', async () => {
-    const allDataMock = vi.fn().mockResolvedValue({
-      data: Array(2000).fill({ id: '1', content: 'test', date: '2024-01-01' }),
-      error: null,
-    });
-    mockOrder.mockReturnValue({ gte: vi.fn().mockReturnValue({ limit: allDataMock }) });
+    // When includeAll: true, .limit() is never called; .order() ends the chain and is awaited
+    const manyEntries = Array(2000).fill(null).map((_, i) => ({
+      id: String(i),
+      content: 'test',
+      date: '2024-01-01',
+      timestamp: '2024-01-01',
+    }));
+    mockOrder.mockReturnValue(Promise.resolve({ data: manyEntries, error: null }));
 
     const context = await buildEngineContext('user-123', { includeAll: true });
 
@@ -93,16 +96,17 @@ describe('buildEngineContext', () => {
   });
 
   it('should return entries in chronological order', async () => {
-    const entries = [
+    // DB returns most recent first (order ascending: false); contextBuilder reverses to oldest first
+    const entriesFromDb = [
       { id: '3', content: 'third', date: '2024-01-03', timestamp: '2024-01-03' },
-      { id: '1', content: 'first', date: '2024-01-01', timestamp: '2024-01-01' },
       { id: '2', content: 'second', date: '2024-01-02', timestamp: '2024-01-02' },
+      { id: '1', content: 'first', date: '2024-01-01', timestamp: '2024-01-01' },
     ];
-    mockLimit.mockResolvedValue({ data: entries, error: null });
+    mockLimit.mockResolvedValue({ data: entriesFromDb, error: null });
 
     const context = await buildEngineContext('user-123');
 
-    // Should be reversed to chronological (oldest first)
+    // Reversed to chronological (oldest first): 1, 2, 3
     expect(context.entries[0].id).toBe('1');
     expect(context.entries[1].id).toBe('2');
     expect(context.entries[2].id).toBe('3');

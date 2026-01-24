@@ -193,7 +193,7 @@ export const OmniTimelinePanel = () => {
   }, [timelineSearchQuery, handleTimelineSearch]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="timeline">
       {/* Clean Header - Minimal */}
       <div className="border-b border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] sticky top-0 z-10 flex-shrink-0 backdrop-blur-sm rounded-t-2xl"
       >

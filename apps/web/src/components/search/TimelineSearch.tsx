@@ -86,7 +86,7 @@ export const TimelineSearch = () => {
   };
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full" data-testid="timeline-search">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-white/40" />
         <input

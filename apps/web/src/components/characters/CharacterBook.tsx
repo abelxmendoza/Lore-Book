@@ -2320,7 +2320,7 @@ export const CharacterBook = () => {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-6" data-testid="character-book">
       {/* User Profile & Insights - Displayed first */}
       <div className="space-y-3 sm:space-y-4">
         <UserProfile />

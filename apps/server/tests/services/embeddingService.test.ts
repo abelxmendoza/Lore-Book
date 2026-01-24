@@ -1,24 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Create mock functions that can be accessed
-const mockGetCachedEmbedding = vi.fn();
-const mockCacheEmbedding = vi.fn();
-const mockEmbeddingsCreate = vi.fn();
+// Hoist mock refs so vi.mock factories can use them
+const { mockGetCachedEmbedding, mockCacheEmbedding, mockEmbeddingsCreate } = vi.hoisted(() => ({
+  mockGetCachedEmbedding: vi.fn(),
+  mockCacheEmbedding: vi.fn(),
+  mockEmbeddingsCreate: vi.fn(),
+}));
 
-// Mock dependencies BEFORE importing the service
 vi.mock('../../src/services/embeddingCacheService', () => ({
   embeddingCacheService: {
     getCachedEmbedding: (...args: any[]) => mockGetCachedEmbedding(...args),
-    cacheEmbedding: (...args: any[]) => mockCacheEmbedding(...args)
-  }
+    cacheEmbedding: (...args: any[]) => mockCacheEmbedding(...args),
+  },
 }));
 
+// OpenAI must be a constructor; return instance with embeddings.create
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    embeddings: {
-      create: (...args: any[]) => mockEmbeddingsCreate(...args)
-    }
-  }))
+  default: function OpenAI() {
+    return {
+      embeddings: {
+        create: (...args: any[]) => mockEmbeddingsCreate(...args),
+      },
+    };
+  },
 }));
 
 vi.mock('../../src/config', () => ({

@@ -907,7 +907,7 @@ export const LoreBook = () => {
   }
 
   return (
-    <div className="h-screen w-full flex flex-col bg-gradient-to-br from-black via-purple-950/20 to-black overflow-hidden" style={{ minHeight: '100vh', height: '100vh' }}>
+    <div className="h-screen w-full flex flex-col bg-gradient-to-br from-black via-purple-950/20 to-black overflow-hidden" style={{ minHeight: '100vh', height: '100vh' }} data-testid="lorebook">
       {/* Search Bar Section - Above the book */}
       <div className="border-b border-border/50 p-4 bg-black/30">
         <div className="max-w-4xl mx-auto">
