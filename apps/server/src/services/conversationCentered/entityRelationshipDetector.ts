@@ -214,7 +214,7 @@ export type RelationshipType =
   // General
   | 'associated_with'
 
-  // ER schema types (Phase 1) — when using getRelationshipExtractionJsonSchema
+  // ER schema types (Phase 1 + 2) — when using getRelationshipExtractionJsonSchema
   | 'FRIEND_OF'
   | 'WORKS_FOR'
   | 'MENTOR_OF'
@@ -228,7 +228,18 @@ export type RelationshipType =
   | 'PARTICIPATED_IN'
   | 'INFLUENCED'
   | 'PRECEDED'
-  | 'OVERLAPPED';
+  | 'OVERLAPPED'
+  | 'ENEMY_OF'
+  | 'MENTORS'
+  | 'MENTORED_BY'
+  | 'DATED'
+  | 'BROKE_UP_WITH'
+  | 'TRUSTS'
+  | 'DISTRUSTS'
+  | 'LIVES_WITH'
+  | 'VISITED'
+  | 'CAUSED'
+  | 'AFFECTED_BY';
 
 export type EntityType = 'omega_entity' | 'character';
 
@@ -395,8 +406,7 @@ export class EntityRelationshipDetector {
 Entities: ${entityList}
 
 **Relationships** – use ONLY these types and set kind (ASSERTED=lasting, EPISODIC=event-specific):
-FRIEND_OF, WORKS_FOR, MENTOR_OF, COACH_OF, SPOUSE_OF, ROMANTIC_INTEREST, ACQUAINTANCE,
-PRESENT_AT, MENTIONED_IN, CO_MENTIONED_WITH, PARTICIPATED_IN, INFLUENCED, PRECEDED, OVERLAPPED.
+${RelationshipTypeEnum.join(', ')}.
 
 **Scopes** – context per entity: recruiting, employment, family, education, music, etc.
 

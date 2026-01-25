@@ -8,6 +8,10 @@ import { logger } from '../logger';
 import { supabaseAdmin } from '../services/supabaseClient';
 import type { ExtractedRelationship, TargetTable, ResolvedEntity } from './erSchema';
 import { toStorageEntityType } from './erSchema';
+import {
+  upsertTemporalRelationship,
+  writeRelationshipSnapshot,
+} from './temporalEdgeService';
 
 export type WriteContext = {
   userId: string;
@@ -78,6 +82,27 @@ export async function writeRelationship(
           if (isDuplicateOrUniqueError(error)) return;
           throw error;
         }
+        try {
+          const evidenceIds = opts?.evidenceSourceIds ?? (ctx.memoryId ? [ctx.memoryId] : []);
+          const edge = await upsertTemporalRelationship(
+            userId,
+            fromEnt.id,
+            toEnt.id,
+            'character',
+            'character',
+            rel.relationship,
+            rel.kind,
+            rel.confidence,
+            ctx,
+            evidenceIds
+          );
+          if (edge) await writeRelationshipSnapshot(edge);
+        } catch (e) {
+          logger.warn(
+            { err: e, targetTable: 'character_relationships', from: rel.fromTempId, to: rel.toTempId },
+            'temporal edge/snapshot failed (non-blocking)'
+          );
+        }
         break;
       }
 
@@ -133,6 +158,27 @@ export async function writeRelationship(
             ...row,
             metadata: { evidence: opts?.evidence, detected_at: new Date().toISOString() },
           });
+        }
+        try {
+          const evidenceIds = opts?.evidenceSourceIds ?? (ctx.memoryId ? [ctx.memoryId] : []);
+          const edge = await upsertTemporalRelationship(
+            userId,
+            fromEnt.id,
+            toEnt.id,
+            fromStorage,
+            toStorage,
+            rel.relationship,
+            rel.kind,
+            rel.confidence,
+            ctx,
+            evidenceIds
+          );
+          if (edge) await writeRelationshipSnapshot(edge);
+        } catch (e) {
+          logger.warn(
+            { err: e, targetTable: 'entity_relationships', from: rel.fromTempId, to: rel.toTempId },
+            'temporal edge/snapshot failed (non-blocking)'
+          );
         }
         break;
       }

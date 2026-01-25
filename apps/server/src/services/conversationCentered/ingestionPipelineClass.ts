@@ -42,6 +42,7 @@ import { interestTracker } from './interestTracker';
 import type { Message, Utterance, ExtractedUnit, NormalizationResult } from '../../types/conversationCentered';
 import { questExtractor } from '../quests/questExtractor';
 import { questService } from '../quests/questService';
+import { ingestConversationER } from '../unifiedErIngestion';
 
 /**
  * Main ingestion pipeline for conversation messages
@@ -1102,94 +1103,8 @@ export class ConversationIngestionPipeline {
               insights: conversionResult.insights.length,
             }, 'Converted semantic unit to memory artifacts');
 
-            // Step 6.8: Entity Relationship Detection (for units with entities)
-            // Detect relationships between entities mentioned in this unit
-            try {
-              const unitEntityIds = unit.entity_ids || [];
-
-              if (unitEntityIds.length >= 2) {
-                // Get entity details for relationship detection
-                const unitEntities = await Promise.all(
-                  unitEntityIds.map(async (entityId: string) => {
-                    try {
-                      // Try character first
-                      const { data: char } = await supabaseAdmin
-                        .from('characters')
-                        .select('id, name')
-                        .eq('id', entityId)
-                        .single();
-
-                      if (char) {
-                        return { id: char.id, name: char.name, type: 'character' as const };
-                      }
-
-                      // Try omega entity
-                      const { data: entity } = await supabaseAdmin
-                        .from('omega_entities')
-                        .select('id, primary_name')
-                        .eq('id', entityId)
-                        .single();
-
-                      if (entity) {
-                        return { id: entity.id, name: entity.primary_name, type: 'omega_entity' as const };
-                      }
-
-                      return null;
-                    } catch (error) {
-                      return null;
-                    }
-                  })
-                );
-
-                const validEntities = unitEntities.filter(e => e !== null) as Array<{
-                  id: string;
-                  name: string;
-                  type: 'character' | 'omega_entity';
-                }>;
-
-                if (validEntities.length >= 2) {
-                  const detection = await entityRelationshipDetector.detectRelationshipsAndScopes(
-                    userId,
-                    unit.content || normalized.normalized_text,
-                    validEntities,
-                    messageId,
-                    undefined
-                  );
-
-                  // Save relationships and scopes
-                  for (const relationship of detection.relationships) {
-                    await entityRelationshipDetector.saveRelationship(userId, relationship);
-                    if (relationship.scope) {
-                      await entityScopeService.addEntityToScopeGroup(
-                        userId,
-                        relationship.fromEntityId,
-                        relationship.fromEntityType,
-                        relationship.scope
-                      );
-                      await entityScopeService.addEntityToScopeGroup(
-                        userId,
-                        relationship.toEntityId,
-                        relationship.toEntityType,
-                        relationship.scope
-                      );
-                    }
-                  }
-
-                  for (const scope of detection.scopes) {
-                    await entityRelationshipDetector.saveScope(userId, scope);
-                    await entityScopeService.addEntityToScopeGroup(
-                      userId,
-                      scope.entityId,
-                      scope.entityType,
-                      scope.scope,
-                      scope.scopeContext
-                    );
-                  }
-                }
-              }
-            } catch (error) {
-              logger.debug({ error, unitId: savedUnit.id }, 'Entity relationship detection failed (non-blocking)');
-            }
+            // Step 6.8: Entity Relationship Detection (unified ER path)
+            ingestConversationER(userId, messageId, unit.content || normalized.normalized_text);
 
             // Step 6.9: Contextual Intelligence (Phase-Safe)
             // After semantic conversion, before event assembly

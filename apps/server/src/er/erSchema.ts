@@ -34,7 +34,19 @@ export type RelationshipType =
   | 'PARTICIPATED_IN'
   | 'INFLUENCED'
   | 'PRECEDED'
-  | 'OVERLAPPED';
+  | 'OVERLAPPED'
+  // Phase 2
+  | 'ENEMY_OF'
+  | 'MENTORS'
+  | 'MENTORED_BY'
+  | 'DATED'
+  | 'BROKE_UP_WITH'
+  | 'TRUSTS'
+  | 'DISTRUSTS'
+  | 'LIVES_WITH'
+  | 'VISITED'
+  | 'CAUSED'
+  | 'AFFECTED_BY';
 
 export type TargetTable =
   | 'character_relationships'
@@ -86,6 +98,40 @@ const DIRECT_EDGE_MATRIX: DirectEdgeRule[] = [
   { from: 'CHARACTER', to: 'CHARACTER', relationship: 'ACQUAINTANCE', kind: 'ASSERTED', targetTable: 'character_relationships' },
   { from: 'CHARACTER', to: 'CHARACTER', relationship: 'MENTOR_OF', kind: 'ASSERTED', targetTable: 'character_relationships' },
   { from: 'CHARACTER', to: 'CHARACTER', relationship: 'COACH_OF', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  // Phase 2: character_relationships ASSERTED (PERSON|CHARACTER) <-> (PERSON|CHARACTER)
+  { from: 'PERSON', to: 'PERSON', relationship: 'ENEMY_OF', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'PERSON', relationship: 'MENTORS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'PERSON', relationship: 'MENTORED_BY', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'PERSON', relationship: 'TRUSTS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'PERSON', relationship: 'DISTRUSTS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'PERSON', relationship: 'LIVES_WITH', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'CHARACTER', relationship: 'ENEMY_OF', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'CHARACTER', relationship: 'MENTORS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'CHARACTER', relationship: 'MENTORED_BY', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'CHARACTER', relationship: 'TRUSTS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'CHARACTER', relationship: 'DISTRUSTS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'CHARACTER', relationship: 'LIVES_WITH', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'PERSON', relationship: 'ENEMY_OF', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'PERSON', relationship: 'MENTORS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'PERSON', relationship: 'MENTORED_BY', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'PERSON', relationship: 'TRUSTS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'PERSON', relationship: 'DISTRUSTS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'PERSON', relationship: 'LIVES_WITH', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'CHARACTER', relationship: 'ENEMY_OF', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'CHARACTER', relationship: 'MENTORS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'CHARACTER', relationship: 'MENTORED_BY', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'CHARACTER', relationship: 'TRUSTS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'CHARACTER', relationship: 'DISTRUSTS', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'CHARACTER', relationship: 'LIVES_WITH', kind: 'ASSERTED', targetTable: 'character_relationships' },
+  // Phase 2: character_relationships EPISODIC
+  { from: 'PERSON', to: 'PERSON', relationship: 'DATED', kind: 'EPISODIC', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'PERSON', relationship: 'BROKE_UP_WITH', kind: 'EPISODIC', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'CHARACTER', relationship: 'DATED', kind: 'EPISODIC', targetTable: 'character_relationships' },
+  { from: 'PERSON', to: 'CHARACTER', relationship: 'BROKE_UP_WITH', kind: 'EPISODIC', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'PERSON', relationship: 'DATED', kind: 'EPISODIC', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'PERSON', relationship: 'BROKE_UP_WITH', kind: 'EPISODIC', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'CHARACTER', relationship: 'DATED', kind: 'EPISODIC', targetTable: 'character_relationships' },
+  { from: 'CHARACTER', to: 'CHARACTER', relationship: 'BROKE_UP_WITH', kind: 'EPISODIC', targetTable: 'character_relationships' },
   // PERSON/CHARACTER -> ORG, etc. -> entity_relationships
   { from: 'PERSON', to: 'ORG', relationship: 'WORKS_FOR', kind: 'ASSERTED', targetTable: 'entity_relationships' },
   { from: 'CHARACTER', to: 'ORG', relationship: 'WORKS_FOR', kind: 'ASSERTED', targetTable: 'entity_relationships' },
@@ -97,6 +143,11 @@ const DIRECT_EDGE_MATRIX: DirectEdgeRule[] = [
   { from: 'EVENT', to: 'EVENT', relationship: 'OVERLAPPED', kind: 'EPISODIC', targetTable: 'entity_relationships' },
   { from: 'PERSON', to: 'PERSON', relationship: 'CO_MENTIONED_WITH', kind: 'EPISODIC', targetTable: 'entity_relationships' },
   { from: 'CHARACTER', to: 'CHARACTER', relationship: 'CO_MENTIONED_WITH', kind: 'EPISODIC', targetTable: 'entity_relationships' },
+  // Phase 2: entity_relationships — VISITED (PERSON/CHARACTER -> LOCATION), CAUSED/AFFECTED_BY (EVENT -> EVENT)
+  { from: 'PERSON', to: 'LOCATION', relationship: 'VISITED', kind: 'EPISODIC', targetTable: 'entity_relationships' },
+  { from: 'CHARACTER', to: 'LOCATION', relationship: 'VISITED', kind: 'EPISODIC', targetTable: 'entity_relationships' },
+  { from: 'EVENT', to: 'EVENT', relationship: 'CAUSED', kind: 'ASSERTED', targetTable: 'entity_relationships' },
+  { from: 'EVENT', to: 'EVENT', relationship: 'AFFECTED_BY', kind: 'ASSERTED', targetTable: 'entity_relationships' },
   // Episodic mention-style -> event_mentions, location_mentions, character_memories (require memoryId in write)
   { from: 'PERSON', to: 'EVENT', relationship: 'PARTICIPATED_IN', kind: 'EPISODIC', targetTable: 'event_mentions' },
   { from: 'CHARACTER', to: 'EVENT', relationship: 'PARTICIPATED_IN', kind: 'EPISODIC', targetTable: 'event_mentions' },
@@ -105,6 +156,14 @@ const DIRECT_EDGE_MATRIX: DirectEdgeRule[] = [
   { from: 'CHARACTER', to: 'EVENT', relationship: 'MENTIONED_IN', kind: 'EPISODIC', targetTable: 'character_memories' },
 ];
 
+// Precomputed lookups at module load (DIRECT_EDGE_MATRIX is source of truth)
+const EDGE_LOOKUP = new Map<string, TargetTable>();
+const ANY_EDGE_LOOKUP = new Set<string>();
+for (const r of DIRECT_EDGE_MATRIX) {
+  EDGE_LOOKUP.set(`${r.from}|${r.to}|${r.relationship}|${r.kind}`, r.targetTable);
+  ANY_EDGE_LOOKUP.add(`${r.from}|${r.to}`);
+}
+
 /** getTargetTable(from, to, rel, kind): targetTable | null. Returns null when no rule exists. */
 export function getTargetTable(
   from: EntityType,
@@ -112,10 +171,7 @@ export function getTargetTable(
   rel: RelationshipType,
   kind: RelationshipKind
 ): TargetTable | null {
-  const rule = DIRECT_EDGE_MATRIX.find(
-    r => r.from === from && r.to === to && r.relationship === rel && r.kind === kind
-  );
-  return rule ? rule.targetTable : null;
+  return EDGE_LOOKUP.get(`${from}|${to}|${rel}|${kind}`) ?? null;
 }
 
 // --- 1.4 Constants ---
@@ -128,6 +184,8 @@ export const RelationshipTypeEnum: RelationshipType[] = [
   'FRIEND_OF', 'WORKS_FOR', 'MENTOR_OF', 'COACH_OF', 'SPOUSE_OF',
   'ROMANTIC_INTEREST', 'ACQUAINTANCE', 'PRESENT_AT', 'MENTIONED_IN',
   'CO_MENTIONED_WITH', 'PARTICIPATED_IN', 'INFLUENCED', 'PRECEDED', 'OVERLAPPED',
+  'ENEMY_OF', 'MENTORS', 'MENTORED_BY', 'DATED', 'BROKE_UP_WITH', 'TRUSTS', 'DISTRUSTS',
+  'LIVES_WITH', 'VISITED', 'CAUSED', 'AFFECTED_BY',
 ];
 
 export const ASSERTED_THRESHOLD = 0.7;
@@ -221,7 +279,7 @@ export function getRelationshipExtractionJsonSchema(): object {
   };
 }
 
-/** Phase 1: map each RelationshipType to ASSERTED or EPISODIC when LLM omits kind. */
+/** Phase 1+2: map each RelationshipType to ASSERTED or EPISODIC when LLM omits kind. */
 export const relationshipTypeToKind: Record<RelationshipType, RelationshipKind> = {
   FRIEND_OF: 'ASSERTED',
   WORKS_FOR: 'ASSERTED',
@@ -237,6 +295,17 @@ export const relationshipTypeToKind: Record<RelationshipType, RelationshipKind> 
   INFLUENCED: 'ASSERTED',
   PRECEDED: 'EPISODIC',
   OVERLAPPED: 'EPISODIC',
+  ENEMY_OF: 'ASSERTED',
+  MENTORS: 'ASSERTED',
+  MENTORED_BY: 'ASSERTED',
+  DATED: 'EPISODIC',
+  BROKE_UP_WITH: 'EPISODIC',
+  TRUSTS: 'ASSERTED',
+  DISTRUSTS: 'ASSERTED',
+  LIVES_WITH: 'ASSERTED',
+  VISITED: 'EPISODIC',
+  CAUSED: 'ASSERTED',
+  AFFECTED_BY: 'ASSERTED',
 };
 
 // --- 5. ER-aware gating and helpers ---
@@ -263,12 +332,9 @@ export function getResolvablePairs(
 export function hasAnyDirectEdgePossible(
   pairs: [ResolvedEntity, ResolvedEntity][]
 ): boolean {
-  for (const [from, to] of pairs) {
-    for (const rel of RelationshipTypeEnum) {
-      for (const kind of ['ASSERTED', 'EPISODIC'] as RelationshipKind[]) {
-        const t = getTargetTable(from.type, to.type, rel, kind);
-        if (t != null) return true;
-      }
+  for (const [a, b] of pairs) {
+    if (ANY_EDGE_LOOKUP.has(`${a.type}|${b.type}`) || ANY_EDGE_LOOKUP.has(`${b.type}|${a.type}`)) {
+      return true;
     }
   }
   return false;

@@ -1,11 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { writeRelationship } from './writeRelationship';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { upsertTemporalRelationship, writeRelationshipSnapshot } from './temporalEdgeService';
 
 vi.mock('../services/supabaseClient', () => ({
-  supabaseAdmin: {
-    from: vi.fn(),
-  },
+  supabaseAdmin: { from: vi.fn() },
+}));
+
+vi.mock('./temporalEdgeService', () => ({
+  upsertTemporalRelationship: vi.fn().mockResolvedValue({
+    id: 'te-1',
+    kind: 'ASSERTED',
+    confidence: 0.8,
+    last_evidence_at: new Date().toISOString(),
+    evidence_source_ids: [],
+  }),
+  writeRelationshipSnapshot: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe('writeRelationship', () => {
@@ -80,6 +90,11 @@ describe('writeRelationship', () => {
     expect(upsertArg.relationship_type).toBe('FRIEND_OF');
     expect(typeof upsertArg.closeness_score).toBe('number');
     expect(upsertArg.updated_at).toBeDefined();
+    expect(upsertTemporalRelationship).toHaveBeenCalledWith(
+      'user-1', 'char-a', 'char-b', 'character', 'character', 'FRIEND_OF', 'ASSERTED', 0.8,
+      { userId: 'user-1' }, []
+    );
+    expect(writeRelationshipSnapshot).toHaveBeenCalledWith(expect.objectContaining({ id: 'te-1' }));
   });
 
   it('writes to entity_relationships with correct shape for PERSON,ORG WORKS_FOR', async () => {
@@ -110,6 +125,11 @@ describe('writeRelationship', () => {
     expect(insertArg.confidence).toBe(0.75);
     expect(Array.isArray(insertArg.evidence_source_ids)).toBe(true);
     expect(insertArg.evidence_source_ids).toContain('msg-1');
+    expect(upsertTemporalRelationship).toHaveBeenCalledWith(
+      'user-1', 'char-a', 'ent-1', 'character', 'omega_entity', 'WORKS_FOR', 'ASSERTED', 0.75,
+      { userId: 'user-1' }, ['msg-1']
+    );
+    expect(writeRelationshipSnapshot).toHaveBeenCalledWith(expect.objectContaining({ id: 'te-1' }));
   });
 
   it('skips event_mentions when memoryId is missing', async () => {
@@ -156,5 +176,7 @@ describe('writeRelationship', () => {
         signal: {},
       })
     );
+    expect(upsertTemporalRelationship).not.toHaveBeenCalled();
+    expect(writeRelationshipSnapshot).not.toHaveBeenCalled();
   });
 });

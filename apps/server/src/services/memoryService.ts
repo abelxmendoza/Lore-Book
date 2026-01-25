@@ -18,6 +18,7 @@ import { embeddingService } from './embeddingService';
 import { peoplePlacesService } from './peoplePlacesService';
 import { skillExtractionService } from './skills/skillExtractionService';
 import { supabaseAdmin } from './supabaseClient';
+import { ingestJournalEntry } from './unifiedErIngestion';
 
 export type SaveEntryPayload = {
   userId: string;
@@ -115,17 +116,22 @@ class MemoryService {
       skillExtractionService.processEntryForSkills(payload.userId, entry.id, payload.content)
         .then(results => {
           if (results.length > 0) {
-            logger.info({ 
-              userId: payload.userId, 
-              entryId: entry.id, 
+            logger.info({
+              userId: payload.userId,
+              entryId: entry.id,
               skillCount: results.length,
-              skills: results.map(r => r.skill.skill_name)
+              skills: results.map(r => r.skill.skill_name),
             }, 'Auto-extracted skills from journal entry');
           }
         })
         .catch(err => {
           logger.warn({ error: err, userId: payload.userId, entryId: entry.id }, 'Failed to extract skills from entry (non-blocking)');
         });
+    }
+
+    // Journal ER ingestion (fire-and-forget): unified ER path
+    if (!isEncrypted && payload.content && payload.content.length > 20) {
+      ingestJournalEntry(payload.userId, entry.id, payload.content);
     }
 
     return entry;
