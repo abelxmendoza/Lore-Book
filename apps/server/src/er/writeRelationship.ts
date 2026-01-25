@@ -16,6 +16,7 @@ import {
 export type WriteContext = {
   userId: string;
   memoryId?: string;
+  scope?: string;
 };
 
 export type WriteRelationshipOpts = {
@@ -83,6 +84,7 @@ export async function writeRelationship(
           throw error;
         }
         try {
+          const scope = ctx.scope ?? 'global';
           const evidenceIds = opts?.evidenceSourceIds ?? (ctx.memoryId ? [ctx.memoryId] : []);
           const edge = await upsertTemporalRelationship(
             userId,
@@ -93,10 +95,11 @@ export async function writeRelationship(
             rel.relationship,
             rel.kind,
             rel.confidence,
+            scope,
             ctx,
             evidenceIds
           );
-          if (edge) await writeRelationshipSnapshot(edge);
+          if (edge) await writeRelationshipSnapshot(edge, scope);
         } catch (e) {
           logger.warn(
             { err: e, targetTable: 'character_relationships', from: rel.fromTempId, to: rel.toTempId },
@@ -160,6 +163,7 @@ export async function writeRelationship(
           });
         }
         try {
+          const scope = ctx.scope ?? 'global';
           const evidenceIds = opts?.evidenceSourceIds ?? (ctx.memoryId ? [ctx.memoryId] : []);
           const edge = await upsertTemporalRelationship(
             userId,
@@ -170,10 +174,11 @@ export async function writeRelationship(
             rel.relationship,
             rel.kind,
             rel.confidence,
+            scope,
             ctx,
             evidenceIds
           );
-          if (edge) await writeRelationshipSnapshot(edge);
+          if (edge) await writeRelationshipSnapshot(edge, scope);
         } catch (e) {
           logger.warn(
             { err: e, targetTable: 'entity_relationships', from: rel.fromTempId, to: rel.toTempId },

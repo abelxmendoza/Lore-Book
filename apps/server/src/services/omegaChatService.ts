@@ -1293,6 +1293,53 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string }
   ): Promise<StreamingChatResponse> {
+    const sessionId = await this.getOrCreateChatSession(userId);
+
+    // Phase 4.5: follow-up after recall (expand / correct)
+    try {
+      const { data: lastAssistant } = await supabaseAdmin
+        .from('chat_messages')
+        .select('content, metadata')
+        .eq('user_id', userId)
+        .eq('session_id', sessionId)
+        .eq('role', 'assistant')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const recallSources = lastAssistant?.metadata?.recall_sources;
+      if (recallSources && Array.isArray(recallSources) && recallSources.length > 0) {
+        const { handleFollowupAfterRecall } = await import('./narrativeRecall/narrativeRecallCorrection');
+        const followUp = await handleFollowupAfterRecall({
+          userId,
+          userMessage: message,
+          lastAssistantMessage: { content: lastAssistant.content ?? '', metadata: lastAssistant.metadata as { recall_sources?: Array<{ entry_id: string }> } },
+        });
+        if (followUp) {
+          supabaseAdmin
+            .from('chat_messages')
+            .insert({
+              user_id: userId,
+              session_id: sessionId,
+              role: 'assistant',
+              content: followUp.content,
+              metadata: { ...followUp.metadata, response_mode: followUp.response_mode },
+            })
+            .then(() => {})
+            .catch(() => {});
+          return {
+            content: followUp.content,
+            metadata: { ...followUp.metadata, response_mode: followUp.response_mode },
+            stream: (async function* () {
+              yield { choices: [{ delta: { content: followUp.content } }] };
+            })(),
+          };
+        }
+      }
+    } catch (err) {
+      logger.debug({ err, userId }, 'Phase 4.5 follow-up check failed, continuing');
+    }
+
     // =====================================================
     // MODE ROUTER (NEW - FIRST GATE)
     // =====================================================
@@ -1300,7 +1347,7 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       const { modeRouterService } = await import('./modeRouter/modeRouterService');
       const { modeHandlers } = await import('./modeRouter/modeHandlers');
       const { formatModeResponse } = await import('./modeRouter/responseFormatter');
-      
+
       const routing = await modeRouterService.routeMessage(userId, message, conversationHistory);
       
       // Route to appropriate handler if mode is known
@@ -1308,7 +1355,6 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
         // For EXPERIENCE_INGESTION and ACTION_LOG, we need messageId - save message first
         let messageId: string | undefined;
         if (routing.mode === 'EXPERIENCE_INGESTION' || routing.mode === 'ACTION_LOG') {
-          const sessionId = await this.getOrCreateChatSession(userId);
           const { data: savedMessage, error: saveError } = await supabaseAdmin
             .from('chat_messages')
             .insert({
@@ -1334,7 +1380,22 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
           message,
           { messageId, conversationHistory }
         );
-        
+
+        // Phase 4.5: persist assistant with recall_sources for MEMORY_RECALL
+        if (routing.mode === 'MEMORY_RECALL' && (handlerResponse.metadata?.recall_sources as unknown[] | undefined)?.length) {
+          supabaseAdmin
+            .from('chat_messages')
+            .insert({
+              user_id: userId,
+              session_id: sessionId,
+              role: 'assistant',
+              content: handlerResponse.content,
+              metadata: { recall_sources: handlerResponse.metadata.recall_sources, response_mode: 'RECALL' },
+            })
+            .then(() => {})
+            .catch(() => {});
+        }
+
         // Format and return response
         return formatModeResponse(handlerResponse, routing.mode);
       }
@@ -1375,7 +1436,20 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
 
         // Format recall response
         const recallResponse = formatRecallChatResponse(recallResult, forcedPersona);
-        
+
+        // Phase 4.5: persist assistant with recall_sources for follow-up expand/correct
+        supabaseAdmin
+          .from('chat_messages')
+          .insert({
+            user_id: userId,
+            session_id: sessionId,
+            role: 'assistant',
+            content: recallResponse.content,
+            metadata: { recall_sources: recallResponse.recall_sources, response_mode: 'RECALL' },
+          })
+          .then(() => {})
+          .catch(() => {});
+
         // Return recall response as immediate stream (single chunk)
         return {
           content: recallResponse.content,

@@ -14,6 +14,7 @@ vi.mock('./temporalEdgeService', () => ({
     confidence: 0.8,
     last_evidence_at: new Date().toISOString(),
     evidence_source_ids: [],
+    phase: 'ACTIVE',
   }),
   writeRelationshipSnapshot: vi.fn().mockResolvedValue(undefined),
 }));
@@ -92,9 +93,26 @@ describe('writeRelationship', () => {
     expect(upsertArg.updated_at).toBeDefined();
     expect(upsertTemporalRelationship).toHaveBeenCalledWith(
       'user-1', 'char-a', 'char-b', 'character', 'character', 'FRIEND_OF', 'ASSERTED', 0.8,
-      { userId: 'user-1' }, []
+      'global', { userId: 'user-1' }, []
     );
-    expect(writeRelationshipSnapshot).toHaveBeenCalledWith(expect.objectContaining({ id: 'te-1' }));
+    expect(writeRelationshipSnapshot).toHaveBeenCalledWith(expect.objectContaining({ id: 'te-1' }), 'global');
+  });
+
+  it('passes ctx.scope to upsertTemporalRelationship and writeRelationshipSnapshot', async () => {
+    const rel = {
+      fromTempId: 'char-a',
+      toTempId: 'char-b',
+      relationship: 'FRIEND_OF' as const,
+      kind: 'ASSERTED' as const,
+      confidence: 0.8,
+    };
+    await writeRelationship('user-1', 'character_relationships', rel, resolvedMap, { userId: 'user-1', scope: 'work' });
+
+    expect(upsertTemporalRelationship).toHaveBeenCalledWith(
+      'user-1', 'char-a', 'char-b', 'character', 'character', 'FRIEND_OF', 'ASSERTED', 0.8,
+      'work', { userId: 'user-1', scope: 'work' }, []
+    );
+    expect(writeRelationshipSnapshot).toHaveBeenCalledWith(expect.objectContaining({ id: 'te-1' }), 'work');
   });
 
   it('writes to entity_relationships with correct shape for PERSON,ORG WORKS_FOR', async () => {
@@ -127,9 +145,9 @@ describe('writeRelationship', () => {
     expect(insertArg.evidence_source_ids).toContain('msg-1');
     expect(upsertTemporalRelationship).toHaveBeenCalledWith(
       'user-1', 'char-a', 'ent-1', 'character', 'omega_entity', 'WORKS_FOR', 'ASSERTED', 0.75,
-      { userId: 'user-1' }, ['msg-1']
+      'global', { userId: 'user-1' }, ['msg-1']
     );
-    expect(writeRelationshipSnapshot).toHaveBeenCalledWith(expect.objectContaining({ id: 'te-1' }));
+    expect(writeRelationshipSnapshot).toHaveBeenCalledWith(expect.objectContaining({ id: 'te-1' }), 'global');
   });
 
   it('skips event_mentions when memoryId is missing', async () => {

@@ -215,6 +215,20 @@ class MemoryService {
     return data as MemoryEntry;
   }
 
+  async getEntriesByIds(userId: string, entryIds: string[]): Promise<MemoryEntry[]> {
+    if (entryIds.length === 0) return [];
+    const { data, error } = await supabaseAdmin
+      .from('journal_entries')
+      .select('*')
+      .eq('user_id', userId)
+      .in('id', entryIds);
+    if (error) {
+      logger.error({ error }, 'Failed to fetch entries by ids');
+      return [];
+    }
+    return (data ?? []) as MemoryEntry[];
+  }
+
   async updateEntry(
     userId: string,
     entryId: string,
@@ -282,7 +296,8 @@ class MemoryService {
     userId: string,
     search: string,
     limit = 20,
-    threshold = 0.4
+    threshold = 0.4,
+    yearShardMin?: number
   ): Promise<MemoryEntry[]> {
     const embedding = await embeddingService.embedText(search);
 
@@ -290,7 +305,8 @@ class MemoryService {
       user_uuid: userId,
       query_embedding: embedding,
       match_threshold: threshold,
-      match_count: limit
+      match_count: limit,
+      ...(yearShardMin != null && { p_year_shard_min: yearShardMin }),
     });
 
     if (error) {

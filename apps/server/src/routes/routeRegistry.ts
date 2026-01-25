@@ -59,6 +59,7 @@ import { orchestratorRouter } from './orchestrator';
 import { peoplePlacesRouter } from './peoplePlaces';
 import { personaRouter } from './persona';
 import { tasksRouter } from './tasks';
+import { temporalRelationshipsRouter } from './temporalRelationships';
 import { xRouter } from './x';
 import { journalRouter } from './journal';
 import perceptionsRouter from './perceptions';
@@ -132,6 +133,7 @@ import entityResolutionRouter from './entityResolution';
 import memoryRecallRouter from './memoryRecall';
 import organizationsRouter from './organizations';
 import lifeArcRouter from './lifeArc';
+import { lifeRouter } from './life';
 import metaControlRouter from './metaControl';
 import entityAmbiguityRouter from './entityAmbiguity';
 import entityMeaningDriftRouter from './entityMeaningDrift';
@@ -185,6 +187,7 @@ export const routeRegistry: RouteEntry[] = [
   { path: '/api/locations', router: locationsRouter, requiresAuth: false },
   { path: '/api/x', router: xRouter, requiresAuth: false },
   { path: '/api/tasks', router: tasksRouter, requiresAuth: false },
+  { path: '/api/relationships', router: temporalRelationshipsRouter },
   { path: '/api/legal', router: legalRouter, requiresAuth: false },
   { path: '/api/billing', router: billingRouter, requiresAuth: false },
   { path: '/api/account', router: accountRouter, requiresAuth: false },
@@ -293,6 +296,7 @@ export const routeRegistry: RouteEntry[] = [
   { path: '/api/chat-memory', router: chatMemoryRouter },
   { path: '/api/internal/engine', router: engineHealthRouter },
   { path: '/api/life-arc', router: lifeArcRouter },
+  { path: '/api/life', router: lifeRouter },
   { path: '/api/meta', router: metaControlRouter },
   { path: '/api/correction-dashboard', router: correctionDashboardRouter },
   { path: '/api/entity-resolution', router: entityResolutionRouter },

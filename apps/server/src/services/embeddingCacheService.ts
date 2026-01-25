@@ -4,13 +4,15 @@ import { logger } from '../logger';
 
 import { supabaseAdmin } from './supabaseClient';
 
+type CacheEntry = { embedding: number[]; accessCount: number; lastAccess: number };
+
 /**
  * Aggressive caching for embeddings - NO API CALLS for cached content
  * Uses content hash as cache key - same content = same embedding
- * Enhanced with database persistence and metrics tracking
+ * Evicts by access count then recency (TinyLFU-like) so hot hashes stay.
  */
 class EmbeddingCacheService {
-  private memoryCache: Map<string, number[]> = new Map();
+  private memoryCache: Map<string, CacheEntry> = new Map();
   private readonly MEMORY_CACHE_SIZE = 500; // Keep last 500 embeddings in memory
   
   // Cache metrics
@@ -35,10 +37,13 @@ class EmbeddingCacheService {
     const hash = this.hashContent(content);
 
     // Check memory cache first (fastest)
-    if (this.memoryCache.has(hash)) {
+    const mem = this.memoryCache.get(hash);
+    if (mem) {
       this.hitCount++;
       this.memoryHitCount++;
-      return this.memoryCache.get(hash)!;
+      mem.accessCount++;
+      mem.lastAccess = Date.now();
+      return mem.embedding;
     }
 
     // Check database cache (embeddings_cache table)
@@ -113,17 +118,23 @@ class EmbeddingCacheService {
   }
 
   /**
-   * Set memory cache with size limit
+   * Set memory cache with size limit. Evicts by accessCount then lastAccess (TinyLFU-like).
    */
-  private setMemoryCache(key: string, value: number[]): void {
-    // If cache is full, remove oldest entry (simple FIFO)
+  private setMemoryCache(key: string, embedding: number[]): void {
     if (this.memoryCache.size >= this.MEMORY_CACHE_SIZE) {
-      const firstKey = this.memoryCache.keys().next().value;
-      if (firstKey) {
-        this.memoryCache.delete(firstKey);
+      let victimKey: string | null = null;
+      let minCount = Infinity;
+      let minAccess = Infinity;
+      for (const [k, v] of this.memoryCache) {
+        if (v.accessCount < minCount || (v.accessCount === minCount && v.lastAccess < minAccess)) {
+          minCount = v.accessCount;
+          minAccess = v.lastAccess;
+          victimKey = k;
+        }
       }
+      if (victimKey) this.memoryCache.delete(victimKey);
     }
-    this.memoryCache.set(key, value);
+    this.memoryCache.set(key, { embedding, accessCount: 1, lastAccess: Date.now() });
   }
 
   /**

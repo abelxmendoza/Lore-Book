@@ -159,6 +159,8 @@ export class MemoryRetriever {
 
   /**
    * Enhanced retrieval with all RAG optimizations
+   * Tier 1 (keyword-first): when keyword/temporal dominant, skip embedding + vector search if sufficient.
+   * MMR: Maximal Marginal Relevance for diverse final set (hybrid path only).
    */
   private async enhancedRetrieve(
     userId: string,
@@ -169,20 +171,67 @@ export class MemoryRetriever {
     try {
       // Step 1: Rewrite and expand query
       const rewritten = await queryRewriter.rewriteQuery(query, conversationHistory);
-      
       // Step 2: Route to optimal strategy
       const strategy = await intentRouter.routeQuery(query, conversationHistory);
-      
+      const temporalType = temporalWeighting.detectTemporalType(query);
+      const yearShardMin = temporalType === 'recent' ? new Date().getFullYear() - 1 : undefined;
+      const skipSemantic = (strategy.weights!.keyword >= 0.35) || (strategy.method === 'temporal');
+
+      // Tier 1 (keyword-first): try BM25 + temporal; if sufficient, skip semantic/embedding
+      if (skipSemantic) {
+        const bm25Results = await bm25Search.search(
+          userId,
+          rewritten.original,
+          limit * 2,
+          yearShardMin
+        );
+        const topIds = bm25Results.slice(0, limit * 2).map(r => r.id);
+        if (topIds.length > 0) {
+          const { data: topEntries } = await supabaseAdmin
+            .from('journal_entries')
+            .select('*')
+            .eq('user_id', userId)
+            .in('id', topIds);
+          const bm25ScoreMap = new Map(bm25Results.map(r => [r.id, r.score]));
+          const orderMap = new Map(topIds.map((id, i) => [id, i]));
+          let tier1Entries = ((topEntries || []) as MemoryEntry[])
+            .sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999))
+            .map(entry => {
+              const tw = temporalWeighting.calculateWeight(entry, {
+                queryType: temporalType,
+                decayFunction: 'exponential',
+                halfLife: temporalType === 'recent' ? 30 : 90,
+              });
+              const sc = bm25ScoreMap.get(entry.id) ?? 0;
+              return { ...entry, _temporalWeight: tw, _finalScore: sc * tw };
+            })
+            .sort((a, b) => (b as any)._finalScore - (a as any)._finalScore)
+            .slice(0, limit);
+          const maxScore = tier1Entries.length > 0 ? Math.max(...tier1Entries.map(e => (e as any)._finalScore ?? 0)) : 0;
+          if (tier1Entries.length >= limit && maxScore > 0.5) {
+            logger.debug({ userId, query, count: tier1Entries.length }, 'Tier 1 (keyword-first) sufficient');
+            return tier1Entries;
+          }
+        }
+      }
+
       // Step 3: Perform hybrid search
       const [semanticResults, keywordResults, entityResults] = await Promise.all([
-        // Semantic search
-        this.searchRelevantEntries(userId, rewritten.original, Math.floor(limit * strategy.weights!.semantic * 2)),
-        // BM25 keyword search
-        bm25Search.search(userId, rewritten.original, Math.floor(limit * strategy.weights!.keyword * 2)),
-        // Entity search (if entities found)
+        this.searchRelevantEntries(
+          userId,
+          rewritten.original,
+          Math.floor(limit * strategy.weights!.semantic * 2),
+          yearShardMin
+        ),
+        bm25Search.search(
+          userId,
+          rewritten.original,
+          Math.floor(limit * strategy.weights!.keyword * 2),
+          yearShardMin
+        ),
         rewritten.entities.length > 0
           ? entityRelationshipBoosting.boostByEntities(
-              await this.searchRelevantEntries(userId, rewritten.entities.join(' '), limit),
+              await this.searchRelevantEntries(userId, rewritten.entities.join(' '), limit, yearShardMin),
               rewritten.entities,
               userId
             )
@@ -207,17 +256,13 @@ export class MemoryRetriever {
       let entries = (topEntries || []) as MemoryEntry[];
 
       // Step 6: Apply temporal weighting
-      const temporalType = temporalWeighting.detectTemporalType(query);
       entries = entries.map(entry => {
         const weight = temporalWeighting.calculateWeight(entry, {
           queryType: temporalType,
           decayFunction: 'exponential',
           halfLife: temporalType === 'recent' ? 30 : 90
         });
-        return {
-          ...entry,
-          _temporalWeight: weight
-        };
+        return { ...entry, _temporalWeight: weight };
       });
 
       // Step 7: Apply entity boosting
@@ -235,35 +280,64 @@ export class MemoryRetriever {
       }
 
       // Step 9: Apply final scoring and sort
-      finalEntries = finalEntries
+      const sorted = finalEntries
         .map(entry => {
           const semanticScore = (entry as any).similarity || 0.5;
           const temporalWeight = (entry as any)._temporalWeight || 1.0;
           const entityBoost = (entry as any).entityBoost || 1.0;
           const rerankScore = (entry as any).rerankScore || 0.5;
-
-          const finalScore = 
+          const finalScore =
             semanticScore * strategy.weights!.semantic +
             temporalWeight * strategy.weights!.temporal +
             entityBoost * strategy.weights!.entity +
             rerankScore * 0.3;
-
-          return {
-            ...entry,
-            _finalScore: finalScore
-          };
+          return { ...entry, _finalScore: finalScore };
         })
-        .sort((a, b) => (b as any)._finalScore - (a as any)._finalScore)
-        .slice(0, limit);
+        .sort((a, b) => (b as any)._finalScore - (a as any)._finalScore);
+
+      // MMR: Maximal Marginal Relevance for diverse context (before slice)
+      const lambda = 0.7;
+      const simQ = (d: MemoryEntry) => (d as any)._finalScore ?? (d as any).similarity ?? 0.5;
+      const simD = (a: MemoryEntry, b: MemoryEntry): number => {
+        const ea = (a as any).embedding;
+        const eb = (b as any).embedding;
+        if (!ea || !eb || !Array.isArray(ea) || !Array.isArray(eb) || ea.length !== eb.length) return 0;
+        return this.cosine(ea, eb);
+      };
+      const S: MemoryEntry[] = [];
+      let D = [...sorted];
+      while (S.length < limit && D.length > 0) {
+        if (S.length === 0) {
+          const best = D.reduce((acc, d) => (simQ(d) > simQ(acc) ? d : acc));
+          S.push(best);
+          D = D.filter(d => d.id !== best.id);
+        } else {
+          let best = D[0];
+          let bestScore = lambda * simQ(best) - (1 - lambda) * Math.max(...S.map(s => simD(best, s)));
+          for (let i = 1; i < D.length; i++) {
+            const d = D[i];
+            const maxSim = Math.max(...S.map(s => simD(d, s)));
+            const sc = lambda * simQ(d) - (1 - lambda) * maxSim;
+            if (sc > bestScore) {
+              bestScore = sc;
+              best = d;
+            }
+          }
+          S.push(best);
+          D = D.filter(d => d.id !== best.id);
+        }
+      }
+      // Append non-embedded from D if we have room
+      const withoutEmb = D.filter(d => !(d as any).embedding?.length);
+      for (const d of withoutEmb) {
+        if (S.length >= limit) break;
+        S.push(d);
+      }
+
+      const finalEntries = S.slice(0, limit);
 
       logger.debug(
-        {
-          userId,
-          query,
-          strategy: strategy.method,
-          retrieved: finalEntries.length,
-          intent: rewritten.intent
-        },
+        { userId, query, strategy: strategy.method, retrieved: finalEntries.length, intent: rewritten.intent },
         'Enhanced retrieval completed'
       );
 
@@ -274,13 +348,28 @@ export class MemoryRetriever {
     }
   }
 
+  /** Cosine similarity between two vectors. */
+  private cosine(a: number[], b: number[]): number {
+    if (a.length !== b.length) return 0;
+    let dot = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      na += a[i] * a[i];
+      nb += b[i] * b[i];
+    }
+    const den = Math.sqrt(na) * Math.sqrt(nb);
+    return den === 0 ? 0 : dot / den;
+  }
+
   /**
    * Semantic search for relevant entries with confidence weighting
+   * @param yearShardMin - Optional: only entries with year_shard >= this (e.g. currentYear - 1 for recent)
    */
   async searchRelevantEntries(
     userId: string,
     query: string,
-    limit: number = 10
+    limit: number = 10,
+    yearShardMin?: number
   ): Promise<MemoryEntry[]> {
     try {
       // Get query embedding
@@ -292,6 +381,7 @@ export class MemoryRetriever {
         query_embedding: queryEmbedding,
         match_threshold: 0.7,
         match_count: limit * 2, // Get more for confidence re-ranking
+        ...(yearShardMin != null && { p_year_shard_min: yearShardMin }),
       });
 
       if (error) {

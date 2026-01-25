@@ -41,39 +41,53 @@ export class SimilarityDetector {
         return similarities;
       }
 
-      // Compare all pairs
-      for (let i = 0; i < entries.length; i++) {
-        for (let j = i + 1; j < entries.length; j++) {
-          const entry1 = entries[i];
-          const entry2 = entries[j];
+      const entryMap = new Map(entries.map((e: any) => [e.id, e]));
+      const entriesWithEmbedding = entries.filter(
+        (e: any) => e.embedding && Array.isArray(e.embedding) && e.embedding.length > 0
+      );
+      const candidateSet = new Set<string>();
+      const toScan = entriesWithEmbedding.slice(0, 150);
 
-          // Check for exact duplicates
-          const exactScore = this.checkExactDuplicate(entry1, entry2);
-          if (exactScore) {
-            similarities.push(exactScore);
-            continue;
-          }
-
-          // Check for near duplicates
-          const nearDuplicateScore = this.checkNearDuplicate(entry1, entry2);
-          if (nearDuplicateScore) {
-            similarities.push(nearDuplicateScore);
-            continue;
-          }
-
-          // Check for similar content (using embeddings if available)
-          const semanticScore = await this.checkSemanticSimilarity(entry1, entry2);
-          if (semanticScore) {
-            similarities.push(semanticScore);
-            continue;
-          }
-
-          // Check for temporal proximity
-          const temporalScore = this.checkTemporalProximity(entry1, entry2);
-          if (temporalScore) {
-            similarities.push(temporalScore);
+      // k-NN via match_journal_entries to get candidate pairs (O(n) vector searches instead of O(n^2))
+      for (const entry of toScan) {
+        const { data: nn } = await supabaseAdmin.rpc('match_journal_entries', {
+          user_uuid: userId,
+          query_embedding: entry.embedding,
+          match_threshold: 0.5,
+          match_count: 6,
+        });
+        for (const row of nn || []) {
+          if (row.id === entry.id) continue;
+          if (entryMap.has(row.id)) {
+            candidateSet.add([entry.id, row.id].sort().join(','));
           }
         }
+      }
+
+      // Run existing checks only on candidate pairs
+      for (const pairKey of candidateSet) {
+        const [id1, id2] = pairKey.split(',');
+        const e1 = entryMap.get(id1);
+        const e2 = entryMap.get(id2);
+        if (!e1 || !e2) continue;
+
+        const exactScore = this.checkExactDuplicate(e1, e2);
+        if (exactScore) {
+          similarities.push(exactScore);
+          continue;
+        }
+        const nearDuplicateScore = this.checkNearDuplicate(e1, e2);
+        if (nearDuplicateScore) {
+          similarities.push(nearDuplicateScore);
+          continue;
+        }
+        const semanticScore = await this.checkSemanticSimilarity(e1, e2);
+        if (semanticScore) {
+          similarities.push(semanticScore);
+          continue;
+        }
+        const temporalScore = this.checkTemporalProximity(e1, e2);
+        if (temporalScore) similarities.push(temporalScore);
       }
 
       logger.debug(

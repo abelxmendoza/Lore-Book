@@ -192,6 +192,7 @@ try {
   const { graphUpdateJob } = await import('./jobs/graphUpdateJob');
   const { continuityEngineJob } = await import('./jobs/continuityEngineJob');
   const { valueEvolutionJob } = await import('./jobs/valueEvolutionJob');
+  const { evolveRelationshipsJob } = await import('./jobs/evolveRelationshipsJob');
   const { episodicClosureJob } = await import('./jobs/episodicClosureJob');
   const { registerPersonalStrategyTrainingJob } = await import('./jobs/personalStrategyTrainingJob');
   
@@ -199,6 +200,7 @@ try {
   graphUpdateJob.register();
   continuityEngineJob.register();
   valueEvolutionJob.register();
+  evolveRelationshipsJob.register();
   episodicClosureJob.register();
   registerPersonalStrategyTrainingJob();
 } catch (error) {

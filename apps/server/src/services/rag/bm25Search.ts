@@ -9,11 +9,13 @@ export class BM25Search {
   /**
    * Simple BM25 implementation for keyword search
    * Uses PostgreSQL full-text search as base, then applies BM25-like scoring
+   * @param yearShardMin - Optional: only entries with year_shard >= this (e.g. currentYear - 1 for recent)
    */
   async search(
     userId: string,
     query: string,
-    limit: number = 20
+    limit: number = 20,
+    yearShardMin?: number
   ): Promise<Array<{ id: string; score: number; content: string }>> {
     try {
       // Tokenize query
@@ -24,8 +26,7 @@ export class BM25Search {
 
       // Use PostgreSQL full-text search with ranking
       const searchQuery = queryTerms.join(' & ');
-      
-      const { data, error } = await supabaseAdmin
+      let q = supabaseAdmin
         .from('journal_entries')
         .select('id, content, summary, tags, created_at')
         .eq('user_id', userId)
@@ -34,11 +35,14 @@ export class BM25Search {
           config: 'english'
         })
         .limit(limit * 2); // Get more for re-ranking
+      if (yearShardMin != null) {
+        q = q.gte('year_shard', yearShardMin);
+      }
+      const { data, error } = await q;
 
       if (error) {
         logger.warn({ error }, 'Full-text search failed, falling back to ILIKE');
-        // Fallback to ILIKE search
-        return this.fallbackKeywordSearch(userId, query, limit);
+        return this.fallbackKeywordSearch(userId, query, limit, yearShardMin);
       }
 
       // Apply BM25-like scoring
@@ -59,7 +63,7 @@ export class BM25Search {
         }));
     } catch (error) {
       logger.error({ error, query }, 'BM25 search failed');
-      return this.fallbackKeywordSearch(userId, query, limit);
+      return this.fallbackKeywordSearch(userId, query, limit, yearShardMin);
     }
   }
 
@@ -186,14 +190,19 @@ export class BM25Search {
   private async fallbackKeywordSearch(
     userId: string,
     query: string,
-    limit: number
+    limit: number,
+    yearShardMin?: number
   ): Promise<Array<{ id: string; score: number; content: string }>> {
-    const { data } = await supabaseAdmin
+    let q = supabaseAdmin
       .from('journal_entries')
       .select('id, content, summary')
       .eq('user_id', userId)
       .ilike('content', `%${query}%`)
       .limit(limit);
+    if (yearShardMin != null) {
+      q = q.gte('year_shard', yearShardMin);
+    }
+    const { data } = await q;
 
     return (data || []).map((doc, index) => ({
       id: doc.id,

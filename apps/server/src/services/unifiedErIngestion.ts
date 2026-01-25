@@ -22,6 +22,7 @@ import {
   type ResolvedEntity,
   type TargetTable,
 } from '../er/erSchema';
+import { inferScope } from '../er/scopeInference';
 import { writeRelationship } from '../er/writeRelationship';
 import { entityRelationshipDetector } from './conversationCentered/entityRelationshipDetector';
 import { entityScopeService } from './conversationCentered/entityScopeService';
@@ -151,7 +152,8 @@ export async function runERIngestionForText(
     opts?.sourceJournalEntryId
   );
 
-  const ctx = { userId, memoryId: opts?.memoryId };
+  const scope = inferScope(text);
+  const ctx = { userId, memoryId: opts?.memoryId, scope };
 
   for (const rel of detection.relationships) {
     const extractedRel: ExtractedRelationship = {

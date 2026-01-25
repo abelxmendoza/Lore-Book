@@ -179,15 +179,24 @@ class ModeHandlers {
       
       // Get all accounts of this story
       const accounts = await storyAccountService.getStoryAccounts(userId, storyName);
-      
+
       if (accounts.length === 0) {
+        // Phase 4.5: narrative fallback from journal_entries when story DB is empty
+        const { narrativeFromJournalFallback } = await import('../narrativeRecall/narrativeRecallCorrection');
+        const fallback = await narrativeFromJournalFallback(userId, storyName);
+        if (fallback) {
+          return {
+            content: fallback.narrative,
+            response_mode: 'NARRATIVE_RECALL',
+            confidence: 0.8,
+            metadata: { story_name: storyName, derived_from: fallback.derived_from },
+          };
+        }
         return {
           content: `I don't have a record of "${storyName}". If you want, you can tell me about it now.`,
           response_mode: 'SILENCE',
           confidence: 1.0,
-          metadata: {
-            story_name: storyName,
-          },
+          metadata: { story_name: storyName },
         };
       }
 
