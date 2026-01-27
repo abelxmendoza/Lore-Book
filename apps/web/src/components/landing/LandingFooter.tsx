@@ -18,7 +18,6 @@ export const LandingFooter = () => {
       { path: '/privacy-policy', label: 'Privacy Policy' },
     ],
     Company: [
-      { path: '/investors', label: 'Investors' },
       { path: '/about', label: 'Team' },
     ],
   };

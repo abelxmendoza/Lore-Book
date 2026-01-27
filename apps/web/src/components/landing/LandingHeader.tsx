@@ -15,7 +15,6 @@ export const LandingHeader = () => {
     { path: '/home', label: 'Home' },
     { path: '/features', label: 'Features' },
     { path: '/about', label: 'About' },
-    { path: '/investors', label: 'Investors' },
   ];
 
   const isActive = (path: string) => location.pathname === path;
