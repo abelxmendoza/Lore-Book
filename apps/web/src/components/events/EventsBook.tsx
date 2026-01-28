@@ -5,7 +5,7 @@
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
-import { Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search, BookOpen, RefreshCw, ChevronLeft, ChevronRight, Star, TrendingUp, AlertTriangle, Filter, X, Grid3x3, List, SortAsc, SortDesc, SlidersHorizontal, HelpCircle } from 'lucide-react';
+import { Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search, BookOpen, RefreshCw, ChevronLeft, ChevronRight, Star, TrendingUp, AlertTriangle, Filter, X, SortAsc, SortDesc, HelpCircle, Cake, PartyPopper, Music2, Building2, Briefcase, Plane, Heart } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -18,17 +18,100 @@ import { EventProfileCard, type Event } from './EventProfileCard';
 import { EventCardExample } from './EventCardExample';
 import { EventCardExampleModal } from './EventCardExampleModal';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
+import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
-const ITEMS_PER_PAGE_OPTIONS = [12, 24, 48, 96];
 
-type EventCategory = 'all' | 'recent' | 'high_confidence' | 'low_confidence' | 'with_people' | 'with_locations';
+type EventCategory = 'all' | 'recent' | 'birthdays' | 'parties' | 'concerts_shows' | 'conventions' | 'work' | 'travel' | 'family' | 'festivals' | 'with_people' | 'with_locations';
 type SortOption = 'date_desc' | 'date_asc' | 'confidence_desc' | 'confidence_asc' | 'title_asc' | 'title_desc' | 'people_desc';
-type ViewMode = 'grid' | 'list';
+
+// Sub-tabs per category (keyword match within that category). 'all' = no extra filter.
+const CATEGORY_SUB_TABS: Partial<Record<EventCategory, { value: string; label: string }[]>> = {
+  birthdays: [{ value: 'all', label: 'All' }, { value: 'mine', label: 'Mine' }, { value: 'others', label: "Others'" }, { value: 'kids', label: "Kids'" }],
+  parties: [{ value: 'all', label: 'All' }, { value: 'raves', label: 'Raves' }, { value: 'afters', label: 'Afters' }, { value: 'celebrations', label: 'Celebrations' }, { value: 'game_nights', label: 'Game Nights' }, { value: 'house_parties', label: 'House Parties' }],
+  concerts_shows: [{ value: 'all', label: 'All' }, { value: 'concerts', label: 'Concerts' }, { value: 'theater', label: 'Theater' }, { value: 'comedy', label: 'Comedy' }, { value: 'open_mics', label: 'Open Mics' }, { value: 'local_scene', label: 'Local Scene' }],
+  conventions: [{ value: 'all', label: 'All' }, { value: 'conferences', label: 'Conferences' }, { value: 'expos', label: 'Expos' }, { value: 'meetups', label: 'Meetups' }, { value: 'fan_cons', label: 'Fan Cons' }],
+  work: [{ value: 'all', label: 'All' }, { value: 'meetings', label: 'Meetings' }, { value: 'conferences', label: 'Conferences' }, { value: 'trips', label: 'Trips' }, { value: 'offsites', label: 'Offsites' }],
+  travel: [{ value: 'all', label: 'All' }, { value: 'vacations', label: 'Vacations' }, { value: 'weekends', label: 'Weekends' }, { value: 'business', label: 'Business' }],
+  family: [{ value: 'all', label: 'All' }, { value: 'dinners', label: 'Dinners' }, { value: 'reunions', label: 'Reunions' }, { value: 'holidays', label: 'Holidays' }],
+  festivals: [{ value: 'all', label: 'All' }, { value: 'music', label: 'Music' }, { value: 'arts', label: 'Arts' }, { value: 'food', label: 'Food' }],
+};
+
+// Keywords for category match (title, summary, type, activities). At least one must match.
+const CATEGORY_KEYWORDS: Partial<Record<EventCategory, string[]>> = {
+  birthdays: ['birthday', 'birthdays', 'bday'],
+  parties: ['party', 'parties', 'rave', 'raves', 'celebration', 'gathering', 'game night', 'house party', 'afters', 'afterparty', 'after-party', 'after party', 'underground'],
+  concerts_shows: ['concert', 'concerts', 'show', 'shows', 'performance', 'theater', 'theatre', 'comedy', 'gig', 'open mic', 'festival', 'local scene', 'underground scene'],
+  conventions: ['convention', 'conventions', 'conference', 'conferences', 'expo', 'expos', 'meetup', 'meetups', 'summit', 'summits', 'con'],
+  work: ['work', 'meeting', 'meetings', 'presentation', 'client', 'office', 'conference', 'business trip', 'offsite', 'interview'],
+  travel: ['travel', 'trip', 'trips', 'vacation', 'vacations', 'getaway', 'weekend getaway', 'road trip', 'family visit'],
+  family: ['family', 'family dinner', 'reunion', 'reunions', 'holiday', 'holidays', 'anniversary'],
+  festivals: ['festival', 'festivals', 'fair', 'multi-day'],
+};
+
+// Sub-category keywords (narrow within parent category)
+const SUB_KEYWORDS: Record<string, string[]> = {
+  afters: ['afters', 'afterparty', 'after-party', 'after party', 'underground rave', 'rave afters'],
+  raves: ['rave', 'raves', 'edm', 'underground'],
+  celebrations: ['celebration', 'celebrations', 'birthday party', 'anniversary'],
+  game_nights: ['game night', 'game nights', 'board game', 'game night'],
+  house_parties: ['house party', 'house parties', 'house party'],
+  local_scene: ['local scene', 'local scene show', 'underground scene', 'scenes'],
+  concerts: ['concert', 'concerts', 'gig', 'live music'],
+  theater: ['theater', 'theatre', 'play', 'musical'],
+  comedy: ['comedy', 'stand-up', 'standup', 'open mic comedy'],
+  open_mics: ['open mic', 'open mics', 'open mic night'],
+  conferences: ['conference', 'conferences', 'summit', 'summit'],
+  expos: ['expo', 'expos', 'exhibition', 'trade show'],
+  meetups: ['meetup', 'meetups', 'meet up'],
+  fan_cons: ['con', 'convention', 'comic con', 'fan con', 'anime con', 'fan convention'],
+  meetings: ['meeting', 'meetings', 'sync', 'standup', 'stand-up'],
+  trips: ['trip', 'business trip', 'work trip', 'travel'],
+  offsites: ['offsite', 'offsites', 'off-site', 'retreat'],
+  vacations: ['vacation', 'vacations', 'holiday', 'getaway'],
+  weekends: ['weekend', 'weekend getaway', 'weekend trip'],
+  business: ['business', 'business trip', 'work travel'],
+  dinners: ['dinner', 'family dinner', 'dinners'],
+  reunions: ['reunion', 'reunions', 'family reunion'],
+  holidays: ['holiday', 'holidays', 'christmas', 'thanksgiving', 'easter'],
+  music: ['music festival', 'music fest', 'festival'],
+  arts: ['arts festival', 'art fair', 'art festival'],
+  food: ['food festival', 'food fair', 'food fest'],
+  mine: ['my birthday', 'my bday', 'turned today', 'celebrated my'],
+  others: ['birthday party', 'birthday for', "friend's birthday", 'surprise party'],
+  kids: ['kid birthday', "kid's birthday", 'child birthday', 'children\'s party', 'kids party'],
+};
+
+function eventText(event: Event): string {
+  const parts = [event.title, event.summary, event.type, ...(event.activities || [])].filter(Boolean) as string[];
+  return parts.join(' ').toLowerCase();
+}
+
+function eventMatchesCategory(event: Event, category: EventCategory, subCategory: string): boolean {
+  if (category === 'all') return true;
+  if (category === 'recent') {
+    const thirtyDaysAgo = subDays(new Date(), 30);
+    return parseISO(event.start_time) >= thirtyDaysAgo;
+  }
+  if (category === 'with_people') return event.people.length > 0;
+  if (category === 'with_locations') return event.locations.length > 0;
+
+  const text = eventText(event);
+  const kw = CATEGORY_KEYWORDS[category];
+  if (!kw || !kw.some(k => text.includes(k))) return false;
+  if (subCategory === 'all') return true;
+
+  const subKw = SUB_KEYWORDS[subCategory];
+  if (subKw && subKw.some(k => text.includes(k))) return true;
+  // Fallback: sub labels that are single words we can match
+  if (text.includes(subCategory.replace(/_/g, ' '))) return true;
+  return false;
+}
+type ImpactFilter = 'all' | 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
 type DateRange = 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
 
 interface FilterState {
@@ -134,14 +217,19 @@ export const EventsBook: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<EventCategory>('all');
+  const [activeSubCategory, setActiveSubCategory] = useState<string>('all');
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>('all');
+
+  // Reset sub-tab when top-level category changes
+  useEffect(() => {
+    setActiveSubCategory('all');
+  }, [activeCategory]);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(ITEMS_PER_PAGE);
   const [sortBy, setSortBy] = useState<SortOption>('date_desc'); // Default: newest first
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [showFilters, setShowFilters] = useState(false);
   const [showExample, setShowExample] = useState(false);
   const [showExampleModal, setShowExampleModal] = useState(false);
@@ -309,25 +397,9 @@ export const EventsBook: React.FC = () => {
       });
     }
 
-    // Legacy category filter (for backward compatibility)
+    // Category + nested sub-category filter (keyword match on title/summary/type/activities)
     if (activeCategory !== 'all') {
-      filtered = filtered.filter(event => {
-        switch (activeCategory) {
-          case 'recent':
-            const thirtyDaysAgo = subDays(new Date(), 30);
-            return parseISO(event.start_time) >= thirtyDaysAgo;
-          case 'high_confidence':
-            return event.confidence >= 0.7;
-          case 'low_confidence':
-            return event.confidence < 0.4;
-          case 'with_people':
-            return event.people.length > 0;
-          case 'with_locations':
-            return event.locations.length > 0;
-          default:
-            return true;
-        }
-      });
+      filtered = filtered.filter(event => eventMatchesCategory(event, activeCategory, activeSubCategory));
     }
 
     // Search filter
@@ -367,12 +439,12 @@ export const EventsBook: React.FC = () => {
     });
 
     return filtered;
-  }, [events, searchTerm, activeCategory, filters, sortBy, impactFilter]);
+  }, [events, searchTerm, activeCategory, activeSubCategory, filters, sortBy, impactFilter]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, activeCategory, filters, sortBy]);
+  }, [searchTerm, activeCategory, activeSubCategory, filters, sortBy]);
 
   // Calculate pagination
   const totalPages = Math.ceil(filteredEvents.length / itemsPerPage);
@@ -446,9 +518,10 @@ export const EventsBook: React.FC = () => {
     if (filters.hasPeople !== null) count++;
     if (searchTerm.trim()) count++;
     if (activeCategory !== 'all') count++;
+    if (activeSubCategory !== 'all' && CATEGORY_SUB_TABS[activeCategory]) count++;
     if (impactFilter !== 'all') count++;
     return count;
-  }, [filters, searchTerm, activeCategory, impactFilter]);
+  }, [filters, searchTerm, activeCategory, activeSubCategory, impactFilter]);
 
   if (error) {
     return (
@@ -469,10 +542,11 @@ export const EventsBook: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header with Search and Controls */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
+    <div className="space-y-4 sm:space-y-6">
+      <ChatFirstViewHint />
+      {/* Header with Search and Controls - stacks on mobile for fit */}
+      <div className="space-y-3 sm:space-y-4">
+        <div className="flex flex-col gap-2 sm:gap-4 sm:flex-row sm:items-center">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
             <Input
@@ -485,26 +559,6 @@ export const EventsBook: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-2 flex-wrap">
-            {/* View Mode Toggle */}
-            <div className="flex items-center gap-1 bg-black/40 border border-border/50 rounded-lg p-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className={`h-7 sm:h-8 px-2 sm:px-3 ${viewMode === 'grid' ? 'bg-primary/20 text-primary' : 'text-white/60'}`}
-              >
-                <Grid3x3 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewMode('list')}
-                className={`h-7 sm:h-8 px-2 sm:px-3 ${viewMode === 'list' ? 'bg-primary/20 text-primary' : 'text-white/60'}`}
-              >
-                <List className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              </Button>
-            </div>
-
             {/* Sort Dropdown */}
             <select
               value={sortBy}
@@ -518,37 +572,6 @@ export const EventsBook: React.FC = () => {
               <option value="title_asc">Title A-Z</option>
               <option value="title_desc">Title Z-A</option>
               <option value="people_desc">Most People</option>
-            </select>
-
-            {/* Filter Toggle */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowFilters(!showFilters)}
-              className={`relative text-xs sm:text-sm ${activeFilterCount > 0 ? 'border-primary/50 bg-primary/10' : ''}`}
-            >
-              <SlidersHorizontal className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Filters</span>
-              <span className="sm:hidden">Filter</span>
-              {activeFilterCount > 0 && (
-                <span className="ml-1 sm:ml-2 px-1 sm:px-1.5 py-0.5 bg-primary text-white text-[10px] sm:text-xs rounded-full">
-                  {activeFilterCount}
-                </span>
-              )}
-            </Button>
-
-            {/* Items Per Page - Hidden on mobile */}
-            <select
-              value={itemsPerPage}
-              onChange={(e) => {
-                setItemsPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="hidden sm:block h-9 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            >
-              {ITEMS_PER_PAGE_OPTIONS.map(opt => (
-                <option key={opt} value={opt}>{opt} per page</option>
-              ))}
             </select>
 
             {/* Show Example Button - Hidden on mobile */}
@@ -576,10 +599,10 @@ export const EventsBook: React.FC = () => {
           </div>
         </div>
 
-        {/* Impact Type Filter */}
-        <div className="mb-4">
-          <label className="text-sm font-medium text-white/80 mb-2 block">Filter by Impact</label>
-          <div className="flex flex-wrap gap-2">
+        {/* Impact Type Filter - wraps on mobile */}
+        <div className="mb-3 sm:mb-4">
+          <label className="text-xs sm:text-sm font-medium text-white/80 mb-1.5 sm:mb-2 block">Filter by Impact</label>
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
             <Button
               variant={impactFilter === 'all' ? 'default' : 'outline'}
               size="sm"
@@ -631,47 +654,64 @@ export const EventsBook: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Category Tabs */}
-        <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as EventCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1">
-            <TabsTrigger 
-              value="all" 
-              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
-            >
+        {/* Row 1: Top-level event categories */}
+        <Tabs value={activeCategory} onValueChange={(v) => setActiveCategory(v as EventCategory)}>
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto grid grid-cols-3 sm:flex sm:flex-wrap gap-1">
+            <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
               <Calendar className="h-3 w-3 sm:h-4 sm:w-4" /> <span>All</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="recent" 
-              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
-            >
+            <TabsTrigger value="recent" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
               <Clock className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Recent</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="high_confidence" 
-              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
-            >
-              <Star className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">High Confidence</span><span className="sm:hidden">High</span>
+            <TabsTrigger value="birthdays" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+              <Cake className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Birthdays</span><span className="sm:hidden">Bdays</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="low_confidence" 
-              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
-            >
-              <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Low Confidence</span><span className="sm:hidden">Low</span>
+            <TabsTrigger value="parties" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+              <PartyPopper className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Parties</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="with_people" 
-              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
-            >
+            <TabsTrigger value="concerts_shows" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+              <Music2 className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Concerts & Shows</span><span className="sm:hidden">Shows</span>
+            </TabsTrigger>
+            <TabsTrigger value="conventions" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+              <Building2 className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Conventions</span><span className="sm:hidden">Cons</span>
+            </TabsTrigger>
+            <TabsTrigger value="work" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+              <Briefcase className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Work</span>
+            </TabsTrigger>
+            <TabsTrigger value="travel" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+              <Plane className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Travel</span>
+            </TabsTrigger>
+            <TabsTrigger value="family" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+              <Heart className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Family</span>
+            </TabsTrigger>
+            <TabsTrigger value="festivals" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
+              <Sparkles className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Festivals</span>
+            </TabsTrigger>
+            <TabsTrigger value="with_people" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
               <Users className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">With People</span><span className="sm:hidden">People</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="with_locations" 
-              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
-            >
+            <TabsTrigger value="with_locations" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
               <MapPin className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">With Location</span><span className="sm:hidden">Location</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
+
+        {/* Row 2: Nested sub-tabs when category has them (e.g. Parties → Afters, Shows → Local Scene) */}
+        {CATEGORY_SUB_TABS[activeCategory] && (
+          <Tabs value={activeSubCategory} onValueChange={setActiveSubCategory}>
+            <TabsList className="w-full bg-black/30 border border-border/40 p-1 h-auto flex flex-wrap gap-1 text-xs">
+              {(CATEGORY_SUB_TABS[activeCategory] ?? []).map(({ value, label }) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary px-2 py-1 text-[10px] sm:text-xs flex-shrink-0"
+                >
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        )}
 
         {/* Advanced Filters Panel */}
         {showFilters && (
@@ -1082,7 +1122,7 @@ export const EventsBook: React.FC = () => {
 
       {/* Events Display */}
       {loading ? (
-        <div className={`grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
+        <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: itemsPerPage }).map((_, i) => (
             <Card key={i} className="bg-black/40 border-border/50 h-64 animate-pulse" />
           ))}
@@ -1127,8 +1167,8 @@ export const EventsBook: React.FC = () => {
                 </div>
               </div>
 
-              {/* Event Grid */}
-              <div className={`flex-1 grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
+              {/* Event Grid - 2 columns on mobile, squarer cards */}
+              <div className="flex-1 grid grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedEvents.length > 0 ? (
                   paginatedEvents.map((event, index) => {
                     try {
