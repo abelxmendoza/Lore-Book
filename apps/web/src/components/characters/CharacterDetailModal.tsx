@@ -177,22 +177,34 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     }
   };
 
-  const getImportanceTooltip = (level?: string | null, score?: number | null) => {
+  const getImportanceTooltip = (level?: string | null, score?: number | null, influenceOnUser?: number) => {
     const scoreText = score !== null && score !== undefined ? ` (Score: ${Math.round(score)}/100)` : '';
+    const lowPresence = level === 'minor' || level === 'background';
+    const highImpact = (influenceOnUser ?? 0) >= 70;
+    let base: string;
     switch (level) {
       case 'protagonist':
-        return `Protagonist${scoreText}: This character is central to your story. They appear frequently, have deep relationships with you, and significantly impact your narrative. Assigned based on mention frequency, relationship depth, and emotional significance.`;
+        base = `Protagonist${scoreText}: This character is central to your story. They appear frequently, have deep relationships with you, and significantly impact your narrative. Assigned based on mention frequency, relationship depth, and emotional significance.`;
+        break;
       case 'major':
-        return `Major${scoreText}: This character plays an important role in your story. They appear regularly and have meaningful connections. Assigned based on consistent mentions and relationship significance.`;
+        base = `Major${scoreText}: This character plays an important role in your story. They appear regularly and have meaningful connections. Assigned based on consistent mentions and relationship significance.`;
+        break;
       case 'supporting':
-        return `Supporting${scoreText}: This character appears occasionally and contributes to your story. They have moderate significance. Assigned based on periodic mentions and moderate relationship depth.`;
+        base = `Supporting${scoreText}: This character appears occasionally and contributes to your story. They have moderate significance. Assigned based on periodic mentions and moderate relationship depth.`;
+        break;
       case 'minor':
-        return `Minor${scoreText}: This character appears infrequently or has limited impact on your narrative. Assigned based on rare mentions or shallow relationship depth.`;
+        base = `Minor${scoreText}: This character appears infrequently in your story. Assigned based on rare mentions or shallow relationship depth.`;
+        break;
       case 'background':
-        return `Background${scoreText}: This character is mentioned but has minimal impact on your story. They're part of the background context. Assigned based on very rare mentions or third-party references.`;
+        base = `Background${scoreText}: This character is mentioned but appears rarely in your story. They're part of the background context. Assigned based on very rare mentions or third-party references.`;
+        break;
       default:
-        return `Importance Level${scoreText}: Automatically calculated based on how often you mention this character, the depth of your relationship, and their role in your story.`;
+        base = `Importance Level${scoreText}: Automatically calculated based on how often you mention this character, the depth of your relationship, and their role in your story.`;
     }
+    if (lowPresence && highImpact && influenceOnUser != null) {
+      return `${base} Despite low presence in your story, they have high impact on you (influence: ${influenceOnUser}/100).`;
+    }
+    return base;
   };
 
   const getProximityTooltip = (level?: string | null) => {
@@ -1528,7 +1540,7 @@ User's message: ${message}`;
                     </Tooltip>
                   )}
                   {editedCharacter.importance_level && (
-                    <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score)}>
+                    <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score, editedCharacter.analytics?.character_influence_on_user)}>
                     <Badge 
                       variant="outline" 
                         className={`${getImportanceColor(editedCharacter.importance_level)} text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 flex items-center gap-1 cursor-help`}
@@ -1540,6 +1552,15 @@ User's message: ${message}`;
                       )}
                     </Badge>
                     </Tooltip>
+                  )}
+                  {/* Rare in story but high impact on you */}
+                  {((editedCharacter.importance_level === 'minor' || editedCharacter.importance_level === 'background') &&
+                    (editedCharacter.analytics?.character_influence_on_user ?? 0) >= 70) && (
+                    <Badge variant="outline" className="bg-purple-500/20 text-purple-400 border-purple-500/40 text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1 flex items-center gap-1" title="Rare in your story, but high impact on you">
+                      <Zap className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                      <span className="hidden sm:inline">Rare in story, high impact on you</span>
+                      <span className="sm:hidden">High impact</span>
+                    </Badge>
                   )}
                 </div>
                 {editedCharacter.first_name && editedCharacter.last_name && editedCharacter.name !== `${editedCharacter.first_name} ${editedCharacter.last_name}` && (
@@ -2070,7 +2091,7 @@ User's message: ${message}`;
                       <div className="flex items-center gap-6 mb-4">
                       {editedCharacter.importance_level && (
                         <div className="flex items-center gap-2">
-                            <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score)}>
+                            <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score, editedCharacter.analytics?.character_influence_on_user)}>
                           <Badge 
                             variant="outline" 
                                 className={`${getImportanceColor(editedCharacter.importance_level)} text-base px-4 py-2 flex items-center gap-2 font-bold shadow-md cursor-help`}
@@ -2088,6 +2109,16 @@ User's message: ${message}`;
                         </div>
                       )}
                     </div>
+                      {/* Rare in story but high impact on you */}
+                      {((editedCharacter.importance_level === 'minor' || editedCharacter.importance_level === 'background') &&
+                        (editedCharacter.analytics?.character_influence_on_user ?? 0) >= 70) && (
+                        <div className="mb-4 flex items-center gap-2 rounded-lg border border-purple-500/40 bg-purple-500/10 px-4 py-3">
+                          <Zap className="h-5 w-5 text-purple-400 flex-shrink-0" />
+                          <p className="text-sm font-medium text-purple-200">
+                            Rare in your story, but high impact on you — they shape your choices and thoughts even with limited presence.
+                          </p>
+                        </div>
+                      )}
                       <div className="bg-black/40 rounded-lg p-3 border border-purple-500/20">
                         <p className="text-sm text-white/80 flex items-start gap-2 leading-relaxed">
                           <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-purple-300" />

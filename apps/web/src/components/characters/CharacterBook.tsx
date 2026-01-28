@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, Star, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, Star, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap } from 'lucide-react';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
 import { UserProfile } from './UserProfile';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
+import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { Card, CardContent } from '../ui/card';
 import { CharacterCardSkeleton } from '../ui/skeleton';
 import { Badge } from '../ui/badge';
@@ -22,6 +22,7 @@ import { useAuth } from '../../lib/supabase';
 import { mockDataService } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
+import { ChatFirstViewHint } from '../ChatFirstViewHint';
 
 // Comprehensive mock character data showcasing all app capabilities
 // Export for use in mock data service
@@ -39,7 +40,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'major',
     importance_score: 87,
     is_nickname: false,
-    summary: 'My closest friend and confidante since college. Sarah works in tech and was one of the first people I told about my decision to transition from software development to creative work. She\'s been incredibly supportive throughout my creative renaissance, often meeting me at coffee shops to work on our respective projects. We\'ve had 24 writing sessions together at the coffee shop. She knows Alex (my boyfriend) and Marcus (my mentor), and we all sometimes hang out together. Sarah is honest, loyal, and always knows how to make me laugh when I\'m stressed about my creative projects.',
+    summary: 'My closest friend and confidante since college. Sarah works in tech and was one of the first people I told about my decision to transition from software development to creative work. She\'s been incredibly supportive throughout my creative renaissance, often meeting me at coffee shops to work on our respective projects. We\'ve had 24 writing sessions together at the coffee shop. She knows Alex (my girlfriend) and Marcus (my mentor), and we all sometimes hang out together. Sarah is honest, loyal, and always knows how to make me laugh when I\'m stressed about my creative projects.',
     tags: ['friendship', 'support', 'honesty', 'loyalty'],
     metadata: {
       relationship_type: 'friend',
@@ -114,7 +115,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'major',
     importance_score: 78,
     is_nickname: false,
-    summary: 'A talented music producer and creative collaborator. Alex Rivera and I work together on music production projects in my home studio. Marcus introduced us 1.5 years ago, and we\'ve been collaborating ever since. They\'ve been instrumental in helping me learn music production during my creative renaissance. We\'ve had 45 studio sessions together, and they helped me produce my first EP. Alex knows about my relationship with Alex (my boyfriend) and is supportive of my creative journey.',
+    summary: 'A talented music producer and creative collaborator. Alex Rivera and I work together on music production projects in my home studio. Marcus introduced us 1.5 years ago, and we\'ve been collaborating ever since. They\'ve been instrumental in helping me learn music production during my creative renaissance. We\'ve had 45 studio sessions together, and they helped me produce my first EP. Alex knows about my relationship with Alex (my girlfriend) and is supportive of my creative journey.',
     tags: ['collaboration', 'creativity', 'professional', 'innovation'],
     metadata: {
       relationship_type: 'professional',
@@ -146,14 +147,14 @@ export const dummyCharacters: Character[] = [
     first_name: 'Alex',
     last_name: '',
     alias: ['Alex'],
-    pronouns: 'he/him',
+    pronouns: 'she/her',
     archetype: 'romantic',
-    role: 'Boyfriend',
+    role: 'Girlfriend',
     status: 'active',
     importance_level: 'protagonist',
     importance_score: 95,
     is_nickname: false,
-    summary: 'My boyfriend of 6 months. We met through Sarah at a coffee shop a year ago. He\'s incredibly supportive of my creative journey, often visiting my home studio to listen to my music. He makes me laugh, remembers the little things, and we share a love for hiking and nature. Our relationship has been growing stronger, and he was the first person I called when I had the EP concept breakthrough.',
+    summary: 'My girlfriend of 6 months. We met through Sarah at a coffee shop a year ago. She\'s incredibly supportive of my creative journey, often visiting my home studio to listen to my music. She makes me laugh, remembers the little things, and we share a love for hiking and nature. Our relationship has been growing stronger, and she was the first person I called when I had the EP concept breakthrough.',
     tags: ['romantic', 'supportive', 'relationship', 'creative'],
     metadata: {
       relationship_type: 'romantic',
@@ -187,7 +188,7 @@ export const dummyCharacters: Character[] = [
     importance_level: 'protagonist',
     importance_score: 95,
     is_nickname: false,
-    summary: 'My sibling and one of the most important people in my life. Jordan has been incredibly supportive of my transition from tech to creative work, often going on runs with me in Golden Gate Park when I need to clear my head. They know Sarah (my best friend) and have met Alex (my boyfriend) a few times. Jordan was there for me when my relationship with Taylor ended and has been a constant source of wisdom and support throughout my creative renaissance journey.',
+    summary: 'My sibling and one of the most important people in my life. Jordan has been incredibly supportive of my transition from tech to creative work, often going on runs with me in Golden Gate Park when I need to clear my head. They know Sarah (my best friend) and have met Alex (my girlfriend) a few times. Jordan was there for me when my relationship with Taylor ended and has been a constant source of wisdom and support throughout my creative renaissance journey.',
     tags: ['family', 'sibling', 'support', 'connection'],
     metadata: {
       relationship_type: 'family',
@@ -1736,17 +1737,17 @@ export const dummyCharacters: Character[] = [
     first_name: 'Alex',
     last_name: null,
     alias: ['Alex'],
-    pronouns: 'he/him',
+    pronouns: 'she/her',
     archetype: 'romantic',
-    role: 'Boyfriend',
+    role: 'Girlfriend',
     status: 'active',
     importance_level: 'protagonist',
     importance_score: 95,
     is_nickname: false,
-    summary: 'My boyfriend of 6 months. We met at a coffee shop downtown when I was working on a writing project during my creative transition. Alex is incredibly supportive of my shift from tech to creative work - he even helped me set up my home studio. He\'s met Sarah (my best friend) and Jordan (my sibling), and they all get along well. We often go on walks in Golden Gate Park together, and he makes me laugh even when I\'m stressed about music production deadlines. Great communication, shares my values, and respects my creative process.',
-    tags: ['romantic', 'boyfriend', 'active', 'love', 'relationship'],
+    summary: 'My girlfriend of 6 months. We met at a coffee shop downtown when I was working on a writing project during my creative transition. Alex is incredibly supportive of my shift from tech to creative work - she even helped me set up my home studio. She\'s met Sarah (my best friend) and Jordan (my sibling), and they all get along well. We often go on walks in Golden Gate Park together, and she makes me laugh even when I\'m stressed about music production deadlines. Great communication, shares my values, and respects my creative process.',
+    tags: ['romantic', 'girlfriend', 'active', 'love', 'relationship'],
     metadata: {
-      relationship_type: 'boyfriend',
+      relationship_type: 'girlfriend',
       closeness_score: 92,
       affection_score: 0.92,
       compatibility_score: 0.95,
@@ -1897,7 +1898,8 @@ export const dummyCharacters: Character[] = [
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 
 type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professional' | 'creative' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
-type ImportanceFilter = 'all' | 'important' | 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
+type ImportanceFilter = 'all' | 'important' | 'high_impact' | 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
+type SortOrder = 'role' | 'impact';
 
 type CharacterAttribute = {
   id: string;
@@ -2068,6 +2070,7 @@ export const CharacterBook = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
   const [importanceFilter, setImportanceFilter] = useState<ImportanceFilter>('all');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('role');
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     minor: false,
     background: false
@@ -2193,6 +2196,8 @@ export const CharacterBook = () => {
           const level = char.importance_level || 'minor';
           return ['protagonist', 'major', 'supporting'].includes(level);
         });
+      } else if (importanceFilter === 'high_impact') {
+        filtered = filtered.filter(char => (char.analytics?.character_influence_on_user ?? 0) >= 70);
       } else {
         filtered = filtered.filter(char => (char.importance_level || 'minor') === importanceFilter);
       }
@@ -2250,7 +2255,7 @@ export const CharacterBook = () => {
     return filtered;
   }, [characters, searchTerm, activeCategory, importanceFilter]);
 
-  // Group characters by importance level
+  // Group characters by importance level (for "By role" view)
   const groupedByImportance = useMemo(() => {
     const groups: Record<string, Character[]> = {};
     filteredCharacters.forEach(char => {
@@ -2261,6 +2266,13 @@ export const CharacterBook = () => {
     return groups;
   }, [filteredCharacters]);
 
+  // Sorted by impact on you (for "By impact" view)
+  const charactersByImpact = useMemo(() => {
+    return [...filteredCharacters].sort(
+      (a, b) => (b.analytics?.character_influence_on_user ?? 0) - (a.analytics?.character_influence_on_user ?? 0)
+    );
+  }, [filteredCharacters]);
+
   const levelLabels: Record<string, string> = {
     protagonist: 'Protagonist',
     major: 'Major Characters',
@@ -2269,10 +2281,10 @@ export const CharacterBook = () => {
     background: 'Background Characters'
   };
 
-  // Reset to page 1 when search, category, or importance filter changes
+  // Reset to page 1 when search, category, importance filter, or sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, activeCategory, importanceFilter]);
+  }, [searchTerm, activeCategory, importanceFilter, sortOrder]);
 
   // Calculate pagination - always use grid pagination (multiple characters per page)
   const totalPages = Math.ceil(filteredCharacters.length / ITEMS_PER_PAGE);
@@ -2321,6 +2333,7 @@ export const CharacterBook = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6" data-testid="character-book">
+      <ChatFirstViewHint />
       {/* User Profile & Insights - Displayed first */}
       <div className="space-y-3 sm:space-y-4">
         <UserProfile />
@@ -2328,35 +2341,51 @@ export const CharacterBook = () => {
 
       {/* Character Search Bar and Navigation Tabs */}
       <div className="space-y-3 sm:space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
-          <Input
-            type="text"
-            placeholder="Search characters..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-            }}
-            className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40 text-sm sm:text-base"
-          />
-        </div>
+        <SearchWithAutocomplete<Character>
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Search characters..."
+          items={characters}
+          getSearchableText={(c) =>
+            [c.name, ...(c.alias ?? []), c.summary, ...(c.tags ?? []), c.archetype, c.role].filter(Boolean).join(' ')
+          }
+          getDisplayLabel={(c) => c.name}
+          maxSuggestions={8}
+          className="w-full"
+          inputClassName="bg-black/40 border-border/50 text-white placeholder:text-white/40"
+          emptyHint="No matching characters"
+        />
         
-        {/* Importance Filter */}
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-white/60">Filter by Importance:</label>
-          <select
-            value={importanceFilter}
-            onChange={(e) => setImportanceFilter(e.target.value as ImportanceFilter)}
-            className="bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"
-          >
-            <option value="all">All Characters</option>
-            <option value="important">Important Only</option>
-            <option value="protagonist">Protagonist</option>
-            <option value="major">Major</option>
-            <option value="supporting">Supporting</option>
-            <option value="minor">Minor</option>
-            <option value="background">Background</option>
-          </select>
+        {/* Importance & Impact Filters */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-white/60">Filter:</label>
+            <select
+              value={importanceFilter}
+              onChange={(e) => setImportanceFilter(e.target.value as ImportanceFilter)}
+              className="bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"
+            >
+              <option value="all">All Characters</option>
+              <option value="important">Important Only</option>
+              <option value="high_impact">High impact on me (70+)</option>
+              <option value="protagonist">Protagonist</option>
+              <option value="major">Major</option>
+              <option value="supporting">Supporting</option>
+              <option value="minor">Minor</option>
+              <option value="background">Background</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-white/60">Sort by:</label>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+              className="bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"
+            >
+              <option value="role">By role in story</option>
+              <option value="impact">By impact on me</option>
+            </select>
+          </div>
         </div>
 
         {/* Navigation Tabs */}
@@ -2506,60 +2535,88 @@ export const CharacterBook = () => {
               {/* Main Character Section */}
               <MainCharacterSection user={user} />
 
-              {/* Character Grid - Grouped by Importance */}
+              {/* Character Grid - By impact or grouped by role */}
               <div className="flex-1 space-y-4 mb-4 sm:mb-6">
-                {Object.entries(groupedByImportance)
-                  .sort(([a], [b]) => {
-                    const order: Record<string, number> = {
-                      protagonist: 0,
-                      major: 1,
-                      supporting: 2,
-                      minor: 3,
-                      background: 4
-                    };
-                    return (order[a] ?? 5) - (order[b] ?? 5);
-                  })
-                  .map(([level, chars]) => {
-                    const isCollapsed = collapsedSections[level] ?? (['minor', 'background'].includes(level));
-                    
-                    // Skip empty groups
-                    if (chars.length === 0) return null;
-                    
-                    return (
-                      <div key={level} className="space-y-2">
-                        <button
-                          onClick={() => setCollapsedSections(prev => ({ ...prev, [level]: !prev[level] }))}
-                          className="flex items-center gap-2 text-sm font-semibold text-amber-900/60 hover:text-amber-800/80 transition-colors"
-                        >
-                          <ChevronDown 
-                            className={`h-4 w-4 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
-                          />
-                          <span>{levelLabels[level] || level.charAt(0).toUpperCase() + level.slice(1)}</span>
-                          <span className="text-xs text-amber-700/50">({chars.length})</span>
-                        </button>
-                        {!isCollapsed && (
-                          <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                            {chars.map((character, index) => {
-                              try {
-                                return (
-                                  <CharacterProfileCard
-                                    key={character.id || `char-${index}`}
-                                    character={character}
-                                    relationship={relationships.get(character.id)}
-                                    onClick={() => {
-                                      setSelectedCharacter(character);
-                                    }}
-                                  />
-                                );
-                              } catch {
-                                return null;
-                              }
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                {sortOrder === 'impact' ? (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-amber-900/60 flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-purple-500/80" />
+                      People by impact on you
+                      <span className="text-xs text-amber-700/50">({charactersByImpact.length})</span>
+                    </h4>
+                    <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {charactersByImpact.map((character, index) => {
+                        try {
+                          return (
+                            <CharacterProfileCard
+                              key={character.id || `char-${index}`}
+                              character={character}
+                              relationship={relationships.get(character.id)}
+                              onClick={() => {
+                                setSelectedCharacter(character);
+                              }}
+                            />
+                          );
+                        } catch {
+                          return null;
+                        }
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  Object.entries(groupedByImportance)
+                    .sort(([a], [b]) => {
+                      const order: Record<string, number> = {
+                        protagonist: 0,
+                        major: 1,
+                        supporting: 2,
+                        minor: 3,
+                        background: 4
+                      };
+                      return (order[a] ?? 5) - (order[b] ?? 5);
+                    })
+                    .map(([level, chars]) => {
+                      const isCollapsed = collapsedSections[level] ?? (['minor', 'background'].includes(level));
+                      
+                      // Skip empty groups
+                      if (chars.length === 0) return null;
+                      
+                      return (
+                        <div key={level} className="space-y-2">
+                          <button
+                            onClick={() => setCollapsedSections(prev => ({ ...prev, [level]: !prev[level] }))}
+                            className="flex items-center gap-2 text-sm font-semibold text-amber-900/60 hover:text-amber-800/80 transition-colors"
+                          >
+                            <ChevronDown 
+                              className={`h-4 w-4 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
+                            />
+                            <span>{levelLabels[level] || level.charAt(0).toUpperCase() + level.slice(1)}</span>
+                            <span className="text-xs text-amber-700/50">({chars.length})</span>
+                          </button>
+                          {!isCollapsed && (
+                            <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                              {chars.map((character, index) => {
+                                try {
+                                  return (
+                                    <CharacterProfileCard
+                                      key={character.id || `char-${index}`}
+                                      character={character}
+                                      relationship={relationships.get(character.id)}
+                                      onClick={() => {
+                                        setSelectedCharacter(character);
+                                      }}
+                                    />
+                                  );
+                                } catch {
+                                  return null;
+                                }
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                )}
               </div>
 
               {/* Page Footer with Navigation */}

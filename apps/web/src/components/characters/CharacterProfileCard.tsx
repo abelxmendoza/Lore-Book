@@ -1,4 +1,4 @@
-import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff, Briefcase, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Heart, TrendingUp, TrendingDown } from 'lucide-react';
+import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff, Briefcase, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Heart, TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -265,6 +265,24 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
               <span className="hidden sm:inline">{getImportanceLabel(character.importance_level)}</span>
             </Badge>
           )}
+          {/* High impact despite low presence: minor/background but high influence on you */}
+          {(() => {
+            const lowPresence = character.importance_level === 'minor' || character.importance_level === 'background';
+            const highImpact = (character.analytics?.character_influence_on_user ?? 0) >= 70;
+            if (lowPresence && highImpact) {
+              return (
+                <Badge
+                  variant="outline"
+                  className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[7px] sm:text-[10px] px-0.5 py-0 sm:px-1 sm:py-0.5 flex items-center gap-0 sm:gap-1"
+                  title="Rare in your story, but high impact on you"
+                >
+                  <Zap className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+                  <span className="hidden sm:inline">High impact</span>
+                </Badge>
+              );
+            }
+            return null;
+          })()}
           {/* Only show high importance analytics badge on mobile - too cluttered otherwise */}
           {character.analytics && character.analytics.importance_score >= 70 && (
             <Badge 
@@ -382,7 +400,7 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
         )}
         
         {/* Importance and Archetype Badges - Hide on mobile, show on desktop */}
-        <div className="hidden sm:flex flex-wrap gap-0.5 sm:gap-1.5">
+        <div className="hidden sm:flex flex-wrap gap-0.5 sm:gap-1.5 items-center">
           {character.importance_level && (
             <Badge 
               variant="outline" 
@@ -393,6 +411,18 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
               {character.importance_score !== null && character.importance_score !== undefined && (
                 <span className="text-[10px] opacity-70">({Math.round(character.importance_score)})</span>
               )}
+            </Badge>
+          )}
+          {/* Distant but high impact: rare in your story, high impact on you */}
+          {(character.importance_level === 'minor' || character.importance_level === 'background') &&
+           (character.analytics?.character_influence_on_user ?? 0) >= 70 && (
+            <Badge
+              variant="outline"
+              className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs w-fit flex items-center gap-1"
+              title="Rare in your story, but high impact on you"
+            >
+              <Zap className="h-3 w-3" />
+              Rare in story, high impact on you
             </Badge>
           )}
           {character.archetype && (
