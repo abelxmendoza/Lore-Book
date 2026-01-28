@@ -14,6 +14,13 @@ const personaRL = new ChatPersonaRL();
 
 const router = Router();
 
+const currentContextSchema = z.object({
+  kind: z.enum(['none', 'timeline', 'thread']),
+  timelineNodeId: z.string().uuid().optional(),
+  timelineLayer: z.enum(['era', 'saga', 'arc', 'chapter']).optional(),
+  threadId: z.string().uuid().optional()
+}).optional();
+
 const chatSchema = z.object({
   message: z.string().min(1).max(5000),
   conversationHistory: z.array(z.object({
@@ -24,7 +31,8 @@ const chatSchema = z.object({
   entityContext: z.object({
     type: z.enum(['CHARACTER', 'LOCATION', 'PERCEPTION', 'MEMORY', 'ENTITY', 'GOSSIP']),
     id: z.string().uuid()
-  }).optional()
+  }).optional(),
+  currentContext: currentContextSchema
 });
 
 // Optional auth middleware for testing
@@ -68,7 +76,7 @@ router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, a
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
-    const { message, conversationHistory = [], entityContext } = parsed.data;
+    const { message, conversationHistory = [], entityContext, currentContext } = parsed.data;
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
     // Set up SSE headers
@@ -76,7 +84,7 @@ router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, a
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext);
+    const result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext);
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err => 
@@ -118,7 +126,7 @@ router.post('/', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
-    const { message, conversationHistory = [], stream, entityContext } = parsed.data;
+    const { message, conversationHistory = [], stream, entityContext, currentContext } = parsed.data;
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
     // If streaming requested but endpoint is /, redirect to /stream
@@ -126,7 +134,7 @@ router.post('/', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (
       return res.status(400).json({ error: 'Use /api/chat/stream for streaming' });
     }
 
-    const result = await omegaChatService.chat(userId, message, conversationHistory, entityContext);
+    const result = await omegaChatService.chat(userId, message, conversationHistory, entityContext, currentContext);
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err => 

@@ -84,6 +84,7 @@ import { goalsRouter } from './goals';
 import { questRouter } from './quests';
 import rpgRouter from './rpg';
 import { memoryEngineRouter } from './memoryEngine';
+import { backwardStorytellingRouter } from './backwardStorytelling';
 import { knowledgeGraphRouter } from './knowledgeGraph';
 import { searchRouter } from './search';
 import conversationCenteredRouter from './conversationCentered';
@@ -147,6 +148,7 @@ import { photosRouter } from './photos';
 import { summaryRouter } from './summary';
 import { timelineRouter } from './timeline';
 import { timelineHierarchyRouter } from './timelineHierarchy';
+import { threadsRouter } from './threads';
 import willRouter from './will';
 import { voidRouter } from './voids';
 import biasEthicsRouter from './biasEthics';
@@ -194,6 +196,7 @@ export const routeRegistry: RouteEntry[] = [
   
   // Protected routes (require auth) - registered after auth middleware
   { path: '/api/timeline-hierarchy', router: timelineHierarchyRouter },
+  { path: '/api/threads', router: threadsRouter },
   { path: '/api/omega-memory', router: omegaMemoryRouter },
   { path: '/api/continuity', router: continuityRouter },
   { path: '/api/perspectives', router: perspectivesRouter },
@@ -241,6 +244,7 @@ export const routeRegistry: RouteEntry[] = [
   { path: '/api/dev', router: devRouter },
   { path: '/api/timeline-v2', router: timelineV2Router },
   { path: '/api/memory-engine', router: memoryEngineRouter },
+  { path: '/api/backward-storytelling', router: backwardStorytellingRouter },
   { path: '/api/graph', router: knowledgeGraphRouter },
   { path: '/api/analytics', router: analyticsRouter },
   { path: '/api/chronology', router: chronologyRouter },

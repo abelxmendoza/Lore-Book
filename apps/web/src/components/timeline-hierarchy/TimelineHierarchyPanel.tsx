@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Layers, Search, Plus, Sparkles, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { Layers, Search, Plus, Sparkles, ChevronRight, ChevronDown, Loader2, GitBranch } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -16,10 +16,14 @@ import { TimelineMemoryTree } from './TimelineMemoryTree';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { TimelineNodeDetailModal } from './TimelineNodeDetailModal';
+import { ThreadTimelineView } from '../threads/ThreadTimelineView';
 import { useTimelineHierarchy } from '../../hooks/useTimelineHierarchy';
 import { TimelineLayer, LAYER_COLORS, TimelineNode } from '../../types/timeline';
 import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
+
+type ViewMode = 'hierarchy' | 'threads';
+type ThreadItem = { id: string; name: string; description?: string | null; category?: string | null };
 
 export const TimelineHierarchyPanel = () => {
   const {
@@ -56,6 +60,10 @@ export const TimelineHierarchyPanel = () => {
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [selectedNode, setSelectedNode] = useState<{ node: TimelineNode; layer: TimelineLayer } | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('hierarchy');
+  const [threads, setThreads] = useState<ThreadItem[]>([]);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [loadingThreads, setLoadingThreads] = useState(false);
 
   // Recursively load all children for a node, adding layer info to metadata
   const loadNodeWithChildren = async (node: TimelineNode, layer: TimelineLayer): Promise<TimelineNode[]> => {
@@ -117,6 +125,26 @@ export const TimelineHierarchyPanel = () => {
       loadFullHierarchy();
     }
   }, [mythos]);
+
+  useEffect(() => {
+    if (viewMode !== 'threads') return;
+    const loadThreads = async () => {
+      setLoadingThreads(true);
+      try {
+        const list = await fetchJson<ThreadItem[]>('/api/threads');
+        setThreads(list ?? []);
+        if (!selectedThreadId && (list ?? []).length > 0) {
+          setSelectedThreadId((list ?? [])[0].id);
+        }
+      } catch (e) {
+        console.error('Failed to load threads:', e);
+        setThreads([]);
+      } finally {
+        setLoadingThreads(false);
+      }
+    };
+    loadThreads();
+  }, [viewMode]);
 
   const handleTimelineItemClick = async (item: any) => {
     setCurrentTimelineItem(item.id);
@@ -214,17 +242,36 @@ export const TimelineHierarchyPanel = () => {
       {/* Header */}
       <Card className="bg-black/40 border-border/60 flex-shrink-0">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-3">
               <Layers className="h-6 w-6 text-primary" />
               <CardTitle className="text-white">Timeline Hierarchy</CardTitle>
+              <div className="flex rounded-lg border border-border/50 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('hierarchy')}
+                  className={`px-3 py-1.5 text-sm ${viewMode === 'hierarchy' ? 'bg-primary/30 text-white' : 'bg-black/30 text-white/70 hover:text-white'}`}
+                >
+                  Hierarchy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('threads')}
+                  className={`px-3 py-1.5 text-sm flex items-center gap-1 ${viewMode === 'threads' ? 'bg-primary/30 text-white' : 'bg-black/30 text-white/70 hover:text-white'}`}
+                >
+                  <GitBranch className="h-4 w-4" />
+                  By thread
+                </button>
+              </div>
             </div>
-            <Button
-              onClick={() => handleCreateNode('mythos')}
-              leftIcon={<Plus className="h-4 w-4" />}
-            >
-              New Mythos
-            </Button>
+            {viewMode === 'hierarchy' && (
+              <Button
+                onClick={() => handleCreateNode('mythos')}
+                leftIcon={<Plus className="h-4 w-4" />}
+              >
+                New Mythos
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -284,56 +331,107 @@ export const TimelineHierarchyPanel = () => {
 
       {/* Main Content - Split View */}
       <div className="flex-1 flex gap-4 overflow-hidden min-h-0 overflow-x-hidden">
-        {/* Timeline Tree - Scrollable */}
-        <Card className="bg-black/40 border-border/60 flex-1 flex flex-col overflow-hidden min-w-0 overflow-x-hidden">
-          <CardContent className="p-4 flex-1 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between mb-4 flex-shrink-0">
-              <h3 className="text-lg font-semibold text-white">Timeline Hierarchy</h3>
-            </div>
-            <div className="flex-1 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded">
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
-              ) : mythos.length === 0 ? (
-                <div className="text-center py-12 text-white/60">
-                  <Layers className="h-12 w-12 mx-auto mb-4 text-white/20" />
-                  <p className="text-lg font-medium mb-2">No timeline hierarchy yet</p>
-                  <p className="text-sm mb-4">Create your first Mythos to get started</p>
-                  <Button onClick={() => handleCreateNode('mythos')}>
-                    Create Mythos
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {mythos.map((mythosNode) => (
-                    <TimelineTreeNode
-                      key={mythosNode.id}
-                      node={mythosNode}
-                      layer="mythos"
-                      onNodeClick={(nodeId, layer) => {
-                        setSelectedNodeId(nodeId);
-                        setSelectedLayer(layer);
-                      }}
-                      onCreateChild={(layer) => handleCreateNode(layer)}
-                    />
-                  ))}
+        {viewMode === 'threads' ? (
+          <>
+            <Card className="bg-black/40 border-border/60 w-56 flex-shrink-0 flex flex-col overflow-hidden">
+              <CardContent className="p-4 flex-1 flex flex-col overflow-hidden">
+                <h3 className="text-lg font-semibold text-white mb-3">Threads</h3>
+                {loadingThreads ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                ) : threads.length === 0 ? (
+                  <p className="text-sm text-white/50">No threads yet. Add nodes to threads from saga/arc detail.</p>
+                ) : (
+                  <div className="flex-1 overflow-y-auto space-y-1 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-white/20">
+                    {threads.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setSelectedThreadId(t.id)}
+                        className={`w-full text-left px-3 py-2 rounded text-sm truncate ${selectedThreadId === t.id ? 'bg-primary/30 text-white' : 'text-white/80 hover:bg-white/10'}`}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            <div className="flex-1 overflow-y-auto min-w-0 p-4">
+              {selectedThreadId && (
+                <ThreadTimelineView
+                  threadId={selectedThreadId}
+                  threadName={threads.find((t) => t.id === selectedThreadId)?.name}
+                  onNodeClick={(nodeId, nodeType) => {
+                    const node = hierarchyNodes.find((n) => n.id === nodeId);
+                    if (node) {
+                      const layer = (node.metadata?.layer as TimelineLayer) ?? (nodeType as TimelineLayer);
+                      setSelectedNode({ node, layer });
+                    }
+                  }}
+                />
+              )}
+              {!selectedThreadId && threads.length > 0 && (
+                <div className="flex items-center justify-center py-12 text-white/50">
+                  Select a thread
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </>
+        ) : (
+          <>
+            {/* Timeline Tree - Scrollable */}
+            <Card className="bg-black/40 border-border/60 flex-1 flex flex-col overflow-hidden min-w-0 overflow-x-hidden">
+              <CardContent className="p-4 flex-1 flex flex-col overflow-hidden">
+                <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                  <h3 className="text-lg font-semibold text-white">Timeline Hierarchy</h3>
+                </div>
+                <div className="flex-1 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded">
+                  {loading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                  ) : mythos.length === 0 ? (
+                    <div className="text-center py-12 text-white/60">
+                      <Layers className="h-12 w-12 mx-auto mb-4 text-white/20" />
+                      <p className="text-lg font-medium mb-2">No timeline hierarchy yet</p>
+                      <p className="text-sm mb-4">Create your first Mythos to get started</p>
+                      <Button onClick={() => handleCreateNode('mythos')}>
+                        Create Mythos
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {mythos.map((mythosNode) => (
+                        <TimelineTreeNode
+                          key={mythosNode.id}
+                          node={mythosNode}
+                          layer="mythos"
+                          onNodeClick={(nodeId, layer) => {
+                            setSelectedNodeId(nodeId);
+                            setSelectedLayer(layer);
+                          }}
+                          onCreateChild={(layer) => handleCreateNode(layer)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Memory Tree - Fixed Width */}
-        <div className="w-80 flex-shrink-0">
-          <TimelineMemoryTree
-            nodes={getAllNodes(mythos)}
-            onMemoryClick={(memoryId) => {
-              // Could open memory detail modal
-              console.log('Memory clicked:', memoryId);
-            }}
-          />
-        </div>
+            {/* Memory Tree - Fixed Width */}
+            <div className="w-80 flex-shrink-0">
+              <TimelineMemoryTree
+                nodes={getAllNodes(mythos)}
+                onMemoryClick={(memoryId) => {
+                  console.log('Memory clicked:', memoryId);
+                }}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Create Node Modal */}

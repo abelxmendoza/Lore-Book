@@ -34,6 +34,10 @@ export type SaveEntryPayload = {
   preserve_original_language?: boolean;
   metadata?: Record<string, unknown>;
   relationships?: EntryRelationship[];
+  /** Order user told the story (1-based). For story-slice entries. Do not use for chronology. */
+  narrativeOrder?: number | null;
+  /** Parent entry when this was materialized as a story slice (backward-storytelling pipeline). */
+  derivedFromEntryId?: string | null;
 };
 
 class MemoryService {
@@ -83,7 +87,11 @@ class MemoryService {
       }
     }
 
-    const { error } = await supabaseAdmin.from('journal_entries').insert(entry);
+    const insertRow: Record<string, unknown> = { ...entry };
+    if (payload.narrativeOrder != null) insertRow.narrative_order = payload.narrativeOrder;
+    if (payload.derivedFromEntryId != null) insertRow.derived_from_entry_id = payload.derivedFromEntryId;
+
+    const { error } = await supabaseAdmin.from('journal_entries').insert(insertRow);
     if (error) {
       // Check if table doesn't exist
       if (error.code === '42P01' || error.message?.includes('does not exist')) {

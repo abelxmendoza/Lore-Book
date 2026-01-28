@@ -72,6 +72,8 @@ export const ContradictionAlertCard: React.FC<ContradictionAlertCardProps> = ({
 }) => {
   const statusConfig = getStatusConfig(alert.resolution_status, alert.resolution_confidence);
   const StatusIcon = statusConfig?.icon || AlertTriangle;
+  const actionConfig = getActionConfig(alert.suggested_action);
+  const ActionIcon = actionConfig.icon;
 
   const handleAction = async (action: ContradictionAlertAction) => {
     try {
@@ -151,13 +153,11 @@ export const ContradictionAlertCard: React.FC<ContradictionAlertCardProps> = ({
           <div className="flex items-center gap-2 pt-2">
             <Button
               size="sm"
-              variant={getActionConfig(alert.suggested_action).variant}
+              variant={actionConfig.variant}
               onClick={() => handleAction(alert.suggested_action)}
             >
-              {getActionConfig(alert.suggested_action).icon && (
-                <getActionConfig(alert.suggested_action).icon className="h-4 w-4 mr-2" />
-              )}
-              {getActionConfig(alert.suggested_action).label}
+              <ActionIcon className="h-4 w-4 mr-2" />
+              {actionConfig.label}
             </Button>
             {alert.suggested_action !== 'DISMISS' && (
               <Button

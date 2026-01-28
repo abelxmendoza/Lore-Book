@@ -9,12 +9,17 @@ import { GraphTimelineView } from './GraphTimelineView';
 import { ListTimelineView } from './ListTimelineView';
 import { VerticalTimelineView } from './VerticalTimelineView';
 import { useEntityModal } from '../../contexts/EntityModalContext';
+import { useCurrentContext } from '../../contexts/CurrentContextContext';
 import { LayerDefinitions, type TimelineLayer } from './LayerDefinitions';
 import { useMockData } from '../../contexts/MockDataContext';
 import { MockDataIndicator } from '../MockDataIndicator';
 import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
+import type { TimelineContextLayer } from '../../types/currentContext';
+import { fetchJson } from '../../lib/api';
+import { ThreadTimelineView } from '../threads/ThreadTimelineView';
+import { GitBranch } from 'lucide-react';
 
-type ViewMode = 'chronology' | 'hierarchy' | 'graph' | 'list' | 'vertical';
+type ViewMode = 'chronology' | 'hierarchy' | 'graph' | 'list' | 'vertical' | 'threads';
 
 // Smart AI suggestions based on data
 const getAISuggestions = (entries: ChronologyEntry[], timelines: Timeline[]) => {
@@ -49,8 +54,21 @@ const getAISuggestions = (entries: ChronologyEntry[], timelines: Timeline[]) => 
   return suggestions;
 };
 
+type ThreadItem = { id: string; name: string; description?: string | null; category?: string | null };
+
+function timelineToContextLayer(timeline: Timeline): TimelineContextLayer {
+  const layer = (timeline.metadata as Record<string, unknown>)?.layer;
+  if (typeof layer === 'string' && ['era', 'saga', 'arc', 'chapter'].includes(layer)) {
+    return layer as TimelineContextLayer;
+  }
+  if (timeline.timeline_type === 'life_era') return 'era';
+  if (timeline.timeline_type === 'sub_timeline') return 'arc';
+  return 'arc';
+}
+
 export const OmniTimelinePanel = () => {
   const { useMockData: isMockDataEnabled } = useMockData();
+  const { setCurrentContext } = useCurrentContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [timelineSearchQuery, setTimelineSearchQuery] = useState('');
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
@@ -63,6 +81,9 @@ export const OmniTimelinePanel = () => {
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [selectedLayers, setSelectedLayers] = useState<TimelineLayer[]>([]);
   const [showLayerDefinitions, setShowLayerDefinitions] = useState(false);
+  const [threads, setThreads] = useState<ThreadItem[]>([]);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [threadsLoading, setThreadsLoading] = useState(false);
 
   // Fetch timelines and chronology
   const { timelines, loading: timelinesLoading } = useTimelineV2();
@@ -94,6 +115,28 @@ export const OmniTimelinePanel = () => {
 
   const loading = chronologyLoading || timelinesLoading;
 
+  useEffect(() => {
+    if (viewMode !== 'threads') return;
+    const loadThreads = async () => {
+      setThreadsLoading(true);
+      try {
+        const list = await fetchJson<ThreadItem[]>('/api/threads');
+        setThreads(list ?? []);
+      } catch (e) {
+        console.error('Failed to load threads:', e);
+        setThreads([]);
+      } finally {
+        setThreadsLoading(false);
+      }
+    };
+    loadThreads();
+  }, [viewMode]);
+
+  const handleThreadSelect = (thread: ThreadItem) => {
+    setSelectedThreadId(thread.id);
+    setCurrentContext({ kind: 'thread', threadId: thread.id });
+  };
+
   const handleSuggestion = (suggestion: any) => {
     if (suggestion.action === 'timeline') {
       setSelectedTimelineId(suggestion.timelineId);
@@ -110,6 +153,11 @@ export const OmniTimelinePanel = () => {
   const handleTimelineSelect = (timeline: Timeline) => {
     setSelectedTimeline(timeline);
     setSelectedTimelineId(timeline.id);
+    setCurrentContext({
+      kind: 'timeline',
+      timelineNodeId: timeline.id,
+      timelineLayer: timelineToContextLayer(timeline),
+    });
     // Clear memory search when switching timelines
     setSearchQuery('');
     // Clear timeline search results and query
@@ -277,6 +325,18 @@ export const OmniTimelinePanel = () => {
                 <List className="w-3.5 h-3.5" />
                 List
               </button>
+              <button
+                onClick={() => setViewMode('threads')}
+                className={`px-3 py-1.5 text-xs rounded transition-colors flex items-center gap-1.5 ${
+                  viewMode === 'threads'
+                    ? 'bg-primary/20 text-white border border-primary/40 shadow-neon'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+                title="By thread"
+              >
+                <GitBranch className="w-3.5 h-3.5" />
+                By thread
+              </button>
             </div>
           </div>
 
@@ -443,6 +503,7 @@ export const OmniTimelinePanel = () => {
                   onClick={() => {
                     setSelectedTimelineId(null);
                     setSelectedTimeline(null);
+                    setCurrentContext({ kind: 'none' });
                     setSearchQuery('');
                     setTimelineSearchQuery('');
                     setTimelineSearchResults([]);
@@ -613,6 +674,45 @@ export const OmniTimelinePanel = () => {
               filteredEntries={filteredEntries}
               selectedTimelineId={selectedTimelineId}
             />
+          ) : viewMode === 'threads' ? (
+            <div className="flex h-full gap-4 p-4">
+              <div className="w-56 flex-shrink-0 space-y-2">
+                <h3 className="text-sm font-semibold text-white">Threads</h3>
+                {threadsLoading ? (
+                  <p className="text-xs text-white/60">Loading…</p>
+                ) : threads.length === 0 ? (
+                  <p className="text-xs text-white/60">No threads yet.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {threads.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => handleThreadSelect(t)}
+                        className={`block w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                          selectedThreadId === t.id
+                            ? 'bg-primary/20 text-white border border-primary/40'
+                            : 'bg-black/40 text-white/80 border border-transparent hover:bg-black/60 hover:border-border/60'
+                        }`}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                {selectedThreadId ? (
+                  <ThreadTimelineView
+                    threadId={selectedThreadId}
+                    threadName={threads.find((t) => t.id === selectedThreadId)?.name}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-48 text-white/50 text-sm">
+                    Select a thread
+                  </div>
+                )}
+              </div>
+            </div>
           ) : null}
         </div>
 

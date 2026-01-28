@@ -10,7 +10,10 @@ import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
 import { timelineManager } from '../services/timelineManager';
+import { threadMembershipService } from '../services/threads/threadMembershipService';
+import { nodeRelationService } from '../services/threads/nodeRelationService';
 import { TimelineLayer, LAYER_TABLE_MAP } from '../types/timeline';
+import type { ThreadNodeType } from '../types/threads';
 
 const router = Router();
 
@@ -117,7 +120,8 @@ router.post(
 
 /**
  * Get a single timeline node
- * GET /timeline/:layer/:id
+ * GET /timeline/:layer/:id?include=threads,relations
+ * When layer is saga or arc and include contains threads,relations, attaches threads and relations.
  */
 router.get(
   '/:layer/:id',
@@ -130,6 +134,36 @@ router.get(
       }
 
       const node = await timelineManager.getNode(req.user!.id, layer, id);
+      const include = typeof req.query.include === 'string' ? req.query.include : '';
+      const wantsThreads = include.includes('threads');
+      const wantsRelations = include.includes('relations');
+      const sagaOrArc = layer === 'saga' || layer === 'arc';
+
+      if (node && sagaOrArc && (wantsThreads || wantsRelations)) {
+        const uid = req.user!.id;
+        const [threads, rel] = await Promise.all([
+          wantsThreads ? threadMembershipService.getMembershipsForNode(uid, id, layer as ThreadNodeType) : [],
+          wantsRelations ? nodeRelationService.listByNode(uid, id, layer as ThreadNodeType) : { incoming: [], outgoing: [] }
+        ]);
+        type Enriched = { direction: 'incoming' | 'outgoing'; relation_type: string; other_node: { id: string; type: string; title: string } };
+        const relations: Enriched[] = [];
+        if (wantsRelations && rel) {
+          for (const r of rel.incoming ?? []) {
+            const otherId = r.from_node_id;
+            const otherType = r.from_node_type;
+            const other = await timelineManager.getNode(uid, otherType, otherId);
+            relations.push({ direction: 'incoming', relation_type: r.relation_type, other_node: { id: otherId, type: otherType, title: other?.title ?? '' } });
+          }
+          for (const r of rel.outgoing ?? []) {
+            const otherId = r.to_node_id;
+            const otherType = r.to_node_type;
+            const other = await timelineManager.getNode(uid, otherType, otherId);
+            relations.push({ direction: 'outgoing', relation_type: r.relation_type, other_node: { id: otherId, type: otherType, title: other?.title ?? '' } });
+          }
+        }
+        return res.json({ node, threads: wantsThreads ? threads : undefined, relations: wantsRelations ? relations : undefined });
+      }
+
       res.json({ node });
     } catch (error: any) {
       logger.error({ error, userId: req.user?.id }, 'Failed to get timeline node');

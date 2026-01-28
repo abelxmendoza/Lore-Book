@@ -33,7 +33,7 @@ interface VersionManagerProps {
   baseBiographyId?: string;
 }
 
-export const VersionManager = ({ lorebookName, baseBiographyId }: VersionManagerProps) => { => {
+export const VersionManager = ({ lorebookName, baseBiographyId }: VersionManagerProps) => {
   const [versions, setVersions] = useState<BiographyVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

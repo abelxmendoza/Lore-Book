@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { fetchJson } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import type { CurrentContext } from '../types/currentContext';
 
 export type JournalEntry = {
   id: string;
@@ -173,32 +174,45 @@ export const useLoreKeeper = () => {
     }
   }, []);
 
-  const createEntry = useCallback(async (content: string, overrides?: Partial<JournalEntry> & { tags?: string[]; chapterId?: string | null; metadata?: Record<string, unknown> }) => {
-    const payload: Record<string, unknown> = { content };
-    if (overrides) {
-      // Handle tags separately
-      if (overrides.tags) {
-        payload.tags = overrides.tags;
+  const createEntry = useCallback(
+    async (
+      content: string,
+      overrides?: Partial<JournalEntry> & { tags?: string[]; chapterId?: string | null; metadata?: Record<string, unknown> },
+      currentContext?: CurrentContext
+    ) => {
+      const merged = { ...overrides };
+      if (currentContext?.kind === 'timeline' && currentContext.timelineLayer === 'chapter' && currentContext.timelineNodeId) {
+        (merged as Record<string, unknown>).chapterId = currentContext.timelineNodeId;
       }
-      // Handle chapterId
-      if ('chapter_id' in overrides || 'chapterId' in overrides) {
-        payload.chapterId = (overrides as Record<string, unknown>).chapterId ?? overrides.chapter_id ?? null;
+      const payload: Record<string, unknown> = { content };
+      if (merged && Object.keys(merged).length > 0) {
+        if (merged.tags) payload.tags = merged.tags;
+        if ('chapter_id' in merged || 'chapterId' in merged) {
+          payload.chapterId = (merged as Record<string, unknown>).chapterId ?? merged.chapter_id ?? null;
+        }
+        if (merged.metadata) payload.metadata = merged.metadata;
+        const { tags, chapterId, metadata, ...rest } = merged;
+        Object.assign(payload, rest);
       }
-      // Handle metadata
-      if (overrides.metadata) {
-        payload.metadata = overrides.metadata;
+      const data = await fetchJson<{ entry: JournalEntry }>('/api/entries', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      setEntries((prev) => [data.entry, ...prev]);
+      if (currentContext?.kind === 'thread' && currentContext.threadId) {
+        try {
+          await fetchJson<{ entry_id: string; thread_id: string }>(`/api/threads/${currentContext.threadId}/entries`, {
+            method: 'POST',
+            body: JSON.stringify({ entry_id: data.entry.id })
+          });
+        } catch (e) {
+          console.warn('Failed to link entry to thread:', e);
+        }
       }
-      // Handle other JournalEntry fields
-      const { tags, chapterId, metadata, ...rest } = overrides;
-      Object.assign(payload, rest);
-    }
-    const data = await fetchJson<{ entry: JournalEntry }>('/api/entries', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-    setEntries((prev) => [data.entry, ...prev]);
-    return data.entry;
-  }, []);
+      return data.entry;
+    },
+    []
+  );
 
   const askLoreKeeper = useCallback(async (message: string, persona?: string) => {
     setLoading(true);

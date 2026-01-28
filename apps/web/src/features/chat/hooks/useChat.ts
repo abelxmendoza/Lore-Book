@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useChatStream } from '../../../hooks/useChatStream';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
 import { useGuest } from '../../../contexts/GuestContext';
+import { useCurrentContext } from '../../../contexts/CurrentContextContext';
 import { useConversationStore } from './useConversationStore';
 import type { Message, ChatSource } from '../message/ChatMessage';
 import { parseSlashCommand, handleSlashCommand } from '../../../utils/chatCommands';
@@ -15,6 +16,7 @@ export const useChat = () => {
   const { streamChat, isStreaming, cancel } = useChatStream();
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
   const { isGuest, canSendChatMessage, incrementChatMessage, guestState } = useGuest();
+  const { currentContext } = useCurrentContext();
   
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState<LoadingStage>('analyzing');
@@ -236,7 +238,9 @@ export const useChat = () => {
             content: `Sorry, I encountered an error: ${error}`,
             isStreaming: false
           });
-        }
+        },
+        undefined,
+        currentContext
       );
     } catch (error) {
       if (progressIntervalRef.current) {
@@ -255,7 +259,7 @@ export const useChat = () => {
       };
       addMessage(errorMessage);
     }
-  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage]);
+  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext]);
 
   return {
     messages,

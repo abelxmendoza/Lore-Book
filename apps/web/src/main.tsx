@@ -201,6 +201,7 @@ import { DevelopmentNotice } from './components/DevelopmentNotice';
 import { MockDataIndicator } from './components/MockDataIndicator';
 import { GuestProvider } from './contexts/GuestContext';
 import { EntityModalProvider } from './contexts/EntityModalContext';
+import { CurrentContextProvider } from './contexts/CurrentContextContext';
 import { MockDataProvider } from './contexts/MockDataContext';
 import { mockDataService } from './services/mockDataService';
 import { config, log } from './config/env';
@@ -289,10 +290,12 @@ if (!rootElement) {
             <MockDataProvider>
               <GuestProvider>
                 <EntityModalProvider>
-                  <DevelopmentNotice />
-                  <Router />
-                  <DevBanner />
-                  <MockDataIndicator />
+                  <CurrentContextProvider>
+                    <DevelopmentNotice />
+                    <Router />
+                    <DevBanner />
+                    <MockDataIndicator />
+                  </CurrentContextProvider>
                 </EntityModalProvider>
               </GuestProvider>
             </MockDataProvider>

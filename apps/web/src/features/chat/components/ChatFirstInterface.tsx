@@ -12,6 +12,7 @@ import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
 import { GuestSignUpPrompt } from '../../../components/guest/GuestSignUpPrompt';
+import { CurrentContextBreadcrumbs } from '../../../components/CurrentContextBreadcrumbs';
 import { useGuest } from '../../../contexts/GuestContext';
 import { WorkSummaryImporter } from '../../../components/work/WorkSummaryImporter';
 import { exportConversationAsMarkdown, exportConversationAsJSON, downloadFile } from '../../../utils/exportConversation';
@@ -249,9 +250,12 @@ export const ChatFirstInterface = () => {
   return (
     <div className="flex flex-col h-screen lg:h-full relative chat-container overflow-hidden min-h-0 bg-black w-full">
       {/* Minimal header - ChatGPT style */}
-      <div className="border-b border-white/10 bg-black/40 backdrop-blur-sm px-4 sm:px-4 py-3 sm:py-2 flex items-center justify-between flex-shrink-0" style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
-        <h2 className="text-xs sm:text-sm font-semibold text-white/90">Lore Book</h2>
-        <div className="flex items-center gap-1.5 sm:gap-2">
+      <div className="border-b border-white/10 bg-black/40 backdrop-blur-sm px-4 sm:px-4 py-3 sm:py-2 flex items-center justify-between flex-shrink-0 gap-2" style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <h2 className="text-xs sm:text-sm font-semibold text-white/90 flex-shrink-0">Lore Book</h2>
+          <CurrentContextBreadcrumbs />
+        </div>
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           <button
             onClick={() => setShowSearch(!showSearch)}
             className="text-white/60 hover:text-white h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center rounded hover:bg-white/10 transition-colors"

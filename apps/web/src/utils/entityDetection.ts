@@ -2,6 +2,8 @@
  * Utility functions for detecting and linking entities in text
  */
 
+import React from 'react';
+
 export interface DetectedEntity {
   name: string;
   type: 'character' | 'location' | 'memory';
@@ -97,17 +99,19 @@ export function wrapEntitiesInText(
 
     // Add clickable entity
     parts.push(
-      <span
-        key={`entity-${idx}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onEntityClick(entity);
-        }}
-        className="text-primary hover:text-primary/80 underline cursor-pointer"
-        title={`Click to view ${entity.name}`}
-      >
-        {text.substring(entity.startIndex, entity.endIndex)}
-      </span>
+      React.createElement(
+        'span',
+        {
+          key: `entity-${idx}`,
+          onClick: (e: React.MouseEvent) => {
+            e.stopPropagation();
+            onEntityClick(entity);
+          },
+          className: 'text-primary hover:text-primary/80 underline cursor-pointer',
+          title: `Click to view ${entity.name}`,
+        },
+        text.substring(entity.startIndex, entity.endIndex)
+      )
     );
 
     lastIndex = entity.endIndex;

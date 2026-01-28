@@ -4,6 +4,7 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
+import type { CurrentContext } from '../types/currentContext';
 import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/keywordDetector';
 
 import { autopilotService } from './autopilotService';
@@ -181,7 +182,7 @@ class OmegaChatService {
   /**
    * Build comprehensive RAG packet with ALL lore knowledge
    */
-  private async buildRAGPacket(userId: string, message: string) {
+  private async buildRAGPacket(userId: string, message: string, currentContext?: CurrentContext) {
     // Try to get cached RAG packet first (FREE - no expensive queries)
     const cached = ragPacketCacheService.getCachedPacket(userId, message);
     if (cached) {
@@ -361,13 +362,28 @@ class OmegaChatService {
       logger.warn({ error }, 'Failed to get HQI results, using empty');
     }
 
-    // Get related entries for Memory Fabric with error handling (using enhanced retrieval)
+    // Get related entries for Memory Fabric with error handling (context-aware or enhanced retrieval)
     let relatedEntries: ResolvedMemoryEntry[] = [];
     try {
-      // Use enhanced retrieval from memoryRetriever
-      const { memoryRetriever } = await import('./chat/memoryRetriever');
-      const memoryContext = await memoryRetriever.retrieve(userId, 20, message, []);
-      relatedEntries = memoryContext.entries as ResolvedMemoryEntry[];
+      const { retrieveMemoriesByThread, retrieveMemoriesUnderNode } = await import('./chat/contextAwareMemoryRetrieval');
+      const { MemoryRetriever } = await import('./chat/memoryRetriever');
+
+      if (currentContext?.kind === 'thread' && currentContext.threadId) {
+        const entries = await retrieveMemoriesByThread(userId, currentContext.threadId, 30);
+        relatedEntries = entries as ResolvedMemoryEntry[];
+      } else if (currentContext?.kind === 'timeline' && currentContext.timelineNodeId && currentContext.timelineLayer) {
+        const entries = await retrieveMemoriesUnderNode(
+          userId,
+          currentContext.timelineNodeId,
+          currentContext.timelineLayer,
+          30
+        );
+        relatedEntries = entries as ResolvedMemoryEntry[];
+      } else {
+        const memoryRetriever = new MemoryRetriever();
+        const memoryContext = await memoryRetriever.retrieve(userId, 20, message, []);
+        relatedEntries = memoryContext.entries as ResolvedMemoryEntry[];
+      }
     } catch (error) {
       logger.warn({ error }, 'Failed to get related entries, using empty');
     }
@@ -714,7 +730,8 @@ class OmegaChatService {
     analyticsGate?: any,
     personaBlend?: { primary: string; secondary: string[]; weights: Record<string, number> },
     transitionAnalysis?: TransitionAnalysis | null,
-    currentEmotionalState?: EmotionalState | null
+    currentEmotionalState?: EmotionalState | null,
+    currentFocusLine?: string
   ): string {
     const timelineSummary = orchestratorSummary.timeline.events
       .slice(0, 20)
@@ -1166,7 +1183,8 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
 ` : ''}
 
 **KEY PRINCIPLE**: Like Grok, you should naturally follow tangents and transitions. The user's mind is going where it wants to go - your job is to follow, validate, and engage with where they're at NOW, not where they were 3 messages ago. Build on the new topic while showing you remember the context.
-` : ''}`;
+` : ''}
+${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}`;
   }
 
   /**
@@ -1284,6 +1302,46 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
     return parts.length > 0 ? parts.join('\n') : '';
   }
 
+  /** Resolve "Current focus" line for system prompt from currentContext (thread name or timeline node title). */
+  private async resolveCurrentFocusLine(
+    userId: string,
+    currentContext?: CurrentContext
+  ): Promise<string | undefined> {
+    if (!currentContext || currentContext.kind === 'none') return undefined;
+    if (currentContext.kind === 'thread' && currentContext.threadId) {
+      try {
+        const { threadService } = await import('./threads/threadService');
+        const t = await threadService.getById(userId, currentContext.threadId);
+        return t ? `thread '${t.name}'` : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+    if (currentContext.kind === 'timeline' && currentContext.timelineNodeId && currentContext.timelineLayer) {
+      try {
+        const { data } = await supabaseAdmin
+          .from(
+            currentContext.timelineLayer === 'chapter'
+              ? 'chapters'
+              : currentContext.timelineLayer === 'arc'
+                ? 'timeline_arcs'
+                : currentContext.timelineLayer === 'saga'
+                  ? 'timeline_sagas'
+                  : 'timeline_eras'
+          )
+          .select('title')
+          .eq('id', currentContext.timelineNodeId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        const title = (data as { title?: string } | null)?.title;
+        return title ? `${currentContext.timelineLayer} '${title}'` : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
   /**
    * Chat with streaming support
    */
@@ -1291,7 +1349,8 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
     userId: string,
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string }
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
+    currentContext?: CurrentContext
   ): Promise<StreamingChatResponse> {
     const sessionId = await this.getOrCreateChatSession(userId);
 
@@ -1474,7 +1533,7 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
     // Build RAG packet with error handling
     let ragPacket;
     try {
-      ragPacket = await this.buildRAGPacket(userId, message);
+      ragPacket = await this.buildRAGPacket(userId, message, currentContext);
     } catch (error) {
       logger.error({ error }, 'Failed to build RAG packet, using minimal context');
       ragPacket = {
@@ -1791,6 +1850,9 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       safetyContext = null;
     }
 
+    // Resolve current focus line for prompt conditioning (thread name or timeline node title)
+    const currentFocusLine = await this.resolveCurrentFocusLine(userId, currentContext);
+
     // Build system prompt with comprehensive lore and essence profile
     let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -1818,7 +1880,10 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       entityAnalytics,
       entityConfidence,
       analyticsGate,
-      personaBlend
+      personaBlend,
+      undefined,
+      undefined,
+      currentFocusLine
     );
 
     // NEW: Enforce Archivist persona if detected
@@ -2181,10 +2246,11 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
     userId: string,
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string }
+    entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
+    currentContext?: CurrentContext
   ): Promise<OmegaChatResponse> {
     // Build RAG packet
-    const ragPacket = await this.buildRAGPacket(userId, message);
+    const ragPacket = await this.buildRAGPacket(userId, message, currentContext);
     const { orchestratorSummary, hqiResults, sources, extractedDates } = ragPacket;
 
     // Load essence profile for context
@@ -2367,6 +2433,9 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       safetyContext = null;
     }
 
+    // Resolve current focus line for prompt conditioning
+    const currentFocusLine = await this.resolveCurrentFocusLine(userId, currentContext);
+
     // Build system prompt with comprehensive lore and essence profile
     let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -2394,7 +2463,10 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
       entityAnalytics,
       entityConfidence,
       analyticsGate,
-      personaBlend
+      personaBlend,
+      undefined,
+      undefined,
+      currentFocusLine
     );
 
     // RESPONSE SAFETY: Inject safety guidance if stress signals detected (BEFORE creating messages)
