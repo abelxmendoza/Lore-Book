@@ -110,6 +110,16 @@ AI: [Detects topic shift from self-doubt to project excitement, follows the tang
 
 The AI doesn't force you back to old topics—it follows where your mind wants to go, making conversations feel natural and engaging.
 
+#### Context-aware chat (timeline & thread focus)
+
+When you **select a timeline node** (era, saga, or arc) or **choose a thread** in the timeline or threads view, that becomes your current focus. Chat uses it automatically:
+
+- **Memory scope**: The AI draws from memories in that era/saga/arc or in that thread, so answers stay relevant to where you are.
+- **Timeline context**: If that node has empty time spans (hierarchy gaps) or overlapping arcs/sagas (parallels), the AI is told briefly—e.g. “This saga has 2 empty time spans and 1 explicit parallel (3 overlaps).” It can gently explore gaps (“What happened in that quiet year?”) or contextualize interruptions (“Omega1 paused while Armstrong and Love Life overlapped”) when it fits.
+- **“Add here”**: New entries can be created under the focused chapter or linked to the focused thread without you choosing a target each time.
+
+You never pick “context” in a dropdown—where you navigate is where the AI focuses. No extra steps.
+
 #### Slash Commands
 
 Type these commands for quick actions:
@@ -227,7 +237,7 @@ Entries are grouped by date with sticky headers for easy navigation.
 ### 9-Layer Hierarchy
 
 Your timeline is organized into:
-1. **Mythos** - Top-level narrative themes
+1. **Mythos** - Top-level narrative themes (your life's overarching story)
 2. **Epochs** - Major time periods
 3. **Eras** - Significant eras within epochs
 4. **Sagas** - Long-form story arcs
@@ -236,6 +246,30 @@ Your timeline is organized into:
 7. **Scenes** - Specific scenes
 8. **Actions** - Individual actions
 9. **MicroActions** - Granular events
+
+**Auto-generated names:** LoreBook generates titles for every level so you can see *what your mythos is* and recognize each part of your story. Your **mythos** name is derived from your analytics (identity, motifs, themes)—so it reflects your life story at a glance. Epochs, eras, sagas, arcs, chapters, scenes, actions, and microactions also get auto-generated names based on their content and context, so you always have clear, meaningful labels without naming everything yourself.
+
+### Timeline hierarchy for new users
+
+- **What the levels mean:** Mythos is the big story of your life; epochs and eras are large time blocks; sagas and arcs are the storylines inside them; chapters, scenes, actions, and microactions break things down into smaller beats. You don't have to fill every level—the app organizes what you have.
+- **By time vs by thread:** You can explore the timeline **by time** (chronological order) or **by thread** (grouped by recurring themes or storylines). Switching between these views helps you see both "what happened when" and "how this one story unfolded."
+- **Focus = where the AI looks:** Whichever node or thread you're viewing is your current focus. Chat and biography use that focus automatically—they don't ask you to pick "context" in a dropdown. Where you navigate is where the system pays attention.
+- **Gaps and parallels:** LoreBook detects **gaps** (empty stretches inside an era, saga, or arc) and **parallels** (overlapping storylines). The AI can gently reference these—e.g. "that quiet year" or "when work and family overlapped"—so your story stays coherent even when you didn't write in every period.
+
+**Short version (brand-new users):** Your timeline has nine levels from "mythos" (your big life story) down to "microactions." Names are auto-generated so you can see what your mythos is and what each era, saga, arc, and scene is called. You browse by time or by thread; where you are is what the AI uses as context. Gaps and overlapping storylines are detected and used to make chat and biography smarter.
+
+### How the app handles scenes and actions
+
+- **Scenes**
+  - **Timeline layer:** "Scene" is a level in the hierarchy—a container under chapters. Timeline scenes are nodes you can create, focus on, and use as context for chat and biography.
+  - **Scene Generator:** LoreBook also has a *Scene Generator* that extracts narrative scenes from your journal entry text (who, where, what happened). Those extracted scenes are used for analysis and linking; they are separate from the timeline-scene nodes. So "scenes" in the app means both (1) hierarchy nodes under chapters and (2) narrative units pulled out of your entries.
+- **Actions**
+  - **Timeline layer:** "Action" is a level in the hierarchy—a container under scenes. Timeline actions are the finest-grained story beats in the timeline tree.
+  - **Other "action" features:** The app also has action logging, suggested actions, and similar features. Those are **not** the same as the timeline "action" layer. The timeline layer is only the hierarchy level under scenes; the other action features are separate functionality.
+
+### Timeline structure intelligence (behind the scenes)
+
+LoreBook analyzes your hierarchy for **gaps** (empty time spans inside an era, saga, or arc) and **parallels** (arcs/sagas that overlap in time or are explicitly marked as parallel). This structure is used by chat when you focus on a node—so the AI can reference “that quiet year” or “what else was going on then”—and by the biography engine so future phrasing can mention undocumented periods or parallel commitments. You don’t see a separate “gaps” or “parallels” screen; it simply makes chat and biography smarter about your timeline.
 
 ---
 
@@ -479,6 +513,7 @@ Your biography writes itself automatically:
 - Extracts themes and stories
 - Organizes into meaningful chapters
 - Generates polished biography sections
+- **Timeline structure**: The hierarchy (eras, sagas, arcs, chapters) is enriched with *hierarchy gaps* (empty time spans inside a saga or arc) so future biography phrasing can reference undocumented periods or parallel commitments—e.g. “This period had long pauses” or “This saga overlapped with …”—without you doing anything extra.
 
 ### Lorebook System
 
