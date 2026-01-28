@@ -202,6 +202,7 @@ import { MockDataIndicator } from './components/MockDataIndicator';
 import { GuestProvider } from './contexts/GuestContext';
 import { EntityModalProvider } from './contexts/EntityModalContext';
 import { CurrentContextProvider } from './contexts/CurrentContextContext';
+import { SoulProfileChatProvider } from './contexts/SoulProfileChatContext';
 import { MockDataProvider } from './contexts/MockDataContext';
 import { mockDataService } from './services/mockDataService';
 import { config, log } from './config/env';
@@ -291,10 +292,12 @@ if (!rootElement) {
               <GuestProvider>
                 <EntityModalProvider>
                   <CurrentContextProvider>
-                    <DevelopmentNotice />
-                    <Router />
-                    <DevBanner />
-                    <MockDataIndicator />
+                    <SoulProfileChatProvider>
+                      <DevelopmentNotice />
+                      <Router />
+                      <DevBanner />
+                      <MockDataIndicator />
+                    </SoulProfileChatProvider>
                   </CurrentContextProvider>
                 </EntityModalProvider>
               </GuestProvider>

@@ -3,6 +3,7 @@ import { useChatStream } from '../../../hooks/useChatStream';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
 import { useGuest } from '../../../contexts/GuestContext';
 import { useCurrentContext } from '../../../contexts/CurrentContextContext';
+import { useSoulProfileChatContextOptional } from '../../../contexts/SoulProfileChatContext';
 import { useConversationStore } from './useConversationStore';
 import type { Message, ChatSource } from '../message/ChatMessage';
 import { parseSlashCommand, handleSlashCommand } from '../../../utils/chatCommands';
@@ -17,6 +18,8 @@ export const useChat = () => {
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
   const { isGuest, canSendChatMessage, incrementChatMessage, guestState } = useGuest();
   const { currentContext } = useCurrentContext();
+  const soulProfileChat = useSoulProfileChatContextOptional();
+  const soulProfileContext = soulProfileChat?.soulProfileContext ?? undefined;
   
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState<LoadingStage>('analyzing');
@@ -240,7 +243,8 @@ export const useChat = () => {
           });
         },
         undefined,
-        currentContext
+        currentContext,
+        soulProfileContext ?? undefined
       );
     } catch (error) {
       if (progressIntervalRef.current) {
@@ -259,7 +263,7 @@ export const useChat = () => {
       };
       addMessage(errorMessage);
     }
-  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext]);
+  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext]);
 
   return {
     messages,

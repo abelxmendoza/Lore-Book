@@ -13,3 +13,17 @@ export interface CurrentContext {
   timelineLayer?: TimelineContextLayer;
   threadId?: string;
 }
+
+/**
+ * Soul Profile context — optional context when user is on Soul Profile or refining an insight.
+ * Used by chat to improve refinement insight resolution.
+ */
+export interface SoulProfileContext {
+  lastReferencedInsightId?: string;
+  lastSurfacedInsights?: Array<{
+    id: string;
+    category: string;
+    text: string;
+    confidence: number;
+  }>;
+}

@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Heart, RefreshCw, Loader2, Sparkles, Target, Shield, Zap, TrendingUp, Brain } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { useSoulProfileChatContextOptional } from '../../contexts/SoulProfileChatContext';
 import type { EssenceProfile } from '../../types/essence';
 import {
   EssenceSnapshot,
@@ -350,8 +351,50 @@ const MOCK_ESSENCE_PROFILE: EssenceProfile = {
  * 
  * All refinement happens through chat, not UI controls.
  */
+const SOUL_PROFILE_CATEGORIES = [
+  'hopes',
+  'dreams',
+  'fears',
+  'strengths',
+  'weaknesses',
+  'coreValues',
+  'personalityTraits',
+  'relationshipPatterns',
+] as const;
+
+function getLastSurfacedInsights(profile: EssenceProfile): Array<{ id: string; category: string; text: string; confidence: number }> {
+  const insights: Array<{ id: string; category: string; text: string; confidence: number }> = [];
+  for (const category of SOUL_PROFILE_CATEGORIES) {
+    const items = profile[category] ?? [];
+    items.forEach((item: { text: string; confidence: number }, idx: number) => {
+      if (item.confidence > 0.5) {
+        insights.push({
+          id: `${category}-${idx}`,
+          category,
+          text: item.text,
+          confidence: item.confidence,
+        });
+      }
+    });
+  }
+  (profile.topSkills ?? []).forEach((skill: { skill: string; confidence: number }, idx: number) => {
+    if (skill.confidence > 0.5) {
+      insights.push({
+        id: `topSkills-${idx}`,
+        category: 'topSkills',
+        text: skill.skill,
+        confidence: skill.confidence,
+      });
+    }
+  });
+  return insights
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 15);
+}
+
 export const SoulProfilePanel = () => {
   const isMockDataEnabled = useShouldUseMockData();
+  const soulProfileChat = useSoulProfileChatContextOptional();
   const [profile, setProfile] = useState<EssenceProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
@@ -378,6 +421,18 @@ export const SoulProfilePanel = () => {
     loadProfile();
   }, [loadProfile]);
 
+  const displayProfile = profile || (isMockDataEnabled ? MOCK_ESSENCE_PROFILE : null);
+  const lastSurfacedInsights = useMemo(
+    () => (displayProfile ? getLastSurfacedInsights(displayProfile) : []),
+    [displayProfile]
+  );
+
+  useEffect(() => {
+    if (soulProfileChat && lastSurfacedInsights.length > 0) {
+      soulProfileChat.setSoulProfileContext({ lastSurfacedInsights });
+    }
+  }, [soulProfileChat, lastSurfacedInsights]);
+
   const handleExtract = async () => {
     setExtracting(true);
     try {
@@ -402,7 +457,6 @@ export const SoulProfilePanel = () => {
   }
 
   // Use mock data only if toggle is enabled and no real profile
-  const displayProfile = profile || (isMockDataEnabled ? MOCK_ESSENCE_PROFILE : null);
   const isMockData = !profile && isMockDataEnabled;
 
   if (!profile && !loading) {

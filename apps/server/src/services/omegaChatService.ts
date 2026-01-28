@@ -4,7 +4,8 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
-import type { CurrentContext } from '../types/currentContext';
+import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
+import type { ChatContextExtension } from '../types/timelineInsight';
 import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/keywordDetector';
 
 import { autopilotService } from './autopilotService';
@@ -41,6 +42,8 @@ import { ChatPersonaRL } from './reinforcementLearning/chatPersonaRL';
 import { supabaseAdmin } from './supabaseClient';
 import { taskEngineService } from './taskEngineService';
 import { timeEngine } from './timeEngine';
+import { timelineManager } from './timelineManager';
+import { extendChatContext } from './timelineInsight';
 
 export type ChatSource = {
   type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
@@ -731,7 +734,8 @@ class OmegaChatService {
     personaBlend?: { primary: string; secondary: string[]; weights: Record<string, number> },
     transitionAnalysis?: TransitionAnalysis | null,
     currentEmotionalState?: EmotionalState | null,
-    currentFocusLine?: string
+    currentFocusLine?: string,
+    timelineInsight?: ChatContextExtension & { layer?: string }
   ): string {
     const timelineSummary = orchestratorSummary.timeline.events
       .slice(0, 20)
@@ -1184,7 +1188,8 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
 
 **KEY PRINCIPLE**: Like Grok, you should naturally follow tangents and transitions. The user's mind is going where it wants to go - your job is to follow, validate, and engage with where they're at NOW, not where they were 3 messages ago. Build on the new topic while showing you remember the context.
 ` : ''}
-${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}`;
+${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}
+${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineInsight.parallelSummary?.explicitCount ?? 0) + (timelineInsight.parallelSummary?.implicitCount ?? 0) > 0 ? `\n\n**Timeline context:** This ${timelineInsight.layer ?? 'node'} has ${timelineInsight.hierarchyGaps?.length ?? 0} empty time spans and ${timelineInsight.parallelSummary?.explicitCount ?? 0} explicit parallels (${timelineInsight.parallelSummary?.implicitCount ?? 0} overlaps). You may gently explore gaps or contextualize interruptions when relevant.` : ''}`;
   }
 
   /**
@@ -1350,7 +1355,8 @@ ${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}`;
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
-    currentContext?: CurrentContext
+    currentContext?: CurrentContext,
+    soulProfileContext?: SoulProfileContext
   ): Promise<StreamingChatResponse> {
     const sessionId = await this.getOrCreateChatSession(userId);
 
@@ -1572,23 +1578,48 @@ ${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}`;
       logger.debug({ error }, 'Failed to load identity core profile, continuing without');
     }
 
-    // Check for essence refinement intent (fire and forget - doesn't block chat)
-    essenceRefinementEngine.handleChatMessage(userId, message, {
-      activePanel: 'SoulProfile', // Could be dynamic based on current UI state
-      lastSurfacedInsights: essenceProfile 
-        ? this.getRecentInsights(essenceProfile)
-        : undefined
-    }, conversationHistory).then(result => {
-      if (result.clarificationRequest) {
-        // Could inject clarification into chat response, but for now just log
-        logger.debug({ userId, clarification: result.clarificationRequest }, 'Refinement clarification needed');
-      } else if (result.silentProfileUpdate) {
-        logger.debug({ userId, action: result.refinementAction?.intent }, 'Essence profile refined via chat');
+    // Build refinement context: use client-provided soulProfileContext when present
+    const refinementContext = soulProfileContext
+      ? {
+          activePanel: 'SoulProfile' as const,
+          lastReferencedInsightId: soulProfileContext.lastReferencedInsightId,
+          lastSurfacedInsights: soulProfileContext.lastSurfacedInsights,
+        }
+      : {
+          activePanel: 'SoulProfile' as const,
+          lastSurfacedInsights: essenceProfile ? this.getRecentInsights(essenceProfile) : undefined,
+        };
+
+    let refinementClarificationRequest: string | undefined;
+    if (this.mightBeRefinement(message)) {
+      try {
+        const result = await essenceRefinementEngine.handleChatMessage(
+          userId,
+          message,
+          refinementContext,
+          conversationHistory
+        );
+        refinementClarificationRequest = result.clarificationRequest;
+        if (result.silentProfileUpdate) {
+          logger.debug({ userId, action: result.refinementAction?.intent }, 'Essence profile refined via chat');
+        }
+      } catch (err) {
+        logger.debug({ err, userId }, 'Essence refinement check failed, continuing');
       }
-    }).catch(err => {
-      // Fail silently - never interrupt chat flow
-      logger.debug({ err, userId }, 'Essence refinement check failed, continuing');
-    });
+    } else {
+      essenceRefinementEngine
+        .handleChatMessage(userId, message, refinementContext, conversationHistory)
+        .then((result) => {
+          if (result.clarificationRequest) {
+            logger.debug({ userId, clarification: result.clarificationRequest }, 'Refinement clarification needed');
+          } else if (result.silentProfileUpdate) {
+            logger.debug({ userId, action: result.refinementAction?.intent }, 'Essence profile refined via chat');
+          }
+        })
+        .catch((err) => {
+          logger.debug({ err, userId }, 'Essence refinement check failed, continuing');
+        });
+    }
 
     // Detect groups in conversation (fire-and-forget)
     import('./groupDetectionService').then(({ groupDetectionService }) => {
@@ -1853,6 +1884,28 @@ ${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}`;
     // Resolve current focus line for prompt conditioning (thread name or timeline node title)
     const currentFocusLine = await this.resolveCurrentFocusLine(userId, currentContext);
 
+    // Timeline context insight (hierarchy gaps + parallels) when focused on era/saga/arc
+    let timelineInsight: (ChatContextExtension & { layer?: string }) | undefined;
+    if (
+      currentContext?.kind === 'timeline' &&
+      currentContext.timelineNodeId &&
+      ['era', 'saga', 'arc'].includes(currentContext.timelineLayer ?? '')
+    ) {
+      try {
+        const node = await timelineManager.getNode(userId, currentContext.timelineLayer!, currentContext.timelineNodeId) as { id: string; user_id: string; start_date: string; end_date?: string | null };
+        const ext = await extendChatContext(userId, {
+          id: node.id,
+          layer: currentContext.timelineLayer as 'era' | 'saga' | 'arc',
+          user_id: node.user_id,
+          start_date: node.start_date,
+          end_date: node.end_date ?? null,
+        });
+        timelineInsight = { ...ext, layer: currentContext.timelineLayer ?? undefined };
+      } catch (err) {
+        logger.debug({ err, userId, nodeId: currentContext.timelineNodeId }, 'Timeline insight failed, continuing without');
+      }
+    }
+
     // Build system prompt with comprehensive lore and essence profile
     let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -1883,8 +1936,13 @@ ${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}`;
       personaBlend,
       undefined,
       undefined,
-      currentFocusLine
+      currentFocusLine,
+      timelineInsight
     );
+
+    if (refinementClarificationRequest) {
+      systemPrompt += `\n\n**REFINEMENT CLARIFICATION**: The user may be correcting something in their Soul Profile. If your reply is about that, first ask them: "${refinementClarificationRequest}"`;
+    }
 
     // NEW: Enforce Archivist persona if detected
     if (activePersona === 'ARCHIVIST') {
@@ -2247,7 +2305,8 @@ ${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}`;
     message: string,
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
-    currentContext?: CurrentContext
+    currentContext?: CurrentContext,
+    soulProfileContext?: SoulProfileContext
   ): Promise<OmegaChatResponse> {
     // Build RAG packet
     const ragPacket = await this.buildRAGPacket(userId, message, currentContext);
@@ -2270,6 +2329,48 @@ ${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}`;
       identityCoreProfile = profiles[0] || null;
     } catch (error) {
       logger.debug({ error }, 'Failed to load identity core profile, continuing without');
+    }
+
+    // Soul Profile refinement: build context, run gate, optionally await and capture clarification
+    const refinementContextChat = soulProfileContext
+      ? {
+          activePanel: 'SoulProfile' as const,
+          lastReferencedInsightId: soulProfileContext.lastReferencedInsightId,
+          lastSurfacedInsights: soulProfileContext.lastSurfacedInsights,
+        }
+      : {
+          activePanel: 'SoulProfile' as const,
+          lastSurfacedInsights: essenceProfile ? this.getRecentInsights(essenceProfile) : undefined,
+        };
+    let refinementClarificationChat: string | undefined;
+    if (this.mightBeRefinement(message)) {
+      try {
+        const result = await essenceRefinementEngine.handleChatMessage(
+          userId,
+          message,
+          refinementContextChat,
+          conversationHistory
+        );
+        refinementClarificationChat = result.clarificationRequest;
+        if (result.silentProfileUpdate) {
+          logger.debug({ userId, action: result.refinementAction?.intent }, 'Essence profile refined via chat');
+        }
+      } catch (err) {
+        logger.debug({ err, userId }, 'Essence refinement check failed, continuing');
+      }
+    } else {
+      essenceRefinementEngine
+        .handleChatMessage(userId, message, refinementContextChat, conversationHistory)
+        .then((result) => {
+          if (result.clarificationRequest) {
+            logger.debug({ userId, clarification: result.clarificationRequest }, 'Refinement clarification needed');
+          } else if (result.silentProfileUpdate) {
+            logger.debug({ userId, action: result.refinementAction?.intent }, 'Essence profile refined via chat');
+          }
+        })
+        .catch((err) => {
+          logger.debug({ err, userId }, 'Essence refinement check failed, continuing');
+        });
     }
 
     // Check continuity
@@ -2436,6 +2537,28 @@ ${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}`;
     // Resolve current focus line for prompt conditioning
     const currentFocusLine = await this.resolveCurrentFocusLine(userId, currentContext);
 
+    // Timeline context insight (hierarchy gaps + parallels) when focused on era/saga/arc
+    let timelineInsightChat: (ChatContextExtension & { layer?: string }) | undefined;
+    if (
+      currentContext?.kind === 'timeline' &&
+      currentContext.timelineNodeId &&
+      ['era', 'saga', 'arc'].includes(currentContext.timelineLayer ?? '')
+    ) {
+      try {
+        const node = await timelineManager.getNode(userId, currentContext.timelineLayer!, currentContext.timelineNodeId) as { id: string; user_id: string; start_date: string; end_date?: string | null };
+        const ext = await extendChatContext(userId, {
+          id: node.id,
+          layer: currentContext.timelineLayer as 'era' | 'saga' | 'arc',
+          user_id: node.user_id,
+          start_date: node.start_date,
+          end_date: node.end_date ?? null,
+        });
+        timelineInsightChat = { ...ext, layer: currentContext.timelineLayer ?? undefined };
+      } catch (err) {
+        logger.debug({ err, userId, nodeId: currentContext.timelineNodeId }, 'Timeline insight failed, continuing without');
+      }
+    }
+
     // Build system prompt with comprehensive lore and essence profile
     let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -2466,8 +2589,13 @@ ${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}`;
       personaBlend,
       undefined,
       undefined,
-      currentFocusLine
+      currentFocusLine,
+      timelineInsightChat
     );
+
+    if (refinementClarificationChat) {
+      systemPrompt += `\n\n**REFINEMENT CLARIFICATION**: The user may be correcting something in their Soul Profile. If your reply is about that, first ask them: "${refinementClarificationChat}"`;
+    }
 
     // RESPONSE SAFETY: Inject safety guidance if stress signals detected (BEFORE creating messages)
     if (safetyContext && safetyContext.stressSignals.length > 0) {
@@ -3009,6 +3137,34 @@ Examples of NOT memory-worthy:
       logger.warn({ error, userId }, 'Error getting/creating chat session, using temporary ID');
       return randomUUID(); // Fallback to temporary ID
     }
+  }
+
+  /**
+   * Lightweight gate: does the message look like a Soul Profile correction/refinement?
+   * Used to decide whether to await refinement (and possibly inject clarification) or fire-and-forget.
+   */
+  private mightBeRefinement(message: string): boolean {
+    const normalized = message.toLowerCase().trim();
+    const patterns = [
+      /that'?s?\s+not\s+me\b/i,
+      /that'?s?\s+wrong\b/i,
+      /that'?s?\s+incorrect\b/i,
+      /no,?\s+that'?s?\s+/i,
+      /only\s+(when|in|at)\s+/i,
+      /used\s+to\b/i,
+      /not\s+anymore\b/i,
+      /that\s+was\s+(only|just)\b/i,
+      /not\s+really\b/i,
+      /not\s+quite\b/i,
+      /partially\s+(true|accurate)/i,
+      /half\s+true\b/i,
+      /only\s+(true|accurate)\s+/i,
+      /that'?s?\s+more\s+about\b/i,
+      /that'?s\s+(just|only)\s+at\s+work\b/i,
+      /don'?t\s+think\s+that'?s\s+me\b/i,
+      /wouldn'?t\s+say\s+that\b/i,
+    ];
+    return patterns.some((p) => p.test(normalized));
   }
 
   /**

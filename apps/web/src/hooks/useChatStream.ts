@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { config } from '../config/env';
-import type { CurrentContext } from '../types/currentContext';
+import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
 
 type StreamChunk = {
   type: 'metadata' | 'chunk' | 'done' | 'error';
@@ -22,7 +22,8 @@ export const useChatStream = () => {
     onComplete: () => void,
     onError: (error: string) => void,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
-    currentContext?: CurrentContext
+    currentContext?: CurrentContext,
+    soulProfileContext?: SoulProfileContext | null
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -50,7 +51,8 @@ export const useChatStream = () => {
           message,
           conversationHistory,
           ...(entityContext ? { entityContext } : {}),
-          ...(currentContext && currentContext.kind !== 'none' ? { currentContext } : {})
+          ...(currentContext && currentContext.kind !== 'none' ? { currentContext } : {}),
+          ...(soulProfileContext && (soulProfileContext.lastReferencedInsightId || ((soulProfileContext.lastSurfacedInsights?.length ?? 0) > 0)) ? { soulProfileContext } : {})
         }),
         signal: abortController.signal
       }).catch((fetchError) => {
