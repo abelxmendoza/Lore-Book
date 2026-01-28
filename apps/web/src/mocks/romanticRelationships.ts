@@ -76,7 +76,7 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
       person_id: 'char-001',
       person_type: 'character',
       person_name: 'Alex',
-      relationship_type: 'boyfriend',
+      relationship_type: 'girlfriend',
       status: 'active',
       is_current: true,
       affection_score: 0.92,
@@ -97,24 +97,24 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
         'Can be forgetful about small things'
       ],
       pros: [
-        'He always remembers the little things I mention',
+        'She always remembers the little things I mention',
         'We have amazing conversations that last for hours',
-        'He supports my career ambitions',
+        'She supports my career ambitions',
         'We share a love for hiking and nature',
-        'He makes me feel safe and understood',
+        'She makes me feel safe and understood',
         'Great sense of humor',
         'We balance each other out perfectly',
         'Fun to be around'
       ],
       cons: [
-        'He works long hours sometimes',
+        'She works long hours sometimes',
         'Not always great at planning dates',
         'Can be a bit messy',
         'Can be forgetful'
       ],
       red_flags: [],
       green_flags: [
-        'Introduced me to his family early on',
+        'Introduced me to her family early on',
         'Always follows through on promises',
         'Apologizes when wrong',
         'Respects my alone time',

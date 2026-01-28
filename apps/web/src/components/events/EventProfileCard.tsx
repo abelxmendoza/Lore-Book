@@ -115,11 +115,11 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
 
   return (
     <Card 
-      className="group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden"
+      className="group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden flex flex-col aspect-square sm:aspect-auto w-full"
       onClick={onClick}
     >
-      {/* Header with Calendar Icon */}
-      <div className="relative h-16 bg-gradient-to-br from-blue-500/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center">
+      {/* Header with Calendar Icon - compact on mobile for square layout */}
+      <div className="relative h-10 sm:h-16 bg-gradient-to-br from-blue-500/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center flex-shrink-0">
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
         <div className="relative z-10">
           <Calendar className="h-8 w-8 text-primary" />
@@ -139,11 +139,11 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
         </div>
       </div>
 
-      <CardHeader className="pb-1.5 pt-2.5 px-4">
+      <CardHeader className="pb-1.5 pt-2 sm:pt-2.5 px-3 sm:px-4 flex-shrink-0">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <Tooltip content="Event title - click to view full details" side="top">
-              <h3 className="text-base font-semibold text-white truncate group-hover:text-primary transition-colors line-clamp-2 cursor-help">
+              <h3 className="text-xs sm:text-base font-semibold text-white truncate group-hover:text-primary transition-colors line-clamp-2 cursor-help">
                 {event.title}
               </h3>
             </Tooltip>
@@ -180,15 +180,15 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-2 pt-0 px-4 pb-3">
+      <CardContent className="flex-1 min-h-0 overflow-hidden space-y-1 sm:space-y-2 pt-0 px-3 sm:px-4 pb-2 sm:pb-3">
         {event.summary && (
           <Tooltip content="Brief summary of this event" side="top">
-            <p className="text-xs text-white/70 line-clamp-2 leading-snug cursor-help">{event.summary}</p>
+            <p className="text-[10px] sm:text-xs text-white/70 line-clamp-2 sm:line-clamp-2 leading-snug cursor-help">{event.summary}</p>
           </Tooltip>
         )}
         
-              {/* Metadata Row */}
-              <div className="flex flex-wrap gap-2 text-[10px] text-white/50">
+              {/* Metadata Row - hide on mobile for squarer card, show from sm */}
+              <div className="hidden sm:flex flex-wrap gap-2 text-[10px] text-white/50">
                 <Tooltip content="When this event happened" side="top">
                   <div className="flex items-center gap-1 cursor-help">
                     <Clock className="h-2.5 w-2.5" />
@@ -222,9 +222,9 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
                 </Tooltip>
               </div>
 
-        {/* Activities/Tags */}
+        {/* Activities/Tags - hide on mobile for squarer card */}
         {event.activities && event.activities.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/30">
+          <div className="hidden sm:flex flex-wrap gap-1 pt-1.5 border-t border-border/30">
             {event.activities.slice(0, 3).map((activity) => (
               <Tooltip key={activity} content={`Activity: ${activity}`} side="top">
                 <Badge

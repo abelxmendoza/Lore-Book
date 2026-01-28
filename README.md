@@ -89,10 +89,12 @@ LoreBook helps you:
   - **Symbol Resolution**: Deterministic entity resolution with scope chain walking
 - ✅ **Memory Explorer** - Semantic search with HQI integration, memory cards, linked memories, filters
 - ✅ **Timeline System** - 9-layer hierarchical timeline (Mythos → MicroActions), visual timeline page, emotion heatmap, highlights
+- ✅ **Timeline Context Intelligence** ⭐ - Understands hierarchy gaps (empty time spans inside eras, sagas, arcs) and parallel structure (explicit parallel_to relations + date-overlapping arcs/sagas). Feeds this insight into chat and biography so the AI can gently explore gaps or contextualize interruptions—no new UI, smarter behind-the-scenes behavior.
+- ✅ **Context-aware chat** - When you focus on a timeline node (era, saga, arc) or a thread, chat uses that focus: RAG pulls memories from that scope, and the system prompt tells the AI where you are. New entries can be created under the focused chapter or linked to the focused thread automatically.
 - ✅ **Character System** - Relationship tracking, knowledge base, auto-generated avatars, relationship graphs, character modals, main character display
 - ✅ **Location Tracking** - Location profiles, visit timelines, location modals
 - ✅ **Love & Relationships Tracking** - Automatically tracks romantic relationships, crushes, and situationships from conversations. Features include relationship rankings, analytics (pros/cons, red flags, green flags), timeline of dates, and chat-based editing
-- ✅ **Automatic Biography & Lorebooks** - Multi-version biography generation engine with PDF export, chapter navigation, and recommendations
+- ✅ **Automatic Biography & Lorebooks** - Multi-version biography generation engine with PDF export, chapter navigation, and recommendations. Timeline hierarchy is enriched with hierarchy gaps (empty spans inside sagas/arcs) so future phrasing can reference undocumented periods.
 - ✅ **Resume Upload** - Upload resumes to populate memory bank, profile info, and verify skills with AI
 - ✅ **Multi-Persona Chat** - Gossip Buddy, Therapist, Historian, Strategist, Memory Bank personas
 - ✅ **Grok-Style Transition Detection** ⭐ - Advanced conversation flow tracking that detects tangents, emotional transitions, thought process changes, and intent evolution. The AI naturally follows where your mind wants to go, just like Grok.

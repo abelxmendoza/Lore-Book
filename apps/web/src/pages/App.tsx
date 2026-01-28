@@ -290,7 +290,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             <header className="hidden lg:flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
               <div>
                 <h1 className="text-xl sm:text-2xl font-semibold">Welcome back</h1>
-                <p className="text-xs sm:text-sm text-white/60">{entries.length} memories · {chapters.length} chapters</p>
+                <p className="text-xs sm:text-sm text-white/60">Your timelines and views reflect what you&apos;ve shared in Chat.</p>
+                <p className="text-xs sm:text-sm text-white/50 mt-0.5">{entries.length} memories · {chapters.length} chapters</p>
               </div>
             </header>
 
@@ -371,8 +372,10 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
                         {activeSurface === 'quests' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
-                            <QuestBoard />
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] h-[calc(100vh-8rem)] sm:h-[calc(100vh-4rem)] overflow-hidden flex flex-col p-4 sm:p-6">
+                            <div className="flex-1 min-h-0 flex flex-col">
+                              <QuestBoard />
+                            </div>
                           </div>
                         )}
                         {activeSurface === 'gaps' && (

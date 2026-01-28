@@ -56,7 +56,10 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
               Your Digital Memory Palace
             </h2>
             <p className="text-lg text-white/70 max-w-2xl mx-auto">
-              Lore Book helps you capture, organize, and understand your life's story through AI-powered memory management.
+              Lore Book helps you capture, organize, and understand your life&apos;s story through AI-powered memory management.
+            </p>
+            <p className="text-sm text-primary/80 max-w-xl mx-auto mt-2">
+              Chat first — you talk in Chat; we organize it. Timelines and other views help you explore and reflect on what you&apos;ve shared.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-4 mt-8">
@@ -113,6 +116,9 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
       icon: Zap,
       content: (
         <div className="space-y-6">
+          <p className="text-sm text-primary/80 text-center max-w-xl mx-auto">
+            Chat is where your story is built. Timelines, characters, and other views help you explore what you&apos;ve shared there.
+          </p>
           <div className="grid gap-4">
             {[
               {

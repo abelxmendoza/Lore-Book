@@ -13,6 +13,7 @@ import { logger } from '../../logger';
 import { chapterService } from '../chapterService';
 import { supabaseAdmin } from '../supabaseClient';
 
+import { detectHierarchyGaps } from '../timelineInsight';
 import { filterSensitiveAtoms, filterBiographyText } from './contentFilter';
 import { buildAtomsFromTimeline } from './narrativeAtomBuilder';
 import { preservedContentPlacer } from './preservedContentPlacer';
@@ -599,25 +600,38 @@ export class BiographyGenerationEngine {
 
               if (chaptersError) {
                 logger.error({ error: chaptersError, arcId: arc.id }, 'Failed to load chapters');
-                return { ...arc, chapters: [] };
+                return { ...arc, chapters: [], hierarchyGaps: [] };
               }
+
+              const chapterList = (chapters || []).map(ch => ({
+                id: ch.id,
+                title: ch.title,
+                start_date: ch.start_date,
+                end_date: ch.end_date,
+                description: ch.description,
+                summary: ch.summary,
+                parent_id: ch.parent_id,
+                user_id: ch.user_id,
+                created_at: ch.created_at,
+                updated_at: ch.updated_at
+              })) as TimelineChapter[];
+
+              const arcHierarchyGaps = detectHierarchyGaps(
+                { id: arc.id, layer: 'arc', user_id: userId, start_date: arc.start_date, end_date: arc.end_date ?? null },
+                chapterList.map(ch => ({ start_date: ch.start_date, end_date: ch.end_date ?? null }))
+              );
 
               return {
                 ...arc,
-                chapters: (chapters || []).map(ch => ({
-                  id: ch.id,
-                  title: ch.title,
-                  start_date: ch.start_date,
-                  end_date: ch.end_date,
-                  description: ch.description,
-                  summary: ch.summary,
-                  parent_id: ch.parent_id,
-                  user_id: ch.user_id,
-                  created_at: ch.created_at,
-                  updated_at: ch.updated_at
-                })) as TimelineChapter[]
+                chapters: chapterList,
+                hierarchyGaps: arcHierarchyGaps
               };
             })
+          );
+
+          const sagaHierarchyGaps = detectHierarchyGaps(
+            { id: saga.id, layer: 'saga', user_id: userId, start_date: saga.start_date, end_date: saga.end_date ?? null },
+            arcsWithChapters.map(a => ({ start_date: a.start_date, end_date: a.end_date ?? null }))
           );
 
           return {
@@ -626,6 +640,7 @@ export class BiographyGenerationEngine {
             description: saga.description || undefined,
             start_date: saga.start_date,
             end_date: saga.end_date || undefined,
+            hierarchyGaps: sagaHierarchyGaps,
             arcs: arcsWithChapters
           };
         })

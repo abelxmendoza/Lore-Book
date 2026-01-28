@@ -142,14 +142,14 @@ function generateNarrativeCharacters(): Character[] {
       first_name: 'Alex',
       last_name: '',
       alias: ['Alex'],
-      pronouns: 'he/him',
+      pronouns: 'she/her',
       archetype: 'romantic',
-      role: 'Boyfriend',
+      role: 'Girlfriend',
       status: 'active',
       importance_level: 'protagonist',
       importance_score: 95,
       is_nickname: false,
-      summary: 'My boyfriend of 6 months. We met through Sarah at a coffee shop a year ago. He\'s incredibly supportive of my creative journey, often visiting my home studio to listen to my music. He makes me laugh, remembers the little things, and we share a love for hiking and nature. Our relationship has been growing stronger, and he was the first person I called when I had the EP concept breakthrough.',
+      summary: 'My girlfriend of 6 months. We met through Sarah at a coffee shop a year ago. She\'s incredibly supportive of my creative journey, often visiting my home studio to listen to my music. She makes me laugh, remembers the little things, and we share a love for hiking and nature. Our relationship has been growing stronger, and she was the first person I called when I had the EP concept breakthrough.',
       tags: ['romantic', 'supportive', 'relationship', 'creative'],
       metadata: {
         relationship_type: 'romantic',
@@ -600,7 +600,7 @@ function generateNarrativeEvents(): NarrativeEvent[] {
       locations: [ENTITY_IDS.HOME_STUDIO],
       skills: [],
       memories: ['mem-listening-1', 'mem-listening-2'],
-      summary: 'Played the EP for Alex for the first time. He loved it and was so supportive.',
+      summary: 'Played the EP for Alex for the first time. She loved it and was so supportive.',
     },
   ];
 }
@@ -649,7 +649,7 @@ function generateNarrativeMemories(): NarrativeMemory[] {
     {
       id: 'mem-ep-concept-3',
       title: 'Called Alex (boyfriend) to share the news',
-      content: 'I called Alex (my boyfriend) right after the concept session to tell him about the breakthrough. He was so excited for me and immediately wanted to hear more.',
+      content: 'I called Alex (my girlfriend) right after the concept session to tell her about the breakthrough. She was so excited for me and immediately wanted to hear more.',
       date: new Date(epConceptTime.getTime() + 30 * 60 * 1000).toISOString(),
       tags: ['ep', 'concept', 'relationship'],
       mood: 'happy',

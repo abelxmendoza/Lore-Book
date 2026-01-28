@@ -32,7 +32,7 @@ describe('RelationshipDetailModal', () => {
     person_id: 'char-001',
     person_type: 'character' as const,
     person_name: 'Alex',
-    relationship_type: 'boyfriend',
+    relationship_type: 'girlfriend',
     status: 'active',
     is_current: true,
     affection_score: 0.92,

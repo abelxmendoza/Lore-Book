@@ -414,29 +414,30 @@ export const SkillsBook: React.FC = () => {
                   )}
                 </div>
 
-                {/* Autocomplete Suggestions Dropdown */}
+                {/* Autocomplete Suggestions Dropdown — mobile responsive: full width, touch-friendly items, scrollable */}
                 {showSuggestions && autocompleteSuggestions.length > 0 && (
                   <div
                     ref={suggestionsRef}
-                    className="absolute top-full left-0 right-0 mt-2 bg-black/95 border border-white/20 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto"
+                    className="absolute top-full left-0 right-0 mt-2 w-full min-w-0 bg-black/95 border border-white/20 rounded-lg shadow-xl z-50 max-h-[60vh] sm:max-h-96 overflow-y-auto overflow-x-hidden"
                   >
                     {!searchTerm.trim() && (
-                      <div className="px-4 py-2 border-b border-white/10">
+                      <div className="px-3 sm:px-4 py-2 border-b border-white/10">
                         <div className="flex items-center gap-2 text-xs text-white/60">
-                          <Sparkles className="h-3 w-3" />
+                          <Sparkles className="h-3 w-3 flex-shrink-0" />
                           <span>Recommendations</span>
                         </div>
                       </div>
                     )}
-                    <div className="py-2">
+                    <div className="py-1 sm:py-2">
                       {autocompleteSuggestions.map((suggestion, index) => {
                         const Icon = suggestion.icon;
                         const isSelected = index === selectedSuggestionIndex;
                         return (
                           <button
                             key={suggestion.skill.id}
+                            type="button"
                             onClick={() => handleSuggestionClick(suggestion)}
-                            className={`w-full px-4 py-3 text-left hover:bg-white/10 transition-colors ${
+                            className={`w-full px-3 sm:px-4 py-3 text-left hover:bg-white/10 transition-colors min-h-[44px] sm:min-h-0 ${
                               isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''
                             }`}
                             onMouseEnter={() => setSelectedSuggestionIndex(index)}

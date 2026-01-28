@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Calendar, BookOpen, Users, Tag, TrendingUp, Sparkles, Clock, FileText, Heart, MapPin, Award, BarChart3, Activity, Brain, AlertCircle, Briefcase, DollarSign, Smile, Home, Heart as HeartIcon } from 'lucide-react';
+import { User, BookOpen, Users, Tag, TrendingUp, Sparkles, Activity, Brain, AlertCircle, Briefcase, DollarSign, Smile, Home, Heart as HeartIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { fetchJson } from '../../lib/api';
+import { useAuth } from '../../lib/supabase';
 import { IdentityPulseModal } from '../identity/IdentityPulseModal';
 import { InsightsModal } from '../InsightsModal';
 import { AIInsightModal } from './AIInsightModal';
@@ -48,6 +49,7 @@ type UserStats = {
 
 export const UserProfile = () => {
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const { useMockData: isMockDataEnabled } = useMockData();
   const { entries = [], chapters = [], tags = [], timeline } = useLoreKeeper();
   const [characters, setCharacters] = useState<any[]>([]);
@@ -64,6 +66,7 @@ export const UserProfile = () => {
   const [engineResultsLoading, setEngineResultsLoading] = useState(false);
   const [aiInsightModal, setAiInsightModal] = useState<{ type: string; data: any } | null>(null);
   const [userCharacterId, setUserCharacterId] = useState<string | null>(null);
+  const [userCharacter, setUserCharacter] = useState<{ id: string; name?: string; summary?: string; role?: string } | null>(null);
   const [attributes, setAttributes] = useState<Array<{
     id: string;
     attributeType: string;
@@ -73,6 +76,48 @@ export const UserProfile = () => {
     evidence?: string;
   }>>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
+
+  // Mock main character data for UI preview when mock mode is on
+  const getMockUserCharacter = (): { id: string; name: string; summary: string; role?: string } => ({
+    id: 'char-you',
+    name: 'Jordan',
+    summary: 'A 28-year-old in a creative renaissance—transitioning from software to music and writing. Curious, reflective, and drawn to self-discovery.',
+    role: 'Main Character'
+  });
+
+  const getMockMainCharacterAttributes = () => [
+    { id: 'attr-1', attributeType: 'occupation', attributeValue: 'Creative professional', confidence: 0.89, isCurrent: true },
+    { id: 'attr-2', attributeType: 'relationship_status', attributeValue: 'In a relationship', confidence: 0.92, isCurrent: true },
+    { id: 'attr-3', attributeType: 'personality_trait', attributeValue: 'Reflective', confidence: 0.85, isCurrent: true },
+    { id: 'attr-4', attributeType: 'living_situation', attributeValue: 'Urban apartment', confidence: 0.78, isCurrent: true },
+    { id: 'attr-5', attributeType: 'lifestyle_pattern', attributeValue: 'Journaling', confidence: 0.88, isCurrent: true }
+  ];
+
+  const getMockMainCharacterStats = (): UserStats => {
+    const start = '2024-01-15';
+    const end = new Date().toISOString().split('T')[0];
+    const days = Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)));
+    return {
+      totalEntries: 0,
+      totalCharacters: 0,
+      totalChapters: 0,
+      totalTags: 0,
+      timelineSpan: { start, end, days },
+      mostActivePeriod: { month: 'January 2025', count: 12 },
+      topTags: [],
+      memoirProgress: { sections: 4, lastUpdated: new Date().toISOString() },
+      writingStreak: 7,
+      averageEntriesPerWeek: 2.1,
+      characterRelationships: 0,
+      mostMentionedCharacters: [
+        { name: 'Sarah Chen', mentions: 24 },
+        { name: 'Alex Rivera', mentions: 18 },
+        { name: 'Marcus Johnson', mentions: 12 },
+        { name: 'Emma Thompson', mentions: 8 }
+      ],
+      entryFrequency: { thisWeek: 3, lastWeek: 2, trend: 'up' as const }
+    };
+  };
 
   // Mock engine results for UI preview
   const getMockEngineResults = (): Record<string, any> => ({
@@ -191,9 +236,15 @@ export const UserProfile = () => {
     }
   }, [isMockDataEnabled]);
 
-  // Find user character
+  // Find user character (use mock when mock mode is on)
   useEffect(() => {
     const findUserCharacter = async () => {
+      if (isMockDataEnabled) {
+        const mock = getMockUserCharacter();
+        setUserCharacter(mock);
+        setUserCharacterId(mock.id);
+        return;
+      }
       try {
         const response = await fetchJson<{ characters: any[] }>('/api/characters/list');
         const userChar = response.characters?.find(
@@ -205,16 +256,24 @@ export const UserProfile = () => {
         );
         if (userChar) {
           setUserCharacterId(userChar.id);
+          setUserCharacter({ id: userChar.id, name: userChar.name, summary: userChar.summary, role: userChar.role });
+        } else {
+          setUserCharacter(null);
         }
       } catch (error) {
         console.error('Failed to find user character:', error);
       }
     };
     void findUserCharacter();
-  }, []);
+  }, [isMockDataEnabled]);
 
-  // Load attributes for user character
+  // Load attributes for user character (use mock when mock mode is on)
   useEffect(() => {
+    if (isMockDataEnabled) {
+      setAttributes(getMockMainCharacterAttributes());
+      setLoadingAttributes(false);
+      return;
+    }
     const loadAttributes = async () => {
       if (!userCharacterId) return;
       setLoadingAttributes(true);
@@ -236,7 +295,7 @@ export const UserProfile = () => {
       }
     };
     void loadAttributes();
-  }, [userCharacterId]);
+  }, [userCharacterId, isMockDataEnabled]);
 
   useEffect(() => {
     debugLog('useEffect', 'Component mounted, loading initial data', { isMockDataEnabled });
@@ -271,6 +330,11 @@ export const UserProfile = () => {
   const prevDataRef = useRef<{ entriesLength: number; charactersLength: number; chaptersLength: number; tagsLength: number } | null>(null);
   
   useEffect(() => {
+    // When mock mode is on, use mock stats immediately
+    if (isMockDataEnabled) {
+      void loadStats();
+      return;
+    }
     // Only load stats once characters are loaded
     if (!charactersLoaded) return;
     
@@ -295,7 +359,7 @@ export const UserProfile = () => {
     prevDataRef.current = currentData;
     loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [charactersLoaded, entries?.length, characters?.length, chapters?.length, tags?.length]);
+  }, [isMockDataEnabled, charactersLoaded, entries?.length, characters?.length, chapters?.length, tags?.length]);
 
   const loadCharacters = async () => {
     debugLog('loadCharacters', 'Starting to load characters');
@@ -333,6 +397,11 @@ export const UserProfile = () => {
   };
 
   const loadStats = async () => {
+    if (isMockDataEnabled) {
+      setStats(getMockMainCharacterStats());
+      setLoading(false);
+      return;
+    }
     debugLog('loadStats', 'Starting to calculate stats', {
       entriesCount: entries?.length || 0,
       charactersCount: characters?.length || 0,
@@ -516,88 +585,29 @@ export const UserProfile = () => {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Key Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-            <div className="bg-black/40 rounded-lg p-3 border border-border/50">
-              <div className="flex items-center gap-2 text-white/60 mb-1">
-                <FileText className="h-4 w-4" />
-                <span className="text-xs">Entries</span>
-              </div>
-              <div className="text-xl sm:text-2xl font-bold text-white">{stats.totalEntries}</div>
+          {/* About you */}
+          <div className="bg-black/40 rounded-lg p-4 border border-border/50">
+            <div className="text-sm font-semibold text-white/70 mb-1">About you</div>
+            <div className="text-lg font-bold text-white">
+              {userCharacter?.name ?? authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? authUser?.email ?? 'You'}
             </div>
-            <div className="bg-black/40 rounded-lg p-3 border border-border/50">
-              <div className="flex items-center gap-2 text-white/60 mb-1">
-                <Users className="h-4 w-4" />
-                <span className="text-xs">Characters</span>
-              </div>
-              <div className="text-xl sm:text-2xl font-bold text-white">{stats.totalCharacters}</div>
-            </div>
-            <div className="bg-black/40 rounded-lg p-3 border border-border/50">
-              <div className="flex items-center gap-2 text-white/60 mb-1">
-                <BookOpen className="h-4 w-4" />
-                <span className="text-xs">Chapters</span>
-              </div>
-              <div className="text-xl sm:text-2xl font-bold text-white">{stats.totalChapters}</div>
-            </div>
-            <div className="bg-black/40 rounded-lg p-3 border border-border/50">
-              <div className="flex items-center gap-2 text-white/60 mb-1">
-                <Tag className="h-4 w-4" />
-                <span className="text-xs">Tags</span>
-              </div>
-              <div className="text-xl sm:text-2xl font-bold text-white">{stats.totalTags}</div>
+            <div className="text-sm text-white/60 mt-1">
+              {userCharacter?.summary
+                ? userCharacter.summary
+                : engineResults?.storyOfSelf?.mode?.mode && engineResults?.storyOfSelf?.themes?.[0]?.theme
+                  ? `${engineResults.storyOfSelf.mode.mode} · ${engineResults.storyOfSelf.themes[0].theme}`
+                  : engineResults?.storyOfSelf?.mode?.mode
+                    ? String(engineResults.storyOfSelf.mode.mode)
+                    : 'Your story is taking shape'}
             </div>
           </div>
 
-          {/* Timeline Span */}
-          {stats.timelineSpan.days > 0 && (
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-2">
-                <Calendar className="h-4 w-4" />
-                <span className="text-sm font-semibold">Timeline Span</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs text-white/50">Started</div>
-                  <div className="text-sm text-white">{new Date(stats.timelineSpan.start).toLocaleDateString()}</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xs text-white/50">Days</div>
-                  <div className="text-lg font-bold text-primary">{stats.timelineSpan.days}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-white/50">Latest</div>
-                  <div className="text-sm text-white">{new Date(stats.timelineSpan.end).toLocaleDateString()}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Writing Stats */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-black/40 rounded-lg p-3 border border-border/50">
-              <div className="flex items-center gap-2 text-white/60 mb-1">
-                <TrendingUp className="h-4 w-4" />
-                <span className="text-xs">Writing Streak</span>
-              </div>
-              <div className="text-lg font-bold text-primary">{stats.writingStreak}</div>
-              <div className="text-xs text-white/50 mt-0.5">consecutive days</div>
-            </div>
-            <div className="bg-black/40 rounded-lg p-3 border border-border/50">
-              <div className="flex items-center gap-2 text-white/60 mb-1">
-                <BarChart3 className="h-4 w-4" />
-                <span className="text-xs">Avg per Week</span>
-              </div>
-              <div className="text-lg font-bold text-primary">{stats.averageEntriesPerWeek}</div>
-              <div className="text-xs text-white/50 mt-0.5">entries</div>
-            </div>
-          </div>
-
-          {/* Character Attributes */}
+          {/* What we know about you */}
           {loadingAttributes ? (
             <div className="bg-black/40 rounded-lg p-4 border border-border/50">
               <div className="flex items-center gap-2 text-white/70 mb-2">
                 <Tag className="h-4 w-4" />
-                <span className="text-sm font-semibold">Attributes</span>
+                <span className="text-sm font-semibold">What we know about you</span>
               </div>
               <p className="text-xs text-white/50">Loading attributes...</p>
             </div>
@@ -605,7 +615,7 @@ export const UserProfile = () => {
             <div className="bg-black/40 rounded-lg p-4 border border-border/50">
               <div className="flex items-center gap-2 text-white/70 mb-3">
                 <Tag className="h-4 w-4" />
-                <span className="text-sm font-semibold">Detected Attributes</span>
+                <span className="text-sm font-semibold">What we know about you</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {attributes.map((attr) => {
@@ -665,132 +675,52 @@ export const UserProfile = () => {
                 })}
               </div>
             </div>
-          ) : null}
-
-          {/* Most Active Period */}
-          {stats.mostActivePeriod.count > 0 && (
+          ) : (
             <div className="bg-black/40 rounded-lg p-4 border border-border/50">
               <div className="flex items-center gap-2 text-white/70 mb-2">
-                <Sparkles className="h-4 w-4" />
-                <span className="text-sm font-semibold">Most Active Period</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-white">{stats.mostActivePeriod.month}</span>
-                <span className="text-primary font-bold">{stats.mostActivePeriod.count} entries</span>
-              </div>
-            </div>
-          )}
-
-          {/* Memoir Progress */}
-          {stats.memoirProgress.sections > 0 && (
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-2">
-                <BookOpen className="h-4 w-4" />
-                <span className="text-sm font-semibold">Memoir Progress</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-white">{stats.memoirProgress.sections} sections</span>
-                {stats.memoirProgress.lastUpdated && (
-                  <span className="text-xs text-white/50">
-                    Updated {new Date(stats.memoirProgress.lastUpdated).toLocaleDateString()}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Language Style */}
-          {languageStyle && (
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-2">
-                <FileText className="h-4 w-4" />
-                <span className="text-sm font-semibold">Writing Style</span>
-              </div>
-              <p className="text-sm text-white/80">{languageStyle}</p>
-            </div>
-          )}
-
-          {/* Top Tags */}
-          {stats.topTags.length > 0 && (
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-3">
                 <Tag className="h-4 w-4" />
-                <span className="text-sm font-semibold">Top Themes</span>
+                <span className="text-sm font-semibold">What we know about you</span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {stats.topTags.map(({ tag, count }) => (
-                  <div
-                    key={tag}
-                    className="px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-sm text-white"
-                  >
-                    {tag} <span className="text-primary/70">({count})</span>
-                  </div>
-                ))}
-              </div>
+              <p className="text-xs text-white/50 italic">Attributes are added as you write.</p>
             </div>
           )}
 
-          {/* Character Relationships */}
-          {stats.characterRelationships > 0 && (
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-2">
-                <Heart className="h-4 w-4" />
-                <span className="text-sm font-semibold">Character Connections</span>
-              </div>
-              <div className="text-lg font-bold text-primary">{stats.characterRelationships}</div>
-              <div className="text-xs text-white/50 mt-1">documented relationships</div>
-            </div>
-          )}
-
-          {/* Most Mentioned Characters */}
-          {stats.mostMentionedCharacters.length > 0 && (
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-3">
-                <Users className="h-4 w-4" />
-                <span className="text-sm font-semibold">Most Mentioned Characters</span>
-              </div>
-              <div className="space-y-2">
-                {stats.mostMentionedCharacters.map(({ name, mentions }, idx) => (
-                  <div key={name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-white/50 w-4">{idx + 1}.</span>
-                      <span className="text-sm text-white">{name}</span>
-                    </div>
-                    <span className="text-xs text-primary/70">{mentions} mentions</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Entry Frequency Trend */}
+          {/* People in your story */}
           <div className="bg-black/40 rounded-lg p-4 border border-border/50">
             <div className="flex items-center gap-2 text-white/70 mb-2">
-              <TrendingUp className="h-4 w-4" />
-              <span className="text-sm font-semibold">This Week</span>
+              <Users className="h-4 w-4" />
+              <span className="text-sm font-semibold">People in your story</span>
             </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xl sm:text-2xl font-bold text-white">{stats.entryFrequency.thisWeek}</div>
-                <div className="text-xs text-white/50 mt-1">entries this week</div>
-              </div>
-              <div className="text-right">
-                {stats.entryFrequency.trend === 'up' && (
-                  <div className="flex items-center gap-1 text-green-400">
-                    <TrendingUp className="h-4 w-4" />
-                    <span className="text-sm">+{stats.entryFrequency.thisWeek - stats.entryFrequency.lastWeek}</span>
+            {stats.mostMentionedCharacters.length > 0 ? (
+              <div className="space-y-1.5">
+                {stats.mostMentionedCharacters.map(({ name, mentions }) => (
+                  <div key={name} className="flex items-center justify-between">
+                    <span className="text-sm text-white">{name}</span>
+                    <span className="text-xs text-white/50">{mentions} mentions</span>
                   </div>
-                )}
-                {stats.entryFrequency.trend === 'down' && (
-                  <div className="flex items-center gap-1 text-red-400">
-                    <TrendingUp className="h-4 w-4 rotate-180" />
-                    <span className="text-sm">{stats.entryFrequency.thisWeek - stats.entryFrequency.lastWeek}</span>
-                  </div>
-                )}
-                {stats.entryFrequency.trend === 'stable' && (
-                  <div className="text-xs text-white/50">Stable</div>
-                )}
+                ))}
               </div>
+            ) : (
+              <p className="text-xs text-white/50 italic">The people you write about will show up here.</p>
+            )}
+          </div>
+
+          {/* Meaningful stats */}
+          <div className="bg-black/40 rounded-lg p-4 border border-border/50">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {stats.timelineSpan.days > 0 ? (
+                <span className="text-white/80">
+                  Your story since {new Date(stats.timelineSpan.start).toLocaleDateString()}
+                </span>
+              ) : (
+                <span className="text-white/50">Start writing to begin your timeline.</span>
+              )}
+              {stats.writingStreak > 0 && (
+                <span className="text-primary font-medium">{stats.writingStreak} day streak</span>
+              )}
+              {stats.memoirProgress.sections > 0 && (
+                <span className="text-white/70">Your memoir: {stats.memoirProgress.sections} sections</span>
+              )}
             </div>
           </div>
 

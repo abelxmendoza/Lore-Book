@@ -55,279 +55,302 @@ const SidebarContent = ({
         <div className="mb-6 hidden lg:block">
           <Logo size="lg" showText={true} />
           <p className="mt-4 text-xs text-white/50">Your personal memory system. Remember everything that matters.</p>
+          <p className="mt-1.5 text-xs text-primary/70">Chat first — timelines & views help you explore what you&apos;ve shared.</p>
           <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/5 px-2 py-1">
             <Shield className="h-3 w-3 text-green-400" />
             <p className="text-xs text-green-400/80">100% Private & Secure</p>
           </div>
         </div>
         <div className="mt-8 space-y-2">
-        <button
-          onClick={() => handleSurfaceChange('chat')}
-          aria-label="Open chat interface"
-          aria-current={activeSurface === 'chat' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'chat'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" />
-          Chat
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('characters')}
-          aria-label="Open characters view"
-          aria-current={activeSurface === 'characters' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'characters'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Users className="h-4 w-4 text-primary" aria-hidden="true" />
-          Characters
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('locations')}
-          aria-label="Open locations view"
-          aria-current={activeSurface === 'locations' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'locations'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <MapPin className="h-4 w-4 text-primary" aria-hidden="true" />
-          Locations
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('organizations')}
-          aria-label="Open groups view"
-          aria-current={activeSurface === 'organizations' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'organizations'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Building2 className="h-4 w-4 text-primary" aria-hidden="true" />
-          Groups
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('skills')}
-          aria-label="Open skills view"
-          aria-current={activeSurface === 'skills' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'skills'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Zap className="h-4 w-4 text-primary" aria-hidden="true" />
-          Skills
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('timeline')}
-          aria-label="Open timeline view"
-          aria-current={activeSurface === 'timeline' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'timeline'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
-          Omni Timeline
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('search')}
-          aria-label="Open memory explorer"
-          aria-current={activeSurface === 'search' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'search'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Search className="h-4 w-4 text-primary" aria-hidden="true" />
-          Memory Explorer
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('memoir')}
-          aria-label="Open biography editor"
-          aria-current={activeSurface === 'memoir' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'memoir'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <BookOpen className="h-4 w-4 text-primary" aria-hidden="true" />
-          My Biography Editor
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('lorebook')}
-          aria-label="Open lore book"
-          aria-current={activeSurface === 'lorebook' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm font-bold transition",
-            activeSurface === 'lorebook'
-              ? 'border-primary bg-primary/20 text-white shadow-lg shadow-primary/20'
-              : 'border-primary/50 bg-primary/5 text-white hover:border-primary hover:bg-primary/15 hover:shadow-md hover:shadow-primary/10'
-          )}
-        >
-          <BookMarked className="h-5 w-5 text-primary" aria-hidden="true" />
-          Lore Book
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('photos')}
-          aria-label="Open photo album"
-          aria-current={activeSurface === 'photos' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'photos'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Images className="h-4 w-4 text-primary" aria-hidden="true" />
-          Photo Album
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('perceptions')}
-          aria-label="Open perceptions view"
-          aria-current={activeSurface === 'perceptions' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'perceptions'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Eye className="h-4 w-4 text-primary" aria-hidden="true" />
-          Perceptions
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('events')}
-          aria-label="Open events view"
-          aria-current={activeSurface === 'events' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'events'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Calendar className="h-4 w-4 text-primary" aria-hidden="true" />
-          Events
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('entities')}
-          aria-label="Open entity resolution"
-          aria-current={activeSurface === 'entities' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'entities'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Hash className="h-4 w-4 text-primary" aria-hidden="true" />
-          Entities
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('discovery')}
-          aria-label="Open discovery hub"
-          aria-current={activeSurface === 'discovery' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'discovery'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Compass className="h-4 w-4 text-primary" aria-hidden="true" />
-          Discovery Hub
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('love')}
-          aria-label="Open love and relationships"
-          aria-current={activeSurface === 'love' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'love'
-              ? 'border-pink-500 bg-pink-500/10 text-white'
-              : 'border-transparent text-white/70 hover:border-pink-500 hover:bg-pink-500/10'
-          )}
-        >
-          <Heart className="h-4 w-4 text-pink-400" aria-hidden="true" />
-          Love & Relationships
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('quests')}
-          aria-label="Open quests"
-          aria-current={activeSurface === 'quests' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'quests'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Target className="h-4 w-4 text-primary" aria-hidden="true" />
-          Quests
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('subscription')}
-          aria-label="Open subscription management"
-          aria-current={activeSurface === 'subscription' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'subscription'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Crown className="h-4 w-4 text-primary" aria-hidden="true" />
-          Subscription
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('security')}
-          aria-label="Open privacy and security settings"
-          aria-current={activeSurface === 'security' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'security'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
-          Privacy & Security
-        </button>
-        <button
-          onClick={() => handleSurfaceChange('guide')}
-          aria-label="Open user guide"
-          aria-current={activeSurface === 'guide' ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-            activeSurface === 'guide'
-              ? 'border-primary bg-primary/10 text-white'
-              : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-          )}
-        >
-          <HelpCircle className="h-4 w-4 text-primary" aria-hidden="true" />
-          User Guide
-        </button>
-      </div>
+          {/* 1. Chat — main feature: accent bar + tagline */}
+          <button
+            onClick={() => handleSurfaceChange('chat')}
+            aria-label="Open chat interface"
+            aria-current={activeSurface === 'chat' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border border-l-4 px-3 py-2.5 text-left transition",
+              activeSurface === 'chat'
+                ? "border-primary border-l-primary bg-primary/15 text-white"
+                : "border-transparent border-l-primary bg-primary/5 text-white/90 hover:bg-primary/10"
+            )}
+          >
+            <MessageSquareText className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <div className="flex-1 min-w-0">
+              <span className="block text-sm font-medium">Chat</span>
+              <span className="block text-[10px] text-primary/80 mt-0.5">Your story starts here</span>
+            </div>
+          </button>
+
+          {/* 2. Focus on… / Story entities */}
+          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Focus on…</p>
+          <button
+            onClick={() => handleSurfaceChange('characters')}
+            aria-label="Open characters view"
+            aria-current={activeSurface === 'characters' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'characters'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Users className="h-4 w-4 text-primary" aria-hidden="true" />
+            Characters
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('locations')}
+            aria-label="Open locations view"
+            aria-current={activeSurface === 'locations' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'locations'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <MapPin className="h-4 w-4 text-primary" aria-hidden="true" />
+            Locations
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('events')}
+            aria-label="Open events view"
+            aria-current={activeSurface === 'events' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'events'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Calendar className="h-4 w-4 text-primary" aria-hidden="true" />
+            Events
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('organizations')}
+            aria-label="Open groups view"
+            aria-current={activeSurface === 'organizations' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'organizations'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Building2 className="h-4 w-4 text-primary" aria-hidden="true" />
+            Groups
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('skills')}
+            aria-label="Open skills view"
+            aria-current={activeSurface === 'skills' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'skills'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Zap className="h-4 w-4 text-primary" aria-hidden="true" />
+            Skills
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('love')}
+            aria-label="Open love and relationships"
+            aria-current={activeSurface === 'love' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'love'
+                ? 'border-pink-500 bg-pink-500/10 text-white'
+                : 'border-transparent text-white/70 hover:border-pink-500 hover:bg-pink-500/10'
+            )}
+          >
+            <Heart className="h-4 w-4 text-pink-400" aria-hidden="true" />
+            Love & Relationships
+          </button>
+
+          {/* 3. Gossip & claims */}
+          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Gossip & claims</p>
+          <button
+            onClick={() => handleSurfaceChange('perceptions')}
+            aria-label="Open gossip and claims"
+            aria-current={activeSurface === 'perceptions' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'perceptions'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Eye className="h-4 w-4 text-primary" aria-hidden="true" />
+            Perceptions
+          </button>
+
+          {/* 4. Explore your story */}
+          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Explore your story</p>
+          <button
+            onClick={() => handleSurfaceChange('timeline')}
+            aria-label="Open timeline view"
+            aria-current={activeSurface === 'timeline' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'timeline'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
+            Omni Timeline
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('discovery')}
+            aria-label="Open discovery hub"
+            aria-current={activeSurface === 'discovery' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'discovery'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Compass className="h-4 w-4 text-primary" aria-hidden="true" />
+            Discovery Hub
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('search')}
+            aria-label="Open memory explorer"
+            aria-current={activeSurface === 'search' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'search'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Search className="h-4 w-4 text-primary" aria-hidden="true" />
+            Memory Explorer
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('quests')}
+            aria-label="Open quests"
+            aria-current={activeSurface === 'quests' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'quests'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Target className="h-4 w-4 text-primary" aria-hidden="true" />
+            Quests
+          </button>
+
+          {/* 5. Your content */}
+          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Your content</p>
+          <button
+            onClick={() => handleSurfaceChange('memoir')}
+            aria-label="Open biography editor"
+            aria-current={activeSurface === 'memoir' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'memoir'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <BookOpen className="h-4 w-4 text-primary" aria-hidden="true" />
+            My Biography Editor
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('lorebook')}
+            aria-label="Open lore book"
+            aria-current={activeSurface === 'lorebook' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm font-bold transition",
+              activeSurface === 'lorebook'
+                ? 'border-primary bg-primary/20 text-white shadow-lg shadow-primary/20'
+                : 'border-primary/50 bg-primary/5 text-white hover:border-primary hover:bg-primary/15 hover:shadow-md hover:shadow-primary/10'
+            )}
+          >
+            <BookMarked className="h-5 w-5 text-primary" aria-hidden="true" />
+            Lore Book
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('photos')}
+            aria-label="Open photo album"
+            aria-current={activeSurface === 'photos' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'photos'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Images className="h-4 w-4 text-primary" aria-hidden="true" />
+            Photo Album
+          </button>
+
+          {/* 6. Data */}
+          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Data</p>
+          <button
+            onClick={() => handleSurfaceChange('entities')}
+            aria-label="Open entity resolution"
+            aria-current={activeSurface === 'entities' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'entities'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Hash className="h-4 w-4 text-primary" aria-hidden="true" />
+            Entities
+          </button>
+
+          {/* 7. Account & help */}
+          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Account & help</p>
+          <button
+            onClick={() => handleSurfaceChange('subscription')}
+            aria-label="Open subscription management"
+            aria-current={activeSurface === 'subscription' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'subscription'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Crown className="h-4 w-4 text-primary" aria-hidden="true" />
+            Subscription
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('security')}
+            aria-label="Open privacy and security settings"
+            aria-current={activeSurface === 'security' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'security'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
+            Privacy & Security
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('guide')}
+            aria-label="Open user guide"
+            aria-current={activeSurface === 'guide' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'guide'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <HelpCircle className="h-4 w-4 text-primary" aria-hidden="true" />
+            User Guide
+          </button>
+        </div>
       
       {/* Development Routes - Only visible in development */}
       {!config.env.isProduction && (

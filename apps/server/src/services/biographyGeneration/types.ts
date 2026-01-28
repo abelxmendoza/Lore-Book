@@ -4,6 +4,8 @@
  * Core principle: "Structure first. Narrative second. Prose last."
  */
 
+import type { HierarchyGap } from '../../types/timelineInsight';
+
 export type NarrativeAtomType = 
   | 'event' 
   | 'reflection' 
@@ -137,6 +139,7 @@ export interface TimelineChapter {
 
 /**
  * Timeline Hierarchy - Full hierarchy structure
+ * hierarchyGaps on saga/arc come from timeline-insight (empty time spans inside the node).
  */
 export interface TimelineHierarchy {
   sagas: Array<{
@@ -145,12 +148,14 @@ export interface TimelineHierarchy {
     description?: string;
     start_date: string;
     end_date?: string | null;
+    hierarchyGaps?: HierarchyGap[];
     arcs: Array<{
       id: string;
       title: string;
       description?: string;
       start_date: string;
       end_date?: string | null;
+      hierarchyGaps?: HierarchyGap[];
       chapters: TimelineChapter[];
     }>;
   }>;

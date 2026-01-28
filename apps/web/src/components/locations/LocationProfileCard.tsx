@@ -58,17 +58,16 @@ type LocationProfileCardProps = {
 export const LocationProfileCard = ({ location, onClick }: LocationProfileCardProps) => {
   return (
     <Card 
-      className="group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden"
+      className="group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden flex flex-col aspect-square sm:aspect-auto min-h-0 sm:min-h-0"
       onClick={onClick}
     >
-      {/* Header with Map Icon */}
-      <div className="relative h-16 bg-gradient-to-br from-green-500/20 via-emerald-500/20 to-teal-500/20 flex items-center justify-center">
+      {/* Header with Map Icon - compact on mobile */}
+      <div className="relative h-10 sm:h-16 bg-gradient-to-br from-green-500/20 via-emerald-500/20 to-teal-500/20 flex items-center justify-center flex-shrink-0">
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-        <MapPin className="h-10 w-10 text-white/40 group-hover:text-primary/60 transition-colors relative z-10" />
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+        <MapPin className="h-6 w-6 sm:h-10 sm:w-10 text-white/40 group-hover:text-primary/60 transition-colors relative z-10" />
+        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 flex items-center gap-1 hidden sm:flex">
           {location.analytics && (
             <>
-              {/* Importance Badge */}
               <Badge 
                 variant="outline"
                 className={`${location.analytics.importance_score >= 70 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : location.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
@@ -77,7 +76,6 @@ export const LocationProfileCard = ({ location, onClick }: LocationProfileCardPr
                 {location.analytics.importance_score >= 70 ? <Star className="h-2.5 w-2.5" /> : location.analytics.importance_score >= 40 ? <Award className="h-2.5 w-2.5" /> : null}
                 {location.analytics.importance_score}
               </Badge>
-              {/* Trend Indicator */}
               {location.analytics.trend === 'increasing' && (
                 <TrendingUp className="h-3 w-3 text-green-400" title="Increasing visits" />
               )}
@@ -100,40 +98,40 @@ export const LocationProfileCard = ({ location, onClick }: LocationProfileCardPr
         </div>
       </div>
 
-      <CardHeader className="pb-1.5 pt-2.5 px-4">
-        <div className="flex items-start justify-between gap-2">
+      <CardHeader className="pb-0 sm:pb-1.5 pt-1.5 sm:pt-2.5 px-2 sm:px-4 flex-1 min-h-0 flex flex-col justify-center">
+        <div className="flex items-start justify-between gap-1 sm:gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-semibold text-white truncate group-hover:text-primary transition-colors">
+            <h3 className="text-xs sm:text-base font-semibold text-white line-clamp-2 sm:truncate group-hover:text-primary transition-colors break-words" title={location.name}>
               {location.name}
             </h3>
             {location.coordinates && (
-              <p className="text-xs text-white/50 mt-0.5 truncate">
+              <p className="text-xs text-white/50 mt-0.5 truncate hidden sm:block">
                 {location.coordinates.lat.toFixed(4)}, {location.coordinates.lng.toFixed(4)}
               </p>
             )}
           </div>
-          <ChevronRight className="h-3.5 w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0" />
+          <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0 hidden sm:block" />
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-2 pt-0 px-4 pb-3">
-        {/* Visit Count and Analytics */}
-        <div className="flex items-center gap-2 text-xs text-white/70">
-          <Calendar className="h-3.5 w-3.5 text-primary" />
+      {/* Mobile: only name + visits (name is in header above; visits here) */}
+      <CardContent className="space-y-2 pt-0 px-2 sm:px-4 pb-2 sm:pb-3 flex-shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-white/70">
+          <Calendar className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-primary flex-shrink-0" />
           <span>{location.visitCount} {location.visitCount === 1 ? 'visit' : 'visits'}</span>
           {location.analytics && (
             <>
-              <span className="text-white/40">•</span>
-              <span className="text-green-400" title={`Visit frequency: ${location.analytics.visit_frequency}%`}>
+              <span className="text-white/40 hidden sm:inline">•</span>
+              <span className="text-green-400 hidden sm:inline" title={`Visit frequency: ${location.analytics.visit_frequency}%`}>
                 {location.analytics.visit_frequency}% frequent
               </span>
             </>
           )}
         </div>
 
-        {/* Date Range */}
+        {/* Date Range - hidden on mobile */}
         {(location.firstVisited || location.lastVisited) && (
-          <div className="flex flex-wrap gap-2 text-[10px] text-white/50">
+          <div className="flex flex-wrap gap-2 text-[10px] text-white/50 hidden sm:flex">
             {location.firstVisited && (
               <div className="flex items-center gap-1">
                 <Calendar className="h-2.5 w-2.5" />
@@ -149,9 +147,9 @@ export const LocationProfileCard = ({ location, onClick }: LocationProfileCardPr
           </div>
         )}
 
-        {/* Related People */}
+        {/* Related People - hidden on mobile */}
         {location.relatedPeople.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/30">
+          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/30 hidden sm:block">
             <div className="flex items-center gap-1 text-[10px] text-white/50 w-full mb-1">
               <Users className="h-2.5 w-2.5" />
               <span>Visited with:</span>
@@ -173,9 +171,9 @@ export const LocationProfileCard = ({ location, onClick }: LocationProfileCardPr
           </div>
         )}
 
-        {/* Top Tags */}
+        {/* Top Tags - hidden on mobile */}
         {location.tagCounts.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/30">
+          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/30 hidden sm:flex">
             {location.tagCounts.slice(0, 3).map((tagCount) => (
               <Badge
                 key={tagCount.tag}
@@ -194,8 +192,8 @@ export const LocationProfileCard = ({ location, onClick }: LocationProfileCardPr
           </div>
         )}
 
-        {/* Stats Row */}
-        <div className="flex items-center justify-between pt-1.5 border-t border-border/30 text-[10px]">
+        {/* Stats Row - hidden on mobile */}
+        <div className="flex items-center justify-between pt-1.5 border-t border-border/30 text-[10px] hidden sm:flex">
           {location.chapters.length > 0 && (
             <div className="flex items-center gap-1 text-white/50">
               <Sparkles className="h-2.5 w-2.5" />

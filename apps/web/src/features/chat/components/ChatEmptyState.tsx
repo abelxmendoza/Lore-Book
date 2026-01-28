@@ -4,9 +4,12 @@ export const ChatEmptyState = () => {
   return (
     <div className="text-center py-16 sm:py-20 lg:py-24 text-white/60 px-4 sm:px-6 lg:px-8 max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto">
       <Bot className="h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 mx-auto mb-6 sm:mb-8 text-primary/50" />
-      <h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold mb-3 sm:mb-4 text-white">AI Life Guidance Chat</h2>
+      <h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold mb-2 sm:mb-3 text-white">AI Life Guidance Chat</h2>
+      <p className="text-sm sm:text-base text-primary/80 mb-4 sm:mb-5 max-w-xl mx-auto">
+        This is where your story is built. Timelines, characters, and quests fill in as you talk.
+      </p>
       <p className="text-base sm:text-lg lg:text-xl mb-8 sm:mb-10 text-white/70 leading-relaxed sm:leading-loose">
-        Dump everything freely here. I'll reflect back, make connections,<br />
+        Dump everything freely here. I&apos;ll reflect back, make connections,<br />
         and help you understand your story while automatically updating your timeline.
       </p>
       

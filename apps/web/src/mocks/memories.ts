@@ -58,7 +58,7 @@ export const narrativeMemories: NarrativeMemory[] = [
   {
     id: 'mem-ep-concept-3',
     title: 'Called Alex (boyfriend) to share the news',
-    content: 'I called Alex (my boyfriend) right after the concept session to tell him about the breakthrough. He was so excited for me and immediately wanted to hear more.',
+    content: 'I called Alex (my girlfriend) right after the concept session to tell her about the breakthrough. She was so excited for me and immediately wanted to hear more.',
     date: new Date(epConceptTime.getTime() + 30 * 60 * 1000).toISOString(),
     tags: ['ep', 'concept', 'relationship'],
     mood: 'happy',
@@ -354,7 +354,7 @@ export const narrativeMemories: NarrativeMemory[] = [
   {
     id: 'mem-listening-1',
     title: 'Played the EP for Alex for the first time',
-    content: 'Played the EP for Alex (my boyfriend) for the first time. He loved it and was so supportive. His reaction meant everything to me.',
+    content: 'Played the EP for Alex (my girlfriend) for the first time. She loved it and was so supportive. Her reaction meant everything to me.',
     date: twoWeeksAgo.toISOString(),
     tags: ['ep', 'listening', 'relationship'],
     mood: 'happy',

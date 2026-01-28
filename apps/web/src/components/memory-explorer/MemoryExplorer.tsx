@@ -209,7 +209,7 @@ export const dummyMemoryCards: MemoryCard[] = [
   {
     id: 'dummy-3',
     title: 'Writing Session with Sarah at Coffee Shop',
-    content: 'Met Sarah at the coffee shop downtown for our weekly writing session. She\'s working on a tech blog and I\'m working on a short story. It\'s become our thing - we both work on our projects side by side, occasionally sharing ideas. She asked about Alex (my boyfriend) and I told her how well things are going. She\'s been so supportive of my creative transition, even though she\'s staying in tech. That\'s what I love about our friendship - we support each other\'s different paths.',
+    content: 'Met Sarah at the coffee shop downtown for our weekly writing session. She\'s working on a tech blog and I\'m working on a short story. It\'s become our thing - we both work on our projects side by side, occasionally sharing ideas. She asked about Alex (my girlfriend) and I told her how well things are going. She\'s been so supportive of my creative transition, even though she\'s staying in tech. That\'s what I love about our friendship - we support each other\'s different paths.',
     date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     tags: ['coffee-shop', 'writing', 'friendship', 'creative-work'],
     mood: 'calm',
@@ -258,7 +258,7 @@ export const dummyMemoryCards: MemoryCard[] = [
   {
     id: 'dummy-7',
     title: 'Late Night Music Production Session',
-    content: 'Spent the night in my home studio working on a new track. Alex Rivera came over and we worked until 3 AM. The satisfaction of finally getting the mix right was worth the exhaustion. Sometimes the best creative work happens when the world is quiet. Alex (my boyfriend) texted to check in - he\'s so understanding about my creative process. I feel lucky to have people in my life who support my passion.',
+    content: 'Spent the night in my home studio working on a new track. Alex Rivera came over and we worked until 3 AM. The satisfaction of finally getting the mix right was worth the exhaustion. Sometimes the best creative work happens when the world is quiet. Alex (my girlfriend) texted to check in - she\'s so understanding about my creative process. I feel lucky to have people in my life who support my passion.',
     date: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toISOString(),
     tags: ['music-production', 'home-studio', 'late-night', 'collaboration'],
     mood: 'calm',
@@ -295,7 +295,7 @@ export const dummyMemoryCards: MemoryCard[] = [
   {
     id: 'dummy-10',
     title: 'First EP Concept - Album Arc Begins',
-    content: 'Came up with the concept for my first EP today. I was in my home studio late at night, and everything clicked. It\'s going to be about transformation - leaving tech behind, finding my creative voice, the relationships that shaped me. Alex Rivera is going to help me produce it. I called Alex (my boyfriend) to tell him and he was so excited for me. This feels like the beginning of something real.',
+    content: 'Came up with the concept for my first EP today. I was in my home studio late at night, and everything clicked. It\'s going to be about transformation - leaving tech behind, finding my creative voice, the relationships that shaped me. Alex Rivera is going to help me produce it. I called Alex (my girlfriend) to tell her and she was so excited for me. This feels like the beginning of something real.',
     date: new Date(Date.now() - 335 * 24 * 60 * 60 * 1000).toISOString(),
     tags: ['music-production', 'ep', 'album', 'creative-project', 'home-studio'],
     mood: 'excited',
@@ -367,7 +367,7 @@ export const dummyMemoryCards: MemoryCard[] = [
   {
     id: 'dummy-16',
     title: 'First Track Completed - Music Milestone',
-    content: 'Finished my first complete track today! Alex Rivera and I have been working on it in my home studio for weeks. It\'s not perfect, but it\'s mine. I called Marcus to tell him - he was the one who encouraged me to pursue music production. Sarah came over to listen and she was so supportive. Alex (my boyfriend) is proud of me. This feels like a real milestone in my creative journey.',
+    content: 'Finished my first complete track today! Alex Rivera and I have been working on it in my home studio for weeks. It\'s not perfect, but it\'s mine. I called Marcus to tell him - he was the one who encouraged me to pursue music production. Sarah came over to listen and she was so supportive. Alex (my girlfriend) is proud of me. This feels like a real milestone in my creative journey.',
     date: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
     tags: ['music-production', 'milestone', 'achievement', 'home-studio'],
     mood: 'happy',

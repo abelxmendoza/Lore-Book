@@ -10,7 +10,7 @@ describe('RelationshipCard', () => {
     person_id: 'char-001',
     person_type: 'character' as const,
     person_name: 'Alex',
-    relationship_type: 'boyfriend',
+    relationship_type: 'girlfriend',
     status: 'active',
     is_current: true,
     affection_score: 0.92,
@@ -105,6 +105,6 @@ describe('RelationshipCard', () => {
     const onClick = vi.fn();
     render(<RelationshipCard relationship={relationshipWithoutName} onClick={onClick} />);
     // Fallback to relationship type; "Boyfriend" appears in h3 and in type line
-    expect(screen.getAllByText(/boyfriend/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/girlfriend/i).length).toBeGreaterThan(0);
   });
 });

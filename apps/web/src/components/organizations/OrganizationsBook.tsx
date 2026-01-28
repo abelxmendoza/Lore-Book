@@ -5,12 +5,11 @@
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
-import { Building2, Search, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Filter, X, Grid3x3, List, SlidersHorizontal, TrendingUp, Users, MapPin, Calendar, Hash, Sparkles } from 'lucide-react';
+import { Building2, Search, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, MapPin, Calendar, Hash, Sparkles } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
+import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
-import { Badge } from '../ui/badge';
 import { OrganizationProfileCard, type Organization, type OrganizationMember, type OrganizationStory, type OrganizationEvent, type OrganizationLocation } from './OrganizationProfileCard';
 import { OrganizationDetailModal } from './OrganizationDetailModal';
 import { fetchJson } from '../../lib/api';
@@ -20,11 +19,9 @@ import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { format, subDays } from 'date-fns';
 
 const ITEMS_PER_PAGE = 24;
-const ITEMS_PER_PAGE_OPTIONS = [12, 24, 48, 96];
 
 type OrganizationCategory = 'all' | 'friend_groups' | 'companies' | 'sports_teams' | 'clubs' | 'nonprofits' | 'affiliations' | 'recent';
 type SortOption = 'name_asc' | 'name_desc' | 'usage_desc' | 'usage_asc' | 'confidence_desc' | 'confidence_asc' | 'recent' | 'importance_desc' | 'involvement_desc' | 'priority_desc' | 'value_desc';
-type ViewMode = 'grid' | 'list';
 
 // Generate comprehensive mock organizations data with rich metadata
 const generateMockOrganizations = (): Organization[] => {
@@ -196,15 +193,7 @@ export const OrganizationsBook: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<OrganizationCategory>('all');
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(ITEMS_PER_PAGE);
   const [sortBy, setSortBy] = useState<SortOption>('name_asc');
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterTypes, setFilterTypes] = useState<string[]>([]);
-  const [filterConfidenceMin, setFilterConfidenceMin] = useState(0);
-  const [filterConfidenceMax, setFilterConfidenceMax] = useState(1);
-  const [filterUsageMin, setFilterUsageMin] = useState(0);
-  const [filterUsageMax, setFilterUsageMax] = useState(100);
   const isMockDataEnabled = shouldUseMockData();
   const { entries = [], chapters = [] } = useLoreKeeper();
 
@@ -301,11 +290,6 @@ export const OrganizationsBook: React.FC = () => {
     return categories;
   }, [organizations]);
 
-  const uniqueTypes = useMemo(() => {
-    const types = new Set(organizations.map(o => o.type).filter(Boolean));
-    return Array.from(types).sort();
-  }, [organizations]);
-
   const filteredOrganizations = useMemo(() => {
     let filtered = [...organizations];
 
@@ -345,21 +329,6 @@ export const OrganizationsBook: React.FC = () => {
           (org.type && org.type.toLowerCase().includes(term))
       );
     }
-
-    // Advanced filters
-    if (filterTypes.length > 0) {
-      filtered = filtered.filter(org => org.type && filterTypes.includes(org.type));
-    }
-
-    filtered = filtered.filter(org => 
-      org.confidence >= filterConfidenceMin && 
-      org.confidence <= filterConfidenceMax
-    );
-
-    filtered = filtered.filter(org => 
-      org.usage_count >= filterUsageMin && 
-      org.usage_count <= filterUsageMax
-    );
 
     // Sorting
     filtered.sort((a, b) => {
@@ -404,31 +373,15 @@ export const OrganizationsBook: React.FC = () => {
     });
 
     return filtered;
-  }, [organizations, searchTerm, activeCategory, filterTypes, filterConfidenceMin, filterConfidenceMax, filterUsageMin, filterUsageMax, sortBy]);
-
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (filterTypes.length > 0) count++;
-    if (filterConfidenceMin > 0 || filterConfidenceMax < 1) count++;
-    if (filterUsageMin > 0 || filterUsageMax < 100) count++;
-    return count;
-  }, [filterTypes, filterConfidenceMin, filterConfidenceMax, filterUsageMin, filterUsageMax]);
-
-  const clearFilters = () => {
-    setFilterTypes([]);
-    setFilterConfidenceMin(0);
-    setFilterConfidenceMax(1);
-    setFilterUsageMin(0);
-    setFilterUsageMax(100);
-  };
+  }, [organizations, searchTerm, activeCategory, sortBy]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, activeCategory, filterTypes, filterConfidenceMin, filterConfidenceMax, filterUsageMin, filterUsageMax, sortBy]);
+  }, [searchTerm, activeCategory, sortBy]);
 
-  const totalPages = Math.ceil(filteredOrganizations.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
+  const totalPages = Math.ceil(filteredOrganizations.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedOrganizations = filteredOrganizations.slice(startIndex, endIndex);
 
   // Arrow key navigation
@@ -489,26 +442,32 @@ export const OrganizationsBook: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Search and Controls */}
+      {/* Search and Controls — two rows on mobile: row 1 = search, row 2 = sort + refresh */}
       <div className="space-y-4">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
-            <Input
-              type="text"
-              placeholder="Search organizations by name, alias, or type..."
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="flex-1 w-full min-w-0">
+            <SearchWithAutocomplete<Organization>
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40"
+              onChange={setSearchTerm}
+              placeholder="Search organizations by name, alias, or type..."
+              items={organizations}
+              getSearchableText={(o) =>
+                [o.name, ...(o.aliases ?? []), o.type, o.description].filter(Boolean).join(' ')
+              }
+              getDisplayLabel={(o) => o.name}
+              maxSuggestions={8}
+              className="w-full"
+              inputClassName="bg-black/40 border-border/50 text-white placeholder:text-white/40"
+              emptyHint="No matching groups"
             />
           </div>
           
-          <div className="flex items-center gap-2">
-            {/* Sort */}
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {/* Sort — full width on mobile so "Name A-Z" etc. is readable and tappable */}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="h-9 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="h-9 flex-1 sm:flex-none min-w-0 w-full sm:w-auto max-w-full px-3 py-2 bg-black/40 border border-border/50 rounded-lg text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 appearance-none"
             >
               <option value="importance_desc">Most Important</option>
               <option value="involvement_desc">Most Involved</option>
@@ -523,56 +482,6 @@ export const OrganizationsBook: React.FC = () => {
               <option value="recent">Recently Seen</option>
             </select>
 
-            {/* Filter Toggle */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowFilters(!showFilters)}
-              className={`relative ${activeFilterCount > 0 ? 'border-primary/50 bg-primary/10' : ''}`}
-            >
-              <SlidersHorizontal className="h-4 w-4 mr-2" />
-              Filters
-              {activeFilterCount > 0 && (
-                <span className="ml-2 px-1.5 py-0.5 bg-primary text-white text-xs rounded-full">
-                  {activeFilterCount}
-                </span>
-              )}
-            </Button>
-
-            {/* Items Per Page */}
-            <select
-              value={itemsPerPage}
-              onChange={(e) => {
-                setItemsPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="h-9 px-3 bg-black/40 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            >
-              {ITEMS_PER_PAGE_OPTIONS.map(opt => (
-                <option key={opt} value={opt}>{opt} per page</option>
-              ))}
-            </select>
-
-            {/* View Mode */}
-            <div className="flex items-center gap-1 bg-black/40 border border-border/50 rounded-lg p-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className={`h-7 px-2 ${viewMode === 'grid' ? 'bg-primary/20 text-primary' : 'text-white/60'}`}
-              >
-                <Grid3x3 className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewMode('list')}
-                className={`h-7 px-2 ${viewMode === 'list' ? 'bg-primary/20 text-primary' : 'text-white/60'}`}
-              >
-                <List className="h-4 w-4" />
-              </Button>
-            </div>
-
             <Button
               variant="outline"
               size="sm"
@@ -585,9 +494,9 @@ export const OrganizationsBook: React.FC = () => {
           </div>
         </div>
 
-        {/* Category Tabs - Dynamically generated based on available types */}
+        {/* Category Tabs - Dynamically generated based on available types. On mobile, wrap to second row so all are visible without horizontal scroll. */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as OrganizationCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto">
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1 sm:gap-2 justify-start">
             {availableCategories.includes('all') && (
               <TabsTrigger 
                 value="all" 
@@ -663,198 +572,6 @@ export const OrganizationsBook: React.FC = () => {
           </TabsList>
         </Tabs>
 
-        {/* Advanced Filters Panel */}
-        {showFilters && (
-          <Card className="bg-gradient-to-br from-black/80 via-black/60 to-black/80 border-2 border-primary/30 shadow-xl">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/30">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-primary/10 border border-primary/30">
-                    <Filter className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                      Advanced Filters
-                    </h3>
-                    {activeFilterCount > 0 && (
-                      <p className="text-xs text-white/50 mt-0.5">
-                        {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'} active
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {activeFilterCount > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={clearFilters}
-                      className="text-xs border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-500/70"
-                    >
-                      <X className="h-3 w-3 mr-1.5" />
-                      Clear All
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowFilters(false)}
-                    className="h-8 w-8 p-0 hover:bg-white/10"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Active Filter Badges */}
-              {activeFilterCount > 0 && (
-                <div className="mb-6 flex flex-wrap gap-2">
-                  {filterTypes.length > 0 && (
-                    <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary text-xs px-2 py-1">
-                      Types: {filterTypes.length}
-                      <button
-                        onClick={() => setFilterTypes([])}
-                        className="ml-2 hover:text-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {(filterConfidenceMin > 0 || filterConfidenceMax < 1) && (
-                    <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary text-xs px-2 py-1">
-                      Confidence: {Math.round(filterConfidenceMin * 100)}%-{Math.round(filterConfidenceMax * 100)}%
-                      <button
-                        onClick={() => { setFilterConfidenceMin(0); setFilterConfidenceMax(1); }}
-                        className="ml-2 hover:text-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {(filterUsageMin > 0 || filterUsageMax < 100) && (
-                    <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary text-xs px-2 py-1">
-                      Mentions: {filterUsageMin}-{filterUsageMax}
-                      <button
-                        onClick={() => { setFilterUsageMin(0); setFilterUsageMax(100); }}
-                        className="ml-2 hover:text-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Organization Type Filter */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-primary" />
-                    Organization Type
-                  </label>
-                  <div className="max-h-40 overflow-y-auto p-2 bg-black/40 rounded-lg border border-border/30 space-y-2">
-                    {uniqueTypes.length === 0 ? (
-                      <p className="text-xs text-white/40 text-center py-2">No types available</p>
-                    ) : (
-                      uniqueTypes.map(type => (
-                        <label key={type} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-white/5 transition-colors group">
-                          <input
-                            type="checkbox"
-                            checked={filterTypes.includes(type)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFilterTypes([...filterTypes, type]);
-                              } else {
-                                setFilterTypes(filterTypes.filter(t => t !== type));
-                              }
-                            }}
-                            className="w-4 h-4 rounded border-border/50 bg-black/40 text-primary focus:ring-primary/50 focus:ring-2 checked:bg-primary checked:border-primary transition-colors"
-                          />
-                          <span className="text-sm text-white/80 capitalize group-hover:text-white transition-colors">{type}</span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Confidence Range */}
-                <div className="space-y-3">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-primary" />
-                    Confidence Level
-                  </label>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-white/60">Min: {Math.round(filterConfidenceMin * 100)}%</span>
-                        <span className="text-xs text-white/60">Max: {Math.round(filterConfidenceMax * 100)}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={filterConfidenceMin}
-                        onChange={(e) => setFilterConfidenceMin(parseFloat(e.target.value))}
-                        className="w-full h-2 bg-black/60 rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                    </div>
-                    <div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={filterConfidenceMax}
-                        onChange={(e) => setFilterConfidenceMax(parseFloat(e.target.value))}
-                        className="w-full h-2 bg-black/60 rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-white/50">
-                      <span className="flex-1 text-left">Low</span>
-                      <span className="flex-1 text-center">Medium</span>
-                      <span className="flex-1 text-right">High</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Usage Count */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
-                    <Hash className="h-4 w-4 text-primary" />
-                    Mention Count
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <label className="text-xs text-white/60 mb-1 block">Min</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={filterUsageMin}
-                        onChange={(e) => setFilterUsageMin(parseInt(e.target.value) || 0)}
-                        className="w-full h-10 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors"
-                      />
-                    </div>
-                    <span className="text-white/40 pt-6">-</span>
-                    <div className="flex-1">
-                      <label className="text-xs text-white/60 mb-1 block">Max</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={filterUsageMax}
-                        onChange={(e) => setFilterUsageMax(parseInt(e.target.value) || 100)}
-                        className="w-full h-10 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Results Summary */}
         <div className="flex items-center justify-between text-sm text-white/60">
           <div>
@@ -868,8 +585,8 @@ export const OrganizationsBook: React.FC = () => {
 
       {/* Organizations Display */}
       {loading ? (
-        <div className={`grid gap-4 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
-          {Array.from({ length: itemsPerPage }).map((_, i) => (
+        <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
             <Card key={i} className="bg-black/40 border-border/50 h-64 animate-pulse" />
           ))}
         </div>
@@ -883,9 +600,9 @@ export const OrganizationsBook: React.FC = () => {
         <>
           {/* Book Page Container */}
           <div className="relative w-full min-h-[600px] bg-gradient-to-br from-purple-50/5 via-purple-100/5 to-purple-50/5 rounded-lg border-2 border-purple-800/30 shadow-2xl overflow-hidden">
-            <div className="p-8 flex flex-col">
-              {/* Page Header */}
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-purple-800/20">
+            <div className="p-4 sm:p-8 flex flex-col">
+              {/* Page Header — visible on mobile */}
+              <div className="flex items-center justify-between mb-4 sm:mb-6 pb-4 border-b border-purple-800/20">
                 <div className="flex items-center gap-3">
                   <BookOpen className="h-6 w-6 text-purple-600/60" />
                   <div>
@@ -902,12 +619,8 @@ export const OrganizationsBook: React.FC = () => {
                 </div>
               </div>
 
-              {/* Organizations Grid/List */}
-              <div className={`flex-1 grid gap-4 mb-6 ${
-                viewMode === 'grid' 
-                  ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' 
-                  : 'grid-cols-1'
-              }`}>
+              {/* Organizations Grid — two columns on mobile; List stays single column */}
+              <div className="flex-1 grid gap-2 sm:gap-4 mb-4 sm:mb-6 grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedOrganizations.map((org) => (
                   <OrganizationProfileCard
                     key={org.id}

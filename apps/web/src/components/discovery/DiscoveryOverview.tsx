@@ -32,6 +32,7 @@ import { ReactionsResiliencePanel } from './ReactionsResiliencePanel';
 import { LifeArcPanel } from './LifeArcPanel';
 import { CorrectionDashboard } from '../correction-dashboard/CorrectionDashboard';
 import { EntityResolutionDashboard } from '../entity-resolution/EntityResolutionDashboard';
+import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { fetchJson } from '../../lib/api';
 
 // Wrapper component for InsightsPanel that fetches data
@@ -228,6 +229,7 @@ export const DiscoveryOverview = () => {
 
   return (
     <div className="space-y-8">
+      <ChatFirstViewHint />
       {/* Section 1: Insights about you */}
       <section className="space-y-4">
         <div>

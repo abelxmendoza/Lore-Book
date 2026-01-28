@@ -3,7 +3,7 @@ import { Search, Plus, MapPin, RefreshCw, ChevronLeft, ChevronRight, BookOpen, L
 import { LocationProfileCard, type LocationProfile } from './LocationProfileCard';
 import { LocationDetailModal } from './LocationDetailModal';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
+import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { Card, CardContent } from '../ui/card';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
@@ -13,6 +13,7 @@ import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { mockDataService } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
+import { ChatFirstViewHint } from '../ChatFirstViewHint';
 
 // Comprehensive mock location data showcasing all app capabilities
 // Export for use in mock data service
@@ -517,18 +518,28 @@ export const LocationBook = () => {
 
   return (
     <div className="space-y-6">
+      <ChatFirstViewHint />
       {/* Location Search Bar and Controls */}
       <div className="space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
-          <Input
-            type="text"
-            placeholder="Search locations by name, people, tags, or chapters..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40 text-sm sm:text-base"
-          />
-        </div>
+        <SearchWithAutocomplete<LocationProfile>
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="Search locations by name, people, tags, or chapters..."
+          items={locations}
+          getSearchableText={(loc) =>
+            [
+              loc.name,
+              ...(loc.relatedPeople?.map((p) => p.name) ?? []),
+              ...(loc.tagCounts?.map((t) => t.tag) ?? []),
+              ...(loc.chapters?.map((c) => c.title).filter(Boolean) ?? []),
+            ].filter(Boolean).join(' ')
+          }
+          getDisplayLabel={(loc) => loc.name}
+          maxSuggestions={8}
+          className="w-full"
+          inputClassName="bg-black/40 border-border/50 text-white placeholder:text-white/40 text-sm sm:text-base"
+          emptyHint="No matching locations"
+        />
         
         {/* Navigation Tabs */}
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
@@ -576,9 +587,9 @@ export const LocationBook = () => {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <Card key={i} className="bg-black/40 border-border/50 h-48 animate-pulse" />
+            <Card key={i} className="bg-black/40 border-border/50 aspect-square sm:aspect-auto sm:h-48 animate-pulse" />
           ))}
         </div>
       ) : filteredLocations.length === 0 ? (
@@ -611,8 +622,8 @@ export const LocationBook = () => {
                 </div>
               </div>
 
-              {/* Location Grid */}
-              <div className="flex-1 grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {/* Location Grid - 2 cols on mobile for square cards */}
+              <div className="flex-1 grid grid-cols-2 sm:grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedLocations.map((location, index) => {
                   try {
                     return (

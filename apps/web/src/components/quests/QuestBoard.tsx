@@ -5,10 +5,11 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { QuestDetailPanel } from './QuestDetailPanel';
+import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { useQuestBoard } from '../../hooks/useQuests';
 import type { Quest, QuestStatus, QuestType } from '../../types/quest';
 
-// Prevent body scroll when mobile drawer is open
+// Prevent body scroll only when mobile detail overlay is open (sm:hidden fixed modal)
 const useBodyScrollLock = (isLocked: boolean) => {
   useEffect(() => {
     if (isLocked) {
@@ -21,13 +22,27 @@ const useBodyScrollLock = (isLocked: boolean) => {
   }, [isLocked]);
 };
 
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(
+    () => (typeof window !== 'undefined' ? window.innerWidth < 640 : false)
+  );
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 639px)');
+    const onChange = () => setIsMobile(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return isMobile;
+};
+
 export const QuestBoard = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
-  
-  // Lock body scroll when mobile drawer is open
-  useBodyScrollLock(selectedQuestId !== null);
+  const isMobile = useIsMobile();
+
+  // Lock body scroll only when mobile detail overlay is open (desktop detail lives in right panel, no lock)
+  useBodyScrollLock(selectedQuestId !== null && isMobile);
   
   // Filter states
   const [statusFilter, setStatusFilter] = useState<QuestStatus | 'all'>('all');
@@ -263,7 +278,10 @@ export const QuestBoard = () => {
   };
 
   return (
-    <div className="h-full flex flex-col min-h-0 w-full">
+    <div className="flex-1 min-h-0 flex flex-col w-full">
+      <div className="flex-shrink-0 px-2 sm:px-4 pt-2 sm:pt-3">
+        <ChatFirstViewHint />
+      </div>
       {/* Cyberpunk Header */}
       <div className="relative overflow-hidden neon-surface border-b border-primary/30 p-3 sm:p-4 sm:p-6 flex-shrink-0">
         <div className="relative z-10">

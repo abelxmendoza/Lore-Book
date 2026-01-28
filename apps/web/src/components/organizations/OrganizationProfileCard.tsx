@@ -115,19 +115,16 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
 
   return (
     <Card 
-      className="group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden"
+      className="group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden flex flex-col aspect-square sm:aspect-auto min-h-0 sm:min-h-0"
       onClick={onClick}
     >
-      {/* Header with Building Icon */}
-      <div className="relative h-16 bg-gradient-to-br from-purple-500/20 via-purple-600/20 to-purple-500/20 flex items-center justify-center">
+      {/* Header with Building Icon - compact on mobile, matches location card style */}
+      <div className="relative h-10 sm:h-16 bg-gradient-to-br from-purple-500/20 via-purple-600/20 to-purple-500/20 flex items-center justify-center flex-shrink-0">
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-        <div className="relative z-10">
-          <Building2 className="h-8 w-8 text-purple-400" />
-        </div>
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+        <Building2 className="h-6 w-6 sm:h-10 sm:w-10 text-white/40 group-hover:text-primary/60 transition-colors relative z-10" />
+        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 flex items-center gap-1 hidden sm:flex">
           {organization.analytics && (
             <>
-              {/* Importance Badge */}
               <Badge 
                 variant="outline"
                 className={`${organization.analytics.importance_score >= 70 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : organization.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
@@ -136,7 +133,6 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
                 {organization.analytics.importance_score >= 70 ? <Star className="h-2.5 w-2.5" /> : organization.analytics.importance_score >= 40 ? <Award className="h-2.5 w-2.5" /> : null}
                 {organization.analytics.importance_score}
               </Badge>
-              {/* Trend Indicator */}
               {organization.analytics.trend === 'increasing' && (
                 <TrendingUp className="h-3 w-3 text-green-400" title="Increasing activity" />
               )}
@@ -158,29 +154,56 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
         </div>
       </div>
 
-      <CardHeader className="pb-1.5 pt-2.5 px-4">
-        <div className="flex items-start justify-between gap-2">
+      <CardHeader className="pb-0 sm:pb-1.5 pt-1.5 sm:pt-2.5 px-2 sm:px-4 flex-1 min-h-0 flex flex-col justify-center">
+        <div className="flex items-start justify-between gap-1 sm:gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="text-base font-semibold text-white truncate group-hover:text-primary transition-colors line-clamp-2">
+            <h3 className="text-xs sm:text-base font-semibold text-white line-clamp-2 sm:truncate group-hover:text-primary transition-colors break-words" title={organization.name}>
               {organization.name}
             </h3>
             {organization.type && (
-              <p className="text-xs text-white/50 mt-0.5 truncate capitalize">
-                {organization.type}
+              <p className="text-[10px] sm:text-xs text-white/50 mt-0.5 truncate capitalize hidden sm:block">
+                {organization.type.replace(/_/g, ' ')}
               </p>
             )}
           </div>
-          <ChevronRight className="h-3.5 w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0" />
+          <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0 hidden sm:block" />
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-2 pt-0 px-4 pb-3">
+      {/* Mobile: two rows — row 1 = members, row 2 = type • mentions. Desktop: full metadata. */}
+      <CardContent className="space-y-2 pt-0 px-2 sm:px-4 pb-2 sm:pb-3 flex-shrink-0">
+        {/* Row 1 — members (always) */}
+        <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-white/70">
+          <Users className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-primary flex-shrink-0" />
+          <span>{organization.member_count ?? 0} {(organization.member_count ?? 0) === 1 ? 'member' : 'members'}</span>
+          <span className="text-white/40 hidden sm:inline">•</span>
+          <span className="hidden sm:inline">
+            <Hash className="h-2.5 w-2.5 inline mr-0.5 align-middle" />
+            {organization.usage_count} {organization.usage_count === 1 ? 'mention' : 'mentions'}
+          </span>
+        </div>
+
+        {/* Row 2 — type • mentions (mobile only, so all content shows in two rows) */}
+        <div className="flex items-center gap-1.5 text-[10px] text-white/50 sm:hidden">
+          {organization.type && (
+            <>
+              <span className="capitalize truncate">{String(organization.type).replace(/_/g, ' ')}</span>
+              <span className="text-white/40">•</span>
+            </>
+          )}
+          <span className="flex items-center gap-0.5">
+            <Hash className="h-2.5 w-2.5 flex-shrink-0" />
+            {organization.usage_count} {organization.usage_count === 1 ? 'mention' : 'mentions'}
+          </span>
+        </div>
+
+        {/* Description - hidden on mobile */}
         {organization.description && (
-          <p className="text-xs text-white/70 line-clamp-2 leading-snug">{organization.description}</p>
+          <p className="text-xs text-white/70 line-clamp-2 leading-snug hidden sm:block">{organization.description}</p>
         )}
         
-        {/* Metadata Row */}
-        <div className="flex flex-wrap gap-2 text-[10px] text-white/50">
+        {/* Metadata Row - hidden on mobile */}
+        <div className="flex flex-wrap gap-2 text-[10px] text-white/50 hidden sm:flex">
           {organization.analytics && (
             <>
               <div className="flex items-center gap-1" title={`Your ranking: #${organization.analytics.user_ranking}`}>
@@ -197,12 +220,6 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
             <Calendar className="h-2.5 w-2.5" />
             <span>Last seen: {formatDate(organization.last_seen)}</span>
           </div>
-          {organization.member_count !== undefined && organization.member_count > 0 && (
-            <div className="flex items-center gap-1">
-              <Users className="h-2.5 w-2.5" />
-              <span>{organization.member_count} {organization.member_count === 1 ? 'member' : 'members'}</span>
-            </div>
-          )}
           {organization.stories && organization.stories.length > 0 && (
             <div className="flex items-center gap-1">
               <BookOpen className="h-2.5 w-2.5" />
@@ -221,15 +238,11 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
               <span className="truncate max-w-[100px]">{organization.location}</span>
             </div>
           )}
-          <div className="flex items-center gap-1">
-            <Hash className="h-2.5 w-2.5" />
-            <span>{organization.usage_count} {organization.usage_count === 1 ? 'mention' : 'mentions'}</span>
-          </div>
         </div>
 
-        {/* Aliases/Tags */}
+        {/* Aliases/Tags - hidden on mobile */}
         {organization.aliases && organization.aliases.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/30">
+          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/30 hidden sm:flex">
             {organization.aliases.slice(0, 3).map((alias) => (
               <Badge
                 key={alias}
