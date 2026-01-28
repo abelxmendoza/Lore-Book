@@ -1,8 +1,10 @@
 /**
  * Analytics API Routes
- * Provides endpoints for all analytics modules
+ * Provides endpoints for all analytics modules.
+ * All modules run through the execution orchestrator (Blueprint V2); results remain backward-compatible.
  */
 
+import { Response } from 'express';
 import { Router } from 'express';
 
 import { logger } from '../logger';
@@ -20,8 +22,20 @@ import {
   lifeMapModule,
   searchEngineModule,
 } from '../services/analytics';
+import type { AnalyticsPayload, AnalyticsResult } from '../services/analytics/types';
+import { buildAnalyticsContext, runLegacyAnalytics } from '../services/analytics/orchestrator';
 
 const router = Router();
+
+/** Send 200 + ANALYTICS_DEGRADED when a module failed; keeps the request resilient. */
+function sendDegraded(
+  res: Response,
+  result: AnalyticsResult<AnalyticsPayload>,
+  logContext: { userId: string; message: string }
+): Response {
+  logger.error({ userId: logContext.userId, diagnostics: result.diagnostics }, logContext.message);
+  return res.status(200).json({ error: 'ANALYTICS_DEGRADED', diagnostics: result.diagnostics });
+}
 
 // All routes require authentication
 router.use(requireAuth);
@@ -32,15 +46,13 @@ router.use(requireAuth);
  * Query params: timeRange (30, 90, 180, all)
  */
 router.get('/identity', async (req: AuthenticatedRequest, res) => {
-  try {
-    const timeRange = req.query.timeRange as string || '30';
-    const payload = await identityPulseModule.runEnhanced(req.user!.id, timeRange);
-    // Return the enhanced payload directly (it's already in the right format)
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error generating identity pulse');
-    res.status(500).json({ error: 'Failed to generate identity pulse analytics' });
-  }
+  const timeRange = (req.query.timeRange as string) || '30';
+  const context = await buildAnalyticsContext({ userId: req.user!.id, timeRange });
+  const result = await runLegacyAnalytics('identity', context, (ctx) =>
+    identityPulseModule.runEnhanced(ctx.userId, ctx.timeRange ?? '30')
+  );
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Identity pulse failed' });
+  res.json(result.value);
 });
 
 /**
@@ -48,13 +60,12 @@ router.get('/identity', async (req: AuthenticatedRequest, res) => {
  * Get relationship analytics
  */
 router.get('/relationships', async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = await relationshipAnalyticsModule.run(req.user!.id);
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error generating relationship analytics');
-    res.status(500).json({ error: 'Failed to generate relationship analytics' });
-  }
+  const context = await buildAnalyticsContext({ userId: req.user!.id });
+  const result = await runLegacyAnalytics('relationships', context, (ctx) =>
+    relationshipAnalyticsModule.run(ctx.userId)
+  );
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Relationship analytics failed' });
+  res.json(result.value);
 });
 
 /**
@@ -62,13 +73,10 @@ router.get('/relationships', async (req: AuthenticatedRequest, res) => {
  * Get saga/arc analytics
  */
 router.get('/saga', async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = await sagaEngineModule.run(req.user!.id);
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error generating saga analytics');
-    res.status(500).json({ error: 'Failed to generate saga analytics' });
-  }
+  const context = await buildAnalyticsContext({ userId: req.user!.id });
+  const result = await runLegacyAnalytics('saga', context, (ctx) => sagaEngineModule.run(ctx.userId));
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Saga analytics failed' });
+  res.json(result.value);
 });
 
 /**
@@ -76,14 +84,12 @@ router.get('/saga', async (req: AuthenticatedRequest, res) => {
  * Get character analytics
  */
 router.get('/characters', async (req: AuthenticatedRequest, res) => {
-  try {
-    const userId = req.user!.id;
-    const payload = await characterAnalyticsModule.run(userId);
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error generating character analytics');
-    res.status(500).json({ error: 'Failed to generate character analytics' });
-  }
+  const context = await buildAnalyticsContext({ userId: req.user!.id });
+  const result = await runLegacyAnalytics('characters', context, (ctx) =>
+    characterAnalyticsModule.run(ctx.userId)
+  );
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Character analytics failed' });
+  res.json(result.value);
 });
 
 /**
@@ -91,13 +97,12 @@ router.get('/characters', async (req: AuthenticatedRequest, res) => {
  * Get memory fabric graph analytics
  */
 router.get('/memory-fabric', async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = await memoryFabricModule.run(req.user!.id);
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error generating memory fabric analytics');
-    res.status(500).json({ error: 'Failed to generate memory fabric analytics' });
-  }
+  const context = await buildAnalyticsContext({ userId: req.user!.id });
+  const result = await runLegacyAnalytics('memory-fabric', context, (ctx) =>
+    memoryFabricModule.run(ctx.userId)
+  );
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Memory fabric analytics failed' });
+  res.json(result.value);
 });
 
 /**
@@ -105,13 +110,12 @@ router.get('/memory-fabric', async (req: AuthenticatedRequest, res) => {
  * Get insight analytics
  */
 router.get('/insights', async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = await insightEngineModule.run(req.user!.id);
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error generating insight analytics');
-    res.status(500).json({ error: 'Failed to generate insight analytics' });
-  }
+  const context = await buildAnalyticsContext({ userId: req.user!.id });
+  const result = await runLegacyAnalytics('insights', context, (ctx) =>
+    insightEngineModule.run(ctx.userId)
+  );
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Insight analytics failed' });
+  res.json(result.value);
 });
 
 /**
@@ -119,13 +123,12 @@ router.get('/insights', async (req: AuthenticatedRequest, res) => {
  * Get prediction analytics
  */
 router.get('/predictions', async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = await predictionEngineModule.run(req.user!.id);
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error generating prediction analytics');
-    res.status(500).json({ error: 'Failed to generate prediction analytics' });
-  }
+  const context = await buildAnalyticsContext({ userId: req.user!.id });
+  const result = await runLegacyAnalytics('predictions', context, (ctx) =>
+    predictionEngineModule.run(ctx.userId)
+  );
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Prediction analytics failed' });
+  res.json(result.value);
 });
 
 /**
@@ -133,13 +136,12 @@ router.get('/predictions', async (req: AuthenticatedRequest, res) => {
  * Get shadow analytics
  */
 router.get('/shadow', async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = await shadowEngineModule.run(req.user!.id);
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error generating shadow analytics');
-    res.status(500).json({ error: 'Failed to generate shadow analytics' });
-  }
+  const context = await buildAnalyticsContext({ userId: req.user!.id });
+  const result = await runLegacyAnalytics('shadow', context, (ctx) =>
+    shadowEngineModule.run(ctx.userId)
+  );
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Shadow analytics failed' });
+  res.json(result.value);
 });
 
 /**
@@ -147,13 +149,10 @@ router.get('/shadow', async (req: AuthenticatedRequest, res) => {
  * Get XP gamification analytics
  */
 router.get('/xp', async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = await xpEngineModule.run(req.user!.id);
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error generating XP analytics');
-    res.status(500).json({ error: 'Failed to generate XP analytics' });
-  }
+  const context = await buildAnalyticsContext({ userId: req.user!.id });
+  const result = await runLegacyAnalytics('xp', context, (ctx) => xpEngineModule.run(ctx.userId));
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'XP analytics failed' });
+  res.json(result.value);
 });
 
 /**
@@ -161,13 +160,10 @@ router.get('/xp', async (req: AuthenticatedRequest, res) => {
  * Get life map analytics
  */
 router.get('/map', async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = await lifeMapModule.run(req.user!.id);
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error generating life map analytics');
-    res.status(500).json({ error: 'Failed to generate life map analytics' });
-  }
+  const context = await buildAnalyticsContext({ userId: req.user!.id });
+  const result = await runLegacyAnalytics('map', context, (ctx) => lifeMapModule.run(ctx.userId));
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Life map analytics failed' });
+  res.json(result.value);
 });
 
 /**
@@ -175,14 +171,16 @@ router.get('/map', async (req: AuthenticatedRequest, res) => {
  * Search memories with combined keyword/semantic search
  */
 router.post('/search', async (req: AuthenticatedRequest, res) => {
-  try {
-    const { query, filters } = req.body;
-    const payload = await searchEngineModule.run(req.user!.id, { query, filters });
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error performing search');
-    res.status(500).json({ error: 'Failed to perform search' });
-  }
+  const { query, filters } = req.body ?? {};
+  const context = await buildAnalyticsContext({
+    userId: req.user!.id,
+    searchOptions: { query, filters },
+  });
+  const result = await runLegacyAnalytics('search', context, (ctx) =>
+    searchEngineModule.run(ctx.userId, ctx.searchOptions)
+  );
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Search failed' });
+  res.json(result.value);
 });
 
 /**
@@ -190,17 +188,16 @@ router.post('/search', async (req: AuthenticatedRequest, res) => {
  * Search memories with query parameter
  */
 router.get('/search', async (req: AuthenticatedRequest, res) => {
-  try {
-    const { q: query, ...filters } = req.query;
-    const payload = await searchEngineModule.run(req.user!.id, { 
-      query: query as string,
-      filters: filters as any
-    });
-    res.json(payload);
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Error performing search');
-    res.status(500).json({ error: 'Failed to perform search' });
-  }
+  const { q: query, ...rest } = req.query;
+  const context = await buildAnalyticsContext({
+    userId: req.user!.id,
+    searchOptions: { query: query as string, filters: rest as Record<string, unknown> },
+  });
+  const result = await runLegacyAnalytics('search', context, (ctx) =>
+    searchEngineModule.run(ctx.userId, ctx.searchOptions)
+  );
+  if (result.value === null) return sendDegraded(res, result, { userId: req.user!.id, message: 'Search failed' });
+  res.json(result.value);
 });
 
 /**

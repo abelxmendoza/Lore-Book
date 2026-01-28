@@ -20,6 +20,21 @@ vi.mock('../../src/services/analytics', () => ({
   searchEngineModule: { run: vi.fn() },
 }));
 
+vi.mock('../../src/services/analytics/orchestrator', () => ({
+  buildAnalyticsContext: vi.fn().mockResolvedValue({
+    userId: 'user-123',
+    dataVersion: 'test',
+    modelVersion: 'v1',
+    timeWindow: { start: 0, end: Date.now() },
+    seed: 0,
+    timeRange: '30',
+  }),
+  runLegacyAnalytics: vi.fn().mockImplementation(async (name: string, ctx: { userId: string; timeRange?: string }, run: (c: typeof ctx) => Promise<unknown>) => {
+    const value = await run(ctx);
+    return { value, confidence: null, sampleSize: null, diagnostics: { analyticsType: name, executionTimeMs: 0, warnings: [], invariantsPassed: true } };
+  }),
+}));
+
 const app = express();
 app.use(express.json());
 app.use('/api/analytics', analyticsRouter);

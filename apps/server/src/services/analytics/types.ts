@@ -114,3 +114,56 @@ export interface AnalyticsCacheEntry {
   expires_at: string | null;
 }
 
+// --- Execution Blueprint (V2) types ---
+
+export type DataVersion = string;
+export type ModelVersion = string;
+export type Seed = number;
+export type Timestamp = number;
+
+export interface TimeWindow {
+  start: Timestamp;
+  end: Timestamp;
+}
+
+export interface AnalyticsDiagnostics {
+  analyticsType: string;
+  executionTimeMs: number;
+  warnings: string[];
+  invariantsPassed: boolean;
+  seed?: Seed;
+}
+
+export interface AnalyticsResult<T> {
+  value: T | null;
+  confidence: number | null;
+  sampleSize: number | null;
+  diagnostics: AnalyticsDiagnostics;
+}
+
+export interface AnalyticsContext {
+  userId: string;
+  dataVersion: DataVersion;
+  modelVersion: ModelVersion;
+  timeWindow: TimeWindow;
+  seed: Seed;
+  /** Optional; used by identity pulse etc. */
+  timeRange?: string;
+  /** Optional; used by search */
+  searchOptions?: { query?: string; filters?: Record<string, unknown> };
+}
+
+export interface OrchestratorRequest {
+  userId: string;
+  timeWindow?: TimeWindow;
+  timeRange?: string;
+  searchOptions?: { query?: string; filters?: Record<string, unknown> };
+}
+
+/** Legacy module descriptor: run(context) returns payload. Used by orchestrator to wrap existing modules. */
+export interface LegacyAnalyticsModuleDescriptor {
+  name: string;
+  isLegacy: true;
+  run(context: AnalyticsContext): Promise<AnalyticsPayload>;
+}
+

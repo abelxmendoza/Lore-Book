@@ -19,3 +19,13 @@ export { rpgAnalyticsModule } from './rpgAnalytics';
 
 export type { AnalyticsPayload, AnalyticsModuleType } from './types';
 
+export {
+  buildAnalyticsContext,
+  buildCacheKey,
+  createLegacyDescriptor,
+  executeModuleSafely,
+  runLegacyAnalytics,
+  runAnalyticsOrchestrator,
+} from './orchestrator';
+export type { OrchestratorRequest, AnalyticsContext, AnalyticsResult } from './types';
+
