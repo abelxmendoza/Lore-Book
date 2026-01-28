@@ -426,79 +426,100 @@ Use filter badges to refine searches:
 
 ## Discovery Hub - Deep Intelligence
 
-The Discovery Hub provides analytical panels for exploring different aspects of your life intelligence.
+The Discovery Hub provides **Analytical Panels** for exploring different aspects of your life intelligence. Each panel answers a specific kind of question about your data. The Hub is split into **"Insights about you"** (main panels for life and patterns) and **"Data & control"** (memory, corrections, and entities for power users). Toggle panels to explore.
 
-### Available Panels
+### Insights about you
 
-Toggle panels to explore:
+Panels that answer questions about your life and patterns. These appear first in the Discovery Hub.
+
+#### Soul Profile
+- Who am I underneath the day-to-day noise?
+- Your essence, hopes, dreams, fears, strengths, and skills
+- A stable view of "who you are" beyond the latest entries
 
 #### Identity Pulse
-- Your persona signature
-- Emotional trajectory
-- Identity drift tracking
-- Personality evolution
+- How am I changing right now?
+- Short-term identity shifts, drift, and emotional trajectory
+- Persona signature and personality evolution
 
 #### Relationships
-- Relationship analytics
-- Tie strength analysis
-- Sentiment trends
-- Attachment patterns
-- Conflict cycles
-
-#### Characters
-- Character mention patterns
-- Sentiment trends
-- Interaction scores
-- Who matters most and why
-
-#### Sagas
-- Major life arcs
-- Story beats
-- Narrative structure
-- Themes
-
-#### Memory Fabric
-- Embedding-based world model
-- Clusters and topic graph
-- Connections between memories
-- Semantic relationships
+- Who shapes my emotional landscape?
+- Relationship network, sentiment patterns, and attachment dynamics
+- Tie strength, conflict cycles, and who matters most
 
 #### Insights
-- Daily AI insights
-- Patterns and correlations
-- Behavioral loops
-- Deep self-understanding
+- What patterns do I repeat?
+- Correlations, loops, and recurring patterns
+- Behavioral loops and deep self-understanding
 
-#### Predictions
-- Mood trends
-- Goals at risk
-- Relationship forecasts
-- Trajectory predictions
+#### Insights & Predictions
+- Observations and probabilistic projections
+- These are not facts and never write to memory
+- Mood trends, goals at risk, trajectory forecasts—all labeled as inferences
 
-#### Shadow Module
-- Suppressed topics
-- Fears and negative loops
-- Shadow archetypes
-- What you're avoiding
+#### Goals & Values
+- Your declared values and goals anchor the system
+- Alignment is observational; drift is surfaced neutrally
+- See how your stated goals and values relate to your behavior over time
 
-#### XP Dashboard
-- Gamified personal growth
-- Levels and streaks
-- Life XP tracking
-- Achievement system
+#### Decision Memory
+- Snapshots of decisions you've made
+- Preserves context, options, and reasoning from that moment
+- Look back at why you chose what you chose
 
-#### Life Map
-- Global narrative graph
-- Turning points
-- Eras and momentum
-- Life trajectory visualization
+#### Recent Moments
+- A narrative, human-understandable view of what's been going on lately
+- Uses events as the atomic units
+- "What's been happening in my life?" in plain language
+
+#### Shadow
+- What am I suppressing?
+- Suppressed topics, negative loops, and inner archetypes
+- What you're avoiding, surfaced for reflection
+
+#### Skills & Progress
+- How am I progressing in my skills?
+- Life XP, levels, streaks, and skill development
+- Gamified view of growth and achievements
+
+#### Reactions & Resilience
+- Patterns in how you respond to experiences and beliefs
+- Recovery, resilience, and therapeutic reflection
+- How you bounce back and what triggers you
+
+### Data & control
+
+These panels are for transparency and control over memory, corrections, and entities—not daily insight. For power users.
+
+#### Memory Management
+- Time-aware, evidence-based memories with confidence scores
+- View, edit, and manage all memories
+
+#### Memory Review Queue
+- Review and approve or reject what memories are being proposed
+- The trust choke point for all memory ingestion
+
+#### Continuity Intelligence
+- Are there contradictions in my story?
+- Detects conflicts, emotional arcs, identity drift, and repeating loops
+
+#### Correction & Pruning
+- View and manage corrections, deprecated knowledge, and contradictions
+- Everything is transparent, reversible, and traceable
+- No silent overwrites—you see what changed and why
+
+#### Entity Resolution
+- Explicit control over people, places, orgs, and concepts the system has inferred
+- No silent merges or splits
+- Resolve duplicates and correct misattributions
 
 ### Panel Features
 
 - **Clean Interface**: Organized, easy-to-navigate panels
-- **Visual Feedback**: Charts, graphs, and visualizations
-- **Toggle System**: Show/hide panels as needed
-- **Deep Intelligence**: Comprehensive analysis of your life patterns
+- **Visual Feedback**: Charts, graphs, and visualizations where applicable
+- **Toggle System**: Open/close panels as needed
+- **Deep Intelligence**: Each panel answers a distinct “human question” about your life data
+- **Two sections**: Insights about you appear first; Data & control panels are listed in a separate section for power users
 
 ---
 

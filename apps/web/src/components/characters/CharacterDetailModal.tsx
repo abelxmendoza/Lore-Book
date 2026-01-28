@@ -1604,22 +1604,29 @@ User's message: ${message}`;
             )}
             {!loadingDetails && activeTab === 'info' && (
               <div className="space-y-8">
-                {/* Read-Only Notice */}
-                <Card className="bg-gradient-to-r from-blue-500/20 via-blue-600/15 to-blue-500/20 border-2 border-blue-500/40 shadow-lg shadow-blue-500/10">
-                  <CardContent className="p-5">
-                    <div className="flex items-start gap-4">
-                      <div className="p-2 rounded-lg bg-blue-500/20 border border-blue-500/40">
-                        <Info className="h-6 w-6 text-blue-300 flex-shrink-0" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-base font-bold text-blue-200 mb-2">Character Information is Read-Only</p>
-                        <p className="text-sm text-blue-100/90 leading-relaxed">
-                          Character information is automatically updated through conversations. To update this character's information, use the Chat tab to tell the system about them.
-                        </p>
-                      </div>
+                {/* About the Character - First so users see the narrative first */}
+                <div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 rounded-lg bg-primary/20 border border-primary/40">
+                      <FileText className="h-6 w-6 text-primary" />
                     </div>
-                  </CardContent>
-                </Card>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white">About the Character</h2>
+                      <p className="text-sm text-white/60 mt-0.5">What you&apos;ve said about them</p>
+                    </div>
+                  </div>
+                  <Card className="bg-gradient-to-br from-black/80 via-black/60 to-black/80 border-2 border-primary/30 shadow-xl">
+                    <CardContent className="p-6">
+                      <div className="text-white text-lg leading-relaxed min-h-[120px]">
+                        {editedCharacter.summary ? (
+                          <p className="whitespace-pre-wrap">{editedCharacter.summary}</p>
+                        ) : (
+                          <span className="text-white/50 italic text-base">No summary available yet. Information will appear here as you talk about this character.</span>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
 
                 {/* Relationship Section */}
                 {relationship && (
@@ -1704,6 +1711,43 @@ User's message: ${message}`;
                           </div>
                         </div>
 
+                        {/* Interest Levels */}
+                        {(() => {
+                          const compat = relationship.compatibility_score ?? 0.5;
+                          const health = relationship.relationship_health ?? 0.5;
+                          const intensity = relationship.emotional_intensity ?? 0.5;
+                          let theirInterest = (compat * 0.4) + (health * 0.4) + (intensity * 0.2);
+                          if (!relationship.is_current || relationship.status === 'ended') theirInterest *= 0.7;
+                          theirInterest = Math.min(1.0, Math.max(0.0, theirInterest));
+                          const getInterestColor = (score: number) => {
+                            if (score >= 0.7) return 'text-green-400';
+                            if (score >= 0.4) return 'text-yellow-400';
+                            return 'text-red-400';
+                          };
+                          return (
+                            <div className="grid grid-cols-2 gap-4 mt-4">
+                              <div className="bg-black/40 rounded-lg p-4 border border-pink-500/20">
+                                <p className="text-xs text-white/60 mb-1 flex items-center gap-1">
+                                  <Heart className="w-3 h-3" />
+                                  Your Interest
+                                </p>
+                                <p className={`text-lg font-semibold ${getInterestColor(relationship.affection_score)}`}>
+                                  {Math.round(relationship.affection_score * 100)}%
+                                </p>
+                              </div>
+                              <div className="bg-black/40 rounded-lg p-4 border border-pink-500/20">
+                                <p className="text-xs text-white/60 mb-1 flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  Their Interest
+                                </p>
+                                <p className={`text-lg font-semibold ${getInterestColor(theirInterest)}`}>
+                                  {Math.round(theirInterest * 100)}%
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {relationship.start_date && (
                           <div className="text-sm text-white/70">
                             <span className="text-white/50">Started: </span>
@@ -1750,28 +1794,24 @@ User's message: ${message}`;
                   </Card>
                 )}
 
-                {/* Summary Section - Prominent */}
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 rounded-lg bg-primary/20 border border-primary/40">
-                      <FileText className="h-6 w-6 text-primary" />
-                    </div>
-                    <h2 className="text-2xl font-bold text-white">Summary</h2>
-                  </div>
-                  <Card className="bg-gradient-to-br from-black/80 via-black/60 to-black/80 border-2 border-primary/30 shadow-xl">
-                    <CardContent className="p-6">
-                      <div className="text-white text-lg leading-relaxed min-h-[120px]">
-                        {editedCharacter.summary ? (
-                          <p className="whitespace-pre-wrap">{editedCharacter.summary}</p>
-                        ) : (
-                          <span className="text-white/50 italic text-base">No summary available yet. Information will appear here as you talk about this character.</span>
-                        )}
+                {/* Read-Only Notice - After About and Relationship so narrative is first */}
+                <Card className="bg-gradient-to-r from-blue-500/20 via-blue-600/15 to-blue-500/20 border-2 border-blue-500/40 shadow-lg shadow-blue-500/10">
+                  <CardContent className="p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 rounded-lg bg-blue-500/20 border border-blue-500/40">
+                        <Info className="h-6 w-6 text-blue-300 flex-shrink-0" />
                       </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                      <div className="flex-1">
+                        <p className="text-base font-bold text-blue-200 mb-2">Character Information is Read-Only</p>
+                        <p className="text-sm text-blue-100/90 leading-relaxed">
+                          Character information is automatically updated through conversations. To update this character&apos;s information, use the Chat tab to tell the system about them.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-                {/* Character Attributes Section - Moved up for prominence */}
+                {/* Detected Attributes - Employment, lifestyle, etc. */}
                 <Card className="bg-gradient-to-br from-blue-500/20 via-blue-600/15 to-blue-500/20 border-2 border-blue-500/40 shadow-lg">
                   <CardContent className="p-6">
                     <div className="flex items-center gap-3 mb-6">

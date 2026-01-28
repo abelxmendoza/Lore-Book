@@ -121,31 +121,6 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
   const [attributes, setAttributes] = useState<CharacterAttribute[]>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
 
-  // Calculate interest levels
-  const calculateTheirInterest = (rel: RomanticRelationship): number => {
-    const compatibility = rel.compatibility_score || 0.5;
-    const health = rel.relationship_health || 0.5;
-    const intensity = rel.emotional_intensity || 0.5;
-    
-    let theirInterest = (compatibility * 0.4) + (health * 0.4) + (intensity * 0.2);
-    
-    // Reduce for past relationships
-    if (!rel.is_current || rel.status === 'ended') {
-      theirInterest *= 0.7;
-    }
-    
-    return Math.min(1.0, Math.max(0.0, theirInterest));
-  };
-
-  const getInterestColor = (score: number) => {
-    if (score >= 0.7) return 'text-green-400 bg-green-500/20 border-green-500/30';
-    if (score >= 0.4) return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/30';
-    return 'text-red-400 bg-red-500/20 border-red-500/30';
-  };
-
-  const yourInterest = relationship ? relationship.affection_score : null;
-  const theirInterest = relationship ? calculateTheirInterest(relationship) : null;
-
   // Load attributes for this character
   useEffect(() => {
     const loadAttributes = async () => {
@@ -378,10 +353,10 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
                 </Badge>
               )}
             </div>
-            {/* Show role prominently on mobile */}
+            {/* Show role prominently on mobile; keep short on card, full text in modal */}
             {character.role && (
-              <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 break-words">
-                {character.role}
+              <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 line-clamp-1 truncate" title={character.role}>
+                {character.role.length > 60 ? `${character.role.slice(0, 60).trim()}…` : character.role}
               </p>
             )}
             {character.first_name && character.last_name && character.name !== displayName && (
@@ -401,7 +376,9 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
       
       <CardContent className="space-y-1 sm:space-y-2 pt-0 px-2 sm:px-4 pb-1.5 sm:pb-3">
         {character.summary && (
-          <p className="text-[9px] sm:text-xs text-white/70 line-clamp-1 sm:line-clamp-2 leading-tight sm:leading-snug hidden sm:block">{character.summary}</p>
+          <p className="text-[9px] sm:text-xs text-white/70 line-clamp-1 leading-tight hidden sm:block" title={character.summary}>
+            {character.summary.length > 80 ? `${character.summary.slice(0, 80).trim()}…` : character.summary}
+          </p>
         )}
         
         {/* Importance and Archetype Badges - Hide on mobile, show on desktop */}
@@ -429,7 +406,7 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
           )}
         </div>
         
-        {/* Relationship Badge and Interest Levels */}
+        {/* Relationship Badge (interest levels moved to modal) */}
         {relationship && (
           <div className="space-y-1.5 sm:space-y-2 pt-1 border-t border-border/30">
             <div className="flex items-center gap-2 flex-wrap">
@@ -463,34 +440,6 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
                 </Badge>
               )}
             </div>
-            
-            {/* Interest Levels */}
-            {(yourInterest !== null || theirInterest !== null) && (
-              <div className="grid grid-cols-2 gap-2">
-                {yourInterest !== null && (
-                  <div className={`p-1.5 sm:p-2 rounded border ${getInterestColor(yourInterest)}`}>
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <Heart className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                      <span className="text-[8px] sm:text-[9px] font-medium">Your Interest</span>
-                    </div>
-                    <div className="text-xs sm:text-sm font-bold">
-                      {Math.round(yourInterest * 100)}%
-                    </div>
-                  </div>
-                )}
-                {theirInterest !== null && (
-                  <div className={`p-1.5 sm:p-2 rounded border ${getInterestColor(theirInterest)}`}>
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <Users className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                      <span className="text-[8px] sm:text-[9px] font-medium">Their Interest</span>
-                    </div>
-                    <div className="text-xs sm:text-sm font-bold">
-                      {Math.round(theirInterest * 100)}%
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
         
