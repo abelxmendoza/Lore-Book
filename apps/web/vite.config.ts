@@ -42,10 +42,36 @@ if (process.env.NODE_ENV === 'production') {
 console.log(`📦 Node version: ${process.version}`);
 console.log(`📁 Working directory: ${process.cwd()}`);
 
+// Shared ref: when proxy errors (backend down), set true so we answer /api without proxying (avoids log spam).
+const backendUnreachable = { current: false };
+
+/** When backend is down, answer /api without proxying so Vite doesn't log "http proxy error" for every request. */
+function backendDownMiddlewarePlugin(flag: { current: boolean }) {
+  return {
+    name: 'backend-down-middleware',
+    configureServer(server: { middlewares: { stack: Array<{ route: string; handle: (req: unknown, res: unknown, next: () => void) => void }> } }) {
+      return () => {
+        const middleware = (req: { url?: string }, res: { statusCode: number; setHeader: (n: string, v: string) => void; end: (s: string) => void }, next: () => void) => {
+          if (!req.url?.startsWith('/api')) return next();
+          if (!flag.current) return next();
+          // Backend was down: still try /api/health so we can recover when backend comes back; 503 everything else
+          const isHealth = req.url === '/api/health' || req.url.startsWith('/api/health?');
+          if (isHealth) return next();
+          res.statusCode = 503;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Backend unavailable' }));
+        };
+        server.middlewares.stack.unshift({ route: '', handle: middleware });
+      };
+    },
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   base: '/',
   plugins: [
+    backendDownMiddlewarePlugin(backendUnreachable),
     react({ typescript: { ignoreBuildErrors: true } }),
   ],
   resolve: {
@@ -59,6 +85,19 @@ export default defineConfig({
     host: true, // Allow external connections
     hmr: {
       overlay: true, // Show error overlay
+    },
+    // Proxy /api to backend in dev so same-origin requests avoid CORS.
+    // Use 127.0.0.1 to avoid Node 17+ IPv6 localhost issues (ECONNREFUSED).
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:4000',
+        changeOrigin: true,
+        configure(proxy: { on: (event: string, fn: () => void) => void }) {
+          proxy.on('error', () => {
+            backendUnreachable.current = true;
+          });
+        },
+      },
     },
     // Faster HMR in development
     watch: {

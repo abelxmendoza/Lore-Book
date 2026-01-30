@@ -89,8 +89,9 @@ pnpm dev:web
 - Check .env file has correct credentials
 - Restart server after updating .env
 
-### Issue: "500 Internal Server Error"
+### Issue: "500 Internal Server Error" or "Backend server is not running"
 **Fix**:
+- **Start the backend** if it's not running: `cd apps/server && npm run dev` (or `pnpm dev:server` from root). The web app proxies API requests to port 4000; if nothing is listening there, you get 500.
 - Check server logs in terminal
 - Verify database tables exist: `supabase db reset`
 - Check .env file is correct

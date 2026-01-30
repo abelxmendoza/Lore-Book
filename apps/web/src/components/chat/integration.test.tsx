@@ -1,7 +1,10 @@
+import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { GuestProvider } from '../../contexts/GuestContext';
+import { MockDataProvider } from '../../contexts/MockDataContext';
+import { CurrentContextProvider } from '../../contexts/CurrentContextContext';
 import { ChatFirstInterface } from '../../features/chat/components/ChatFirstInterface';
 
 // Mock fetchJson to prevent real network requests
@@ -20,6 +23,20 @@ vi.mock('../../lib/supabase', () => ({
   getConfigDebug: vi.fn().mockReturnValue({})
 }));
 
+function ChatWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <BrowserRouter>
+      <MockDataProvider>
+        <CurrentContextProvider>
+          <GuestProvider>
+            {children}
+          </GuestProvider>
+        </CurrentContextProvider>
+      </MockDataProvider>
+    </BrowserRouter>
+  );
+}
+
 describe('Chat Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -29,17 +46,15 @@ describe('Chat Integration Tests', () => {
 
   it('should render chat interface', async () => {
     render(
-      <BrowserRouter>
-        <GuestProvider>
-          <ChatFirstInterface />
-        </GuestProvider>
-      </BrowserRouter>
+      <ChatWrapper>
+        <ChatFirstInterface />
+      </ChatWrapper>
     );
 
     // Chat interface should render - verify component mounts
     await waitFor(() => {
       // Component should render something - check for any rendered content
-      const hasContent = document.body.textContent !== null && 
+      const hasContent = document.body.textContent !== null &&
                         document.body.textContent.length > 0;
       expect(hasContent).toBeTruthy();
     }, { timeout: 3000 });
@@ -50,11 +65,9 @@ describe('Chat Integration Tests', () => {
     const user = userEvent.setup();
 
     render(
-      <BrowserRouter>
-        <GuestProvider>
-          <ChatFirstInterface />
-        </GuestProvider>
-      </BrowserRouter>
+      <ChatWrapper>
+        <ChatFirstInterface />
+      </ChatWrapper>
     );
 
     // Wait for component to render

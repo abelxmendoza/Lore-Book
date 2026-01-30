@@ -1,6 +1,11 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { MockDataProvider } from '../contexts/MockDataContext';
 import { useLoreKeeper } from './useLoreKeeper';
+
+const wrapper = ({ children }: { children: React.ReactNode }) =>
+  React.createElement(MockDataProvider, null, children);
 
 // Mock supabase
 vi.mock('../lib/supabase', () => ({
@@ -64,7 +69,7 @@ describe('useLoreKeeper', () => {
   });
 
   it('should initialize successfully', async () => {
-    const { result } = renderHook(() => useLoreKeeper());
+    const { result } = renderHook(() => useLoreKeeper(), { wrapper });
     
     await waitFor(() => {
       expect(result.current).toBeDefined();
@@ -123,7 +128,7 @@ describe('useLoreKeeper', () => {
       } as Response);
     });
 
-    const { result } = renderHook(() => useLoreKeeper());
+    const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
     // Wait for initial load to complete - entries should be empty after mount
     await waitFor(() => {

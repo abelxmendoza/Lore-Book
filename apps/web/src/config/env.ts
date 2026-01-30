@@ -12,7 +12,16 @@ export const isProduction = import.meta.env.PROD || import.meta.env.MODE === 'pr
 export const isStaging = import.meta.env.MODE === 'staging';
 
 // API Configuration
-export const API_URL = import.meta.env.VITE_API_URL || (isDevelopment ? 'http://localhost:4000' : '');
+// In dev, use '' so requests go to same origin and Vite proxies /api to localhost:4000 (no CORS).
+// Even if VITE_API_URL is set to http://localhost:4000 in .env, we use proxy in dev to avoid CORS.
+// Set VITE_API_URL to a remote URL (e.g. https://api.example.com) to bypass the proxy.
+const rawApiUrl = (import.meta.env.VITE_API_URL as string) ?? '';
+const useProxyInDev =
+  isDevelopment &&
+  (!rawApiUrl ||
+    rawApiUrl === 'http://localhost:4000' ||
+    rawApiUrl === 'http://127.0.0.1:4000');
+export const API_URL = useProxyInDev ? '' : (rawApiUrl || (isDevelopment ? '' : ''));
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 

@@ -1,6 +1,11 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { MockDataProvider } from '../contexts/MockDataContext';
 import { useLoreKeeper } from './useLoreKeeper';
+
+const wrapper = ({ children }: { children: React.ReactNode }) =>
+  React.createElement(MockDataProvider, null, children);
 
 // Mock supabase
 vi.mock('../lib/supabase', () => ({
@@ -51,7 +56,7 @@ describe('useLoreKeeper Error Handling', () => {
     // Override default mock to reject for all requests
     mockFetch.mockImplementation(() => Promise.reject(new Error('Network error')));
 
-    const { result } = renderHook(() => useLoreKeeper());
+    const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
     await waitFor(() => {
       expect(result.current).toBeDefined();
@@ -80,7 +85,7 @@ describe('useLoreKeeper Error Handling', () => {
       });
     });
 
-    const { result } = renderHook(() => useLoreKeeper());
+    const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
     await waitFor(() => {
       expect(result.current).toBeDefined();
@@ -132,7 +137,7 @@ describe('useLoreKeeper Error Handling', () => {
       });
     });
 
-    const { result } = renderHook(() => useLoreKeeper());
+    const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
     await waitFor(() => {
       expect(result.current).toBeDefined();

@@ -33,9 +33,9 @@ export const useChatStream = () => {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
 
-      // Use the configured API URL
-      const apiUrl = config.api.url || 'http://localhost:4000';
-      const url = `${apiUrl}/api/chat/stream`;
+      // Use the configured API URL (empty in dev when using Vite proxy)
+      const apiUrl = config.api.url;
+      const url = apiUrl ? `${apiUrl}/api/chat/stream` : '/api/chat/stream';
 
       console.log('[useChatStream] Calling:', url);
 

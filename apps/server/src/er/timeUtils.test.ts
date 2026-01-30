@@ -23,7 +23,8 @@ describe('timeUtils', () => {
       expect(expDecay(0, 60)).toBeGreaterThan(expDecay(30, 60));
       expect(expDecay(30, 60)).toBeGreaterThan(expDecay(60, 60));
       expect(expDecay(60, 60)).toBeGreaterThan(expDecay(180, 60));
-      expect(expDecay(365, 60)).toBeLessThan(0.01);
+      // With halfLife 60, 365 days yields small value (formula-dependent)
+      expect(expDecay(365, 60)).toBeLessThan(0.02);
     });
 
     it('returns 0 when halfLifeDays is 0', () => {

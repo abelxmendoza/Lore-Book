@@ -11,6 +11,17 @@ const healthEngine = new HealthEngine();
 const healthStorage = new HealthStorage();
 
 /**
+ * GET /api/health (or GET / when mounted at root)
+ * Simple liveness check - no auth, no DB. Use for "is the server up?".
+ */
+router.get(
+  '/',
+  (_req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  }
+);
+
+/**
  * POST /api/health/analyze
  * Process and analyze health and wellness
  */

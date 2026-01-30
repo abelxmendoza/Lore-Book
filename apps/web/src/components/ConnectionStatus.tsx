@@ -40,12 +40,13 @@ export const ConnectionStatus = ({ onDismiss }: ConnectionStatusProps) => {
     onDismiss?.();
   };
 
-  // Check on mount and periodically
+  // Check on mount and periodically (throttle when using proxy to reduce 500 spam)
+  const intervalMs = !config.api.url ? 30_000 : 10_000; // 30s in dev proxy, 10s otherwise
   useEffect(() => {
     checkConnection();
-    const interval = setInterval(checkConnection, 10000); // Check every 10 seconds
+    const interval = setInterval(checkConnection, intervalMs);
     return () => clearInterval(interval);
-  }, []);
+  }, [intervalMs]);
 
   // Only show if disconnected and not dismissed (don't show success state)
   if (isConnected !== false || isDismissed) {

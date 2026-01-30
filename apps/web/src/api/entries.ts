@@ -62,11 +62,12 @@ export const uploadVoiceMemo = async (file: File): Promise<VoiceMemoResponse> =>
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   
-  const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+  const apiBaseUrl = config.api.url;
+  const url = apiBaseUrl ? `${apiBaseUrl}/api/entries/voice` : '/api/entries/voice';
   const formData = new FormData();
   formData.append('audio', file);
-  
-  const response = await fetch(`${apiBaseUrl}/api/entries/voice`, {
+
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {})

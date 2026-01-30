@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useChat } from '../hooks/useChat';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -97,16 +97,21 @@ export const ChatFirstInterface = () => {
     }
   });
 
-  // Auto-diagnose on mount
+  // Auto-diagnose on mount (log at most once per session to avoid console noise)
+  const healthWarnedRef = useRef(false);
   useEffect(() => {
     const checkHealth = async () => {
       try {
         const response = await fetch('/api/health');
-        if (!response.ok) {
+        if (!response.ok && !healthWarnedRef.current) {
+          healthWarnedRef.current = true;
           console.warn('⚠️ Health check failed. Run diagnostics with Cmd+Shift+D');
         }
-      } catch (error) {
-        console.warn('⚠️ Cannot reach server. Run diagnostics with Cmd+Shift+D');
+      } catch (_err) {
+        if (!healthWarnedRef.current) {
+          healthWarnedRef.current = true;
+          console.warn('⚠️ Cannot reach server. Run diagnostics with Cmd+Shift+D');
+        }
       }
     };
     checkHealth();

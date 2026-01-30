@@ -5,7 +5,6 @@ import { chapterService } from '../../src/services/chapterService';
 import { orchestratorService } from '../../src/services/orchestratorService';
 import { locationService } from '../../src/services/locationService';
 import { ragPacketCacheService } from '../../src/services/ragPacketCacheService';
-import { supabaseAdmin } from '../../src/services/supabaseClient';
 
 // Mock all dependencies (ingestionPipeline first: it has a parse error; omegaChatService imports it)
 vi.mock('../../src/services/conversationCentered/ingestionPipeline', () => ({
@@ -17,7 +16,7 @@ vi.mock('../../src/services/chapterService');
 vi.mock('../../src/services/orchestratorService');
 vi.mock('../../src/services/locationService');
 vi.mock('../../src/services/ragPacketCacheService');
-vi.mock('../../src/services/supabaseClient');
+// supabaseClient not mocked: test env uses dbAdapter → SupabaseMock (chainable, no DB)
 // OpenAI must be a constructor (new OpenAI()); use function not arrow/vi.fn
 const { openaiCreateFn } = vi.hoisted(() => ({ openaiCreateFn: vi.fn() }));
 vi.mock('openai', () => ({
@@ -36,21 +35,11 @@ describe('OmegaChatService', () => {
 
   describe('chat', () => {
     it('should return a response for a valid message', async () => {
-      // Mock all service calls
+      // Mock all service calls (db uses adapter mock in test — no supabaseAdmin mock needed)
       vi.mocked(orchestratorService.getSummary).mockResolvedValue({
         timeline: { events: [], arcs: [] },
         characters: []
       });
-
-      vi.mocked(supabaseAdmin.from).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({
-              data: []
-            })
-          })
-        })
-      } as any);
 
       vi.mocked(locationService.listLocations).mockResolvedValue([]);
       vi.mocked(chapterService.listChapters).mockResolvedValue([]);
@@ -68,16 +57,6 @@ describe('OmegaChatService', () => {
         timeline: { events: [], arcs: [] },
         characters: []
       });
-
-      vi.mocked(supabaseAdmin.from).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({
-              data: []
-            })
-          })
-        })
-      } as any);
 
       vi.mocked(locationService.listLocations).mockResolvedValue([]);
       vi.mocked(chapterService.listChapters).mockResolvedValue([]);
@@ -113,16 +92,6 @@ describe('OmegaChatService', () => {
     it('should handle service errors gracefully', async () => {
       vi.mocked(orchestratorService.getSummary).mockRejectedValue(new Error('Service error'));
 
-      vi.mocked(supabaseAdmin.from).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({
-              data: []
-            })
-          })
-        })
-      } as any);
-
       vi.mocked(locationService.listLocations).mockResolvedValue([]);
       vi.mocked(chapterService.listChapters).mockResolvedValue([]);
       vi.mocked(ragPacketCacheService.getCachedPacket).mockReturnValue(null);
@@ -139,16 +108,6 @@ describe('OmegaChatService', () => {
         timeline: { events: [], arcs: [] },
         characters: []
       });
-
-      vi.mocked(supabaseAdmin.from).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({
-              data: []
-            })
-          })
-        })
-      } as any);
 
       vi.mocked(locationService.listLocations).mockResolvedValue([]);
       vi.mocked(chapterService.listChapters).mockResolvedValue([]);
@@ -170,16 +129,6 @@ describe('OmegaChatService', () => {
         timeline: { events: [], arcs: [] },
         characters: []
       });
-
-      vi.mocked(supabaseAdmin.from).mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            order: vi.fn().mockResolvedValue({
-              data: []
-            })
-          })
-        })
-      } as any);
 
       vi.mocked(locationService.listLocations).mockResolvedValue([]);
       vi.mocked(chapterService.listChapters).mockResolvedValue([]);

@@ -1789,6 +1789,7 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     // INLINE ENTITY AMBIGUITY DETECTION (IADE)
     // =====================================================
     let disambiguationPrompt: any = null;
+    let meaningDriftPrompt: string | null = null;
     try {
       // Detect intent (for skipping venting/support requests)
       const detectedIntent = intentDetectionService.detectUserIntent(message);
@@ -2080,10 +2081,7 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
 
     // Only exclude truly trivial messages (hi, ok, thanks, etc.)
     if (!isTrivialMessage(message)) {
-      // Get or create chat session
-      const sessionId = await this.getOrCreateChatSession(userId);
-
-      // Save message to chat_messages table
+      // Save message to chat_messages table (sessionId from function start)
       const { data: savedMessage, error: saveError } = await supabaseAdmin
         .from('chat_messages')
         .insert({
@@ -2233,8 +2231,7 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
 
     // RL: Save context for later reward updates (generate message ID if entryId not available)
     const messageId = entryId || randomUUID();
-    const sessionId = await this.getOrCreateChatSession(userId);
-    if (rlContext && personaBlend) {
+    if (rlContext && personaBlend && sessionId) {
       this.personaRL.saveChatContext(
         userId,
         messageId,
@@ -2372,6 +2369,10 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
           logger.debug({ err, userId }, 'Essence refinement check failed, continuing');
         });
     }
+
+    // Belief challenge metadata (set in belief-challenge block below if a challenge is generated)
+    let challengedPerceptionIdForResponse: string | undefined;
+    let challengePromptForResponse: string | undefined;
 
     // Check continuity
     const continuityWarnings = await this.checkContinuity(userId, message, extractedDates, orchestratorSummary);
@@ -2669,6 +2670,9 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
               // Inject challenge into system prompt
               systemPrompt += `\n\n**OPTIONAL BELIEF EXPLORATION** (only if conversation naturally flows this way):\n${challenge.challengePrompt}\n\nNote: This is optional. Only bring this up if the conversation naturally allows for gentle exploration. Do not force it.`;
 
+              challengedPerceptionIdForResponse = perception.id;
+              challengePromptForResponse = challenge.challengePrompt;
+
               logger.debug(
                 { perceptionId: perception.id, style: challenge.style },
                 'Generated belief challenge'
@@ -2713,8 +2717,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
 
     const answer = completion.choices[0]?.message?.content ?? 'I understand. Tell me more.';
 
-    // RL: Save context for later reward updates (use entryId if available, otherwise generate)
-    const messageId = entryId || randomUUID();
+    // RL: Save context for later reward updates (non-streaming chat has no saved message id yet)
+    const messageId = randomUUID();
     const sessionId = await this.getOrCreateChatSession(userId);
 
     // Save assistant response with challenge metadata if present

@@ -197,6 +197,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { Router } from './pages/Router';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DevBanner } from './components/DevBanner';
+import { BackendUnavailableBanner } from './components/BackendUnavailableBanner';
 import { DevelopmentNotice } from './components/DevelopmentNotice';
 import { MockDataIndicator } from './components/MockDataIndicator';
 import { GuestProvider } from './contexts/GuestContext';
@@ -294,6 +295,7 @@ if (!rootElement) {
                   <CurrentContextProvider>
                     <SoulProfileChatProvider>
                       <DevelopmentNotice />
+                      <BackendUnavailableBanner />
                       <Router />
                       <DevBanner />
                       <MockDataIndicator />

@@ -172,17 +172,15 @@ describe('temporalEdgeService', () => {
       });
       const from = vi.fn((table: string) => {
         if (table === 'temporal_edges') {
+          const chain6 = { maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) };
+          const chain5 = { eq: vi.fn().mockReturnValue(chain6) };
+          const chain4 = { eq: vi.fn().mockReturnValue(chain5) };
+          const chain3 = { eq: vi.fn().mockReturnValue(chain4) };
+          const chain2 = { eq: vi.fn().mockReturnValue(chain3) };
+          const chain1 = { eq: vi.fn().mockReturnValue(chain2) };
           return {
             select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                eq: vi.fn().mockReturnValue({
-                  eq: vi.fn().mockReturnValue({
-                    eq: vi.fn().mockReturnValue({
-                      eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
-                    }),
-                  }),
-                }),
-              }),
+              eq: vi.fn().mockReturnValue(chain1),
             }),
             insert: mockInsert,
             update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ single: vi.fn() }) }) }),
@@ -206,17 +204,15 @@ describe('temporalEdgeService', () => {
       });
       const from = vi.fn((table: string) => {
         if (table === 'temporal_edges') {
+          const chain6 = { maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) };
+          const chain5 = { eq: vi.fn().mockReturnValue(chain6) };
+          const chain4 = { eq: vi.fn().mockReturnValue(chain5) };
+          const chain3 = { eq: vi.fn().mockReturnValue(chain4) };
+          const chain2 = { eq: vi.fn().mockReturnValue(chain3) };
+          const chain1 = { eq: vi.fn().mockReturnValue(chain2) };
           return {
             select: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                eq: vi.fn().mockReturnValue({
-                  eq: vi.fn().mockReturnValue({
-                    eq: vi.fn().mockReturnValue({
-                      eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
-                    }),
-                  }),
-                }),
-              }),
+              eq: vi.fn().mockReturnValue(chain1),
             }),
             insert: mockInsert,
             update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ single: vi.fn() }) }) }),

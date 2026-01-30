@@ -1748,4 +1748,5 @@ export class ConversationIngestionPipeline {
       // Return the results
       return { messageId, utteranceIds, unitIds };
     }
+  }
 }

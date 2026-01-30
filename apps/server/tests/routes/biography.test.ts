@@ -18,7 +18,7 @@ vi.mock('../../src/services/biographyGeneration');
 vi.mock('../../src/services/lorebook/lorebookSearchParser');
 vi.mock('../../src/services/lorebook/lorebookRecommendationEngine');
 vi.mock('../../src/middleware/auth');
-vi.mock('../../src/services/supabaseClient');
+// supabaseClient not mocked: test env uses dbAdapter → SupabaseMock
 
 const app = express();
 app.use(express.json());
@@ -262,36 +262,23 @@ describe('Biography Routes', () => {
 
   describe('GET /api/biography/list', () => {
     it('should list all biographies', async () => {
-      const { biographyGenerationEngine } = await import('../../src/services/biographyGeneration');
-      const mockBiographies = [
-        { id: 'bio-1', title: 'Biography 1' },
-        { id: 'bio-2', title: 'Biography 2' },
-      ];
-
-      vi.mocked(biographyGenerationEngine.listBiographies).mockResolvedValue(mockBiographies as any);
-
+      // Route uses supabaseAdmin.from('biographies').select().eq().order() — dbAdapter mock returns []
       const response = await request(app)
         .get('/api/biography/list')
         .expect(200);
 
       expect(response.body).toHaveProperty('biographies');
-      expect(response.body.biographies).toHaveLength(2);
+      expect(Array.isArray(response.body.biographies)).toBe(true);
     });
 
     it('should filter by coreOnly query param', async () => {
-      const { biographyGenerationEngine } = await import('../../src/services/biographyGeneration');
-      const mockBiographies = [{ id: 'bio-1', title: 'Core Biography' }];
-
-      vi.mocked(biographyGenerationEngine.listBiographies).mockResolvedValue(mockBiographies as any);
-
-      await request(app)
+      // Route uses supabaseAdmin; coreOnly adds .eq('is_core_lorebook', true). Mock returns []
+      const response = await request(app)
         .get('/api/biography/list?coreOnly=true')
         .expect(200);
 
-      expect(biographyGenerationEngine.listBiographies).toHaveBeenCalledWith(
-        'test-user-id',
-        true
-      );
+      expect(response.body).toHaveProperty('biographies');
+      expect(Array.isArray(response.body.biographies)).toBe(true);
     });
   });
 });

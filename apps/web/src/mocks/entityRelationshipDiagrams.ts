@@ -12,6 +12,11 @@ import { mockDataService } from '../services/mockDataService';
 // Cache the unified data
 let cachedData: UnifiedNarrativeData | null = null;
 
+/** Reset cache for tests so they can inject their own unified narrative. */
+export function _clearUnifiedDataCacheForTesting(): void {
+  cachedData = null;
+}
+
 function getUnifiedData(): UnifiedNarrativeData {
   if (!cachedData) {
     // Try to get from mock data service first

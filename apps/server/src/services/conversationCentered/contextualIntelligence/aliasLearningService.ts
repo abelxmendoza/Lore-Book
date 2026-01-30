@@ -5,7 +5,7 @@
 // =====================================================
 
 import { logger } from '../../../logger';
-import { supabaseAdmin } from '../../../supabaseClient';
+import { supabaseAdmin } from '../../supabaseClient';
 
 import type { AliasHypothesis, ConfidenceScore } from './types';
 

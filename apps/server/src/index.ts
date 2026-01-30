@@ -104,6 +104,8 @@ app.use(cors({
         const allowedOrigins = [
           process.env.FRONTEND_URL,
           process.env.VITE_API_URL?.replace('/api', ''), // Remove /api if present
+          'http://localhost:5173',
+          'http://127.0.0.1:5173',
           'https://lorekeeper.app',
           'https://www.lorekeeper.app'
         ].filter(Boolean) as string[];

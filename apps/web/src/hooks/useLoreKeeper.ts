@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useMockData } from '../contexts/MockDataContext';
 import { fetchJson } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import type { CurrentContext } from '../types/currentContext';
@@ -49,26 +50,6 @@ export type EvolutionInsights = {
   nextEra: string;
 };
 
-const fetchJson = async <T>(input: RequestInfo, init?: RequestInit): Promise<T> => {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  const res = await fetch(input, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    ...init
-  });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    const errorMessage = error?.error || `Request failed with status ${res.status}`;
-    throw new Error(errorMessage);
-  }
-  const json = await res.json().catch(() => null);
-  return json;
-};
-
 export type ChapterFacet = { label: string; score: number };
 
 export type ChapterProfile = Chapter & {
@@ -92,7 +73,10 @@ export type ChapterCandidate = {
   confidence: number;
 };
 
+const EMPTY_TIMELINE: TimelineResponse = { chapters: [], unassigned: [] };
+
 export const useLoreKeeper = () => {
+  const { useMockData: isMockEnabled } = useMockData();
   const [entries, setEntries] = useState<JournalEntry[]>(() => {
     if (typeof window === 'undefined') return [];
     const cached = window.localStorage.getItem('lorekeeper-cache');
@@ -129,50 +113,65 @@ export const useLoreKeeper = () => {
 
   const refreshEntries = useCallback(async () => {
     try {
-      const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries');
+      const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries', undefined, {
+        isMockEnabled,
+        mockData: { entries: [] },
+      });
       setEntries(data?.entries || []);
     } catch (error) {
       console.error('Failed to refresh entries:', error);
       setEntries([]);
     }
-  }, []);
+  }, [isMockEnabled]);
 
   const refreshTimeline = useCallback(async () => {
     try {
       const [timelineData, tagData] = await Promise.all([
-        fetchJson<{ timeline: TimelineResponse }>('/api/timeline'),
-        fetchJson<{ tags: { name: string; count: number }[] }>('/api/timeline/tags')
+        fetchJson<{ timeline: TimelineResponse }>('/api/timeline', undefined, {
+          isMockEnabled,
+          mockData: { timeline: EMPTY_TIMELINE },
+        }),
+        fetchJson<{ tags: { name: string; count: number }[] }>('/api/timeline/tags', undefined, {
+          isMockEnabled,
+          mockData: { tags: [] },
+        }),
       ]);
-      setTimeline(timelineData?.timeline || { chapters: [], unassigned: [] });
+      setTimeline(timelineData?.timeline || EMPTY_TIMELINE);
       setTags(tagData?.tags || []);
     } catch (error) {
       console.error('Failed to refresh timeline:', error);
-      setTimeline({ chapters: [], unassigned: [] });
+      setTimeline(EMPTY_TIMELINE);
       setTags([]);
     }
-  }, []);
+  }, [isMockEnabled]);
 
   const refreshChapters = useCallback(async () => {
     try {
-      const data = await fetchJson<{ chapters: ChapterProfile[]; candidates?: ChapterCandidate[] }>('/api/chapters');
-      setChapters(data.chapters);
-      setChapterCandidates(data.candidates ?? []);
+      const data = await fetchJson<{ chapters: ChapterProfile[]; candidates?: ChapterCandidate[] }>('/api/chapters', undefined, {
+        isMockEnabled,
+        mockData: { chapters: [], candidates: [] },
+      });
+      setChapters(data?.chapters ?? []);
+      setChapterCandidates(data?.candidates ?? []);
     } catch (error) {
       console.error('Failed to refresh chapters:', error);
       setChapters([]);
       setChapterCandidates([]);
     }
-  }, []);
+  }, [isMockEnabled]);
 
   const refreshEvolution = useCallback(async () => {
     try {
-      const data = await fetchJson<{ insights: EvolutionInsights }>('/api/evolution');
-      setEvolution(data.insights);
+      const data = await fetchJson<{ insights: EvolutionInsights | null }>('/api/evolution', undefined, {
+        isMockEnabled,
+        mockData: { insights: null },
+      });
+      setEvolution(data?.insights ?? null);
     } catch (error) {
       console.error('Failed to refresh evolution:', error);
       setEvolution(null);
     }
-  }, []);
+  }, [isMockEnabled]);
 
   const createEntry = useCallback(
     async (
@@ -303,6 +302,18 @@ export const useLoreKeeper = () => {
     void refreshChapters().catch(err => console.error('Failed to refresh chapters on mount:', err));
     void refreshEvolution().catch(err => console.error('Failed to refresh evolution on mount:', err));
   }, [refreshEntries, refreshTimeline, refreshChapters, refreshEvolution]);
+
+  // When mock is auto-enabled (backend down), refetch once so we get mock data without errors
+  const prevMock = useRef(isMockEnabled);
+  useEffect(() => {
+    if (prevMock.current === isMockEnabled) return;
+    prevMock.current = isMockEnabled;
+    if (!isMockEnabled) return;
+    void refreshEntries().catch(() => {});
+    void refreshTimeline().catch(() => {});
+    void refreshChapters().catch(() => {});
+    void refreshEvolution().catch(() => {});
+  }, [isMockEnabled, refreshEntries, refreshTimeline, refreshChapters, refreshEvolution]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

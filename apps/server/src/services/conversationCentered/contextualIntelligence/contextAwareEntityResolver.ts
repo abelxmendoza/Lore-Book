@@ -5,7 +5,7 @@
 // =====================================================
 
 import { logger } from '../../../logger';
-import { supabaseAdmin } from '../../../supabaseClient';
+import { supabaseAdmin } from '../../supabaseClient';
 
 import type { EntityResolutionCandidate, ConfidenceScore } from './types';
 

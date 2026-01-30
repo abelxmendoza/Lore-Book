@@ -1,6 +1,11 @@
+import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { MockDataProvider } from '../contexts/MockDataContext';
 import { useLoreKeeper } from './useLoreKeeper';
+
+const wrapper = ({ children }: { children: React.ReactNode }) =>
+  React.createElement(MockDataProvider, null, children);
 
 // Mock supabase
 vi.mock('../lib/supabase', () => ({
@@ -52,7 +57,7 @@ describe('useLoreKeeper Integration Tests', () => {
   });
 
   it('should initialize with empty state', () => {
-    const { result } = renderHook(() => useLoreKeeper());
+    const { result } = renderHook(() => useLoreKeeper(), { wrapper });
     
     expect(result.current.entries).toEqual([]);
     // Timeline is initialized as object with chapters and unassigned arrays
@@ -87,7 +92,7 @@ describe('useLoreKeeper Integration Tests', () => {
       });
     });
 
-    const { result } = renderHook(() => useLoreKeeper());
+    const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
     // The hook calls refreshEntries on mount, which uses the mocked fetch
     // Wait for the entries to be loaded (mocked fetch returns entries)
@@ -140,7 +145,7 @@ describe('useLoreKeeper Integration Tests', () => {
       });
     });
 
-    const { result } = renderHook(() => useLoreKeeper());
+    const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
     // Wait for initial load
     await waitFor(() => {

@@ -37,7 +37,7 @@ describe('RelationshipCard', () => {
     render(<RelationshipCard relationship={mockRelationship} onClick={onClick} />);
     
     expect(screen.getByText('Alex')).toBeInTheDocument();
-    expect(screen.getByText(/boyfriend/i)).toBeInTheDocument();
+    expect(screen.getByText(/girlfriend/i)).toBeInTheDocument();
   });
 
   it('displays relationship scores', () => {

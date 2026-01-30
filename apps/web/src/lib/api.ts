@@ -4,7 +4,10 @@ import { config, log } from '../config/env';
 import { performance as perfMonitoring, errorTracking } from './monitoring';
 import { apiCache, generateCacheKey } from './cache';
 import { handleError, createAppError, retryWithBackoff, type AppError } from './errorHandler';
-import { getGlobalMockDataEnabled } from '../contexts/MockDataContext';
+import { getGlobalMockDataEnabled, getBackendUnavailable } from '../contexts/MockDataContext';
+
+// Log backend-down message once per session to avoid console flood
+let backendDownWarned = false;
 
 export const fetchJson = async <T>(
   input: RequestInfo, 
@@ -15,6 +18,14 @@ export const fetchJson = async <T>(
     onError?: (error: Error) => void;
   }
 ): Promise<T> => {
+  // Short-circuit: when backend is known down, return mock immediately (no proxy hit = no ECONNREFUSED spam)
+  if (getBackendUnavailable() && options?.mockData !== undefined) {
+    if (config.logging.logApiCalls) {
+      log.debug('Backend unavailable, using mock data (no request):', typeof input === 'string' ? input : 'Request');
+    }
+    return options.mockData;
+  }
+
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   
@@ -88,18 +99,24 @@ export const fetchJson = async <T>(
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
-      const errorMessage = error.error || error.message || `HTTP ${res.status}: ${res.statusText}`;
-      
+      let errorMessage = error.error || error.message || `HTTP ${res.status}: ${res.statusText}`;
+      // In dev with proxy (empty apiUrl), 500 usually means backend not running
+      if (config.env.isDevelopment && !config.api.url && res.status === 500) {
+        errorMessage =
+          'Backend server is not running. Start it with: cd apps/server && npm run dev';
+      }
       // Check if backend is not running (dev mode or when mock data is enabled)
-      if ((config.dev.allowMockData || globalMockEnabled) && (res.status === 0 || res.status === 503 || res.status === 502)) {
+      // Include 500 when using proxy (empty apiUrl) — proxy returns 500 when backend is down
+      const backendDownStatus = res.status === 0 || res.status === 503 || res.status === 502 ||
+        (res.status === 500 && !config.api.url);
+      if ((config.dev.allowMockData || globalMockEnabled) && backendDownStatus) {
         if (shouldUseMock && options?.mockData) {
-          if (config.env.isDevelopment || globalMockEnabled) {
-            log.warn('Backend unavailable, using mock data:', typeof input === 'string' ? input : 'Request');
-          }
+          log.debug('Backend unavailable, using mock data:', typeof input === 'string' ? input : 'Request');
           return options.mockData;
         }
-        if (config.dev.verboseErrors) {
-          log.warn('Backend server is not running. Using fallback behavior.');
+        if (config.dev.verboseErrors && !backendDownWarned) {
+          backendDownWarned = true;
+          log.warn('Backend server is not running. Using fallback behavior. Start: cd apps/server && npm run dev');
         }
       }
       
@@ -149,47 +166,18 @@ export const fetchJson = async <T>(
       (error instanceof DOMException && error.name === 'NetworkError');
     
     if (isNetworkError) {
-      // Log detailed error info for debugging
-      if (config.env.isDevelopment) {
-        log.error('Network error detected:', {
-          error: error instanceof Error ? error.message : String(error),
-          errorName: error instanceof Error ? error.name : 'Unknown',
+      // Log backend-down message once per session to avoid console flood
+      if (config.env.isDevelopment && !backendDownWarned) {
+        backendDownWarned = true;
+        log.warn('Backend server is not running. Start: cd apps/server && npm run dev', {
           url: typeof input === 'string' ? input : 'Request',
-          apiBaseUrl,
-          timestamp: new Date().toISOString(),
+          apiBaseUrl: apiBaseUrl || '(proxy)',
         });
-        
-        // Check if backend is actually reachable
-        try {
-          const healthController = new AbortController();
-          const healthTimeout = setTimeout(() => healthController.abort(), 2000);
-          const healthCheck = await fetch(`${apiBaseUrl}/api/health`, { 
-            method: 'GET',
-            signal: healthController.signal
-          }).catch(() => null);
-          clearTimeout(healthTimeout);
-          
-          if (!healthCheck || !healthCheck.ok) {
-            log.error('Backend health check failed. Server may not be running.', {
-              expectedUrl: `${apiBaseUrl}/api/health`,
-              suggestion: 'Run: cd apps/server && npm run dev'
-            });
-          }
-        } catch (healthError) {
-          // Health check also failed, backend is definitely down
-          log.error('Backend server is not running.', {
-            expectedUrl: apiBaseUrl,
-            suggestion: 'Start the backend server: cd apps/server && npm run dev',
-            originalError: error instanceof Error ? error.message : String(error)
-          });
-        }
       }
       
       // Allow mock data fallback when enabled (dev or production with global toggle)
       if ((config.dev.allowMockData || globalMockEnabled) && shouldUseMock && options?.mockData) {
-        if (config.env.isDevelopment || globalMockEnabled) {
-          log.warn('Network error, using mock data:', typeof input === 'string' ? input : 'Request');
-        }
+        log.debug('Network error, using mock data:', typeof input === 'string' ? input : 'Request');
         return options.mockData;
       }
       
