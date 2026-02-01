@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
+import { ChatLoadingDots } from '../components/ChatLoadingDots';
 import { parseConnections } from '../../../utils/parseConnections';
 
 const humanizeExpressionMode = (mode: string): string => {
@@ -287,11 +288,15 @@ export const ChatMessage = ({
             )}
             {!isUser ? (
               <div className="prose prose-invert prose-base sm:prose-lg lg:prose-xl max-w-none prose-headings:text-white prose-p:text-white/90 prose-p:leading-relaxed prose-p:my-3 sm:prose-p:my-4 prose-a:text-primary prose-strong:text-white prose-code:text-white prose-pre:bg-black/40">
-                <MarkdownRenderer 
-                  content={message.content} 
-                  isStreaming={message.isStreaming} 
-                  className={message.isStreaming ? 'chat-message-streaming' : ''}
-                />
+                {message.isStreaming && !message.content.trim() ? (
+                  <ChatLoadingDots />
+                ) : (
+                  <MarkdownRenderer 
+                    content={message.content} 
+                    isStreaming={message.isStreaming} 
+                    className={message.isStreaming ? 'chat-message-streaming' : ''}
+                  />
+                )}
               </div>
             ) : (
               <p className="text-base sm:text-lg lg:text-xl text-white whitespace-pre-wrap leading-relaxed sm:leading-loose">

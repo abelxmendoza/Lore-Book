@@ -110,6 +110,14 @@ export const Router = () => {
         } 
       />
       <Route 
+        path="/chat/:threadId" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="chat" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
         path="/timeline" 
         element={
           <LazyRoute>

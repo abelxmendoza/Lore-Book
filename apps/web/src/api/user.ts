@@ -1,5 +1,5 @@
 import { config } from '../config/env';
-import { getGlobalMockDataEnabled } from '../contexts/MockDataContext';
+import { shouldUseMockData } from '../hooks/useShouldUseMockData';
 import { fetchJson } from '../lib/api';
 import { supabase } from '../lib/supabase';
 
@@ -68,7 +68,7 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
       '/api/user/profile',
       undefined,
       {
-        useMockData: getGlobalMockDataEnabled() || config.dev.allowMockData,
+        useMockData: shouldUseMockData(),
         mockData: { profile: {
           id: user.id,
           email: user.email || '',
@@ -152,7 +152,7 @@ export const fetchPrivacySettings = async (): Promise<PrivacySettings> => {
       '/api/user/privacy-settings',
       undefined,
       {
-        useMockData: getGlobalMockDataEnabled() || config.dev.allowMockData,
+        useMockData: shouldUseMockData(),
         mockData: { settings: defaultSettings },
       }
     );
@@ -210,14 +210,14 @@ export const fetchActivityLogs = async (limit: number = 50): Promise<ActivityLog
       `/api/user/activity?limit=${limit}`,
       undefined,
       {
-        useMockData: getGlobalMockDataEnabled() || config.dev.allowMockData,
+        useMockData: shouldUseMockData(),
         mockData: { logs: mockLogs },
       }
     );
     return response.logs;
   } catch (_error) {
     // Return mock data if API fails (when mock data is enabled)
-    const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
+    const shouldUseMock = shouldUseMockData();
     if (shouldUseMock) {
       if (config.isDevelopment) {
         console.warn('Failed to fetch activity logs, using mock data');
@@ -243,14 +243,14 @@ export const fetchStorageUsage = async (): Promise<StorageUsage> => {
       '/api/user/storage',
       undefined,
       {
-        useMockData: getGlobalMockDataEnabled() || config.dev.allowMockData,
+        useMockData: shouldUseMockData(),
         mockData: { usage: mockUsage },
       }
     );
     return response.usage;
   } catch (_error) {
     // Return mock data if API fails (when mock data is enabled)
-    const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
+    const shouldUseMock = shouldUseMockData();
     if (shouldUseMock) {
       if (config.isDevelopment) {
         console.warn('Failed to fetch storage usage, using mock data');
@@ -286,13 +286,13 @@ export const fetchPaymentMethods = async (): Promise<PaymentMethod[]> => {
       '/api/user/payment-methods',
       undefined,
       {
-        useMockData: getGlobalMockDataEnabled() || config.dev.allowMockData,
+        useMockData: shouldUseMockData(),
         mockData: { paymentMethods: mockPaymentMethods },
       }
     );
     return response.paymentMethods;
   } catch (_error) {
-    const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
+    const shouldUseMock = shouldUseMockData();
     if (shouldUseMock) {
       if (config.isDevelopment) {
         console.warn('Failed to fetch payment methods, using mock data');
@@ -337,16 +337,16 @@ export const fetchBillingHistory = async (limit: number = 50): Promise<BillingIn
       `/api/user/billing-history?limit=${limit}`,
       undefined,
       {
-        useMockData: getGlobalMockDataEnabled() || config.dev.allowMockData,
+        useMockData: shouldUseMockData(),
         mockData: { invoices: mockInvoices },
       }
     );
     return response.invoices;
   } catch (_error) {
-    const shouldUseMock = getGlobalMockDataEnabled() || config.dev.allowMockData;
+    const shouldUseMock = shouldUseMockData();
     if (shouldUseMock) {
       if (config.isDevelopment) {
-        console.warn('Failed to fetch billing history, using mock data:', error);
+        console.warn('Failed to fetch billing history, using mock data:', _error);
       }
       return mockInvoices;
     }

@@ -56,10 +56,9 @@ export default function AccountCenter() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   
-  // Profile state
+  // Profile state (no bio — the app is for telling your story)
   const [profile, setProfile] = useState({
     name: user?.user_metadata?.full_name || '',
-    bio: '',
     avatar: user?.user_metadata?.avatar_url || '',
     phone: user?.user_metadata?.phone || '',
   });
@@ -117,7 +116,6 @@ export default function AccountCenter() {
         setProfile(prev => ({
           ...prev,
           name: profileData.name || '',
-          bio: profileData.bio || '',
           avatar: profileData.avatar_url || '',
           phone: profileData.phone ?? prev.phone ?? '',
         }));
@@ -166,7 +164,6 @@ export default function AccountCenter() {
     try {
       await updateUserProfile({
         name: profile.name,
-        bio: profile.bio,
         avatar_url: profile.avatar,
         phone: profile.phone || undefined,
       });
@@ -646,15 +643,6 @@ export default function AccountCenter() {
                         placeholder="+1 (555) 000-0000"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-white/80 mb-2">Bio</label>
-                      <textarea
-                        value={profile.bio}
-                        onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-                        className="w-full rounded-lg bg-black/40 border border-border/60 text-white px-4 py-2 focus:outline-none focus:border-primary/50 resize-none h-24"
-                        placeholder="Tell us about yourself..."
-                      />
-                    </div>
                     <div className="flex gap-3">
                       <Button 
                         onClick={handleSaveProfile} 
@@ -704,14 +692,6 @@ export default function AccountCenter() {
                         {profile.phone || 'Not set'}
                       </div>
                     </div>
-                    {profile.bio && (
-                      <div>
-                        <label className="block text-sm font-medium text-white/80 mb-2">Bio</label>
-                        <div className="rounded-lg bg-black/40 border border-border/60 text-white px-4 py-2">
-                          {profile.bio || 'No bio set'}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>

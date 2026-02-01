@@ -1,9 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
+
+function useIsMobile(breakpoint = 640): boolean {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    const handler = () => setIsMobile(mql.matches);
+    handler();
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, [breakpoint]);
+  return isMobile;
+}
 import { useChat } from '../hooks/useChat';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useConversationStore } from '../hooks/useConversationStore';
-import { Search as SearchIcon } from 'lucide-react';
+import { useChatThreads } from '../hooks/useChatThreads';
+import { Search as SearchIcon, MessageSquareText } from 'lucide-react';
 import { ChatEmptyState } from './ChatEmptyState';
 import { ChatMessageList } from '../message/ChatMessageList';
 import { ChatLoadingPulse } from './ChatLoadingPulse';
@@ -11,6 +26,7 @@ import { ChatComposer } from '../composer/ChatComposer';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
+import { ChatThreadList } from './ChatThreadList';
 import { GuestSignUpPrompt } from '../../../components/guest/GuestSignUpPrompt';
 import { CurrentContextBreadcrumbs } from '../../../components/CurrentContextBreadcrumbs';
 import { useGuest } from '../../../contexts/GuestContext';
@@ -28,41 +44,100 @@ import '../styles/message-animations.css';
 export const ChatFirstInterface = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { threadId: threadIdParam } = useParams<{ threadId?: string }>();
   const conversationStore = useConversationStore();
-  const { messageRefs, registerMessageRef, loadConversation, setMessages } = conversationStore;
+  const { messageRefs, registerMessageRef, setMessages } = conversationStore;
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
-  
-  const { 
-    messages, 
-    sendMessage, 
-    isLoading, 
-    loadingStage, 
-    loadingProgress, 
+  const {
+    threads,
+    currentThreadId,
+    setCurrentThreadId,
+    createThread,
+    getThread,
+    switchThread,
+    updateThread,
+    deleteThread: deleteThreadAction,
+  } = useChatThreads();
+
+  const {
+    messages,
+    sendMessage,
+    isLoading,
+    loadingStage,
+    loadingProgress,
     streamingMessageId,
     sources,
     messagesEndRef,
     clearConversation,
-    scrollToBottom
+    scrollToBottom,
   } = useChat();
   const { user, loading: authLoading } = useAuth();
   const { isGuest, canSendChatMessage } = useGuest();
-  
+
   const [selectedSource, setSelectedSource] = useState<ChatSource | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchMessageId, setSearchMessageId] = useState<string | null>(null);
   const [showWorkSummary, setShowWorkSummary] = useState(false);
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
   const [initialDate, setInitialDate] = useState<string | null>(null);
+  const [threadListCollapsed, setThreadListCollapsed] = useState(false);
+  const [threadListMobileOpen, setThreadListMobileOpen] = useState(false);
+  const isMobile = useIsMobile(640);
+  const pendingNewThreadRef = useRef(false);
+  const skipNextSyncRef = useRef(false);
 
-  // Load or clear conversation: logged-in users start with empty chat (no guest/mock data)
+  useEffect(() => {
+    if (!isMobile) return;
+    if (threadListMobileOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobile, threadListMobileOpen]);
+
+  // Load thread when threadId in URL changes
   useEffect(() => {
     if (authLoading) return;
-    if (user) {
-      clearConversation();
+    if (threadIdParam) {
+      const thread = getThread(threadIdParam);
+      if (thread) {
+        setMessages(thread.messages);
+        switchThread(threadIdParam);
+        skipNextSyncRef.current = true;
+      } else {
+        navigate('/chat', { replace: true });
+      }
     } else {
-      loadConversation();
+      setMessages([]);
+      setCurrentThreadId(null);
     }
-  }, [authLoading, user?.id, loadConversation, clearConversation]);
+  }, [authLoading, threadIdParam, getThread, setMessages, switchThread, setCurrentThreadId, navigate]);
+
+  // When on "new chat" (/chat) and user sends first message, create thread and navigate
+  useEffect(() => {
+    if (!threadIdParam && messages.length > 0 && !pendingNewThreadRef.current) {
+      pendingNewThreadRef.current = true;
+      const id = createThread();
+      const firstUser = messages.find((m) => m.role === 'user');
+      const title = firstUser ? firstUser.content.slice(0, 50).trim() || 'New chat' : 'New chat';
+      updateThread(id, { messages, title, updatedAt: new Date().toISOString() });
+      navigate(`/chat/${id}`, { replace: true });
+    }
+    if (threadIdParam) pendingNewThreadRef.current = false;
+  }, [threadIdParam, messages.length, messages, createThread, updateThread, navigate]);
+
+  // Sync current thread with messages when they change (skip once after loading a thread)
+  useEffect(() => {
+    if (!threadIdParam) return;
+    if (skipNextSyncRef.current) {
+      skipNextSyncRef.current = false;
+      return;
+    }
+    updateThread(threadIdParam, { messages, updatedAt: new Date().toISOString() });
+  }, [threadIdParam, messages, updateThread]);
 
   // Read URL params for pre-filling (date and prompt)
   useEffect(() => {
@@ -254,9 +329,41 @@ export const ChatFirstInterface = () => {
     downloadFile(json, `lorebook-chat-${date}.json`, 'application/json');
   };
 
+  const handleNewChat = () => {
+    setThreadListMobileOpen(false);
+    const id = createThread();
+    clearConversation();
+    navigate(`/chat/${id}`);
+  };
+
+  const handleSelectThread = (id: string) => {
+    setThreadListMobileOpen(false);
+    switchThread(id);
+    const thread = getThread(id);
+    if (thread) setMessages(thread.messages);
+    navigate(`/chat/${id}`);
+  };
+
+  const handleDeleteThread = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('Delete this chat?')) return;
+    const nextThreads = threads.filter((t) => t.id !== id);
+    const nextThread = nextThreads[0];
+    deleteThreadAction(id);
+    if (threadIdParam === id) {
+      if (nextThread) {
+        setMessages(nextThread.messages);
+        navigate(`/chat/${nextThread.id}`);
+      } else {
+        setMessages([]);
+        navigate('/chat');
+      }
+    }
+  };
+
   const handleClearConversation = () => {
-    if (confirm('Clear conversation history?')) {
-      clearConversation();
+    if (confirm('Start a new chat? Current messages will be saved in this thread.')) {
+      handleNewChat();
     }
   };
 
@@ -267,9 +374,22 @@ export const ChatFirstInterface = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen lg:h-full relative chat-container overflow-hidden min-h-0 bg-black w-full">
+    <div className="flex h-screen lg:h-full bg-black w-full overflow-hidden">
+      <ChatThreadList
+        threads={threads}
+        currentThreadId={threadIdParam ?? currentThreadId}
+        onNewChat={handleNewChat}
+        onSelectThread={handleSelectThread}
+        onDeleteThread={handleDeleteThread}
+        collapsed={threadListCollapsed}
+        onToggleCollapsed={() => setThreadListCollapsed((c) => !c)}
+        mobileOpen={threadListMobileOpen}
+        onMobileClose={() => setThreadListMobileOpen(false)}
+        isMobile={isMobile}
+      />
+      <div className="flex flex-col flex-1 min-w-0 relative chat-container overflow-hidden">
       {/* Minimal header - ChatGPT style */}
-      <div className="border-b border-white/10 bg-black/40 backdrop-blur-sm px-4 sm:px-4 py-3 sm:py-2 flex items-center justify-between flex-shrink-0 gap-2" style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
+      <div className="border-b border-white/10 bg-black/40 backdrop-blur-sm px-3 sm:px-4 py-3 sm:py-2 flex items-center justify-between flex-shrink-0 gap-2" style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h2 className="text-xs sm:text-sm font-semibold text-white/90 flex-shrink-0">Lore Book</h2>
           <CurrentContextBreadcrumbs />
@@ -277,11 +397,22 @@ export const ChatFirstInterface = () => {
         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className="text-white/60 hover:text-white h-7 w-7 sm:h-8 sm:w-8 flex items-center justify-center rounded hover:bg-white/10 transition-colors"
+            className="text-white/60 hover:text-white h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
             title="Search conversation (⌘K)"
           >
-            <SearchIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            <SearchIcon className="h-4 w-4 sm:h-4 sm:w-4" />
           </button>
+          {isMobile && (
+            <button
+              type="button"
+              onClick={() => setThreadListMobileOpen(true)}
+              className="text-white/60 hover:text-white h-9 w-9 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
+              aria-label="Chat history"
+              title="Chat history"
+            >
+              <MessageSquareText className="h-5 w-5" />
+            </button>
+          )}
           {messages.length > 0 && (
             <button
               onClick={handleClearConversation}
@@ -313,7 +444,6 @@ export const ChatFirstInterface = () => {
               refreshTimeline(),
               refreshChapters()
             ]);
-            loadConversation();
           }}
         />
       )}
@@ -385,18 +515,15 @@ export const ChatFirstInterface = () => {
           initialPrompt={initialPrompt}
           initialDate={initialDate}
           onUploadComplete={async () => {
-            // Refresh all data
             await Promise.all([
               refreshEntries(),
               refreshTimeline(),
               refreshChapters()
             ]);
-            // Reload conversation to show new entries
-            loadConversation();
           }}
         />
       </div>
-
+      </div>
     </div>
   );
 };
