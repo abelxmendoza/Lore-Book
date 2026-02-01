@@ -50,6 +50,15 @@ export function setGlobalIsUserLoggedIn(value: boolean) {
   globalIsUserLoggedIn = value;
 }
 
+// Global "guest session" — when true and mock is off, shouldUseMockData() returns false (guest clean slate)
+let globalIsGuest = false;
+export function getGlobalIsGuest(): boolean {
+  return globalIsGuest;
+}
+export function setGlobalIsGuest(value: boolean) {
+  globalIsGuest = value;
+}
+
 // Global backend-unavailable flag so fetchJson can short-circuit without hitting the proxy (used outside React).
 let globalBackendUnavailable = false;
 export function getBackendUnavailable(): boolean {
@@ -176,13 +185,14 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
     return subscribeToBackendReachable(clearBanner);
   }, []);
 
-  // When user logs in, turn off mock data and set global so all components see "no mock"
+  // When user logs in, turn off mock data and clear guest flag
   useEffect(() => {
     const loggedIn = !!user;
     setGlobalIsUserLoggedIn(loggedIn);
     if (loggedIn) {
       setUseMockDataState(false);
       setGlobalMockDataEnabled(false);
+      setGlobalIsGuest(false);
     }
   }, [user?.id]);
 

@@ -399,6 +399,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   }
 
   const handleGuestLogin = () => {
+    setUseMockData(false);
     startGuestSession();
   };
 

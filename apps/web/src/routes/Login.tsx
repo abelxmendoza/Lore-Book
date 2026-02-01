@@ -183,12 +183,13 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Guest Login */}
+            {/* Guest Login - clean slate, no mock data */}
             <div className="space-y-3">
               <Button
                 variant="outline"
                 className="w-full border-primary/50 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/70 transition-all"
                 onClick={() => {
+                  setUseMockData(false);
                   startGuestSession();
                   navigate('/');
                 }}
@@ -201,7 +202,7 @@ export default function Login() {
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-left">
                 <p className="text-xs font-medium text-primary mb-1">✨ Try without signing up</p>
                 <p className="text-xs text-white/60 leading-relaxed">
-                  Explore all features with limited chat access. No account required.
+                  Explore with a clean slate. Limited chat access. No account required.
                 </p>
               </div>
             </div>

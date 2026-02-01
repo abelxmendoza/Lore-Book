@@ -1,33 +1,40 @@
 /**
- * Hook to check if mock data should be used
- * When user is logged in, always returns false so they never see mock data.
+ * Hook to check if mock data should be used.
+ * - Logged-in user: never mock (real data only).
+ * - Guest: mock only when they chose Demo Mode (useMockData true); otherwise clean slate.
+ * - Not logged in, not guest (e.g. pre-auth): use toggle or dev default.
  */
 
-import { getGlobalMockDataEnabled, getIsUserLoggedIn } from '../contexts/MockDataContext';
+import { getGlobalMockDataEnabled, getGlobalIsGuest, getIsUserLoggedIn } from '../contexts/MockDataContext';
 import { useAuth } from '../lib/supabase';
 import { useMockData } from '../contexts/MockDataContext';
+import { useGuest } from '../contexts/GuestContext';
 import { config } from '../config/env';
 
 /**
  * Returns true if mock data should be used.
- * Always returns false when user is logged in (real account = real data only).
- * When mock is on and there is no user (Demo Mode or unauthenticated), returns true even during auth load so mock UI shows immediately.
+ * Guest mode = clean slate unless they explicitly chose Demo Mode (globalEnabled true).
  */
 export function useShouldUseMockData(): boolean {
   const { user, loading: authLoading } = useAuth();
   const { useMockData: globalEnabled } = useMockData();
+  const { isGuest } = useGuest();
+
   if (user) return false;
-  if (globalEnabled) return true; // Demo Mode or mock on + no user → show mock (including during auth load)
+  // Guest: mock only in Demo Mode; otherwise clean slate (ignore dev default)
+  if (isGuest) return globalEnabled === true;
+  if (globalEnabled) return true;
   if (authLoading) return false;
   return globalEnabled ?? config.dev.allowMockData;
 }
 
 /**
  * Non-hook version for use outside React components.
- * When user is logged in (global set by MockDataProvider), returns false.
+ * Guest with mock off = clean slate (false). Demo Mode guest = mock on (true).
  */
 export function shouldUseMockData(): boolean {
   if (getIsUserLoggedIn()) return false;
+  if (getGlobalIsGuest() && !getGlobalMockDataEnabled()) return false;
   return getGlobalMockDataEnabled() || config.dev.allowMockData;
 }
 
