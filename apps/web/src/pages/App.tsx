@@ -15,6 +15,7 @@ import { TimelineSearch } from '../components/search/TimelineSearch';
 import { Sidebar } from '../components/Sidebar';
 import { Button } from '../components/ui/button';
 import { Logo } from '../components/Logo';
+import { useAuth } from '../lib/supabase';
 import { useLoreKeeper } from '../hooks/useLoreKeeper';
 import { useTaskEngine } from '../hooks/useTaskEngine';
 import { Footer } from '../components/Footer';
@@ -56,7 +57,7 @@ interface AppContentProps {
 
 const AppContent = ({ defaultSurface }: AppContentProps) => {
   console.log('[App] AppContent render start', { defaultSurface });
-  
+  const { user } = useAuth();
   const {
     entries,
     createChapter,
@@ -400,9 +401,12 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             <div className="grid gap-4 md:grid-cols-2">
               <AgentPanel />
             </div>
-            <div className="mt-4">
-              <MockDataToggle />
-            </div>
+            {/* Mock data toggle only for demo/guest; hidden when logged into your account */}
+            {!user && (
+              <div className="mt-4">
+                <MockDataToggle />
+              </div>
+            )}
           </div>
         )}
 

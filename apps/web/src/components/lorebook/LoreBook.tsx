@@ -13,7 +13,7 @@ import { KnowledgeBaseCreator } from './KnowledgeBaseCreator';
 import { LorebookRecommendations } from './LorebookRecommendations';
 import { QuerySuggestions } from './QuerySuggestions';
 import { fetchJson } from '../../lib/api';
-import { useMockData } from '../../contexts/MockDataContext';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { BookPage } from './BookPage';
 import { useSwipeGesture } from '../../hooks/useSwipeGesture';
@@ -216,7 +216,7 @@ const dummyChapters: Chapter[] = [
 ];
 
 export const LoreBook = () => {
-  const { useMockData: isMockDataEnabled } = useMockData();
+  const shouldUseMock = useShouldUseMockData();
   const { chapters: loreChapters } = useLoreKeeper();
   const [outline, setOutline] = useState<MemoirOutline | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -286,14 +286,14 @@ export const LoreBook = () => {
           console.warn('Failed to load memoir outline:', error);
         }
 
-        // Use mock data if no real data is available (always show something)
-        if (!loadedOutline) {
+        // Logged-in users: real data or empty. Unauthenticated only: allow dummy fallback.
+        if (!loadedOutline && shouldUseMock) {
           loadedOutline = dummyBook;
         }
 
         setOutline(loadedOutline);
 
-        // Use chapters from useLoreKeeper or mock data
+        // Use chapters from useLoreKeeper or mock data (only when unauthenticated)
         if (loreChapters.length > 0) {
           setChapters(loreChapters.map(ch => ({
             id: ch.id,
@@ -304,21 +304,24 @@ export const LoreBook = () => {
             summary: ch.summary || ''
           })));
         } else {
-          // Always show mock chapters if no real data
-          setChapters(dummyChapters);
+          setChapters(shouldUseMock ? dummyChapters : []);
         }
       } catch (error) {
         console.error('Failed to load lore book data:', error);
-        // Always fallback to mock data
+        if (shouldUseMock) {
           setOutline(dummyBook);
           setChapters(dummyChapters);
+        } else {
+          setOutline(null);
+          setChapters([]);
+        }
       } finally {
         setLoading(false);
       }
     };
 
     void loadData();
-  }, [isMockDataEnabled, loreChapters]);
+  }, [shouldUseMock, loreChapters]);
 
   // Load lorebook recommendations (must be before early returns)
   useEffect(() => {

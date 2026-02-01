@@ -398,6 +398,15 @@ router.get(
   })
 );
 
+function isTableMissingError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: string }).code;
+  const message = (error as { message?: string }).message ?? '';
+  if (code === 'PGRST205') return true;
+  if (/schema cache|could not find the table/i.test(message)) return true;
+  return false;
+}
+
 /**
  * GET /api/conversation/events
  * Get all events for user, sorted by time
@@ -416,6 +425,10 @@ router.get(
       .order('start_time', { ascending: false });
 
     if (error) {
+      if (isTableMissingError(error)) {
+        logger.warn({ userId }, 'resolved_events table missing, returning empty list');
+        return res.json({ success: true, events: [] });
+      }
       throw error;
     }
 

@@ -22,7 +22,7 @@ import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
-import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 
@@ -246,7 +246,7 @@ export const EventsBook: React.FC = () => {
   });
   
   const { entries = [], chapters = [] } = useLoreKeeper();
-  const isMockDataEnabled = shouldUseMockData();
+  const isMockDataEnabled = useShouldUseMockData();
 
   useEffect(() => {
     void loadEvents();
@@ -523,27 +523,22 @@ export const EventsBook: React.FC = () => {
     return count;
   }, [filters, searchTerm, activeCategory, activeSubCategory, impactFilter]);
 
-  if (error) {
-    return (
-      <div className="p-6">
-        <Card className="border-red-500/50 bg-red-500/10">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-red-400 mb-4">
-              <AlertCircle className="w-5 h-5" />
-              <p className="text-sm">{error}</p>
-            </div>
-            <Button onClick={() => void loadEvents()} variant="outline" size="sm">
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4 sm:space-y-6">
       <ChatFirstViewHint />
+      {error && (
+        <Card className="border-amber-500/50 bg-amber-500/10">
+          <CardContent className="py-3 px-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-amber-400">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <p className="text-sm">{error}</p>
+            </div>
+            <Button onClick={() => void loadEvents()} variant="outline" size="sm" disabled={loading}>
+              {loading ? 'Loading...' : 'Retry'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       {/* Header with Search and Controls - stacks on mobile for fit */}
       <div className="space-y-3 sm:space-y-4">
         <div className="flex flex-col gap-2 sm:gap-4 sm:flex-row sm:items-center">

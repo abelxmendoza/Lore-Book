@@ -8,7 +8,6 @@ import { Card, CardContent } from '../ui/card';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
-import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { mockDataService } from '../../services/mockDataService';
@@ -373,7 +372,7 @@ export const LocationBook = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<'grid' | 'book'>('book');
   const [selectedTab, setSelectedTab] = useState('all');
-  const { entries = [], chapters = [], timeline, refreshEntries, refreshTimeline } = useLoreKeeper();
+  const { entries = [], chapters = [], refreshEntries } = useLoreKeeper();
 
   const loadLocations = async () => {
     setLoading(true);
@@ -706,82 +705,6 @@ export const LocationBook = () => {
           </div>
         </>
       )}
-
-      {/* Horizontal Timeline Component - Always at bottom */}
-      <div className="mt-8 pt-6 border-t border-border/50">
-        <div className="mb-3">
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            Timeline
-          </h3>
-          <p className="text-sm text-white/60 mt-1">
-            {chapters.length > 0 || entries.length > 0
-              ? `View your story timeline with ${chapters.length} chapter${chapters.length !== 1 ? 's' : ''} and ${entries.length} entr${entries.length !== 1 ? 'ies' : 'y'}`
-              : 'Your timeline will appear here as you create chapters and entries'}
-          </p>
-        </div>
-        <Card className="bg-black/40 border-border/60 overflow-hidden">
-          <CardContent className="p-0 overflow-x-hidden">
-            <div className="overflow-x-auto overflow-y-hidden">
-              <ColorCodedTimeline
-                chapters={chapters.length > 0 ? chapters.map(ch => ({
-                  id: ch.id,
-                  title: ch.title,
-                  start_date: ch.start_date || ch.startDate || new Date().toISOString(),
-                  end_date: ch.end_date || ch.endDate || null,
-                  description: ch.description || null,
-                  summary: ch.summary || null
-                })) : []}
-                entries={entries.length > 0 ? entries.map(entry => ({
-                  id: entry.id,
-                  content: entry.content,
-                  date: entry.date,
-                  chapter_id: entry.chapter_id || entry.chapterId || null
-                })) : []}
-                useDummyData={chapters.length === 0 && entries.length === 0}
-                showLabel={true}
-                onItemClick={async (item) => {
-                  if (item.type === 'entry' || item.entryId || (item.id && entries.some(e => e.id === item.id))) {
-                    const entryId = item.entryId || item.id;
-                    const entry = entries.find(e => e.id === entryId);
-                    if (entry) {
-                      const memoryCard = memoryEntryToCard({
-                        id: entry.id,
-                        date: entry.date,
-                        content: entry.content,
-                        summary: entry.summary || null,
-                        tags: entry.tags || [],
-                        mood: entry.mood || null,
-                        chapter_id: entry.chapter_id || null,
-                        source: entry.source || 'manual',
-                        metadata: entry.metadata || {}
-                      });
-                      setSelectedMemory(memoryCard);
-                    } else {
-                      try {
-                        const fetchedEntry = await fetchJson<{
-                          id: string;
-                          date: string;
-                          content: string;
-                          summary?: string | null;
-                          tags: string[];
-                          mood?: string | null;
-                          chapter_id?: string | null;
-                          source: string;
-                          metadata?: Record<string, unknown>;
-                        }>(`/api/entries/${entryId}`);
-                        const memoryCard = memoryEntryToCard(fetchedEntry);
-                        setSelectedMemory(memoryCard);
-                      } catch (error) {
-                        console.error('Failed to load entry:', error);
-                      }
-                    }
-                  }
-                }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {selectedLocation && (
         <LocationDetailModal

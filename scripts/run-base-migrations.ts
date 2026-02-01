@@ -57,6 +57,41 @@ function getConnectionString(): string {
   return conn;
 }
 
+/** Parse pooler URI so user/password are correct (URI parsers often split on first : and break postgres.project_ref:password). */
+function parsePoolerConfig(connectionString: string): { user: string; password: string; host: string; port: number; database: string } {
+  const uri = connectionString.replace(/^postgresql:/i, 'postgres:');
+  const u = new URL(uri);
+  const userinfo = u.username ? `${u.username}${u.password ? ':' + u.password : ''}` : '';
+  const at = connectionString.indexOf('@');
+  const authorityStart = connectionString.indexOf('//') + 2;
+  const rawUserinfo = at > authorityStart ? connectionString.slice(authorityStart, at) : userinfo;
+  const colonIdx = rawUserinfo.indexOf(':');
+  let user: string;
+  let password: string;
+  if (colonIdx === -1) {
+    user = decodeURIComponent(rawUserinfo);
+    password = '';
+  } else {
+    const before = rawUserinfo.slice(0, colonIdx);
+    const after = rawUserinfo.slice(colonIdx + 1);
+    if (before === 'postgres' && /^[a-zA-Z0-9_-]+:/.test(after)) {
+      const secondColon = after.indexOf(':');
+      user = 'postgres.' + after.slice(0, secondColon);
+      password = decodeURIComponent(after.slice(secondColon + 1));
+    } else {
+      user = decodeURIComponent(before);
+      password = decodeURIComponent(after);
+    }
+  }
+  return {
+    user,
+    password,
+    host: u.hostname,
+    port: parseInt(u.port || '5432', 10),
+    database: (u.pathname || '/postgres').slice(1) || 'postgres',
+  };
+}
+
 async function run(): Promise<void> {
   const { Pool } = await import('pg');
   const baseMigrations = [
@@ -71,13 +106,14 @@ async function run(): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('\n❌', msg);
     console.error('\nExpected in .env (no sslmode in URI):');
-    console.error('  SUPABASE_CONNECTION_STRING=postgresql://postgres:<PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/postgres');
+    console.error('  SUPABASE_CONNECTION_STRING=postgresql://postgres.<PROJECT_REF>:<PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/postgres');
     console.error('  Copy from: Supabase Dashboard → Settings → Database → Connection string (URI) → Session mode.');
     process.exit(1);
   }
 
+  const config = parsePoolerConfig(connectionString);
   const pool = new Pool({
-    connectionString,
+    ...config,
     ssl: { rejectUnauthorized: false },
   });
 
@@ -98,6 +134,10 @@ async function run(): Promise<void> {
       console.error('\n❌ Tenant or user not found → password in URI does not match Supabase.');
       console.error('   Fix: Supabase Dashboard → Settings → Database → use "Reset database password" if needed.');
       console.error('   Then copy the connection URI (Session mode) and set SUPABASE_CONNECTION_STRING in .env to that URI (remove ?sslmode= from end).');
+    } else if (/password authentication failed/i.test(msg)) {
+      console.error('\n❌ Password authentication failed → the password in SUPABASE_CONNECTION_STRING is wrong.');
+      console.error('   Fix: Supabase Dashboard → Settings → Database → "Reset database password" → copy the NEW password.');
+      console.error('   Update .env: replace the password in SUPABASE_CONNECTION_STRING (between the first : and @) with the new password.');
     } else {
       console.error('\n❌ Migration failed:', msg);
     }
@@ -123,6 +163,9 @@ async function run(): Promise<void> {
     if (/tenant or user not found/i.test(msg)) {
       console.error('\n❌ Tenant or user not found → password in URI does not match Supabase.');
       console.error('   Fix: Supabase Dashboard → Settings → Database → reset DB password, then set SUPABASE_CONNECTION_STRING in .env to the new URI (Session mode, no ?sslmode=).');
+    } else if (/password authentication failed/i.test(msg)) {
+      console.error('\n❌ Password authentication failed → wrong password in SUPABASE_CONNECTION_STRING.');
+      console.error('   Fix: Supabase Dashboard → Settings → Database → Reset database password → put the NEW password in .env (in the URI between : and @).');
     } else {
       console.error('\n❌ Migration failed:', msg);
     }

@@ -13,7 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { OrganizationProfileCard, type Organization, type OrganizationMember, type OrganizationStory, type OrganizationEvent, type OrganizationLocation } from './OrganizationProfileCard';
 import { OrganizationDetailModal } from './OrganizationDetailModal';
 import { fetchJson } from '../../lib/api';
-import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { format, subDays } from 'date-fns';
@@ -194,12 +194,12 @@ export const OrganizationsBook: React.FC = () => {
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortOption>('name_asc');
-  const isMockDataEnabled = shouldUseMockData();
+  const isMockDataEnabled = useShouldUseMockData();
   const { entries = [], chapters = [] } = useLoreKeeper();
 
   useEffect(() => {
     void loadOrganizations();
-  }, []);
+  }, [isMockDataEnabled]);
 
   const loadOrganizations = async () => {
     setLoading(true);

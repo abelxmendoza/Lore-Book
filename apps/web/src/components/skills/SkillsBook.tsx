@@ -14,7 +14,7 @@ import { Badge } from '../ui/badge';
 import { SkillProfileCard } from './SkillProfileCard';
 import { SkillDetailModal } from './SkillDetailModal';
 import { skillsApi } from '../../api/skills';
-import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import type { Skill, SkillCategory } from '../../types/skill';
 import { format, subDays } from 'date-fns';
 
@@ -94,11 +94,11 @@ export const SkillsBook: React.FC = () => {
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
-  const isMockDataEnabled = shouldUseMockData();
+  const isMockDataEnabled = useShouldUseMockData();
 
   useEffect(() => {
     void loadSkills();
-  }, []);
+  }, [isMockDataEnabled]);
 
   const loadSkills = async () => {
     setLoading(true);

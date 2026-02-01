@@ -105,11 +105,12 @@ app.use(cors({
         // In production, only allow specific origins
         const allowedOrigins = [
           process.env.FRONTEND_URL,
-          process.env.VITE_API_URL?.replace('/api', ''), // Remove /api if present
+          process.env.VITE_API_URL?.replace(/\/api\/?$/, ''), // Base URL without /api
           'http://localhost:5173',
           'http://127.0.0.1:5173',
           'https://lorekeeper.app',
-          'https://www.lorekeeper.app'
+          'https://www.lorekeeper.app',
+          'https://lore-keeper-web.vercel.app' // Deployed Vercel frontend
         ].filter(Boolean) as string[];
         
         // Allow requests with no origin (like mobile apps or curl requests)

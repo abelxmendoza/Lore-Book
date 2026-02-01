@@ -17,6 +17,7 @@ import { AttachmentGravityCard } from './AttachmentGravityCard';
 import { RelationshipForecastCard } from './RelationshipForecastCard';
 import { ArcAppearanceCard } from './ArcAppearanceCard';
 import { useMockData } from '../../contexts/MockDataContext';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import type { AnalyticsPayload } from '../../../server/src/services/analytics/types';
 
 // Mock data for development/demo
@@ -103,9 +104,10 @@ export const RelationshipsAnalyticsPanel = () => {
   const analyticsModule = getModuleByKey('relationships');
   const { data: realData, loading, error } = useAnalytics('relationships');
   const { useMockData: isMockDataEnabled } = useMockData();
-  
-  // Use mock data if toggle is on AND (no real data OR error)
-  const shouldUseMockData = isMockDataEnabled && (!realData || error);
+  const shouldUseMock = useShouldUseMockData();
+
+  // When logged in, never use mock. When not logged in, use mock only if toggle on AND (no real data OR error)
+  const shouldUseMockData = shouldUseMock && isMockDataEnabled && (!realData || error);
 
   if (!analyticsModule) {
     return (

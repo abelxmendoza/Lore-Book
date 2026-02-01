@@ -12,8 +12,7 @@ import { memoryEntryToCard, type MemoryCard, type MemorySearchResult } from '../
 import type { HQIResult } from '../hqi/HQIResultCard';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { mockDataService } from '../../services/mockDataService';
-import { useMockData } from '../../contexts/MockDataContext';
-import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { useMemoryReviewQueue, type MemoryProposal } from '../../hooks/useMemoryReviewQueue';
 import { MOCK_MEMORY_PROPOSALS } from '../../mocks/memoryProposals';
 
@@ -621,7 +620,7 @@ export const dummyMemoryCards: MemoryCard[] = [
 ];
 
 export const MemoryExplorer = () => {
-  const { isMockDataEnabled } = useMockData();
+  const shouldUseMock = useShouldUseMockData();
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<MemorySearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -636,7 +635,7 @@ export const MemoryExplorer = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<'grid' | 'book'>('book');
   const [selectedTab, setSelectedTab] = useState('all');
-  const { entries = [], chapters = [], timeline, refreshEntries, refreshTimeline } = useLoreKeeper();
+  const { entries = [], chapters = [], refreshEntries } = useLoreKeeper();
 
   // Memory Review Queue hook
   const { proposals, loading: proposalsLoading, error: proposalsError, refetch: refetchProposals, approveProposal, rejectProposal } = useMemoryReviewQueue();
@@ -663,17 +662,17 @@ export const MemoryExplorer = () => {
       }> }>('/api/entries/recent?limit=100');
       const cards = response.entries.map(memoryEntryToCard);
       
-      // Use mock data service to determine what to show - pass current toggle state
+      // Use mock only when not logged in (shouldUseMock); logged-in users get real data only
       const result = mockDataService.getWithFallback.memories(
         cards.length > 0 ? cards : null,
-        isMockDataEnabled
+        shouldUseMock
       );
       
       setMemories(result.data);
       setAllMemories(result.data);
     } catch {
-      // On error, use mock data if enabled
-      const result = mockDataService.getWithFallback.memories(null, isMockDataEnabled);
+      // On error: show mock only for unauthenticated users; logged-in users get empty state
+      const result = mockDataService.getWithFallback.memories(null, shouldUseMock);
       setMemories(result.data);
       setAllMemories(result.data);
     } finally {
@@ -681,10 +680,10 @@ export const MemoryExplorer = () => {
     }
   };
 
-  // Load memories on mount and when mock data toggle changes
+  // Load memories on mount and when auth/mock state changes (e.g. login clears mock)
   useEffect(() => {
     void loadMemories();
-  }, [isMockDataEnabled]);
+  }, [shouldUseMock]);
 
   useEffect(() => {
     const memoryCards = entries.map(entry => memoryEntryToCard({
@@ -699,14 +698,17 @@ export const MemoryExplorer = () => {
       metadata: entry.metadata || {}
     }));
     setAllMemories(memoryCards);
-    // Use real data if available, otherwise use dummy data
+    // Logged-in users: real data or empty. Unauthenticated only: allow dummy fallback.
     if (memoryCards.length > 0) {
       setMemories(memoryCards);
-    } else {
+    } else if (shouldUseMock) {
       setMemories(dummyMemoryCards);
       setAllMemories(dummyMemoryCards);
+    } else {
+      setMemories([]);
+      setAllMemories([]);
     }
-  }, [entries]);
+  }, [entries, shouldUseMock]);
 
   const filteredMemories = useMemo(() => {
     let mems = memories;
@@ -1364,81 +1366,6 @@ export const MemoryExplorer = () => {
             </div>
           </div>
 
-          {/* Horizontal Timeline Component - Always at bottom */}
-          <div className="mt-8 pt-6 border-t border-border/50">
-            <div className="mb-3">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                Timeline
-              </h3>
-              <p className="text-sm text-white/60 mt-1">
-                {chapters.length > 0 || entries.length > 0
-                  ? `View your story timeline with ${chapters.length} chapter${chapters.length !== 1 ? 's' : ''} and ${entries.length} entr${entries.length !== 1 ? 'ies' : 'y'}`
-                  : 'Your timeline will appear here as you create chapters and entries'}
-              </p>
-            </div>
-            <Card className="bg-black/40 border-border/60 overflow-hidden">
-              <CardContent className="p-0 overflow-x-hidden">
-                <div className="overflow-x-auto overflow-y-hidden">
-                  <ColorCodedTimeline
-                    chapters={chapters.length > 0 ? chapters.map(ch => ({
-                      id: ch.id,
-                      title: ch.title,
-                      start_date: ch.start_date || ch.startDate || new Date().toISOString(),
-                      end_date: ch.end_date || ch.endDate || null,
-                      description: ch.description || null,
-                      summary: ch.summary || null
-                    })) : []}
-                    entries={entries.length > 0 ? entries.map(entry => ({
-                      id: entry.id,
-                      content: entry.content,
-                      date: entry.date,
-                      chapter_id: entry.chapter_id || entry.chapterId || null
-                    })) : []}
-                    useDummyData={chapters.length === 0 && entries.length === 0}
-                    showLabel={true}
-                    onItemClick={async (item) => {
-                      if (item.type === 'entry' || item.entryId || (item.id && entries.some(e => e.id === item.id))) {
-                        const entryId = item.entryId || item.id;
-                        const entry = entries.find(e => e.id === entryId);
-                        if (entry) {
-                          const memoryCard = memoryEntryToCard({
-                            id: entry.id,
-                            date: entry.date,
-                            content: entry.content,
-                            summary: entry.summary || null,
-                            tags: entry.tags || [],
-                            mood: entry.mood || null,
-                            chapter_id: entry.chapter_id || null,
-                            source: entry.source || 'manual',
-                            metadata: entry.metadata || {}
-                          });
-                          setSelectedMemory(memoryCard);
-                        } else {
-                          try {
-                            const fetchedEntry = await fetchJson<{
-                              id: string;
-                              date: string;
-                              content: string;
-                              summary?: string | null;
-                              tags: string[];
-                              mood?: string | null;
-                              chapter_id?: string | null;
-                              source: string;
-                              metadata?: Record<string, unknown>;
-                            }>(`/api/entries/${entryId}`);
-                            const memoryCard = memoryEntryToCard(fetchedEntry);
-                            setSelectedMemory(memoryCard);
-                          } catch (error) {
-                            console.error('Failed to load entry:', error);
-                          }
-                        }
-                      }
-                    }}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       )}
 

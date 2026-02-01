@@ -10,6 +10,7 @@ export type UserProfile = {
   bio?: string;
   avatar_url?: string;
   persona?: string;
+  phone?: string;
   created_at: string;
   updated_at?: string;
 };
@@ -75,6 +76,7 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
           bio: user.user_metadata?.bio || '',
           avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture,
           persona: user.user_metadata?.persona,
+          phone: user.user_metadata?.phone || '',
           created_at: user.created_at,
         }},
       }
@@ -89,6 +91,7 @@ export const fetchUserProfile = async (): Promise<UserProfile> => {
       bio: user.user_metadata?.bio || '',
       avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture,
       persona: user.user_metadata?.persona,
+      phone: user.user_metadata?.phone || '',
       created_at: user.created_at,
     };
   }
@@ -100,6 +103,7 @@ export const updateUserProfile = async (updates: {
   bio?: string;
   avatar_url?: string;
   persona?: string;
+  phone?: string;
 }): Promise<UserProfile> => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
@@ -128,6 +132,7 @@ export const updateUserProfile = async (updates: {
       bio: data.user.user_metadata?.bio || '',
       avatar_url: data.user.user_metadata?.avatar_url || data.user.user_metadata?.picture,
       persona: data.user.user_metadata?.persona,
+      phone: data.user.user_metadata?.phone || '',
       created_at: data.user.created_at,
     };
   }

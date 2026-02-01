@@ -647,7 +647,8 @@ Only extract if there's a clear date reference. Return has_date: false if uncert
   }
 
   /**
-   * Get pending MRQ items
+   * Get pending MRQ items.
+   * Returns [] if the MRQ RPC/table is missing or fails (e.g. migration not run) so the UI can show "No pending proposals" instead of an error.
    */
   async getPendingMRQ(userId: string): Promise<PendingMRQItem[]> {
     try {
@@ -656,14 +657,14 @@ Only extract if there's a clear date reference. Return has_date: false if uncert
       });
 
       if (error) {
-        logger.error({ err: error, userId }, 'Failed to get pending MRQ');
-        throw error;
+        logger.warn({ err: error, userId }, 'get_pending_mrq failed, returning empty list');
+        return [];
       }
 
       return data || [];
     } catch (error) {
-      logger.error({ err: error, userId }, 'Failed to get pending MRQ');
-      throw error;
+      logger.warn({ err: error, userId }, 'get_pending_mrq threw, returning empty list');
+      return [];
     }
   }
 

@@ -2,6 +2,14 @@
 
 This checklist ensures a smooth deployment process for LoreKeeper to production.
 
+## Production connectivity
+
+For the deployed frontend (e.g. lore-keeper-web.vercel.app) to talk to a real backend instead of returning 405 on API calls:
+
+- **Frontend (Vercel):** Set `VITE_API_URL` to the backend **base URL** (e.g. `https://your-api.railway.app` or `https://your-api.vercel.app`). Do **not** add a trailing `/api`; the app appends paths like `/api/chat/stream`. Redeploy the web app after setting this.
+- **Backend (wherever it runs):** Set `FRONTEND_URL` to `https://lore-keeper-web.vercel.app` (and any other allowed origins). CORS already allows this origin in `apps/server/src/index.ts`.
+- **Deploying the backend:** The repo currently only deploys the **web app** to Vercel (`.github/workflows/deploy.yml`). The Node server must be deployed **separately** (e.g. Railway, Render, Fly.io, or a second Vercel project). After the backend is live, set `VITE_API_URL` in the Vercel project to that URL and redeploy the frontend.
+
 ## Pre-Deployment
 
 ### 1. Environment Variables ✅

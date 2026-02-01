@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
 import { useLoreKeeper } from './useLoreKeeper';
-import { useMockData } from '../contexts/MockDataContext';
-import { mockDataService } from '../services/mockDataService';
+import { useShouldUseMockData } from './useShouldUseMockData';
 
 export type BiographySection = {
   id: string;
@@ -121,7 +120,7 @@ const dummyChapters: Chapter[] = [
 ];
 
 export const useLoreNavigatorData = () => {
-  const { useMockData: isMockDataEnabled } = useMockData();
+  const shouldUseMock = useShouldUseMockData();
   const [data, setData] = useState<LoreNavigatorData>({
     biography: [],
     characters: [],
@@ -174,22 +173,22 @@ export const useLoreNavigatorData = () => {
           }))
         : [];
 
-      // Use mock data service to determine what to show
+      // Logged-in users: real data or empty. Unauthenticated only: allow dummy fallback.
       const finalBiography = biography.length > 0 
         ? biography 
-        : (isMockDataEnabled ? dummyBiographySections : []);
+        : (shouldUseMock ? dummyBiographySections : []);
       
       const finalCharacters = characters.length > 0 
         ? characters 
-        : (isMockDataEnabled ? dummyCharacters : []);
+        : (shouldUseMock ? dummyCharacters : []);
       
       const finalLocations = locations.length > 0 
         ? locations 
-        : (isMockDataEnabled ? dummyLocations : []);
+        : (shouldUseMock ? dummyLocations : []);
       
       const finalChapters = chapters.length > 0 
         ? chapters 
-        : (isMockDataEnabled ? dummyChapters : []);
+        : (shouldUseMock ? dummyChapters : []);
 
       setData({
         biography: finalBiography,
@@ -199,8 +198,8 @@ export const useLoreNavigatorData = () => {
       });
     } catch (error) {
       console.error('Failed to load lore navigator data:', error);
-      // Use mock data on error only if toggle is enabled
-      if (isMockDataEnabled) {
+      // Logged-in users: empty on error. Unauthenticated only: allow dummy fallback.
+      if (shouldUseMock) {
         setData({
           biography: dummyBiographySections,
           characters: dummyCharacters,
@@ -218,11 +217,11 @@ export const useLoreNavigatorData = () => {
     } finally {
       setLoading(false);
     }
-  }, [loreChapters]);
+  }, [loreChapters, shouldUseMock]);
 
   useEffect(() => {
     void loadData();
-  }, [loadData, isMockDataEnabled]);
+  }, [loadData]);
 
   return { data, loading, refresh: loadData };
 };

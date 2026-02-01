@@ -5,13 +5,11 @@ import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
-import { LocationTimeline } from './LocationTimeline';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
 import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { LocationProfile } from './LocationProfileCard';
-import type { TimelineEntry } from '../../hooks/useTimelineData';
 import { useMockData } from '../../contexts/MockDataContext';
 
 type LocationDetailModalProps = {
@@ -19,7 +17,7 @@ type LocationDetailModalProps = {
   onClose: () => void;
 };
 
-type TabKey = 'overview' | 'chat' | 'visits' | 'people' | 'context' | 'timeline' | 'insights' | 'metadata';
+type TabKey = 'overview' | 'chat' | 'visits' | 'people' | 'context' | 'insights' | 'metadata';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'overview', label: 'Info', icon: FileText },
@@ -27,7 +25,6 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'visits', label: 'History', icon: Calendar },
   { key: 'people', label: 'People', icon: Users },
   { key: 'context', label: 'Context', icon: Layers },
-  { key: 'timeline', label: 'Timeline', icon: Clock },
   { key: 'insights', label: 'Insights', icon: Brain },
   { key: 'metadata', label: 'Metadata', icon: Database }
 ];
@@ -37,10 +34,6 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [memoryCards, setMemoryCards] = useState<MemoryCard[]>([]);
-  const [timelineEntries, setTimelineEntries] = useState<TimelineEntry[]>([]);
-  const [eras, setEras] = useState<Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string; type: 'era' | 'saga' | 'arc' }>>([]);
-  const [sagas, setSagas] = useState<Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string; type: 'era' | 'saga' | 'arc' }>>([]);
-  const [arcs, setArcs] = useState<Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string; type: 'era' | 'saga' | 'arc' }>>([]);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
@@ -86,29 +79,10 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
 
           const cards = (await Promise.all(entryPromises)).filter((card): card is MemoryCard => card !== null);
           setMemoryCards(cards);
-
-          // Convert memory cards to timeline entries
-          const entries: TimelineEntry[] = cards.map(card => ({
-            id: card.id,
-            timestamp: card.date,
-            title: card.content.substring(0, 100) || 'Untitled',
-            summary: card.summary || card.content.substring(0, 200),
-            full_text: card.content,
-            mood: card.mood || null,
-            arc: null,
-            saga: null,
-            era: null,
-            lane: 'life', // Default lane, could be enhanced to detect from tags/content
-            tags: card.tags || [],
-            character_ids: [],
-            related_entry_ids: []
-          }));
-          setTimelineEntries(entries);
         } else {
           // Generate mock memories if no entries from API and toggle is enabled
           if (!isMockDataEnabled) {
             setMemoryCards([]);
-            setTimelineEntries([]);
             setLoadingMemories(false);
             return;
           }
@@ -160,24 +134,6 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
             },
           ];
           setMemoryCards(mockMemories);
-          
-          // Convert mock memories to timeline entries
-          const entries: TimelineEntry[] = mockMemories.map(card => ({
-            id: card.id,
-            timestamp: card.date,
-            title: card.content.substring(0, 100) || 'Untitled',
-            summary: card.summary || card.content.substring(0, 200),
-            full_text: card.content,
-            mood: card.mood || null,
-            arc: null,
-            saga: null,
-            era: null,
-            lane: 'life',
-            tags: card.tags || [],
-            character_ids: [],
-            related_entry_ids: []
-          }));
-          setTimelineEntries(entries);
         }
       } catch (error) {
         console.error('Failed to load location memories:', error);
@@ -214,34 +170,6 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
     void loadLocationMemories();
   }, [location.entries, location.id, location.name, location.firstVisited, location.lastVisited, location.tagCounts, location.moods, location.relatedPeople]);
 
-  // Load timeline bands (eras, sagas, arcs) when timeline tab is active
-  useEffect(() => {
-    if (activeTab === 'timeline') {
-      const loadTimelineBands = async () => {
-        try {
-          const [erasRes, sagasRes, arcsRes] = await Promise.allSettled([
-            fetchJson<{ eras: Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string }> }>('/api/timeline/eras'),
-            fetchJson<{ sagas: Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string }> }>('/api/timeline/sagas'),
-            fetchJson<{ arcs: Array<{ id: string; name: string; start_date: string; end_date: string | null; color: string }> }>('/api/timeline/arcs')
-          ]);
-
-          if (erasRes.status === 'fulfilled') {
-            setEras(erasRes.value.eras || []);
-          }
-          if (sagasRes.status === 'fulfilled') {
-            setSagas(sagasRes.value.sagas || []);
-          }
-          if (arcsRes.status === 'fulfilled') {
-            setArcs(arcsRes.value.arcs || []);
-          }
-        } catch (error) {
-          console.error('Failed to load timeline bands:', error);
-        }
-      };
-      void loadTimelineBands();
-    }
-  }, [activeTab]);
-
   // Auto-scroll chat to bottom
   useEffect(() => {
     if (chatMessagesEndRef.current) {
@@ -275,7 +203,7 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
-      } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '8') {
+      } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '7') {
         e.preventDefault();
         const tabIndex = parseInt(e.key) - 1;
         if (tabs[tabIndex]) {
@@ -739,40 +667,6 @@ INSTRUCTIONS:
               </div>
             )}
 
-            {activeTab === 'timeline' && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-2">Timeline View</h3>
-                  <p className="text-sm text-white/60 mb-4">
-                    Visual timeline of visits to {location.name}
-                  </p>
-                </div>
-                {loadingMemories ? (
-                  <div className="flex items-center justify-center h-[500px]">
-                    <div className="text-center text-white/60">
-                      <Clock className="h-12 w-12 mx-auto mb-3 animate-pulse opacity-50" />
-                      <p>Loading timeline...</p>
-                    </div>
-                  </div>
-                ) : (
-                  <LocationTimeline
-                    entries={timelineEntries}
-                    locationName={location.name}
-                    eras={eras}
-                    sagas={sagas}
-                    arcs={arcs}
-                    onMemoryClick={(entry) => {
-                      const clickedMemory = memoryCards.find(m => m.id === entry.id);
-                      if (clickedMemory) {
-                        setSelectedMemory(clickedMemory);
-                      }
-                    }}
-                    compact={true}
-                  />
-                )}
-              </div>
-            )}
-
             {activeTab === 'chat' && (
               <div className="space-y-6">
                 <div>
@@ -1106,7 +1000,7 @@ INSTRUCTIONS:
                   <div>
                     <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                       <Calendar className="h-5 w-5 text-primary" />
-                      Timeline & Memories
+                      Memories
                     </h3>
                     <p className="text-sm text-white/60 mt-1">
                       Stories and moments at {location.name}
@@ -1118,33 +1012,6 @@ INSTRUCTIONS:
                     </span>
                   )}
                 </div>
-
-                {/* Timeline */}
-                {memoryCards.length > 0 && (
-                  <div className="border-b border-border/60 pb-6">
-                    <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-primary" />
-                      Timeline
-                    </h4>
-                    <div className="overflow-x-auto overflow-y-hidden">
-                      <ColorCodedTimeline
-                        entries={memoryCards.map(memory => ({
-                          id: memory.id,
-                          content: memory.content,
-                          date: memory.date,
-                          chapter_id: memory.chapterId || null
-                        }))}
-                        showLabel={true}
-                        onItemClick={(item) => {
-                          const clickedMemory = memoryCards.find(m => m.id === item.id);
-                          if (clickedMemory) {
-                            setSelectedMemory(clickedMemory);
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
 
                 {/* Memory Cards */}
                 {loadingMemories ? (

@@ -31,14 +31,26 @@ export const validateRequest = (schema: ZodSchema) => {
         });
       }
 
-      // Replace request data with validated data
-      if (result.data.body) req.body = result.data.body;
-      if (result.data.query) req.query = result.data.query;
-      if (result.data.params) req.params = result.data.params;
+      // Replace request data with validated data (guard in case schema only has subset of keys)
+      const validated = result.data as Record<string, unknown> | undefined;
+      if (validated?.body !== undefined) req.body = validated.body as typeof req.body;
+      if (validated?.query !== undefined) req.query = validated.query as typeof req.query;
+      if (validated?.params !== undefined) req.params = validated.params as typeof req.params;
 
       next();
     } catch (error) {
-      logger.error({ error, path: req.path }, 'Validation middleware error');
+      const err = error as Error & { code?: string };
+      logger.error(
+        {
+          path: req.path,
+          method: req.method,
+          url: req.originalUrl,
+          message: err?.message,
+          code: err?.code,
+          stack: err?.stack,
+        },
+        'Validation middleware error'
+      );
       return res.status(500).json({ error: 'Validation error' });
     }
   };

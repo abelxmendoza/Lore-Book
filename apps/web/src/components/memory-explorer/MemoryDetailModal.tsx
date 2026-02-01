@@ -3,7 +3,6 @@ import { X, Calendar, Tag, Users, Sparkles, MapPin, ChevronLeft, ChevronRight, F
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { ChatComposer } from '../chat/ChatComposer';
 import { MemoryComponents } from './MemoryComponents';
 import { KnowledgeGraphViewer } from '../graph/KnowledgeGraphViewer';
@@ -18,7 +17,7 @@ type MemoryDetailModalProps = {
   allMemories?: MemoryCard[]; // For navigation between memories
 };
 
-type TabKey = 'overview' | 'chat' | 'context' | 'connections' | 'linked' | 'insights' | 'timeline';
+type TabKey = 'overview' | 'chat' | 'context' | 'connections' | 'linked' | 'insights';
 
 const moodColors: Record<string, string> = {
   happy: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
@@ -47,8 +46,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'context', label: 'Context', icon: Layers },
   { key: 'connections', label: 'Connections', icon: Network },
   { key: 'linked', label: 'Linked Memories', icon: Link2 },
-  { key: 'insights', label: 'Insights', icon: Brain },
-  { key: 'timeline', label: 'Timeline', icon: Clock }
+  { key: 'insights', label: 'Insights', icon: Brain }
 ];
 
 type MemoryComponent = {
@@ -293,7 +291,7 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
       } else if (e.key === 'ArrowRight' && nextMemory && !(e.target instanceof HTMLTextAreaElement)) {
         e.preventDefault();
         onNavigate?.(nextMemory.id);
-      } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '8') {
+      } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '6') {
         e.preventDefault();
         const tabIndex = parseInt(e.key) - 1;
         if (tabs[tabIndex]) {
@@ -1156,42 +1154,6 @@ The user can ask questions about this memory, request to add details, update tag
                     <p>No insights available</p>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* Timeline Tab */}
-            {activeTab === 'timeline' && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-2">Timeline View</h3>
-                  <p className="text-sm text-white/60 mb-4">
-                    Visual timeline centered on this memory with related entries
-                  </p>
-                </div>
-                <div className="border border-border/50 rounded-lg p-4 bg-black/20">
-                  <ColorCodedTimeline
-                    entries={[
-                      ...temporalMemories.map(m => ({
-                        id: m.id,
-                        content: m.content,
-                        date: m.date,
-                        chapter_id: m.chapterId || null
-                      })),
-                      {
-                        id: memory.id,
-                        content: memory.content,
-                        date: memory.date,
-                        chapter_id: memory.chapterId || null
-                      }
-                    ]}
-                    showLabel={true}
-                    onItemClick={(item) => {
-                      if (item.id !== memory.id) {
-                        onNavigate?.(item.id);
-                      }
-                    }}
-                  />
-                </div>
               </div>
             )}
 

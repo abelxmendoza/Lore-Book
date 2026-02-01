@@ -2,6 +2,15 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { skillDetailsExtractionService, type SkillMetadata } from './skillDetailsExtractionService';
 
+function isTableMissingError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: string }).code;
+  const message = (error as { message?: string }).message ?? '';
+  if (code === 'PGRST205') return true;
+  if (/schema cache|could not find the table/i.test(message)) return true;
+  return false;
+}
+
 export type SkillCategory = 'professional' | 'creative' | 'physical' | 'social' | 'intellectual' | 'emotional' | 'practical' | 'artistic' | 'technical' | 'other';
 
 export interface Skill {
@@ -149,12 +158,20 @@ class SkillService {
       const { data, error } = await query;
 
       if (error) {
+        if (isTableMissingError(error)) {
+          logger.warn({ userId }, 'skills table missing, returning empty list');
+          return [];
+        }
         logger.error({ error, userId }, 'Failed to get skills');
         throw error;
       }
 
       return (data || []) as Skill[];
     } catch (error) {
+      if (isTableMissingError(error)) {
+        logger.warn({ userId }, 'skills table missing, returning empty list');
+        return [];
+      }
       logger.error({ error, userId }, 'Failed to get skills');
       throw error;
     }

@@ -4,7 +4,7 @@ import { config, log } from '../config/env';
 import { performance as perfMonitoring, errorTracking } from './monitoring';
 import { apiCache, generateCacheKey } from './cache';
 import { handleError, createAppError, retryWithBackoff, type AppError } from './errorHandler';
-import { getGlobalMockDataEnabled, getBackendUnavailable } from '../contexts/MockDataContext';
+import { getGlobalMockDataEnabled, getBackendUnavailable, notifyBackendReachable } from '../contexts/MockDataContext';
 
 // Log backend-down message once per session to avoid console flood
 let backendDownWarned = false;
@@ -18,17 +18,21 @@ export const fetchJson = async <T>(
     onError?: (error: Error) => void;
   }
 ): Promise<T> => {
-  // Short-circuit: when backend is known down, return mock immediately (no proxy hit = no ECONNREFUSED spam)
-  if (getBackendUnavailable() && options?.mockData !== undefined) {
+  // Get session first so we can skip mock when user is logged in
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+
+  // Short-circuit: when backend is known down, return mock only if user is NOT logged in
+  if (getBackendUnavailable() && options?.mockData !== undefined && !token) {
     if (config.logging.logApiCalls) {
       log.debug('Backend unavailable, using mock data (no request):', typeof input === 'string' ? input : 'Request');
     }
     return options.mockData;
   }
 
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  
+  // When user is logged in, never use mock data — always use real backend
+  const isLoggedIn = !!token;
+
   // Use configured API URL
   const apiBaseUrl = config.api.url;
   
@@ -44,9 +48,9 @@ export const fetchJson = async <T>(
   
   const startTime = performance.now();
   
-  // Check global mock data toggle
+  // Check global mock data toggle — only when not logged in (logged-in users always get real data)
   const globalMockEnabled = getGlobalMockDataEnabled();
-  const shouldUseMock = (globalMockEnabled || options?.useMockData === true) && 
+  const shouldUseMock = !isLoggedIn && (globalMockEnabled || options?.useMockData === true) && 
                        options?.useMockData !== false;
   
   // Check cache for GET requests (skip cache if using mock data)
@@ -97,16 +101,19 @@ export const fetchJson = async <T>(
       log.debug(`API Response: ${duration.toFixed(2)}ms`, { url: typeof input === 'string' ? input : 'Request' });
     }
 
+    // Any successful response means backend is reachable — clear "Backend unavailable" banner
+    if (res.ok) {
+      notifyBackendReachable();
+    }
+
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
       let errorMessage = error.error || error.message || `HTTP ${res.status}: ${res.statusText}`;
       const isSchemaIncomplete = res.status === 503 && (error.error === 'Database schema incomplete' || Array.isArray(error.missingTables));
       if (isSchemaIncomplete) {
         errorMessage = error.message || 'Database schema incomplete. Run: ./scripts/run-base-migrations.sh';
-      } else if (config.env.isDevelopment && !config.api.url && res.status === 500) {
-        errorMessage =
-          'Backend server is not running. Start it with: cd apps/server && npm run dev';
       }
+      // Do not overwrite 500 with "server not running" — server may be up but returned an error (e.g. missing table, validation)
       // Check if backend is not running or schema incomplete (dev mode or when mock data is enabled)
       const backendDownStatus = res.status === 0 || res.status === 503 || res.status === 502 ||
         (res.status === 500 && !config.api.url);

@@ -7,8 +7,9 @@
 
 import { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback } from 'react';
 import { config } from '../config/env';
+import { useAuth } from '../lib/supabase';
 
-const HEALTH_CHECK_TIMEOUT_MS = 2000;
+const HEALTH_CHECK_TIMEOUT_MS = 3000; // Match ConnectionStatus so we don't mark backend down when it's just slow
 // Retry less often when backend is down to reduce console/network spam (was 5s)
 const HEALTH_RETRY_MS = 30_000;
 
@@ -40,6 +41,15 @@ export function getGlobalMockDataEnabled(): boolean {
   return globalMockDataEnabled;
 }
 
+// Global "user is logged in" — when true, shouldUseMockData() must return false everywhere
+let globalIsUserLoggedIn = false;
+export function getIsUserLoggedIn(): boolean {
+  return globalIsUserLoggedIn;
+}
+export function setGlobalIsUserLoggedIn(value: boolean) {
+  globalIsUserLoggedIn = value;
+}
+
 // Global backend-unavailable flag so fetchJson can short-circuit without hitting the proxy (used outside React).
 let globalBackendUnavailable = false;
 export function getBackendUnavailable(): boolean {
@@ -47,6 +57,19 @@ export function getBackendUnavailable(): boolean {
 }
 export function setGlobalBackendUnavailable(value: boolean) {
   globalBackendUnavailable = value;
+}
+
+// When any API request succeeds (e.g. Entities), we can clear "backend unavailable" so the banner goes away.
+const backendReachableListeners = new Set<() => void>();
+export function notifyBackendReachable() {
+  globalBackendUnavailable = false;
+  backendReachableListeners.forEach((fn) => fn());
+}
+export function subscribeToBackendReachable(listener: () => void) {
+  backendReachableListeners.add(listener);
+  return () => {
+    backendReachableListeners.delete(listener);
+  };
 }
 
 export function subscribeToMockDataState(listener: (enabled: boolean) => void) {
@@ -57,6 +80,8 @@ export function subscribeToMockDataState(listener: (enabled: boolean) => void) {
 }
 
 export function MockDataProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+
   const [useMockData, setUseMockDataState] = useState(() => {
     // Check URL parameter first (for easy enabling: ?mockData=true)
     if (typeof window !== 'undefined') {
@@ -129,14 +154,14 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
     checkHealth();
   }, [checkHealth]);
 
-  // When backend is unavailable, re-check every 5s so we clear the banner when backend comes back
+  // When backend is unavailable, re-check every 30s so we clear the banner when backend comes back
   useEffect(() => {
     if (!backendUnavailable) return;
     const schedule = () => {
       retryTimeoutRef.current = setTimeout(() => {
         retryTimeoutRef.current = null;
         checkHealth();
-        schedule(); // next retry in 5s; cleanup clears when backendUnavailable becomes false
+        schedule(); // next retry; cleanup clears when backendUnavailable becomes false
       }, HEALTH_RETRY_MS);
     };
     schedule();
@@ -144,6 +169,22 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
       if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
     };
   }, [backendUnavailable, checkHealth]);
+
+  // When any API request succeeds (e.g. Entities), clear the banner
+  useEffect(() => {
+    const clearBanner = () => setBackendUnavailableState(false);
+    return subscribeToBackendReachable(clearBanner);
+  }, []);
+
+  // When user logs in, turn off mock data and set global so all components see "no mock"
+  useEffect(() => {
+    const loggedIn = !!user;
+    setGlobalIsUserLoggedIn(loggedIn);
+    if (loggedIn) {
+      setUseMockDataState(false);
+      setGlobalMockDataEnabled(false);
+    }
+  }, [user?.id]);
 
   // Sync with global state
   useEffect(() => {

@@ -36,6 +36,10 @@ if (process.env.NODE_ENV === 'production') {
   } else {
     console.log('✅ Environment variables validated');
   }
+
+  if (!process.env.VITE_API_URL) {
+    console.warn('⚠️  VITE_API_URL is not set. The deployed app will have no backend until you set VITE_API_URL in Vercel to your API URL and redeploy. See DEPLOYMENT_CHECKLIST.md → Production connectivity.');
+  }
 } else {
   console.log('⚠️  Development mode: Environment variables not validated');
 }
@@ -55,14 +59,20 @@ function backendDownMiddlewarePlugin(flag: { current: boolean }) {
       return () => {
         const middleware = (req: { url?: string }, res: { statusCode: number; setHeader: (n: string, v: string) => void; end: (s: string) => void }, next: () => void) => {
           if (!req.url?.startsWith('/api')) return next();
+          const isHealth = req.url === '/api/health' || req.url?.startsWith('/api/health?');
+          // Always proxy /api/health so the app can recover when the backend comes back (and so initial health check isn't blocked)
+          if (isHealth) {
+            next();
+            return;
+          }
           if (flag.current) {
-            // Backend was down: 503 all /api to avoid proxy error spam
+            // Backend was down: 503 other /api to avoid proxy error spam
             res.statusCode = 503;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: 'Backend unavailable' }));
             return;
           }
-          // When backend status unknown, allow only one /api request at a time so we get at most one proxy error on first load
+          // When backend status unknown, allow only one non-health /api request at a time so we get at most one proxy error on first load
           if (apiProbeInFlight) {
             res.statusCode = 503;
             res.setHeader('Content-Type', 'application/json');

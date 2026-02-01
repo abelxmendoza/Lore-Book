@@ -3,7 +3,8 @@
 
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
-create extension if not exists "pgvector";
+-- Supabase uses extension name "vector" (not "pgvector")
+create extension if not exists vector;
 
 -- Journal Entries Table
 create table if not exists public.journal_entries (

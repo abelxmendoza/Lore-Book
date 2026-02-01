@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { 
   User, Mail, Shield, CreditCard, Activity, Download, Trash2, 
   Save, Edit2, Camera, Bell, Lock, Eye, EyeOff, Key, FileText,
-  Calendar, HardDrive, AlertTriangle, CheckCircle2, X, Loader2, LogIn, Sparkles, ShieldCheck
+  Calendar, HardDrive, AlertTriangle, CheckCircle2, X, Loader2, LogIn, LogOut, Sparkles, ShieldCheck, Phone
 } from 'lucide-react';
-import { useAuth } from '../lib/supabase';
+import { useAuth, supabase } from '../lib/supabase';
 import { useGuest } from '../contexts/GuestContext';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
 import { MockDataToggle } from '../components/settings/MockDataToggle';
@@ -49,6 +49,7 @@ export default function AccountCenter() {
     name: user?.user_metadata?.full_name || '',
     bio: '',
     avatar: user?.user_metadata?.avatar_url || '',
+    phone: user?.user_metadata?.phone || '',
   });
 
   // Privacy settings state
@@ -101,11 +102,13 @@ export default function AccountCenter() {
       ]);
 
       if (profileData) {
-        setProfile({
+        setProfile(prev => ({
+          ...prev,
           name: profileData.name || '',
           bio: profileData.bio || '',
           avatar: profileData.avatar_url || '',
-        });
+          phone: profileData.phone ?? prev.phone ?? '',
+        }));
       }
 
       if (privacyData) {
@@ -153,6 +156,7 @@ export default function AccountCenter() {
         name: profile.name,
         bio: profile.bio,
         avatar_url: profile.avatar,
+        phone: profile.phone || undefined,
       });
       setSuccess('Profile updated successfully!');
       setIsEditing(false);
@@ -220,6 +224,11 @@ export default function AccountCenter() {
     } finally {
       setChangingPassword(false);
     }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/login');
   };
 
   const handleExportData = async (format: 'json' | 'csv') => {
@@ -484,7 +493,7 @@ export default function AccountCenter() {
               })}
             </div>
 
-            {/* Account Stats Card */}
+            {/* Account Stats Card - Email, Phone, Log out */}
             <div className="mt-6 rounded-2xl border border-border/60 bg-gradient-to-br from-purple-900/20 to-pink-900/20 p-4">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
@@ -497,7 +506,15 @@ export default function AccountCenter() {
               </div>
               {user && (
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between text-white/70">
+                  <div className="flex items-center gap-2 text-white/80">
+                    <Mail className="h-4 w-4 text-white/60 flex-shrink-0" />
+                    <span className="truncate">{user.email || '—'}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-white/80">
+                    <Phone className="h-4 w-4 text-white/60 flex-shrink-0" />
+                    <span>{profile.phone || 'Not set'}</span>
+                  </div>
+                  <div className="flex justify-between text-white/70 pt-1">
                     <span>Member since</span>
                     <span className="text-white">
                       {user.created_at 
@@ -512,6 +529,15 @@ export default function AccountCenter() {
                       Active
                     </span>
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-3 border-white/30 text-white/90 hover:bg-white/10"
+                    onClick={handleLogout}
+                  >
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Log out
+                  </Button>
                 </div>
               )}
             </div>
@@ -576,6 +602,16 @@ export default function AccountCenter() {
                       />
                     </div>
                     <div>
+                      <label className="block text-sm font-medium text-white/80 mb-2">Phone</label>
+                      <input
+                        type="tel"
+                        value={profile.phone}
+                        onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                        className="w-full rounded-lg bg-black/40 border border-border/60 text-white px-4 py-2 focus:outline-none focus:border-primary/50"
+                        placeholder="+1 (555) 000-0000"
+                      />
+                    </div>
+                    <div>
                       <label className="block text-sm font-medium text-white/80 mb-2">Bio</label>
                       <textarea
                         value={profile.bio}
@@ -620,10 +656,18 @@ export default function AccountCenter() {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-white/80 mb-2">Email</label>
-                      <div className="rounded-lg bg-black/40 border border-border/60 text-white px-4 py-2">
-                        {user?.email}
+                      <div className="rounded-lg bg-black/40 border border-border/60 text-white px-4 py-2 flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-white/50" />
+                        {user?.email || '—'}
                       </div>
                       <p className="text-xs text-white/40 mt-1">Email cannot be changed</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white/80 mb-2">Phone</label>
+                      <div className="rounded-lg bg-black/40 border border-border/60 text-white px-4 py-2 flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-white/50" />
+                        {profile.phone || 'Not set'}
+                      </div>
                     </div>
                     {profile.bio && (
                       <div>
@@ -1061,19 +1105,21 @@ export default function AccountCenter() {
                   )}
                 </div>
 
-                {/* Mock Data Toggle - For Development & Showcasing */}
-                <div className="rounded-xl border border-border/60 bg-white/5 p-6">
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
-                      <Sparkles className="h-6 w-6 text-white" />
+                {/* Mock Data Toggle - Only for demo/guest; hidden when logged into your own account */}
+                {(!user || isGuest) && (
+                  <div className="rounded-xl border border-border/60 bg-white/5 p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
+                        <Sparkles className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white">Data Source (Demo)</h3>
+                        <p className="text-sm text-white/60">Preview with mock data. Log in to use your real data.</p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white">Data Source</h3>
-                      <p className="text-sm text-white/60">Toggle between mock data and real backend data</p>
-                    </div>
+                    <MockDataToggle />
                   </div>
-                  <MockDataToggle />
-                </div>
+                )}
 
                 {/* Ownership & Safety */}
                 <div className="rounded-xl border border-border/60 bg-white/5 p-6">

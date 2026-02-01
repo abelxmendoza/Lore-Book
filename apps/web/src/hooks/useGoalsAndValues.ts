@@ -6,6 +6,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { fetchJson } from '../lib/api';
 import { useMockData, subscribeToMockDataState, getGlobalMockDataEnabled } from '../contexts/MockDataContext';
+import { useShouldUseMockData } from './useShouldUseMockData';
 import { mockDataService } from '../services/mockDataService';
 import { MOCK_GOALS_VALUES_DATA } from '../mocks/goalsValues';
 
@@ -92,7 +93,8 @@ export interface GoalsAndValuesState {
 }
 
 export const useGoalsAndValues = (): GoalsAndValuesState => {
-  const { isMockDataEnabled } = useMockData();
+  const { useMockData: isMockDataEnabled } = useMockData();
+  const shouldUseMock = useShouldUseMockData();
   const [values, setValues] = useState<Value[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [alignmentSnapshots, setAlignmentSnapshots] = useState<AlignmentSnapshot[]>([]);
@@ -145,8 +147,8 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
       let fetchedValues = valuesRes.values || [];
       const fetchedGoals = goalsRes.goals || [];
       
-      // If no values exist, try to extract from conversations
-      if (fetchedValues.length === 0 && !isMockDataEnabled) {
+      // If no values exist, try to extract from conversations (when using real data)
+      if (fetchedValues.length === 0 && !shouldUseMock) {
         try {
           const extractedRes = await fetchJson<{ values: Value[] }>('/api/goals/values/extract', {
             method: 'POST',
@@ -158,8 +160,8 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
         }
       }
 
-      // If values exist, trigger evolution in background (non-blocking)
-      if (fetchedValues.length > 0 && !isMockDataEnabled) {
+      // If values exist, trigger evolution in background (non-blocking, real data only)
+      if (fetchedValues.length > 0 && !shouldUseMock) {
         // Check last evolution time (stored in metadata)
         const lastEvolution = fetchedValues[0]?.metadata?.last_evolution_at;
         const shouldEvolve = !lastEvolution || 
@@ -181,14 +183,13 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
         }
       }
       
-      // Always use mock data for now (show demo data by default)
-      // Determine data source - use mock if toggle is enabled OR if no real data
+      // When logged in, never use mock. When not logged in, use mock if toggle on or no real data.
       const hasRealData = fetchedValues.length > 0 || fetchedGoals.length > 0;
-      const useMock = isMockDataEnabled || !hasRealData;
+      const useMock = shouldUseMock && (isMockDataEnabled || !hasRealData);
       
       console.log('[useGoalsAndValues] Fetching data:', { 
         useMock, 
-        isMockDataEnabled, 
+        shouldUseMock, 
         hasRealValues: fetchedValues.length, 
         hasRealGoals: fetchedGoals.length,
         hasRealData,

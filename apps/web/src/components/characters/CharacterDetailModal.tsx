@@ -9,7 +9,6 @@ import { Badge } from '../ui/badge';
 import { Tooltip } from '../ui/tooltip';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
-import { CharacterRelationshipTimeline } from './CharacterRelationshipTimeline';
 import { RelationshipTreeView } from '../relationshipTree/RelationshipTreeView';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
@@ -102,7 +101,7 @@ type CharacterDetailModalProps = {
   relationship?: RomanticRelationship;
 };
 
-type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'relationship_timeline' | 'chat' | 'insights' | 'metadata';
+type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'chat' | 'insights' | 'metadata';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'info', label: 'Info', icon: FileText },
@@ -111,7 +110,6 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'relationships', label: 'Connections', icon: Network },
   { key: 'perceptions', label: 'Perceptions', icon: Eye },
   { key: 'history', label: 'History', icon: Calendar },
-  { key: 'relationship_timeline', label: 'Relationship Timeline', icon: Heart },
   { key: 'insights', label: 'Insights', icon: Brain },
   { key: 'metadata', label: 'Metadata', icon: Database }
 ];
@@ -2711,13 +2709,6 @@ User's message: ${message}`;
             )}
 
             {/* Chat Tab */}
-            {/* Relationship Timeline Tab */}
-            {!loadingDetails && activeTab === 'relationship_timeline' && (
-              <div className="space-y-6">
-                <CharacterRelationshipTimeline characterId={editedCharacter.id} />
-                          </div>
-                        )}
-
             {!loadingDetails && activeTab === 'chat' && (
               <div className="space-y-4">
                 <div className="mb-4">

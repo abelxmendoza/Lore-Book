@@ -9,6 +9,7 @@ import { InsightCard } from './InsightCard';
 import { LoadingSkeleton } from './LoadingSkeleton';
 import { EmptyState } from './EmptyState';
 import { useMockData, subscribeToMockDataState } from '../../contexts/MockDataContext';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { reactionApi } from '../../api/reactions';
 import { perceptionReactionEngineApi, type PatternInsight, type StabilityMetrics } from '../../api/perceptionReactionEngine';
 import { mockDataService } from '../../services/mockDataService';
@@ -25,6 +26,7 @@ import type { ReactionPatterns } from '../../types/reaction';
  */
 export const ReactionsResiliencePanel: React.FC = () => {
   const { useMockData: isMockDataEnabled } = useMockData();
+  const shouldUseMock = useShouldUseMockData();
   const [patterns, setPatterns] = useState<ReactionPatterns | null>(null);
   const [insights, setInsights] = useState<PatternInsight[]>([]);
   const [stabilityMetrics, setStabilityMetrics] = useState<StabilityMetrics | null>(null);
@@ -54,8 +56,8 @@ export const ReactionsResiliencePanel: React.FC = () => {
         perceptionReactionEngineApi.getStabilityMetrics().catch(() => null)
       ]);
 
-      // Use mock data if toggle is enabled or no real data
-      if (isMockDataEnabled || !patternData || !stabilityData) {
+      // When logged in, never use mock. When not logged in, use mock only if toggle on or no real data
+      if (shouldUseMock && (isMockDataEnabled || !patternData || !stabilityData)) {
         setPatterns(mockDataService.get.reactionPatterns() || MOCK_REACTION_PATTERNS);
         setInsights(mockDataService.get.patternInsights().length > 0 ? mockDataService.get.patternInsights() : MOCK_PATTERN_INSIGHTS);
         setStabilityMetrics(mockDataService.get.stabilityMetrics() || MOCK_STABILITY_METRICS);
@@ -77,8 +79,8 @@ export const ReactionsResiliencePanel: React.FC = () => {
     } catch (err: any) {
       console.error('Failed to load reactions data:', err);
       setError(err.message || 'Failed to load data');
-      // Use mock data on error if toggle is enabled
-      if (isMockDataEnabled) {
+      // Use mock data on error only when not logged in and toggle is enabled
+      if (shouldUseMock && isMockDataEnabled) {
         setPatterns(MOCK_REACTION_PATTERNS);
         setInsights(MOCK_PATTERN_INSIGHTS);
         setStabilityMetrics(MOCK_STABILITY_METRICS);
@@ -87,7 +89,7 @@ export const ReactionsResiliencePanel: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [isMockDataEnabled]);
+  }, [isMockDataEnabled, shouldUseMock]);
 
   useEffect(() => {
     void loadData();

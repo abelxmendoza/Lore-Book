@@ -90,6 +90,11 @@ export const useChatStream = () => {
           } catch {
             userMessage = `Service unavailable (503): ${errorText}`;
           }
+        } else if (response.status === 405) {
+          const isProdNoApi = config.env.isProduction && !config.api.url;
+          userMessage = isProdNoApi
+            ? 'Method Not Allowed (405). The deployed app has no backend. Set VITE_API_URL in Vercel to your API URL (e.g. https://your-api.vercel.app), or run the app locally: npm run dev in apps/web and apps/server.'
+            : 'Method Not Allowed (405). The chat API expects POST. Ensure the backend is running (cd apps/server && npm run dev) and that nothing is blocking POST to /api/chat/stream.';
         } else {
           userMessage = `HTTP error! status: ${response.status}, message: ${errorText}`;
         }

@@ -185,7 +185,7 @@ export const QuestBoard = () => {
     });
   }, [board, mainQuests, sideQuests]);
 
-  // Memoize displayed quests
+  // Memoize displayed quests (deduplicate by id so React keys are unique when a quest appears in multiple categories)
   const displayedQuests = useMemo(() => {
     if (!board) return [];
     
@@ -198,8 +198,10 @@ export const QuestBoard = () => {
       case 'completed': questsToFilter = completedQuests; break;
       default: questsToFilter = [...mainQuests, ...sideQuests, ...todaysQuests, ...thisWeeksQuests, ...completedQuests];
     }
-    
-    return filterQuests(questsToFilter);
+    const byId = new Map<string, Quest>();
+    questsToFilter.forEach(q => { if (!byId.has(q.id)) byId.set(q.id, q); });
+    const unique = Array.from(byId.values());
+    return filterQuests(unique);
   }, [selectedCategory, mainQuests, sideQuests, todaysQuests, thisWeeksQuests, completedQuests, filterQuests]);
 
   // Auto-select first quest if none selected or current selection is not in displayed quests
@@ -244,7 +246,7 @@ export const QuestBoard = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
         <div className="text-red-400 font-mono">ERROR: FAILED TO LOAD QUESTS</div>
-        <div className="text-white/60 text-sm font-mono">Using mock data for demonstration</div>
+        <div className="text-white/60 text-sm font-mono">Check your connection and try again.</div>
       </div>
     );
   }
