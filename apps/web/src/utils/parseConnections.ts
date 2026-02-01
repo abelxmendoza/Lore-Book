@@ -3,7 +3,7 @@
  * Examples:
  * - "Mentioned 2 characters: John, Jane" → [{ type: 'character', names: ['John', 'Jane'] }]
  * - "Related to 3 chapters: Chapter 1, Chapter 2" → [{ type: 'chapter', names: ['Chapter 1', 'Chapter 2'] }]
- * - "Found 5 semantically related memories via HQI" → [{ type: 'hqi', count: 5 }]
+ * - "Found 5 related memories via HQI" or "Found 5 related memories" → [{ type: 'hqi', count: 5 }]
  */
 
 export type ParsedConnection = {
@@ -55,13 +55,13 @@ export function parseConnections(connections: string[]): ParsedConnection[] {
       };
     }
 
-    // HQI results: "Found 5 semantically related memories via HQI"
-    const hqiMatch = conn.match(/Found (\d+) (?:semantically related memories|related memories) via HQI/i);
+    // Smart search / related-by-meaning: "Found 5 related memories" (backend may append "via HQI")
+    const hqiMatch = conn.match(/Found (\d+) (?:semantically related memories|related memories)(?:\s+via HQI)?/i);
     if (hqiMatch) {
       return {
         type: 'hqi',
         count: parseInt(hqiMatch[1], 10),
-        text: `Found ${hqiMatch[1]} related memories via HQI`,
+        text: `Found ${hqiMatch[1]} related memories`,
         originalText: conn
       };
     }

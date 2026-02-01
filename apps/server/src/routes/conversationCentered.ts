@@ -1465,6 +1465,10 @@ router.get(
     const { data: relationships, error } = await query;
 
     if (error) {
+      // PGRST205 = table not in schema (romantic_relationships not migrated); return empty
+      if ((error as { code?: string }).code === 'PGRST205') {
+        return res.json({ success: true, relationships: [] });
+      }
       throw error;
     }
 

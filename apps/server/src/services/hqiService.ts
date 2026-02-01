@@ -102,44 +102,14 @@ const passesFilters = (node: HQINode, filters: HQISearchFilters): boolean => {
 };
 
 export const hqiService = {
-  search(query: string, filters: HQISearchFilters): HQIResult[] {
-    const results: HQIResult[] = [];
-    const normalizedFilters = filters ?? {};
-
-    for (const node of Object.values(demoNodes)) {
-      if (!passesFilters(node, normalizedFilters)) continue;
-
-      let score = baseScoreForQuery(node, query);
-      const reasons: string[] = ['semantic'];
-
-      // Lightweight graph boost for neighbors
-      score += node.neighbors.length * 0.05;
-      if (node.neighbors.length) {
-        reasons.push('edges');
-      }
-
-      // Motif boost when explicitly filtered
-      if (normalizedFilters.motifs && normalizedFilters.motifs.some((motif) => node.motifs.includes(motif))) {
-        score += 0.2;
-        reasons.push('motif');
-      }
-
-      // Temporal proximity bump for recent memories
-      const daysAgo = Math.abs(differenceInDays(new Date(), parseISO(node.timestamp)));
-      score += Math.max(0, 0.1 - daysAgo * 0.0005);
-
-      results.push({
-        node_id: node.id,
-        score,
-        reasons,
-        title: node.title,
-        snippet: node.snippet,
-        timestamp: node.timestamp,
-        tags: node.tags
-      });
-    }
-
-    return results.sort((a, b) => b.score - a.score);
+  /**
+   * Search for related memories. Returns only real user data.
+   * Demo/placeholder results are disabled so chat and UI never show mock "Smart search" sources
+   * or "Found N related memories" for new users. When real HQI index exists, wire it here.
+   */
+  search(_query: string, _filters: HQISearchFilters): HQIResult[] {
+    // No demo data: return empty until real HQI (e.g. journal_entries + embeddings) is wired
+    return [];
   },
 
   context(nodeId: string) {

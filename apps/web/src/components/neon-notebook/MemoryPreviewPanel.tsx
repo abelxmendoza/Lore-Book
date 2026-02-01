@@ -12,7 +12,7 @@ export const MemoryPreviewPanel: FC<{ previews: MemoryPreview[] }> = ({ previews
     <div className="space-y-2">
       <div className="flex items-center justify-between text-xs text-white/60">
         <span>Memory Preview</span>
-        <span className="text-white/40">HQI powered</span>
+        <span className="text-white/40">Smart search</span>
       </div>
       <div className="space-y-2">
         {previews.map((preview) => (

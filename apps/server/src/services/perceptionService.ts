@@ -214,6 +214,10 @@ class PerceptionService {
       const { data, error } = await query;
 
       if (error) {
+        // PGRST205 = table not in schema (perception_entries not migrated); return empty
+        if ((error as { code?: string }).code === 'PGRST205') {
+          return [];
+        }
         logger.error({ error, filters }, 'Failed to get perception entries');
         throw error;
       }

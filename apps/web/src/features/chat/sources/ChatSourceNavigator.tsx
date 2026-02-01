@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { TimelineEntryModal } from '../../../components/timeline/TimelineEntryModal';
 import type { ChatSource } from '../message/ChatMessage';
+import { SOURCE_TYPE_LABELS } from '../message/ChatMessage';
 
 type ChatSourceNavigatorProps = {
   source: ChatSource | null;
@@ -117,7 +118,7 @@ export const ChatSourceNavigator = ({ source, onClose, onNavigateToSurface }: Ch
       <div className="max-w-2xl w-full bg-black/90 border border-border/60 rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <span className="text-xs text-primary/70 uppercase">{source.type}</span>
+            <span className="text-xs text-primary/70 uppercase">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</span>
             <h2 className="text-xl font-semibold text-white mt-1">{source.title}</h2>
           </div>
           <button

@@ -7,7 +7,6 @@ import { useLoreKeeper } from './useLoreKeeper';
 const wrapper = ({ children }: { children: React.ReactNode }) =>
   React.createElement(MockDataProvider, null, children);
 
-// Mock supabase
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
@@ -18,138 +17,78 @@ vi.mock('../lib/supabase', () => ({
   getConfigDebug: vi.fn().mockReturnValue({})
 }));
 
+const mockFetchJson = vi.fn();
+vi.mock('../lib/api', () => ({
+  fetchJson: (...args: unknown[]) => mockFetchJson(...args)
+}));
+
+const EMPTY_TIMELINE = { chapters: [], unassigned: [] };
+
 describe('useLoreKeeper Error Handling', () => {
-  const mockFetch = vi.fn();
-  
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = mockFetch;
-    // Default mock - return empty data
-    mockFetch.mockImplementation((url: string | Request) => {
-      const urlString = typeof url === 'string' ? url : url.url;
-      if (urlString.includes('/api/entries') && !urlString.includes('?')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ entries: [] })
-        });
-      }
-      if (urlString.includes('/api/timeline') && !urlString.includes('tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
-        });
-      }
-      if (urlString.includes('/api/timeline/tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ tags: [] })
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({})
-      });
-    });
   });
 
   it('should handle network errors', async () => {
-    // Override default mock to reject for all requests
-    mockFetch.mockImplementation(() => Promise.reject(new Error('Network error')));
+    mockFetchJson.mockImplementation(() => Promise.reject(new Error('Network error')));
 
     const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
     await waitFor(() => {
       expect(result.current).toBeDefined();
-      expect(result.current.entries).toBeDefined();
-      expect(result.current.timeline).toBeDefined();
+      expect(result.current.entries).toEqual([]);
+      expect(result.current.timeline).toEqual(EMPTY_TIMELINE);
     }, { timeout: 5000 });
-
-    // Should default to empty arrays on error
-    expect(result.current.entries).toEqual([]);
-    expect(result.current.timeline).toEqual({ chapters: [], unassigned: [] });
   });
 
   it('should handle 500 server errors', async () => {
-    mockFetch.mockImplementation((url: string | Request) => {
-      const urlString = typeof url === 'string' ? url : url.url;
-      if (urlString.includes('/api/entries') || urlString.includes('/api/timeline') || urlString.includes('/api/timeline/tags') || urlString.includes('/api/chapters') || urlString.includes('/api/evolution')) {
-        return Promise.resolve({
-          ok: false,
-          status: 500,
-          json: () => Promise.resolve({ error: 'Server error' })
-        });
+    mockFetchJson.mockImplementation((url: string | RequestInfo) => {
+      const urlString = typeof url === 'string' ? url : (url as Request).url;
+      if (urlString.includes('/api/entries') || urlString.includes('/api/timeline') || urlString.includes('/api/chapters') || urlString.includes('/api/evolution')) {
+        return Promise.reject(new Error('Server error'));
       }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({})
-      });
+      return Promise.resolve({});
     });
 
     const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
     await waitFor(() => {
       expect(result.current).toBeDefined();
-      expect(result.current.entries).toBeDefined();
-      expect(result.current.timeline).toBeDefined();
+      expect(result.current.entries).toEqual([]);
+      expect(result.current.timeline).toEqual(EMPTY_TIMELINE);
     }, { timeout: 5000 });
-
-    // Should handle error gracefully - errors are caught in the hook
-    expect(result.current.entries).toEqual([]);
-    expect(result.current.timeline).toEqual({ chapters: [], unassigned: [] });
   });
 
   it('should handle empty responses gracefully', async () => {
-    mockFetch.mockImplementation((url: string | Request) => {
-      const urlString = typeof url === 'string' ? url : url.url;
+    mockFetchJson.mockImplementation((url: string | RequestInfo) => {
+      const urlString = typeof url === 'string' ? url : (url as Request).url;
       if (urlString.includes('/api/entries') && !urlString.includes('?')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ entries: null })
-        });
+        return Promise.resolve({ entries: null });
       }
       if (urlString.includes('/api/timeline') && !urlString.includes('tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
-        });
+        return Promise.resolve({ timeline: EMPTY_TIMELINE });
       }
       if (urlString.includes('/api/timeline/tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ tags: [] })
-        });
+        return Promise.resolve({ tags: [] });
       }
       if (urlString.includes('/api/chapters')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ chapters: [] })
-        });
+        return Promise.resolve({ chapters: [] });
       }
       if (urlString.includes('/api/evolution')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ insights: null })
-        });
+        return Promise.resolve({ insights: null });
       }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({})
-      });
+      return Promise.resolve({});
     });
 
     const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
     await waitFor(() => {
       expect(result.current).toBeDefined();
-      expect(result.current.entries).toBeDefined();
+      expect(Array.isArray(result.current.entries)).toBe(true);
       expect(result.current.timeline).toBeDefined();
+      expect(result.current.timeline.chapters).toBeDefined();
+      expect(result.current.timeline.unassigned).toBeDefined();
     }, { timeout: 5000 });
-
-    // Should handle null responses - entries should be array, timeline should have default structure
-    expect(Array.isArray(result.current.entries)).toBe(true);
-    expect(result.current.timeline).toBeDefined();
-    expect(result.current.timeline.chapters).toBeDefined();
-    expect(result.current.timeline.unassigned).toBeDefined();
   });
 });
 

@@ -164,6 +164,10 @@ export class TimelineService {
       const { data, error } = await query;
 
       if (error) {
+        // PGRST205 = table not in schema (timelines not migrated); return empty
+        if ((error as { code?: string }).code === 'PGRST205') {
+          return [];
+        }
         logger.error({ error, userId, filters }, 'Failed to list timelines');
         throw error;
       }

@@ -10,12 +10,15 @@ import { config } from '../config/env';
 
 /**
  * Returns true if mock data should be used.
- * Always returns false when user is logged in or while auth is loading (real account = real data only).
+ * Always returns false when user is logged in (real account = real data only).
+ * When mock is on and there is no user (Demo Mode or unauthenticated), returns true even during auth load so mock UI shows immediately.
  */
 export function useShouldUseMockData(): boolean {
   const { user, loading: authLoading } = useAuth();
   const { useMockData: globalEnabled } = useMockData();
-  if (authLoading || user) return false;
+  if (user) return false;
+  if (globalEnabled) return true; // Demo Mode or mock on + no user → show mock (including during auth load)
+  if (authLoading) return false;
   return globalEnabled ?? config.dev.allowMockData;
 }
 

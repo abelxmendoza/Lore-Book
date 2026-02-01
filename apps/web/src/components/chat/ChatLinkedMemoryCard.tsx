@@ -2,6 +2,7 @@ import { Calendar, BookOpen, Users, CheckSquare, Sparkles, Database } from 'luci
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import type { ChatSource } from './ChatMessage';
+import { SOURCE_TYPE_LABELS } from './ChatMessage';
 
 type ChatLinkedMemoryCardProps = {
   source: ChatSource;
@@ -30,7 +31,7 @@ export const ChatLinkedMemoryCard = ({ source, onClose, onNavigate }: ChatLinked
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <Badge variant="outline" className="text-xs border-primary/30 text-primary/70">
-                  {source.type}
+                  {SOURCE_TYPE_LABELS[source.type] ?? source.type}
                 </Badge>
                 <span className="text-sm font-semibold text-white truncate">{source.title}</span>
               </div>

@@ -16,7 +16,7 @@ export const HQISearchOverlay = () => {
         className="rounded-full border border-primary/50 bg-primary/10 px-4 py-2 text-sm"
         onClick={() => setOpen(true)}
       >
-        Open HQI Search (⌘K)
+        Open Smart search (⌘K)
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex bg-black/80 backdrop-blur">

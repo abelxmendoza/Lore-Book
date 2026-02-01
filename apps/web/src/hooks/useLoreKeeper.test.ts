@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { MockDataProvider } from '../contexts/MockDataContext';
 import { useLoreKeeper } from './useLoreKeeper';
@@ -18,54 +18,39 @@ vi.mock('../lib/supabase', () => ({
   getConfigDebug: vi.fn().mockReturnValue({})
 }));
 
-// Mock fetchJson to prevent real network requests
+// Mock fetchJson to prevent real network requests — hook uses fetchJson, not fetch
+const mockFetchJson = vi.fn();
 vi.mock('../lib/api', () => ({
-  fetchJson: vi.fn()
+  fetchJson: (...args: unknown[]) => mockFetchJson(...args)
 }));
 
-// Mock fetch - use a more robust mock that handles all cases
-const mockFetch = vi.fn();
-const originalFetch = global.fetch;
+const EMPTY_TIMELINE = { chapters: [], unassigned: [] };
 
-beforeEach(() => {
-  global.fetch = mockFetch;
-});
-
-afterEach(() => {
-  global.fetch = originalFetch;
-});
+function defaultFetchJsonMock(url: string | RequestInfo): Promise<unknown> {
+  const urlString = typeof url === 'string' ? url : (url as Request).url;
+  if (urlString.includes('/api/entries') && !urlString.includes('?') && !(urlString as string).includes('POST')) {
+    return Promise.resolve({ entries: [] });
+  }
+  if (urlString.includes('/api/timeline') && !(urlString as string).includes('tags')) {
+    return Promise.resolve({ timeline: EMPTY_TIMELINE });
+  }
+  if ((urlString as string).includes('/api/timeline/tags')) {
+    return Promise.resolve({ tags: [] });
+  }
+  if ((urlString as string).includes('/api/chapters') && !(urlString as string).includes('/summary')) {
+    return Promise.resolve({ chapters: [], candidates: [] });
+  }
+  if ((urlString as string).includes('/api/evolution')) {
+    return Promise.resolve({ insights: null });
+  }
+  return Promise.resolve({});
+}
 
 describe('useLoreKeeper', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Clear localStorage to ensure no cached data
     localStorage.clear();
-    // Setup default fetch mock - useLoreKeeper has its own fetchJson that uses fetch
-    mockFetch.mockImplementation((url: string | Request) => {
-      const urlString = typeof url === 'string' ? url : url.url;
-      if (urlString.includes('/api/entries') && !urlString.includes('?')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ entries: [] })
-        });
-      }
-      if (urlString.includes('/api/timeline') && !urlString.includes('tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
-        });
-      }
-      if (urlString.includes('/api/timeline/tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ tags: [] })
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({})
-      });
-    });
+    mockFetchJson.mockImplementation((url: string | RequestInfo) => defaultFetchJsonMock(url));
   });
 
   it('should initialize successfully', async () => {
@@ -80,78 +65,34 @@ describe('useLoreKeeper', () => {
   });
 
   it('should handle errors gracefully', async () => {
-    // Clear localStorage to ensure no cached data
     localStorage.clear();
-    
-    // Mock fetch to throw an error when refreshEntries is called manually
-    // The hook calls refreshEntries on mount (first call), then we call it manually (second call)
     let entriesCallCount = 0;
-    
-    // Reset mock for this test
-    mockFetch.mockReset();
-    mockFetch.mockImplementation((url: string | Request) => {
-      const urlString = typeof url === 'string' ? url : url.url;
-      
-      // Track entries calls separately
-      if (urlString.includes('/api/entries') && !urlString.includes('?')) {
+    mockFetchJson.mockImplementation((url: string | RequestInfo, _init?: RequestInit) => {
+      const urlString = typeof url === 'string' ? url : (url as Request).url;
+      if (urlString.includes('/api/entries') && !urlString.includes('?') && _init?.method !== 'POST') {
         entriesCallCount++;
-        // Fail on the second call (when refreshEntries is called manually)
         if (entriesCallCount === 2) {
           return Promise.reject(new Error('Network error'));
         }
-        // First call (on mount) succeeds with empty entries
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ entries: [] }),
-          clone: function() { return this; }
-        } as Response);
+        return Promise.resolve({ entries: [] });
       }
-      
-      if (urlString.includes('/api/timeline') && !urlString.includes('tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ timeline: { chapters: [], unassigned: [] } }),
-          clone: function() { return this; }
-        } as Response);
-      }
-      if (urlString.includes('/api/timeline/tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({ tags: [] }),
-          clone: function() { return this; }
-        } as Response);
-      }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({}),
-        clone: function() { return this; }
-      } as Response);
+      return defaultFetchJsonMock(url);
     });
 
     const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
-    // Wait for initial load to complete - entries should be empty after mount
     await waitFor(() => {
       expect(result.current).toBeDefined();
-      expect(result.current.entries).toBeDefined();
-      // Wait for entries to be empty (initial load completes)
       expect(result.current.entries).toEqual([]);
     }, { timeout: 3000 });
-    
-    // Verify initial state is empty (first call completed successfully)
-    expect(result.current.entries).toEqual([]);
 
-    // Now manually call refreshEntries which will trigger the error (second call)
     await result.current.refreshEntries();
-    
-    // Wait for error handling to complete - entries should be set to empty array on error
+
     await waitFor(() => {
       expect(result.current.entries).toEqual([]);
     }, { timeout: 1000 });
-    
-    // Verify hook still works after error
+
     expect(result.current).toBeDefined();
-    expect(result.current.entries).toBeDefined();
     expect(result.current.entries).toEqual([]);
   });
 });

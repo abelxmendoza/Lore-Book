@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { Search, Sparkles, Calendar, X, Loader2, Layers, Network, List, Info } from 'lucide-react';
 import { useChronology } from '../../hooks/useChronology';
 import { useTimelineV2 } from '../../hooks/useTimelineV2';

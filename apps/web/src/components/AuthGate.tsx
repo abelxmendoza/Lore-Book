@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { User } from 'lucide-react';
+import { User, Presentation } from 'lucide-react';
 
 import { getConfigDebug, isSupabaseConfigured, supabase } from '../lib/supabase';
 import { Logo } from './Logo';
@@ -9,8 +9,9 @@ import { Input } from './ui/input';
 import { TermsOfServiceAgreement } from './security/TermsOfServiceAgreement';
 import { useTermsAcceptance } from '../hooks/useTermsAcceptance';
 import { useGuest } from '../contexts/GuestContext';
+import { useMockData } from '../contexts/MockDataContext';
 
-const AuthScreen = ({ onEmailLogin, onGuestLogin }: { onEmailLogin: (email: string) => Promise<void>; onGuestLogin: () => void }) => {
+const AuthScreen = ({ onEmailLogin, onGuestLogin, onDemoMode }: { onEmailLogin: (email: string) => Promise<void>; onGuestLogin: () => void; onDemoMode: () => void }) => {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +91,26 @@ const AuthScreen = ({ onEmailLogin, onGuestLogin }: { onEmailLogin: (email: stri
         <div className="flex-1 border-t border-white/10"></div>
       </div>
 
+      {/* Demo Mode - mock data for deployed showcase */}
+      <div className="w-full space-y-2 mb-4">
+        <Button
+          variant="outline"
+          className="w-full border-amber-500/50 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 hover:border-amber-500/70 transition-all"
+          onClick={onDemoMode}
+          disabled={loading}
+          size="lg"
+        >
+          <Presentation className="mr-2 h-5 w-5" />
+          Demo Mode
+        </Button>
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-left">
+          <p className="text-xs font-medium text-amber-200/90 mb-1">📊 Explore with sample data</p>
+          <p className="text-xs text-white/60 leading-relaxed">
+            See the app with demo content. No sign-in required.
+          </p>
+        </div>
+      </div>
+
       {/* Guest Login - Prominent */}
       <div className="w-full space-y-2">
         <Button 
@@ -109,7 +130,12 @@ const AuthScreen = ({ onEmailLogin, onGuestLogin }: { onEmailLogin: (email: stri
           </p>
         </div>
       </div>
-      {status && <p className="mt-4 text-xs text-green-400">{status}</p>}
+      {status && (
+        <div className="mt-4 space-y-1">
+          <p className="text-xs text-green-400">{status}</p>
+          <p className="text-xs text-white/50">If you don&apos;t see it, check spam/junk. Some providers delay or block sign-in emails—try again or use a different address.</p>
+        </div>
+      )}
       {error && <p className="mt-4 text-xs text-red-400">{error}</p>}
     </div>
   );
@@ -127,6 +153,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const { status: termsStatus, loading: termsLoading, error: termsError } = useTermsAcceptance();
   const { isGuest, startGuestSession } = useGuest();
+  const { setUseMockData } = useMockData();
 
   const isConfigured = isSupabaseConfigured();
   const debug = getConfigDebug();
@@ -375,8 +402,13 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     startGuestSession();
   };
 
+  const handleDemoMode = () => {
+    setUseMockData(true);
+    startGuestSession();
+  };
+
   if (!session && !isGuest) {
-    return <AuthScreen onEmailLogin={handleEmailLogin} onGuestLogin={handleGuestLogin} />;
+    return <AuthScreen onEmailLogin={handleEmailLogin} onGuestLogin={handleGuestLogin} onDemoMode={handleDemoMode} />;
   }
 
   // Show terms agreement if user hasn't accepted

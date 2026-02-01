@@ -7,53 +7,29 @@ import { config } from '../config/env';
 
 const apiEnv = import.meta.env.VITE_API_ENV || import.meta.env.MODE || 'dev';
 const adminUserId = import.meta.env.VITE_ADMIN_USER_ID;
-const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || 'abelxmendoza@gmail.com';
+const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || 'abelxmendoza@gmail.com').trim().toLowerCase();
 const isProduction = config.env.isProduction;
 
+/** Only this email is allowed admin; no role metadata or other users. */
+const ALLOWED_ADMIN_EMAIL = adminEmail;
+
 /**
- * Check if user has admin role
+ * Check if user is the allowed admin (abelxmendoza@gmail.com only).
+ * No other user or role metadata grants admin.
  */
 export const isAdmin = (user: any): boolean => {
-  if (!user) return false;
-  
-  // Check by email (primary method for Abel Mendoza)
-  if (user.email === adminEmail) {
-    return true;
-  }
-  
-  // Check by user ID
-  if (adminUserId && user.id === adminUserId) {
-    return true;
-  }
-  
-  // Check by role metadata
-  return !!(
-    user.user_metadata?.role === 'admin' ||
-    user.user_metadata?.role === 'developer' ||
-    user.app_metadata?.role === 'admin' ||
-    user.app_metadata?.role === 'developer'
-  );
+  if (!user?.email) return false;
+  if (String(user.email).trim().toLowerCase() === ALLOWED_ADMIN_EMAIL) return true;
+  if (adminUserId && user.id === adminUserId) return true;
+  return false;
 };
 
 /**
- * Check if user can access admin console
- * In production: STRICTLY requires admin role (no exceptions)
- * In development: Allows access for testing
+ * Check if user can access admin console.
+ * Only the allowed admin email (abelxmendoza@gmail.com) can access—in all environments.
  */
 export const canAccessAdmin = (user: any): boolean => {
-  // In production, STRICTLY require admin role - no exceptions
-  if (isProduction) {
-    // Must be authenticated AND have admin role
-    if (!user) return false;
-    return isAdmin(user);
-  }
-  
-  // In development, allow access for testing
-  if (apiEnv === 'dev' || apiEnv === 'development') {
-    return true;
-  }
-  
-  // Default: require admin role
+  if (!user) return false;
   return isAdmin(user);
 };
 

@@ -84,13 +84,15 @@ export abstract class BaseAnalyticsModule {
   }
 
   /**
-   * Fetch all memories for a user
+   * Fetch all memories for a user.
+   * Uses columns that exist in base schema (no sentiment/people) so analytics work with partial migrations.
    */
   protected async fetchMemories(userId: string, limit: number = 1000): Promise<MemoryData[]> {
     try {
+      // Base schema has: id, content, created_at, mood, tags, embedding (no sentiment, no people)
       const { data, error } = await supabaseAdmin
         .from('journal_entries')
-        .select('id, content, created_at, sentiment, mood, tags, people, embedding')
+        .select('id, content, created_at, mood, tags, embedding')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(limit);
@@ -104,10 +106,10 @@ export abstract class BaseAnalyticsModule {
         id: entry.id,
         text: entry.content,
         created_at: entry.created_at,
-        sentiment: entry.sentiment,
-        mood: entry.mood,
+        sentiment: null, // Column may not exist in base schema; analytics use ?? 0
+        mood: entry.mood ?? null,
         topics: entry.tags || [],
-        people: entry.people || [],
+        people: [], // Column may not exist in base schema
         embedding: entry.embedding as number[] | null,
       }));
     } catch (error) {

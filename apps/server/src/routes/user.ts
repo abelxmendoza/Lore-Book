@@ -120,7 +120,8 @@ router.get('/privacy-settings', requireAuth, async (req: AuthenticatedRequest, r
       .eq('user_id', userId)
       .single();
 
-    if (error && error.code !== 'PGRST116') {
+    // PGRST205 = table not in schema (e.g. user_privacy_settings not migrated); return defaults
+    if (error && error.code !== 'PGRST116' && error.code !== 'PGRST205') {
       throw error;
     }
 
@@ -188,6 +189,18 @@ router.put('/privacy-settings', requireAuth, async (req: AuthenticatedRequest, r
       .eq('user_id', userId)
       .single();
 
+    // PGRST205 = table not in schema; accept settings but cannot persist
+    if (fetchError?.code === 'PGRST205') {
+      return res.json({
+        settings: {
+          profileVisibility: settingsData.profile_visibility,
+          showEmail: settingsData.show_email,
+          allowDataSharing: settingsData.allow_data_sharing,
+          twoFactorEnabled: settingsData.two_factor_enabled,
+        },
+      });
+    }
+
     if (fetchError && fetchError.code === 'PGRST116') {
       // Create new
       const { data, error: insertError } = await supabaseAdmin
@@ -197,6 +210,16 @@ router.put('/privacy-settings', requireAuth, async (req: AuthenticatedRequest, r
         .single();
 
       if (insertError) {
+        if (insertError.code === 'PGRST205') {
+          return res.json({
+            settings: {
+              profileVisibility: settingsData.profile_visibility,
+              showEmail: settingsData.show_email,
+              allowDataSharing: settingsData.allow_data_sharing,
+              twoFactorEnabled: settingsData.two_factor_enabled,
+            },
+          });
+        }
         throw insertError;
       }
 
@@ -219,6 +242,16 @@ router.put('/privacy-settings', requireAuth, async (req: AuthenticatedRequest, r
       .single();
 
     if (updateError) {
+      if (updateError.code === 'PGRST205') {
+        return res.json({
+          settings: {
+            profileVisibility: settingsData.profile_visibility,
+            showEmail: settingsData.show_email,
+            allowDataSharing: settingsData.allow_data_sharing,
+            twoFactorEnabled: settingsData.two_factor_enabled,
+          },
+        });
+      }
       throw updateError;
     }
 

@@ -23,7 +23,7 @@ import { mockDataService } from '../../services/mockDataService';
 import { MOCK_GOALS_VALUES_DATA } from '../../mocks/goalsValues';
 
 export const GoalsAndValuesPanel = () => {
-  const { isMockDataEnabled } = useMockData();
+  const { useMockData: isMockDataEnabled } = useMockData();
   const {
     values,
     goals,

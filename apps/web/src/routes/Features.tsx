@@ -66,9 +66,9 @@ export default function Features() {
               />
               <FeatureCard
                 icon={Search}
-                title="Semantic Memory Search"
+                title="Smart Memory Search"
                 highlight="Never forget anything"
-                description="AI-powered semantic search with HQI integration. Find memories by meaning, not just keywords. Memory cards with linked memories and advanced filters."
+                description="Smart search finds memories by meaning, not just keywords. Memory cards with linked memories and advanced filters."
               />
             </div>
           </div>

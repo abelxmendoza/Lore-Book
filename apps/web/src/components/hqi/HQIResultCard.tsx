@@ -35,7 +35,7 @@ export const HQIResultCard = ({ result, selected, onSelect }: Props) => {
     >
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-[11px] uppercase text-white/50">HQI Score</p>
+          <p className="text-[11px] uppercase text-white/50">Relevance</p>
           <h4 className="text-xl font-semibold text-white">{result.title ?? result.node_id}</h4>
           <p className="text-xs text-white/50">{prettyTimestamp(result.timestamp)}</p>
         </div>

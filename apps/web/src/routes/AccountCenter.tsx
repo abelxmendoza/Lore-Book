@@ -31,11 +31,23 @@ import {
 
 type Tab = 'profile' | 'subscription' | 'billing' | 'privacy' | 'activity' | 'data';
 
+/** Get email from Supabase user (email, user_metadata, or identities). */
+function getDisplayEmail(user: { email?: string | null; user_metadata?: { email?: string }; identities?: Array<{ identity_data?: { email?: string } }> } | null): string {
+  if (!user) return '';
+  const fromEmail = user.email?.trim();
+  if (fromEmail) return fromEmail;
+  const fromMeta = user.user_metadata?.email?.trim();
+  if (fromMeta) return fromMeta;
+  const fromIdentity = user.identities?.[0]?.identity_data?.email?.trim();
+  return fromIdentity ?? '';
+}
+
 export default function AccountCenter() {
   const { user } = useAuth();
-  const { isGuest, guestState } = useGuest();
+  const { isGuest, guestState, endGuestSession } = useGuest();
   const { useMockData: isMockDataEnabled } = useMockData();
   const navigate = useNavigate();
+  const displayEmail = getDisplayEmail(user);
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -227,7 +239,12 @@ export default function AccountCenter() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    if (user) {
+      await supabase.auth.signOut();
+    }
+    if (isGuest) {
+      endGuestSession();
+    }
     navigate('/login');
   };
 
@@ -389,6 +406,17 @@ export default function AccountCenter() {
                         >
                           Continue as Guest
                         </Button>
+                        <Button
+                          variant="outline"
+                          className="border-white/30 text-white/80 hover:bg-white/10"
+                          onClick={() => {
+                            endGuestSession();
+                            navigate('/login');
+                          }}
+                        >
+                          <LogOut className="h-4 w-4 mr-2" />
+                          End guest session
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -432,7 +460,13 @@ export default function AccountCenter() {
           <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
             Account Center
           </h1>
-          <p className="text-white/60">Manage your account settings, subscription, and preferences</p>
+          <p className="text-white/60">
+            {displayEmail ? (
+              <>Logged in as <span className="text-white/80">{displayEmail}</span></>
+            ) : (
+              'Manage your account settings, subscription, and preferences'
+            )}
+          </p>
         </div>
 
         {/* Dev Mode Notice */}
@@ -500,15 +534,15 @@ export default function AccountCenter() {
                   <User className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <p className="font-semibold text-white">{profile.name || user?.email || 'Guest User'}</p>
-                  <p className="text-xs text-white/60">{user?.email || (showDevModeNotice ? 'Dev Mode' : 'Not signed in')}</p>
+                  <p className="font-semibold text-white">{profile.name || displayEmail || 'Guest User'}</p>
+                  <p className="text-xs text-white/60">{displayEmail || (showDevModeNotice ? 'Dev Mode' : 'Not signed in')}</p>
                 </div>
               </div>
               {user && (
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center gap-2 text-white/80">
                     <Mail className="h-4 w-4 text-white/60 flex-shrink-0" />
-                    <span className="truncate">{user.email || '—'}</span>
+                    <span className="truncate" title={displayEmail}>{displayEmail || '—'}</span>
                   </div>
                   <div className="flex items-center gap-2 text-white/80">
                     <Phone className="h-4 w-4 text-white/60 flex-shrink-0" />
@@ -529,17 +563,18 @@ export default function AccountCenter() {
                       Active
                     </span>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-3 border-white/30 text-white/90 hover:bg-white/10"
-                    onClick={handleLogout}
-                  >
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Log out
-                  </Button>
                 </div>
               )}
+              {/* Log out / End session / Sign in - always visible so all users can log out */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full mt-3 border-white/30 text-white/90 hover:bg-white/10"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                {user ? 'Log out' : isGuest ? 'End guest session' : 'Sign in'}
+              </Button>
             </div>
           </div>
 
@@ -581,7 +616,7 @@ export default function AccountCenter() {
                   </div>
                   <div>
                     <p className="text-white font-semibold">{profile.name || 'Your Name'}</p>
-                    <p className="text-white/60 text-sm">{user?.email}</p>
+                    <p className="text-white/60 text-sm">{displayEmail || '—'}</p>
                     {isEditing && (
                       <p className="text-xs text-white/40 mt-1">Click avatar to change photo</p>
                     )}
@@ -658,7 +693,7 @@ export default function AccountCenter() {
                       <label className="block text-sm font-medium text-white/80 mb-2">Email</label>
                       <div className="rounded-lg bg-black/40 border border-border/60 text-white px-4 py-2 flex items-center gap-2">
                         <Mail className="h-4 w-4 text-white/50" />
-                        {user?.email || '—'}
+                        {displayEmail || '—'}
                       </div>
                       <p className="text-xs text-white/40 mt-1">Email cannot be changed</p>
                     </div>

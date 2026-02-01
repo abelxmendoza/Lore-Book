@@ -8,19 +8,15 @@ describe('roleGuard', () => {
       expect(isAdmin(undefined)).toBe(false);
     });
 
-    it('returns true when user.user_metadata.role is admin', () => {
-      expect(isAdmin({ user_metadata: { role: 'admin' } })).toBe(true);
+    it('returns true only for allowed admin email (abelxmendoza@gmail.com)', () => {
+      expect(isAdmin({ email: 'abelxmendoza@gmail.com' })).toBe(true);
+      expect(isAdmin({ email: 'Abelxmendoza@gmail.com' })).toBe(true);
     });
 
-    it('returns true when user.user_metadata.role is developer', () => {
-      expect(isAdmin({ user_metadata: { role: 'developer' } })).toBe(true);
-    });
-
-    it('returns true when user.app_metadata.role is admin', () => {
-      expect(isAdmin({ app_metadata: { role: 'admin' } })).toBe(true);
-    });
-
-    it('returns false for user with no role', () => {
+    it('returns false for other emails and role metadata only', () => {
+      expect(isAdmin({ email: 'other@example.com' })).toBe(false);
+      expect(isAdmin({ user_metadata: { role: 'admin' } })).toBe(false);
+      expect(isAdmin({ app_metadata: { role: 'admin' } })).toBe(false);
       expect(isAdmin({})).toBe(false);
       expect(isAdmin({ user_metadata: {} })).toBe(false);
     });

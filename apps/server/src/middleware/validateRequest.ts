@@ -31,11 +31,11 @@ export const validateRequest = (schema: ZodSchema) => {
         });
       }
 
-      // Replace request data with validated data (guard in case schema only has subset of keys)
+      // Replace request data with validated data (guard in case schema only has subset of keys).
+      // Only assign req.body: req.query and req.params are read-only on Node's IncomingMessage in some setups.
       const validated = result.data as Record<string, unknown> | undefined;
       if (validated?.body !== undefined) req.body = validated.body as typeof req.body;
-      if (validated?.query !== undefined) req.query = validated.query as typeof req.query;
-      if (validated?.params !== undefined) req.params = validated.params as typeof req.params;
+      // Do not assign to req.query or req.params; handlers continue to use req.query/req.params as-is.
 
       next();
     } catch (error) {

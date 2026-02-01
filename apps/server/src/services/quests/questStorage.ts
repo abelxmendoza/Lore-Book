@@ -91,6 +91,10 @@ export class QuestStorage {
         if (error.code === 'PGRST116') {
           return null; // Not found
         }
+        // PGRST205 = table not in schema (quests not migrated); return null
+        if (error.code === 'PGRST205') {
+          return null;
+        }
         logger.error({ error }, 'Failed to get quest');
         throw error;
       }
@@ -165,6 +169,10 @@ export class QuestStorage {
       const { data, error } = await query;
 
       if (error) {
+        // PGRST205 = table not in schema (quests not migrated); return empty
+        if ((error as { code?: string }).code === 'PGRST205') {
+          return [];
+        }
         logger.error({ error }, 'Failed to get quests');
         throw error;
       }

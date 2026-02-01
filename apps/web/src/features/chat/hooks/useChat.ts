@@ -13,7 +13,7 @@ type LoadingStage = 'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'ge
 
 export const useChat = () => {
   const conversationStore = useConversationStore();
-  const { messages, setMessages, addMessage, updateMessage, removeMessage, clearConversation } = conversationStore;
+  const { messages, setMessages, addMessage, updateMessage, removeMessage, clearConversation: clearConversationStore } = conversationStore;
   const { streamChat, isStreaming, cancel } = useChatStream();
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
   const { isGuest, canSendChatMessage, incrementChatMessage, guestState } = useGuest();
@@ -264,6 +264,11 @@ export const useChat = () => {
       addMessage(errorMessage);
     }
   }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext]);
+
+  const clearConversation = useCallback(() => {
+    clearConversationStore();
+    setSources([]);
+  }, [clearConversationStore]);
 
   return {
     messages,

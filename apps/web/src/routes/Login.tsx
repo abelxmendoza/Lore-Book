@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, Sparkles, User } from 'lucide-react';
+import { Mail, ArrowRight, Sparkles, User, Presentation } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { useGuest } from '../contexts/GuestContext';
+import { useMockData } from '../contexts/MockDataContext';
 
 export default function Login() {
   const navigate = useNavigate();
   const { startGuestSession } = useGuest();
+  const { setUseMockData } = useMockData();
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +34,7 @@ export default function Login() {
     try {
       await handleEmailLogin(email);
       setStatus('Check your email for the magic link.');
+      setError(null);
     } catch (err: any) {
       console.error('[Auth] Login error:', err);
       setError(err?.message || 'Failed to send magic link. Please try again.');
@@ -156,6 +159,30 @@ export default function Login() {
               </div>
             </div>
 
+            {/* Demo Mode - mock data for deployed showcase */}
+            <div className="space-y-3">
+              <Button
+                variant="outline"
+                className="w-full border-amber-500/50 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 hover:border-amber-500/70 transition-all"
+                onClick={() => {
+                  setUseMockData(true);
+                  startGuestSession();
+                  navigate('/');
+                }}
+                disabled={loading}
+                size="lg"
+              >
+                <Presentation className="mr-2 h-5 w-5" />
+                Demo Mode
+              </Button>
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-left">
+                <p className="text-xs font-medium text-amber-200/90 mb-1">📊 Explore with sample data</p>
+                <p className="text-xs text-white/60 leading-relaxed">
+                  See the app with demo content. No sign-in required. Perfect for trying Lore Book before signing up.
+                </p>
+              </div>
+            </div>
+
             {/* Guest Login */}
             <div className="space-y-3">
               <Button
@@ -180,8 +207,11 @@ export default function Login() {
             </div>
 
             {status && (
-              <div className="rounded-lg bg-green-500/20 border border-green-500/50 p-4 text-green-400 text-sm">
-                {status}
+              <div className="rounded-lg bg-green-500/20 border border-green-500/50 p-4 text-green-400 text-sm space-y-2">
+                <p>{status}</p>
+                <p className="text-white/60 text-xs">
+                  If you don&apos;t see it, check spam/junk. Some providers delay or block sign-in emails—try again or use a different address.
+                </p>
               </div>
             )}
 

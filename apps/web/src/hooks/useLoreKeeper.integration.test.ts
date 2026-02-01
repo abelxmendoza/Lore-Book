@@ -7,7 +7,6 @@ import { useLoreKeeper } from './useLoreKeeper';
 const wrapper = ({ children }: { children: React.ReactNode }) =>
   React.createElement(MockDataProvider, null, children);
 
-// Mock supabase
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
@@ -16,157 +15,93 @@ vi.mock('../lib/supabase', () => ({
   }
 }));
 
-// Mock fetch
-global.fetch = vi.fn();
+const mockFetchJson = vi.fn();
+vi.mock('../lib/api', () => ({
+  fetchJson: (...args: unknown[]) => mockFetchJson(...args)
+}));
+
+const EMPTY_TIMELINE = { chapters: [], unassigned: [] };
+
+function defaultMock(url: string | RequestInfo, init?: RequestInit): Promise<unknown> {
+  const urlString = typeof url === 'string' ? url : (url as Request).url;
+  if (urlString.includes('/api/entries') && init?.method === 'POST') {
+    return Promise.resolve({ entry: { id: 'new-entry', content: 'New entry', date: new Date().toISOString(), tags: [], source: 'manual' } });
+  }
+  if (urlString.includes('/api/entries') && !urlString.includes('?')) {
+    return Promise.resolve({ entries: [] });
+  }
+  if (urlString.includes('/api/timeline') && !urlString.includes('tags')) {
+    return Promise.resolve({ timeline: EMPTY_TIMELINE });
+  }
+  if (urlString.includes('/api/timeline/tags')) {
+    return Promise.resolve({ tags: [] });
+  }
+  if (urlString.includes('/api/chapters')) {
+    return Promise.resolve({ chapters: [], candidates: [] });
+  }
+  if (urlString.includes('/api/evolution')) {
+    return Promise.resolve({ insights: null });
+  }
+  return Promise.resolve({});
+}
 
 describe('useLoreKeeper Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Setup default fetch mock - ensure fetch is a mock function
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockImplementation((url: string) => {
-      if (url.includes('/api/entries') && !url.includes('?')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ entries: [] })
-        });
-      }
-      if (url.includes('/api/timeline') && !url.includes('tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
-        });
-      }
-      if (url.includes('/api/timeline/tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ tags: [] })
-        });
-      }
-      if (url.includes('/api/chapters')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ chapters: [], candidates: [] })
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({})
-      });
-    });
+    localStorage.clear();
+    mockFetchJson.mockImplementation((url: string | RequestInfo, init?: RequestInit) => defaultMock(url, init));
   });
 
-  it('should initialize with empty state', () => {
+  it('should initialize with empty state', async () => {
     const { result } = renderHook(() => useLoreKeeper(), { wrapper });
-    
-    expect(result.current.entries).toEqual([]);
-    // Timeline is initialized as object with chapters and unassigned arrays
-    expect(result.current.timeline).toEqual({ chapters: [], unassigned: [] });
-    expect(result.current.loading).toBe(false); // Loading starts as false, becomes true when fetching
+
+    await waitFor(() => {
+      expect(result.current.entries).toEqual([]);
+      expect(result.current.timeline).toEqual(EMPTY_TIMELINE);
+    }, { timeout: 3000 });
+    expect(result.current.loading).toBe(false);
   });
 
   it('should load entries on mount', async () => {
-    // Mock entries response
-    (global.fetch as any).mockImplementation((url: string) => {
-      if (url.includes('/api/entries') && !url.includes('?')) {
+    mockFetchJson.mockImplementation((url: string | RequestInfo) => {
+      const urlString = typeof url === 'string' ? url : (url as Request).url;
+      if (urlString.includes('/api/entries') && !urlString.includes('?')) {
         return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ entries: [{ id: '1', content: 'Test entry', date: new Date().toISOString(), tags: [], source: 'manual' }] })
+          entries: [{ id: '1', content: 'Test entry', date: new Date().toISOString(), tags: [], source: 'manual' }]
         });
       }
-      if (url.includes('/api/timeline') && !url.includes('tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
-        });
-      }
-      if (url.includes('/api/timeline/tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ tags: [] })
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({})
-      });
+      return defaultMock(url);
     });
 
     const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
-    // The hook calls refreshEntries on mount, which uses the mocked fetch
-    // Wait for the entries to be loaded (mocked fetch returns entries)
     await waitFor(() => {
-      // Entries should be loaded from the mocked API
       expect(result.current.entries.length).toBeGreaterThan(0);
     }, { timeout: 5000 });
-
-    // Verify entries were loaded
-    expect(Array.isArray(result.current.entries)).toBe(true);
-    expect(result.current.entries.length).toBeGreaterThan(0);
+    expect(result.current.entries[0]?.content).toBe('Test entry');
   });
 
   it('should create a new entry', async () => {
     const mockEntry = { id: 'new-entry', content: 'New entry', date: new Date().toISOString(), tags: [], source: 'manual' };
-    const entriesList: unknown[] = [];
-    
-    // Mock create entry response
-    (global.fetch as any).mockImplementation((url: string, init?: RequestInit) => {
-      if (url.includes('/api/entries') && init?.method === 'POST') {
-        // Add entry to list after creation
-        entriesList.push(mockEntry);
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ entry: mockEntry })
-        });
+    mockFetchJson.mockImplementation((url: string | RequestInfo, init?: RequestInit) => {
+      const urlString = typeof url === 'string' ? url : (url as Request).url;
+      if (urlString.includes('/api/entries') && init?.method === 'POST') {
+        return Promise.resolve({ entry: mockEntry });
       }
-      if (url.includes('/api/entries') && !url.includes('?')) {
-        // Return current entries list
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ entries: entriesList })
-        });
-      }
-      if (url.includes('/api/timeline') && !url.includes('tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ timeline: { chapters: [], unassigned: [] } })
-        });
-      }
-      if (url.includes('/api/timeline/tags')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ tags: [] })
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({})
-      });
+      return defaultMock(url, init);
     });
 
     const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
-    // Wait for initial load
     await waitFor(() => {
       expect(result.current.entries).toBeDefined();
     }, { timeout: 2000 });
 
-    // Get initial entry count
-    const initialCount = result.current.entries.length;
-
-    // Create entry - the hook adds it directly to state
     const newEntry = await result.current.createEntry('New entry');
 
-    // Verify entry was created and returned
     expect(newEntry).toBeDefined();
     expect(newEntry.content).toBe('New entry');
-
-    // The hook adds entry directly to state: setEntries((prev) => [data.entry, ...prev])
-    // So the entry should be in the list immediately
     await waitFor(() => {
-      expect(result.current.entries.length).toBeGreaterThanOrEqual(initialCount);
-      // Entry should be at the beginning of the list
       expect(result.current.entries[0]?.id).toBe('new-entry');
     }, { timeout: 2000 });
   });

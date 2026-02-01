@@ -272,6 +272,9 @@ export const LoreBook = () => {
     loadEntities();
   }, []);
 
+  // Stable key so we don't re-run when useLoreKeeper returns a new array reference every render
+  const loreChaptersKey = loreChapters.length > 0 ? loreChapters.map((c) => c.id).join(',') : '';
+
   // Load memoir outline and chapters
   useEffect(() => {
     const loadData = async () => {
@@ -321,7 +324,7 @@ export const LoreBook = () => {
     };
 
     void loadData();
-  }, [shouldUseMock, loreChapters]);
+  }, [shouldUseMock, loreChaptersKey]);
 
   // Load lorebook recommendations (must be before early returns)
   useEffect(() => {

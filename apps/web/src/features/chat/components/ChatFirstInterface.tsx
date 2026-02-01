@@ -20,6 +20,7 @@ import { diagnoseEndpoints, logDiagnostics } from '../../../utils/errorDiagnosti
 import { analytics } from '../../../lib/monitoring';
 import { fetchJson } from '../../../lib/api';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
+import { useAuth } from '../../../lib/supabase';
 import type { ChatSource } from '../message/ChatMessage';
 import '../styles/chat-theme.css';
 import '../styles/message-animations.css';
@@ -43,6 +44,7 @@ export const ChatFirstInterface = () => {
     clearConversation,
     scrollToBottom
   } = useChat();
+  const { user, loading: authLoading } = useAuth();
   const { isGuest, canSendChatMessage } = useGuest();
   
   const [selectedSource, setSelectedSource] = useState<ChatSource | null>(null);
@@ -52,10 +54,15 @@ export const ChatFirstInterface = () => {
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
   const [initialDate, setInitialDate] = useState<string | null>(null);
 
-  // Load conversation on mount
+  // Load or clear conversation: logged-in users start with empty chat (no guest/mock data)
   useEffect(() => {
-    loadConversation();
-  }, [loadConversation]);
+    if (authLoading) return;
+    if (user) {
+      clearConversation();
+    } else {
+      loadConversation();
+    }
+  }, [authLoading, user?.id, loadConversation, clearConversation]);
 
   // Read URL params for pre-filling (date and prompt)
   useEffect(() => {

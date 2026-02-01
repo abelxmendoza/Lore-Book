@@ -24,6 +24,16 @@ export type ChatSource = {
   date?: string;
 };
 
+/** User-facing labels for source types (no jargon like HQI) */
+export const SOURCE_TYPE_LABELS: Record<string, string> = {
+  entry: 'Entry',
+  chapter: 'Chapter',
+  character: 'Character',
+  task: 'Task',
+  hqi: 'Smart search',
+  fabric: 'Related'
+};
+
 import type { RecallChatPayload } from './recallTypes';
 import { EntityClarificationChip, type EntityAmbiguity } from './EntityClarificationChip';
 
@@ -329,7 +339,7 @@ export const ChatMessage = ({
                     className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-md border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 cursor-pointer transition-colors text-sm sm:text-base text-white/70 hover:text-white"
                   >
                     <div className="flex items-center gap-1.5 sm:gap-2">
-                      <span className="text-white/60">{source.type}</span>
+                      <span className="text-white/60">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</span>
                       <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4 text-white/40" />
                     </div>
                     <div className="text-white/90 truncate max-w-[150px] sm:max-w-[200px]" title={source.title}>

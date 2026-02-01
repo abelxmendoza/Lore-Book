@@ -40,7 +40,6 @@ function ChatWrapper({ children }: { children: React.ReactNode }) {
 describe('Chat Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock scrollIntoView
     Element.prototype.scrollIntoView = vi.fn();
   });
 
@@ -51,57 +50,37 @@ describe('Chat Integration Tests', () => {
       </ChatWrapper>
     );
 
-    // Chat interface should render - verify component mounts
     await waitFor(() => {
-      // Component should render something - check for any rendered content
-      const hasContent = document.body.textContent !== null &&
-                        document.body.textContent.length > 0;
-      expect(hasContent).toBeTruthy();
-    }, { timeout: 3000 });
+      expect(screen.getByText(/Lore Book/i)).toBeInTheDocument();
+    }, { timeout: 5000 });
   });
 
   it('should handle message submission', async () => {
-    const { userEvent } = await import('@testing-library/user-event');
-    const user = userEvent.setup();
-
     render(
       <ChatWrapper>
         <ChatFirstInterface />
       </ChatWrapper>
     );
 
-    // Wait for component to render
     await waitFor(() => {
-      const hasContent = document.body.textContent !== null;
-      expect(hasContent).toBeTruthy();
-    }, { timeout: 2000 });
+      expect(screen.getByText(/Lore Book/i)).toBeInTheDocument();
+    }, { timeout: 5000 });
 
-    // Find input with flexible selector
     const input = screen.queryByRole('textbox') ||
-                  screen.queryByPlaceholderText(/message|type|enter|Lore Book/i) ||
-                  screen.queryByLabelText(/message/i) ||
+                  screen.queryByPlaceholderText(/message|Lore Book/i) ||
                   document.querySelector('textarea');
-    
     if (input && input instanceof HTMLElement) {
+      const { userEvent } = await import('@testing-library/user-event');
+      const user = userEvent.setup();
       try {
         await user.type(input, 'Test message');
-        
-        // Find submit button
         const submitButton = screen.queryByRole('button', { name: /send|submit/i }) ||
-                             screen.queryByLabelText(/send|submit/i) ||
-                             document.querySelector('button[type="submit"]') ||
-                             document.querySelector('button[aria-label*="send" i]');
-        
-        if (submitButton) {
-          await user.click(submitButton);
-        }
-      } catch (error) {
-        // If interaction fails, just verify component is rendered
-        // This is acceptable for complex components in test environment
+                             document.querySelector('button[type="submit"]');
+        if (submitButton) await user.click(submitButton);
+      } catch {
+        // Interaction optional; component rendered
       }
     }
-    
-    // Always verify component rendered successfully
     expect(document.body).toBeTruthy();
   });
 });

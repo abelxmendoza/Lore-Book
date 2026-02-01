@@ -183,13 +183,26 @@ class OmegaChatService {
   }
 
   /**
+   * Strip any HQI demo/mock data from a RAG packet so chat never shows fake Smart search or Connections.
+   */
+  private sanitizeRagPacket(packet: any): any {
+    if (!packet) return packet;
+    const sources = Array.isArray(packet.sources) ? packet.sources.filter((s: any) => s?.type !== 'hqi') : packet.sources;
+    return {
+      ...packet,
+      hqiResults: [],
+      sources
+    };
+  }
+
+  /**
    * Build comprehensive RAG packet with ALL lore knowledge
    */
   private async buildRAGPacket(userId: string, message: string, currentContext?: CurrentContext) {
     // Try to get cached RAG packet first (FREE - no expensive queries)
     const cached = ragPacketCacheService.getCachedPacket(userId, message);
     if (cached) {
-      return cached;
+      return this.sanitizeRagPacket(cached);
     }
 
     // Get full orchestrator summary with error handling
@@ -525,10 +538,11 @@ class OmegaChatService {
       topInterests
     };
 
-    // Cache the RAG packet for future use
-    ragPacketCacheService.cachePacket(userId, message, packet);
+    // Cache the RAG packet for future use (sanitized so cache never stores HQI demo data)
+    const toCache = this.sanitizeRagPacket(packet);
+    ragPacketCacheService.cachePacket(userId, message, toCache);
 
-    return packet;
+    return toCache;
   }
 
   /**

@@ -6,7 +6,7 @@ export const HQIResultCard = ({ result }: { result: HQIResult }) => (
     <CardContent className="space-y-1 p-3">
       <div className="flex items-center justify-between text-xs uppercase text-white/50">
         <span>{result.type}</span>
-        {typeof result.score === 'number' && <span className="text-primary">{(result.score * 100).toFixed(0)} HQI</span>}
+        {typeof result.score === 'number' && <span className="text-primary">{(result.score * 100).toFixed(0)}% match</span>}
       </div>
       <div className="text-lg font-semibold text-foreground">{result.title}</div>
       {result.snippet && <p className="text-white/60">{result.snippet}</p>}

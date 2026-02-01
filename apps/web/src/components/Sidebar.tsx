@@ -396,8 +396,8 @@ const SidebarContent = ({
 
       {/* Sticky Account Center & Admin Console - Always at bottom */}
       <div className="sticky bottom-0 pt-4 pb-2 border-t border-border/30 bg-black/20 lg:bg-black/20 backdrop-blur-md z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)] space-y-2">
-        {/* Admin Console - Only visible to admins */}
-        {(userIsAdmin || !config.env.isProduction) && (
+        {/* Admin Console - Only visible to allowed admin email (abelxmendoza@gmail.com) */}
+        {userIsAdmin && (
           <button
             onClick={() => {
               navigate('/admin');

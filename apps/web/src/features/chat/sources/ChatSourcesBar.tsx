@@ -1,6 +1,7 @@
 import { Sparkles } from 'lucide-react';
 import { Badge } from '../../../components/ui/badge';
 import type { ChatSource } from '../message/ChatMessage';
+import { SOURCE_TYPE_LABELS } from '../message/ChatMessage';
 
 type ChatSourcesBarProps = {
   sources?: ChatSource[];
@@ -29,7 +30,7 @@ export const ChatSourcesBar = ({ sources, onSourceClick }: ChatSourcesBarProps) 
         {Object.entries(groupedSources).map(([type, typeSources]) => (
           <div key={type} className="flex items-center gap-1">
             <Badge variant="outline" className="text-xs border-border/30 text-white/50">
-              {type}
+              {SOURCE_TYPE_LABELS[type] ?? type}
             </Badge>
             {typeSources.slice(0, 3).map((source, idx) => (
               <button

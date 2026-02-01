@@ -320,7 +320,7 @@ export const HQIResultModal = ({ result, isOpen, onClose }: Props) => {
                     <div className="text-3xl font-bold text-primary">
                       {(result.score * 100).toFixed(1)}%
                     </div>
-                    <p className="text-xs text-white/50 mt-2">HQI Score</p>
+                    <p className="text-xs text-white/50 mt-2">Relevance</p>
                     {result.reasons.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-1 justify-center">
                         {result.reasons.map((reason, idx) => (
