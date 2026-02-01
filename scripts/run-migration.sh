@@ -57,6 +57,20 @@ get_password() {
     fi
 }
 
+# Fail early if psql is not installed
+if ! command -v psql >/dev/null 2>&1; then
+    echo -e "${RED}❌ psql not found${NC}"
+    echo ""
+    echo "Install the PostgreSQL client, then run this script again:"
+    echo "  Ubuntu/Debian:  sudo apt install postgresql-client"
+    echo "  macOS (Homebrew):  brew install libpq && brew link --force libpq"
+    echo ""
+    echo "Or run base migrations without psql (Node):"
+    echo "  npm run migrate:base"
+    echo ""
+    exit 1
+fi
+
 # Function to run migration
 run_migration() {
     local migration_file=$1

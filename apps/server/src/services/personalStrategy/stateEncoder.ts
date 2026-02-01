@@ -1,12 +1,16 @@
 import { logger } from '../../logger';
 import { emotionalIntelligenceEngine } from '../emotionalIntelligence/emotionalEngine';
-import { goalsEngine } from '../goals/goalEngine';
+import { GoalEngine } from '../goals/goalEngine';
+
 import { goalValueAlignmentService } from '../goalValueAlignmentService';
-import { habitsEngine } from '../habits/habitEngine';
+import { HabitEngine } from '../habits/habitEngine';
 import { supabaseAdmin } from '../supabaseClient';
 
 import { PatternPredictor } from './supervised/inference/predictPattern';
 import type { RLStateVector, PatternType } from './types';
+
+const goalsEngine = new GoalEngine();
+const habitsEngine = new HabitEngine();
 
 export class StateEncoder {
   private patternPredictor: PatternPredictor;
@@ -170,7 +174,7 @@ export class StateEncoder {
 
       const lastActions = (recentActivities || []).map(a => a.normalized_name).filter(Boolean);
 
-      const habits = await habitsEngine.getHabits(userId);
+      const { habits } = await habitsEngine.process(userId);
       const avgStreak = habits.length > 0
         ? habits.reduce((sum, h) => sum + (h.streak || 0), 0) / habits.length
         : 0;
@@ -187,7 +191,7 @@ export class StateEncoder {
     userId: string
   ): Promise<Pick<RLStateVector, 'active_goals_count' | 'goal_progress_score' | 'goal_at_risk_count'>> {
     try {
-      const goals = await goalsEngine.getGoals(userId);
+      const { goals } = await goalsEngine.process(userId);
       const activeGoals = goals.filter(g => g.status === 'active');
 
       const avgProgress = activeGoals.length > 0

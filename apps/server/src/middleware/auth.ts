@@ -94,3 +94,4 @@ export const authMiddleware = async (
 };
 
 export const requireAuth = authMiddleware;
+export const authenticate = authMiddleware;

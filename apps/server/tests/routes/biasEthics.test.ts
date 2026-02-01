@@ -3,10 +3,14 @@ import request from 'supertest';
 import express from 'express';
 
 vi.mock('../../src/middleware/auth', () => ({
-  authenticate: vi.fn((req: any, _res: any, next: () => void) => {
+  requireAuth: (req: any, _res: any, next: () => void) => {
     req.user = { id: 'u1' };
     next();
-  }),
+  },
+  authenticate: (req: any, _res: any, next: () => void) => {
+    req.user = { id: 'u1' };
+    next();
+  },
 }));
 vi.mock('../../src/services/biasDetection/biasDetectionService', () => ({
   biasDetectionService: {

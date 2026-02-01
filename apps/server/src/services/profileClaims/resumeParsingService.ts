@@ -1,8 +1,11 @@
 import { randomUUID } from 'crypto';
+import { createRequire } from 'module';
 
 import mammoth from 'mammoth';
 import OpenAI from 'openai';
-import pdfParse from 'pdf-parse';
+
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
 
 import { config } from '../../config';
 import { logger } from '../../logger';

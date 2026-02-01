@@ -154,3 +154,5 @@ export class GoalEngine {
   }
 }
 
+export const goalsEngine = new GoalEngine();
+

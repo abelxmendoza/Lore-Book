@@ -3,7 +3,7 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { thoughtOrchestrationService } from '../services/thoughtOrchestration/thoughtOrchestrationService';
 import { thoughtClassificationService } from '../services/thoughtClassification/thoughtClassificationService';
 import { insecurityGraphService } from '../services/insecurityGraph/insecurityGraphService';
@@ -20,7 +20,7 @@ const router = Router();
  * POST /api/thoughts/process
  * Process a passing thought end-to-end (<300ms target)
  */
-router.post('/process', authenticate, async (req, res) => {
+router.post('/process', requireAuth, async (req, res) => {
   try {
     const { thoughtText, entryId, messageId } = req.body;
     const userId = req.user!.id;
@@ -46,7 +46,7 @@ router.post('/process', authenticate, async (req, res) => {
  * POST /api/thoughts/classify
  * Quick classification only (for real-time UI feedback)
  */
-router.post('/classify', authenticate, async (req, res) => {
+router.post('/classify', requireAuth, async (req, res) => {
   try {
     const { thoughtText } = req.body;
     const userId = req.user!.id;
@@ -75,7 +75,7 @@ router.post('/classify', authenticate, async (req, res) => {
  * GET /api/thoughts/insecurities
  * Get user's insecurity patterns
  */
-router.get('/insecurities', authenticate, async (req, res) => {
+router.get('/insecurities', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
     const domain = req.query.domain as string | undefined;
@@ -97,7 +97,7 @@ router.get('/insecurities', authenticate, async (req, res) => {
  * PUT /api/thoughts/responses/:responseId/feedback
  * Record user feedback on response
  */
-router.put('/responses/:responseId/feedback', authenticate, async (req, res) => {
+router.put('/responses/:responseId/feedback', requireAuth, async (req, res) => {
   try {
     const { responseId } = req.params;
     const { wasHelpful } = req.body;

@@ -22,8 +22,17 @@ import { subscriptionRouter } from './routes/subscription';
 import { setupSwagger } from './swagger';
 import { requestIdMiddleware } from './utils/requestId';
 import { performSecurityCheck } from './utils/securityCheck';
+import { getSchemaStatus, getMissingTables } from './db/schemaVerification';
+import { schemaGuard } from './middleware/schemaGuard';
 
 assertConfig();
+
+// SECURITY: Detect environment before any logic that uses it
+const isDevelopment = process.env.NODE_ENV === 'development' ||
+  (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
+const isProduction = process.env.NODE_ENV === 'production' ||
+  process.env.API_ENV === 'production' ||
+  (!process.env.NODE_ENV && !process.env.API_ENV);
 
 // Perform security check on startup
 const securityCheck = performSecurityCheck();
@@ -35,13 +44,6 @@ if (!securityCheck.passed) {
 }
 
 const app = express();
-// SECURITY: Properly detect production environment
-// Default to production for safety if NODE_ENV is not explicitly set to 'development'
-const isDevelopment = process.env.NODE_ENV === 'development' || 
-                      (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
-const isProduction = process.env.NODE_ENV === 'production' || 
-                     process.env.API_ENV === 'production' ||
-                     (!process.env.NODE_ENV && !process.env.API_ENV); // Default to production for safety
 
 // Configure Helmet with strict security in production, permissive in development
 app.use(
@@ -139,6 +141,36 @@ app.use(express.urlencoded({ extended: true, limit: isDevelopment ? '50mb' : '1m
 // Request ID middleware (must be early in the chain)
 app.use(requestIdMiddleware);
 
+// Liveness: GET /api/health first so nothing else can return 500 for it (no auth, no DB)
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Database schema health: status, missing tables, last check (no auth)
+app.get('/api/health/db', async (_req, res) => {
+  const { verifySchema, getLastSchemaCheck } = await import('./db/schemaVerification');
+  const result = await verifySchema();
+  const lastSchemaSync = getLastSchemaCheck();
+  res.status(200).json({
+    status: result.ok ? 'ok' : 'degraded',
+    missingTables: result.missingTables,
+    lastSchemaSync: lastSchemaSync ? lastSchemaSync.toISOString() : null,
+  });
+});
+
+// Schema guard for ALL /api routes (including public): return 503 when DB tables missing (prevents 500/PGRST205 flood)
+app.use('/api', (req, res, next) => {
+  if (req.originalUrl === '/api/health' || req.originalUrl === '/api/health/db') return next();
+  if (getSchemaStatus() === 'degraded') {
+    return res.status(503).json({
+      error: 'Database schema incomplete',
+      message: 'Required tables are missing. Run migrations: ./scripts/run-base-migrations.sh',
+      missingTables: getMissingTables(),
+    });
+  }
+  next();
+});
+
 // Swagger API documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
@@ -147,6 +179,9 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 
 // Create protected routes router with auth middleware stack
 const apiRouter = express.Router();
+
+// Schema guard: return 503 when required DB tables are missing (prevents PGRST205 log flood)
+apiRouter.use(schemaGuard);
 
 // Security middleware stack - ALWAYS enabled in production
 apiRouter.use(intrusionDetection); // Intrusion detection (blocks suspicious activity)
@@ -188,6 +223,16 @@ app.use((req: express.Request, res: express.Response) => {
 app.use(errorHandler);
 
 try {
+  // Boot-time schema verification: mark DEGRADED if required tables missing (see db/schemaVerification.ts)
+  const { verifySchema } = await import('./db/schemaVerification');
+  const schemaResult = await verifySchema();
+  if (!schemaResult.ok) {
+    logger.warn(
+      { missingTables: schemaResult.missingTables },
+      'CRITICAL: Missing DB tables - system DEGRADED. Run: ./scripts/run-base-migrations.sh'
+    );
+  }
+
   registerSyncJob();
   memoryExtractionWorker.start();
   const { insightGenerationJob } = await import('./jobs/insightGenerationJob');

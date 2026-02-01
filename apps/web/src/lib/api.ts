@@ -100,23 +100,31 @@ export const fetchJson = async <T>(
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
       let errorMessage = error.error || error.message || `HTTP ${res.status}: ${res.statusText}`;
-      // In dev with proxy (empty apiUrl), 500 usually means backend not running
-      if (config.env.isDevelopment && !config.api.url && res.status === 500) {
+      const isSchemaIncomplete = res.status === 503 && (error.error === 'Database schema incomplete' || Array.isArray(error.missingTables));
+      if (isSchemaIncomplete) {
+        errorMessage = error.message || 'Database schema incomplete. Run: ./scripts/run-base-migrations.sh';
+      } else if (config.env.isDevelopment && !config.api.url && res.status === 500) {
         errorMessage =
           'Backend server is not running. Start it with: cd apps/server && npm run dev';
       }
-      // Check if backend is not running (dev mode or when mock data is enabled)
-      // Include 500 when using proxy (empty apiUrl) — proxy returns 500 when backend is down
+      // Check if backend is not running or schema incomplete (dev mode or when mock data is enabled)
       const backendDownStatus = res.status === 0 || res.status === 503 || res.status === 502 ||
         (res.status === 500 && !config.api.url);
       if ((config.dev.allowMockData || globalMockEnabled) && backendDownStatus) {
         if (shouldUseMock && options?.mockData) {
-          log.debug('Backend unavailable, using mock data:', typeof input === 'string' ? input : 'Request');
+          log.debug(
+            isSchemaIncomplete ? 'Database schema incomplete, using mock data:' : 'Backend unavailable, using mock data:',
+            typeof input === 'string' ? input : 'Request'
+          );
           return options.mockData;
         }
         if (config.dev.verboseErrors && !backendDownWarned) {
           backendDownWarned = true;
-          log.warn('Backend server is not running. Using fallback behavior. Start: cd apps/server && npm run dev');
+          log.warn(
+            isSchemaIncomplete
+              ? 'Database schema incomplete. Using fallback. Run: ./scripts/run-base-migrations.sh'
+              : 'Backend server is not running. Using fallback behavior. Start: cd apps/server && npm run dev'
+          );
         }
       }
       

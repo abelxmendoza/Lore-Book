@@ -1,6 +1,6 @@
 import { config } from '../../config';
 import { logger } from '../../logger';
-import { openaiClient } from '../openaiClient';
+import { openai } from '../openaiClient';
 
 import type { Quest, QuestType } from './types';
 
@@ -21,7 +21,7 @@ export class QuestExtractor {
         date: e.date,
       }));
 
-      const completion = await openaiClient.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0.3,
         response_format: { type: 'json_object' },
@@ -104,7 +104,7 @@ Return JSON:
       const recentHistory = conversationHistory?.slice(-5) || [];
       const contextMessages = recentHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n');
 
-      const completion = await openaiClient.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0.3,
         response_format: { type: 'json_object' },
@@ -203,7 +203,7 @@ Only extract quests if they are clearly stated. Don't extract vague or uncertain
       const recentHistory = conversationHistory?.slice(-5) || [];
       const contextMessages = recentHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n');
 
-      const completion = await openaiClient.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0.3,
         response_format: { type: 'json_object' },
@@ -284,7 +284,7 @@ Only extract progress updates if they are clearly stated. Don't infer progress f
       const recentHistory = conversationHistory?.slice(-10) || [];
       const contextMessages = recentHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n');
 
-      const completion = await openaiClient.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0.3,
         response_format: { type: 'json_object' },

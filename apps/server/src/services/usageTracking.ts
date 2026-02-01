@@ -17,41 +17,55 @@ export interface UsageData {
   isTrial: boolean;
 }
 
+const defaultUsageData = (): UsageData => ({
+  entryCount: 0,
+  aiRequestsCount: 0,
+  entryLimit: config.freeTierEntryLimit || 50,
+  aiLimit: config.freeTierAiLimit || 100,
+  isPremium: false,
+  isTrial: false,
+});
+
 /**
  * Get current month usage for a user
  */
 export async function getCurrentUsage(userId: string): Promise<UsageData> {
-  const subscription = await getUserSubscription(userId);
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  try {
+    const subscription = await getUserSubscription(userId);
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  // Get or create usage record for current month
-  const { data: usage, error } = await supabase
-    .from('subscription_usage')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('month', monthStart.toISOString().split('T')[0])
-    .single();
+    // Get or create usage record for current month
+    const { data: usage } = await supabase
+      .from('subscription_usage')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('month', monthStart.toISOString().split('T')[0])
+      .single();
 
-  const entryCount = usage?.entry_count || 0;
-  const aiRequestsCount = usage?.ai_requests_count || 0;
+    const entryCount = usage?.entry_count || 0;
+    const aiRequestsCount = usage?.ai_requests_count || 0;
 
-  // Determine limits based on subscription
-  const isPremium = subscription?.planType === 'premium';
-  const isTrial = subscription?.status === 'trial' || 
-    (subscription?.trialEndsAt && subscription.trialEndsAt > now);
+    // Determine limits based on subscription
+    const isPremium = subscription?.planType === 'premium';
+    const isTrial = subscription?.status === 'trial' ||
+      (subscription?.trialEndsAt && subscription.trialEndsAt > now);
 
-  const entryLimit = isPremium || isTrial ? Infinity : config.freeTierEntryLimit || 50;
-  const aiLimit = isPremium || isTrial ? Infinity : config.freeTierAiLimit || 100;
+    const entryLimit = isPremium || isTrial ? Infinity : config.freeTierEntryLimit || 50;
+    const aiLimit = isPremium || isTrial ? Infinity : config.freeTierAiLimit || 100;
 
-  return {
-    entryCount,
-    aiRequestsCount,
-    entryLimit,
-    aiLimit,
-    isPremium: isPremium || false,
-    isTrial: isTrial || false,
-  };
+    return {
+      entryCount,
+      aiRequestsCount,
+      entryLimit,
+      aiLimit,
+      isPremium: isPremium || false,
+      isTrial: isTrial || false,
+    };
+  } catch (err) {
+    // When Supabase/DB is unavailable (e.g. local dev), allow usage with default limits
+    return defaultUsageData();
+  }
 }
 
 /**
@@ -204,20 +218,25 @@ export async function canCreateEntry(userId: string): Promise<{ allowed: boolean
  * Check if user can make an AI request (within limits)
  */
 export async function canMakeAiRequest(userId: string): Promise<{ allowed: boolean; reason?: string }> {
-  const usage = await getCurrentUsage(userId);
+  try {
+    const usage = await getCurrentUsage(userId);
 
-  if (usage.isPremium || usage.isTrial) {
+    if (usage.isPremium || usage.isTrial) {
+      return { allowed: true };
+    }
+
+    if (usage.aiRequestsCount >= usage.aiLimit) {
+      return {
+        allowed: false,
+        reason: `You've reached your monthly limit of ${usage.aiLimit} AI requests. Upgrade to Premium for unlimited requests.`,
+      };
+    }
+
+    return { allowed: true };
+  } catch {
+    // When usage check fails (e.g. DB down), allow request so chat still works
     return { allowed: true };
   }
-
-  if (usage.aiRequestsCount >= usage.aiLimit) {
-    return {
-      allowed: false,
-      reason: `You've reached your monthly limit of ${usage.aiLimit} AI requests. Upgrade to Premium for unlimited requests.`,
-    };
-  }
-
-  return { allowed: true };
 }
 
 /**

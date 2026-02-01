@@ -9,7 +9,8 @@ import { createContext, useContext, useState, useEffect, useRef, ReactNode, useC
 import { config } from '../config/env';
 
 const HEALTH_CHECK_TIMEOUT_MS = 2000;
-const HEALTH_RETRY_MS = 5000;
+// Retry less often when backend is down to reduce console/network spam (was 5s)
+const HEALTH_RETRY_MS = 30_000;
 
 interface MockDataContextType {
   useMockData: boolean;

@@ -51,6 +51,7 @@ import { integrationsRouter } from './integrations';
 import { legalRouter } from './legal';
 import { locationsRouter } from './locations';
 import { memoirRouter } from './memoir';
+import { moodsRouter } from './moods';
 import { memoryGraphRouter } from './memoryGraph';
 import { memoryLadderRouter } from './memoryLadder';
 import { namingRouter } from './naming';
@@ -229,6 +230,7 @@ export const routeRegistry: RouteEntry[] = [
   { path: '/api/achievements', router: achievementsRouter },
   { path: '/api/resume', router: resumeRouter },
   { path: '/api/notebook', router: notebookRouter },
+  { path: '/api/moods', router: moodsRouter },
   { path: '/api/identity', router: identityRouter },
   { path: '/api/harmonization', router: harmonizationRouter },
   { path: '/api/naming', router: namingRouter },
@@ -384,15 +386,16 @@ export function registerRoutes(
 
     // Register route
     if (entry.requiresAuth === false) {
-      // Public route (no auth required)
+      // Public route (no auth required) - mounted on main app at full path e.g. /api/entries
       publicRoutesApp.use(entry.path, entry.router);
       publicRoutes++;
       logger.debug(`Registered public route: ${entry.path}`);
     } else {
-      // Protected route (requires auth - middleware already applied to protectedRoutesApp)
-      protectedRoutesApp.use(entry.path, entry.router);
+      // Protected route: protectedRoutesApp (apiRouter) is mounted at /api, so use path without /api prefix
+      const mountPath = entry.path.startsWith('/api') ? entry.path.slice(4) || '/' : entry.path;
+      protectedRoutesApp.use(mountPath, entry.router);
       protectedRoutes++;
-      logger.debug(`Registered protected route: ${entry.path}`);
+      logger.debug(`Registered protected route: ${entry.path} -> ${mountPath}`);
     }
   }
 

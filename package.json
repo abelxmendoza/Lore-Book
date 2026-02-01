@@ -8,9 +8,14 @@
     "test:all": "npm run test:security && npm run test:e2e:security",
     "find-unused": "cd apps/server && node scripts/find-unused-code.js",
     "lint:fix": "cd apps/server && npm run lint -- --fix && cd ../web && npm run lint -- --fix",
-    "prepare": "husky"
+    "prepare": "husky",
+    "migrate:base": "npx tsx scripts/run-base-migrations.ts"
   },
   "devDependencies": {
-    "husky": "^9.1.7"
+    "@types/pg": "^8.11.10",
+    "dotenv": "^16.6.1",
+    "husky": "^9.1.7",
+    "pg": "^8.13.1",
+    "tsx": "^4.16.2"
   }
 }

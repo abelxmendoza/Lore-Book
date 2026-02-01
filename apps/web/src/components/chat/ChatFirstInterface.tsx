@@ -520,16 +520,28 @@ export const ChatFirstInterface = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showSearch, selectedSource, showExportMenu]);
 
-  // Auto-diagnose on mount if there are errors
+  // Auto-diagnose on mount if there are errors (log at most once per session)
+  const healthWarnedRef = useRef(false);
   useEffect(() => {
     const checkHealth = async () => {
       try {
         const response = await fetch('/api/health');
-        if (!response.ok) {
+        if (!response.ok && !healthWarnedRef.current) {
+          healthWarnedRef.current = true;
+          if (response.status === 503) {
+            const body = await response.json().catch(() => ({}));
+            if (body.error === 'Database schema incomplete' || Array.isArray(body.missingTables)) {
+              console.warn('⚠️ Database schema incomplete. Run: ./scripts/run-base-migrations.sh');
+              return;
+            }
+          }
           console.warn('⚠️ Health check failed. Run diagnostics with Cmd+Shift+D');
         }
-      } catch (error) {
-        console.warn('⚠️ Cannot reach server. Run diagnostics with Cmd+Shift+D');
+      } catch (_err) {
+        if (!healthWarnedRef.current) {
+          healthWarnedRef.current = true;
+          console.warn('⚠️ Cannot reach server. Run diagnostics with Cmd+Shift+D');
+        }
       }
     };
     checkHealth();

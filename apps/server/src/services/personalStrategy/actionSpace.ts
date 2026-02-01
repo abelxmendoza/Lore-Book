@@ -1,6 +1,8 @@
 import { logger } from '../../logger';
-import { activityResolver } from '../activities/activityResolver';
+import { ActivityResolver } from '../activities/activityResolver';
 import { supabaseAdmin } from '../supabaseClient';
+
+const activityResolver = new ActivityResolver();
 
 import type { Action, ActionType, RLStateVector } from './types';
 

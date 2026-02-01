@@ -14,6 +14,15 @@ const personaRL = new ChatPersonaRL();
 
 const router = Router();
 
+/** Get a string message from any thrown value (Error, Supabase/PGRST object, etc.). */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+  return String(error);
+}
+
 const currentContextSchema = z.object({
   kind: z.enum(['none', 'timeline', 'thread']),
   timelineNodeId: z.string().uuid().optional(),
@@ -117,14 +126,16 @@ router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, a
       res.end();
     } catch (error) {
       logger.error({ error }, 'Stream error');
-      res.write(`data: ${JSON.stringify({ type: 'error', error: error instanceof Error ? error.message : 'Unknown error' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'error', error: getErrorMessage(error) || 'Unknown error' })}\n\n`);
       res.end();
     }
   } catch (error) {
-    logger.error({ err: error }, 'Chat stream endpoint error');
+    const errMessage = getErrorMessage(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    logger.error({ err: error, message: errMessage, stack: errStack }, 'Chat stream endpoint error');
     res.status(500).json({
       error: 'Failed to process chat message',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: errMessage || 'Unknown error'
     });
   }
 });
@@ -157,10 +168,12 @@ router.post('/', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    logger.error({ err: error }, 'Chat endpoint error');
+    const errMessage = getErrorMessage(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    logger.error({ err: error, message: errMessage, stack: errStack }, 'Chat endpoint error');
     res.status(500).json({
       error: 'Failed to process chat message',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: errMessage || 'Unknown error'
     });
   }
 });

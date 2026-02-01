@@ -1,3 +1,5 @@
+import cron from 'node-cron';
+
 import { logger } from '../logger';
 import { AlignmentRegressorTrainer } from '../services/personalStrategy/supervised/trainers/trainAlignmentRegressor';
 import { OutcomePredictorTrainer } from '../services/personalStrategy/supervised/trainers/trainOutcomePredictor';
@@ -109,8 +111,6 @@ export async function trainPersonalStrategyModels(): Promise<void> {
  */
 export function registerPersonalStrategyTrainingJob(): void {
   try {
-    const cron = require('node-cron');
-    
     // Run every Sunday at 2 AM
     cron.schedule('0 2 * * 0', async () => {
       logger.info('Running scheduled Personal Strategy Engine model training');
@@ -119,6 +119,11 @@ export function registerPersonalStrategyTrainingJob(): void {
 
     logger.info('Registered Personal Strategy Engine training job (weekly on Sundays at 2 AM)');
   } catch (error) {
-    logger.error({ error }, 'Failed to register Personal Strategy Engine training job');
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    logger.error(
+      { errMsg, errStack, error },
+      'Failed to register Personal Strategy Engine training job'
+    );
   }
 }

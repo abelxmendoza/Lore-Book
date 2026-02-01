@@ -88,3 +88,5 @@ export class ActivityResolver {
   }
 }
 
+export const activityResolver = new ActivityResolver();
+

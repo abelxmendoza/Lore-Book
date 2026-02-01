@@ -177,12 +177,13 @@ describe('generateScopeConcentrationInsights', () => {
       { scope: 'work', phase: 'ACTIVE' },
       { scope: 'work', phase: 'ACTIVE' },
       { scope: 'work', phase: 'ACTIVE' },
+      { scope: 'work', phase: 'ACTIVE' },
       { scope: 'work', phase: 'WEAK' },
       { scope: 'work', phase: 'CORE' },
     ];
     const out = generateScopeConcentrationInsights(edges, 'work');
     expect(out).toHaveLength(1);
-    expect(out[0].supporting_evidence.evidence_count).toBe(4);
+    expect(out[0].supporting_evidence.evidence_count).toBe(5);
   });
 });
 

@@ -78,7 +78,22 @@ export const useChatStream = () => {
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
         console.error('[useChatStream] HTTP error:', response.status, errorText);
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        let userMessage: string;
+        if (response.status === 503) {
+          try {
+            const body = JSON.parse(errorText);
+            if (body.error === 'Database schema incomplete' || Array.isArray(body.missingTables)) {
+              userMessage = body.message || 'Database schema incomplete. Run migrations: ./scripts/run-base-migrations.sh';
+            } else {
+              userMessage = `Service unavailable (503): ${body.error || body.message || errorText}`;
+            }
+          } catch {
+            userMessage = `Service unavailable (503): ${errorText}`;
+          }
+        } else {
+          userMessage = `HTTP error! status: ${response.status}, message: ${errorText}`;
+        }
+        throw new Error(userMessage);
       }
 
       const reader = response.body?.getReader();

@@ -1,10 +1,14 @@
 import { logger } from '../../logger';
-import { goalsEngine } from '../goals/goalEngine';
+import { GoalEngine } from '../goals/goalEngine';
 import { goalValueAlignmentService } from '../goalValueAlignmentService';
-import { habitsEngine } from '../habits/habitEngine';
+import { HabitEngine } from '../habits/habitEngine';
 import { supabaseAdmin } from '../supabaseClient';
 
 import type { RLStateVector, Action, RewardWeights } from './types';
+
+/** Singleton: goalEngine only exports the class; we instantiate here. */
+const goalsEngine = new GoalEngine();
+const habitsEngine = new HabitEngine();
 
 export class RewardEngine {
   private defaultWeights: RewardWeights = {
@@ -100,7 +104,7 @@ export class RewardEngine {
 
   private async getConsistencyScore(userId: string, action: Action): Promise<number> {
     try {
-      const habits = await habitsEngine.getHabits(userId);
+      const { habits } = await habitsEngine.process(userId);
       const relevantHabit = habits.find(h => {
         const habitAction = (h.action || '').toLowerCase();
         return habitAction.includes(action.type.toLowerCase()) || action.type.toLowerCase().includes(habitAction);
@@ -120,7 +124,7 @@ export class RewardEngine {
         return 0.0;
       }
 
-      const goals = await goalsEngine.getGoals(userId);
+      const { goals } = await goalsEngine.process(userId);
       const relevantGoals = goals.filter(g => 
         action.context.goal_ids!.includes(g.id) && g.status === 'active'
       );

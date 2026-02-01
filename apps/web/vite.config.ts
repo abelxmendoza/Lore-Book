@@ -44,8 +44,10 @@ console.log(`📁 Working directory: ${process.cwd()}`);
 
 // Shared ref: when proxy errors (backend down), set true so we answer /api without proxying (avoids log spam).
 const backendUnreachable = { current: false };
+// Allow only one /api request through at a time until we know backend is up/down (avoids initial burst of proxy errors).
+let apiProbeInFlight = false;
 
-/** When backend is down, answer /api without proxying so Vite doesn't log "http proxy error" for every request. */
+/** When backend is down (or we're probing), answer /api without proxying so Vite doesn't log "http proxy error" for every request. */
 function backendDownMiddlewarePlugin(flag: { current: boolean }) {
   return {
     name: 'backend-down-middleware',
@@ -53,15 +55,33 @@ function backendDownMiddlewarePlugin(flag: { current: boolean }) {
       return () => {
         const middleware = (req: { url?: string }, res: { statusCode: number; setHeader: (n: string, v: string) => void; end: (s: string) => void }, next: () => void) => {
           if (!req.url?.startsWith('/api')) return next();
-          if (!flag.current) return next();
-          // Backend was down: still try /api/health so we can recover when backend comes back; 503 everything else
-          const isHealth = req.url === '/api/health' || req.url.startsWith('/api/health?');
-          if (isHealth) return next();
-          res.statusCode = 503;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ error: 'Backend unavailable' }));
+          if (flag.current) {
+            // Backend was down: 503 all /api to avoid proxy error spam
+            res.statusCode = 503;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Backend unavailable' }));
+            return;
+          }
+          // When backend status unknown, allow only one /api request at a time so we get at most one proxy error on first load
+          if (apiProbeInFlight) {
+            res.statusCode = 503;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Backend unavailable' }));
+            return;
+          }
+          apiProbeInFlight = true;
+          const origEnd = res.end.bind(res);
+          res.end = ((chunk?: unknown, encoding?: unknown) => {
+            apiProbeInFlight = false;
+            return origEnd(chunk as any, encoding as any);
+          }) as typeof res.end;
+          next();
         };
         server.middlewares.stack.unshift({ route: '', handle: middleware });
+        // Periodically clear flag so next request tries backend again (recover within 30s when backend starts)
+        setInterval(() => {
+          flag.current = false;
+        }, 30_000);
       };
     },
   };
@@ -92,9 +112,30 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:4000',
         changeOrigin: true,
-        configure(proxy: { on: (event: string, fn: () => void) => void }) {
-          proxy.on('error', () => {
+        configure(proxy: {
+          on: (event: string, fn: (err?: Error, req?: unknown, res?: { req?: unknown; headersSent?: boolean; writableEnded?: boolean; writeHead?: (code: number, headers?: Record<string, string>) => void; end?: (body?: string) => void }) => void) => void;
+        }) {
+          // When proxy errors (e.g. ECONNREFUSED), respond with 503 so client sees "unavailable" not 500
+          proxy.on('error', (_err, _req, res) => {
             backendUnreachable.current = true;
+            apiProbeInFlight = false;
+            if (res && typeof res === 'object' && 'req' in res && !(res as { headersSent?: boolean }).headersSent && !(res as { writableEnded?: boolean }).writableEnded) {
+              try {
+                (res as { writeHead: (code: number, h: Record<string, string>) => void }).writeHead(503, { 'Content-Type': 'application/json' });
+                (res as { end: (s: string) => void }).end(JSON.stringify({ error: 'Backend unavailable' }));
+              } catch (_e) {
+                // ignore
+              }
+            }
+          });
+          // When /api/health returns 2xx, backend is up again — clear flag so other /api routes are proxied
+          proxy.on('proxyRes', (proxyRes: { statusCode?: number }, req: { url?: string }) => {
+            const url = req?.url ?? '';
+            const isHealth = url === '/api/health' || url.startsWith('/api/health?');
+            const ok = proxyRes?.statusCode != null && proxyRes.statusCode >= 200 && proxyRes.statusCode < 300;
+            if (isHealth && ok) {
+              backendUnreachable.current = false;
+            }
           });
         },
       },

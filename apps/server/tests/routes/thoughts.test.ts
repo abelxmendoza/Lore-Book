@@ -5,8 +5,12 @@ import express from 'express';
 const mockUser = { id: 'u1', email: 'a@b.com' };
 
 vi.mock('../../src/middleware/auth', () => ({
+  requireAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => {
+    req.user = { id: 'u1', email: 'a@b.com' };
+    next();
+  },
   authenticate: (req: { user?: unknown }, _res: unknown, next: () => void) => {
-    req.user = mockUser;
+    req.user = { id: 'u1', email: 'a@b.com' };
     next();
   },
 }));

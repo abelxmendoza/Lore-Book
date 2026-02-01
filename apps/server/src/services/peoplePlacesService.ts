@@ -270,18 +270,39 @@ class PeoplePlacesService {
   }
 
   async listEntities(userId: string, type?: 'person' | 'place'): Promise<PeoplePlaceEntity[]> {
-    let query = supabaseAdmin.from('people_places').select('*').eq('user_id', userId);
-    if (type) {
-      query = query.eq('type', type);
-    }
+    try {
+      let query = supabaseAdmin.from('people_places').select('*').eq('user_id', userId);
+      if (type) {
+        query = query.eq('type', type);
+      }
 
-    const { data, error } = await query.order('last_mentioned_at', { ascending: false });
-    if (error) {
-      logger.error({ error }, 'Failed to list people_places');
-      throw error;
-    }
+      const { data, error } = await query.order('last_mentioned_at', { ascending: false });
+      if (error) {
+        const isTableMissing =
+          (error as { code?: string }).code === 'PGRST205' ||
+          (typeof (error as { message?: string }).message === 'string' &&
+            ((error as { message: string }).message.includes('schema cache') ||
+              (error as { message: string }).message.includes('Could not find the table')));
+        if (isTableMissing) {
+          logger.debug({ hint: 'people_places table may not exist yet; run migrations' }, 'listEntities skipped');
+          return [];
+        }
+        logger.error({ error }, 'Failed to list people_places');
+        throw error;
+      }
 
-    return (data as PeoplePlaceEntity[]) ?? [];
+      return (data as PeoplePlaceEntity[]) ?? [];
+    } catch (err) {
+      const isTableMissing =
+        (err as { code?: string })?.code === 'PGRST205' ||
+        (typeof (err as { message?: string })?.message === 'string' &&
+          ((err as { message: string }).message.includes('schema cache') ||
+            (err as { message: string }).message.includes('Could not find the table')));
+      if (isTableMissing) {
+        return [];
+      }
+      throw err;
+    }
   }
 
   async getEntity(userId: string, id: string): Promise<PeoplePlaceEntity | null> {

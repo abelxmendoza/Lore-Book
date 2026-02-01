@@ -148,13 +148,19 @@ class LocationService {
       chapterService.listChapters(userId)
     ]);
 
-    if (entities.error) {
+    const isTableMissing =
+      entities.error &&
+      ((entities.error as { code?: string }).code === 'PGRST205' ||
+        (typeof (entities.error as { message?: string }).message === 'string' &&
+          ((entities.error as { message: string }).message.includes('schema cache') ||
+            (entities.error as { message: string }).message.includes('Could not find the table'))));
+    if (entities.error && !isTableMissing) {
       logger.error({ error: entities.error }, 'Failed to load places/people for location mapping');
       throw entities.error;
     }
 
     const chapterTitles = new Map(chapters.map((chapter) => [chapter.id, chapter.title]));
-    const peoplePlaces = (entities.data as PeoplePlaceEntity[]) ?? [];
+    const peoplePlaces = (isTableMissing ? [] : (entities.data as PeoplePlaceEntity[])) ?? [];
     const personMentions = this.mapPeopleByEntry(peoplePlaces);
     const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
     const accumulator = new Map<string, LocationAccumulator>();

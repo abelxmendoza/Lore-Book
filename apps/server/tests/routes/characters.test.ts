@@ -16,17 +16,23 @@ vi.mock('../../src/services/peoplePlacesService', () => ({
   },
 }));
 
-vi.mock('../../src/services/supabaseClient', () => ({
-  supabaseAdmin: {
-    from: vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      insert: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      order: vi.fn().mockReturnThis(),
-      single: vi.fn().mockResolvedValue({ data: null, error: null }),
-    }),
-  },
-}));
+vi.mock('../../src/services/supabaseClient', () => {
+  const orderResolved = vi.fn().mockResolvedValue({ data: [], error: null });
+  const chain = {
+    select: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    order: orderResolved,
+    in: vi.fn().mockReturnValue({ order: orderResolved }),
+    or: vi.fn().mockResolvedValue({ data: [], error: null }),
+    single: vi.fn().mockResolvedValue({ data: null, error: null }),
+  };
+  return {
+    supabaseAdmin: {
+      from: vi.fn().mockReturnValue(chain),
+    },
+  };
+});
 
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/utils/avatar');
@@ -55,7 +61,7 @@ describe('Characters API Routes', () => {
 
   describe('GET /api/characters', () => {
     it('should return characters list', async () => {
-      // Mock supabase to return characters
+      // Mock supabase to return characters; chain must include .in() for character_memories/relationships queries
       const mockFrom = vi.mocked(supabaseAdmin.from);
       const mockSelect = vi.fn().mockReturnThis();
       const mockEq = vi.fn().mockReturnThis();
@@ -63,14 +69,19 @@ describe('Characters API Routes', () => {
         data: [mockCharacter],
         error: null,
       });
-
-      mockFrom.mockReturnValue({
+      const mockInOrder = vi.fn().mockResolvedValue({ data: [], error: null });
+      const mockIn = vi.fn().mockReturnValue({ order: mockInOrder });
+      const mockOr = vi.fn().mockResolvedValue({ data: [], error: null });
+      const chain = {
         select: mockSelect.mockReturnValue({
-          eq: mockEq.mockReturnValue({
-            order: mockOrder,
-          }),
+          eq: mockEq.mockReturnValue({ order: mockOrder }),
+          in: mockIn,
+          order: mockOrder,
+          or: mockOr,
         }),
-      } as any);
+      };
+
+      mockFrom.mockReturnValue(chain as any);
 
       const response = await request(app)
         .get('/api/characters/list')

@@ -105,6 +105,13 @@ export const ChatFirstInterface = () => {
         const response = await fetch('/api/health');
         if (!response.ok && !healthWarnedRef.current) {
           healthWarnedRef.current = true;
+          if (response.status === 503) {
+            const body = await response.json().catch(() => ({}));
+            if (body.error === 'Database schema incomplete' || Array.isArray(body.missingTables)) {
+              console.warn('⚠️ Database schema incomplete. Run: ./scripts/run-base-migrations.sh');
+              return;
+            }
+          }
           console.warn('⚠️ Health check failed. Run diagnostics with Cmd+Shift+D');
         }
       } catch (_err) {

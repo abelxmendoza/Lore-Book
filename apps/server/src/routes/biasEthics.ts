@@ -3,7 +3,7 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { biasDetectionService } from '../services/biasDetection/biasDetectionService';
 import { ethicsReviewService } from '../services/ethicsReview/ethicsReviewService';
 import { consentTrackingService } from '../services/consentTracking/consentTrackingService';
@@ -25,7 +25,7 @@ const router = Router();
  * GET /api/bias-ethics/bias/:entryId
  * Get bias detections for an entry
  */
-router.get('/bias/:entryId', authenticate, async (req, res) => {
+router.get('/bias/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -43,7 +43,7 @@ router.get('/bias/:entryId', authenticate, async (req, res) => {
  * POST /api/bias-ethics/bias/detect/:entryId
  * Detect biases in an entry
  */
-router.post('/bias/detect/:entryId', authenticate, async (req, res) => {
+router.post('/bias/detect/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -73,7 +73,7 @@ router.post('/bias/detect/:entryId', authenticate, async (req, res) => {
  * GET /api/bias-ethics/bias
  * Get all bias detections for user
  */
-router.get('/bias', authenticate, async (req, res) => {
+router.get('/bias', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
     const limit = parseInt(req.query.limit as string) || 50;
@@ -95,7 +95,7 @@ router.get('/bias', authenticate, async (req, res) => {
  * GET /api/bias-ethics/ethics/pending
  * Get pending reviews
  */
-router.get('/ethics/pending', authenticate, async (req, res) => {
+router.get('/ethics/pending', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
 
@@ -112,7 +112,7 @@ router.get('/ethics/pending', authenticate, async (req, res) => {
  * GET /api/bias-ethics/ethics/:entryId
  * Get ethics review for an entry
  */
-router.get('/ethics/:entryId', authenticate, async (req, res) => {
+router.get('/ethics/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -134,7 +134,7 @@ router.get('/ethics/:entryId', authenticate, async (req, res) => {
  * POST /api/bias-ethics/ethics/review/:entryId
  * Review an entry for ethics
  */
-router.post('/ethics/review/:entryId', authenticate, async (req, res) => {
+router.post('/ethics/review/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -164,7 +164,7 @@ router.post('/ethics/review/:entryId', authenticate, async (req, res) => {
  * PUT /api/bias-ethics/ethics/:reviewId/status
  * Update review status
  */
-router.put('/ethics/:reviewId/status', authenticate, async (req, res) => {
+router.put('/ethics/:reviewId/status', requireAuth, async (req, res) => {
   try {
     const { reviewId } = req.params;
     const { status, notes } = req.body;
@@ -196,7 +196,7 @@ router.put('/ethics/:reviewId/status', authenticate, async (req, res) => {
  * POST /api/bias-ethics/consent
  * Record consent
  */
-router.post('/consent', authenticate, async (req, res) => {
+router.post('/consent', requireAuth, async (req, res) => {
   try {
     const {
       subjectName,
@@ -240,7 +240,7 @@ router.post('/consent', authenticate, async (req, res) => {
  * GET /api/bias-ethics/consent
  * Get consent records
  */
-router.get('/consent', authenticate, async (req, res) => {
+router.get('/consent', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
     const status = req.query.status as string | undefined;
@@ -258,7 +258,7 @@ router.get('/consent', authenticate, async (req, res) => {
  * GET /api/bias-ethics/consent/check/:entryId
  * Check if entry can be published
  */
-router.get('/consent/check/:entryId', authenticate, async (req, res) => {
+router.get('/consent/check/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -276,7 +276,7 @@ router.get('/consent/check/:entryId', authenticate, async (req, res) => {
  * PUT /api/bias-ethics/consent/:consentId/revoke
  * Revoke consent
  */
-router.put('/consent/:consentId/revoke', authenticate, async (req, res) => {
+router.put('/consent/:consentId/revoke', requireAuth, async (req, res) => {
   try {
     const { consentId } = req.params;
     const userId = req.user!.id;
@@ -298,7 +298,7 @@ router.put('/consent/:consentId/revoke', authenticate, async (req, res) => {
  * GET /api/bias-ethics/reliability/:entryId
  * Get reliability score for an entry
  */
-router.get('/reliability/:entryId', authenticate, async (req, res) => {
+router.get('/reliability/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -320,7 +320,7 @@ router.get('/reliability/:entryId', authenticate, async (req, res) => {
  * POST /api/bias-ethics/reliability/calculate/:entryId
  * Calculate reliability score for an entry
  */
-router.post('/reliability/calculate/:entryId', authenticate, async (req, res) => {
+router.post('/reliability/calculate/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -354,7 +354,7 @@ router.post('/reliability/calculate/:entryId', authenticate, async (req, res) =>
  * GET /api/bias-ethics/context/:entryId
  * Get context prompt for an entry
  */
-router.get('/context/:entryId', authenticate, async (req, res) => {
+router.get('/context/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -376,7 +376,7 @@ router.get('/context/:entryId', authenticate, async (req, res) => {
  * POST /api/bias-ethics/context/analyze/:entryId
  * Analyze entry for missing context
  */
-router.post('/context/analyze/:entryId', authenticate, async (req, res) => {
+router.post('/context/analyze/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -410,7 +410,7 @@ router.post('/context/analyze/:entryId', authenticate, async (req, res) => {
  * PUT /api/bias-ethics/context/:promptId/answered
  * Mark context prompt as answered
  */
-router.put('/context/:promptId/answered', authenticate, async (req, res) => {
+router.put('/context/:promptId/answered', requireAuth, async (req, res) => {
   try {
     const { promptId } = req.params;
     const userId = req.user!.id;
@@ -428,7 +428,7 @@ router.put('/context/:promptId/answered', authenticate, async (req, res) => {
  * GET /api/bias-ethics/context/pending
  * Get pending context prompts
  */
-router.get('/context/pending', authenticate, async (req, res) => {
+router.get('/context/pending', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
 
@@ -449,7 +449,7 @@ router.get('/context/pending', authenticate, async (req, res) => {
  * GET /api/bias-ethics/meaning/:entryId
  * Get meaning emergence tracking for an entry
  */
-router.get('/meaning/:entryId', authenticate, async (req, res) => {
+router.get('/meaning/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -473,7 +473,7 @@ router.get('/meaning/:entryId', authenticate, async (req, res) => {
  * POST /api/bias-ethics/meaning/track/:entryId
  * Track meaning emergence for an entry
  */
-router.post('/meaning/track/:entryId', authenticate, async (req, res) => {
+router.post('/meaning/track/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const userId = req.user!.id;
@@ -503,7 +503,7 @@ router.post('/meaning/track/:entryId', authenticate, async (req, res) => {
  * POST /api/bias-ethics/meaning/recognize/:entryId
  * Record when meaning was recognized
  */
-router.post('/meaning/recognize/:entryId', authenticate, async (req, res) => {
+router.post('/meaning/recognize/:entryId', requireAuth, async (req, res) => {
   try {
     const { entryId } = req.params;
     const { interpretation, significance } = req.body;
@@ -531,7 +531,7 @@ router.post('/meaning/recognize/:entryId', authenticate, async (req, res) => {
  * GET /api/bias-ethics/meaning/significant
  * Get entries with high significance
  */
-router.get('/meaning/significant', authenticate, async (req, res) => {
+router.get('/meaning/significant', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
     const threshold = parseFloat(req.query.threshold as string) || 0.7;
@@ -558,7 +558,7 @@ router.get('/meaning/significant', authenticate, async (req, res) => {
  * GET /api/bias-ethics/mood-bias
  * Analyze mood bias in recent entries
  */
-router.get('/mood-bias', authenticate, async (req, res) => {
+router.get('/mood-bias', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
     const days = parseInt(req.query.days as string) || 30;
@@ -576,7 +576,7 @@ router.get('/mood-bias', authenticate, async (req, res) => {
  * GET /api/bias-ethics/mood-bias/distribution
  * Get mood distribution over time
  */
-router.get('/mood-bias/distribution', authenticate, async (req, res) => {
+router.get('/mood-bias/distribution', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
     const days = parseInt(req.query.days as string) || 30;
@@ -598,7 +598,7 @@ router.get('/mood-bias/distribution', authenticate, async (req, res) => {
  * GET /api/bias-ethics/signal-noise
  * Analyze signal-to-noise ratio
  */
-router.get('/signal-noise', authenticate, async (req, res) => {
+router.get('/signal-noise', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
     const days = parseInt(req.query.days as string) || 90;
@@ -616,7 +616,7 @@ router.get('/signal-noise', authenticate, async (req, res) => {
  * GET /api/bias-ethics/themes
  * Extract themes from entries
  */
-router.get('/themes', authenticate, async (req, res) => {
+router.get('/themes', requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
     const days = parseInt(req.query.days as string) || 90;

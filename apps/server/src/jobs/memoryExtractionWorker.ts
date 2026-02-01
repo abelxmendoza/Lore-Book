@@ -73,7 +73,26 @@ class MemoryExtractionWorker {
         .limit(this.BATCH_SIZE);
 
       if (error) {
-        logger.error({ error }, 'Failed to fetch sessions for processing');
+        const err = error as { message?: string; details?: string; code?: string };
+        const isNetworkError =
+          err.message?.includes('fetch failed') ||
+          err.details?.includes('ENOTFOUND') ||
+          err.message?.includes('ECONNREFUSED');
+        const isTableMissing =
+          err.code === 'PGRST205' || err.message?.includes('schema cache') || err.message?.includes('Could not find the table');
+        if (isNetworkError) {
+          logger.debug(
+            { hint: 'Supabase unreachable (offline or DNS). Worker will retry on next interval.' },
+            'Skipping session fetch'
+          );
+        } else if (isTableMissing) {
+          logger.debug(
+            { hint: 'conversation_sessions table may not exist yet. Run migrations or ignore if not using this feature.' },
+            'Skipping session fetch'
+          );
+        } else {
+          logger.error({ error }, 'Failed to fetch sessions for processing');
+        }
         return stats;
       }
 
