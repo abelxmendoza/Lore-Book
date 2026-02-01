@@ -1,15 +1,11 @@
 #!/usr/bin/env npx tsx
 /**
- * Run base migrations without psql (uses Node pg client).
- * Usage from repo root:
- *   npx tsx scripts/run-base-migrations.ts
- *   npm run migrate:base
+ * Lore-Book Migration Bootstrap (IPv4 + SSL-safe).
+ * Usage from repo root: npx tsx scripts/run-base-migrations.ts  OR  npm run migrate:base
  *
- * Requires in .env (project root):
- *   SUPABASE_CONNECTION_STRING = Session pooler URI (IPv4-safe).
- *   Format: postgresql://postgres:<PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
- *   Get from: Supabase Dashboard → Settings → Database → Connection string (URI) → Session mode.
- *   pg client uses ssl.rejectUnauthorized=false for pooler (Supabase internal CA).
+ * Preconditions: Node >= 18, npm deps installed, .env with SUPABASE_CONNECTION_STRING.
+ * Connection string: Session pooler URI only (host must contain pooler.supabase.com).
+ * Do NOT include sslmode= in the URI — SSL is configured in code (rejectUnauthorized: false).
  */
 
 import { readFileSync, existsSync } from 'fs';
@@ -20,7 +16,6 @@ import dns from 'dns';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
-// Load .env from project root; assert SUPABASE_CONNECTION_STRING exists
 function loadEnv(): void {
   const envPath = join(ROOT, '.env');
   if (!existsSync(envPath)) return;
@@ -44,17 +39,17 @@ dns.setDefaultResultOrder('ipv4first');
 function getConnectionString(): string {
   const conn = process.env.SUPABASE_CONNECTION_STRING;
   if (conn === undefined || conn === '') {
-    throw new Error('SUPABASE_CONNECTION_STRING not set. Add Session pooler URI to .env (see blueprint).');
+    throw new Error('Missing connection string. Set SUPABASE_CONNECTION_STRING in .env.');
   }
   if (!conn.startsWith('postgres')) {
     throw new Error('SUPABASE_CONNECTION_STRING must be a postgresql:// or postgres:// URI.');
   }
+  if (/sslmode=/i.test(conn)) {
+    throw new Error('Invalid URI: remove sslmode from connection string. SSL is configured in code.');
+  }
   const u = new URL(conn.replace(/^postgresql:/i, 'postgres:'));
-  if (!/pooler/i.test(u.hostname)) {
-    throw new Error(
-      'Hostname must contain "pooler" (Session pooler URI). ' +
-      'Get URI from: Supabase Dashboard → Settings → Database → Connection string (URI) → Session mode.'
-    );
+  if (!u.hostname.endsWith('.pooler.supabase.com')) {
+    throw new Error('Invalid host: must use Session pooler. Host must end with .pooler.supabase.com');
   }
   if (/2600:|\[[0-9a-f:]+]/i.test(conn)) {
     throw new Error('IPv6 literal in URI — use Session pooler hostname (e.g. aws-0-<region>.pooler.supabase.com).');
@@ -63,7 +58,7 @@ function getConnectionString(): string {
 }
 
 async function run(): Promise<void> {
-  const { Client } = await import('pg');
+  const { Pool } = await import('pg');
   const baseMigrations = [
     'migrations/000_setup_all_tables.sql',
     'migrations/20250102_conversational_orchestration.sql',
@@ -75,28 +70,42 @@ async function run(): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('\n❌', msg);
-    console.error('\nExpected format in .env (Session pooler only):');
-    console.error('  SUPABASE_CONNECTION_STRING=postgresql://postgres:<PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require');
+    console.error('\nExpected in .env (no sslmode in URI):');
+    console.error('  SUPABASE_CONNECTION_STRING=postgresql://postgres:<PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/postgres');
     console.error('  Copy from: Supabase Dashboard → Settings → Database → Connection string (URI) → Session mode.');
     process.exit(1);
   }
 
-  // Pooler uses internal CA; Node TLS rejects by default. ssl.rejectUnauthorized=false is required (blueprint).
-  const client = new Client({
+  const pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
   });
+
   try {
-    await client.connect();
+    const client = await pool.connect();
+    try {
+      await client.query('SELECT 1');
+    } finally {
+      client.release();
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('\n❌ Migration failed:', msg);
+    if (/ENETUNREACH/i.test(msg)) {
+      console.error('\n❌ IPv6 unreachable → use Session Pooler URI in .env');
+    } else if (/self-signed certificate/i.test(msg)) {
+      console.error('\n❌ SSL precedence error → SSL must be configured in code, not URI. Remove sslmode= from SUPABASE_CONNECTION_STRING.');
+    } else if (/tenant or user not found/i.test(msg)) {
+      console.error('\n❌ Tenant or user not found → password in URI does not match Supabase.');
+      console.error('   Fix: Supabase Dashboard → Settings → Database → use "Reset database password" if needed.');
+      console.error('   Then copy the connection URI (Session mode) and set SUPABASE_CONNECTION_STRING in .env to that URI (remove ?sslmode= from end).');
+    } else {
+      console.error('\n❌ Migration failed:', msg);
+    }
     process.exit(1);
   }
 
   try {
     console.log('Running', baseMigrations.length, 'base migration(s)...\n');
-
     for (const rel of baseMigrations) {
       const path = join(ROOT, rel);
       if (!existsSync(path)) {
@@ -105,17 +114,21 @@ async function run(): Promise<void> {
       }
       console.log('  →', rel);
       const sql = readFileSync(path, 'utf-8');
-      await client.query(sql);
+      await pool.query(sql);
       console.log('  ✅', rel);
     }
-
-    console.log('\nDone.');
+    console.log('\nMigrations complete.');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('\n❌ Migration failed:', msg);
+    if (/tenant or user not found/i.test(msg)) {
+      console.error('\n❌ Tenant or user not found → password in URI does not match Supabase.');
+      console.error('   Fix: Supabase Dashboard → Settings → Database → reset DB password, then set SUPABASE_CONNECTION_STRING in .env to the new URI (Session mode, no ?sslmode=).');
+    } else {
+      console.error('\n❌ Migration failed:', msg);
+    }
     process.exit(1);
   } finally {
-    await client.end();
+    await pool.end();
   }
 }
 
