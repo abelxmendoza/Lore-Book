@@ -21,6 +21,7 @@
 
 ## Table of Contents
 
+- [Tech Signal Summary](#tech-signal-summary)
 - [What is LoreBook?](#what-is-lore-keeper)
 - [Key Features](#key-features)
   - [User-Facing Features](#user-facing-features)
@@ -38,6 +39,14 @@
 - [Troubleshooting](#troubleshooting)
 
 ---
+
+## Tech Signal Summary
+
+- The backend is modular Node.js/TypeScript with a custom orchestration engine (`engineRegistry` + `EngineOrchestrator`) that does dependency graph scheduling and parallel execution.
+- Retrieval is hybrid RAG: vector search (`match_journal_entries` Postgres function), BM25 keyword search, entity boosting, temporal scoring, MMR, reranking, and token-efficiency heuristics.
+- Caching includes embedding cache with in-memory TinyLFU + Supabase upsert, engine results TTL cache, RAG packet cache, and continuity event history.
+- Continuity analytics pipeline identifies contradiction, identity drift, emotional arcs, abandoned goals, thematic drift, and generates actionable insights.
+- Scale optimizations include `year_shard` index, context limiting, and cold path fallbacks.
 
 ## What is LoreBook?
 
@@ -934,6 +943,28 @@ lorekeeper/
 ---
 
 ## Architecture Overview
+
+### Engineering Depth (for technical reviewers)
+
+- Custom AI engine orchestration (depends on `engineRegistry`/`EngineOrchestrator`) with dependency graph, topological execution order, and parallel batch execution via constrained concurrency.
+- RAG-driven memory retrieval stack with hybrid pipeline:
+  - OpenAI embeddings + Supabase vector SQL function (`match_journal_entries`)
+  - BM25 keyword search + vector fallback
+  - entity relationship boosting
+  - temporal decay weighting and maximal marginal relevance (MMR)
+  - reranking and confidence weighting
+- Persistent state and caches:
+  - `engine_results` with TTL and partial engine fail tolerance
+  - embedding cache (in-memory TinyLFU-style + Supabase table upsert)
+  - RAG packet cache and chapter insights cache
+- Continuity analytics engine detecting contradictions, identity drift, emotional arcs, abandoned goals, thematic drift, with event storage (`continuity_events`) and insight generation.
+- Scalability patterns in database:
+  - `year_shard` composite indexes + query pruning
+  - function-based vector search range limiting
+  - rolling window entry fetching (max entries + max days)
+- Observability and reliability:
+  - structured logging, metrics-like event summaries, and test coverage via Vitest
+  - security/ privacy routes, env sanity checks, and static code analysis scripts.
 
 ### Frontend Architecture
 

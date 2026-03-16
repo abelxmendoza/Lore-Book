@@ -22,6 +22,8 @@ export type AuthenticatedRequest = Request & {
     id: string;
     email?: string;
     lastSignInAt?: string | null;
+    /** Display name from auth provider (e.g. Supabase user_metadata.full_name) */
+    fullName?: string | null;
   };
 };
 
@@ -42,7 +44,8 @@ export const authMiddleware = async (
       req.user = {
         id: '00000000-0000-0000-0000-000000000000',
         email: 'dev@example.com',
-        lastSignInAt: new Date().toISOString()
+        lastSignInAt: new Date().toISOString(),
+        fullName: null
       };
       return next();
     }
@@ -80,10 +83,12 @@ export const authMiddleware = async (
       return res.status(401).json({ error: 'Invalid session' });
     }
 
+    const metadata = (data.user as { user_metadata?: { full_name?: string; name?: string } })?.user_metadata;
     req.user = {
       id: data.user.id,
       email: data.user.email ?? undefined,
-      lastSignInAt: (data.user as any)?.last_sign_in_at ?? null
+      lastSignInAt: (data.user as any)?.last_sign_in_at ?? null,
+      fullName: metadata?.full_name ?? metadata?.name ?? null
     };
 
     next();

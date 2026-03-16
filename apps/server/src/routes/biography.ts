@@ -147,7 +147,8 @@ router.post('/chat', requireAuth, async (req: AuthenticatedRequest, res) => {
     const extractedDates = await omegaChatService.extractDatesAndTimes(message);
     
     // Use the chat service to generate a response
-    const response = await omegaChatService.chat(req.user!.id, message, conversationHistory);
+    const userName = req.user?.fullName ?? undefined;
+    const response = await omegaChatService.chat(req.user!.id, message, conversationHistory, undefined, undefined, undefined, userName);
     
     // Trigger biography regeneration in background (non-blocking)
     // The ingestion pipeline will handle updating the narrative graph

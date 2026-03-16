@@ -65,7 +65,8 @@ const optionalAuth = async (req: AuthenticatedRequest, res: Response, next: Next
     req.user = {
       id: '00000000-0000-0000-0000-000000000000',
       email: 'dev@example.com',
-      lastSignInAt: new Date().toISOString()
+      lastSignInAt: new Date().toISOString(),
+      fullName: null
     };
     return next();
   }
@@ -79,7 +80,8 @@ const optionalAuth = async (req: AuthenticatedRequest, res: Response, next: Next
       req.user = {
         id: '00000000-0000-0000-0000-000000000000',
         email: 'dev@example.com',
-        lastSignInAt: new Date().toISOString()
+        lastSignInAt: new Date().toISOString(),
+        fullName: null
       };
       next();
     } else {
@@ -98,13 +100,14 @@ router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, a
 
     const { message, conversationHistory = [], entityContext, currentContext, soulProfileContext } = parsed.data;
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
+    const userName = req.user?.fullName ?? undefined;
 
     // Set up SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext);
+    const result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, userName);
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err => 
@@ -150,13 +153,14 @@ router.post('/', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (
 
     const { message, conversationHistory = [], stream, entityContext, currentContext, soulProfileContext } = parsed.data;
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
+    const userName = req.user?.fullName ?? undefined;
 
     // If streaming requested but endpoint is /, redirect to /stream
     if (stream) {
       return res.status(400).json({ error: 'Use /api/chat/stream for streaming' });
     }
 
-    const result = await omegaChatService.chat(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext);
+    const result = await omegaChatService.chat(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, userName);
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err => 

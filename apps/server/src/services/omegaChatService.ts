@@ -749,7 +749,8 @@ class OmegaChatService {
     transitionAnalysis?: TransitionAnalysis | null,
     currentEmotionalState?: EmotionalState | null,
     currentFocusLine?: string,
-    timelineInsight?: ChatContextExtension & { layer?: string }
+    timelineInsight?: ChatContextExtension & { layer?: string },
+    userName?: string
   ): string {
     const timelineSummary = orchestratorSummary.timeline.events
       .slice(0, 20)
@@ -946,7 +947,11 @@ When explaining analytics, provide context about what these scores mean and why 
       }
     }
 
-    return `You are a multi-faceted AI companion integrated into Lore Book. You seamlessly blend personas based on context:
+    const userIdentityLine = userName?.trim()
+      ? `\n**USER IDENTITY**: The user's name is ${userName.trim()}. If they ask what their name is, tell them. Do not say you don't have their name.\n`
+      : '';
+
+    return `You are a multi-faceted AI companion integrated into Lore Book. You seamlessly blend personas based on context:${userIdentityLine}
 
 **YOUR PERSONAS** (adapt naturally based on conversation):
 
@@ -1370,7 +1375,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
-    soulProfileContext?: SoulProfileContext
+    soulProfileContext?: SoulProfileContext,
+    userName?: string
   ): Promise<StreamingChatResponse> {
     const sessionId = await this.getOrCreateChatSession(userId);
 
@@ -1952,7 +1958,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
       undefined,
       undefined,
       currentFocusLine,
-      timelineInsight
+      timelineInsight,
+      userName
     );
 
     if (refinementClarificationRequest) {
@@ -2317,7 +2324,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
-    soulProfileContext?: SoulProfileContext
+    soulProfileContext?: SoulProfileContext,
+    userName?: string
   ): Promise<OmegaChatResponse> {
     // Build RAG packet
     const ragPacket = await this.buildRAGPacket(userId, message, currentContext);
@@ -2605,7 +2613,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
       undefined,
       undefined,
       currentFocusLine,
-      timelineInsightChat
+      timelineInsightChat,
+      userName
     );
 
     if (refinementClarificationChat) {

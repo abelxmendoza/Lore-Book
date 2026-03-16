@@ -860,11 +860,15 @@ router.post(
       });
 
     // Generate AI response with event context
+    const userName = req.user?.fullName ?? undefined;
     const chatResponse = await omegaChatService.chat(
       userId,
       body.message,
       conversationHistory,
-      undefined // No entity context, but event context is handled via ingestion
+      undefined, // No entity context, but event context is handled via ingestion
+      undefined,
+      undefined,
+      userName
     );
 
     // Apply self-awareness modifiers
@@ -1845,6 +1849,7 @@ router.post(
     }
 
     // Chat with relationship context
+    const userName = req.user?.fullName ?? undefined;
     const response = await omegaChatService.chat(
       userId,
       message,
@@ -1852,7 +1857,10 @@ router.post(
       {
         type: 'ROMANTIC_RELATIONSHIP',
         id: id
-      }
+      },
+      undefined,
+      undefined,
+      userName
     );
 
     // Extract and apply updates from conversation (fire and forget)
