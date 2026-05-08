@@ -183,26 +183,13 @@ class OmegaChatService {
   }
 
   /**
-   * Strip any HQI demo/mock data from a RAG packet so chat never shows fake Smart search or Connections.
-   */
-  private sanitizeRagPacket(packet: any): any {
-    if (!packet) return packet;
-    const sources = Array.isArray(packet.sources) ? packet.sources.filter((s: any) => s?.type !== 'hqi') : packet.sources;
-    return {
-      ...packet,
-      hqiResults: [],
-      sources
-    };
-  }
-
-  /**
    * Build comprehensive RAG packet with ALL lore knowledge
    */
   private async buildRAGPacket(userId: string, message: string, currentContext?: CurrentContext) {
     // Try to get cached RAG packet first (FREE - no expensive queries)
     const cached = ragPacketCacheService.getCachedPacket(userId, message);
     if (cached) {
-      return this.sanitizeRagPacket(cached);
+      return cached;
     }
 
     // Get full orchestrator summary with error handling
@@ -538,11 +525,10 @@ class OmegaChatService {
       topInterests
     };
 
-    // Cache the RAG packet for future use (sanitized so cache never stores HQI demo data)
-    const toCache = this.sanitizeRagPacket(packet);
-    ragPacketCacheService.cachePacket(userId, message, toCache);
+    // Cache the RAG packet for future use
+    ragPacketCacheService.cachePacket(userId, message, packet);
 
-    return toCache;
+    return packet;
   }
 
   /**
@@ -749,8 +735,7 @@ class OmegaChatService {
     transitionAnalysis?: TransitionAnalysis | null,
     currentEmotionalState?: EmotionalState | null,
     currentFocusLine?: string,
-    timelineInsight?: ChatContextExtension & { layer?: string },
-    userName?: string
+    timelineInsight?: ChatContextExtension & { layer?: string }
   ): string {
     const timelineSummary = orchestratorSummary.timeline.events
       .slice(0, 20)
@@ -947,11 +932,7 @@ When explaining analytics, provide context about what these scores mean and why 
       }
     }
 
-    const userIdentityLine = userName?.trim()
-      ? `\n**USER IDENTITY**: The user's name is ${userName.trim()}. If they ask what their name is, tell them. Do not say you don't have their name.\n`
-      : '';
-
-    return `You are a multi-faceted AI companion integrated into Lore Book. You seamlessly blend personas based on context:${userIdentityLine}
+    return `You are a multi-faceted AI companion integrated into Lore Book. You seamlessly blend personas based on context:
 
 **YOUR PERSONAS** (adapt naturally based on conversation):
 
@@ -1375,8 +1356,7 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
-    soulProfileContext?: SoulProfileContext,
-    userName?: string
+    soulProfileContext?: SoulProfileContext
   ): Promise<StreamingChatResponse> {
     const sessionId = await this.getOrCreateChatSession(userId);
 
@@ -1809,7 +1789,6 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     // INLINE ENTITY AMBIGUITY DETECTION (IADE)
     // =====================================================
     let disambiguationPrompt: any = null;
-    let meaningDriftPrompt: string | null = null;
     try {
       // Detect intent (for skipping venting/support requests)
       const detectedIntent = intentDetectionService.detectUserIntent(message);
@@ -1958,8 +1937,7 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
       undefined,
       undefined,
       currentFocusLine,
-      timelineInsight,
-      userName
+      timelineInsight
     );
 
     if (refinementClarificationRequest) {
@@ -2102,7 +2080,10 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
 
     // Only exclude truly trivial messages (hi, ok, thanks, etc.)
     if (!isTrivialMessage(message)) {
-      // Save message to chat_messages table (sessionId from function start)
+      // Get or create chat session
+      const sessionId = await this.getOrCreateChatSession(userId);
+
+      // Save message to chat_messages table
       const { data: savedMessage, error: saveError } = await supabaseAdmin
         .from('chat_messages')
         .insert({
@@ -2252,7 +2233,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
 
     // RL: Save context for later reward updates (generate message ID if entryId not available)
     const messageId = entryId || randomUUID();
-    if (rlContext && personaBlend && sessionId) {
+    // sessionId is already declared at the top of this method (line ~1361)
+    if (rlContext && personaBlend) {
       this.personaRL.saveChatContext(
         userId,
         messageId,
@@ -2324,8 +2306,7 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
-    soulProfileContext?: SoulProfileContext,
-    userName?: string
+    soulProfileContext?: SoulProfileContext
   ): Promise<OmegaChatResponse> {
     // Build RAG packet
     const ragPacket = await this.buildRAGPacket(userId, message, currentContext);
@@ -2391,10 +2372,6 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
           logger.debug({ err, userId }, 'Essence refinement check failed, continuing');
         });
     }
-
-    // Belief challenge metadata (set in belief-challenge block below if a challenge is generated)
-    let challengedPerceptionIdForResponse: string | undefined;
-    let challengePromptForResponse: string | undefined;
 
     // Check continuity
     const continuityWarnings = await this.checkContinuity(userId, message, extractedDates, orchestratorSummary);
@@ -2613,8 +2590,7 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
       undefined,
       undefined,
       currentFocusLine,
-      timelineInsightChat,
-      userName
+      timelineInsightChat
     );
 
     if (refinementClarificationChat) {
@@ -2693,9 +2669,6 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
               // Inject challenge into system prompt
               systemPrompt += `\n\n**OPTIONAL BELIEF EXPLORATION** (only if conversation naturally flows this way):\n${challenge.challengePrompt}\n\nNote: This is optional. Only bring this up if the conversation naturally allows for gentle exploration. Do not force it.`;
 
-              challengedPerceptionIdForResponse = perception.id;
-              challengePromptForResponse = challenge.challengePrompt;
-
               logger.debug(
                 { perceptionId: perception.id, style: challenge.style },
                 'Generated belief challenge'
@@ -2740,8 +2713,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
 
     const answer = completion.choices[0]?.message?.content ?? 'I understand. Tell me more.';
 
-    // RL: Save context for later reward updates (non-streaming chat has no saved message id yet)
-    const messageId = randomUUID();
+    // RL: Save context for later reward updates (use entryId if available, otherwise generate)
+    const messageId = entryId || randomUUID();
     const sessionId = await this.getOrCreateChatSession(userId);
 
     // Save assistant response with challenge metadata if present

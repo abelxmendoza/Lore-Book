@@ -142,10 +142,16 @@ const AuthScreen = ({ onEmailLogin, onGuestLogin, onDemoMode }: { onEmailLogin: 
 };
 
 export const AuthGate = ({ children }: { children: ReactNode }) => {
-  // TEMPORARY: Disable auth for development
-  const DEV_DISABLE_AUTH = true;
-  // TEMPORARY: Disable terms agreement in dev mode
-  const DEV_DISABLE_TERMS = true;
+  // Auth bypass: only active when VITE_DEV_DISABLE_AUTH=true AND running in dev mode.
+  // Never bypasses in production builds. Set in apps/web/.env.local (never commit).
+  const DEV_DISABLE_AUTH =
+    import.meta.env.DEV === true &&
+    import.meta.env.VITE_DEV_DISABLE_AUTH === 'true';
+  const DEV_DISABLE_TERMS = DEV_DISABLE_AUTH;
+
+  if (DEV_DISABLE_AUTH) {
+    console.warn('[AuthGate] DEV_AUTH_BYPASS active — using unauthenticated dev session. Never enable in production.');
+  }
   
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);

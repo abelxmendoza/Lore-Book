@@ -1315,30 +1315,17 @@ The LoreKeeper Narrative Compiler is a compiler-inspired system that ensures epi
 
 ## Documentation
 
-### Getting Started
-- **[Quick Start Guide](QUICK_START.md)** - Get up and running fast
-- **[UI User Guide](UI_USER_GUIDE.md)** - Complete guide to the user interface
-- **[Demo Guide](DEMO_GUIDE.md)** - Explore all features
-- **[LNC User Guide](LNC_USER_GUIDE.md)** - Understanding the Narrative Compiler
+All documentation lives in [`docs/`](docs/README.md).
 
-### Technical Documentation
-- **[Backend API Mapping](BACKEND_FRONTEND_MAPPING.md)** - Complete API reference
-- **[Codex Blueprint](CODEX_BLUEPRINT.md)** - System architecture details
-- **[Database Blueprint](DATABASE_BLUEPRINT.md)** - Database schema details
+### Quick links
 
-### Implementation & Status
-- **[Implementation Status](docs/IMPLEMENTATION_STATUS.md)** - Feature implementation tracking
-- **[Memory Engine](docs/MEMORY_ENGINE.md)** - Memory extraction system
-- **[Analytics System](docs/ANALYTICS_SYSTEM.md)** - Analytics modules documentation
-- **[Security Testing](docs/SECURITY_TESTING.md)** - Security test suite
-- **[Testing](docs/TESTING.md)** - Testing documentation
-- **[CI/CD](docs/CI_CD.md)** - CI/CD pipeline setup
-- **[Code Cleanup](docs/CODE_CLEANUP.md)** - Code cleanup documentation
-
-### Guides & Plans
-- **[Improvement Plan](IMPROVEMENT_PLAN.md)** - Roadmap and ideas
-- **[Privacy Guide](PRIVACY_GUIDE.md)** - Privacy and data protection
-- **[Subscription Guide](SUBSCRIPTION_GUIDE.md)** - Subscription management
+- **[Local Development](docs/guides/LOCAL_DEVELOPMENT.md)** — Setup, migrations, env vars, common issues
+- **[Core Architecture](docs/architecture/CORE_ARCHITECTURE.md)** — How the system works and why
+- **[Roadmap](docs/roadmap/ROADMAP.md)** — Active priorities, what to build next
+- **[Ideas](docs/roadmap/IDEAS.md)** — Unimplemented features worth building
+- **[Narrative Integrity](docs/architecture/NARRATIVE_INTEGRITY.md)** — Active bugs in memory behavior
+- **[Memory Engine](docs/architecture/MEMORY_ENGINE.md)** — Memory extraction and storage
+- **[Testing](docs/guides/TESTING.md)** — Test status and how to run tests
 
 ---
 

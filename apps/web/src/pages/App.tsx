@@ -34,6 +34,7 @@ import { PerceptionsView } from '../components/perceptions/PerceptionsView';
 import { TrialBanner } from '../components/subscription/TrialBanner';
 import { PricingPage } from '../components/subscription/PricingPage';
 import { ConnectionStatus } from '../components/ConnectionStatus';
+import { ModeBadge } from '../components/ModeBadge';
 import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage';
 import { EventsBook } from '../components/events/EventsBook';
 import { EntityResolutionBook } from '../components/entities/EntityResolutionBook';
@@ -431,6 +432,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         {activeSurface !== 'chat' && <Footer />}
       </main>
       <ConnectionStatus />
+      <ModeBadge />
     </div>
   );
 };

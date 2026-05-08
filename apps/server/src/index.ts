@@ -215,6 +215,11 @@ if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'tr
   logger.info('API documentation available at /api-docs');
 }
 
+// Health check (unprotected — used to verify server is alive)
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // 404 handler
 app.use((req: express.Request, res: express.Response) => {
   res.status(404).json({ error: 'Route not found', path: req.path });

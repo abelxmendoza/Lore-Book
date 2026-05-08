@@ -5,11 +5,43 @@ import { useGuest } from '../../../contexts/GuestContext';
 import { useCurrentContext } from '../../../contexts/CurrentContextContext';
 import { useSoulProfileChatContextOptional } from '../../../contexts/SoulProfileChatContext';
 import { useConversationStore } from './useConversationStore';
+import { getGlobalMockDataEnabled } from '../../../contexts/MockDataContext';
 import type { Message, ChatSource } from '../message/ChatMessage';
 import { parseSlashCommand, handleSlashCommand } from '../../../utils/chatCommands';
 import { analytics } from '../../../lib/monitoring';
 
 type LoadingStage = 'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'generating';
+
+// Returns true for network errors that indicate the backend is simply not running.
+function isBackendUnavailable(error: string): boolean {
+  return (
+    error.includes('Backend server is not running') ||
+    error.includes('Failed to fetch') ||
+    error.includes('ERR_CONNECTION_REFUSED') ||
+    error.includes('NetworkError') ||
+    error.includes('network error')
+  );
+}
+
+// Friendly demo response shown when the backend is unreachable and the user
+// is in guest or mock-data mode. Gives a sense of what the real system would say.
+function getDemoResponse(message: string): string {
+  const lower = message.toLowerCase();
+  const prefix = '*(Demo mode — backend not connected)*\n\n';
+  if (/villain|character|person|who is|tell me about/.test(lower)) {
+    return prefix + "In the full version I'd recall everything I know about that character from your lore — relationships, backstory, past mentions. Sign up to enable real memory.";
+  }
+  if (/remember|recall|what do you know|what did i|have i ever/.test(lower)) {
+    return prefix + "In the full version I'd search through your stored memories and surface matching entries with dates and context. Sign up to enable real recall.";
+  }
+  if (/chapter|story|timeline|arc|saga/.test(lower)) {
+    return prefix + "In the full version I'd pull your story timeline, chapter summaries, and narrative arcs. Sign up for full lore access.";
+  }
+  if (/log this|save this|remember this|journal entry|lore note/.test(lower)) {
+    return prefix + "Got it — in the full version this would be saved to your memory and available for recall. Sign up to start building your lore.";
+  }
+  return prefix + "Your message was received. In the full version the AI would respond using your stored lore and memories. Start the backend (`npm run dev:server`) or sign up for the hosted version.";
+}
 
 export const useChat = () => {
   const conversationStore = useConversationStore();
@@ -237,8 +269,11 @@ export const useChat = () => {
           }
           setLoading(false);
           setStreamingMessageId(null);
+          // In guest/mock-data mode, swap backend-unavailable errors for a demo response
+          // so there is no console spam and no scary error text.
+          const useDemoFallback = (isGuest || getGlobalMockDataEnabled()) && isBackendUnavailable(error);
           updateMessage(assistantMessageId, {
-            content: `Sorry, I encountered an error: ${error}`,
+            content: useDemoFallback ? getDemoResponse(messageText) : `Sorry, I encountered an error: ${error}`,
             isStreaming: false
           });
         },
@@ -253,15 +288,25 @@ export const useChat = () => {
       }
       setLoading(false);
       setStreamingMessageId(null);
-      removeMessage(assistantMessageId);
-      
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        timestamp: new Date()
-      };
-      addMessage(errorMessage);
+
+      const errMsg = error instanceof Error ? error.message : 'Unknown error';
+      const useDemoFallback = (isGuest || getGlobalMockDataEnabled()) && isBackendUnavailable(errMsg);
+
+      if (useDemoFallback) {
+        // Replace the streaming placeholder with a demo response — no error shown, no console noise.
+        updateMessage(assistantMessageId, {
+          content: getDemoResponse(messageText),
+          isStreaming: false
+        });
+      } else {
+        removeMessage(assistantMessageId);
+        addMessage({
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: `Sorry, I encountered an error: ${errMsg}`,
+          timestamp: new Date()
+        });
+      }
     }
   }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext]);
 

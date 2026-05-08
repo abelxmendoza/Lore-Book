@@ -1,11 +1,9 @@
 import { randomUUID } from 'crypto';
-import { createRequire } from 'module';
 
 import mammoth from 'mammoth';
 import OpenAI from 'openai';
-
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
+import { createRequire } from 'module';
+const pdfParse = createRequire(import.meta.url)('pdf-parse') as (buf: Buffer, opts?: Record<string, unknown>) => Promise<{ text: string }>;
 
 import { config } from '../../config';
 import { logger } from '../../logger';

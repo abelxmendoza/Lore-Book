@@ -334,14 +334,14 @@ export class MemoryRetriever {
         S.push(d);
       }
 
-      const result = S.slice(0, limit);
+      finalEntries = S.slice(0, limit);
 
       logger.debug(
-        { userId, query, strategy: strategy.method, retrieved: result.length, intent: rewritten.intent },
+        { userId, query, strategy: strategy.method, retrieved: finalEntries.length, intent: rewritten.intent },
         'Enhanced retrieval completed'
       );
 
-      return result;
+      return finalEntries;
     } catch (error) {
       logger.error({ error, query }, 'Enhanced retrieval failed, falling back to basic search');
       return this.searchRelevantEntries(userId, query, limit);

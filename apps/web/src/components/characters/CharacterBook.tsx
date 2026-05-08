@@ -2360,6 +2360,7 @@ export const CharacterBook = () => {
           <div className="flex items-center gap-2">
             <label className="text-sm text-white/60">Filter:</label>
             <select
+              data-testid="character-book-filter"
               value={importanceFilter}
               onChange={(e) => setImportanceFilter(e.target.value as ImportanceFilter)}
               className="bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"
@@ -2377,6 +2378,7 @@ export const CharacterBook = () => {
           <div className="flex items-center gap-2">
             <label className="text-sm text-white/60">Sort by:</label>
             <select
+              data-testid="character-book-sort"
               value={sortOrder}
               onChange={(e) => setSortOrder(e.target.value as SortOrder)}
               className="bg-black/40 border border-border/50 text-white text-sm px-3 py-1.5 rounded-md"

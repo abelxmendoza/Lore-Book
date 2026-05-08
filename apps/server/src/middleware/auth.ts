@@ -4,6 +4,9 @@ import type { NextFunction, Request, Response } from 'express';
 import { config } from '../config';
 import { logSecurityEvent, redactSensitive } from '../services/securityLog';
 
+// Log the dev-bypass warning once per process, not once per request.
+let _devBypassLogged = false;
+
 // Only create Supabase client if config is available
 let supabase: ReturnType<typeof createClient> | null = null;
 try {
@@ -33,14 +36,24 @@ export const authMiddleware = async (
   next: NextFunction
 ) => {
   try {
-    // SECURITY: Only disable auth in development mode, NEVER in production
-    const isDevelopment = process.env.NODE_ENV === 'development' || 
+    // SECURITY: Auth bypass is only allowed in non-production environments.
+    const isDevelopment = process.env.NODE_ENV === 'development' ||
                           process.env.API_ENV === 'dev';
-    const allowDevBypass = isDevelopment && process.env.DISABLE_AUTH_FOR_DEV === 'true';
-    
+    const bypassRequested = process.env.DISABLE_AUTH_FOR_DEV === 'true';
+
+    // Hard-fail if bypass is attempted in production — never silently ignore.
+    if (bypassRequested && !isDevelopment) {
+      console.error('[Auth] CRITICAL: DISABLE_AUTH_FOR_DEV=true detected in production. Refusing request.');
+      return res.status(500).json({ error: 'Server misconfiguration: auth bypass not allowed in production' });
+    }
+
+    const allowDevBypass = isDevelopment && bypassRequested;
+
     if (allowDevBypass) {
-      // Only allow dev bypass if explicitly enabled via environment variable
-      // This prevents accidental exposure in production
+      if (!_devBypassLogged) {
+        console.info('[Auth] DEV_AUTH_BYPASS active — all requests use dev-user 00000000. Set DISABLE_AUTH_FOR_DEV=false to require real auth.');
+        _devBypassLogged = true;
+      }
       req.user = {
         id: '00000000-0000-0000-0000-000000000000',
         email: 'dev@example.com',

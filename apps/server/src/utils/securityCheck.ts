@@ -19,6 +19,11 @@ export const performSecurityCheck = (): { passed: boolean; warnings: string[]; e
     errors.push('🚨 CRITICAL: Authentication is disabled in production! Set DISABLE_AUTH_FOR_DEV=false');
   }
 
+  // CRITICAL: Dev AI fallback must never run in production
+  if (isProduction && process.env.DEV_AI_FALLBACK === 'true') {
+    errors.push('🚨 CRITICAL: DEV_AI_FALLBACK=true in production is not allowed! Remove it before deploying.');
+  }
+
   // Check required environment variables in production
   if (isProduction) {
     const requiredVars = [

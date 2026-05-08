@@ -9,19 +9,11 @@ import { checkAiRequestLimit } from '../middleware/subscription';
 import { omegaChatService } from '../services/omegaChatService';
 import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
 import { incrementAiRequestCount } from '../services/usageTracking';
+import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
 
 const personaRL = new ChatPersonaRL();
 
 const router = Router();
-
-/** Get a string message from any thrown value (Error, Supabase/PGRST object, etc.). */
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (error && typeof error === 'object' && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
-    return (error as { message: string }).message;
-  }
-  return String(error);
-}
 
 const currentContextSchema = z.object({
   kind: z.enum(['none', 'timeline', 'thread']),
@@ -65,8 +57,7 @@ const optionalAuth = async (req: AuthenticatedRequest, res: Response, next: Next
     req.user = {
       id: '00000000-0000-0000-0000-000000000000',
       email: 'dev@example.com',
-      lastSignInAt: new Date().toISOString(),
-      fullName: null
+      lastSignInAt: new Date().toISOString()
     };
     return next();
   }
@@ -80,8 +71,7 @@ const optionalAuth = async (req: AuthenticatedRequest, res: Response, next: Next
       req.user = {
         id: '00000000-0000-0000-0000-000000000000',
         email: 'dev@example.com',
-        lastSignInAt: new Date().toISOString(),
-        fullName: null
+        lastSignInAt: new Date().toISOString()
       };
       next();
     } else {
@@ -100,14 +90,13 @@ router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, a
 
     const { message, conversationHistory = [], entityContext, currentContext, soulProfileContext } = parsed.data;
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
-    const userName = req.user?.fullName ?? undefined;
 
     // Set up SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, userName);
+    const result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext);
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err => 
@@ -127,19 +116,34 @@ router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, a
       }
       res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
       res.end();
-    } catch (error) {
-      logger.error({ error }, 'Stream error');
-      res.write(`data: ${JSON.stringify({ type: 'error', error: getErrorMessage(error) || 'Unknown error' })}\n\n`);
-      res.end();
+    } catch (streamError) {
+      // Headers already committed — can only write events, not change status.
+      // If OpenAI fails mid-stream and fallback is enabled, write a fallback chunk.
+      if (isFallbackEnabled() && isFallbackError(streamError)) {
+        writeFallbackToOpenStream(res, message, streamError instanceof Error ? streamError.message : 'stream error');
+      } else {
+        logger.error({ error: streamError }, 'Stream error');
+        res.write(`data: ${JSON.stringify({ type: 'error', error: streamError instanceof Error ? streamError.message : 'Unknown error' })}\n\n`);
+        res.end();
+      }
     }
   } catch (error) {
-    const errMessage = getErrorMessage(error);
-    const errStack = error instanceof Error ? error.stack : undefined;
-    logger.error({ err: error, message: errMessage, stack: errStack }, 'Chat stream endpoint error');
-    res.status(500).json({
-      error: 'Failed to process chat message',
-      message: errMessage || 'Unknown error'
-    });
+    // chatStream() threw before any res.write() — headers set but not committed.
+    // If it's an OpenAI quota/network error and fallback is enabled, stream a fake response.
+    if (isFallbackEnabled() && isFallbackError(error)) {
+      const reason = (error instanceof Error && error.message.includes('429'))
+        ? 'OpenAI 429 quota exceeded'
+        : `OpenAI error: ${error instanceof Error ? error.message.substring(0, 60) : 'unknown'}`;
+      // message may be out of scope here; fall back to req.body for fallback inference
+      const msgForFallback = (req.body as { message?: string })?.message ?? '';
+      await streamFallbackResponse(res, msgForFallback, reason);
+    } else {
+      logger.error({ err: error }, 'Chat stream endpoint error');
+      res.status(500).json({
+        error: 'Failed to process chat message',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
   }
 });
 
@@ -153,14 +157,13 @@ router.post('/', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (
 
     const { message, conversationHistory = [], stream, entityContext, currentContext, soulProfileContext } = parsed.data;
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
-    const userName = req.user?.fullName ?? undefined;
 
     // If streaming requested but endpoint is /, redirect to /stream
     if (stream) {
       return res.status(400).json({ error: 'Use /api/chat/stream for streaming' });
     }
 
-    const result = await omegaChatService.chat(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, userName);
+    const result = await omegaChatService.chat(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext);
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err => 
@@ -172,12 +175,10 @@ router.post('/', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    const errMessage = getErrorMessage(error);
-    const errStack = error instanceof Error ? error.stack : undefined;
-    logger.error({ err: error, message: errMessage, stack: errStack }, 'Chat endpoint error');
+    logger.error({ err: error }, 'Chat endpoint error');
     res.status(500).json({
       error: 'Failed to process chat message',
-      message: errMessage || 'Unknown error'
+      message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });

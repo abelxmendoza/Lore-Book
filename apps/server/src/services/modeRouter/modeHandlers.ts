@@ -337,19 +337,41 @@ class ModeHandlers {
         });
       }
 
-      // Minimal ack so the user sees a response (fully empty looks like "no reply")
-      return {
-        content: 'Noted.',
-        response_mode: 'SILENT_LOG',
-        confidence: 0.9,
-        metadata: {
-          processing: 'async',
-        },
-      };
+      // Ask the AI for a brief, warm acknowledgment instead of a dead "Noted."
+      try {
+        const { openai } = await import('../../lib/openai');
+        const { config } = await import('../../config');
+        const ackCompletion = await openai.chat.completions.create({
+          model: config.defaultModel || 'gpt-4o-mini',
+          temperature: 0.7,
+          max_tokens: 80,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are Lorekeeper, a lore-aware AI assistant. The user just logged a quick note or action. Acknowledge it briefly and warmly in 1-2 sentences. You may ask a light follow-up question if it would be natural. Do not be robotic.',
+            },
+            { role: 'user', content: message },
+          ],
+        });
+        const ackText = ackCompletion.choices[0]?.message?.content?.trim() || 'Logged.';
+        return {
+          content: ackText,
+          response_mode: 'SILENT_LOG',
+          confidence: 0.9,
+          metadata: { processing: 'async' },
+        };
+      } catch {
+        return {
+          content: 'Got it, logged.',
+          response_mode: 'SILENT_LOG',
+          confidence: 0.9,
+          metadata: { processing: 'async' },
+        };
+      }
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to handle action log mode');
       return {
-        content: 'Noted.',
+        content: 'Got it, logged.',
         response_mode: 'SILENT_LOG',
         confidence: 0.8,
       };

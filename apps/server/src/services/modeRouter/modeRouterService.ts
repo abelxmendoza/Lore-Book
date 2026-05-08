@@ -53,17 +53,23 @@ class ModeRouterService {
       if (quickCheck.confidence > 0.8) {
         const elapsed = Date.now() - startTime;
         logger.debug({ mode: quickCheck.mode, confidence: quickCheck.confidence, elapsed }, 'Mode routed via pattern matching');
+        if (process.env.NODE_ENV !== 'production') {
+          logger.info(`[ModeRouter] mode=${quickCheck.mode} message="${message.substring(0, 120)}"`);
+        }
         return quickCheck;
       }
 
       // Step 2: LLM classification (if needed, <250ms)
       const llmCheck = await this.llmModeCheck(message, conversationHistory);
-      
+
       // Step 3: Combine and decide
       const result = this.combineChecks(quickCheck, llmCheck);
-      
+
       const elapsed = Date.now() - startTime;
       logger.debug({ mode: result.mode, confidence: result.confidence, elapsed }, 'Mode routed');
+      if (process.env.NODE_ENV !== 'production') {
+        logger.info(`[ModeRouter] mode=${result.mode} message="${message.substring(0, 120)}"`);
+      }
 
       return result;
     } catch (error) {
@@ -160,7 +166,6 @@ class ModeRouterService {
    * Has: time range, multiple people, location, story arc
    */
   private looksLikeExperience(message: string): boolean {
-    const text = message.toLowerCase();
     const hasTimeRange = /(last night|yesterday|that weekend|when i was|during|while|for \d+)/i.test(message);
     const hasMultiplePeople = /(we|they|everyone|people|group|together)/i.test(message);
     const hasLocation = /(at|in|to|from) (the |a |an )?[a-z]+/i.test(message);
@@ -172,25 +177,29 @@ class ModeRouterService {
   }
 
   /**
-   * Check if message describes an Action (atomic)
-   * Verb-forward, instant, no arc
+   * Check if message is an explicit log/save command.
+   * ACTION_LOG should only trigger for deliberate "log this" style commands,
+   * NOT for normal first-person conversation like "I thought...", "I felt...", etc.
    */
   private looksLikeAction(message: string): boolean {
-    const text = message.toLowerCase();
-    
-    // Verb-forward patterns
-    const verbPatterns = [
-      /^i (said|told|asked|walked|left|froze|decided|felt|noticed|realized|thought|did|didn't|couldn't|wouldn't)/i,
-      /^i (didn't|couldn't|wouldn't) (say|do|go|leave)/i,
-      /^(she|he|they) (said|looked|laughed|left|did)/i,
+    const text = message.trim();
+
+    // Never classify questions as action logs
+    if (text.includes('?')) return false;
+    // Long messages are almost never pure action logs
+    if (text.length > 300) return false;
+
+    // Only trigger for explicit log/save/record commands
+    const explicitLogPatterns = [
+      /^(log|save|record|capture|store|add to journal|add memory|add lore)\b/i,
+      /^(note this|save this|remember this|log this|record this|capture this)\b/i,
+      /^journal entry\s*:/i,
+      /^memory\s*:/i,
+      /^lore note\s*:/i,
+      /^action log\s*:/i,
     ];
-    
-    const isVerbForward = verbPatterns.some(pattern => pattern.test(message));
-    const isShort = message.length < 150;
-    const isInstant = !/(then|after|later|eventually|while|during)/i.test(message);
-    const hasNoTimeRange = !/(last night|yesterday|that weekend|for \d+)/i.test(message);
-    
-    return isVerbForward && isShort && isInstant && hasNoTimeRange;
+
+    return explicitLogPatterns.some(pattern => pattern.test(text));
   }
 
   /**
@@ -284,7 +293,7 @@ class ModeRouterService {
    */
   private async llmModeCheck(
     message: string,
-    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+    _conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<ModeRoutingResult> {
     const prompt = `Classify this message into ONE mode:
 
@@ -296,12 +305,13 @@ Modes:
 3. MEMORY_RECALL - Specific factual questions: "What did I eat?", "When did X happen?", "Do you remember Y?"
 4. NARRATIVE_RECALL - Complex story questions: "What happened with X?", "Tell me about Y", "What's the story behind Z?"
 5. EXPERIENCE_INGESTION - User describing a time-bounded experience (party, night out, trip, event with duration, multiple people, location, story arc). Example: "Last night I went to a show, met these people, things got weird..." NOT: "I got the chat working" or short updates.
-6. ACTION_LOG - ONLY when the user is clearly logging a single, past-tense, verb-forward moment: "I said X", "I walked away", "I froze". NOT: greetings, "Does it work?", "I got X working", questions, or general updates.
+6. ACTION_LOG - ONLY for explicit save/log/record commands: "Log this", "Save this", "Remember this", "Journal entry: ...", "Memory: ...", "Lore note: ...". NOT for first-person narrative sentences. NOT for "I thought", "I felt", "I noticed", "I realized", "I decided", or any normal conversational sentence.
 
 Key rules:
-- When in doubt between ACTION_LOG/EXPERIENCE and UNKNOWN, choose UNKNOWN.
+- When in doubt between ACTION_LOG/EXPERIENCE and UNKNOWN, always choose UNKNOWN.
 - Greetings, thanks, and meta-questions about the app are always UNKNOWN.
-- Action = strict "I [verb]ed" / "I [verb]ed X" instant moment, no arc.
+- First-person sentences like "I thought X", "I felt Y", "I noticed Z" are NOT action logs — they are UNKNOWN (normal conversation).
+- ACTION_LOG requires an explicit command word: log, save, record, capture, store, remember, add to journal.
 
 Respond with JSON:
 {
