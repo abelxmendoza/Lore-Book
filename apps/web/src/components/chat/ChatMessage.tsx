@@ -20,6 +20,7 @@ import { ChatMemoryIndicator, type MemoryIndicator } from './ChatMemoryIndicator
 import { ChatMemorySuggestion } from './ChatMemorySuggestion';
 import { DisambiguationPrompt, type DisambiguationOption } from './DisambiguationPrompt';
 import { MemoryCognitionPanel } from './MemoryCognitionPanel';
+import { CognitionMetaPanel } from './CognitionMetaPanel';
 import type { MemoryFeedbackEvent } from '../../hooks/useChatStream';
 
 export type ChatSource = {
@@ -64,6 +65,9 @@ export type Message = {
   feedback?: 'positive' | 'negative' | null;
   isSystemMessage?: boolean;
   cognitionFeedback?: MemoryFeedbackEvent;
+  modeDecision?: { mode: string; confidence: number; reasoning: string };
+  ragStats?: { sourceCount: number; cacheHit: boolean; retrievalMs: number; contextItems: number };
+  activePersona?: string;
 };
 
 type ChatMessageProps = {
@@ -75,7 +79,10 @@ type ChatMessageProps = {
   onSourceClick?: (source: ChatSource) => void;
   onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void;
   onEditMemory?: (claimId: string) => void;
+  onApproveMemorySuggestion?: (proposalId: string) => Promise<void> | void;
+  onDismissMemorySuggestion?: (proposalId: string) => void;
   onDisambiguationSelect?: (mentionText: string, option: DisambiguationOption | 'CREATE_NEW' | 'SKIP') => void;
+  showCognitiveTrace?: boolean;
 };
 
 export const ChatMessage = ({
@@ -89,7 +96,8 @@ export const ChatMessage = ({
   onEditMemory,
   onApproveMemorySuggestion,
   onDismissMemorySuggestion,
-  onDisambiguationSelect
+  onDisambiguationSelect,
+  showCognitiveTrace = false
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -276,8 +284,17 @@ export const ChatMessage = ({
                   source_excerpt: message.memorySuggestion.source_excerpt,
                   reasoning: message.memorySuggestion.reasoning
                 }}
-                onApprove={onApproveMemorySuggestion ? () => onApproveMemorySuggestion(message.memorySuggestion!.proposal_id) : undefined}
+                onApprove={onApproveMemorySuggestion ? async () => { await onApproveMemorySuggestion(message.memorySuggestion!.proposal_id); } : undefined}
                 onDismiss={onDismissMemorySuggestion ? () => onDismissMemorySuggestion(message.memorySuggestion!.proposal_id) : undefined}
+              />
+            )}
+            {!isUser && (
+              <CognitionMetaPanel
+                modeDecision={message.modeDecision}
+                ragStats={message.ragStats}
+                activePersona={message.activePersona}
+                connections={message.connections}
+                visible={showCognitiveTrace}
               />
             )}
             {!isUser && message.cognitionFeedback && (

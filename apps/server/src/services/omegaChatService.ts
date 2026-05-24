@@ -129,6 +129,22 @@ export type StreamingChatResponse = {
     };
     confidence_label?: string;
     disclaimer?: string;
+    // Cognitive observability — Phase 2
+    modeDecision?: {
+      mode: string;
+      confidence: number;
+      reasoning: string;
+    };
+    ragStats?: {
+      sourceCount: number;
+      cacheHit: boolean;
+      retrievalMs: number;
+      contextItems: number;
+    };
+    activePersona?: string;
+    sessionId?: string;
+    messageId?: string;
+    meaningDriftPrompt?: string;
   };
 };
 
@@ -1483,9 +1499,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
             content: silenceContent,
             metadata: {
               response_mode: 'SILENCE',
-              confidence: 1.0,
               disclaimer: recallResult.silence.reason,
-            },
+            } as any,
             stream: (async function* () {
               yield { choices: [{ delta: { content: silenceContent } }] };
             })(),
@@ -1531,6 +1546,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
 
     // Build RAG packet with error handling
     let ragPacket;
+    const ragStart = Date.now();
+    const ragCacheHit = ragPacketCacheService.getCachedPacket(userId, message) !== null;
     try {
       ragPacket = await this.buildRAGPacket(userId, message, currentContext);
     } catch (error) {
@@ -1732,7 +1749,6 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
           return {
             stream: this.createTextStream(silenceMessage),
             metadata: {
-              recallResult,
               activePersona: recallPersona,
             },
           };
@@ -1762,7 +1778,6 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
         return {
           stream: this.createTextStream(recallText),
           metadata: {
-            recallResult,
             activePersona: recallPersona,
           },
         };
@@ -2282,7 +2297,13 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
         disambiguationPrompt: disambiguationPrompt || undefined,
         meaningDriftPrompt: meaningDriftPrompt || undefined,
         activePersona: activePersona || undefined,
-        modeDecision: modeDecision || undefined
+        modeDecision: modeDecision || undefined,
+        ragStats: {
+          sourceCount: sources.length,
+          cacheHit: ragCacheHit,
+          retrievalMs: Date.now() - ragStart,
+          contextItems: hqiResults.length + (sources?.length ?? 0),
+        }
       }
     };
   }

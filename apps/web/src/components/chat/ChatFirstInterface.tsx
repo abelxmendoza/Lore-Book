@@ -33,6 +33,7 @@ export const ChatFirstInterface = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [searchMessageId, setSearchMessageId] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showCognitiveTrace, setShowCognitiveTrace] = useLocalStorage<boolean>('lorekeeper_cognitive_trace', false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const { refreshEntries, refreshTimeline, refreshChapters } = useLoreKeeper();
@@ -575,6 +576,15 @@ export const ChatFirstInterface = () => {
           <Button
             variant="ghost"
             size="sm"
+            onClick={() => setShowCognitiveTrace(!showCognitiveTrace)}
+            className={showCognitiveTrace ? 'text-primary' : 'text-white/40 hover:text-white/60'}
+            title={showCognitiveTrace ? 'Hide cognitive trace' : 'Show cognitive trace'}
+          >
+            <Bot className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setShowSearch(!showSearch)}
             className="text-white/60 hover:text-white"
             title="Search conversation (⌘K)"
@@ -682,6 +692,7 @@ export const ChatFirstInterface = () => {
               >
                 <ChatMessage
                   message={message}
+                  showCognitiveTrace={showCognitiveTrace}
                   onCopy={() => handleCopy(message.id)}
                   onRegenerate={message.role === 'assistant' ? () => handleRegenerate(message.id) : undefined}
                   onEdit={message.role === 'user' ? () => handleEdit(message.id) : undefined}
