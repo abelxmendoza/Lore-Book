@@ -73,7 +73,7 @@ class PhotoAnalysisService {
 
       // Use OpenAI Vision API to analyze the photo
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o', // Use vision-capable model
+        model: 'gpt-4o-mini', // Use vision-capable model (supports vision, cheaper than gpt-4o)
         messages: [
           {
             role: 'system',

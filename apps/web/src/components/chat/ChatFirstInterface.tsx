@@ -277,6 +277,18 @@ export const ChatFirstInterface = () => {
                 : msg
             )
           );
+        },
+        undefined,
+        undefined,
+        undefined,
+        (feedback) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, cognitionFeedback: feedback }
+                : msg
+            )
+          );
         }
       );
     } catch (error) {

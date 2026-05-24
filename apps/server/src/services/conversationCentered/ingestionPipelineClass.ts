@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { memoryFeedbackBus, type MemoryFeedbackEvent } from '../memoryFeedbackBus';
 import { normalizationService } from './normalizationService';
 import { semanticExtractionService } from './semanticExtractionService';
 import { eventAssemblyService } from './eventAssemblyService';
@@ -59,6 +60,7 @@ export class ConversationIngestionPipeline {
     sessionId: string,
     conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<void> {
+    const pipelineStart = Date.now();
     try {
       // Get the chat message
       const { data: chatMessage, error: msgError } = await supabaseAdmin
@@ -110,6 +112,18 @@ export class ConversationIngestionPipeline {
           },
         })
         .eq('id', result.messageId);
+
+      // Publish feedback so the polling endpoint can surface it to the UI
+      setImmediate(() => {
+        this.buildAndPublishFeedback(
+          userId,
+          chatMessageId,
+          result.utteranceIds,
+          pipelineStart
+        ).catch(err => {
+          logger.debug({ err, chatMessageId }, 'Failed to build memory feedback (non-critical)');
+        });
+      });
     } catch (error) {
       // Log but don't throw - ingestion failures should not block chat
       logger.error(
@@ -117,6 +131,103 @@ export class ConversationIngestionPipeline {
         'Failed to ingest chat message (non-blocking)'
       );
     }
+  }
+
+  /**
+   * Query what the pipeline just extracted and publish it to the MemoryFeedbackBus
+   * so the client-side cognition panel can display it.
+   * All DB errors are swallowed — this is observability, not load-bearing.
+   */
+  private async buildAndPublishFeedback(
+    userId: string,
+    chatMessageId: string,
+    utteranceIds: string[],
+    startedAt: number
+  ): Promise<void> {
+    if (utteranceIds.length === 0) return;
+
+    // Query knowledge units created for this message (linked via utterance_id)
+    const { data: kuRows } = await supabaseAdmin
+      .from('knowledge_units')
+      .select('knowledge_type, content, confidence, emotions, entities, certainty_source, temporal_scope')
+      .in('utterance_id', utteranceIds)
+      .limit(20) as { data: any[] | null };
+
+    // Query utterances for emotional metadata
+    const { data: uttRows } = await supabaseAdmin
+      .from('utterances')
+      .select('metadata')
+      .in('id', utteranceIds) as { data: any[] | null };
+
+    // Check for very-recent contradictions surfaced by the pipeline
+    const { data: corrections } = await supabaseAdmin
+      .from('correction_records')
+      .select('correction_text')
+      .eq('user_id', userId)
+      .gte('created_at', new Date(startedAt - 5000).toISOString()) // within pipeline run
+      .order('created_at', { ascending: false })
+      .limit(3) as { data: any[] | null };
+
+    // — Emotional signals ——————————————————————————————————
+    const emotions: string[] = [];
+    let intensity: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+    let isVenting = false;
+
+    for (const u of uttRows ?? []) {
+      const meta = u?.metadata ?? {};
+      if (Array.isArray(meta.emotions)) emotions.push(...meta.emotions);
+      if (meta.intensity === 'HIGH') intensity = 'HIGH';
+      else if (meta.intensity === 'MEDIUM' && intensity === 'LOW') intensity = 'MEDIUM';
+      if (meta.is_venting) isVenting = true;
+    }
+
+    // — Knowledge units ———————————————————————————————————
+    const knowledgeUnits = (kuRows ?? []).map((ku: any) => ({
+      type: ku.knowledge_type as MemoryFeedbackEvent['knowledgeUnits'][0]['type'],
+      content: String(ku.content ?? '').slice(0, 120),
+      confidence: Number(ku.confidence ?? 0.5),
+      certaintySource: String(ku.certainty_source ?? 'UNKNOWN'),
+      temporalScope: (ku.temporal_scope ?? 'UNKNOWN') as MemoryFeedbackEvent['knowledgeUnits'][0]['temporalScope'],
+    }));
+
+    // — Entities ——————————————————————————————————————————
+    const seenIds = new Set<string>();
+    const entitiesDetected: MemoryFeedbackEvent['entitiesDetected'] = [];
+    for (const ku of kuRows ?? []) {
+      for (const e of (ku.entities ?? []) as any[]) {
+        if (e?.id && !seenIds.has(e.id)) {
+          seenIds.add(e.id);
+          entitiesDetected.push({ name: String(e.name ?? ''), type: String(e.type ?? 'UNKNOWN') });
+        }
+      }
+    }
+
+    // — Temporal anchor ———————————————————————————————————
+    const hasTemporalScope = (kuRows ?? []).some(
+      (ku: any) => ku.temporal_scope && ku.temporal_scope !== 'UNKNOWN'
+    );
+
+    const feedback: MemoryFeedbackEvent = {
+      chatMessageId,
+      userId,
+      timestamp: new Date().toISOString(),
+      processingTimeMs: Date.now() - startedAt,
+      pipelineComplete: true,
+      knowledgeUnits,
+      emotionalSignals: {
+        emotions: [...new Set(emotions)].slice(0, 6),
+        intensity: emotions.length > 0 ? intensity : null,
+        isVenting,
+      },
+      entitiesDetected: entitiesDetected.slice(0, 8),
+      temporalAnchor: { detected: hasTemporalScope },
+      contradictionsDetected: (corrections ?? []).map((c: any) => ({
+        description: String(c.correction_text ?? 'Potential contradiction detected'),
+      })),
+    };
+
+    memoryFeedbackBus.publish(chatMessageId, feedback);
+    logger.debug({ chatMessageId, knowledgeUnitCount: knowledgeUnits.length }, 'Memory feedback published');
   }
 
   /** Detect romantic relationships asynchronously (non-blocking). */

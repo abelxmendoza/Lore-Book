@@ -58,6 +58,10 @@ class QueryChain implements PromiseLike<{ data: unknown; error: null }> {
     return this;
   }
 
+  in(_column: string, _values: unknown[]) {
+    return this;
+  }
+
   gte(_column: string, _value: unknown) {
     return this;
   }

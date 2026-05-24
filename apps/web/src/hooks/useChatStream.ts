@@ -10,9 +10,56 @@ type StreamChunk = {
   error?: string;
 };
 
+export type MemoryFeedbackEvent = {
+  chatMessageId: string;
+  userId: string;
+  timestamp: string;
+  processingTimeMs: number;
+  pipelineComplete: boolean;
+  knowledgeUnits: Array<{
+    type: 'EXPERIENCE' | 'FEELING' | 'BELIEF' | 'FACT' | 'DECISION' | 'QUESTION';
+    content: string;
+    confidence: number;
+    certaintySource: string;
+    temporalScope: 'MOMENT' | 'PERIOD' | 'ONGOING' | 'UNKNOWN';
+  }>;
+  emotionalSignals: {
+    emotions: string[];
+    intensity: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+    isVenting: boolean;
+  };
+  entitiesDetected: Array<{ name: string; type: string }>;
+  temporalAnchor: { detected: boolean; precision?: string; confidence?: number };
+  contradictionsDetected: Array<{ description: string }>;
+};
+
 export const useChatStream = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const pollMemoryFeedback = useCallback(async (
+    messageId: string,
+    token: string | undefined,
+    onMemoryFeedback: (feedback: MemoryFeedbackEvent) => void
+  ) => {
+    const apiUrl = config.api.url;
+    const url = apiUrl
+      ? `${apiUrl}/api/chat/memory-feedback/${messageId}`
+      : `/api/chat/memory-feedback/${messageId}`;
+
+    try {
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (res.status === 200) {
+        const feedback: MemoryFeedbackEvent = await res.json();
+        onMemoryFeedback(feedback);
+      }
+      // 204 = pipeline timed out — silently drop, no retry needed
+    } catch {
+      // Network error during feedback poll — non-critical, silently drop
+    }
+  }, []);
 
   const streamChat = useCallback(async (
     message: string,
@@ -23,7 +70,8 @@ export const useChatStream = () => {
     onError: (error: string) => void,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
     currentContext?: CurrentContext,
-    soulProfileContext?: SoulProfileContext | null
+    soulProfileContext?: SoulProfileContext | null,
+    onMemoryFeedback?: (feedback: MemoryFeedbackEvent) => void
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -109,10 +157,11 @@ export const useChatStream = () => {
       }
 
       let buffer = '';
+      let capturedMessageId: string | undefined;
 
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) break;
         if (abortController.signal.aborted) break;
 
@@ -127,12 +176,16 @@ export const useChatStream = () => {
             const data: StreamChunk = JSON.parse(line.slice(6));
 
             if (data.type === 'metadata') {
+              if (data.data?.messageId) capturedMessageId = data.data.messageId;
               onMetadata(data.data);
             } else if (data.type === 'chunk' && data.content) {
               onChunk(data.content);
             } else if (data.type === 'done') {
               onComplete();
               setIsStreaming(false);
+              if (onMemoryFeedback && capturedMessageId) {
+                pollMemoryFeedback(capturedMessageId, token, onMemoryFeedback);
+              }
               return;
             } else if (data.type === 'error') {
               throw new Error(data.error || 'Stream error');
@@ -152,7 +205,7 @@ export const useChatStream = () => {
       setIsStreaming(false);
       onError(error instanceof Error ? error.message : 'Unknown error');
     }
-  }, []);
+  }, [pollMemoryFeedback]);
 
   const cancel = useCallback(() => {
     if (abortControllerRef.current) {

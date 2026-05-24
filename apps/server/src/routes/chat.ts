@@ -10,6 +10,7 @@ import { omegaChatService } from '../services/omegaChatService';
 import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
 import { incrementAiRequestCount } from '../services/usageTracking';
 import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
+import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
 
 const personaRL = new ChatPersonaRL();
 
@@ -325,6 +326,25 @@ router.post('/action', requireAuth, async (req: AuthenticatedRequest, res) => {
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
+});
+
+// Long-poll: client waits up to 8s for the ingestion pipeline to finish for a given message.
+// Returns the memory feedback event or 204 (no content) on timeout.
+router.get('/memory-feedback/:messageId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { messageId } = req.params;
+  const userId = req.user!.id;
+
+  const feedback = await memoryFeedbackBus.waitFor(messageId, 8000);
+
+  if (!feedback) {
+    return res.status(204).end();
+  }
+
+  if (feedback.userId !== userId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  res.json(feedback);
 });
 
 export const chatRouter = router;

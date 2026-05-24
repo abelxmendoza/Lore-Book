@@ -203,161 +203,147 @@ class OmegaChatService {
       logger.warn({ error }, 'Failed to get orchestrator summary, using empty');
     }
 
-    // Fetch ALL characters from characters table (comprehensive lore)
+    // Static lore (characters, locations, chapters, etc.) doesn't change between messages.
+    // Cache it by userId for 3 minutes so unique messages don't re-query the same data.
     let allCharacters: any[] = [];
-    try {
-      const { data: charactersData } = await supabaseAdmin
-        .from('characters')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      allCharacters = charactersData || [];
-    } catch (error) {
-      logger.debug({ error }, 'Failed to fetch all characters, continuing');
-    }
-
-    // Fetch ALL locations (comprehensive lore)
     let allLocations: any[] = [];
-    try {
-      allLocations = await locationService.listLocations(userId);
-    } catch (error) {
-      logger.debug({ error }, 'Failed to fetch all locations, continuing');
-    }
-
-    // Fetch ALL chapters with summaries (comprehensive lore)
     let allChapters: any[] = [];
-    try {
-      allChapters = await chapterService.listChapters(userId);
-    } catch (error) {
-      logger.debug({ error }, 'Failed to fetch all chapters, continuing');
-    }
-
-    // Fetch timeline hierarchy (eras, sagas, arcs) - comprehensive lore
-    // Batch all queries together for efficiency (ONE query instead of THREE)
     let timelineHierarchy: any = { eras: [], sagas: [], arcs: [] };
-    try {
-      // Batch fetch all timeline hierarchy in parallel
-      const [erasResult, sagasResult, arcsResult] = await Promise.all([
-        supabaseAdmin
-          .from('eras')
-          .select('*')
-          .eq('user_id', userId)
-          .order('start_date', { ascending: false }),
-        supabaseAdmin
-          .from('sagas')
-          .select('*')
-          .eq('user_id', userId)
-          .order('start_date', { ascending: false }),
-        supabaseAdmin
-          .from('arcs')
-          .select('*')
-          .eq('user_id', userId)
-          .order('start_date', { ascending: false })
-      ]);
-
-      timelineHierarchy = {
-        eras: erasResult.data || [],
-        sagas: sagasResult.data || [],
-        arcs: arcsResult.data || []
-      };
-    } catch (error) {
-      logger.debug({ error }, 'Failed to fetch timeline hierarchy, continuing');
-    }
-
-    // Fetch all people/places entities (comprehensive lore)
     let allPeoplePlaces: any[] = [];
-    try {
-      allPeoplePlaces = await peoplePlacesService.listEntities(userId);
-    } catch (error) {
-      logger.debug({ error }, 'Failed to fetch people/places, continuing');
-    }
-
-    // Fetch character attributes for all characters (comprehensive knowledge)
-    const characterAttributesMap: Map<string, any[]> = new Map();
-    try {
-      for (const char of allCharacters) {
-        const attributes = await entityAttributeDetector.getEntityAttributes(
-          userId,
-          char.id,
-          'character',
-          true // current only
-        );
-        if (attributes.length > 0) {
-          characterAttributesMap.set(char.id, attributes);
-        }
-      }
-    } catch (error) {
-      logger.debug({ error }, 'Failed to fetch character attributes, continuing');
-    }
-
-    // Fetch romantic relationships (comprehensive knowledge)
+    let characterAttributesMap: Map<string, any[]> = new Map();
     let romanticRelationships: any[] = [];
-    try {
-      const { data: relationships } = await supabaseAdmin
-        .from('romantic_relationships')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      romanticRelationships = relationships || [];
-    } catch (error) {
-      logger.debug({ error }, 'Failed to fetch romantic relationships, continuing');
-    }
-
-    // Fetch corrections and deprecated units (so chatbot knows what's wrong)
     let corrections: any[] = [];
     let deprecatedUnits: any[] = [];
-    try {
-      // Get recent corrections
-      const { data: correctionRecords } = await supabaseAdmin
-        .from('correction_records')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      corrections = correctionRecords || [];
-
-      // Get deprecated units (recent ones)
-      const { data: deprecated } = await supabaseAdmin
-        .from('extracted_units')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('metadata->>deprecated', 'true')
-        .order('created_at', { ascending: false })
-        .limit(30);
-      deprecatedUnits = deprecated || [];
-    } catch (error) {
-      logger.debug({ error }, 'Failed to fetch corrections/deprecated units, continuing');
-    }
-
-    // Fetch workout events and biometrics (fitness knowledge)
     let workoutEvents: any[] = [];
     let recentBiometrics: any[] = [];
-    try {
-      const { workoutEventDetector } = await import('./conversationCentered/workoutEventDetector');
-      const { biometricExtractor } = await import('./conversationCentered/biometricExtractor');
-      
-      workoutEvents = await workoutEventDetector.getWorkoutEvents(userId, 20, 0);
-      
-      // Get recent biometric measurements
-      const { data: biometrics } = await supabaseAdmin
-        .from('biometric_measurements')
-        .select('*')
-        .eq('user_id', userId)
-        .order('measurement_date', { ascending: false })
-        .limit(10);
-      recentBiometrics = biometrics || [];
-    } catch (error) {
-      logger.debug({ error }, 'Failed to fetch workout events/biometrics, continuing');
-    }
-
-    // Fetch interests (comprehensive knowledge)
     let topInterests: any[] = [];
-    try {
-      const { interestTracker } = await import('./conversationCentered/interestTracker');
-      topInterests = await interestTracker.getTopInterests(userId, 30);
-    } catch (error) {
-      logger.debug({ error }, 'Failed to fetch interests, continuing');
+
+    const cachedLore = ragPacketCacheService.getLoreCache(userId);
+    if (cachedLore) {
+      ({ allCharacters, allLocations, allChapters, timelineHierarchy, allPeoplePlaces,
+        romanticRelationships, corrections, deprecatedUnits, workoutEvents, recentBiometrics, topInterests } = cachedLore);
+      // characterAttributesMap is stored as plain object in cache; restore to Map
+      characterAttributesMap = new Map(Object.entries(cachedLore.characterAttributesMap || {}));
+    } else {
+      // Fetch ALL characters from characters table (comprehensive lore)
+      try {
+        const { data: charactersData } = await supabaseAdmin
+          .from('characters')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+        allCharacters = (charactersData as any[]) || [];
+      } catch (error) {
+        logger.debug({ error }, 'Failed to fetch all characters, continuing');
+      }
+
+      // Fetch locations, chapters, timeline hierarchy, people/places in parallel
+      try {
+        const [locResult, chapResult, erasResult, sagasResult, arcsResult, ppResult] = await Promise.all([
+          locationService.listLocations(userId).catch((): any[] => []),
+          chapterService.listChapters(userId).catch((): any[] => []),
+          supabaseAdmin.from('eras').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
+          supabaseAdmin.from('sagas').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
+          supabaseAdmin.from('arcs').select('*').eq('user_id', userId).order('start_date', { ascending: false }),
+          peoplePlacesService.listEntities(userId).catch((): any[] => []),
+        ]);
+        allLocations = locResult as any[];
+        allChapters = chapResult as any[];
+        timelineHierarchy = { eras: (erasResult as any).data || [], sagas: (sagasResult as any).data || [], arcs: (arcsResult as any).data || [] };
+        allPeoplePlaces = ppResult as any[];
+      } catch (error) {
+        logger.debug({ error }, 'Failed to fetch lore data, continuing');
+      }
+
+      // Batch-fetch character attributes in a single query (replaces N+1 loop)
+      if (allCharacters.length > 0) {
+        try {
+          const charIds = allCharacters.map((c: any) => c.id);
+          const { data: attrData } = await supabaseAdmin
+            .from('entity_attributes')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('entity_type', 'character')
+            .eq('is_current', true)
+            .in('entity_id', charIds);
+          for (const attr of ((attrData as any[]) || [])) {
+            const list = characterAttributesMap.get(attr.entity_id) ?? [];
+            list.push({
+              entityId: attr.entity_id,
+              entityType: attr.entity_type,
+              attributeType: attr.attribute_type,
+              attributeValue: attr.attribute_value,
+              confidence: attr.confidence,
+              isCurrent: attr.is_current,
+              startTime: attr.start_time,
+              endTime: attr.end_time,
+              evidence: attr.metadata?.evidence || '',
+              evidenceSourceIds: attr.evidence_source_ids || [],
+            });
+            characterAttributesMap.set(attr.entity_id, list);
+          }
+        } catch (error) {
+          logger.debug({ error }, 'Failed to batch fetch character attributes, continuing');
+        }
+      }
+
+      // Fetch romantic relationships (comprehensive knowledge)
+      try {
+        const { data: relationships } = await supabaseAdmin
+          .from('romantic_relationships')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(20);
+        romanticRelationships = (relationships as any[]) || [];
+      } catch (error) {
+        logger.debug({ error }, 'Failed to fetch romantic relationships, continuing');
+      }
+
+      // Fetch corrections and deprecated units
+      try {
+        const [corrResult, deprResult] = await Promise.all([
+          supabaseAdmin.from('correction_records').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
+          supabaseAdmin.from('extracted_units').select('*').eq('user_id', userId).eq('metadata->>deprecated', 'true').order('created_at', { ascending: false }).limit(30),
+        ]);
+        corrections = ((corrResult as any).data as any[]) || [];
+        deprecatedUnits = ((deprResult as any).data as any[]) || [];
+      } catch (error) {
+        logger.debug({ error }, 'Failed to fetch corrections/deprecated units, continuing');
+      }
+
+      // Fetch workout events and biometrics — only if message is fitness-related
+      const isFitnessMessage = /\b(workout|exercise|gym|ran|run|lifted|bench|squat|deadlift|calories|weight|lbs|kg|miles|steps|cardio|biometric|body fat|muscle)\b/i.test(message);
+      if (isFitnessMessage) {
+        try {
+          const { workoutEventDetector } = await import('./conversationCentered/workoutEventDetector');
+          workoutEvents = await workoutEventDetector.getWorkoutEvents(userId, 20, 0);
+          const { data: biometrics } = await supabaseAdmin
+            .from('biometric_measurements')
+            .select('*')
+            .eq('user_id', userId)
+            .order('measurement_date', { ascending: false })
+            .limit(10);
+          recentBiometrics = (biometrics as any[]) || [];
+        } catch (error) {
+          logger.debug({ error }, 'Failed to fetch workout events/biometrics, continuing');
+        }
+      }
+
+      // Fetch interests (comprehensive knowledge)
+      try {
+        const { interestTracker } = await import('./conversationCentered/interestTracker');
+        topInterests = await interestTracker.getTopInterests(userId, 30);
+      } catch (error) {
+        logger.debug({ error }, 'Failed to fetch interests, continuing');
+      }
+
+      // Store in lore cache so the next message in this session skips all these queries
+      ragPacketCacheService.setLoreCache(userId, {
+        allCharacters, allLocations, allChapters, timelineHierarchy, allPeoplePlaces,
+        characterAttributesMap: Object.fromEntries(characterAttributesMap),
+        romanticRelationships, corrections, deprecatedUnits, workoutEvents, recentBiometrics, topInterests,
+      });
     }
 
     // Get HQI semantic search results with error handling
@@ -1411,12 +1397,16 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     // =====================================================
     // MODE ROUTER (NEW - FIRST GATE)
     // =====================================================
+    // Captured here so it can be included in the SSE metadata for the cognition panel.
+    let modeDecision: { mode: string; confidence: number; reasoning: string } | undefined;
+
     try {
       const { modeRouterService } = await import('./modeRouter/modeRouterService');
       const { modeHandlers } = await import('./modeRouter/modeHandlers');
       const { formatModeResponse } = await import('./modeRouter/responseFormatter');
 
       const routing = await modeRouterService.routeMessage(userId, message, conversationHistory);
+      modeDecision = { mode: routing.mode, confidence: routing.confidence, reasoning: routing.reasoning ?? '' };
       
       // Route to appropriate handler if mode is known
       if (routing.mode !== 'UNKNOWN') {
@@ -2291,7 +2281,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
         memorySuggestion: memorySuggestion || undefined,
         disambiguationPrompt: disambiguationPrompt || undefined,
         meaningDriftPrompt: meaningDriftPrompt || undefined,
-        activePersona: activePersona || undefined
+        activePersona: activePersona || undefined,
+        modeDecision: modeDecision || undefined
       }
     };
   }

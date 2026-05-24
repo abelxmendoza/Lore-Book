@@ -1,7 +1,5 @@
 import crypto from 'crypto';
 
-import { logger } from '../logger';
-
 /**
  * Cache for RAG packets - expensive to build, so cache aggressively
  * Uses message hash + user ID as cache key
@@ -10,6 +8,27 @@ class RAGPacketCacheService {
   private memoryCache: Map<string, any> = new Map();
   private readonly MEMORY_CACHE_SIZE = 100; // Keep last 100 RAG packets in memory
   private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
+
+  // Lore cache: keyed by userId, not message — static data (characters, locations, etc.)
+  // doesn't change between messages; no need to re-query DB on every unique message.
+  private loreCache: Map<string, { data: any; expiresAt: number }> = new Map();
+  private readonly LORE_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+  getLoreCache(userId: string): any | null {
+    const cached = this.loreCache.get(userId);
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+    if (cached) this.loreCache.delete(userId);
+    return null;
+  }
+
+  setLoreCache(userId: string, data: any): void {
+    this.loreCache.set(userId, { data, expiresAt: Date.now() + this.LORE_CACHE_TTL_MS });
+  }
+
+  // Call this when characters/locations/chapters/etc. are modified
+  invalidateLoreCache(userId: string): void {
+    this.loreCache.delete(userId);
+  }
 
   /**
    * Generate cache key from user ID and message

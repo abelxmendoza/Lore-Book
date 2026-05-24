@@ -19,6 +19,8 @@ const humanizeExpressionMode = (mode: string): string => {
 import { ChatMemoryIndicator, type MemoryIndicator } from './ChatMemoryIndicator';
 import { ChatMemorySuggestion } from './ChatMemorySuggestion';
 import { DisambiguationPrompt, type DisambiguationOption } from './DisambiguationPrompt';
+import { MemoryCognitionPanel } from './MemoryCognitionPanel';
+import type { MemoryFeedbackEvent } from '../../hooks/useChatStream';
 
 export type ChatSource = {
   type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
@@ -61,6 +63,7 @@ export type Message = {
   isStreaming?: boolean;
   feedback?: 'positive' | 'negative' | null;
   isSystemMessage?: boolean;
+  cognitionFeedback?: MemoryFeedbackEvent;
 };
 
 type ChatMessageProps = {
@@ -276,6 +279,9 @@ export const ChatMessage = ({
                 onApprove={onApproveMemorySuggestion ? () => onApproveMemorySuggestion(message.memorySuggestion!.proposal_id) : undefined}
                 onDismiss={onDismissMemorySuggestion ? () => onDismissMemorySuggestion(message.memorySuggestion!.proposal_id) : undefined}
               />
+            )}
+            {!isUser && message.cognitionFeedback && (
+              <MemoryCognitionPanel feedback={message.cognitionFeedback} />
             )}
           </div>
 
