@@ -1,3 +1,4 @@
+import { runForAllActiveUsers } from "./workerUtils";
 import { logger } from '../logger';
 import { InterventionEngine } from '../services/intervention/interventionEngine';
 
@@ -25,24 +26,6 @@ export async function runInterventions(userId: string): Promise<void> {
  * Process interventions for all active users
  */
 export async function runInterventionsForAllUsers(): Promise<void> {
-  try {
-    logger.info('Running intervention worker for all users');
-
-    // TODO: Fetch active users from database
-    // For now, this is a placeholder
-    // const { data: users } = await supabaseAdmin
-    //   .from('users')
-    //   .select('id')
-    //   .eq('active', true);
-
-    // for (const user of users || []) {
-    //   await runInterventions(user.id);
-    // }
-
-    logger.info('Intervention worker for all users completed');
-  } catch (error) {
-    logger.error({ error }, 'Intervention worker for all users failed');
-    throw error;
-  }
+  await runForAllActiveUsers("interventions", runInterventions);
 }
 

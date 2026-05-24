@@ -1,3 +1,4 @@
+import { runForAllActiveUsers } from "./workerUtils";
 import { logger } from '../logger';
 import { GrowthEngine } from '../services/growth/growthEngine';
 import { GrowthStorage } from '../services/growth/growthStorage';
@@ -32,24 +33,6 @@ export async function runGrowth(userId: string): Promise<void> {
  * Process growth for all active users
  */
 export async function runGrowthForAllUsers(): Promise<void> {
-  try {
-    logger.info('Running growth worker for all users');
-
-    // TODO: Fetch active users from database
-    // For now, this is a placeholder
-    // const { data: users } = await supabaseAdmin
-    //   .from('users')
-    //   .select('id')
-    //   .eq('active', true);
-
-    // for (const user of users || []) {
-    //   await runGrowth(user.id);
-    // }
-
-    logger.info('Growth worker for all users completed');
-  } catch (error) {
-    logger.error({ error }, 'Growth worker for all users failed');
-    throw error;
-  }
+  await runForAllActiveUsers("growth", runGrowth);
 }
 

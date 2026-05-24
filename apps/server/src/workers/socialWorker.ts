@@ -1,3 +1,4 @@
+import { runForAllActiveUsers } from "./workerUtils";
 import { logger } from '../logger';
 import { SocialNetworkEngine } from '../services/social/socialNetworkEngine';
 import { SocialStorage } from '../services/social/socialStorage';
@@ -48,24 +49,6 @@ export async function runSocial(userId: string): Promise<void> {
  * Process social network for all active users
  */
 export async function runSocialForAllUsers(): Promise<void> {
-  try {
-    logger.info('Running social network worker for all users');
-
-    // TODO: Fetch active users from database
-    // For now, this is a placeholder
-    // const { data: users } = await supabaseAdmin
-    //   .from('users')
-    //   .select('id')
-    //   .eq('active', true);
-
-    // for (const user of users || []) {
-    //   await runSocial(user.id);
-    // }
-
-    logger.info('Social network worker for all users completed');
-  } catch (error) {
-    logger.error({ error }, 'Social network worker for all users failed');
-    throw error;
-  }
+  await runForAllActiveUsers("social", runSocial);
 }
 

@@ -1,3 +1,4 @@
+import { runForAllActiveUsers } from "./workerUtils";
 import { logger } from '../logger';
 import { HealthEngine } from '../services/health/healthEngine';
 import { HealthStorage } from '../services/health/healthStorage';
@@ -43,24 +44,6 @@ export async function runHealth(userId: string): Promise<void> {
  * Process health for all active users
  */
 export async function runHealthForAllUsers(): Promise<void> {
-  try {
-    logger.info('Running health worker for all users');
-
-    // TODO: Fetch active users from database
-    // For now, this is a placeholder
-    // const { data: users } = await supabaseAdmin
-    //   .from('users')
-    //   .select('id')
-    //   .eq('active', true);
-
-    // for (const user of users || []) {
-    //   await runHealth(user.id);
-    // }
-
-    logger.info('Health worker for all users completed');
-  } catch (error) {
-    logger.error({ error }, 'Health worker for all users failed');
-    throw error;
-  }
+  await runForAllActiveUsers("health", runHealth);
 }
 

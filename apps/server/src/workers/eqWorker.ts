@@ -1,3 +1,4 @@
+import { runForAllActiveUsers } from "./workerUtils";
 import { logger } from '../logger';
 import { EQEngine } from '../services/emotionalIntelligence/eqEngine';
 import { EQStorage } from '../services/emotionalIntelligence/eqStorage';
@@ -42,24 +43,6 @@ export async function runEQ(userId: string): Promise<void> {
  * Process EQ for all active users
  */
 export async function runEQForAllUsers(): Promise<void> {
-  try {
-    logger.info('Running EQ worker for all users');
-
-    // TODO: Fetch active users from database
-    // For now, this is a placeholder
-    // const { data: users } = await supabaseAdmin
-    //   .from('users')
-    //   .select('id')
-    //   .eq('active', true);
-
-    // for (const user of users || []) {
-    //   await runEQ(user.id);
-    // }
-
-    logger.info('EQ worker for all users completed');
-  } catch (error) {
-    logger.error({ error }, 'EQ worker for all users failed');
-    throw error;
-  }
+  await runForAllActiveUsers("eq", runEQ);
 }
 

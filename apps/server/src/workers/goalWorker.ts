@@ -1,3 +1,4 @@
+import { runForAllActiveUsers } from "./workerUtils";
 import { logger } from '../logger';
 import { GoalEngine } from '../services/goals/goalEngine';
 import { GoalStorage } from '../services/goals/goalStorage';
@@ -32,24 +33,6 @@ export async function runGoals(userId: string): Promise<void> {
  * Process goals for all active users
  */
 export async function runGoalsForAllUsers(): Promise<void> {
-  try {
-    logger.info('Running goal worker for all users');
-
-    // TODO: Fetch active users from database
-    // For now, this is a placeholder
-    // const { data: users } = await supabaseAdmin
-    //   .from('users')
-    //   .select('id')
-    //   .eq('active', true);
-
-    // for (const user of users || []) {
-    //   await runGoals(user.id);
-    // }
-
-    logger.info('Goal worker for all users completed');
-  } catch (error) {
-    logger.error({ error }, 'Goal worker for all users failed');
-    throw error;
-  }
+  await runForAllActiveUsers("goals", runGoals);
 }
 

@@ -1,3 +1,4 @@
+import { runForAllActiveUsers } from "./workerUtils";
 import { logger } from '../logger';
 import { LegacyEngine } from '../services/legacy/legacyEngine';
 import { LegacyStorage } from '../services/legacy/legacyStorage';
@@ -33,24 +34,6 @@ export async function runLegacy(userId: string): Promise<void> {
  * Process legacy for all active users
  */
 export async function runLegacyForAllUsers(): Promise<void> {
-  try {
-    logger.info('Running legacy worker for all users');
-
-    // TODO: Fetch active users from database
-    // For now, this is a placeholder
-    // const { data: users } = await supabaseAdmin
-    //   .from('users')
-    //   .select('id')
-    //   .eq('active', true);
-
-    // for (const user of users || []) {
-    //   await runLegacy(user.id);
-    // }
-
-    logger.info('Legacy worker for all users completed');
-  } catch (error) {
-    logger.error({ error }, 'Legacy worker for all users failed');
-    throw error;
-  }
+  await runForAllActiveUsers("legacy", runLegacy);
 }
 

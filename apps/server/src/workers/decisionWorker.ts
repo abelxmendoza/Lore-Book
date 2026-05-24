@@ -1,3 +1,4 @@
+import { runForAllActiveUsers } from "./workerUtils";
 import { logger } from '../logger';
 import { DecisionEngine } from '../services/decisions/decisionEngine';
 import { DecisionStorage } from '../services/decisions/decisionStorage';
@@ -32,24 +33,6 @@ export async function runDecisions(userId: string): Promise<void> {
  * Process decisions for all active users
  */
 export async function runDecisionsForAllUsers(): Promise<void> {
-  try {
-    logger.info('Running decision worker for all users');
-
-    // TODO: Fetch active users from database
-    // For now, this is a placeholder
-    // const { data: users } = await supabaseAdmin
-    //   .from('users')
-    //   .select('id')
-    //   .eq('active', true);
-
-    // for (const user of users || []) {
-    //   await runDecisions(user.id);
-    // }
-
-    logger.info('Decision worker for all users completed');
-  } catch (error) {
-    logger.error({ error }, 'Decision worker for all users failed');
-    throw error;
-  }
+  await runForAllActiveUsers("decisions", runDecisions);
 }
 

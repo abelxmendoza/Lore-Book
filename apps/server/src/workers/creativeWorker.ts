@@ -1,3 +1,4 @@
+import { runForAllActiveUsers } from "./workerUtils";
 import { logger } from '../logger';
 import { CreativeEngine } from '../services/creative/creativeEngine';
 import { CreativeStorage } from '../services/creative/creativeStorage';
@@ -46,24 +47,6 @@ export async function runCreative(userId: string): Promise<void> {
  * Process creative for all active users
  */
 export async function runCreativeForAllUsers(): Promise<void> {
-  try {
-    logger.info('Running creative worker for all users');
-
-    // TODO: Fetch active users from database
-    // For now, this is a placeholder
-    // const { data: users } = await supabaseAdmin
-    //   .from('users')
-    //   .select('id')
-    //   .eq('active', true);
-
-    // for (const user of users || []) {
-    //   await runCreative(user.id);
-    // }
-
-    logger.info('Creative worker for all users completed');
-  } catch (error) {
-    logger.error({ error }, 'Creative worker for all users failed');
-    throw error;
-  }
+  await runForAllActiveUsers("creative", runCreative);
 }
 
