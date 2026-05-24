@@ -277,6 +277,12 @@ if (process.env.DISABLE_ENGINE_SCHEDULER !== 'true') {
 
 const server = app.listen(config.port, () => {
   logger.info(`Lore Book API listening on ${config.port}`);
+  const aiMode = process.env.DEV_AI_FALLBACK === 'true'
+    ? '⚠️  AI Provider: FALLBACK MODE (DEV_AI_FALLBACK=true — no real inference)'
+    : config.openAiKey
+      ? '✅ AI Provider: OpenAI LIVE'
+      : '❌ AI Provider: NO KEY — requests will fail';
+  logger.info(aiMode);
 });
 
 server.on('error', (error: NodeJS.ErrnoException) => {

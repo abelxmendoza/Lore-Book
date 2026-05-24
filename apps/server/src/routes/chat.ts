@@ -175,6 +175,14 @@ router.post('/', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    if (isFallbackEnabled() && isFallbackError(error)) {
+      const reason = error instanceof Error ? error.message.substring(0, 80) : 'OpenAI unavailable';
+      return res.json({
+        answer: `[DEV FALLBACK — ${reason}]\n\nDev fallback active. Full AI pipeline intact; only the final OpenAI call is missing. Add a valid OPENAI_API_KEY to get real responses.`,
+        timestamp: new Date().toISOString(),
+        fallback: true,
+      });
+    }
     logger.error({ err: error }, 'Chat endpoint error');
     res.status(500).json({
       error: 'Failed to process chat message',

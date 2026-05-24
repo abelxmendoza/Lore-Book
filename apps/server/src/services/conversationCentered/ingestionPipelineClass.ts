@@ -14,6 +14,7 @@ import { entryEnrichmentService } from '../entryEnrichmentService';
 import { knowledgeTypeEngineService } from '../knowledgeTypeEngineService';
 import { irCompiler } from '../compiler/irCompiler';
 import { dependencyGraph } from '../compiler/dependencyGraph';
+import { memoryConsolidationService } from '../compiler/memoryConsolidationService';
 import { semanticConversionService } from './semanticConversion';
 import {
   linkContextualEvents,
@@ -922,6 +923,16 @@ export class ConversationIngestionPipeline {
 
           // Update dependency graph
           await dependencyGraph.updateDependencyGraph(ir);
+
+          // Consolidate IR → journal_entry (non-blocking — never delays chat response)
+          // This closes the cognition loop: every USER utterance becomes retrievable memory.
+          if (sender === 'USER') {
+            setImmediate(() => {
+              memoryConsolidationService.consolidateEntry(userId, ir.id).catch(err => {
+                logger.warn({ err, irId: ir.id, userId }, 'Memory consolidation failed; will retry via nightly sweep');
+              });
+            });
+          }
         } catch (error) {
           logger.warn({ error, utteranceId: utterance.id }, 'Failed to compile utterance to IR, continuing');
         }
@@ -1749,6 +1760,5 @@ export class ConversationIngestionPipeline {
       return { messageId, utteranceIds, unitIds };
     }
   }
-}
 }
 

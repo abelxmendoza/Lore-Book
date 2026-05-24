@@ -18,6 +18,9 @@ import {
 import { processChallengeResponse } from './conversationCentered/beliefChallenge/beliefChallengeResponseDetector';
 import { entityAttributeDetector } from './conversationCentered/entityAttributeDetector';
 import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
+import { ingestionQueue } from './ingestion/ingestionQueue';
+import { tokenBudgetService } from './chat/tokenBudgetService';
+import { compactionService } from './chat/compactionService';
 import { responseSafetyService } from './conversationCentered/responseSafetyService';
 import { tangentTransitionDetector, type TransitionAnalysis, type EmotionalState } from './conversationCentered/tangentTransitionDetector';
 import { correctionService } from './correctionService';
@@ -2059,10 +2062,38 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
       }
     }
 
-    // Prepare messages
+    // Apply server-side token budget — prevents silent context window overflow.
+    // ragContextText is a rough serialization of the context injected into systemPrompt.
+    const systemTokens = tokenBudgetService.estimateSystemPromptTokens(systemPrompt);
+    const ragTokens    = tokenBudgetService.estimateRagTokens(systemPrompt);
+    const { truncatedHistory, compactionNeeded, droppedTurns } =
+      tokenBudgetService.buildBudgetedHistory(
+        conversationHistory,
+        config.defaultModel,
+        ragTokens,
+        systemTokens
+      );
+
+    // Trigger async compaction for dropped turns (non-blocking)
+    if (compactionNeeded && droppedTurns > 0) {
+      const dropped = conversationHistory.slice(0, droppedTurns);
+      setImmediate(() => {
+        compactionService.compact(userId, sessionId, dropped, 'ROLLING').catch(err => {
+          logger.warn({ err, userId, sessionId }, 'Rolling compaction failed (non-critical)');
+        });
+      });
+    }
+
+    // Prepare messages with session memory block prepended if compactions exist
+    const sessionCompactions = await compactionService.getSessionCompactions(userId, sessionId);
+    const sessionMemoryBlock = compactionService.buildSessionMemoryBlock(sessionCompactions);
+    const finalSystemPrompt  = sessionMemoryBlock
+      ? `${systemPrompt}\n\n${sessionMemoryBlock}`
+      : systemPrompt;
+
     const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...conversationHistory.slice(-6),
+      { role: 'system' as const, content: finalSystemPrompt },
+      ...truncatedHistory,
       { role: 'user' as const, content: message }
     ];
 
@@ -2107,26 +2138,14 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
         // Set entryId for tracking and RL
         entryId = savedMessage.id;
 
-        // Fire-and-forget ingestion through pipeline (non-blocking)
-        // This will:
-        // 1. Save to conversation_messages
-        // 2. Split into utterances (handles tangents)
-        // 3. Extract semantic units (EXPERIENCE, FEELING, THOUGHT, etc.)
-        // 4. Create journal_entries from EXPERIENCE units
-        // 5. Assemble resolved_events
-        conversationIngestionPipeline
-          .ingestFromChatMessage(
-            userId,
-            savedMessage.id,
-            sessionId,
-            conversationHistory
-          )
-          .then(result => {
-            logger.debug({ userId, messageId: savedMessage.id }, 'Successfully ingested chat message');
-          })
-          .catch(err => {
-            logger.warn({ err, userId, messageId: savedMessage.id }, 'Failed to ingest chat message (non-blocking)');
-          });
+        // Enqueue ingestion — fully off the chat critical path.
+        // The queue handles retry (exponential backoff) and dead-letter persistence.
+        ingestionQueue.enqueue({
+          userId,
+          chatMessageId: savedMessage.id,
+          sessionId,
+          conversationHistory,
+        }, 'NORMAL');
 
         timelineUpdates.push('Message saved and queued for processing');
       }
@@ -2746,22 +2765,13 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
         if (result.data && result.data.id) {
           logger.debug({ userId, sessionId }, 'Saved assistant response');
           
-          // Fire-and-forget: Ingest AI response (for insights and connections)
-          // AI responses are marked with lower confidence and as interpretations
-          const { conversationIngestionPipeline } = await import('./conversationCentered/ingestionPipeline');
-          conversationIngestionPipeline
-            .ingestFromChatMessage(
-              userId,
-              result.data.id,
-              sessionId,
-              conversationHistory
-            )
-            .then(() => {
-              logger.debug({ userId, messageId: result.data.id }, 'Successfully ingested AI response');
-            })
-            .catch(err => {
-              logger.warn({ err, userId, messageId: result.data.id }, 'Failed to ingest AI response (non-blocking)');
-            });
+          // Enqueue AI response ingestion at LOW priority (user messages take precedence)
+          ingestionQueue.enqueue({
+            userId,
+            chatMessageId: result.data.id,
+            sessionId,
+            conversationHistory,
+          }, 'LOW');
         }
       })
       .catch(err => {

@@ -78,3 +78,8 @@ apps/web/Essence
 apps/web/should
 apps/web/vitest
 apps/web/server@0.1.0
+
+# DB snapshots
+*.dump
+__pycache__/
+supabase/.temp/

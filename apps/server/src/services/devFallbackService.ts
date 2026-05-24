@@ -35,6 +35,9 @@ export function isFallbackError(error: unknown): boolean {
     msg.includes('429') ||
     msg.includes('quota') ||
     msg.includes('insufficient_quota') ||
+    msg.includes('invalid_api_key') ||
+    msg.includes('Incorrect API key') ||
+    msg.includes('401') ||
     msg.includes('timeout') ||
     msg.includes('ETIMEDOUT') ||
     msg.includes('ECONNRESET') ||
