@@ -56,9 +56,7 @@ export const ChatFirstInterface = () => {
     loadingProgress,
     streamingMessageId,
     sources,
-    messagesEndRef,
     clearConversation,
-    scrollToBottom,
     messageRefs,
     registerMessageRef,
   } = useChat();
@@ -255,7 +253,6 @@ export const ChatFirstInterface = () => {
 
   const handleSearchResultClick = (messageId: string) => {
     setSearchMessageId(messageId);
-    scrollToBottom();
   };
 
   return (
@@ -378,8 +375,6 @@ export const ChatFirstInterface = () => {
               <ChatLoadingPulse stage={loadingStage} progress={loadingProgress} />
             </div>
           )}
-
-          <div ref={messagesEndRef} className="flex-shrink-0" />
 
           {messages.length > 0 && (
             <div className="flex-shrink-0">

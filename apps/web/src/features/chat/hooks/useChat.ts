@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useChatStream } from '../../../hooks/useChatStream';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
@@ -62,20 +62,7 @@ export const useChat = () => {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [sources, setSources] = useState<ChatSource[]>([]);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Auto-scroll to bottom (guard for JSDOM: scrollIntoView may be missing or not a function)
-  const scrollToBottom = useCallback(() => {
-    const el = messagesEndRef.current;
-    if (el && typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, []);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, streamingMessageId, scrollToBottom]);
 
   // Send message
   const sendMessage = useCallback(async (messageText: string) => {
@@ -345,9 +332,7 @@ export const useChat = () => {
     loadingProgress,
     streamingMessageId,
     sources,
-    messagesEndRef,
     clearConversation,
-    scrollToBottom,
     messageRefs: conversationStore.messageRefs,
     registerMessageRef: conversationStore.registerMessageRef,
   };
