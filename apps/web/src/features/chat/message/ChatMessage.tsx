@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { ChatLoadingDots } from '../components/ChatLoadingDots';
 import { parseConnections } from '../../../utils/parseConnections';
+import { NarrativeStoryPanel } from '../../../components/chat/NarrativeStoryPanel';
+import { MemoryCognitionPanel } from '../../../components/chat/MemoryCognitionPanel';
+import { CognitionMetaPanel } from '../../../components/chat/CognitionMetaPanel';
+import { ModeAttributionBadge } from '../../../components/chat/ModeAttributionBadge';
 
 const humanizeExpressionMode = (mode: string): string => {
   const modeMap: Record<string, string> = {
@@ -37,6 +40,8 @@ export const SOURCE_TYPE_LABELS: Record<string, string> = {
 
 import type { RecallChatPayload } from './recallTypes';
 import { EntityClarificationChip, type EntityAmbiguity } from './EntityClarificationChip';
+import { SilenceMessage } from './SilenceMessage';
+import { RecallMessage } from './RecallMessage';
 
 export type Message = {
   id: string;
@@ -88,10 +93,17 @@ export type Message = {
     skippable: boolean;
     explanation: string;
   };
+  narrativeStory?: import('../../../components/chat/NarrativeStoryPanel').StoryOfSelf;
+  narrativeEntryCount?: number;
+  modeDecision?: { mode: string; confidence: number; reasoning: string };
+  ragStats?: { sourceCount: number; cacheHit: boolean; retrievalMs: number; contextItems: number };
+  activePersona?: string;
+  cognitionFeedback?: import('../../../hooks/useChatStream').MemoryFeedbackEvent;
 };
 
 type ChatMessageProps = {
   message: Message;
+  showCognitiveTrace?: boolean;
   onCopy?: () => void;
   onRegenerate?: () => void;
   onEdit?: () => void;
@@ -102,6 +114,7 @@ type ChatMessageProps = {
 
 export const ChatMessage = ({
   message,
+  showCognitiveTrace = false,
   onCopy,
   onRegenerate,
   onEdit,
@@ -534,6 +547,35 @@ export const ChatMessage = ({
                 )}
               </p>
             </div>
+          )}
+
+          {/* Mode attribution — always-visible subtle badge */}
+          {!isUser && message.modeDecision && (
+            <div className="mt-2">
+              <ModeAttributionBadge modeDecision={message.modeDecision} />
+            </div>
+          )}
+
+          {/* Cognitive Observability Panels */}
+          {!isUser && (
+            <CognitionMetaPanel
+              modeDecision={message.modeDecision}
+              ragStats={message.ragStats}
+              activePersona={message.activePersona}
+              connections={message.connections}
+              visible={showCognitiveTrace}
+            />
+          )}
+          {!isUser && message.cognitionFeedback && (
+            <MemoryCognitionPanel feedback={message.cognitionFeedback} />
+          )}
+
+          {/* Narrative Story Panel */}
+          {!isUser && message.narrativeStory && (
+            <NarrativeStoryPanel
+              story={message.narrativeStory}
+              entryCount={message.narrativeEntryCount}
+            />
           )}
           </div>
         </div>

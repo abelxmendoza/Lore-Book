@@ -19,6 +19,7 @@ export type ChatMode =
   | 'EMOTIONAL_EXISTENTIAL'  // Mode 1: Thoughts, fears, insecurities
   | 'MEMORY_RECALL'          // Mode 2: Factual questions
   | 'NARRATIVE_RECALL'       // Mode 3: Complex stories
+  | 'NARRATIVE_STORY'        // Mode 3b: Build/tell a narrative ("tell me the story of X")
   | 'EXPERIENCE_INGESTION'   // Mode 4: Lived experiences (macro: duration, context, narrative arc)
   | 'ACTION_LOG'             // Mode 5: Atomic actions (micro: verb-forward, instant)
   | 'NEEDS_CLARIFICATION'    // Ambiguous milestone/achievement: ask what they mean before ingesting
@@ -136,6 +137,15 @@ class ModeRouterService {
       };
     }
 
+    // NARRATIVE_STORY: Build/tell a narrative about a topic
+    if (this.isNarrativeStory(text)) {
+      return {
+        mode: 'NARRATIVE_STORY',
+        confidence: 0.9,
+        reasoning: 'Narrative story build request detected',
+      };
+    }
+
     // NARRATIVE_RECALL: Story questions
     if (this.isNarrativeRecall(text)) {
       return {
@@ -216,6 +226,24 @@ class ModeRouterService {
     ];
     
     return factualPatterns.some(p => p.test(text));
+  }
+
+  /**
+   * Check if message explicitly requests a narrative to be BUILT/TOLD
+   * e.g. "tell me the story of", "write the story of", "give me a narrative about"
+   */
+  private isNarrativeStory(text: string): boolean {
+    const storyPatterns = [
+      /^(tell me|write|give me|show me) (a |the |my )?(story|narrative|account) (of|about)/i,
+      /^(narrate|tell) (my|the|a) (story|journey|arc)/i,
+      /^what'?s? (my|the) story (of|with|about|around)/i,
+      /^(build|create|generate|construct|craft|write) (me )?(a |the |my )?(story|narrative|arc)/i,
+      /^(put together|pull together) (a |the |my )?(story|narrative|arc)/i,
+      /^(give|write|build|tell) me (my|the|a) (life story|origin story|full story|whole story|story so far)/i,
+      /\b(my story|my narrative|my arc|my journey)\b.*\?$/i,
+      /^(what'?s?|tell me) (the )?(narrative|story|arc) (of|behind|about) (my|the)/i,
+    ];
+    return storyPatterns.some(p => p.test(text));
   }
 
   /**
@@ -304,6 +332,7 @@ Modes:
 2. EMOTIONAL_EXISTENTIAL - Thoughts, fears, insecurities, existential questions. Short, present-tense, clearly emotional. Example: "I feel behind", "Do you think I can get this job?" NOT for: greetings, or frustration about the app ("it's not working", "you only say X").
 3. MEMORY_RECALL - Specific factual questions: "What did I eat?", "When did X happen?", "Do you remember Y?"
 4. NARRATIVE_RECALL - Complex story questions: "What happened with X?", "Tell me about Y", "What's the story behind Z?"
+7. NARRATIVE_STORY - Explicit request to BUILD/TELL a narrative: "tell me the story of my last year", "write the story of my growth", "give me a narrative about my relationship with X", "what's my story?", "narrate my journey"
 5. EXPERIENCE_INGESTION - User describing a time-bounded experience (party, night out, trip, event with duration, multiple people, location, story arc). Example: "Last night I went to a show, met these people, things got weird..." NOT: "I got the chat working" or short updates.
 6. ACTION_LOG - ONLY for explicit save/log/record commands: "Log this", "Save this", "Remember this", "Journal entry: ...", "Memory: ...", "Lore note: ...". NOT for first-person narrative sentences. NOT for "I thought", "I felt", "I noticed", "I realized", "I decided", or any normal conversational sentence.
 
@@ -332,7 +361,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {

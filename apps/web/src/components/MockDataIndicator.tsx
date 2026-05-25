@@ -33,7 +33,7 @@ export function MockDataIndicator() {
   if (!isMockDataEnabled || dismissed) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-in slide-in-from-bottom-5 fade-in duration-300">
+    <div className="fixed bottom-28 right-4 z-50 max-w-sm animate-in slide-in-from-bottom-5 fade-in duration-300">
       <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-3 shadow-lg backdrop-blur-sm">
         <div className="flex items-start gap-2">
           <Database className="h-4 w-4 text-yellow-400 mt-0.5 flex-shrink-0" />

@@ -2,6 +2,7 @@ import * as cron from 'node-cron';
 
 import { logger } from '../logger';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { memoryConsolidationService } from '../services/compiler/memoryConsolidationService';
 
 import { EngineOrchestrator } from './orchestrator';
 
@@ -47,6 +48,13 @@ export function startEngineScheduler(): void {
       await Promise.all(promises);
 
       logger.info({ userCount: users.length }, 'Completed scheduled engine runs');
+
+      // Sweep any entry_ir rows stuck in PENDING (pipeline failed mid-flight, server restarted, etc.)
+      for (const user of users as Array<{ id: string }>) {
+        memoryConsolidationService.sweepPendingForUser(user.id).catch((err) => {
+          logger.warn({ err, userId: user.id }, 'IR consolidation sweep failed for user (non-critical)');
+        });
+      }
     } catch (error) {
       logger.error({ error }, 'Error in scheduled engine run');
     }

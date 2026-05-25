@@ -92,8 +92,8 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
 
   const [useMockData, setUseMockDataState] = useState(() => {
-    // Check URL parameter first (for easy enabling: ?mockData=true)
     if (typeof window !== 'undefined') {
+      // URL parameter overrides everything (?mockData=true for demo mode)
       const urlParams = new URLSearchParams(window.location.search);
       const urlMockData = urlParams.get('mockData');
       if (urlMockData === 'true') {
@@ -103,8 +103,20 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
         setGlobalMockDataEnabled(false);
         return false;
       }
-      
-      // Check localStorage second
+
+      // If a Supabase session exists in localStorage, never start with mock data.
+      // This prevents the race condition where data hooks fire with mock data
+      // before the auth effect turns it off.
+      const hasSession = Object.keys(localStorage).some(
+        (k) => k.startsWith('sb-') && k.endsWith('-auth-token')
+      );
+      if (hasSession) {
+        localStorage.setItem(STORAGE_KEY, 'false');
+        setGlobalMockDataEnabled(false);
+        return false;
+      }
+
+      // For unauthenticated users, respect saved preference (demo mode toggle)
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved !== null) {
         const value = saved === 'true';
@@ -112,10 +124,9 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
         return value;
       }
     }
-    // Default: use env var or dev mode (default to true in dev for showcasing)
-    const defaultValue = config.dev.allowMockData ?? config.env.isDevelopment;
-    setGlobalMockDataEnabled(defaultValue);
-    return defaultValue;
+    // Unauthenticated default: off. Demo mode must be opted in explicitly.
+    setGlobalMockDataEnabled(false);
+    return false;
   });
 
   const [isMockDataActive, setIsMockDataActive] = useState(false);
@@ -143,20 +154,25 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
           setBackendUnavailable(false);
         } else {
           setBackendUnavailable(true);
-          setUseMockDataState(true);
-          setGlobalMockDataEnabled(true);
+          // Never enable mock data for authenticated users — they should always see real errors
+          if (!user) {
+            setUseMockDataState(true);
+            setGlobalMockDataEnabled(true);
+          }
         }
       })
       .catch(() => {
         clearTimeout(timeoutId);
         setBackendUnavailable(true);
-        setUseMockDataState(true);
-        setGlobalMockDataEnabled(true);
+        if (!user) {
+          setUseMockDataState(true);
+          setGlobalMockDataEnabled(true);
+        }
       })
       .finally(() => {
         healthCheckInFlight.current = false;
       });
-  }, [setBackendUnavailable]);
+  }, [setBackendUnavailable, user]);
 
   // On mount: run initial health check
   useEffect(() => {

@@ -1,4 +1,4 @@
-import type { Message } from '../components/chat/ChatMessage';
+import type { Message } from '../features/chat/message/ChatMessage';
 
 export const exportConversationAsMarkdown = (messages: Message[]): string => {
   const date = new Date().toISOString().split('T')[0];

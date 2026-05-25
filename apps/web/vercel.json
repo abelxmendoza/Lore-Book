@@ -22,8 +22,9 @@
   ],
   "env": {
     "NODE_VERSION": "20",
-    "VITE_USE_MOCK_DATA": "true",
-    "VITE_SHOW_DEV_NOTICE": "true"
+    "VITE_USE_MOCK_DATA": "false",
+    "VITE_SHOW_DEV_NOTICE": "false",
+    "VITE_SUPABASE_URL": "https://mwtyckyguduigflpnqss.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13dHlja3lndWR1aWdmbHBucXNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMxODEsImV4cCI6MjA5NTIzOTE4MX0.Fz3GF5MyR9LYC2aPPRI42lA1DnSd0AXJZwcs8tO01Zo"
   }
 }
-

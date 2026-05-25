@@ -190,7 +190,6 @@ setTimeout(() => {
   }
 }, 1000);
 
-import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 
@@ -285,26 +284,24 @@ if (!rootElement) {
     fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'main.tsx:58',message:'Attempting to render React app',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime',hypothesisId:'A'})}).catch(()=>{});
     // #endregion
     createRoot(rootElement).render(
-      <StrictMode>
-        <ErrorBoundary>
-          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <MockDataProvider>
-              <GuestProvider>
-                <EntityModalProvider>
-                  <CurrentContextProvider>
-                    <SoulProfileChatProvider>
-                      <DevelopmentNotice />
-                      <BackendUnavailableBanner />
-                      <Router />
-                      <MockDataIndicator />
-                    </SoulProfileChatProvider>
-                  </CurrentContextProvider>
-                </EntityModalProvider>
-              </GuestProvider>
-            </MockDataProvider>
-          </BrowserRouter>
-        </ErrorBoundary>
-      </StrictMode>
+      <ErrorBoundary>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <MockDataProvider>
+            <GuestProvider>
+              <EntityModalProvider>
+                <CurrentContextProvider>
+                  <SoulProfileChatProvider>
+                    <DevelopmentNotice />
+                    <BackendUnavailableBanner />
+                    <Router />
+                    <MockDataIndicator />
+                  </SoulProfileChatProvider>
+                </CurrentContextProvider>
+              </EntityModalProvider>
+            </GuestProvider>
+          </MockDataProvider>
+        </BrowserRouter>
+      </ErrorBoundary>
     );
     console.error('[Main] React app mounted successfully'); // Use console.error so it's not stripped in production
     // Store success log in localStorage

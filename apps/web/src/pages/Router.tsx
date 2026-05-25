@@ -22,6 +22,7 @@ const Terms = lazy(() => import('../routes/Terms'));
 const PrivacyPolicy = lazy(() => import('../routes/PrivacyPolicy'));
 const UserGuide = lazy(() => import('../components/guide/UserGuide'));
 const Perceptions = lazy(() => import('../routes/Perceptions'));
+const WhatAIKnows = lazy(() => import('../routes/WhatAIKnows'));
 
 // Lazy load landing pages
 const Landing = lazy(() => import('../routes/Landing'));
@@ -347,6 +348,16 @@ export const Router = () => {
             <AuthGate><UserGuide /></AuthGate>
           </LazyRoute>
         } 
+      />
+
+      {/* Identity custody */}
+      <Route
+        path="/what-ai-knows"
+        element={
+          <LazyRoute>
+            <AuthGate><WhatAIKnows /></AuthGate>
+          </LazyRoute>
+        }
       />
 
       {/* Admin Routes - Protected in production */}

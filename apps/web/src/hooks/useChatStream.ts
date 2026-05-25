@@ -71,7 +71,8 @@ export const useChatStream = () => {
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string },
     currentContext?: CurrentContext,
     soulProfileContext?: SoulProfileContext | null,
-    onMemoryFeedback?: (feedback: MemoryFeedbackEvent) => void
+    onMemoryFeedback?: (feedback: MemoryFeedbackEvent) => void,
+    threadId?: string
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -98,6 +99,7 @@ export const useChatStream = () => {
         body: JSON.stringify({
           message,
           conversationHistory,
+          ...(threadId ? { threadId } : {}),
           ...(entityContext ? { entityContext } : {}),
           ...(currentContext && currentContext.kind !== 'none' ? { currentContext } : {}),
           ...(soulProfileContext && (soulProfileContext.lastReferencedInsightId || ((soulProfileContext.lastSurfacedInsights?.length ?? 0) > 0)) ? { soulProfileContext } : {})

@@ -8,6 +8,7 @@ type ChatMessageListProps = {
   streamingMessageId?: string | null;
   searchMessageId?: string | null;
   messageRefs: Map<string, HTMLDivElement>;
+  showCognitiveTrace?: boolean;
   onCopy?: (messageId: string) => void;
   onRegenerate?: (messageId: string) => void;
   onEdit?: (messageId: string) => void;
@@ -22,6 +23,7 @@ export const ChatMessageList = ({
   streamingMessageId,
   searchMessageId,
   messageRefs,
+  showCognitiveTrace = false,
   onCopy,
   onRegenerate,
   onEdit,
@@ -32,6 +34,12 @@ export const ChatMessageList = ({
 }: ChatMessageListProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const groupedMessages = groupMessagesByDate(messages);
+
+  // Scroll to bottom when messages change (new message, streaming update, thread switch)
+  useEffect(() => {
+    if (!containerRef.current || messages.length === 0) return;
+    containerRef.current.scrollTop = containerRef.current.scrollHeight;
+  }, [messages]);
 
   // Scroll to search result
   useEffect(() => {
@@ -74,6 +82,7 @@ export const ChatMessageList = ({
               >
                 <ChatMessage
                   message={message}
+                  showCognitiveTrace={showCognitiveTrace}
                   onCopy={onCopy ? () => onCopy(message.id) : undefined}
                   onRegenerate={message.role === 'assistant' && onRegenerate ? () => onRegenerate(message.id) : undefined}
                   onEdit={message.role === 'user' && onEdit ? () => onEdit(message.id) : undefined}

@@ -19,6 +19,7 @@ import { config } from '../../config';
 import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
 import { supabaseAdmin } from '../supabaseClient';
+import { truthStateFromConsolidation } from '../provenance';
 
 import type { EntryIR, KnowledgeType } from './types';
 
@@ -191,6 +192,7 @@ class MemoryConsolidationService {
           canon_status:          ir.canon?.status,
           canon_confidence:      ir.canon?.confidence,
           ir_confidence:         ir.confidence,
+          truth_state:           truthStateFromConsolidation(ir.confidence, ir.canon?.status ?? 'CANON'),
           compiler_version:      (ir.compiler_flags as Record<string, unknown>)?.compilation_version ?? 1,
           consolidated_at:       new Date().toISOString(),
           entity_ids:            Array.isArray(ir.entities)

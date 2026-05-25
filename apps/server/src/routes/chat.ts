@@ -1,9 +1,8 @@
 import { Router } from 'express';
-import type { Response, NextFunction } from 'express';
 import { z } from 'zod';
 
 import { logger } from '../logger';
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { rateLimitMiddleware } from '../middleware/rateLimit';
 import { checkAiRequestLimit } from '../middleware/subscription';
 import { omegaChatService } from '../services/omegaChatService';
@@ -47,39 +46,6 @@ const chatSchema = z.object({
   currentContext: currentContextSchema,
   soulProfileContext: soulProfileContextSchema
 });
-
-// Optional auth middleware for testing
-const optionalAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-  // If DISABLE_AUTH_FOR_DEV is set, use dev user
-  const isDevelopment = process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
-  const allowDevBypass = isDevelopment && process.env.DISABLE_AUTH_FOR_DEV === 'true';
-  
-  if (allowDevBypass && !req.user) {
-    req.user = {
-      id: '00000000-0000-0000-0000-000000000000',
-      email: 'dev@example.com',
-      lastSignInAt: new Date().toISOString()
-    };
-    return next();
-  }
-  
-  // Try to authenticate, but don't fail if no auth
-  try {
-    await requireAuth(req, res, () => next());
-  } catch {
-    // If auth fails, use dev user for testing
-    if (isDevelopment) {
-      req.user = {
-        id: '00000000-0000-0000-0000-000000000000',
-        email: 'dev@example.com',
-        lastSignInAt: new Date().toISOString()
-      };
-      next();
-    } else {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-  }
-};
 
 // Streaming endpoint
 router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {

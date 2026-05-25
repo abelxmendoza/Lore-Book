@@ -3,6 +3,8 @@
 // Purpose: API endpoints for conversation-first architecture
 // =====================================================
 
+import { randomUUID } from 'crypto';
+
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -1887,6 +1889,166 @@ router.post(
       updated: true, // Indicates updates may have been applied
       metadata: response.metadata
     });
+  })
+);
+
+/**
+ * POST /api/conversation/threads/:id/title
+ * Auto-generate a semantic title from the first few messages.
+ * Called once by the client after the first AI response completes.
+ */
+router.post(
+  '/threads/:id/title',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const schema = z.object({
+      messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })),
+      entities: z.array(z.string()).optional(),
+      modeDecision: z.string().optional(),
+    });
+    const body = schema.parse(req.body);
+
+    const { conversationTitleService } = await import('../services/chat/conversationTitleService');
+    const result = await conversationTitleService.generateTitle({
+      userId,
+      threadId: id,
+      messages: body.messages,
+      entities: body.entities,
+      modeDecision: body.modeDecision,
+    });
+
+    res.json({ success: true, title: result.title, subtitle: result.subtitle });
+  })
+);
+
+/**
+ * PATCH /api/conversation/threads/:id/title
+ * Manual rename — marks titleSource: 'user' so auto-generation is suppressed forever.
+ */
+router.patch(
+  '/threads/:id/title',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const { title } = z.object({ title: z.string().min(1).max(120) }).parse(req.body);
+
+    const { conversationTitleService } = await import('../services/chat/conversationTitleService');
+    await conversationTitleService.renameTitle(userId, id, title);
+
+    res.json({ success: true, title });
+  })
+);
+
+/**
+ * POST /api/conversation/threads
+ * Create a new conversation session (client may supply its own UUID)
+ */
+router.post(
+  '/threads',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const schema = z.object({
+      id: z.string().uuid().optional(),
+      title: z.string().optional(),
+    });
+    const body = schema.parse(req.body);
+    const userId = req.user!.id;
+
+    const id = body.id ?? randomUUID();
+    const now = new Date().toISOString();
+
+    const { data, error } = await supabaseAdmin
+      .from('conversation_sessions')
+      .insert({
+        id,
+        user_id: userId,
+        title: body.title ?? 'New chat',
+        started_at: now,
+        metadata: { messages: [] },
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ success: true, thread: data });
+  })
+);
+
+/**
+ * PATCH /api/conversation/threads/:id
+ * Update a thread's title and/or stored messages
+ */
+router.patch(
+  '/threads/:id',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    const schema = z.object({
+      title: z.string().optional(),
+      messages: z.array(z.any()).optional(),
+    });
+    const body = schema.parse(req.body);
+
+    const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.title !== undefined) updatePayload.title = body.title;
+    if (body.messages !== undefined) {
+      // Merge messages into existing metadata so we don't clobber other keys
+      // (e.g. chat_session_id set by older ingestion paths).
+      const { data: existing } = await supabaseAdmin
+        .from('conversation_sessions')
+        .select('metadata')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .single();
+      const existingMeta = (existing?.metadata as Record<string, unknown>) ?? {};
+      updatePayload.metadata = { ...existingMeta, messages: body.messages };
+    }
+
+    const { error } = await supabaseAdmin
+      .from('conversation_sessions')
+      .update(updatePayload)
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    res.json({ success: true });
+  })
+);
+
+/**
+ * DELETE /api/conversation/threads/:id
+ * Delete a conversation session and its messages
+ */
+router.delete(
+  '/threads/:id',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id } = req.params;
+    const userId = req.user!.id;
+
+    await supabaseAdmin
+      .from('conversation_messages')
+      .delete()
+      .eq('session_id', id)
+      .eq('user_id', userId);
+
+    const { error } = await supabaseAdmin
+      .from('conversation_sessions')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    res.json({ success: true });
   })
 );
 

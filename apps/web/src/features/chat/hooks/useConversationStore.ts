@@ -1,73 +1,31 @@
 import { useState, useCallback, useRef } from 'react';
 import type { Message } from '../message/ChatMessage';
 
-const CONVERSATION_STORAGE_KEY = 'lorekeeper_chat_conversation';
-
+// Pure in-memory message state.
+// Persistence is handled exclusively by useChatThreads (DB) and useChatThreads.persistLocal (guest localStorage).
+// This hook intentionally does NOT touch localStorage — that was a dead second authority.
 export const useConversationStore = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // Load from localStorage on mount
-  const loadConversation = useCallback(() => {
-    try {
-      const stored = localStorage.getItem(CONVERSATION_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setMessages(parsed.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp)
-        })));
-      }
-    } catch (error) {
-      console.error('Failed to load conversation:', error);
-    }
-  }, []);
-
-  // Save to localStorage
-  const saveConversation = useCallback((msgs: Message[]) => {
-    try {
-      localStorage.setItem(CONVERSATION_STORAGE_KEY, JSON.stringify(msgs));
-    } catch (error) {
-      console.error('Failed to save conversation:', error);
-    }
-  }, []);
-
-  // Clear conversation
   const clearConversation = useCallback(() => {
     setMessages([]);
-    localStorage.removeItem(CONVERSATION_STORAGE_KEY);
   }, []);
 
-  // Add message
   const addMessage = useCallback((message: Message) => {
-    setMessages((prev) => {
-      const updated = [...prev, message];
-      saveConversation(updated);
-      return updated;
-    });
-  }, [saveConversation]);
+    setMessages((prev) => [...prev, message]);
+  }, []);
 
-  // Update message
   const updateMessage = useCallback((messageId: string, updates: Partial<Message>) => {
-    setMessages((prev) => {
-      const updated = prev.map((msg) =>
-        msg.id === messageId ? { ...msg, ...updates } : msg
-      );
-      saveConversation(updated);
-      return updated;
-    });
-  }, [saveConversation]);
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === messageId ? { ...msg, ...updates } : msg))
+    );
+  }, []);
 
-  // Remove message
   const removeMessage = useCallback((messageId: string) => {
-    setMessages((prev) => {
-      const updated = prev.filter((msg) => msg.id !== messageId);
-      saveConversation(updated);
-      return updated;
-    });
-  }, [saveConversation]);
+    setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+  }, []);
 
-  // Register message ref
   const registerMessageRef = useCallback((messageId: string, element: HTMLDivElement | null) => {
     if (element) {
       messageRefs.current.set(messageId, element);
@@ -80,12 +38,10 @@ export const useConversationStore = () => {
     messages,
     setMessages,
     messageRefs,
-    loadConversation,
     clearConversation,
     addMessage,
     updateMessage,
     removeMessage,
-    registerMessageRef
+    registerMessageRef,
   };
 };
-

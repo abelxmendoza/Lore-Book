@@ -8,40 +8,48 @@ import type { CurrentContext, SoulProfileContext } from '../types/currentContext
 import type { ChatContextExtension } from '../types/timelineInsight';
 import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/keywordDetector';
 
-import { autopilotService } from './autopilotService';
-import { chapterService } from './chapterService';
 import {
   isBeliefChallengeAllowed,
   evaluateBelief,
   generateBeliefChallenge,
 } from './conversationCentered/beliefChallenge';
-import { processChallengeResponse } from './conversationCentered/beliefChallenge/beliefChallengeResponseDetector';
-import { entityAttributeDetector } from './conversationCentered/entityAttributeDetector';
 import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
 import { ingestionQueue } from './ingestion/ingestionQueue';
 import { tokenBudgetService } from './chat/tokenBudgetService';
 import { compactionService } from './chat/compactionService';
 import { responseSafetyService } from './conversationCentered/responseSafetyService';
 import { tangentTransitionDetector, type TransitionAnalysis, type EmotionalState } from './conversationCentered/tangentTransitionDetector';
-import { correctionService } from './correctionService';
 import { entityAmbiguityService } from './entityAmbiguityService';
-import { entityMeaningDriftService } from './entityMeaningDriftService';
 import { essenceProfileService } from './essenceProfileService';
 import { essenceRefinementEngine } from './essenceRefinement';
-import { hqiService } from './hqiService';
 import { intentDetectionService } from './intentDetectionService';
 import { locationService } from './locationService';
 import { memoirService } from './memoirService';
-import { memoryGraphService } from './memoryGraphService';
-import { memoryReviewQueueService } from './memoryReviewQueueService';
-import { memoryService } from './memoryService';
-import { omegaMemoryService } from './omegaMemoryService';
-import { orchestratorService } from './orchestratorService';
 import { peoplePlacesService } from './peoplePlacesService';
 import { perceptionService } from './perceptionService';
-import { perspectiveService } from './perspectiveService';
 import { ragPacketCacheService } from './ragPacketCacheService';
 import { buildRAGPacket as _buildRAGPacket } from './chat/ragBuilderService';
+import {
+  buildSystemPrompt as _buildSystemPrompt,
+  buildEssenceContext as _buildEssenceContext,
+  extractIdentityFromChatMessage as _extractIdentityFromChatMessage,
+  buildIdentityCoreContext as _buildIdentityCoreContext,
+  resolveCurrentFocusLine as _resolveCurrentFocusLine,
+} from './chat/systemPromptBuilder';
+import {
+  checkContinuity as _checkContinuity,
+  findConnections as _findConnections,
+  generateCitations as _generateCitations,
+  detectArchivistIntent as _detectArchivistIntent,
+  mightBeRefinement as _mightBeRefinement,
+  getRecentInsights as _getRecentInsights,
+  getStrategicGuidance as _getStrategicGuidance,
+} from './chat/chatAnalysisHelpers';
+import {
+  getOrCreateChatSession as _getOrCreateChatSession,
+  detectMemorySuggestion as _detectMemorySuggestion,
+  ingestMessageWithContext as _ingestMessageWithContext,
+} from './chat/chatPersistenceService';
 import { ChatPersonaRL } from './reinforcementLearning/chatPersonaRL';
 import { supabaseAdmin } from './supabaseClient';
 import { taskEngineService } from './taskEngineService';
@@ -145,7 +153,6 @@ export type StreamingChatResponse = {
     activePersona?: string;
     sessionId?: string;
     messageId?: string;
-    meaningDriftPrompt?: string;
   };
 };
 
@@ -264,46 +271,7 @@ class OmegaChatService {
     extractedDates: Array<{ date: string; context: string; precision?: string; confidence?: number }>,
     orchestratorSummary: any
   ): Promise<string[]> {
-    const warnings: string[] = [];
-    
-    try {
-      const continuity = orchestratorSummary?.continuity;
-      if (continuity?.conflicts && continuity.conflicts.length > 0) {
-        continuity.conflicts.forEach((conflict: any) => {
-          warnings.push(`Continuity issue: ${conflict.description || conflict.detail || 'Potential conflict detected'}`);
-        });
-      }
-
-      // Check for date conflicts
-      const recentEntries = (orchestratorSummary?.timeline?.events || []).slice(0, 50);
-      for (const dateInfo of extractedDates) {
-        try {
-          const date = new Date(dateInfo.date);
-          if (isNaN(date.getTime())) continue;
-          
-          const conflictingEntries = recentEntries.filter((entry: any) => {
-            try {
-              const entryDate = new Date(entry.date);
-              if (isNaN(entryDate.getTime())) return false;
-              const daysDiff = Math.abs((date.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
-              return daysDiff < 1 && entry.content?.toLowerCase().includes(dateInfo.context.toLowerCase());
-            } catch {
-              return false;
-            }
-          });
-
-          if (conflictingEntries.length > 0) {
-            warnings.push(`Potential conflict: ${dateInfo.context} on ${dateInfo.date} may overlap with existing entries`);
-          }
-        } catch (error) {
-          logger.debug({ error, dateInfo }, 'Failed to check date conflict');
-        }
-      }
-    } catch (error) {
-      logger.warn({ error }, 'Failed to check continuity, continuing without warnings');
-    }
-
-    return warnings;
+    return _checkContinuity(userId, message, extractedDates, orchestratorSummary);
   }
 
   /**
@@ -316,68 +284,14 @@ class OmegaChatService {
     hqiResults: any[],
     sources: ChatSource[]
   ): Promise<string[]> {
-    const connections: string[] = [];
-
-    // HQI connections
-    if (hqiResults.length > 0) {
-      connections.push(`Found ${hqiResults.length} semantically related memories via HQI`);
-    }
-
-    // Character connections
-    const mentionedCharacters = orchestratorSummary.characters.filter((char: any) =>
-      message.toLowerCase().includes((char.character.name || '').toLowerCase())
-    );
-    if (mentionedCharacters.length > 0) {
-      connections.push(`Mentioned ${mentionedCharacters.length} character${mentionedCharacters.length > 1 ? 's' : ''}: ${mentionedCharacters.map((c: any) => c.character.name).join(', ')}`);
-    }
-
-    // Fabric neighbors
-    const fabricSources = sources.filter(s => s.type === 'fabric');
-    if (fabricSources.length > 0) {
-      connections.push(`Found ${fabricSources.length} related memories through Memory Fabric`);
-    }
-
-    // Chapter connections
-    const chapters = orchestratorSummary.timeline.arcs || [];
-    if (chapters.length > 0) {
-      const relevantChapters = chapters.filter((ch: any) =>
-        message.toLowerCase().includes((ch.title || '').toLowerCase())
-      );
-      if (relevantChapters.length > 0) {
-        connections.push(`Related to ${relevantChapters.length} chapter${relevantChapters.length > 1 ? 's' : ''}: ${relevantChapters.map((c: any) => c.title).join(', ')}`);
-      }
-    }
-
-    return connections;
+    return _findConnections(userId, message, orchestratorSummary, hqiResults, sources);
   }
 
   /**
    * Generate inline citations from sources
    */
   private generateCitations(sources: ChatSource[], answer: string): Array<{ text: string; sourceId: string; sourceType: string }> {
-    const citations: Array<{ text: string; sourceId: string; sourceType: string }> = [];
-    
-    // Simple citation extraction - find mentions of dates/titles in answer
-    sources.slice(0, 10).forEach(source => {
-      if (source.title && answer.toLowerCase().includes(source.title.toLowerCase().substring(0, 20))) {
-        citations.push({
-          text: source.title,
-          sourceId: source.id,
-          sourceType: source.type
-        });
-      } else if (source.date) {
-        const dateStr = new Date(source.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-        if (answer.includes(dateStr)) {
-          citations.push({
-            text: dateStr,
-            sourceId: source.id,
-            sourceType: source.type
-          });
-        }
-      }
-    });
-
-    return citations;
+    return _generateCitations(sources, answer);
   }
 
   /**
@@ -415,496 +329,14 @@ class OmegaChatService {
     currentFocusLine?: string,
     timelineInsight?: ChatContextExtension & { layer?: string }
   ): string {
-    const timelineSummary = orchestratorSummary.timeline.events
-      .slice(0, 20)
-      .map((e: any) => `Date: ${e.date}\n${e.summary || e.content?.substring(0, 100)}`)
-      .join('\n---\n');
-
-    // Build comprehensive character knowledge (including nicknames/aliases and attributes)
-    const charactersKnowledge = loreData?.allCharacters?.length
-      ? loreData.allCharacters.map((char: any) => {
-          const aliases = char.alias && Array.isArray(char.alias) && char.alias.length > 0 
-            ? ` (also known as: ${char.alias.join(', ')})` 
-            : '';
-          
-          // Get character attributes
-          const attributes = loreData?.characterAttributesMap?.[char.id] || [];
-          const attributesText = attributes.length > 0
-            ? attributes.map((attr: any) => {
-                const typeLabel = attr.attributeType.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
-                return `${typeLabel}: ${attr.attributeValue}${attr.confidence < 0.8 ? ' (tentative)' : ''}`;
-              }).join(', ')
-            : '';
-          
-          const details = [
-            `${char.name}${aliases}`,
-            char.role ? `Role: ${char.role}` : '',
-            char.archetype ? `Archetype: ${char.archetype}` : '',
-            attributesText ? `Attributes: ${attributesText}` : '',
-            char.summary ? `Summary: ${char.summary.substring(0, 100)}` : '',
-            char.first_appearance ? `First appeared: ${char.first_appearance}` : '',
-            char.tags?.length ? `Tags: ${char.tags.join(', ')}` : '',
-            char.metadata?.autoGenerated ? `(Auto-generated nickname)` : ''
-          ].filter(Boolean).join(' | ');
-          return `- ${details}`;
-        }).join('\n')
-      : orchestratorSummary.characters
-          .slice(0, 10)
-          .map((c: any) => {
-            const aliases = c.character.alias?.length ? ` (${c.character.alias.join(', ')})` : '';
-            return `${c.character.name}${aliases}${c.character.role ? ` (${c.character.role})` : ''}`;
-          })
-          .join(', ');
-
-    // Build comprehensive location knowledge
-    const locationsKnowledge = loreData?.allLocations?.length
-      ? loreData.allLocations.map((loc: any) => {
-          return `- ${loc.name}: Visited ${loc.visitCount || 0} times${loc.firstVisited ? ` (first: ${loc.firstVisited})` : ''}${loc.lastVisited ? ` (last: ${loc.lastVisited})` : ''}`;
-        }).join('\n')
-      : '';
-
-    // Build comprehensive chapter knowledge
-    const chaptersKnowledge = loreData?.allChapters?.length
-      ? loreData.allChapters.map((ch: any) => {
-          return `- ${ch.title} (${ch.start_date}${ch.end_date ? ` - ${ch.end_date}` : ' - ongoing'}): ${ch.summary || ch.description || 'No summary'}`;
-        }).join('\n')
-      : orchestratorSummary.timeline.arcs
-          .slice(0, 5)
-          .map((arc: any) => `${arc.title} (${arc.start_date}${arc.end_date ? ` - ${arc.end_date}` : ''})`)
-          .join('\n');
-
-    // Build timeline hierarchy knowledge
-    const timelineHierarchyKnowledge = loreData?.timelineHierarchy
-      ? [
-          loreData.timelineHierarchy.eras?.length
-            ? `Eras:\n${loreData.timelineHierarchy.eras.map((e: any) => `  - ${e.title} (${e.start_date}${e.end_date ? ` - ${e.end_date}` : ''})`).join('\n')}`
-            : '',
-          loreData.timelineHierarchy.sagas?.length
-            ? `Sagas:\n${loreData.timelineHierarchy.sagas.map((s: any) => `  - ${s.title} (${s.start_date}${s.end_date ? ` - ${s.end_date}` : ''})`).join('\n')}`
-            : '',
-          loreData.timelineHierarchy.arcs?.length
-            ? `Arcs:\n${loreData.timelineHierarchy.arcs.map((a: any) => `  - ${a.title} (${a.start_date}${a.end_date ? ` - ${a.end_date}` : ''})`).join('\n')}`
-            : ''
-        ].filter(Boolean).join('\n\n')
-      : '';
-
-    // Build identity knowledge
-    const identityKnowledge = orchestratorSummary.identity
-      ? `Identity Motifs: ${(orchestratorSummary.identity.identity as any)?.motifs?.join(', ') || 'None'}\nEmotional Slope: ${(orchestratorSummary.identity.identity as any)?.emotional_slope || 'Neutral'}`
-      : '';
-
-    // Build continuity knowledge
-    const continuityKnowledge = orchestratorSummary.continuity
-      ? `Canonical Facts: ${orchestratorSummary.continuity.canonical?.length || 0}\nConflicts: ${orchestratorSummary.continuity.conflicts?.length || 0}`
-      : '';
-
-    // Build essence profile context
-    const essenceContext = loreData?.essenceProfile ? this.buildEssenceContext(loreData.essenceProfile) : '';
-
-    // Build Identity Core context
-    const identityCoreContext = loreData?.identityCoreProfile ? this.buildIdentityCoreContext(loreData.identityCoreProfile) : '';
-
-    // Build entity analytics context if provided (with confidence gating)
-    let entityAnalyticsContext = '';
-    if (entityContext && entityAnalytics) {
-      const confidenceNote = entityConfidence !== null 
-        ? ` (Confidence: ${(entityConfidence * 100).toFixed(0)}%)`
-        : '';
-      const disclaimer = analyticsGate?.disclaimer 
-        ? `\n\n⚠️ ${analyticsGate.disclaimer}`
-        : '';
-      
-      if (analyticsGate?.mode === 'UNCERTAIN') {
-        entityAnalyticsContext = `\n**NOTE**: The analytics below are tentative due to limited data clarity.${disclaimer}\n\n`;
-      } else if (analyticsGate?.mode === 'SOFT') {
-        entityAnalyticsContext = `\n**NOTE**: ${analyticsGate.disclaimer}\n\n`;
-      }
-      
-      if (entityContext.type === 'CHARACTER' && entityAnalytics) {
-        entityAnalyticsContext += `
-**CURRENT CHARACTER ANALYTICS**${confidenceNote} (for the character being discussed):${disclaimer}
-You have access to comprehensive relationship analytics calculated from conversations, journal entries, and shared memories. When the user asks about analytics, explain what they mean:
-
-- Closeness: ${entityAnalytics.closeness_score}/100 - ${entityAnalytics.closeness_score >= 70 ? 'Very close relationship' : entityAnalytics.closeness_score >= 40 ? 'Moderate closeness' : 'Developing relationship'}
-- Relationship Depth: ${entityAnalytics.relationship_depth}/100 - ${entityAnalytics.relationship_depth >= 70 ? 'Deep emotional connection' : entityAnalytics.relationship_depth >= 40 ? 'Moderate depth' : 'Surface level'}
-- Interaction Frequency: ${entityAnalytics.interaction_frequency}/100 - ${entityAnalytics.interaction_frequency >= 70 ? 'Very frequent interactions' : entityAnalytics.interaction_frequency >= 40 ? 'Moderate frequency' : 'Occasional interactions'}
-- Importance: ${entityAnalytics.importance_score}/100 - ${entityAnalytics.importance_score >= 70 ? 'Very important to the user' : entityAnalytics.importance_score >= 40 ? 'Moderately important' : 'Developing importance'}
-- Value: ${entityAnalytics.value_score}/100 - ${entityAnalytics.value_score >= 70 ? 'High value relationship' : entityAnalytics.value_score >= 40 ? 'Moderate value' : 'Developing value'}
-- Sentiment: ${entityAnalytics.sentiment_score} (${entityAnalytics.sentiment_score >= 50 ? 'Very positive' : entityAnalytics.sentiment_score >= 0 ? 'Positive' : 'Negative'})
-- Trust: ${entityAnalytics.trust_score}/100
-- Support: ${entityAnalytics.support_score}/100
-- Trend: ${entityAnalytics.trend} (${entityAnalytics.trend === 'deepening' ? 'relationship is growing stronger' : entityAnalytics.trend === 'weakening' ? 'relationship may be fading' : 'relationship is stable'})
-- Shared Experiences: ${entityAnalytics.shared_experiences} memories/events
-- Relationship Duration: ${entityAnalytics.relationship_duration_days} days
-
-When explaining analytics, provide context about what these scores mean and why they might be at that level based on interaction patterns.
-`;
-      } else if (entityContext.type === 'ROMANTIC_RELATIONSHIP' && entityAnalytics) {
-        const rel = entityAnalytics.relationship;
-        const analytics = entityAnalytics.analytics;
-        entityAnalyticsContext += `
-**CURRENT ROMANTIC RELATIONSHIP CONTEXT**${confidenceNote} (for the relationship being discussed):${disclaimer}
-You are helping the user discuss and update information about a specific romantic relationship.
-
-RELATIONSHIP CONTEXT:
-- Person: ${entityAnalytics.personName || 'Unknown'}
-- Type: ${rel.relationship_type || 'Unknown'}
-- Status: ${rel.status || 'active'}
-- Started: ${rel.start_date ? new Date(rel.start_date).toLocaleDateString() : 'Unknown'}
-${rel.end_date ? `- Ended: ${new Date(rel.end_date).toLocaleDateString()}` : ''}
-${rel.is_situationship ? '- Situationship: Yes' : ''}
-${rel.exclusivity_status ? `- Exclusivity: ${rel.exclusivity_status}` : ''}
-
-CURRENT SCORES:
-- Affection: ${Math.round((analytics.affectionScore || rel.affection_score || 0.5) * 100)}%
-- Compatibility: ${Math.round((analytics.compatibilityScore || rel.compatibility_score || 0.5) * 100)}%
-- Health: ${Math.round((analytics.healthScore || rel.relationship_health || 0.5) * 100)}%
-- Intensity: ${Math.round((analytics.intensityScore || rel.emotional_intensity || 0.5) * 100)}%
-
-PROS (${analytics.pros?.length || rel.pros?.length || 0}): ${(analytics.pros || rel.pros || []).slice(0, 5).join(', ')}${(analytics.pros || rel.pros || []).length > 5 ? '...' : ''}
-CONS (${analytics.cons?.length || rel.cons?.length || 0}): ${(analytics.cons || rel.cons || []).slice(0, 5).join(', ')}${(analytics.cons || rel.cons || []).length > 5 ? '...' : ''}
-RED FLAGS (${analytics.redFlags?.length || rel.red_flags?.length || 0}): ${(analytics.redFlags || rel.red_flags || []).slice(0, 3).join(', ')}${(analytics.redFlags || rel.red_flags || []).length > 3 ? '...' : ''}
-GREEN FLAGS (${analytics.greenFlags?.length || rel.green_flags?.length || 0}): ${(analytics.greenFlags || rel.green_flags || []).slice(0, 3).join(', ')}${(analytics.greenFlags || rel.green_flags || []).length > 3 ? '...' : ''}
-
-INSTRUCTIONS:
-1. Answer questions about this relationship based on the context above
-2. If the user shares new information about the relationship, acknowledge it naturally
-3. If the user mentions pros/cons, red flags, green flags, or wants to update rankings, extract that information
-4. Be conversational and supportive when discussing relationships
-5. When updates are needed, they will be automatically extracted and applied - just acknowledge the conversation naturally
-6. Use the scores and analytics to provide insights when asked
-`;
-      } else if (entityContext.type === 'LOCATION' && entityAnalytics) {
-        entityAnalyticsContext += `
-**CURRENT LOCATION ANALYTICS**${confidenceNote} (for the location being discussed):${disclaimer}
-You have access to comprehensive location analytics calculated from visits, journal entries, and conversations. When the user asks about analytics, explain what they mean:
-
-- Importance: ${entityAnalytics.importance_score}/100 - ${entityAnalytics.importance_score >= 70 ? 'Very important location' : entityAnalytics.importance_score >= 40 ? 'Moderately important' : 'Developing importance'}
-- Visit Frequency: ${entityAnalytics.visit_frequency}/100 - ${entityAnalytics.visit_frequency >= 70 ? 'Very frequent visits' : entityAnalytics.visit_frequency >= 40 ? 'Moderate frequency' : 'Occasional visits'}
-- Recency: ${entityAnalytics.recency_score}/100 - ${entityAnalytics.recency_score >= 70 ? 'Visited very recently' : entityAnalytics.recency_score >= 40 ? 'Visited recently' : 'Not visited recently'}
-- Value: ${entityAnalytics.value_score}/100 - ${entityAnalytics.value_score >= 70 ? 'High value location' : entityAnalytics.value_score >= 40 ? 'Moderate value' : 'Developing value'}
-- Comfort: ${entityAnalytics.comfort_score}/100 - ${entityAnalytics.comfort_score >= 70 ? 'Very comfortable there' : entityAnalytics.comfort_score >= 40 ? 'Moderately comfortable' : 'Less comfortable'}
-- Productivity: ${entityAnalytics.productivity_score}/100
-- Social: ${entityAnalytics.social_score}/100
-- Trend: ${entityAnalytics.trend} (${entityAnalytics.trend === 'increasing' ? 'visits are increasing' : entityAnalytics.trend === 'decreasing' ? 'visits may be declining' : 'visit pattern is stable'})
-- Total Visits: ${entityAnalytics.total_visits}
-- First Visited: ${entityAnalytics.first_visited_days_ago} days ago
-
-When explaining analytics, provide context about what these scores mean and why they might be at that level based on visit patterns.
-`;
-      } else if (entityContext.type === 'ENTITY' && entityAnalytics) {
-        entityAnalyticsContext += `
-**CURRENT GROUP ANALYTICS**${confidenceNote} (for the group being discussed):${disclaimer}
-You have access to comprehensive group analytics calculated from conversations, journal entries, and events. When the user asks about analytics, explain what they mean:
-
-- User Involvement: ${entityAnalytics.user_involvement_score}/100 - ${entityAnalytics.user_involvement_score >= 70 ? 'Very actively involved' : entityAnalytics.user_involvement_score >= 40 ? 'Moderately involved' : 'Developing involvement'}
-- User Ranking: #${entityAnalytics.user_ranking} in the group
-- Importance: ${entityAnalytics.importance_score}/100 - ${entityAnalytics.importance_score >= 70 ? 'Very important group' : entityAnalytics.importance_score >= 40 ? 'Moderately important' : 'Developing importance'}
-- Value: ${entityAnalytics.value_score}/100
-- Cohesion: ${entityAnalytics.cohesion_score}/100 - ${entityAnalytics.cohesion_score >= 70 ? 'Very tight-knit group' : entityAnalytics.cohesion_score >= 40 ? 'Moderate cohesion' : 'Lower cohesion'}
-- Activity Level: ${entityAnalytics.activity_level}/100
-- Trend: ${entityAnalytics.trend} (${entityAnalytics.trend === 'increasing' ? 'group is becoming more active' : entityAnalytics.trend === 'decreasing' ? 'group activity may be declining' : 'group activity is stable'})
-
-When explaining analytics, provide context about what these scores mean and why they might be at that level based on involvement patterns.
-`;
-      }
-    }
-
-    return `You are a multi-faceted AI companion integrated into Lore Book. You seamlessly blend personas based on context:
-
-**YOUR PERSONAS** (adapt naturally based on conversation):
-
-0. **Archivist** (when user requests factual recall only):
-   - Can ONLY retrieve, summarize, and reference past data
-   - Must respect confidence modes (UNCERTAIN/SOFT/NORMAL)
-   - Must explain uncertainty when present
-   - NO advice, NO interpretation beyond evidence
-   - NO predictions, NO suggestions
-   - Format: "According to your entries on [date]..." or "I found [X] mentions of [Y]"
-   - If confidence < 0.5: "The data suggests [X], though this is tentative due to limited clarity"
-   - Example: "When did I last feel like this?" → "According to your entries, you mentioned similar feelings on [date]. However, this is tentative due to limited clarity in the data."
-
-1. **Therapist**: Deep, reflective, supportive - validate emotions, help process experiences, ask gentle exploratory questions
-2. **Strategist**: Goal-oriented, actionable - provide strategic guidance, help with planning, offer actionable insights
-3. **Biography Writer**: Narrative-focused, story-crafting - help shape compelling life stories, structure narratives, capture meaningful moments
-4. **Soul Capturer**: Essence-focused - identify and track core identity elements (hopes, dreams, fears, strengths, values)
-5. **Gossip Buddy**: Curious, engaging, relationship-focused - discuss characters, relationships, and social dynamics with enthusiasm and curiosity
-
-**PERSONA BLENDING**: Most conversations will naturally blend multiple personas. Detect the user's needs:
-- Emotional/heavy topics → Emphasize Therapist
-- Goal-setting/planning → Emphasize Strategist  
-- Story editing/narrative → Emphasize Biography Writer
-- Deep reflection → Emphasize Soul Capturer
-- Character/relationship talk → Emphasize Gossip Buddy
-
-${personaBlend ? `
-**ACTIVE PERSONA CONFIGURATION** (RL-optimized):
-- Primary Persona: ${personaBlend.primary} (${(personaBlend.weights[personaBlend.primary] * 100).toFixed(0)}% weight)
-${personaBlend.secondary.length > 0 ? `- Secondary Personas: ${personaBlend.secondary.map(p => `${p} (${(personaBlend.weights[p] * 100).toFixed(0)}%)`).join(', ')}` : ''}
-- Blend these personas naturally based on their weights. The primary persona should dominate the response style.
-` : ''}
-
-**YOUR KNOWLEDGE BASE - YOU KNOW EVERYTHING ABOUT THE USER'S LORE:**
-
-**CHARACTERS (${loreData?.allCharacters?.length || orchestratorSummary.characters.length} total):**
-${charactersKnowledge || 'No characters tracked yet.'}
-
-${locationsKnowledge ? `**LOCATIONS (${loreData?.allLocations?.length || 0} total):**\n${locationsKnowledge}\n\n` : ''}
-**CHAPTERS & STORY ARCS:**
-${chaptersKnowledge || 'No chapters yet.'}
-
-${timelineHierarchyKnowledge ? `**TIMELINE HIERARCHY:**\n${timelineHierarchyKnowledge}\n\n` : ''}
-${identityKnowledge ? `**IDENTITY:**\n${identityKnowledge}\n\n` : ''}
-${continuityKnowledge ? `**CONTINUITY:**\n${continuityKnowledge}\n\n` : ''}
-${essenceContext ? `**ESSENCE PROFILE - WHAT YOU KNOW ABOUT THEIR CORE SELF:**\n${essenceContext}\n\n` : ''}
-${identityCoreContext ? `**IDENTITY CORE - ARCHETYPAL DIMENSIONS & CONFLICTS:**\n${identityCoreContext}\n\n` : ''}
-${entityAnalyticsContext ? `**CURRENT ENTITY ANALYTICS:**\n${entityAnalyticsContext}\n\n` : ''}
-
-${loreData?.romanticRelationships && loreData.romanticRelationships.length > 0 ? `**ROMANTIC RELATIONSHIPS (${loreData.romanticRelationships.length} total):**
-${loreData.romanticRelationships.map((rel: any) => {
-  const status = rel.is_current ? 'Current' : 'Past';
-  const type = rel.relationship_type || 'relationship';
-  const partner = rel.partner_name || 'Unknown';
-  const startDate = rel.start_date ? new Date(rel.start_date).toLocaleDateString() : '';
-  const endDate = rel.end_date ? new Date(rel.end_date).toLocaleDateString() : '';
-  return `- ${partner}: ${type} (${status}${startDate ? `, ${startDate}${endDate ? ` - ${endDate}` : ''}` : ''})`;
-}).join('\n')}
-
-` : ''}
-
-${loreData?.corrections && loreData.corrections.length > 0 ? `**CORRECTIONS & DEPRECATED INFO** (IMPORTANT - Use the CORRECTED information, not deprecated):
-${loreData.corrections.slice(0, 10).map((corr: any) => {
-  const targetType = corr.target_type || 'unknown';
-  const correctionType = corr.correction_type || 'correction';
-  const before = corr.before_snapshot ? JSON.stringify(corr.before_snapshot).substring(0, 80) : 'unknown';
-  const after = corr.after_snapshot ? JSON.stringify(corr.after_snapshot).substring(0, 80) : 'unknown';
-  const date = corr.created_at ? new Date(corr.created_at).toLocaleDateString() : '';
-  return `- ${targetType}: "${before}" → CORRECTED to "${after}" (${correctionType}${date ? `, ${date}` : ''})`;
-}).join('\n')}
-
-**CRITICAL**: When responding, ALWAYS use the CORRECTED information above, NOT the deprecated info. If you see a correction, the corrected version is the accurate one.
-
-` : ''}
-
-${loreData?.workoutEvents && loreData.workoutEvents.length > 0 ? `**WORKOUT HISTORY (${loreData.workoutEvents.length} recent workouts):**
-${loreData.workoutEvents.slice(0, 10).map((workout: any) => {
-  const date = workout.date ? new Date(workout.date).toLocaleDateString() : '';
-  const type = workout.workout_type || 'workout';
-  const exercises = workout.stats?.exercises?.length || 0;
-  const social = workout.social_interactions?.length || 0;
-  const significance = workout.significance_score >= 0.7 ? '⭐ Significant' : workout.significance_score >= 0.5 ? 'Moderate' : 'Routine';
-  return `- ${date}: ${type} (${exercises} exercises${social > 0 ? `, ${social} social interaction${social > 1 ? 's' : ''}` : ''}) - ${significance}`;
-}).join('\n')}
-
-` : ''}
-
-${loreData?.recentBiometrics && loreData.recentBiometrics.length > 0 ? `**HEALTH & FITNESS METRICS** (Recent measurements):
-${loreData.recentBiometrics.slice(0, 5).map((bio: any) => {
-  const date = bio.measurement_date ? new Date(bio.measurement_date).toLocaleDateString() : '';
-  const metrics: string[] = [];
-  if (bio.weight) metrics.push(`Weight: ${bio.weight}${bio.metadata?.unit || 'lbs'}`);
-  if (bio.body_fat_percentage) metrics.push(`Body Fat: ${bio.body_fat_percentage}%`);
-  if (bio.muscle_mass) metrics.push(`Muscle: ${bio.muscle_mass}${bio.metadata?.unit || 'lbs'}`);
-  if (bio.bmi) metrics.push(`BMI: ${bio.bmi}`);
-  if (bio.hydration_percentage) metrics.push(`Hydration: ${bio.hydration_percentage}%`);
-  return `- ${date}: ${metrics.join(', ')} (${bio.source})`;
-}).join('\n')}
-
-**FITNESS KNOWLEDGE**: You are knowledgeable about:
-- Weightlifting: exercises, sets, reps, progressive overload, form, recovery
-- Cardio: running, cycling, HIIT, endurance training
-- Nutrition: macros, calories, meal timing, supplements
-- Health metrics: BMI, body fat, muscle mass, hydration, metabolic health
-- Fitness goals: strength, hypertrophy, endurance, weight loss, general fitness
-- Workout programming: splits, periodization, deload weeks, recovery
-
-When discussing workouts or fitness, reference their workout history, progress, and goals. Help them understand their progress, suggest improvements, and celebrate achievements.
-
-` : ''}
-
-${loreData?.topInterests && loreData.topInterests.length > 0 ? `**INTERESTS & PASSIONS (${loreData.topInterests.length} tracked):**
-${loreData.topInterests.slice(0, 20).map((interest: any) => {
-  const level = interest.interest_level >= 0.8 ? '🔥 Very High' : interest.interest_level >= 0.6 ? '⭐ High' : interest.interest_level >= 0.4 ? 'Moderate' : 'Developing';
-  const trend = interest.trend === 'growing' ? '📈 Growing' : interest.trend === 'declining' ? '📉 Declining' : interest.trend === 'stable' ? '→ Stable' : '🆕 New';
-  const category = interest.interest_category ? `[${interest.interest_category}]` : '';
-  const mentions = interest.mention_count || 0;
-  const influence = interest.influence_score >= 0.5 ? ' (influences decisions)' : '';
-  const actions = interest.behavioral_impact_score >= 0.5 ? ' (takes action)' : '';
-  return `- ${interest.interest_name} ${category}: ${level} ${trend} (${mentions} mentions${influence}${actions})`;
-}).join('\n')}
-
-**INTEREST KNOWLEDGE**: You know what they're passionate about. When relevant, reference their interests naturally:
-- If they mention an interest, acknowledge it and show you know their level of engagement
-- If an interest influences a decision, recognize that connection
-- If they're exploring something new, help them dive deeper
-- Show enthusiasm about their passions - be their interest buddy
-- Track how interests evolve over time (growing, stable, declining)
-
-` : ''}
-
-**Your Role**:
-1. **Know Everything**: You have access to ALL their lore - characters, locations, timeline, chapters, memories, AND their essence profile. Reference specific details when relevant.
-2. **Make Deep Connections**: Connect current conversations to past events, characters, locations, chapters, AND their psychological patterns.
-3. **Track the Narrative**: Help them understand their journey, noting character arcs, location patterns, chapter themes, AND personal growth.
-4. **Maintain Continuity**: Reference specific characters by name OR their nicknames/aliases, locations by name, chapters by title. Show you know their world.
-5. **Provide Context**: When they mention a character, location, or event, reference related memories, timeline context, AND relationship patterns.
-6. **Be Proactive**: Suggest connections they might not see, reference forgotten characters or locations, help them see patterns.
-7. **Capture Essence**: Naturally infer and track their hopes, dreams, fears, strengths, weaknesses, values, and traits from conversations.
-8. **Gossip Buddy Mode**: Show curiosity about characters and relationships. Ask natural questions like "Tell me more about [character]" or "What's your relationship with [character] like?"
-9. **Nickname Awareness**: Characters may have nicknames or aliases. Use their actual name when you know it, but also recognize when they're referring to someone by a nickname. If they mention an unnamed character (e.g., "my friend", "the colleague"), acknowledge that you're tracking them and can refer to them by a generated nickname if needed.
-
-**Your Style**:
-- Conversational and warm, like ChatGPT but deeply knowledgeable about their lore AND their inner world
-- Reference specific characters, locations, and chapters by name when relevant
-- Use format: "From your timeline, [Month Year]" or "In [Chapter Name]" or "When you were at [Location]"
-- Show you remember their story: "You mentioned [Character] before in [Context]"
-- Make connections: "This reminds me of when you [past event] at [location] with [character]"
-- Reference timeline hierarchy: "During the [Era/Saga/Arc] period..."
-- Reference essence insights: "I've noticed you value [value]" or "You've mentioned [fear] before - how are you feeling about that now?"
-- Be curious about relationships: "You mentioned [Character] three times this week - what's going on with them?"
-- Natural inference: Extract psychological insights without being clinical - be warm and conversational
-- Ask gentle questions: When you detect gaps or want to go deeper, ask thoughtful questions naturally
-
-**Current Context**:
-${connections.length > 0 ? `Connections Found:\n${connections.join('\n')}\n\n` : ''}
-${continuityWarnings.length > 0 ? `⚠️ Continuity Warnings:\n${continuityWarnings.join('\n')}\n\n` : ''}
-${strategicGuidance ? `${strategicGuidance}\n\n` : ''}
-
-**Recent Timeline Entries** (${orchestratorSummary.timeline.events.length} total entries):
-${timelineSummary || 'No previous entries yet.'}
-
-**Available Sources** (${sources.length} total - reference these in your response):
-${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ? ` (${new Date(s.date).toLocaleDateString()})` : ''}${s.snippet ? ` - ${s.snippet.substring(0, 50)}` : ''}`).join('\n')}
-
-**NARRATIVE INTEGRITY RULES (CRITICAL)**:
-- LoreKeeper tracks SUBJECTIVE narratives, not objective truth
-- Entries represent what the user believed at the time they wrote them
-- NEVER say: "You are lying", "This is false", "You should admit", "The truth is"
-- ALWAYS say: "Earlier entries suggest...", "Your descriptions have varied over time", "There is limited consistency here"
-- When narratives conflict, surface multiple versions with timestamps
-- Uncertainty is surfaced, not resolved
-- Do NOT evaluate objective truth - observe coherence and consistency
-- Preserve user dignity - reflect change without shame
-
-**IMPORTANT**: You know ALL their lore AND their essence. Reference specific characters, locations, chapters, timeline events, AND psychological insights. Show deep knowledge of their story AND their inner world. Be their therapist, strategist, biography writer, soul capturer, AND gossip buddy - all in one.
-
-${transitionAnalysis && transitionAnalysis.shouldAcknowledge ? `
-**CONVERSATION FLOW AWARENESS** (Grok-style transition tracking):
-
-You just detected a ${transitionAnalysis.transitionType} transition in the conversation.
-
-${transitionAnalysis.topicShift.detected ? `
-**TOPIC SHIFT DETECTED:**
-- Previous topic: "${transitionAnalysis.topicShift.oldTopic}"
-- New topic: "${transitionAnalysis.topicShift.newTopic}"
-- Shift magnitude: ${(transitionAnalysis.topicShift.shiftPercentage * 100).toFixed(0)}% (${transitionAnalysis.topicShift.shiftPercentage > 0.5 ? 'significant' : 'moderate'} change)
-- Similarity: ${(transitionAnalysis.topicShift.similarity * 100).toFixed(0)}%
-
-**HOW TO RESPOND:**
-- Acknowledge the transition naturally (don't be mechanical)
-- Follow the tangent/transition - it's clearly where their mind wants to go
-- Build on the new topic while maintaining context from previous topics
-- Ask engaging questions that connect the dots between old and new topics
-- Don't force them back to old topics - follow where they're going
-` : ''}
-
-${transitionAnalysis.emotionalTransition.detected ? `
-**EMOTIONAL TRANSITION DETECTED:**
-- From: ${transitionAnalysis.emotionalTransition.from} (${transitionAnalysis.emotionalTransition.intensityChange > 0 ? '+' : ''}${(transitionAnalysis.emotionalTransition.intensityChange * 100).toFixed(0)}% intensity change)
-- To: ${transitionAnalysis.emotionalTransition.to}
-- Direction: ${transitionAnalysis.emotionalTransition.direction}
-
-**HOW TO RESPOND:**
-- Validate the emotional shift if significant
-- Match their energy level
-- If moving from negative to positive, acknowledge the shift positively
-- If moving from positive to negative, be supportive and understanding
-- Don't overcorrect - follow their emotional lead
-` : ''}
-
-${transitionAnalysis.thoughtProcessChange.detected ? `
-**THOUGHT PROCESS EVOLUTION DETECTED:**
-- From: "${transitionAnalysis.thoughtProcessChange.from}"
-- To: "${transitionAnalysis.thoughtProcessChange.to}"
-- Trigger: "${transitionAnalysis.thoughtProcessChange.trigger}"
-- Type: ${transitionAnalysis.thoughtProcessChange.type}
-
-**HOW TO RESPOND:**
-- Acknowledge the thought evolution naturally
-- Show you're tracking their thinking process
-- Ask questions that show you understand the journey: "What made you think of [new topic] while we were talking about [old topic]?"
-- Connect the dots between their thoughts
-` : ''}
-
-${transitionAnalysis.intentEvolution.detected ? `
-**INTENT EVOLUTION DETECTED:**
-- From: ${transitionAnalysis.intentEvolution.from}
-- To: ${transitionAnalysis.intentEvolution.to}
-- Evolution type: ${transitionAnalysis.intentEvolution.evolutionType}
-
-**HOW TO RESPOND:**
-- Adapt your response style to match the new intent
-- If deepening (e.g., venting → reflection), go deeper with them
-- If expanding (e.g., reflection → decision support), broaden the conversation
-- If shifting, acknowledge the shift and follow naturally
-` : ''}
-
-**CURRENT EMOTIONAL STATE:**
-${currentEmotionalState ? `
-- Dominant emotion: ${currentEmotionalState.dominantEmotion} (intensity: ${(currentEmotionalState.intensity * 100).toFixed(0)}%)
-- Trend: ${currentEmotionalState.trend}
-${currentEmotionalState.transitionFrom ? `- Transition from: ${currentEmotionalState.transitionFrom.dominantEmotion}` : ''}
-${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.transitionReason}` : ''}
-
-**RESPONSE STYLE ADJUSTMENTS:**
-- Match their energy level (${currentEmotionalState.intensity > 0.7 ? 'high energy' : currentEmotionalState.intensity > 0.4 ? 'moderate energy' : 'calm energy'})
-- Use natural transitions (like Grok does)
-- Ask engaging questions that show you're tracking their thought process
-- Use personality markers consistently (their nickname if you know it, emojis if appropriate)
-- Don't force them back to old topics - follow where they're going
-` : ''}
-
-**KEY PRINCIPLE**: Like Grok, you should naturally follow tangents and transitions. The user's mind is going where it wants to go - your job is to follow, validate, and engage with where they're at NOW, not where they were 3 messages ago. Build on the new topic while showing you remember the context.
-` : ''}
-${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}
-${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineInsight.parallelSummary?.explicitCount ?? 0) + (timelineInsight.parallelSummary?.implicitCount ?? 0) > 0 ? `\n\n**Timeline context:** This ${timelineInsight.layer ?? 'node'} has ${timelineInsight.hierarchyGaps?.length ?? 0} empty time spans and ${timelineInsight.parallelSummary?.explicitCount ?? 0} explicit parallels (${timelineInsight.parallelSummary?.implicitCount ?? 0} overlaps). You may gently explore gaps or contextualize interruptions when relevant.` : ''}`;
+    return _buildSystemPrompt(orchestratorSummary, connections, continuityWarnings, strategicGuidance, sources, loreData, entityContext, entityAnalytics, entityConfidence, analyticsGate, personaBlend, transitionAnalysis, currentEmotionalState, currentFocusLine, timelineInsight);
   }
 
   /**
    * Build essence profile context string for system prompt
    */
   private buildEssenceContext(profile: any): string {
-    const parts: string[] = [];
-    
-    if (profile.hopes?.length > 0) {
-      parts.push(`Hopes: ${profile.hopes.slice(0, 5).map((h: any) => h.text).join(', ')}`);
-    }
-    if (profile.dreams?.length > 0) {
-      parts.push(`Dreams: ${profile.dreams.slice(0, 5).map((d: any) => d.text).join(', ')}`);
-    }
-    if (profile.fears?.length > 0) {
-      parts.push(`Fears: ${profile.fears.slice(0, 5).map((f: any) => f.text).join(', ')}`);
-    }
-    if (profile.strengths?.length > 0) {
-      parts.push(`Strengths: ${profile.strengths.slice(0, 5).map((s: any) => s.text).join(', ')}`);
-    }
-    if (profile.weaknesses?.length > 0) {
-      parts.push(`Areas for Growth: ${profile.weaknesses.slice(0, 5).map((w: any) => w.text).join(', ')}`);
-    }
-    if (profile.topSkills?.length > 0) {
-      parts.push(`Top Skills: ${profile.topSkills.slice(0, 5).map((s: any) => s.skill).join(', ')}`);
-    }
-    if (profile.coreValues?.length > 0) {
-      parts.push(`Core Values: ${profile.coreValues.slice(0, 5).map((v: any) => v.text).join(', ')}`);
-    }
-    if (profile.personalityTraits?.length > 0) {
-      parts.push(`Personality Traits: ${profile.personalityTraits.slice(0, 5).map((t: any) => t.text).join(', ')}`);
-    }
-    if (profile.relationshipPatterns?.length > 0) {
-      parts.push(`Relationship Patterns: ${profile.relationshipPatterns.slice(0, 3).map((r: any) => r.text).join(', ')}`);
-    }
-    
-    return parts.length > 0 ? parts.join('\n') : 'Essence profile still developing - continue to learn about them.';
+    return _buildEssenceContext(profile);
   }
 
   /**
@@ -915,74 +347,14 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     message: string,
     messageId?: string
   ): Promise<void> {
-    try {
-      // Quick check: does message contain identity signal patterns?
-      const { IdentitySignalExtractor } = await import('./identityCore/identitySignals');
-      const signalExtractor = new IdentitySignalExtractor();
-      
-      // Create entry-like object for signal extraction
-      const entryForExtraction = {
-        id: messageId || `chat-${Date.now()}`,
-        text: message,
-        timestamp: new Date().toISOString(),
-      };
-
-      const signals = await signalExtractor.extract([entryForExtraction]);
-
-      if (signals.length > 0) {
-        logger.debug({ userId, messageId, signalCount: signals.length }, 'Identity signals detected in chat message');
-        
-        // Trigger Identity Core Engine processing (fire-and-forget)
-        const { IdentityCoreEngine } = await import('./identityCore/identityCoreEngine');
-        const identityEngine = new IdentityCoreEngine();
-        
-        // Process from chat message (incremental mode)
-        await identityEngine.processFromEntry(userId, entryForExtraction);
-      }
-    } catch (error) {
-      logger.debug({ error, messageId }, 'Failed to extract identity from chat message');
-      // Don't throw - this is fire-and-forget
-    }
+    return _extractIdentityFromChatMessage(userId, message, messageId);
   }
 
   /**
    * Build Identity Core context string for system prompt
    */
   private buildIdentityCoreContext(profile: any): string {
-    const parts: string[] = [];
-    
-    if (profile.dimensions && profile.dimensions.length > 0) {
-      const dimensionNames = profile.dimensions
-        .sort((a: any, b: any) => (b.score || 0) - (a.score || 0))
-        .slice(0, 5)
-        .map((d: any) => `${d.name} (${((d.score || 0) * 100).toFixed(0)}%)`);
-      parts.push(`Identity Dimensions: ${dimensionNames.join(', ')}`);
-    }
-    
-    if (profile.conflicts && profile.conflicts.length > 0) {
-      const conflictNames = profile.conflicts
-        .slice(0, 3)
-        .map((c: any) => `${c.conflictName || c.positiveSide} vs ${c.negativeSide}`);
-      parts.push(`Internal Conflicts: ${conflictNames.join('; ')}`);
-    }
-    
-    if (profile.stability) {
-      const volatility = profile.stability.volatility || 0;
-      const status = volatility > 0.7 ? 'High volatility (identity shifting)' : 
-                     volatility > 0.4 ? 'Moderate volatility (exploring)' : 
-                     'Stable identity';
-      parts.push(`Identity Stability: ${status}`);
-      
-      if (profile.stability.anchors && profile.stability.anchors.length > 0) {
-        parts.push(`Core Anchors: ${profile.stability.anchors.slice(0, 3).join(', ')}`);
-      }
-    }
-    
-    if (profile.projection && profile.projection.predictedIdentity) {
-      parts.push(`Identity Trajectory: ${profile.projection.predictedIdentity}`);
-    }
-    
-    return parts.length > 0 ? parts.join('\n') : '';
+    return _buildIdentityCoreContext(profile);
   }
 
   /** Resolve "Current focus" line for system prompt from currentContext (thread name or timeline node title). */
@@ -990,39 +362,7 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     userId: string,
     currentContext?: CurrentContext
   ): Promise<string | undefined> {
-    if (!currentContext || currentContext.kind === 'none') return undefined;
-    if (currentContext.kind === 'thread' && currentContext.threadId) {
-      try {
-        const { threadService } = await import('./threads/threadService');
-        const t = await threadService.getById(userId, currentContext.threadId);
-        return t ? `thread '${t.name}'` : undefined;
-      } catch {
-        return undefined;
-      }
-    }
-    if (currentContext.kind === 'timeline' && currentContext.timelineNodeId && currentContext.timelineLayer) {
-      try {
-        const { data } = await supabaseAdmin
-          .from(
-            currentContext.timelineLayer === 'chapter'
-              ? 'chapters'
-              : currentContext.timelineLayer === 'arc'
-                ? 'timeline_arcs'
-                : currentContext.timelineLayer === 'saga'
-                  ? 'timeline_sagas'
-                  : 'timeline_eras'
-          )
-          .select('title')
-          .eq('id', currentContext.timelineNodeId)
-          .eq('user_id', userId)
-          .maybeSingle();
-        const title = (data as { title?: string } | null)?.title;
-        return title ? `${currentContext.timelineLayer} '${title}'` : undefined;
-      } catch {
-        return undefined;
-      }
-    }
-    return undefined;
+    return _resolveCurrentFocusLine(userId, currentContext);
   }
 
   /**
@@ -1968,7 +1308,6 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
         timelineUpdates,
         memorySuggestion: memorySuggestion || undefined,
         disambiguationPrompt: disambiguationPrompt || undefined,
-        meaningDriftPrompt: meaningDriftPrompt || undefined,
         activePersona: activePersona || undefined,
         modeDecision: modeDecision || undefined,
         ragStats: {
@@ -1985,20 +1324,7 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
    * Detect if user query requires Archivist persona (factual recall only)
    */
   private detectArchivistIntent(message: string): boolean {
-    const archivistKeywords = [
-      'when did', 'when was', 'have i', 'did i', 'what did',
-      'tell me about', 'show me', 'find', 'search', 'recall',
-      'what happened', 'what was', 'when did i', 'how many times',
-      'how often', 'last time', 'first time'
-    ];
-    const adviceKeywords = ['should', 'advice', 'recommend', 'suggest', 'what should'];
-    
-    const lowerMessage = message.toLowerCase();
-    const hasArchivistKeyword = archivistKeywords.some(keyword => lowerMessage.includes(keyword));
-    const hasAdviceKeyword = adviceKeywords.some(keyword => lowerMessage.includes(keyword));
-    
-    // Archivist if has archivist keywords AND no advice keywords
-    return hasArchivistKeyword && !hasAdviceKeyword;
+    return _detectArchivistIntent(message);
   }
 
   /**
@@ -2657,19 +1983,8 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     };
   }
 
-  /**
-   * Get strategic guidance
-   */
   private async getStrategicGuidance(userId: string, message: string): Promise<string | null> {
-    try {
-      const dailyPlan = await autopilotService.getDailyPlan(userId, 'json') as any;
-      if (dailyPlan?.daily_plan?.description) {
-        return `💡 **Today's Focus**: ${dailyPlan.daily_plan.description}`;
-      }
-    } catch (error) {
-      logger.debug({ error }, 'Could not fetch autopilot guidance');
-    }
-    return null;
+    return _getStrategicGuidance(userId, message);
   }
 
   /**
@@ -2680,158 +1995,14 @@ ${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineIns
     userId: string,
     message: string
   ): Promise<MemorySuggestion | null> {
-    try {
-      // Use LLM to detect if message contains memory-worthy content
-      const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content: `You are a memory detection system. Determine if the user message contains a factual statement worth remembering.
-
-Return JSON:
-{
-  "is_memory_worthy": boolean,
-  "entity_name": "name of entity (or 'self' for user)",
-  "claim_text": "the factual statement to remember",
-  "confidence": 0.0-1.0,
-  "reasoning": "why this is memory-worthy"
-}
-
-Examples of memory-worthy:
-- "I'm a software engineer"
-- "I live in Seattle"
-- "I like coffee"
-- "John is my best friend"
-- "I work at Google"
-
-Examples of NOT memory-worthy:
-- "What do I like?"
-- "Tell me about myself"
-- "How are you?"
-- "Thanks"
-- Questions or commands`
-          },
-          {
-            role: 'user',
-            content: message
-          }
-        ]
-      });
-
-      const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
-
-      if (!response.is_memory_worthy || !response.entity_name || !response.claim_text) {
-        return null;
-      }
-
-      // Get or resolve entity
-      const entities = await omegaMemoryService.getEntities(userId);
-      let entity = entities.find(e =>
-        e.primary_name.toLowerCase() === response.entity_name.toLowerCase() ||
-        e.aliases.some((a: string) => a.toLowerCase() === response.entity_name.toLowerCase())
-      );
-
-      // If entity is 'self', use first entity or create a default
-      if (!entity && response.entity_name.toLowerCase() === 'self') {
-        entity = entities[0] || null;
-      }
-
-      // If no entity found, try to create one (or skip for now)
-      if (!entity) {
-        logger.debug({ entityName: response.entity_name }, 'Entity not found for memory suggestion, skipping');
-        return null;
-      }
-
-      // Get default perspective
-      const perspectives = await perspectiveService.getOrCreateDefaultPerspectives(userId);
-      const selfPerspective = perspectives.find(p => p.type === 'SELF');
-
-      // Create memory proposal through MRQ
-      const { proposal } = await memoryReviewQueueService.ingestMemory(
-        userId,
-        {
-          id: '',
-          text: response.claim_text,
-          confidence: response.confidence || 0.6,
-          metadata: {},
-        },
-        entity,
-        selfPerspective?.id || null,
-        message
-      );
-
-      return {
-        proposal_id: proposal.id,
-        entity_name: entity.primary_name,
-        claim_text: response.claim_text,
-        confidence: response.confidence || 0.6,
-        source_excerpt: message.length > 200 ? message.substring(0, 200) + '...' : message,
-        reasoning: response.reasoning || proposal.reasoning,
-        risk_level: proposal.risk_level,
-      };
-    } catch (error) {
-      logger.debug({ err: error, userId, message }, 'Failed to detect memory suggestion');
-      return null;
-    }
+    return _detectMemorySuggestion(userId, message);
   }
 
   /**
    * Helper: Get or create a chat session for the user
    */
   private async getOrCreateChatSession(userId: string): Promise<string> {
-    try {
-      // Try to get the most recent active session
-      const { data: existingSession } = await supabaseAdmin
-        .from('chat_sessions')
-        .select('session_id')
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (existingSession?.session_id) {
-        // Update the session's updated_at timestamp
-        await supabaseAdmin
-          .from('chat_sessions')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('session_id', existingSession.session_id);
-        
-        if (!existingSession.session_id) {
-          throw new Error('Existing session has no session_id');
-        }
-        return existingSession.session_id;
-      }
-
-      // Create new session
-      const newSessionId = randomUUID();
-      const { data: newSession, error } = await supabaseAdmin
-        .from('chat_sessions')
-        .insert({
-          user_id: userId,
-          session_id: newSessionId,
-          metadata: {},
-        })
-        .select('session_id')
-        .single();
-
-      if (error) {
-        logger.warn({ error, userId }, 'Failed to create chat session, using temporary ID');
-        return randomUUID(); // Fallback to temporary ID
-      }
-
-      if (!newSession || !newSession.session_id) {
-        logger.warn({ userId }, 'Created session but no session_id returned, using provided ID');
-        return newSessionId; // Use the ID we generated
-      }
-
-      return newSession.session_id;
-    } catch (error) {
-      logger.warn({ error, userId }, 'Error getting/creating chat session, using temporary ID');
-      return randomUUID(); // Fallback to temporary ID
-    }
+    return _getOrCreateChatSession(userId);
   }
 
   /**
@@ -2839,72 +2010,14 @@ Examples of NOT memory-worthy:
    * Used to decide whether to await refinement (and possibly inject clarification) or fire-and-forget.
    */
   private mightBeRefinement(message: string): boolean {
-    const normalized = message.toLowerCase().trim();
-    const patterns = [
-      /that'?s?\s+not\s+me\b/i,
-      /that'?s?\s+wrong\b/i,
-      /that'?s?\s+incorrect\b/i,
-      /no,?\s+that'?s?\s+/i,
-      /only\s+(when|in|at)\s+/i,
-      /used\s+to\b/i,
-      /not\s+anymore\b/i,
-      /that\s+was\s+(only|just)\b/i,
-      /not\s+really\b/i,
-      /not\s+quite\b/i,
-      /partially\s+(true|accurate)/i,
-      /half\s+true\b/i,
-      /only\s+(true|accurate)\s+/i,
-      /that'?s?\s+more\s+about\b/i,
-      /that'?s\s+(just|only)\s+at\s+work\b/i,
-      /don'?t\s+think\s+that'?s\s+me\b/i,
-      /wouldn'?t\s+say\s+that\b/i,
-    ];
-    return patterns.some((p) => p.test(normalized));
+    return _mightBeRefinement(message);
   }
 
   /**
    * Helper: Get recent insights from essence profile for refinement context
    */
   private getRecentInsights(profile: any): Array<{ id: string; category: string; text: string; confidence: number }> {
-    const insights: Array<{ id: string; category: string; text: string; confidence: number }> = [];
-    
-    const categories: Array<keyof typeof profile> = [
-      'hopes', 'dreams', 'fears', 'strengths', 'weaknesses',
-      'coreValues', 'personalityTraits', 'relationshipPatterns'
-    ];
-
-    for (const category of categories) {
-      const items = profile[category] || [];
-      items.forEach((item: any, idx: number) => {
-        if (item.confidence > 0.5) {
-          insights.push({
-            id: `${String(category)}-${idx}`,
-            category: String(category),
-            text: item.text,
-            confidence: item.confidence
-          });
-        }
-      });
-    }
-
-    // Add skills
-    if (profile.topSkills) {
-      profile.topSkills.forEach((skill: any, idx: number) => {
-        if (skill.confidence > 0.5) {
-          insights.push({
-            id: `topSkills-${idx}`,
-            category: 'topSkills',
-            text: skill.skill,
-            confidence: skill.confidence
-          });
-        }
-      });
-    }
-
-    // Return top 10 most confident insights
-    return insights
-      .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, 10);
+    return _getRecentInsights(profile);
   }
 
   /**
@@ -2916,56 +2029,7 @@ Examples of NOT memory-worthy:
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
     entityContext: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string }
   ): Promise<void> {
-    try {
-      // Get or create a conversation session for entity-scoped chat
-      // Use metadata to mark it as entity-scoped
-      const { data: existingSession } = await supabaseAdmin
-        .from('conversation_sessions')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('metadata->>entity_type', entityContext.type)
-        .eq('metadata->>entity_id', entityContext.id)
-        .single();
-
-      let sessionId: string;
-      if (existingSession) {
-        sessionId = existingSession.id;
-      } else {
-        const { data: newSession, error: sessionError } = await supabaseAdmin
-          .from('conversation_sessions')
-          .insert({
-            user_id: userId,
-            scope: 'PRIVATE',
-            metadata: {
-              entity_type: entityContext.type,
-              entity_id: entityContext.id,
-              is_entity_scoped: true,
-            },
-          })
-          .select('id')
-          .single();
-
-        if (sessionError || !newSession) {
-          throw sessionError || new Error('Failed to create entity-scoped session');
-        }
-
-        sessionId = newSession.id;
-      }
-
-      // Ingest message with entity context
-      await conversationIngestionPipeline.ingestMessage(
-        userId,
-        sessionId,
-        'USER',
-        message,
-        conversationHistory,
-        undefined, // eventContext
-        entityContext
-      );
-    } catch (error) {
-      logger.warn({ error, userId, entityContext }, 'Failed to ingest message with entity context');
-      throw error;
-    }
+    return _ingestMessageWithContext(userId, message, conversationHistory, entityContext);
   }
 }
 

@@ -32,7 +32,9 @@ function isTableMissingError(error: unknown): boolean {
 
 /**
  * Check if a table exists by probing PostgREST (minimal select).
- * PGRST205 or "table not in schema cache" => table missing.
+ * Only PGRST205 / "schema cache" errors mean the table is truly missing.
+ * Auth errors, transient connection failures, and other non-schema errors
+ * are treated as "assume exists" — they must not cause a false DEGRADED status.
  */
 export async function tableExists(tableName: string): Promise<boolean> {
   try {
@@ -42,14 +44,16 @@ export async function tableExists(tableName: string): Promise<boolean> {
       .limit(1);
     if (error && isTableMissingError(error)) return false;
     if (error) {
-      logger.debug({ table: tableName, error: error.message }, 'Schema probe error (non-PGRST205)');
-      return false;
+      // Non-schema error (auth, RLS, transient network) — don't mark table as missing
+      logger.debug({ table: tableName, code: (error as any).code, msg: error.message }, 'Schema probe non-fatal error, assuming table exists');
+      return true;
     }
     return true;
   } catch (err) {
     if (isTableMissingError(err)) return false;
-    logger.warn({ table: tableName, err }, 'Schema probe exception');
-    return false;
+    // Network/timeout/other exception — assume the table exists to avoid false DEGRADED
+    logger.debug({ table: tableName }, 'Schema probe exception, assuming table exists');
+    return true;
   }
 }
 

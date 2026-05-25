@@ -2027,13 +2027,34 @@ const MainCharacterSection = ({ user }: { user: any }) => {
     }
   };
 
+  const avatarUrl =
+    user?.user_metadata?.custom_avatar_url ||
+    user?.user_metadata?.avatar_url ||
+    null;
+  const displayName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email ||
+    'You';
+
   return (
     <div className="mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-amber-800/20">
       <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-        <Star className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600/80 flex-shrink-0" />
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={displayName}
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-full object-cover border border-amber-700/40 flex-shrink-0"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+        ) : (
+          <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-amber-900/30 border border-amber-700/40 flex items-center justify-center flex-shrink-0">
+            <Star className="h-4 w-4 text-amber-600/80" aria-hidden="true" />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-xs sm:text-sm font-semibold text-amber-900/60 break-words">
-            Main Character: <span className="text-amber-900/80">{user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || 'You'}</span>
+            Main Character: <span className="text-amber-900/80">{displayName}</span>
           </p>
         </div>
       </div>

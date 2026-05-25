@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { useChatStream } from '../../../hooks/useChatStream';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
 import { useGuest } from '../../../contexts/GuestContext';
@@ -6,6 +7,8 @@ import { useCurrentContext } from '../../../contexts/CurrentContextContext';
 import { useSoulProfileChatContextOptional } from '../../../contexts/SoulProfileChatContext';
 import { useConversationStore } from './useConversationStore';
 import { getGlobalMockDataEnabled } from '../../../contexts/MockDataContext';
+import { apiCache } from '../../../lib/cache';
+import { fetchJson } from '../../../lib/api';
 import type { Message, ChatSource } from '../message/ChatMessage';
 import { parseSlashCommand, handleSlashCommand } from '../../../utils/chatCommands';
 import { analytics } from '../../../lib/monitoring';
@@ -44,6 +47,7 @@ function getDemoResponse(message: string): string {
 }
 
 export const useChat = () => {
+  const { threadId: activeThreadId } = useParams<{ threadId?: string }>();
   const conversationStore = useConversationStore();
   const { messages, setMessages, addMessage, updateMessage, removeMessage, clearConversation: clearConversationStore } = conversationStore;
   const { streamChat, isStreaming, cancel } = useChatStream();
@@ -233,13 +237,20 @@ export const useChat = () => {
             continuityWarnings: metadata?.continuityWarnings,
             timelineUpdates: metadata?.timelineUpdates,
             citations: metadata?.citations || [],
+            // Cognitive observability
+            modeDecision: metadata?.modeDecision,
+            ragStats: metadata?.ragStats,
+            activePersona: metadata?.activePersona,
             // Memory Recall fields
             response_mode: metadata?.response_mode,
             recall_sources: metadata?.recall_sources,
             recall_meta: metadata?.recall_meta,
             recall: metadata?.recall,
             confidence_label: metadata?.confidence_label,
-            disclaimer: metadata?.disclaimer
+            disclaimer: metadata?.disclaimer,
+            // Narrative Story fields
+            narrativeStory: metadata?.story,
+            narrativeEntryCount: metadata?.entry_count
           });
 
           // If there's a disambiguation prompt, attach it to the user message
@@ -256,11 +267,17 @@ export const useChat = () => {
             setLoadingProgress(0);
           }, 300);
 
-          Promise.all([
-            refreshEntries(),
-            refreshTimeline(),
-            refreshChapters()
-          ]).catch(console.error);
+          // Accurate mood score from the full message (once per send, not per keystroke)
+          fetchJson<{ mood: number }>('/api/moods/score', {
+            method: 'POST',
+            body: JSON.stringify({ text: messageText.trim() }),
+          }).catch(() => {});
+
+          // Ingestion pipeline is async — single refresh after it completes (~2-3s)
+          setTimeout(() => {
+            apiCache.deletePattern(/\/api\/(entries|timeline|chapters)/);
+            Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]).catch(() => {});
+          }, 3000);
         },
         (error) => {
           if (progressIntervalRef.current) {
@@ -279,7 +296,11 @@ export const useChat = () => {
         },
         undefined,
         currentContext,
-        soulProfileContext ?? undefined
+        soulProfileContext ?? undefined,
+        (feedback) => {
+          updateMessage(assistantMessageId, { cognitionFeedback: feedback });
+        },
+        activeThreadId
       );
     } catch (error) {
       if (progressIntervalRef.current) {
@@ -317,6 +338,7 @@ export const useChat = () => {
 
   return {
     messages,
+    setMessages,
     sendMessage,
     isLoading: loading || isStreaming,
     loadingStage,
@@ -325,7 +347,9 @@ export const useChat = () => {
     sources,
     messagesEndRef,
     clearConversation,
-    scrollToBottom
+    scrollToBottom,
+    messageRefs: conversationStore.messageRefs,
+    registerMessageRef: conversationStore.registerMessageRef,
   };
 };
 

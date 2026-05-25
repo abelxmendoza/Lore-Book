@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Bot, X, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useChatStream } from '../../hooks/useChatStream';
-import { ChatMessage, type Message } from '../chat/ChatMessage';
+import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
 import { ChatComposer } from '../chat/ChatComposer';
 import { ChatLoadingPulse } from '../chat/ChatLoadingPulse';
 import { Button } from '../ui/button';
@@ -152,11 +152,8 @@ Be conversational and helpful. When you have enough information, summarize what 
 Format dates as YYYY-MM-DD.`;
 
       await streamChat(
-        messageText.trim(),
-        [
-          { role: 'system', content: systemPrompt },
-          ...conversationHistory.slice(0, -1)
-        ],
+        `[Chapter Creation Context: ${systemPrompt}]\n\nUser: ${messageText.trim()}`,
+        conversationHistory.slice(0, -1),
         (chunk) => {
           accumulatedContent += chunk;
           setMessages((prev) =>
@@ -215,7 +212,7 @@ Format dates as YYYY-MM-DD.`;
           const errorMessage: Message = {
             id: `error-${Date.now()}`,
             role: 'assistant',
-            content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Let's try again!`,
+            content: `Sorry, I encountered an error: ${error}. Let's try again!`,
             timestamp: new Date()
           };
           setMessages((prev) => [...prev, errorMessage]);

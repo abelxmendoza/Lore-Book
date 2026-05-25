@@ -120,7 +120,7 @@ export const assertConfig = () => {
     console.error(`\n⚠️  Missing or placeholder environment variables: ${missing.join(', ')}`);
     console.error('⚠️  Backend will start but authentication and API features will not work.');
     console.error('\n📝 To fix:');
-    console.error('   1. Get your Supabase Service Role Key from: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/settings/api');
+    console.error('   1. Get your Supabase Service Role Key from: https://supabase.com/dashboard/project/mwtyckyguduigflpnqss/settings/api');
     console.error('   2. Get your OpenAI API Key from: https://platform.openai.com/api-keys');
     console.error('   3. Update your .env file with the real values\n');
     // Don't throw - allow server to start for development

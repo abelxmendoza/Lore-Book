@@ -9,7 +9,7 @@ type MoodState = {
   label: string;
 };
 
-const localHeuristic = (text: string): number => {
+export const localHeuristic = (text: string): number => {
   const normalized = text.toLowerCase();
   const positive = (text.match(/(calm|excited|grateful|proud|progress)/gi) ?? []).length;
   const negative = (text.match(/(tired|angry|sad|anxious|hurt|lost)/gi) ?? []).length;

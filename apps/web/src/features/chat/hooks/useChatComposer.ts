@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useMoodEngine } from '../../../hooks/useMoodEngine';
+import { useMoodEngine, localHeuristic } from '../../../hooks/useMoodEngine';
 import { useAutoTagger } from '../../../hooks/useAutoTagger';
 import { useCharacterIndexer } from '../../../hooks/useCharacterIndexer';
 import { getCommandSuggestions, parseSlashCommand } from '../../../utils/slashCommands';
@@ -37,18 +37,11 @@ export const useChatComposer = (onSubmit: (message: string) => void, initialValu
       setShowCommandSuggestions(false);
     }
 
-    // Debounce mood evaluation (API call) - only run after user stops typing
-    const debounceTimer = setTimeout(() => {
-      if (input.trim()) {
-        moodEngine.evaluate(input);
-      }
-    }, 500); // Wait 500ms after last keystroke
-
-    return () => {
-      clearTimeout(debounceTimer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input]); // Only depend on input - the methods are stable useCallback refs
+    // Use local heuristic for realtime mood feedback — no API call during typing
+    if (input.trim()) {
+      moodEngine.setScore(localHeuristic(input));
+    }
+  }, [input]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-resize textarea
   useEffect(() => {

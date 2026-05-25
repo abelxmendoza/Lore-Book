@@ -13,7 +13,18 @@ type CacheEntry<T> = {
 
 class APICache {
   private cache = new Map<string, CacheEntry<any>>();
+  private inflight = new Map<string, Promise<any>>();
   private defaultTTL = 5 * 60 * 1000; // 5 minutes default
+
+  getInflight<T>(key: string): Promise<T> | null {
+    return (this.inflight.get(key) as Promise<T>) ?? null;
+  }
+
+  trackInflight<T>(key: string, promise: Promise<T>): Promise<T> {
+    this.inflight.set(key, promise);
+    void promise.finally(() => this.inflight.delete(key));
+    return promise;
+  }
 
   /**
    * Get cached data if available and not expired

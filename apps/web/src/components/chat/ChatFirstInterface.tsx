@@ -243,7 +243,9 @@ export const ChatFirstInterface = () => {
                     timelineUpdates: metadata?.timelineUpdates,
                     citations: metadata?.citations || [],
                     memories: metadata?.memories || [],
-                    memorySuggestion: metadata?.memorySuggestion
+                    memorySuggestion: metadata?.memorySuggestion,
+                    narrativeStory: metadata?.story,
+                    narrativeEntryCount: metadata?.entry_count
                   }
                 : msg
             )

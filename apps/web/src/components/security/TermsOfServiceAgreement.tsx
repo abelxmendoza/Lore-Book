@@ -3,6 +3,7 @@ import { Shield, Lock, FileText, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 
 type TermsOfServiceAgreementProps = {
   onAccept: () => void;
@@ -26,27 +27,41 @@ export const TermsOfServiceAgreement = ({ onAccept }: TermsOfServiceAgreementPro
 
     setLoading(true);
     try {
-      const response = await fetchJson('/api/user/accept-terms', {
+      await fetchJson('/api/user/accept-terms', {
         method: 'POST',
         body: JSON.stringify({
           acceptedAt: new Date().toISOString(),
           version: '1.0'
         })
       });
-      console.log('Terms accepted successfully:', response);
       onAccept();
     } catch (error: any) {
-      console.error('Failed to accept terms:', error);
-      const errorMessage = error?.message || 'Failed to accept terms. Please try again.';
-      
-      // Check for specific error types
-      let detailedMessage = errorMessage;
-      if (errorMessage.includes('table does not exist') || errorMessage.includes('Database table not found')) {
-        detailedMessage = `Database migration required!\n\n${errorMessage}\n\nPlease run the migration:\nmigrations/20250120_terms_acceptance.sql`;
-      } else if (errorMessage.includes('Cannot connect') || errorMessage.includes('Backend server')) {
-        detailedMessage = `Backend server not running!\n\n${errorMessage}\n\nPlease start the backend server.`;
+      const errorMessage = error?.message || '';
+      const isBackendDown = errorMessage.includes('Cannot connect') ||
+        errorMessage.includes('Backend server') ||
+        errorMessage.includes('503') ||
+        errorMessage.includes('502') ||
+        errorMessage.includes('unavailable');
+
+      if (isBackendDown) {
+        // Backend unavailable — write directly to Supabase
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { error: dbError } = await supabase
+            .from('terms_acceptance')
+            .upsert({ user_id: user.id, version: '1.0', accepted_at: new Date().toISOString() }, { onConflict: 'user_id,version' });
+          if (!dbError) {
+            onAccept();
+            return;
+          }
+          console.error('Supabase fallback failed:', dbError);
+        }
       }
-      
+
+      console.error('Failed to accept terms:', error);
+      const detailedMessage = errorMessage.includes('table does not exist') || errorMessage.includes('Database table not found')
+        ? `Database migration required!\n\n${errorMessage}\n\nPlease run the migration:\nmigrations/20250120_terms_acceptance.sql`
+        : errorMessage;
       alert(`Failed to accept terms: ${detailedMessage}\n\nCheck the browser console for more details.`);
     } finally {
       setLoading(false);

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Plus, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, TrendingUp, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target } from 'lucide-react';
+import { useEffect } from 'react';
+import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, Brain } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -8,8 +8,9 @@ import { config } from '../config/env';
 import { useAuth } from '../lib/supabase';
 import { isAdmin } from '../middleware/roleGuard';
 import { cn } from '../lib/cn';
+import { UserAvatarButton } from './UserAvatarButton';
 
-import { getRouteFromSurface, surfaceToRoute } from '../utils/routeMapping';
+import { surfaceToRoute } from '../utils/routeMapping';
 
 interface SidebarProps {
   activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills' | 'love' | 'quests';
@@ -337,6 +338,20 @@ const SidebarContent = ({
             Privacy & Security
           </button>
           <button
+            onClick={() => navigate('/what-ai-knows')}
+            aria-label="What the AI knows about you"
+            aria-current={isActiveRoute('/what-ai-knows') ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              isActiveRoute('/what-ai-knows')
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Brain className="h-4 w-4 text-primary" aria-hidden="true" />
+            What AI Knows
+          </button>
+          <button
             onClick={() => handleSurfaceChange('guide')}
             aria-label="Open user guide"
             aria-current={activeSurface === 'guide' ? 'page' : undefined}
@@ -352,28 +367,25 @@ const SidebarContent = ({
           </button>
         </div>
       
-      {/* Development Routes - Only visible in development */}
-      {!config.env.isProduction && (
+      {/* Development Routes - Admin only */}
+      {userIsAdmin && !config.env.isProduction && (
         <div className="mt-8 border-t border-border/30 pt-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">Development</p>
           <div className="space-y-2">
-            {!import.meta.env.PROD && (
-              <button
-                onClick={() => navigate('/dev-console')}
-                aria-label="Open dev console"
-                aria-current={isActiveRoute('/dev-console') ? 'page' : undefined}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
-                  isActiveRoute('/dev-console')
-                    ? 'border-primary bg-primary/10 text-white'
-                    : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-                )}
-              >
-                <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-                Dev Console
-              </button>
-            )}
-            {/* Dev Mode toggle - moved into Development section */}
+            <button
+              onClick={() => { navigate('/dev-console'); onMobileDrawerClose?.(); }}
+              aria-label="Open dev console"
+              aria-current={isActiveRoute('/dev-console') ? 'page' : undefined}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+                isActiveRoute('/dev-console')
+                  ? 'border-primary bg-primary/10 text-white'
+                  : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+              )}
+            >
+              <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+              Dev Console
+            </button>
             {onToggleDevMode && (
               <button
                 onClick={onToggleDevMode}
@@ -394,59 +406,61 @@ const SidebarContent = ({
       )}
       </div>
 
-      {/* Sticky Account Center & Admin Console - Always at bottom */}
-      <div className="sticky bottom-0 pt-4 pb-2 border-t border-border/30 bg-black/20 lg:bg-black/20 backdrop-blur-md z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)] space-y-2">
-        {/* Admin Console - Only visible to allowed admin email (abelxmendoza@gmail.com) */}
+      {/* Sticky bottom — profile when logged in, sign-in prompt when logged out */}
+      <div className="sticky bottom-0 pt-3 pb-2 border-t border-border/30 bg-black/20 backdrop-blur-md z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)] space-y-2">
+        {/* Admin Console */}
         {userIsAdmin && (
           <button
-            onClick={() => {
-              navigate('/admin');
-              onMobileDrawerClose?.();
-            }}
+            type="button"
+            onClick={() => { navigate('/admin'); onMobileDrawerClose?.(); }}
             aria-label="Open admin console"
             aria-current={isActiveRoute('/admin') ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all relative overflow-hidden group",
+              "flex w-full items-center gap-3 rounded-lg border-2 px-3 py-2 text-sm font-semibold transition-all relative overflow-hidden group",
               isActiveRoute('/admin')
                 ? 'border-primary bg-gradient-to-r from-primary/20 to-purple-600/20 text-white shadow-lg shadow-primary/20'
-                : 'border-primary/60 bg-gradient-to-r from-primary/10 to-purple-600/10 text-white hover:border-primary hover:from-primary/20 hover:to-purple-600/20 hover:shadow-md hover:shadow-primary/10'
+                : 'border-primary/60 bg-gradient-to-r from-primary/10 to-purple-600/10 text-white hover:border-primary hover:from-primary/20 hover:to-purple-600/20'
             )}
           >
-            {/* Animated background glow */}
             <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -translate-x-full group-hover:translate-x-full" />
-            <Settings className="h-5 w-5 text-primary relative z-10" aria-hidden="true" />
+            <Settings className="h-4 w-4 text-primary relative z-10" aria-hidden="true" />
             <span className="relative z-10">Admin Console</span>
-            {/* Badge indicator */}
-            <span className="ml-auto relative z-10 text-xs bg-primary/30 text-primary px-2 py-0.5 rounded-full border border-primary/50">
-              Admin
-            </span>
+            <span className="ml-auto relative z-10 text-xs bg-primary/30 text-primary px-2 py-0.5 rounded-full border border-primary/50">Admin</span>
           </button>
         )}
-        
-        {/* Account Center - Always visible */}
-        <button
-          onClick={() => {
-            navigate('/account');
-            onMobileDrawerClose?.();
-          }}
-          aria-label="Open account center"
-          aria-current={isActiveRoute('/account') ? 'page' : undefined}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition-all relative overflow-hidden group",
-            isActiveRoute('/account')
-              ? 'border-primary bg-gradient-to-r from-primary/20 to-purple-600/20 text-white shadow-lg shadow-primary/20'
-              : 'border-primary/60 bg-gradient-to-r from-primary/10 to-purple-600/10 text-white hover:border-primary hover:from-primary/20 hover:to-purple-600/20 hover:shadow-md hover:shadow-primary/10'
-          )}
-        >
-          {/* Animated background glow */}
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -translate-x-full group-hover:translate-x-full" />
-          <UserCog className="h-5 w-5 text-primary relative z-10" aria-hidden="true" />
-          <span className="relative z-10">Account Center</span>
-          {/* Badge indicator */}
-          <span className="ml-auto relative z-10 text-xs bg-primary/30 text-primary px-2 py-0.5 rounded-full border border-primary/50">
-            Profile & Settings
-          </span>
-        </button>
+
+        {user ? (
+          /* Logged-in: avatar + name + account link */
+          <button
+            type="button"
+            onClick={() => { navigate('/account'); onMobileDrawerClose?.(); }}
+            aria-label="Open account center"
+            className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-white/5 group"
+          >
+            <UserAvatarButton user={user} size={36} editable={false} />
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-white font-medium truncate leading-tight">
+                {user.user_metadata?.full_name || user.user_metadata?.name || 'My Account'}
+              </p>
+              <p className="text-white/40 text-xs truncate leading-tight">{user.email}</p>
+            </div>
+            <UserCog className="h-4 w-4 text-white/30 group-hover:text-white/60 flex-shrink-0 transition-colors" aria-hidden="true" />
+          </button>
+        ) : (
+          /* Logged-out: sign-in prompt */
+          <button
+            type="button"
+            onClick={() => { navigate('/login'); onMobileDrawerClose?.(); }}
+            aria-label="Sign in"
+            className="flex w-full items-center gap-3 rounded-lg border border-white/10 px-3 py-2.5 text-sm text-white/60 hover:border-primary/40 hover:text-white hover:bg-primary/5 transition"
+          >
+            <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center flex-shrink-0">
+              <UserCog className="h-4 w-4 text-white/30" aria-hidden="true" />
+            </div>
+            <span className="flex-1 text-left">Sign in</span>
+            <Shield className="h-3.5 w-3.5 text-white/20" aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>
   );

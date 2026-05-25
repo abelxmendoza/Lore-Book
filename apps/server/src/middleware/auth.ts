@@ -113,3 +113,31 @@ export const authMiddleware = async (
 
 export const requireAuth = authMiddleware;
 export const authenticate = authMiddleware;
+
+/**
+ * Like requireAuth, but in development mode auth failures fall back to the
+ * dev-user stub rather than returning 401. Never soft-fails in production.
+ */
+export const optionalAuth = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const isDevelopment = process.env.NODE_ENV === 'development' || process.env.API_ENV === 'dev';
+
+  try {
+    await authMiddleware(req, res, next);
+  } catch {
+    if (isDevelopment) {
+      req.user = {
+        id: '00000000-0000-0000-0000-000000000000',
+        email: 'dev@example.com',
+        lastSignInAt: new Date().toISOString(),
+        fullName: null,
+      };
+      next();
+    } else {
+      res.status(401).json({ error: 'Authentication required' });
+    }
+  }
+};

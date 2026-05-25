@@ -148,12 +148,38 @@ class ThoughtResponseService {
   /**
    * Generate reflect response (mirror back clean)
    * Never: "Everyone moves at their own pace 😊" or other empty calories
+   * Never: echo back what the user just said
    */
   private generateReflectResponse(
     thoughtText: string,
     matches: InsecurityMatch[]
   ): string {
     const text = thoughtText.toLowerCase();
+
+    // Job loss / income loss
+    if (text.includes('lost my job') || text.includes('lost my income') || text.includes('lost my source of income') || text.includes('unemployed') || text.includes('laid off') || text.includes('fired')) {
+      return "Losing income is one of the most destabilizing things. How long has this been going on?";
+    }
+
+    // Rejection (multiple or repeated)
+    if ((text.includes('reject') && (text.includes('left and right') || text.includes('every') || text.includes('keep') || text.includes('again'))) || text.match(/reject(ed|ion).*(over|over and over|repeatedly)/)) {
+      return "Getting rejected repeatedly is exhausting in a way that's hard to explain to people who aren't in it. What are you going after?";
+    }
+
+    // Rejection (general)
+    if (text.includes('rejected') || text.includes('rejection')) {
+      return "What happened?";
+    }
+
+    // Grinding / burnout / working alone through a holiday
+    if ((text.includes('grind') || text.includes('grinding')) && (text.includes('inside') || text.includes('alone') || text.includes('holiday') || text.includes('weekend'))) {
+      return "Grinding alone while everyone else is offline hits different. What are you trying to get across the line?";
+    }
+
+    // Overwhelm / negative emotions
+    if (text.includes('negative emotion') || text.includes('lot of emotion') || text.includes('shit load') || text.includes('shitload') || text.includes('overwhelming')) {
+      return "That's a lot to be carrying. What's sitting heaviest right now?";
+    }
 
     // Specific reflections for common patterns
     if (text.includes('feel behind')) {
@@ -172,8 +198,16 @@ class ThoughtResponseService {
       return "Always? Or does it just feel that way right now?";
     }
 
-    // Generic reflection - clean mirror, no sugarcoating
-    return `You said: "${thoughtText}". What's making you think that right now?`;
+    if (text.includes('stress') || text.includes('anxious') || text.includes('anxiety')) {
+      return "What's the main thing driving it right now?";
+    }
+
+    if (text.includes('tired') || text.includes('exhausted') || text.includes('drained')) {
+      return "What's been the most draining part?";
+    }
+
+    // Generic reflection - acknowledge without echoing
+    return "What's the part that's hitting hardest right now?";
   }
 
   /**

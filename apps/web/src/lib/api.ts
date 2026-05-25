@@ -56,196 +56,166 @@ export const fetchJson = async <T>(
   // Check cache for GET requests (skip cache if using mock data)
   const isGetRequest = !init?.method || init.method === 'GET';
   const useCache = !shouldUseMock && isGetRequest;
-  
-  if (useCache) {
-    const cacheKey = generateCacheKey(url, init);
+  const urlStr = typeof url === 'string' ? url : (url as Request).url;
+  const cacheKey = useCache ? generateCacheKey(urlStr, init) : null;
+
+  if (cacheKey) {
     const cached = apiCache.get<T>(cacheKey);
-    
     if (cached !== null) {
-      if (config.logging.logApiCalls) {
-        log.debug(`API Cache Hit: ${typeof input === 'string' ? input : 'Request'}`);
-      }
+      if (config.logging.logApiCalls) log.debug(`API Cache Hit: ${typeof input === 'string' ? input : 'Request'}`);
       return cached;
     }
+    // Deduplicate: return the existing in-flight promise instead of making a duplicate request
+    const inflight = apiCache.getInflight<T>(cacheKey);
+    if (inflight) return inflight;
   }
-  
-  // Create abort controller for timeout (declare outside try for catch access)
-  const controller = new AbortController();
-  let timeoutId: NodeJS.Timeout | null = null;
-  
-  try {
-    // Add CSRF token and auth headers
-    const headers = addCsrfHeaders({
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    });
-    
-    // Set timeout
-    timeoutId = setTimeout(() => controller.abort(), config.api.timeout);
-    
-    const res = await fetch(url, {
-      headers,
-      signal: controller.signal,
-      ...init
-    });
-    
-    if (timeoutId) clearTimeout(timeoutId);
-    
-    // Track performance
-    const duration = performance.now() - startTime;
-    perfMonitoring.trackApiCall(typeof input === 'string' ? input : 'Request', duration, true);
-    
-    // Log performance in development
-    if (config.logging.logPerformance) {
-      log.debug(`API Response: ${duration.toFixed(2)}ms`, { url: typeof input === 'string' ? input : 'Request' });
-    }
 
-    // Any successful response means backend is reachable — clear "Backend unavailable" banner
-    if (res.ok) {
-      notifyBackendReachable();
-    }
+  const fetchPromise = (async (): Promise<T> => {
+    const controller = new AbortController();
+    let timeoutId: NodeJS.Timeout | null = null;
 
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({}));
-      let errorMessage = error.error || error.message || `HTTP ${res.status}: ${res.statusText}`;
-      const isSchemaIncomplete = res.status === 503 && (error.error === 'Database schema incomplete' || Array.isArray(error.missingTables));
-      if (isSchemaIncomplete) {
-        errorMessage = error.message || 'Database schema incomplete. Run: ./scripts/run-base-migrations.sh';
+    try {
+      const headers = addCsrfHeaders({
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      });
+
+      timeoutId = setTimeout(() => controller.abort(), config.api.timeout);
+
+      const res = await fetch(url, { headers, signal: controller.signal, ...init });
+
+      if (timeoutId) clearTimeout(timeoutId);
+
+      const duration = performance.now() - startTime;
+      perfMonitoring.trackApiCall(typeof input === 'string' ? input : 'Request', duration, true);
+      if (config.logging.logPerformance) {
+        log.debug(`API Response: ${duration.toFixed(2)}ms`, { url: typeof input === 'string' ? input : 'Request' });
       }
-      // Do not overwrite 500 with "server not running" — server may be up but returned an error (e.g. missing table, validation)
-      // Check if backend is not running or schema incomplete (dev mode or when mock data is enabled)
-      const backendDownStatus = res.status === 0 || res.status === 503 || res.status === 502 ||
-        (res.status === 500 && !config.api.url);
-      if ((config.dev.allowMockData || globalMockEnabled) && backendDownStatus) {
-        if (shouldUseMock && options?.mockData) {
-          log.debug(
-            isSchemaIncomplete ? 'Database schema incomplete, using mock data:' : 'Backend unavailable, using mock data:',
-            typeof input === 'string' ? input : 'Request'
-          );
+
+      if (res.ok) notifyBackendReachable();
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        let errorMessage = error.error || error.message || `HTTP ${res.status}: ${res.statusText}`;
+        const isSchemaIncomplete = res.status === 503 && (error.error === 'Database schema incomplete' || Array.isArray(error.missingTables));
+        if (isSchemaIncomplete) {
+          errorMessage = error.message || 'Database schema incomplete. Run: ./scripts/run-base-migrations.sh';
+        }
+        const backendDownStatus = res.status === 0 || res.status === 503 || res.status === 502 ||
+          (res.status === 500 && !config.api.url);
+        if ((config.dev.allowMockData || globalMockEnabled) && backendDownStatus) {
+          if (shouldUseMock && options?.mockData) {
+            log.debug(
+              isSchemaIncomplete ? 'Database schema incomplete, using mock data:' : 'Backend unavailable, using mock data:',
+              typeof input === 'string' ? input : 'Request'
+            );
+            return options.mockData;
+          }
+          if (config.dev.verboseErrors && !backendDownWarned) {
+            backendDownWarned = true;
+            log.warn(
+              isSchemaIncomplete
+                ? 'Database schema incomplete. Using fallback. Run: ./scripts/run-base-migrations.sh'
+                : 'Backend server is not running. Using fallback behavior. Start: cd apps/server && npm run dev'
+            );
+          }
+        }
+        if (res.status === 401) {
+          const authError = new Error('Authentication required. Please sign in again.');
+          if (options?.onError) options.onError(authError);
+          throw authError;
+        }
+        const apiError = new Error(errorMessage);
+        if (options?.onError) options.onError(apiError);
+        throw apiError;
+      }
+
+      const data = await res.json();
+
+      if (cacheKey && res.ok) {
+        const ttl = options?.mockData ? undefined : 5 * 60 * 1000;
+        apiCache.set(cacheKey, data, ttl);
+      }
+
+      if (init?.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(init.method)) {
+        const urlPattern = urlStr.split('?')[0];
+        apiCache.deletePattern(new RegExp(urlPattern.replace(/\/[^/]+$/, '/.*')));
+      }
+
+      return data;
+    } catch (error) {
+      if (timeoutId) clearTimeout(timeoutId);
+
+      const isNetworkError =
+        (error instanceof TypeError && (
+          error.message.includes('Failed to fetch') ||
+          error.message.includes('NetworkError') ||
+          error.message.includes('ERR_CONNECTION_REFUSED') ||
+          error.message.includes('ERR_INTERNET_DISCONNECTED') ||
+          error.message.includes('ERR_NETWORK_CHANGED')
+        )) ||
+        (error instanceof Error && error.name === 'NetworkError') ||
+        (error instanceof DOMException && error.name === 'NetworkError');
+
+      if (isNetworkError) {
+        if (config.env.isDevelopment && !backendDownWarned) {
+          backendDownWarned = true;
+          log.warn('Backend server is not running. Start: cd apps/server && npm run dev', {
+            url: typeof input === 'string' ? input : 'Request',
+            apiBaseUrl: apiBaseUrl || '(proxy)',
+          });
+        }
+        if ((config.dev.allowMockData || globalMockEnabled) && shouldUseMock && options?.mockData) {
+          log.debug('Network error, using mock data:', typeof input === 'string' ? input : 'Request');
           return options.mockData;
         }
-        if (config.dev.verboseErrors && !backendDownWarned) {
-          backendDownWarned = true;
-          log.warn(
-            isSchemaIncomplete
-              ? 'Database schema incomplete. Using fallback. Run: ./scripts/run-base-migrations.sh'
-              : 'Backend server is not running. Using fallback behavior. Start: cd apps/server && npm run dev'
-          );
-        }
+        const networkError = createAppError(
+          config.dev.verboseErrors
+            ? `Cannot connect to backend server at ${apiBaseUrl}. Make sure it's running.`
+            : 'Unable to connect to server. Please try again later.',
+          'network',
+          {
+            code: 'CONNECTION_REFUSED',
+            userMessage: config.dev.verboseErrors
+              ? `Backend server is not running. Start it with: cd apps/server && npm run dev`
+              : 'Unable to connect to server. Please check your connection and try again.',
+            retryable: true,
+            context: {
+              url: typeof input === 'string' ? input : 'Request',
+              apiBaseUrl,
+              errorMessage: error instanceof Error ? error.message : String(error),
+            },
+            originalError: error instanceof Error ? error : new Error(String(error)),
+          }
+        );
+        if (options?.onError) options.onError(networkError);
+        throw networkError;
       }
-      
-      // Check for authentication errors
-      if (res.status === 401) {
-        const authError = new Error('Authentication required. Please sign in again.');
-        if (options?.onError) options.onError(authError);
-        throw authError;
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        const timeoutError = new Error('Request timed out. Please try again.');
+        if (options?.onError) options.onError(timeoutError);
+        throw timeoutError;
       }
-      
-      const apiError = new Error(errorMessage);
-      if (options?.onError) options.onError(apiError);
-      throw apiError;
-    }
-    
-    const data = await res.json();
-    
-    // Cache successful GET responses
-    if (useCache && res.ok) {
-      const cacheKey = generateCacheKey(url, init);
-      // Cache for 5 minutes by default, or use custom TTL
-      const ttl = options?.mockData ? undefined : 5 * 60 * 1000;
-      apiCache.set(cacheKey, data, ttl);
-    }
-    
-    // Invalidate related cache on mutations
-    if (init?.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(init.method)) {
-      const urlPattern = url.split('?')[0]; // Remove query params
-      const pattern = new RegExp(urlPattern.replace(/\/[^/]+$/, '/.*'));
-      apiCache.deletePattern(pattern);
-    }
-    
-    return data;
-  } catch (error) {
-    if (timeoutId) clearTimeout(timeoutId);
-    
-    // Network errors (backend not running)
-    const isNetworkError = 
-      (error instanceof TypeError && (
-        error.message.includes('Failed to fetch') ||
-        error.message.includes('NetworkError') ||
-        error.message.includes('ERR_CONNECTION_REFUSED') ||
-        error.message.includes('ERR_INTERNET_DISCONNECTED') ||
-        error.message.includes('ERR_NETWORK_CHANGED')
-      )) ||
-      (error instanceof Error && error.name === 'NetworkError') ||
-      (error instanceof DOMException && error.name === 'NetworkError');
-    
-    if (isNetworkError) {
-      // Log backend-down message once per session to avoid console flood
-      if (config.env.isDevelopment && !backendDownWarned) {
-        backendDownWarned = true;
-        log.warn('Backend server is not running. Start: cd apps/server && npm run dev', {
+
+      const duration = performance.now() - startTime;
+      perfMonitoring.trackApiCall(typeof input === 'string' ? input : 'Request', duration, false);
+
+      const appError = handleError(error, {
+        component: 'api',
+        action: typeof input === 'string' ? input : 'Request',
+        metadata: {
           url: typeof input === 'string' ? input : 'Request',
-          apiBaseUrl: apiBaseUrl || '(proxy)',
-        });
-      }
-      
-      // Allow mock data fallback when enabled (dev or production with global toggle)
-      if ((config.dev.allowMockData || globalMockEnabled) && shouldUseMock && options?.mockData) {
-        log.debug('Network error, using mock data:', typeof input === 'string' ? input : 'Request');
-        return options.mockData;
-      }
-      
-      const networkError = createAppError(
-        config.dev.verboseErrors 
-          ? `Cannot connect to backend server at ${apiBaseUrl}. Make sure it's running.`
-          : 'Unable to connect to server. Please try again later.',
-        'network',
-        {
-          code: 'CONNECTION_REFUSED',
-          userMessage: config.dev.verboseErrors
-            ? `Backend server is not running. Start it with: cd apps/server && npm run dev`
-            : 'Unable to connect to server. Please check your connection and try again.',
-          retryable: true,
-          context: {
-            url: typeof input === 'string' ? input : 'Request',
-            apiBaseUrl,
-            errorMessage: error instanceof Error ? error.message : String(error),
-          },
-          originalError: error instanceof Error ? error : new Error(String(error)),
-        }
-      );
-      
-      if (options?.onError) options.onError(networkError);
-      throw networkError;
+          method: init?.method || 'GET',
+          duration,
+        },
+      });
+      if (options?.onError) options.onError(appError);
+      throw appError;
     }
-    
-    // Abort errors (timeout)
-    if (error instanceof Error && error.name === 'AbortError') {
-      const timeoutError = new Error('Request timed out. Please try again.');
-      if (options?.onError) options.onError(timeoutError);
-      throw timeoutError;
-    }
-    
-    // Track failed API calls
-    const duration = performance.now() - startTime;
-    perfMonitoring.trackApiCall(typeof input === 'string' ? input : 'Request', duration, false);
-    
-    // Handle and report error
-    const appError = handleError(error, {
-      component: 'api',
-      action: typeof input === 'string' ? input : 'Request',
-      metadata: {
-        url: typeof input === 'string' ? input : 'Request',
-        method: init?.method || 'GET',
-        duration: duration,
-      },
-    });
-    
-    if (options?.onError) {
-      options.onError(appError);
-    }
-    
-    throw appError;
-  }
+  })();
+
+  if (cacheKey) apiCache.trackInflight(cacheKey, fetchPromise);
+  return fetchPromise;
 };

@@ -39,6 +39,9 @@ class ModeHandlers {
       
       case 'NARRATIVE_RECALL':
         return await this.handleNarrativeRecall(userId, message);
+
+      case 'NARRATIVE_STORY':
+        return await this.handleNarrativeStory(userId, message);
       
       case 'EXPERIENCE_INGESTION':
         return await this.handleExperienceIngestion(userId, message, options?.messageId);
@@ -90,7 +93,7 @@ class ModeHandlers {
       logger.error({ err: error, userId }, 'Failed to handle emotional/existential mode');
       // Fallback response
       return {
-        content: "I hear you. What's making you think that right now?",
+        content: "That's a lot to be carrying. What's sitting heaviest right now?",
         response_mode: 'EMOTIONAL_SUPPORT',
         confidence: 0.5,
       };
@@ -240,21 +243,42 @@ class ModeHandlers {
         });
       }
 
-      // Check if it's a dump (mark experience as open)
+      // Check if it's a dump (large multi-part share)
       const isDump = message.length > 500 || /(here's everything|here's what happened|dumping|let me tell you|here's the whole)/i.test(message);
-      
-      // Minimal acknowledgment
-      return {
-        content: isDump 
-          ? "Got it. I'm capturing everything. Take your time." 
-          : "I've recorded this experience.",
-        response_mode: 'INGESTION_ACK',
-        confidence: 1.0,
-        metadata: {
-          processing: 'async',
-          is_dump: isDump,
-        },
-      };
+
+      // Use LLM for a warm, contextual acknowledgment
+      try {
+        const { openai } = await import('../../lib/openai');
+        const { config } = await import('../../config');
+        const systemPrompt = isDump
+          ? `You are Lorekeeper, a personal lore and memory AI. The user just shared a detailed experience. Acknowledge it warmly in 2-3 sentences — reflect something specific back from what they shared, confirm you've saved it to their lore, and optionally ask one light follow-up question. Be natural and conversational, not robotic.`
+          : `You are Lorekeeper, a personal lore and memory AI. The user just shared a moment or experience from their life. Respond warmly in 1-2 sentences — reflect something specific back from what they shared, and confirm you've captured it. Be natural, curious, and conversational. You may ask a brief follow-up if it feels natural.`;
+        const completion = await openai.chat.completions.create({
+          model: config.defaultModel || 'gpt-4o-mini',
+          temperature: 0.75,
+          max_tokens: 120,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message },
+          ],
+        });
+        const ackText = completion.choices[0]?.message?.content?.trim() || "Got it, I've captured this moment.";
+        return {
+          content: ackText,
+          response_mode: 'INGESTION_ACK',
+          confidence: 1.0,
+          metadata: { processing: 'async', is_dump: isDump },
+        };
+      } catch {
+        return {
+          content: isDump
+            ? "Got it — I'm capturing everything you shared. Take your time."
+            : "Captured. I've added this to your lore.",
+          response_mode: 'INGESTION_ACK',
+          confidence: 0.9,
+          metadata: { processing: 'async', is_dump: isDump },
+        };
+      }
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to handle experience ingestion mode');
       return {
@@ -379,6 +403,92 @@ class ModeHandlers {
   }
 
   /**
+   * NARRATIVE_STORY: Build a narrative from the user's journal entries.
+   * Calls StoryOfSelfEngine and returns structured story data + a text summary.
+   */
+  private async handleNarrativeStory(
+    userId: string,
+    _message: string
+  ): Promise<ModeHandlerResponse> {
+    try {
+      const { supabaseAdmin: db } = await import('../supabaseClient');
+      const { StoryOfSelfEngine } = await import('../storyOfSelf/storyOfSelfEngine');
+
+      // Fetch recent entries (up to 200 for sufficient signal)
+      const { data: rows } = await db
+        .from('journal_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(200);
+
+      const entries = (rows ?? []) as any[];
+
+      if (entries.length === 0) {
+        return {
+          content: "I don't have any journal entries to build a narrative from yet. Start writing and I'll weave your story together.",
+          response_mode: 'NARRATIVE_STORY',
+          confidence: 1.0,
+          metadata: { empty: true },
+        };
+      }
+
+      const engine = new StoryOfSelfEngine();
+      const story = await engine.process({ entries });
+
+      // Build readable text summary
+      const topThemes = story.themes
+        .sort((a, b) => b.strength - a.strength)
+        .slice(0, 3)
+        .map(t => t.theme.replace(/_/g, ' '))
+        .join(', ');
+
+      const tpLines = story.turningPoints
+        .slice(0, 3)
+        .map(tp => `- **${tp.category}** (${tp.timestamp.substring(0, 7)}): ${tp.description}`)
+        .join('\n');
+
+      const arcLines = story.arcs
+        .slice(0, 3)
+        .map(arc => `**${arc.title}** *(${arc.era})*\n${arc.content}`)
+        .join('\n\n');
+
+      const content = [
+        story.summary,
+        '',
+        `**Narrative Mode:** ${story.mode.mode.charAt(0).toUpperCase() + story.mode.mode.slice(1)}`,
+        `**Core Themes:** ${topThemes}`,
+        '',
+        tpLines.length > 0 ? `**Turning Points:**\n${tpLines}` : null,
+        '',
+        arcLines.length > 0 ? `**Story Arcs:**\n${arcLines}` : null,
+        '',
+        story.voicePrint ? `*${story.voicePrint}*` : null,
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      return {
+        content,
+        response_mode: 'NARRATIVE_STORY',
+        confidence: story.coherence.coherenceScore,
+        metadata: {
+          story,
+          entry_count: entries.length,
+          coherence_score: story.coherence.coherenceScore,
+        },
+      };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle narrative story mode');
+      return {
+        content: "I wasn't able to build your narrative right now. Try again in a moment.",
+        response_mode: 'NARRATIVE_STORY',
+        confidence: 0.5,
+      };
+    }
+  }
+
+  /**
    * Get message timestamp from chat_messages table
    */
   private async getMessageTimestamp(messageId: string): Promise<Date | null> {
@@ -389,11 +499,12 @@ class ModeHandlers {
         .eq('id', messageId)
         .single();
       
-      if (!data || !data.created_at) {
+      const row = data as any;
+      if (!row?.created_at) {
         return null;
       }
-      
-      return new Date(data.created_at);
+
+      return new Date(row.created_at);
     } catch (error) {
       logger.debug({ err: error, messageId }, 'Failed to get message timestamp');
       return null;

@@ -1,5 +1,5 @@
 import { fetchJson } from '../lib/api';
-import type { Message } from '../components/chat/ChatMessage';
+import type { Message } from '../features/chat/message/ChatMessage';
 
 export const parseSlashCommand = (input: string): { command: string; args: string } | null => {
   const trimmed = input.trim();

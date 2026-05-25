@@ -237,6 +237,13 @@ try {
       { missingTables: schemaResult.missingTables },
       'CRITICAL: Missing DB tables - system DEGRADED. Run: ./scripts/run-base-migrations.sh'
     );
+    // Auto-retry after 5s — handles startup race where Supabase isn't fully ready yet
+    setTimeout(async () => {
+      const retry = await verifySchema();
+      if (retry.ok) {
+        logger.info('Schema re-verified OK after startup delay — system no longer DEGRADED');
+      }
+    }, 5000);
   }
 
   registerSyncJob();

@@ -16,6 +16,7 @@ import { knowledgeTypeEngineService } from '../knowledgeTypeEngineService';
 import { irCompiler } from '../compiler/irCompiler';
 import { dependencyGraph } from '../compiler/dependencyGraph';
 import { memoryConsolidationService } from '../compiler/memoryConsolidationService';
+import { entityRegistry } from '../entityRegistry';
 import { semanticConversionService } from './semanticConversion';
 import {
   linkContextualEvents,
@@ -238,46 +239,12 @@ export class ConversationIngestionPipeline {
     messageId: string
   ): Promise<void> {
     try {
-      // Get entities mentioned in this message
-      const entitiesWithNames = await Promise.all(
-        unitIds.map(async (entityId) => {
-          try {
-            // Try character first
-            const { data: character } = await supabaseAdmin
-              .from('characters')
-              .select('id, name')
-              .eq('id', entityId)
-              .eq('user_id', userId)
-              .single();
-
-            if (character) {
-              return { id: character.id, name: character.name, type: 'character' as const };
-            }
-
-            // Try omega entity
-            const { data: entity } = await supabaseAdmin
-              .from('omega_entities')
-              .select('id, primary_name')
-              .eq('id', entityId)
-              .eq('user_id', userId)
-              .single();
-
-            if (entity) {
-              return { id: entity.id, name: entity.primary_name, type: 'omega_entity' as const };
-            }
-
-            return null;
-          } catch (error) {
-            return null;
-          }
-        })
-      );
-
-      const validEntities = entitiesWithNames.filter(e => e !== null) as Array<{
-        id: string;
-        name: string;
-        type: 'character' | 'omega_entity';
-      }>;
+      const resolved = await entityRegistry.resolveManyById(unitIds, userId);
+      const validEntities = resolved.map(e => ({
+        id: e.id,
+        name: e.name,
+        type: (e.source === 'character' ? 'character' : 'omega_entity') as 'character' | 'omega_entity',
+      }));
 
       if (validEntities.length > 0) {
         const relationships = await romanticRelationshipDetector.detectRelationships(
@@ -891,32 +858,14 @@ export class ConversationIngestionPipeline {
             type: (e.type === 'PERSON' || e.type === 'CHARACTER' ? 'character' : 'omega_entity') as 'character' | 'omega_entity',
           }));
 
-          // Get entity names for detection
-          const entityNames = await Promise.all(
-            entitiesForDetection.map(async (e) => {
-              try {
-                if (e.type === 'character') {
-                  const { data: char } = await supabaseAdmin
-                    .from('characters')
-                    .select('name')
-                    .eq('id', e.id)
-                    .single();
-                  return { ...e, name: char?.name || '' };
-                } else {
-                  const { data: entity } = await supabaseAdmin
-                    .from('omega_entities')
-                    .select('primary_name')
-                    .eq('id', e.id)
-                    .single();
-                  return { ...e, name: entity?.primary_name || '' };
-                }
-              } catch (error) {
-                return { ...e, name: '' };
-              }
-            })
+          const registryResults = await entityRegistry.resolveManyById(
+            entitiesForDetection.map(e => e.id),
+            userId
           );
-
-          const entitiesWithNames = entityNames.filter(e => e.name);
+          const registryById = new Map(registryResults.map(r => [r.id, r]));
+          const entitiesWithNames = entitiesForDetection
+            .map(e => ({ ...e, name: registryById.get(e.id)?.name ?? '' }))
+            .filter(e => e.name);
 
           if (entitiesWithNames.length >= 2) {
             const detection = await entityRelationshipDetector.detectRelationshipsAndScopes(

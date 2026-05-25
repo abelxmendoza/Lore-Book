@@ -16,6 +16,7 @@ const humanizeExpressionMode = (mode: string): string => {
   };
   return modeMap[mode] || mode;
 };
+import { NarrativeStoryPanel } from './NarrativeStoryPanel';
 import { ChatMemoryIndicator, type MemoryIndicator } from './ChatMemoryIndicator';
 import { ChatMemorySuggestion } from './ChatMemorySuggestion';
 import { DisambiguationPrompt, type DisambiguationOption } from './DisambiguationPrompt';
@@ -68,6 +69,8 @@ export type Message = {
   modeDecision?: { mode: string; confidence: number; reasoning: string };
   ragStats?: { sourceCount: number; cacheHit: boolean; retrievalMs: number; contextItems: number };
   activePersona?: string;
+  narrativeStory?: import('./NarrativeStoryPanel').StoryOfSelf;
+  narrativeEntryCount?: number;
 };
 
 type ChatMessageProps = {
@@ -299,6 +302,12 @@ export const ChatMessage = ({
             )}
             {!isUser && message.cognitionFeedback && (
               <MemoryCognitionPanel feedback={message.cognitionFeedback} />
+            )}
+            {!isUser && message.narrativeStory && (
+              <NarrativeStoryPanel
+                story={message.narrativeStory}
+                entryCount={message.narrativeEntryCount}
+              />
             )}
           </div>
 
