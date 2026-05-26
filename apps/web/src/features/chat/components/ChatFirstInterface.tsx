@@ -116,7 +116,8 @@ export const ChatFirstInterface = () => {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const response = await fetch('/api/health');
+        const apiBase = import.meta.env.VITE_API_URL || '';
+        const response = await fetch(`${apiBase}/api/health`);
         if (!response.ok && !healthWarnedRef.current) {
           healthWarnedRef.current = true;
           if (response.status === 503) {

@@ -95,6 +95,20 @@ export const fetchJson = async <T>(
 
       if (res.ok) notifyBackendReachable();
 
+      // Routing guard: HTML response means the request hit Vercel/proxy instead of the API.
+      // Fail loud before JSON.parse produces a cryptic "unexpected character" error.
+      const ct = res.headers.get('content-type') ?? '';
+      if (ct.includes('text/html')) {
+        const routingError = new Error(
+          config.env.isProduction
+            ? `API routing error: server returned HTML for ${urlStr}. ` +
+              'Verify VITE_API_URL is set to the Railway backend in Vercel → Settings → Environment Variables.'
+            : `API returned HTML instead of JSON for ${urlStr}. Is the backend running?`
+        );
+        if (options?.onError) options.onError(routingError);
+        throw routingError;
+      }
+
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
         let errorMessage = error.error || error.message || `HTTP ${res.status}: ${res.statusText}`;

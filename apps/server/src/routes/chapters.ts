@@ -74,7 +74,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
 router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   await chapterService.deleteChapter(req.user!.id, req.params.id);
-  res.status(204).send();
+  res.json({ ok: true });
 });
 
 // Extract chapter info from conversation
