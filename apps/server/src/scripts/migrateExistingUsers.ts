@@ -84,7 +84,7 @@ async function migrateExistingUsers() {
 }
 
 // Run migration if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (require.main === module) {
   migrateExistingUsers()
     .then(() => {
       console.log('Migration script completed successfully.');

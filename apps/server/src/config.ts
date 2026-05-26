@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import dotenv from 'dotenv';
 
@@ -7,7 +6,7 @@ import { logger } from './logger';
 
 // Load .env from project root
 // From apps/server/src/config.ts, we need to go up 3 levels to reach root
-const currentDir = path.dirname(fileURLToPath(import.meta.url)); // apps/server/src
+const currentDir = __dirname; // apps/server/src
 const serverDir = path.dirname(currentDir); // apps/server
 const appsDir = path.dirname(serverDir); // apps
 const rootDir = path.dirname(appsDir); // root
