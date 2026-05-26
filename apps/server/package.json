@@ -31,7 +31,8 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^13.0.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "typescript": "^5.5.4"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -52,7 +53,6 @@
     "eslint-plugin-node": "^11.1.0",
     "supertest": "^7.1.4",
     "tsx": "^4.16.2",
-    "typescript": "^5.5.4",
     "typescript-eslint": "^8.53.1",
     "vitest": "^4.0.18"
   }
