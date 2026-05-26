@@ -2,7 +2,11 @@ import { createClient } from '@supabase/supabase-js';
 import type { NextFunction, Request, Response } from 'express';
 
 import { config } from '../config';
+import type { AuthUser } from '../types/runtime/express';
 import { logSecurityEvent, redactSensitive } from '../services/securityLog';
+
+// Re-export AuthUser so existing imports of AuthenticatedRequest still resolve.
+export type { AuthUser };
 
 // Log the dev-bypass warning once per process, not once per request.
 let _devBypassLogged = false;
@@ -20,15 +24,13 @@ try {
   console.warn('Failed to create Supabase client:', error);
 }
 
-export type AuthenticatedRequest = Request & {
-  user?: {
-    id: string;
-    email?: string;
-    lastSignInAt?: string | null;
-    /** Display name from auth provider (e.g. Supabase user_metadata.full_name) */
-    fullName?: string | null;
-  };
-};
+/**
+ * AuthenticatedRequest is now a thin alias — req.user is globally augmented
+ * on Express.Request via src/types/runtime/express.ts, so every route handler
+ * sees the user field without an explicit cast. This alias is preserved for
+ * backward compatibility with existing route handlers.
+ */
+export type AuthenticatedRequest = Request;
 
 export const authMiddleware = async (
   req: AuthenticatedRequest,

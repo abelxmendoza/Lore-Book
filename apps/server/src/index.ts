@@ -242,75 +242,88 @@ app.use((req: express.Request, res: express.Response) => {
 // Global error handler (must be last)
 app.use(errorHandler);
 
-try {
-  // Boot-time schema verification: mark DEGRADED if required tables missing (see db/schemaVerification.ts)
-  const { verifySchema } = await import('./db/schemaVerification');
-  const schemaResult = await verifySchema();
-  if (!schemaResult.ok) {
-    logger.warn(
-      { missingTables: schemaResult.missingTables },
-      'CRITICAL: Missing DB tables - system DEGRADED. Run: ./scripts/run-base-migrations.sh'
-    );
-    // Auto-retry after 5s — handles startup race where Supabase isn't fully ready yet
-    setTimeout(async () => {
-      const retry = await verifySchema();
-      if (retry.ok) {
-        logger.info('Schema re-verified OK after startup delay — system no longer DEGRADED');
-      }
-    }, 5000);
-  }
-
-  registerSyncJob();
-  memoryExtractionWorker.start();
-  const { insightGenerationJob } = await import('./jobs/insightGenerationJob');
-  const { graphUpdateJob } = await import('./jobs/graphUpdateJob');
-  const { continuityEngineJob } = await import('./jobs/continuityEngineJob');
-  const { valueEvolutionJob } = await import('./jobs/valueEvolutionJob');
-  const { evolveRelationshipsJob } = await import('./jobs/evolveRelationshipsJob');
-  const { episodicClosureJob } = await import('./jobs/episodicClosureJob');
-  const { registerPersonalStrategyTrainingJob } = await import('./jobs/personalStrategyTrainingJob');
-  
-  insightGenerationJob.register();
-  graphUpdateJob.register();
-  continuityEngineJob.register();
-  valueEvolutionJob.register();
-  evolveRelationshipsJob.register();
-  episodicClosureJob.register();
-  registerPersonalStrategyTrainingJob();
-} catch (error) {
-  logger.warn({ error }, 'Failed to register background jobs, continuing anyway');
-}
-
-// Start engine scheduler
-// Runs daily at 2 AM to recalculate engines for all users
-// Can be disabled by setting DISABLE_ENGINE_SCHEDULER=true
-if (process.env.DISABLE_ENGINE_SCHEDULER !== 'true') {
+// CJS requires an async IIFE for top-level await (not supported in CommonJS modules).
+(async () => {
   try {
-    const { startEngineScheduler } = await import('./engineRuntime/scheduler');
-    startEngineScheduler();
-    logger.info('Engine scheduler started (runs daily at 2 AM)');
+    // Boot-time schema verification: mark DEGRADED if required tables missing
+    const { verifySchema } = await import('./db/schemaVerification');
+    const schemaResult = await verifySchema();
+    if (!schemaResult.ok) {
+      logger.warn(
+        { missingTables: schemaResult.missingTables },
+        'CRITICAL: Missing DB tables - system DEGRADED. Run: ./scripts/run-base-migrations.sh'
+      );
+      // Auto-retry after 5s — handles startup race where Supabase isn't fully ready yet
+      setTimeout(async () => {
+        const retry = await verifySchema();
+        if (retry.ok) {
+          logger.info('Schema re-verified OK after startup delay — system no longer DEGRADED');
+        }
+      }, 5000);
+    }
+
+    // CORE jobs — always run
+    registerSyncJob();
+    memoryExtractionWorker.start();
+    const { continuityEngineJob } = await import('./jobs/continuityEngineJob');
+    continuityEngineJob.register();
+    logger.info('Core background jobs registered: sync, memoryExtraction, continuityEngine');
+
+    // EXPERIMENTAL jobs — gated behind ENABLE_EXPERIMENTAL_RUNTIME
+    if (process.env.ENABLE_EXPERIMENTAL_RUNTIME === 'true') {
+      const { insightGenerationJob } = await import('./jobs/insightGenerationJob');
+      const { graphUpdateJob } = await import('./jobs/graphUpdateJob');
+      const { valueEvolutionJob } = await import('./jobs/valueEvolutionJob');
+      const { evolveRelationshipsJob } = await import('./jobs/evolveRelationshipsJob');
+      const { episodicClosureJob } = await import('./jobs/episodicClosureJob');
+      const { registerPersonalStrategyTrainingJob } = await import('./jobs/personalStrategyTrainingJob');
+
+      insightGenerationJob.register();
+      graphUpdateJob.register();
+      valueEvolutionJob.register();
+      evolveRelationshipsJob.register();
+      episodicClosureJob.register();
+      registerPersonalStrategyTrainingJob();
+      logger.info('Experimental background jobs registered (ENABLE_EXPERIMENTAL_RUNTIME=true)');
+    } else {
+      logger.info('Experimental jobs skipped (ENABLE_EXPERIMENTAL_RUNTIME not set)');
+    }
   } catch (error) {
-    logger.warn({ error }, 'Failed to start engine scheduler, continuing anyway');
+    logger.warn({ error }, 'Failed to register background jobs, continuing anyway');
   }
-} else {
-  logger.info('Engine scheduler disabled (DISABLE_ENGINE_SCHEDULER=true)');
-}
 
-const server = app.listen(config.port, () => {
-  logger.info(`Lore Book API listening on ${config.port}`);
-  const aiMode = process.env.DEV_AI_FALLBACK === 'true'
-    ? '⚠️  AI Provider: FALLBACK MODE (DEV_AI_FALLBACK=true — no real inference)'
-    : config.openAiKey
-      ? '✅ AI Provider: OpenAI LIVE'
-      : '❌ AI Provider: NO KEY — requests will fail';
-  logger.info(aiMode);
-});
-
-server.on('error', (error: NodeJS.ErrnoException) => {
-  if (error.code === 'EADDRINUSE') {
-    logger.error(`Port ${config.port} is already in use. Please stop the other process or change the port.`);
+  // Engine scheduler — experimental, gated
+  if (
+    process.env.ENABLE_EXPERIMENTAL_RUNTIME === 'true' &&
+    process.env.DISABLE_ENGINE_SCHEDULER !== 'true'
+  ) {
+    try {
+      const { startEngineScheduler } = await import('./engineRuntime/scheduler');
+      startEngineScheduler();
+      logger.info('Engine scheduler started (runs daily at 2 AM)');
+    } catch (error) {
+      logger.warn({ error }, 'Failed to start engine scheduler, continuing anyway');
+    }
   } else {
-    logger.error({ error }, 'Failed to start server');
+    logger.info('Engine scheduler disabled (set ENABLE_EXPERIMENTAL_RUNTIME=true to enable)');
   }
-  process.exit(1);
-});
+
+  const server = app.listen(config.port, () => {
+    logger.info(`Lore Book API listening on ${config.port}`);
+    const aiMode = process.env.DEV_AI_FALLBACK === 'true'
+      ? '⚠️  AI Provider: FALLBACK MODE (DEV_AI_FALLBACK=true — no real inference)'
+      : config.openAiKey
+        ? '✅ AI Provider: OpenAI LIVE'
+        : '❌ AI Provider: NO KEY — requests will fail';
+    logger.info(aiMode);
+  });
+
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      logger.error(`Port ${config.port} is already in use. Please stop the other process or change the port.`);
+    } else {
+      logger.error({ error }, 'Failed to start server');
+    }
+    process.exit(1);
+  });
+})();

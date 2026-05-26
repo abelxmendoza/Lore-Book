@@ -1,13 +1,20 @@
 // =====================================================
-// ROUTE REGISTRY
-// Purpose: Single source of truth for all route registrations
-// Prevents duplicate registrations and missing routers
+// ROUTE REGISTRY — STABILIZATION PHASE ALPHA
+//
+// Classification tiers:
+//   CORE_RUNTIME   — required for auth/chat/ingestion/entity/threads/continuity/contradiction
+//   EXPERIMENTAL   — domain features under active development, safe to disable
+//   ADMIN          — internal tooling, never exposed to end users
+//   RESEARCH       — exploratory systems, not production-proven
+//   LEGACY         — superseded by newer implementation, kept for data migration
+//   UNUSED         — imported but not yet wired / dead code
+//
+// Gate: ENABLE_EXPERIMENTAL_RUNTIME=true loads ALL tiers.
+//       Default (false / unset) loads CORE_RUNTIME only.
 // =====================================================
 
 import express, { Router } from 'express';
 
-
-// Import all routers
 import { billingRouter } from '../billing/billingRouter';
 import { externalHubRouter } from '../external/external_hub.router';
 import { harmonizationRouter } from '../harmonization/harmonization.router';
@@ -155,267 +162,1077 @@ import { voidRouter } from './voids';
 import biasEthicsRouter from './biasEthics';
 import thoughtsRouter from './thoughts';
 
+// ---------------------------------------------------------------------------
+
+export type RouteClassification =
+  | 'CORE_RUNTIME'
+  | 'EXPERIMENTAL'
+  | 'ADMIN'
+  | 'RESEARCH'
+  | 'LEGACY'
+  | 'UNUSED';
+
 export interface RouteEntry {
   path: string;
   router: Router;
-  requiresAuth?: boolean; // Default: true
+  requiresAuth?: boolean;
+  classification: RouteClassification;
   description?: string;
 }
 
-/**
- * Route Registry - Single source of truth for all routes
- * Add all routes here to prevent duplicates
- * 
- * IMPORTANT: Each path must be unique. Duplicates will cause runtime errors.
- */
+// ---------------------------------------------------------------------------
+// ROUTE REGISTRY
+// ---------------------------------------------------------------------------
+
 export const routeRegistry: RouteEntry[] = [
-  // Health & Diagnostics (no auth)
-  { path: '/', router: healthRouter, requiresAuth: false, description: 'Health check' },
-  { path: '/api/diagnostics', router: diagnosticsRouter, requiresAuth: false, description: 'Diagnostics' },
-  
-  // Public routes (no auth) - registered before auth middleware
-  { path: '/api/entries', router: entriesRouter, requiresAuth: false },
-  { path: '/api/photos', router: photosRouter, requiresAuth: false },
-  { path: '/api/calendar', router: calendarRouter, requiresAuth: false },
-  { path: '/api/chat', router: chatRouter, requiresAuth: false },
-  { path: '/api/timeline', router: timelineRouter, requiresAuth: false },
-  { path: '/api/summary', router: summaryRouter, requiresAuth: false },
-  { path: '/api/chapters', router: chaptersRouter, requiresAuth: false },
-  { path: '/api/evolution', router: evolutionRouter, requiresAuth: false },
-  { path: '/api/corrections', router: correctionsRouter, requiresAuth: false },
-  { path: '/api/canon', router: canonRouter, requiresAuth: false },
-  { path: '/api/memory-graph', router: memoryGraphRouter, requiresAuth: false },
-  { path: '/api/memory-ladder', router: memoryLadderRouter, requiresAuth: false },
-  { path: '/api/people-places', router: peoplePlacesRouter, requiresAuth: false },
-  { path: '/api/locations', router: locationsRouter, requiresAuth: false },
-  { path: '/api/x', router: xRouter, requiresAuth: false },
-  { path: '/api/tasks', router: tasksRouter, requiresAuth: false },
-  { path: '/api/relationships', router: temporalRelationshipsRouter },
-  { path: '/api/legal', router: legalRouter, requiresAuth: false },
-  { path: '/api/billing', router: billingRouter, requiresAuth: false },
-  { path: '/api/account', router: accountRouter, requiresAuth: false },
-  
-  // Protected routes (require auth) - registered after auth middleware
-  { path: '/api/timeline-hierarchy', router: timelineHierarchyRouter },
-  { path: '/api/threads', router: threadsRouter },
-  { path: '/api/omega-memory', router: omegaMemoryRouter },
-  { path: '/api/continuity', router: continuityRouter },
-  { path: '/api/perspectives', router: perspectivesRouter },
-  { path: '/api/mrq', router: memoryReviewQueueRouter },
-  { path: '/api/insights', router: insightsRouter },
-  // Note: /api/chat is registered above as public, chatOrchestrationRouter handles protected chat endpoints
-  { path: '/api/chat/message', router: chatOrchestrationRouter },
-  { path: '/api/decisions', router: decisionsRouter },
-  { path: '/api/predictions', router: predictionsRouter },
-  { path: '/api/goals', router: goalsRouter },
-  { path: '/api/quests', router: questRouter },
-  { path: '/api/rpg', router: rpgRouter },
-  { path: '/api/privacy', router: privacyRouter },
-  { path: '/api/hqi', router: hqiRouter },
-  { path: '/api/search', router: searchRouter },
-  { path: '/api/onboarding', router: onboardingRouter },
-  { path: '/api/agents', router: agentsRouter },
-  { path: '/api/autopilot', router: autopilotRouter },
-  { path: '/api/persona', router: personaRouter },
-  { path: '/api/orchestrator', router: orchestratorRouter },
-  { path: '/api/github', router: githubRouter },
-  { path: '/api/external-hub', router: externalHubRouter },
-  { path: '/api/integrations', router: integrationsRouter },
-  { path: '/api/journal', router: journalRouter },
-  { path: '/api/characters', router: charactersRouter },
-  { path: '/api/perceptions', router: perceptionsRouter },
-  { path: '/api/reactions', router: reactionsRouter },
-  { path: '/api/perception-reaction-engine', router: perceptionReactionEngineRouter },
-  { path: '/api/skills', router: skillsRouter },
-  { path: '/api/achievements', router: achievementsRouter },
-  { path: '/api/resume', router: resumeRouter },
-  { path: '/api/notebook', router: notebookRouter },
-  { path: '/api/moods', router: moodsRouter },
-  { path: '/api/identity', router: identityRouter },
-  { path: '/api/harmonization', router: harmonizationRouter },
-  { path: '/api/naming', router: namingRouter },
-  { path: '/api/subscription', router: subscriptionRouter },
-  { path: '/api/memoir', router: memoirRouter },
-  { path: '/api/biography', router: biographyRouter },
-  { path: '/api/documents', router: documentsRouter },
-  { path: '/api/time', router: timeRouter },
-  { path: '/api/user', router: userRouter },
-  { path: '/api/essence', router: essenceRouter },
-  { path: '/api/verification', router: verificationRouter },
-  { path: '/api/admin', router: adminRouter },
-  { path: '/api/dev', router: devRouter },
-  { path: '/api/timeline-v2', router: timelineV2Router },
-  { path: '/api/memory-engine', router: memoryEngineRouter },
-  { path: '/api/backward-storytelling', router: backwardStorytellingRouter },
-  { path: '/api/graph', router: knowledgeGraphRouter },
-  { path: '/api/analytics', router: analyticsRouter },
-  { path: '/api/chronology', router: chronologyRouter },
-  { path: '/api/conversation', router: conversationCenteredRouter },
-  { path: '/api/recommendations', router: recommendationsRouter },
-  { path: '/api/wisdom', router: wisdomRouter },
-  { path: '/api/learning', router: learningRouter },
-  { path: '/api/context', router: contextRouter },
-  { path: '/api/consolidation', router: consolidationRouter },
-  { path: '/api/prediction', router: predictionRouter },
-  { path: '/api/narrative', router: narrativeRouter },
-  { path: '/api/relationship-dynamics', router: relationshipDynamicsRouter },
-  { path: '/api/intervention', router: interventionRouter },
-  { path: '/api/habits', router: habitsRouter },
-  { path: '/api/resilience', router: resilienceRouter },
-  { path: '/api/influence', router: influenceRouter },
-  { path: '/api/growth', router: growthRouter },
-  { path: '/api/legacy', router: legacyRouter },
-  { path: '/api/values', router: valuesRouter },
-  { path: '/api/dreams', router: dreamsRouter },
-  { path: '/api/emotion', router: emotionRouter },
-  { path: '/api/health', router: healthRouter },
-  { path: '/api/financial', router: financialRouter },
-  { path: '/api/creative', router: creativeRouter },
-  { path: '/api/social', router: socialRouter },
-  { path: '/api/reflection', router: reflectionRouter },
-  { path: '/api/personality', router: personalityRouter },
-  { path: '/api/archetype', router: archetypeRouter },
-  { path: '/api/engines', router: enginesRouter },
-  { path: '/api/engine-registry', router: engineRegistryRouter },
-  { path: '/api/entities', router: entitiesRouter },
-  { path: '/api/events', router: eventsRouter },
-  { path: '/api/location-resolution', router: locationResolutionRouter },
-  { path: '/api/activities', router: activitiesRouter },
-  { path: '/api/temporal-events', router: temporalEventsRouter },
-  { path: '/api/emotion-resolution', router: emotionResolutionRouter },
-  { path: '/api/emotions', router: emotionalIntelligenceRouter },
-  { path: '/api/behavior', router: behaviorRouter },
-  { path: '/api/engine-runtime', router: engineRuntimeRouter },
-  { path: '/api/scenes', router: scenesRouter },
-  { path: '/api/conflicts', router: conflictsRouter },
-  { path: '/api/toxicity', router: toxicityRouter },
-  { path: '/api/social-projection', router: socialProjectionRouter },
-  { path: '/api/paracosm', router: paracosmRouter },
-  { path: '/api/inner-mythology', router: innerMythologyRouter },
-  { path: '/api/identity-core', router: identityCoreRouter },
-  { path: '/api/story-of-self', router: storyOfSelfRouter },
-  { path: '/api/inner-dialogue', router: innerDialogueRouter },
-  { path: '/api/alternate-self', router: alternateSelfRouter },
-  { path: '/api/cognitive-bias', router: cognitiveBiasRouter },
-  { path: '/api/distortions', router: distortionRouter },
-  { path: '/api/shadow', router: shadowEngineRouter },
-  { path: '/api/chat-memory', router: chatMemoryRouter },
-  { path: '/api/internal/engine', router: engineHealthRouter },
-  { path: '/api/life-arc', router: lifeArcRouter },
-  { path: '/api/life', router: lifeRouter },
-  { path: '/api/meta', router: metaControlRouter },
-  { path: '/api/correction-dashboard', router: correctionDashboardRouter },
-  { path: '/api/entity-resolution', router: entityResolutionRouter },
-  { path: '/api/organizations', router: organizationsRouter },
-  { path: '/api/memory-recall', router: memoryRecallRouter },
-  { path: '/api/entity-ambiguity', router: entityAmbiguityRouter },
-  { path: '/api/entity-meaning-drift', router: entityMeaningDriftRouter },
-  { path: '/api/knowledge-type', router: knowledgeTypeEngineRouter },
-  { path: '/api/belief-reconciliation', router: beliefRealityReconciliationRouter },
-  { path: '/api/narrative-diff', router: narrativeDiffRouter },
-  { path: '/api/contradiction-alerts', router: contradictionAlertsRouter },
-  { path: '/api/will', router: willRouter },
-  { path: '/api/continuity-profile', router: continuityProfileRouter },
-  { path: '/api/strategy', router: personalStrategyRouter },
-  { path: '/api/voids', router: voidRouter },
-  { path: '/api/bias-ethics', router: biasEthicsRouter, requiresAuth: true, description: 'Bias detection, ethics review, and consent tracking' },
-  { path: '/api/thoughts', router: thoughtsRouter, requiresAuth: true, description: 'Thought classification and response generation' },
+  // ---- HEALTH & DIAGNOSTICS -----------------------------------------------
+  {
+    path: '/',
+    router: healthRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Liveness check — no auth, no DB',
+  },
+  {
+    path: '/api/health',
+    router: healthRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Health check (Railway healthcheck target)',
+  },
+  {
+    path: '/api/diagnostics',
+    router: diagnosticsRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Runtime diagnostics',
+  },
+
+  // ---- AUTH / ACCOUNT -----------------------------------------------------
+  {
+    path: '/api/user',
+    router: userRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'User profile, ToS acceptance, settings',
+  },
+  {
+    path: '/api/account',
+    router: accountRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Account management',
+  },
+  {
+    path: '/api/legal',
+    router: legalRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Terms of service, privacy policy',
+  },
+  {
+    path: '/api/onboarding',
+    router: onboardingRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'User onboarding flow',
+  },
+  {
+    path: '/api/subscription',
+    router: subscriptionRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Subscription tier management',
+  },
+  {
+    path: '/api/billing',
+    router: billingRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Stripe billing, webhooks',
+  },
+  {
+    path: '/api/verification',
+    router: verificationRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Identity verification',
+  },
+  {
+    path: '/api/privacy',
+    router: privacyRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Privacy settings and data controls',
+  },
+
+  // ---- INGESTION ----------------------------------------------------------
+  {
+    path: '/api/entries',
+    router: entriesRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Journal entry creation and retrieval',
+  },
+  {
+    path: '/api/documents',
+    router: documentsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Document upload and processing',
+  },
+  {
+    path: '/api/photos',
+    router: photosRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Photo ingestion',
+  },
+
+  // ---- CHAT ---------------------------------------------------------------
+  {
+    path: '/api/chat',
+    router: chatRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Chat interface — primary AI interaction',
+  },
+  {
+    path: '/api/chat/message',
+    router: chatOrchestrationRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Orchestrated chat message processing',
+  },
+  {
+    path: '/api/chat-memory',
+    router: chatMemoryRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Per-session chat memory store',
+  },
+
+  // ---- THREADS / PERSISTENCE ----------------------------------------------
+  {
+    path: '/api/threads',
+    router: threadsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Conversation thread persistence and retrieval',
+  },
+  {
+    path: '/api/omega-memory',
+    router: omegaMemoryRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Long-term memory persistence layer',
+  },
+
+  // ---- ENTITY EXTRACTION --------------------------------------------------
+  {
+    path: '/api/entities',
+    router: entitiesRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Entity extraction and management',
+  },
+  {
+    path: '/api/entity-resolution',
+    router: entityResolutionRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Entity deduplication and resolution',
+  },
+
+  // ---- RETRIEVAL ----------------------------------------------------------
+  {
+    path: '/api/search',
+    router: searchRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Semantic and keyword search',
+  },
+  {
+    path: '/api/memory-recall',
+    router: memoryRecallRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Memory retrieval and RAG',
+  },
+  {
+    path: '/api/memory-graph',
+    router: memoryGraphRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Memory graph traversal',
+  },
+  {
+    path: '/api/memory-ladder',
+    router: memoryLadderRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Memory ladder / hierarchy retrieval',
+  },
+  {
+    path: '/api/context',
+    router: contextRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Context assembly for RAG prompts',
+  },
+  {
+    path: '/api/insights',
+    router: insightsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Insight storage and retrieval',
+  },
+  {
+    path: '/api/mrq',
+    router: memoryReviewQueueRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Memory review queue',
+  },
+
+  // ---- CONTINUITY ---------------------------------------------------------
+  {
+    path: '/api/continuity',
+    router: continuityRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Narrative continuity engine',
+  },
+  {
+    path: '/api/continuity-profile',
+    router: continuityProfileRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'User continuity profile',
+  },
+
+  // ---- CONTRADICTION GOVERNANCE -------------------------------------------
+  {
+    path: '/api/corrections',
+    router: correctionsRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Factual corrections and truth reconciliation',
+  },
+  {
+    path: '/api/canon',
+    router: canonRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Canon status management',
+  },
+  {
+    path: '/api/contradiction-alerts',
+    router: contradictionAlertsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Contradiction detection and alert routing',
+  },
+  {
+    path: '/api/belief-reconciliation',
+    router: beliefRealityReconciliationRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Belief-reality gap detection and reconciliation',
+  },
+  {
+    path: '/api/correction-dashboard',
+    router: correctionDashboardRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Correction review dashboard',
+  },
+
+  // ---- NARRATIVE CORE -----------------------------------------------------
+  {
+    path: '/api/narrative',
+    router: narrativeRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Core narrative structuring',
+  },
+  {
+    path: '/api/summary',
+    router: summaryRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Entry and period summaries',
+  },
+  {
+    path: '/api/timeline',
+    router: timelineRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Primary timeline view',
+  },
+  {
+    path: '/api/perspectives',
+    router: perspectivesRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Epistemic perspective management',
+  },
+  {
+    path: '/api/relationships',
+    router: temporalRelationshipsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Temporal relationship tracking',
+  },
+
+  // =========================================================================
+  // EXPERIMENTAL — loaded only when ENABLE_EXPERIMENTAL_RUNTIME=true
+  // =========================================================================
+
+  // ---- EXTENDED TIMELINE / CHRONOLOGY ------------------------------------
+  {
+    path: '/api/timeline-hierarchy',
+    router: timelineHierarchyRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Hierarchical timeline view',
+  },
+  {
+    path: '/api/chapters',
+    router: chaptersRouter,
+    requiresAuth: false,
+    classification: 'EXPERIMENTAL',
+    description: 'Chapter-based narrative organization',
+  },
+  {
+    path: '/api/chronology',
+    router: chronologyRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Chronological event ordering',
+  },
+  {
+    path: '/api/evolution',
+    router: evolutionRouter,
+    requiresAuth: false,
+    classification: 'EXPERIMENTAL',
+    description: 'Personal evolution tracking',
+  },
+  {
+    path: '/api/life-arc',
+    router: lifeArcRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Life arc narrative engine',
+  },
+  {
+    path: '/api/life',
+    router: lifeRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Holistic life view',
+  },
+
+  // ---- MEMORY ENGINE EXTENSIONS -------------------------------------------
+  {
+    path: '/api/memory-engine',
+    router: memoryEngineRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Extended memory engine operations',
+  },
+  {
+    path: '/api/consolidation',
+    router: consolidationRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Memory consolidation pipeline',
+  },
+  {
+    path: '/api/conversation',
+    router: conversationCenteredRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Conversation-centered extraction system',
+  },
+
+  // ---- ENTITY EXTENSIONS --------------------------------------------------
+  {
+    path: '/api/entity-ambiguity',
+    router: entityAmbiguityRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Entity ambiguity detection and resolution',
+  },
+  {
+    path: '/api/entity-meaning-drift',
+    router: entityMeaningDriftRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Semantic drift detection for entities',
+  },
+  {
+    path: '/api/organizations',
+    router: organizationsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Organization entity management',
+  },
+  {
+    path: '/api/locations',
+    router: locationsRouter,
+    requiresAuth: false,
+    classification: 'EXPERIMENTAL',
+    description: 'Location entity management',
+  },
+  {
+    path: '/api/location-resolution',
+    router: locationResolutionRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Location entity resolution',
+  },
+  {
+    path: '/api/people-places',
+    router: peoplePlacesRouter,
+    requiresAuth: false,
+    classification: 'EXPERIMENTAL',
+    description: 'People and places extraction',
+  },
+
+  // ---- KNOWLEDGE GRAPH ----------------------------------------------------
+  {
+    path: '/api/graph',
+    router: knowledgeGraphRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Knowledge graph construction',
+  },
+  {
+    path: '/api/knowledge-type',
+    router: knowledgeTypeEngineRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Knowledge type classification engine',
+  },
+
+  // ---- TEMPORAL -----------------------------------------------------------
+  {
+    path: '/api/temporal-events',
+    router: temporalEventsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Temporal event extraction',
+  },
+  {
+    path: '/api/events',
+    router: eventsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Event extraction and storage',
+  },
+  {
+    path: '/api/activities',
+    router: activitiesRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Activity tracking',
+  },
+  {
+    path: '/api/calendar',
+    router: calendarRouter,
+    requiresAuth: false,
+    classification: 'EXPERIMENTAL',
+    description: 'Calendar integration',
+  },
+  {
+    path: '/api/time',
+    router: timeRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Temporal reasoning',
+  },
+
+  // ---- DOMAIN COGNITION ---------------------------------------------------
+  {
+    path: '/api/recommendations',
+    router: recommendationsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Recommendation engine',
+  },
+  {
+    path: '/api/wisdom',
+    router: wisdomRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Wisdom extraction',
+  },
+  {
+    path: '/api/learning',
+    router: learningRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Learning pattern detection',
+  },
+  {
+    path: '/api/prediction',
+    router: predictionRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Behavioral prediction',
+  },
+  {
+    path: '/api/predictions',
+    router: predictionsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Prediction storage and retrieval',
+  },
+  {
+    path: '/api/relationship-dynamics',
+    router: relationshipDynamicsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Relationship dynamics analysis',
+  },
+  {
+    path: '/api/intervention',
+    router: interventionRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Intervention recommendation system',
+  },
+  {
+    path: '/api/habits',
+    router: habitsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Habit detection and tracking',
+  },
+  {
+    path: '/api/resilience',
+    router: resilienceRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Resilience scoring',
+  },
+  {
+    path: '/api/influence',
+    router: influenceRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Influence network analysis',
+  },
+  {
+    path: '/api/growth',
+    router: growthRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Growth pattern extraction',
+  },
+  {
+    path: '/api/legacy',
+    router: legacyRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Legacy narrative construction',
+  },
+  {
+    path: '/api/values',
+    router: valuesRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Values extraction and tracking',
+  },
+  {
+    path: '/api/dreams',
+    router: dreamsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Dream journaling and analysis',
+  },
+  {
+    path: '/api/emotion',
+    router: emotionRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Emotion extraction',
+  },
+  {
+    path: '/api/financial',
+    router: financialRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Financial pattern analysis',
+  },
+  {
+    path: '/api/creative',
+    router: creativeRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Creative expression tracking',
+  },
+  {
+    path: '/api/social',
+    router: socialRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Social network analysis',
+  },
+  {
+    path: '/api/reflection',
+    router: reflectionRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Guided reflection system',
+  },
+  {
+    path: '/api/narrative-diff',
+    router: narrativeDiffRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Narrative change detection',
+  },
+  {
+    path: '/api/decisions',
+    router: decisionsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Decision tracking and analysis',
+  },
+  {
+    path: '/api/goals',
+    router: goalsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Goal tracking',
+  },
+  {
+    path: '/api/will',
+    router: willRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Intentionality and will tracking',
+  },
+  {
+    path: '/api/voids',
+    router: voidRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Void / absence pattern detection',
+  },
+
+  // ---- IDENTITY / PSYCHOLOGY ----------------------------------------------
+  {
+    path: '/api/identity',
+    router: identityRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Identity model management',
+  },
+  {
+    path: '/api/identity-core',
+    router: identityCoreRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Core identity engine',
+  },
+  {
+    path: '/api/archetype',
+    router: archetypeRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Archetypal pattern recognition',
+  },
+  {
+    path: '/api/persona',
+    router: personaRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Persona construction',
+  },
+  {
+    path: '/api/essence',
+    router: essenceRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Essence refinement',
+  },
+  {
+    path: '/api/story-of-self',
+    router: storyOfSelfRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Self-narrative construction',
+  },
+  {
+    path: '/api/inner-mythology',
+    router: innerMythologyRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Personal mythology engine',
+  },
+  {
+    path: '/api/paracosm',
+    router: paracosmRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Imaginal world modeling',
+  },
+  {
+    path: '/api/alternate-self',
+    router: alternateSelfRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Alternate self modeling',
+  },
+  {
+    path: '/api/inner-dialogue',
+    router: innerDialogueRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Internal dialogue extraction',
+  },
+  {
+    path: '/api/shadow',
+    router: shadowEngineRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Shadow self engine',
+  },
+  {
+    path: '/api/cognitive-bias',
+    router: cognitiveBiasRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Cognitive bias detection',
+  },
+  {
+    path: '/api/distortions',
+    router: distortionRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Cognitive distortion analysis',
+  },
+  {
+    path: '/api/personality',
+    router: personalityRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Personality model construction',
+  },
+  {
+    path: '/api/thoughts',
+    router: thoughtsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Thought classification and response',
+  },
+  {
+    path: '/api/bias-ethics',
+    router: biasEthicsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Bias detection and ethics review',
+  },
+
+  // ---- EMOTION INTELLIGENCE -----------------------------------------------
+  {
+    path: '/api/emotions',
+    router: emotionalIntelligenceRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Emotional intelligence analysis',
+  },
+  {
+    path: '/api/emotion-resolution',
+    router: emotionResolutionRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Emotion resolution pathways',
+  },
+  {
+    path: '/api/perceptions',
+    router: perceptionsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Perception tracking',
+  },
+  {
+    path: '/api/reactions',
+    router: reactionsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Reaction pattern analysis',
+  },
+  {
+    path: '/api/perception-reaction-engine',
+    router: perceptionReactionEngineRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Perception-reaction correlation engine',
+  },
+  {
+    path: '/api/moods',
+    router: moodsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Mood tracking',
+  },
+  {
+    path: '/api/toxicity',
+    router: toxicityRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Relationship toxicity detection',
+  },
+  {
+    path: '/api/social-projection',
+    router: socialProjectionRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Social self-projection modeling',
+  },
+  {
+    path: '/api/behavior',
+    router: behaviorRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Behavior pattern detection',
+  },
+  {
+    path: '/api/conflicts',
+    router: conflictsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Conflict tracking',
+  },
+  {
+    path: '/api/scenes',
+    router: scenesRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Scene-level memory extraction',
+  },
+
+  // ---- PERSONAL TOOLS -----------------------------------------------------
+  {
+    path: '/api/journal',
+    router: journalRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Structured journal entries',
+  },
+  {
+    path: '/api/notebook',
+    router: notebookRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Personal notebook',
+  },
+  {
+    path: '/api/skills',
+    router: skillsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Skill tracking',
+  },
+  {
+    path: '/api/achievements',
+    router: achievementsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Achievement system',
+  },
+  {
+    path: '/api/resume',
+    router: resumeRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Resume / profile claim parsing',
+  },
+  {
+    path: '/api/tasks',
+    router: tasksRouter,
+    requiresAuth: false,
+    classification: 'EXPERIMENTAL',
+    description: 'Task management',
+  },
+  {
+    path: '/api/quests',
+    router: questRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Quest system',
+  },
+  {
+    path: '/api/rpg',
+    router: rpgRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'RPG gamification layer',
+  },
+  {
+    path: '/api/hqi',
+    router: hqiRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Human Quality Index',
+  },
+  {
+    path: '/api/backward-storytelling',
+    router: backwardStorytellingRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Backward storytelling reconstruction',
+  },
+  {
+    path: '/api/memoir',
+    router: memoirRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Memoir generation',
+  },
+  {
+    path: '/api/biography',
+    router: biographyRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Automated biography generation',
+  },
+  {
+    path: '/api/naming',
+    router: namingRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Entity naming suggestions',
+  },
+  {
+    path: '/api/harmonization',
+    router: harmonizationRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Data harmonization layer',
+  },
+  {
+    path: '/api/characters',
+    router: charactersRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Character / people management',
+  },
+
+  // ---- ENGINE SYSTEM ------------------------------------------------------
+  {
+    path: '/api/engines',
+    router: enginesRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Engine management',
+  },
+  {
+    path: '/api/engine-registry',
+    router: engineRegistryRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Engine registry',
+  },
+  {
+    path: '/api/engine-runtime',
+    router: engineRuntimeRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Engine runtime execution',
+  },
+  {
+    path: '/api/internal/engine',
+    router: engineHealthRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Engine health monitoring',
+  },
+  {
+    path: '/api/meta',
+    router: metaControlRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Meta-control plane',
+  },
+  {
+    path: '/api/strategy',
+    router: personalStrategyRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Personal strategy training',
+  },
+
+  // ---- ADMIN --------------------------------------------------------------
+  {
+    path: '/api/admin',
+    router: adminRouter,
+    classification: 'ADMIN',
+    description: 'Admin panel',
+  },
+  {
+    path: '/api/dev',
+    router: devRouter,
+    classification: 'ADMIN',
+    description: 'Development-only tooling',
+  },
+  {
+    path: '/api/analytics',
+    router: analyticsRouter,
+    classification: 'ADMIN',
+    description: 'Platform analytics',
+  },
+
+  // ---- RESEARCH -----------------------------------------------------------
+  {
+    path: '/api/orchestrator',
+    router: orchestratorRouter,
+    classification: 'RESEARCH',
+    description: 'Multi-agent orchestration research',
+  },
+  {
+    path: '/api/autopilot',
+    router: autopilotRouter,
+    classification: 'RESEARCH',
+    description: 'Autonomous operation research',
+  },
+  {
+    path: '/api/agents',
+    router: agentsRouter,
+    classification: 'RESEARCH',
+    description: 'Agent system research',
+  },
+
+  // ---- EXTERNAL INTEGRATIONS ----------------------------------------------
+  {
+    path: '/api/x',
+    router: xRouter,
+    requiresAuth: false,
+    classification: 'EXPERIMENTAL',
+    description: 'X (Twitter) integration',
+  },
+  {
+    path: '/api/github',
+    router: githubRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'GitHub integration',
+  },
+  {
+    path: '/api/integrations',
+    router: integrationsRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Third-party integrations hub',
+  },
+  {
+    path: '/api/external-hub',
+    router: externalHubRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'External data ingestion hub',
+  },
+
+  // ---- LEGACY -------------------------------------------------------------
+  {
+    path: '/api/timeline-v2',
+    router: timelineV2Router,
+    classification: 'LEGACY',
+    description: 'Superseded by /api/timeline — kept for data migration',
+  },
 ];
 
-/**
- * Validate route registry for duplicates and missing routers
- */
+// ---------------------------------------------------------------------------
+// VALIDATION
+// ---------------------------------------------------------------------------
+
 export function validateRouteRegistry(): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   const seenPaths = new Set<string>();
 
   for (const entry of routeRegistry) {
-    // Check for duplicate paths
     if (seenPaths.has(entry.path)) {
       errors.push(`Duplicate route path: ${entry.path}`);
     }
     seenPaths.add(entry.path);
 
-    // Check for missing router
     if (!entry.router) {
       errors.push(`Missing router for path: ${entry.path}`);
     }
 
-    // Check for invalid router type
-    if (entry.router && typeof entry.router !== 'function' && typeof entry.router.use !== 'function') {
+    if (entry.router && typeof entry.router !== 'function' && typeof (entry.router as { use?: unknown }).use !== 'function') {
       errors.push(`Invalid router type for path: ${entry.path}`);
     }
   }
 
-  return {
-    valid: errors.length === 0,
-    errors,
-  };
+  return { valid: errors.length === 0, errors };
 }
 
+// ---------------------------------------------------------------------------
+// REGISTRATION
+// ---------------------------------------------------------------------------
+
+const EXPERIMENTAL_TIERS: RouteClassification[] = [
+  'EXPERIMENTAL',
+  'ADMIN',
+  'RESEARCH',
+  'LEGACY',
+  'UNUSED',
+];
+
 /**
- * Register all routes with Express app
- * Routes are split into public (no auth) and protected (with auth middleware)
- * 
- * @param app Express application
- * @param publicRoutesApp Express app/router for public routes (no auth)
- * @param protectedRoutesApp Express app/router for protected routes (with auth middleware stack)
+ * Register all routes with the Express app.
+ *
+ * When ENABLE_EXPERIMENTAL_RUNTIME is not "true", only CORE_RUNTIME routes
+ * are mounted. This shrinks the compile-time surface that affects Railway
+ * cold-start and reduces runtime attack surface.
  */
 export function registerRoutes(
-  publicRoutesApp: express.Application | express.Router,
+  publicRoutesApp: express.Application,
   protectedRoutesApp: express.Router
 ): void {
   const validation = validateRouteRegistry();
-  
   if (!validation.valid) {
-    logger.error('Route registry validation failed:', validation.errors);
+    logger.error({ errors: validation.errors }, 'Route registry validation failed');
     throw new Error(`Route registry validation failed: ${validation.errors.join(', ')}`);
   }
 
+  const experimentalEnabled = process.env.ENABLE_EXPERIMENTAL_RUNTIME === 'true';
+
   const seenPaths = new Set<string>();
-  let publicRoutes = 0;
-  let protectedRoutes = 0;
+  let publicCount = 0;
+  let protectedCount = 0;
+  let skippedCount = 0;
 
   for (const entry of routeRegistry) {
-    // Double-check for duplicates at runtime
+    if (!experimentalEnabled && EXPERIMENTAL_TIERS.includes(entry.classification)) {
+      skippedCount++;
+      logger.debug(`Skipping ${entry.classification} route: ${entry.path}`);
+      continue;
+    }
+
     if (seenPaths.has(entry.path)) {
       logger.error(`Duplicate route detected at runtime: ${entry.path}`);
       throw new Error(`Duplicate route registration detected: ${entry.path}`);
     }
     seenPaths.add(entry.path);
 
-    // Register route
     if (entry.requiresAuth === false) {
-      // Public route (no auth required) - mounted on main app at full path e.g. /api/entries
       publicRoutesApp.use(entry.path, entry.router);
-      publicRoutes++;
+      publicCount++;
       logger.debug(`Registered public route: ${entry.path}`);
     } else {
-      // Protected route: protectedRoutesApp (apiRouter) is mounted at /api, so use path without /api prefix
-      const mountPath = entry.path.startsWith('/api') ? entry.path.slice(4) || '/' : entry.path;
+      const mountPath = entry.path.startsWith('/api')
+        ? entry.path.slice(4) || '/'
+        : entry.path;
       protectedRoutesApp.use(mountPath, entry.router);
-      protectedRoutes++;
+      protectedCount++;
       logger.debug(`Registered protected route: ${entry.path} -> ${mountPath}`);
     }
   }
 
-  logger.info(`Route registration complete: ${publicRoutes} public, ${protectedRoutes} protected routes`);
+  logger.info(
+    `Routes registered: ${publicCount} public, ${protectedCount} protected` +
+    (skippedCount > 0 ? `, ${skippedCount} skipped (ENABLE_EXPERIMENTAL_RUNTIME=false)` : '')
+  );
 }
 
-/**
- * Development-time validation to check for duplicate imports
- * This runs at module load time in development
- */
+// Development-time duplicate check
 if (process.env.NODE_ENV === 'development') {
-  // Validate on import in development
   const validation = validateRouteRegistry();
   if (!validation.valid) {
     console.error('❌ Route registry validation failed at module load:');
-    validation.errors.forEach(error => console.error(`  - ${error}`));
-    // Don't throw in development, just warn - allows for hot reload
+    validation.errors.forEach((e) => console.error(`  - ${e}`));
     console.warn('⚠️  Server will continue, but routes may not work correctly');
   } else {
     console.log(`✅ Route registry validated: ${routeRegistry.length} routes registered`);
   }
 }
-
