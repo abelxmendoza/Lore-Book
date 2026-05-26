@@ -21,7 +21,32 @@ const useProxyInDev =
   (!rawApiUrl ||
     rawApiUrl === 'http://localhost:4000' ||
     rawApiUrl === 'http://127.0.0.1:4000');
-export const API_URL = useProxyInDev ? '' : (rawApiUrl || (isDevelopment ? '' : ''));
+
+/**
+ * Returns the canonical API base URL for all fetch calls.
+ * - Dev: '' → Vite proxy routes /api/* to localhost:4000 (no CORS)
+ * - Prod with VITE_API_URL set: the Railway backend URL
+ * - Prod without VITE_API_URL: '' with a hard console error — every request will
+ *   silently hit the frontend origin (Vercel) and get HTML back.
+ *   Fix: set VITE_API_URL in Vercel Dashboard → Project → Settings → Environment Variables
+ */
+export function getApiBaseUrl(): string {
+  if (useProxyInDev) return '';
+  if (rawApiUrl) return rawApiUrl;
+  if (isProduction) {
+    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
+    console.error(
+      '[ROUTING] ❌ VITE_API_URL is not set in this production build.\n' +
+      `  All /api/* calls will resolve to: ${currentOrigin} (Vercel — returns HTML)\n` +
+      '  Fix: Vercel Dashboard → Project → Settings → Environment Variables:\n' +
+      '       VITE_API_URL = https://lore-book-production.up.railway.app\n' +
+      '  Then redeploy.'
+    );
+  }
+  return '';
+}
+
+export const API_URL = getApiBaseUrl();
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 

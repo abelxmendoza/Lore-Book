@@ -77,13 +77,32 @@ async function runIntegrityCheck(): Promise<IntegrityReport> {
       errors.push('VITE_API_URL contains localhost in a production build — API calls will fail.');
       runtimeDiagnostics.record('env_error', { meta: { check: 'api_url_localhost_leak' } });
     }
-    if (!apiUrl && useMockData === 'false') {
-      warnings.push(
-        'VITE_API_URL is not set and VITE_USE_MOCK_DATA=false. ' +
-        'API calls will fail in production. Set VITE_API_URL in ' +
-        'Vercel Dashboard → Project → Settings → Environment Variables, then redeploy.'
+    // Always error when VITE_API_URL is missing in production — regardless of mock flag.
+    // Without it, every /api/* call resolves to the Vercel frontend origin and gets HTML back.
+    if (!apiUrl) {
+      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'the frontend origin';
+      errors.push(
+        `VITE_API_URL is not set. All API calls will hit ${currentOrigin} (Vercel) instead of Railway. ` +
+        'Vercel Dashboard → Project → Settings → Environment Variables: ' +
+        'VITE_API_URL = https://lore-book-production.up.railway.app, then redeploy.'
       );
-      runtimeDiagnostics.record('env_warning', { meta: { check: 'api_url_missing_production' } });
+      runtimeDiagnostics.record('env_error', { meta: { check: 'api_url_missing_production' } });
+    } else if (typeof window !== 'undefined') {
+      // Same-origin assertion: if the configured URL resolves to THIS origin, it's wrong.
+      try {
+        const resolvedOrigin = new URL(apiUrl).origin;
+        if (resolvedOrigin === window.location.origin) {
+          errors.push(
+            `VITE_API_URL resolves to the frontend origin (${resolvedOrigin}). ` +
+            'All API calls will hit Vercel and return HTML instead of JSON. ' +
+            'Set VITE_API_URL to the Railway backend URL, not the Vercel URL.'
+          );
+          runtimeDiagnostics.record('env_error', { meta: { check: 'api_url_same_origin' } });
+        }
+      } catch {
+        errors.push(`VITE_API_URL is not a valid URL: "${apiUrl}"`);
+        runtimeDiagnostics.record('env_error', { meta: { check: 'api_url_invalid' } });
+      }
     }
     if (!supabaseUrl || !supabaseKey) {
       if (useMockData === 'false') {

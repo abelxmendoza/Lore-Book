@@ -74,6 +74,23 @@ export const fetchJson = async <T>(
     const controller = new AbortController();
     let timeoutId: NodeJS.Timeout | null = null;
 
+    // Routing diagnostics — log on every request in dev, or in prod when baseUrl is empty
+    // (empty baseUrl in prod = misconfigured VITE_API_URL, requests hit Vercel instead of Railway)
+    const hasRoutingConcern = config.env.isProduction && !apiBaseUrl;
+    if (config.logging.logApiCalls || hasRoutingConcern) {
+      let resolvedOrigin: string;
+      try {
+        resolvedOrigin = apiBaseUrl ? new URL(apiBaseUrl).origin : window.location.origin;
+      } catch {
+        resolvedOrigin = apiBaseUrl || window.location.origin;
+      }
+      const logFn = hasRoutingConcern ? console.error : console.log;
+      logFn(
+        `[API] baseUrl=${apiBaseUrl || '(empty→same-origin)'} requestUrl=${urlStr} ` +
+        `environment=${import.meta.env.MODE} resolvedOrigin=${resolvedOrigin}`
+      );
+    }
+
     try {
       const headers = addCsrfHeaders({
         'Content-Type': 'application/json',
