@@ -26,6 +26,37 @@ function isBackendUnavailable(error: string): boolean {
   );
 }
 
+// Returns true when the error is an OpenAI quota/rate-limit issue.
+function isOpenAIRateLimited(error: string): boolean {
+  return (
+    error.includes('429') ||
+    error.includes('quota exceeded') ||
+    error.includes('rate limit') ||
+    error.includes('insufficient_quota') ||
+    error.includes('OpenAI 429')
+  );
+}
+
+// Returns true when OpenAI is reachable but the call failed for a non-quota reason.
+function isOpenAIError(error: string): boolean {
+  return (
+    error.toLowerCase().includes('openai') ||
+    error.includes('model') ||
+    error.includes('completion')
+  ) && !isOpenAIRateLimited(error);
+}
+
+// Map a raw error string to a user-facing message.
+function friendlyErrorMessage(errMsg: string): string {
+  if (isOpenAIRateLimited(errMsg)) {
+    return "The AI is temporarily over capacity. Please wait a moment and try again.";
+  }
+  if (isOpenAIError(errMsg)) {
+    return "The AI service encountered an issue. Please try again shortly.";
+  }
+  return `Sorry, I encountered an error. Please try again.`;
+}
+
 // Friendly demo response shown when the backend is unreachable and the user
 // is in guest or mock-data mode. Gives a sense of what the real system would say.
 function getDemoResponse(message: string): string {
@@ -286,7 +317,7 @@ export const useChat = () => {
           // so there is no console spam and no scary error text.
           const useDemoFallback = (isGuest || getGlobalMockDataEnabled()) && isBackendUnavailable(error);
           updateMessage(assistantMessageId, {
-            content: useDemoFallback ? getDemoResponse(messageText) : `Sorry, I encountered an error: ${error}`,
+            content: useDemoFallback ? getDemoResponse(messageText) : friendlyErrorMessage(String(error)),
             isStreaming: false
           });
         },
@@ -320,7 +351,7 @@ export const useChat = () => {
         addMessage({
           id: `error-${Date.now()}`,
           role: 'assistant',
-          content: `Sorry, I encountered an error: ${errMsg}`,
+          content: friendlyErrorMessage(errMsg),
           timestamp: new Date()
         });
       }

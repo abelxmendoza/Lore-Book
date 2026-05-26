@@ -2,8 +2,22 @@
  * Feature Flag Middleware Helpers
  */
 
-import { featureFlags, type FeatureFlag } from '../../web/src/config/featureFlags';
 import { config } from '../config';
+
+export type FeatureFlag =
+  | 'timelinePlayback'
+  | 'memoryClusters'
+  | 'characterGraph'
+  | 'adminConsole'
+  | 'devDiagnostics';
+
+const featureFlags: Record<FeatureFlag, boolean> = {
+  timelinePlayback: false,
+  memoryClusters: false,
+  characterGraph: false,
+  adminConsole: config.apiEnv !== 'production',
+  devDiagnostics: config.apiEnv !== 'production',
+};
 
 export interface User {
   id: string;

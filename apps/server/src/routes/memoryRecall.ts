@@ -30,6 +30,7 @@ router.post(
   '/query',
   requireAuth,
   async (req: AuthenticatedRequest, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     try {
       const parsed = recallQuerySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -57,7 +58,7 @@ router.post(
 
       return res.json(result);
     } catch (error) {
-      logger.error({ error, userId: req.user.id }, 'Failed to execute recall query');
+      logger.error({ error, userId: req.user?.id }, 'Failed to execute recall query');
       return res.status(500).json({ error: 'Failed to execute recall query' });
     }
   }
@@ -71,6 +72,7 @@ router.post(
   '/chat',
   requireAuth,
   async (req: AuthenticatedRequest, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     try {
       const parsed = recallQuerySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -88,7 +90,7 @@ router.post(
 
       return res.json({ response });
     } catch (error) {
-      logger.error({ error, userId: req.user.id }, 'Failed to handle recall chat');
+      logger.error({ error, userId: req.user?.id }, 'Failed to handle recall chat');
       return res.status(500).json({ error: 'Failed to handle recall chat' });
     }
   }

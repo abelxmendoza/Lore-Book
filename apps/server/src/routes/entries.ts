@@ -275,7 +275,7 @@ router.post('/', rateLimitMiddleware, requireAuth, checkEntryLimit, validateBody
           const decisionRL = new DecisionRL();
           return Promise.all(
             actions.map(action => 
-              decisionRL.recordActionOutcome(req.user!.id, action, 'unknown')
+              decisionRL.recordActionOutcome(req.user!.id, action, 'neutral')
                 .catch(err => logger.debug({ err, action: action.type }, 'RL: Failed to record action outcome'))
             )
           );

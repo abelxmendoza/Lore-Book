@@ -6,6 +6,7 @@ import { Router } from 'express';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { supabaseAdmin } from '../db/dbAdapter';
 import { omegaMemoryService } from '../services/omegaMemoryService';
 
 const router = Router();

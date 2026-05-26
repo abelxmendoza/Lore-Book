@@ -251,7 +251,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/verification',
     router: verificationRouter,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Identity verification',
   },
   {
@@ -272,14 +272,14 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/documents',
     router: documentsRouter,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Document upload and processing',
   },
   {
     path: '/api/photos',
     router: photosRouter,
     requiresAuth: false,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Photo ingestion',
   },
 
@@ -328,7 +328,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/entity-resolution',
     router: entityResolutionRouter,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Entity deduplication and resolution',
   },
 
@@ -349,14 +349,14 @@ export const routeRegistry: RouteEntry[] = [
     path: '/api/memory-graph',
     router: memoryGraphRouter,
     requiresAuth: false,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Memory graph traversal',
   },
   {
     path: '/api/memory-ladder',
     router: memoryLadderRouter,
     requiresAuth: false,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Memory ladder / hierarchy retrieval',
   },
   {
@@ -368,13 +368,13 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/insights',
     router: insightsRouter,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Insight storage and retrieval',
   },
   {
     path: '/api/mrq',
     router: memoryReviewQueueRouter,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Memory review queue',
   },
 
@@ -388,7 +388,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/continuity-profile',
     router: continuityProfileRouter,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'User continuity profile',
   },
 
@@ -416,13 +416,13 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/belief-reconciliation',
     router: beliefRealityReconciliationRouter,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Belief-reality gap detection and reconciliation',
   },
   {
     path: '/api/correction-dashboard',
     router: correctionDashboardRouter,
-    classification: 'CORE_RUNTIME',
+    classification: 'ADMIN',
     description: 'Correction review dashboard',
   },
 
@@ -450,13 +450,13 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/perspectives',
     router: perspectivesRouter,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Epistemic perspective management',
   },
   {
     path: '/api/relationships',
     router: temporalRelationshipsRouter,
-    classification: 'CORE_RUNTIME',
+    classification: 'EXPERIMENTAL',
     description: 'Temporal relationship tracking',
   },
 

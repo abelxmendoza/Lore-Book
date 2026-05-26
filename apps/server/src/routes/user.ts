@@ -30,7 +30,11 @@ const privacySettingsSchema = z.object({
 router.get('/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const user = req.user!;
+
+    const { data: { user }, error: fetchError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (fetchError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
     const profile = {
       id: user.id,
@@ -83,8 +87,8 @@ router.put('/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
       }
     );
 
-    if (updateError) {
-      throw updateError;
+    if (updateError || !user) {
+      throw updateError ?? new Error('Update returned no user');
     }
 
     const profile = {
@@ -321,13 +325,13 @@ router.get('/storage', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     // Calculate storage from entries and attachments
     const [entriesResult, attachmentsResult] = await Promise.all([
-      supabaseAdmin
-        .from('journal_entries')
-        .select('id, content, metadata')
-        .eq('user_id', userId)
-        .catch(() => ({ data: [] })),
-      supabaseAdmin
-        .storage
+      Promise.resolve(
+        supabaseAdmin
+          .from('journal_entries')
+          .select('id, content, metadata')
+          .eq('user_id', userId)
+      ).catch(() => ({ data: [] as { id: unknown; content: unknown; metadata: unknown }[] })),
+      supabaseAdmin.storage
         .from('attachments')
         .list(userId, { limit: 1000 })
         .catch(() => ({ data: [] })),

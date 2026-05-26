@@ -3,6 +3,7 @@ import request from 'supertest';
 import express from 'express';
 import { userRouter } from '../../src/routes/user';
 import { requireAuth } from '../../src/middleware/auth';
+import { supabaseAdmin } from '../../src/services/supabaseClient';
 
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/supabaseClient', () => ({
@@ -36,6 +37,10 @@ describe('User API Routes', () => {
       (req as any).user = mockUser;
       next();
     });
+    vi.mocked(supabaseAdmin.auth.admin.getUserById).mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
+    } as any);
   });
 
   describe('GET /api/user/profile', () => {

@@ -87,6 +87,8 @@ export const ChatFirstInterface = () => {
   const [initialDate, setInitialDate] = useState<string | null>(null);
   const [threadListCollapsed, setThreadListCollapsed] = useState(false);
   const [threadListMobileOpen, setThreadListMobileOpen] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<'ok' | 'degraded' | 'unreachable' | null>(null);
+  const [statusDismissed, setStatusDismissed] = useState(false);
   const isMobile = useIsMobile(640);
 
   useEffect(() => {
@@ -120,16 +122,16 @@ export const ChatFirstInterface = () => {
           if (response.status === 503) {
             const body = await response.json().catch(() => ({}));
             if (body.error === 'Database schema incomplete' || Array.isArray(body.missingTables)) {
-              console.warn('⚠️ Database schema incomplete. Run: ./scripts/run-base-migrations.sh');
+              setBackendStatus('degraded');
               return;
             }
           }
-          console.warn('⚠️ Health check failed. Run diagnostics with Cmd+Shift+D');
+          setBackendStatus('degraded');
         }
       } catch {
         if (!healthWarnedRef.current) {
           healthWarnedRef.current = true;
-          console.warn('⚠️ Cannot reach server. Run diagnostics with Cmd+Shift+D');
+          setBackendStatus('unreachable');
         }
       }
     };
@@ -319,6 +321,29 @@ export const ChatFirstInterface = () => {
             )}
           </div>
         </div>
+
+        {/* Runtime status banner */}
+        {backendStatus && !statusDismissed && (
+          <div className={`flex items-center justify-between px-3 py-2 text-xs flex-shrink-0 ${
+            backendStatus === 'unreachable'
+              ? 'bg-red-900/40 border-b border-red-500/30 text-red-300'
+              : 'bg-yellow-900/30 border-b border-yellow-500/20 text-yellow-300'
+          }`}>
+            <span>
+              {backendStatus === 'unreachable'
+                ? 'Cannot reach server — running in offline mode. Messages will not be saved.'
+                : 'Server is degraded — some features may not work correctly.'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setStatusDismissed(true)}
+              className="ml-3 opacity-60 hover:opacity-100 transition-opacity flex-shrink-0"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Search Modal */}
         {showSearch && (

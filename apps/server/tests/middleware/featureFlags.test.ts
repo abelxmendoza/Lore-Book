@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { FeatureFlag } from '../../src/middleware/featureFlags';
 const mockFeatureFlags: Record<string, boolean> = {
   timelinePlayback: false,
   memoryClusters: false,
@@ -10,7 +11,7 @@ vi.mock('../../web/src/config/featureFlags', () => ({
   featureFlags: mockFeatureFlags,
 }));
 vi.mock('../../src/config', () => ({
-  config: { enableExperimental: false, apiEnv: 'production' },
+  config: { enableExperimental: false, apiEnv: 'dev' },
 }));
 
 describe('featureFlags middleware helpers', () => {

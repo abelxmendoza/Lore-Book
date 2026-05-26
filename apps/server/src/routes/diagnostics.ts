@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 
 import { config } from '../config';
-import { logger } from '../logger';
+import { requireAuth } from '../middleware/auth';
+import { cognitionHealthService } from '../services/cognitionHealthService';
 
 const router = Router();
 
@@ -71,6 +72,20 @@ router.get('/cors', (req: Request, res: Response) => {
         ? 'Origin is allowed'
         : 'Origin is NOT allowed - add to FRONTEND_URL or allowed origins',
   });
+});
+
+/**
+ * GET /api/diagnostics/cognition-health
+ * Cognition pipeline health dashboard — requires auth (admin check via ENABLE_EXPERIMENTAL env)
+ */
+router.get('/cognition-health', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const report = await cognitionHealthService.getReport();
+    const statusCode = report.overallStatus === 'critical' ? 503 : 200;
+    res.status(statusCode).json(report);
+  } catch (err) {
+    res.status(500).json({ error: 'Cognition health check failed', detail: String(err) });
+  }
 });
 
 export default router;

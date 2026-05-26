@@ -127,6 +127,62 @@ try {
   tscErrorCount = -1;
 }
 
+// 11. Hardcoded localhost / IP leaks in production code
+const localhostLeaks = grepMatches(
+  /http:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?/,
+  tsFiles
+).filter(m => !m.file.includes('/scripts/') && !m.file.includes('.test.ts'));
+
+// 12. Bare `supabase` import (should use supabaseAdmin from dbAdapter)
+const bareSupabaseImports = grepMatches(/Cannot find name 'supabase'/, []).concat(
+  grepMatches(/\bsupabase\.(from|auth|storage|rpc)\b/, tsFiles).filter(m => {
+    const content = readFile(path.join(ROOT, m.file));
+    return !content.includes('supabaseAdmin') && !content.includes("from '../db/dbAdapter'") && !content.includes('from "../../db/dbAdapter"');
+  })
+).slice(0, 20);
+
+// 13. Duplicate route paths in routeRegistry
+const registryContent = readFile(path.join(SRC, 'routes', 'routeRegistry.ts'));
+const routePathMatches = [...registryContent.matchAll(/path:\s*['"]([^'"]+)['"]/g)];
+const routePaths = routePathMatches.map(m => m[1]);
+const duplicateRoutes = routePaths.filter((p, i) => routePaths.indexOf(p) !== i);
+
+// 14. Env var reference audit
+const envVarRefs = [...allSourceContent.matchAll(/process\.env\.([A-Z_][A-Z0-9_]*)/g)]
+  .map(m => m[1]);
+const uniqueEnvVars = [...new Set(envVarRefs)].sort();
+const undocumentedEnvVars = uniqueEnvVars.filter(v => {
+  // Known required env vars
+  const known = [
+    'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY',
+    'OPENAI_API_KEY', 'PORT', 'NODE_ENV', 'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET', 'ENABLE_EXPERIMENTAL_RUNTIME',
+    'DISABLE_ENGINE_SCHEDULER', 'DATABASE_URL',
+    'RAILWAY_ENVIRONMENT', 'VERCEL_URL', 'FRONTEND_URL',
+    'LOG_LEVEL', 'JWT_SECRET', 'ENCRYPTION_KEY',
+  ];
+  return !known.includes(v);
+});
+
+// 15. CORE_RUNTIME route TS error isolation
+const coreRouteFiles = [
+  path.join(SRC, 'routes/user.ts'),
+  path.join(SRC, 'routes/memoryRecall.ts'),
+  path.join(SRC, 'routes/omegaMemory.ts'),
+  path.join(SRC, 'routes/entries.ts'),
+  path.join(SRC, 'routes/chat.ts'),
+  path.join(SRC, 'routes/threads.ts'),
+  path.join(SRC, 'routes/health.ts'),
+  path.join(SRC, 'routes/continuity.ts'),
+  path.join(SRC, 'routes/corrections.ts'),
+  path.join(SRC, 'routes/canon.ts'),
+  path.join(SRC, 'routes/search.ts'),
+  path.join(SRC, 'routes/entities.ts'),
+];
+const coreRouteErrorLines = tscOutput.split('\n').filter(line =>
+  coreRouteFiles.some(f => line.includes(rel(f))) && line.includes('error TS')
+);
+
 // ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------
@@ -143,13 +199,24 @@ const report = `# Runtime Health Report
 | Check | Result |
 |-------|--------|
 | TypeScript errors (tsc --noEmit) | ${tscErrorCount === -1 ? '⚠️ Could not run' : tscErrorCount > 0 ? `🔴 ${tscErrorCount}` : '✅ 0'} |
+| CORE_RUNTIME route errors | ${coreRouteErrorLines.length > 0 ? `🔴 ${coreRouteErrorLines.length}` : '✅ 0'} |
 | Unsafe \`as any\` usages | ${unsafeAny.length > 0 ? `🟡 ${unsafeAny.length}` : '✅ 0'} |
 | @ts-ignore suppressions | ${suppressions.length > 0 ? `🟡 ${suppressions.length}` : '✅ 0'} |
 | Cross-package imports (server→web) | ${crossPackageImports.length > 0 ? `🔴 ${crossPackageImports.length}` : '✅ 0'} |
+| Hardcoded localhost leaks | ${localhostLeaks.length > 0 ? `🟡 ${localhostLeaks.length}` : '✅ 0'} |
+| Bare \`supabase\` imports (should use supabaseAdmin) | ${bareSupabaseImports.length > 0 ? `🟡 ${bareSupabaseImports.length}` : '✅ 0'} |
+| Duplicate route paths | ${duplicateRoutes.length > 0 ? `🔴 ${duplicateRoutes.length}` : '✅ 0'} |
+| Unknown env var references | ${undocumentedEnvVars.length > 0 ? `🟡 ${undocumentedEnvVars.length}` : '✅ 0'} |
 | console.log in production code | ${consoleLogs.length > 0 ? `🟡 ${consoleLogs.length}` : '✅ 0'} |
 | Routes without auth check | ${routesWithoutAuth.length > 0 ? `🟡 ${routesWithoutAuth.length}` : '✅ 0'} |
 | Orphan services (sample) | ${orphanServices.length > 0 ? `🟡 ${orphanServices.length}` : '✅ 0'} |
 | Top-level await outside IIFE | ${topLevelAwait.length > 0 ? `🔴 ${topLevelAwait.length}` : '✅ 0'} |
+
+---
+
+## CORE_RUNTIME Route Errors (CRITICAL)
+
+${coreRouteErrorLines.length === 0 ? '_No errors in CORE_RUNTIME routes. ✅_' : coreRouteErrorLines.map(l => `- \`${l.trim()}\``).join('\n')}
 
 ---
 
@@ -158,6 +225,36 @@ const report = `# Runtime Health Report
 ${crossPackageImports.length === 0 ? '_None detected._' : crossPackageImports.map(m =>
   `- \`${m.file}:${m.line}\` — \`${m.text}\``
 ).join('\n')}
+
+---
+
+## Duplicate Route Paths
+
+${duplicateRoutes.length === 0 ? '_No duplicate paths detected._' : duplicateRoutes.map(p => `- \`${p}\``).join('\n')}
+
+---
+
+## Hardcoded Localhost Leaks
+
+${localhostLeaks.length === 0 ? '_None detected._' : localhostLeaks.map(m =>
+  `- \`${m.file}:${m.line}\` — \`${m.text}\``
+).join('\n')}
+
+---
+
+## Bare \`supabase\` Imports (should use \`supabaseAdmin\` from dbAdapter)
+
+${bareSupabaseImports.length === 0 ? '_None detected._' : bareSupabaseImports.map(m =>
+  `- \`${m.file}:${m.line}\` — \`${m.text}\``
+).join('\n')}
+
+---
+
+## Unknown Env Var References
+
+These env vars are read in source but not in the known-required list. Review for missing documentation or typos.
+
+${undocumentedEnvVars.length === 0 ? '_None detected._' : undocumentedEnvVars.map(v => `- \`${v}\``).join('\n')}
 
 ---
 
@@ -207,9 +304,9 @@ ${orphanServices.length === 0 ? '_None detected in sample._' : orphanServices.ma
 
 ## TypeScript Error Count Over Time
 
-| Date | Error Count |
-|------|------------|
-| ${now} | ${tscErrorCount} |
+| Date | Error Count | CORE_RUNTIME Errors |
+|------|------------|---------------------|
+| ${now} | ${tscErrorCount} | ${coreRouteErrorLines.length} |
 
 > Track this table to measure stabilization progress.
 `;
