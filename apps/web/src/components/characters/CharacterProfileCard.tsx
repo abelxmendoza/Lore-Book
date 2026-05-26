@@ -199,9 +199,9 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
   };
 
   const isUnmet = character.status === 'unmet';
-  const hasMet = character.has_met ?? true;
-  const proximity = character.proximity_level || 'direct';
-  const relationshipDepth = character.relationship_depth || 'moderate';
+  const hasMet = character.has_met ?? null;
+  const proximity = character.proximity_level ?? null;
+  const relationshipDepth = character.relationship_depth ?? null;
   
   // Display name: use first + last if available, otherwise use name
   const displayName = character.first_name && character.last_name
@@ -296,8 +296,8 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
           )}
           {/* Hide other badges on mobile - too cluttered */}
           <div className="hidden sm:flex flex-col gap-0.5 items-end">
-            {!hasMet && (
-              <Badge 
+            {hasMet === false && (
+              <Badge
                 variant="outline"
                 className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] px-1 py-0.5 flex items-center gap-0"
                 title="Never met in person"
@@ -306,8 +306,8 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
                 <span>Unmet</span>
               </Badge>
             )}
-            {proximity !== 'direct' && (
-              <Badge 
+            {proximity !== null && proximity !== 'direct' && (
+              <Badge
                 variant="outline"
                 className={`${getProximityColor(proximity)} text-[10px] px-1 py-0.5 flex items-center gap-0`}
                 title={`Connection: ${getProximityLabel(proximity)}`}
@@ -487,7 +487,7 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
               <span className="truncate max-w-[60px] sm:max-w-[80px]">{character.role}</span>
             </div>
           )}
-          {!hasMet && (
+          {hasMet === false && (
             <div className="flex items-center gap-0.5 sm:gap-1 text-orange-400/70" title="Never met in person">
               <UserX className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
               <span className="hidden sm:inline">Unmet</span>

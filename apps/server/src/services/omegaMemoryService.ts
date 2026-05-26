@@ -25,9 +25,60 @@ import { continuityService } from './continuityService';
 import { embeddingService } from './embeddingService';
 import { memoryReviewQueueService } from './memoryReviewQueueService';
 import { perspectiveService } from './perspectiveService';
+import { provenanceEdgeService } from './provenance/provenanceEdgeService';
 import { supabaseAdmin } from './supabaseClient';
 
 const openai = new OpenAI({ apiKey: config.openAiKey });
+
+// ─── Jaro-Winkler similarity (no external dependency) ────────────────────────
+// Returns [0, 1]. 1 = identical. Used to gate the expensive embedding call.
+
+function jaroSimilarity(a: string, b: string): number {
+  if (a === b) return 1;
+  const lenA = a.length, lenB = b.length;
+  const matchDist = Math.floor(Math.max(lenA, lenB) / 2) - 1;
+  const matchedA = new Array(lenA).fill(false);
+  const matchedB = new Array(lenB).fill(false);
+  let matches = 0, transpositions = 0;
+  for (let i = 0; i < lenA; i++) {
+    const start = Math.max(0, i - matchDist);
+    const end   = Math.min(i + matchDist + 1, lenB);
+    for (let j = start; j < end; j++) {
+      if (matchedB[j] || a[i] !== b[j]) continue;
+      matchedA[i] = matchedB[j] = true;
+      matches++;
+      break;
+    }
+  }
+  if (matches === 0) return 0;
+  let k = 0;
+  for (let i = 0; i < lenA; i++) {
+    if (!matchedA[i]) continue;
+    while (!matchedB[k]) k++;
+    if (a[i] !== b[k]) transpositions++;
+    k++;
+  }
+  return (matches / lenA + matches / lenB + (matches - transpositions / 2) / matches) / 3;
+}
+
+function jaroWinkler(a: string, b: string): number {
+  const jaro = jaroSimilarity(a, b);
+  let prefix = 0;
+  for (let i = 0; i < Math.min(4, a.length, b.length); i++) {
+    if (a[i] === b[i]) prefix++; else break;
+  }
+  return jaro + prefix * 0.1 * (1 - jaro);
+}
+
+// Returns true if the query name is "close enough" to a candidate name
+// without spending tokens on an embedding call.
+function fuzzyNameMatch(query: string, candidate: string, threshold = 0.88): boolean {
+  const q = query.toLowerCase().trim();
+  const c = candidate.toLowerCase().trim();
+  if (q === c) return true;
+  if (q.includes(c) || c.includes(q)) return true;
+  return jaroWinkler(q, c) >= threshold;
+}
 
 export class OmegaMemoryService {
   /**
@@ -48,24 +99,47 @@ export class OmegaMemoryService {
       let divergencesDetected = 0;
       for (const claim of claims) {
         const existingClaims = await this.findSimilarClaims(userId, claim);
-        
+
+        // Capture conflicting claims before storeClaim — claim.id is empty until persisted
+        let conflictingClaims: typeof existingClaims = [];
         if (await this.conflictDetected(claim, existingClaims)) {
-          // NEW: Flag as narrative divergence instead of marking inactive
-          // Keep all claims active - entries are never retroactively invalidated
           await this.flagNarrativeDivergence(claim, existingClaims);
           divergencesDetected++;
-          
-          // Record narrative divergence event (not contradiction)
-          if (existingClaims.length > 0) {
-            await continuityService.recordContradiction(
-              userId,
-              claim,
-              existingClaims[0]
-            );
-          }
+          conflictingClaims = existingClaims;
         }
-        
+
         const storedClaim = await this.storeClaim(claim);
+
+        // Write contradiction records now that storedClaim has a real ID
+        if (conflictingClaims.length > 0 && storedClaim.id) {
+          // Continuity event (fire-and-forget)
+          continuityService.recordContradiction(userId, storedClaim, conflictingClaims[0])
+            .catch((err) => logger.warn({ err }, 'Contradiction continuity event failed (non-fatal)'));
+
+          // CONTRADICTS provenance edges — first-class causal graph record
+          Promise.all(
+            conflictingClaims
+              .filter((c) => c.id)
+              .map((conflicting) =>
+                provenanceEdgeService.createEdge({
+                  userId,
+                  sourceId: storedClaim.id,
+                  sourceType: 'omega_claim',
+                  targetId: conflicting.id!,
+                  targetType: 'omega_claim',
+                  relation: 'CONTRADICTS',
+                  confidence: storedClaim.confidence ?? 0.7,
+                  toTruthState: 'DISPUTED',
+                  meta: {
+                    newText:          (storedClaim.text  ?? '').substring(0, 200),
+                    conflictingText:  (conflicting.text   ?? '').substring(0, 200),
+                    entityId:         storedClaim.entity_id,
+                    detectedAt:       new Date().toISOString(),
+                  },
+                })
+              )
+          ).catch((err) => logger.warn({ err }, 'CONTRADICTS edge writes failed (non-fatal)'));
+        }
         
         // Record claim creation event
         const entity = resolvedEntities.find(e => e.id === claim.entity_id);
@@ -242,7 +316,50 @@ Only extract entities that are clearly mentioned. Be conservative with confidenc
       return exactMatch;
     }
 
-    // If no exact match, try semantic similarity search
+    // Fuzzy string gate: Jaro-Winkler over all entities of this type before
+    // spending tokens on an embedding call. Catches "Sara" → "Sarah",
+    // "Jeremy" → "Jerry", initials, etc.
+    try {
+      const { data: candidatesRaw } = await supabaseAdmin
+        .from('omega_entities')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('type', type)
+        .limit(150);
+
+      const candidates = candidatesRaw as Array<Entity> | null;
+      if (candidates && candidates.length > 0) {
+        let bestScore = 0;
+        let bestCandidate: Entity | null = null;
+
+        for (const candidate of candidates) {
+          const namesToCheck: string[] = [
+            candidate.primary_name,
+            ...(Array.isArray(candidate.aliases) ? candidate.aliases : []),
+          ].filter(Boolean);
+
+          const score = Math.max(...namesToCheck.map((n: string) => jaroWinkler(
+            name.toLowerCase().trim(),
+            n.toLowerCase().trim()
+          )));
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestCandidate = candidate;
+          }
+        }
+
+        if (bestScore >= 0.88 && bestCandidate) {
+          logger.debug({ name, matched: bestCandidate.primary_name, score: bestScore }, 'Fuzzy name match resolved entity');
+          await continuityService.recordEntityResolved(userId, bestCandidate, 'alias_match');
+          return bestCandidate;
+        }
+      }
+    } catch (fuzzyErr) {
+      logger.debug({ err: fuzzyErr, name }, 'Fuzzy name match scan failed, continuing to vector search');
+    }
+
+    // If no fuzzy match, try semantic similarity search
     try {
       const nameEmbedding = await embeddingService.embedText(name);
       
@@ -910,6 +1027,22 @@ A contradiction means the claims cannot both be true at the same time.`
         .update({ to_entity_id: targetEntityId })
         .eq('to_entity_id', sourceEntityId)
         .eq('user_id', userId);
+
+      // Backpropagate source identity into target aliases so the merged
+      // name is still resolvable going forward.
+      const existingAliases: string[] = Array.isArray(targetEntity.aliases) ? targetEntity.aliases : [];
+      const incomingNames  = [
+        sourceEntity.primary_name,
+        ...(Array.isArray(sourceEntity.aliases) ? sourceEntity.aliases : []),
+      ].filter(Boolean) as string[];
+      const mergedAliases = Array.from(new Set([...existingAliases, ...incomingNames]));
+      if (mergedAliases.length !== existingAliases.length) {
+        await supabaseAdmin
+          .from('omega_entities')
+          .update({ aliases: mergedAliases, updated_at: new Date().toISOString() })
+          .eq('id', targetEntityId)
+          .eq('user_id', userId);
+      }
 
       // Delete source entity
       await supabaseAdmin

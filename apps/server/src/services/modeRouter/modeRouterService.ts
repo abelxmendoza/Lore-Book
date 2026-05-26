@@ -172,8 +172,62 @@ class ModeRouterService {
   }
 
   /**
+   * Entity salience score for a message.
+   *
+   * High-salience messages contain named people, family relationships, or
+   * social-context language. These should be elevated to EXPERIENCE_INGESTION
+   * even if they lack explicit time ranges, because they carry autobiographical
+   * graph data (who exists, how they relate to the user) that must be extracted.
+   *
+   * Examples that were previously mis-classified as UNKNOWN or ACTION_LOG:
+   *   "talking with my cousin Jerry about computers"
+   *   "hanging out with my brother and his girlfriend"
+   *   "met Sofia at work today, she's really cool"
+   */
+  private entitySalienceScore(message: string): number {
+    let score = 0;
+
+    // Named people: capitalized words that aren't at sentence start and aren't common words
+    // Match: "my cousin Jerry", "talked to Maria", "with Alex and Sam"
+    const namedPersonPattern = /\b(my |with |and |talked? to |met |saw |visited? |called? )?([A-Z][a-z]{1,15})\b/g;
+    const commonWords = new Set([
+      'I', 'The', 'A', 'An', 'In', 'At', 'On', 'To', 'It', 'He', 'She', 'We', 'They',
+      'This', 'That', 'Is', 'Was', 'Are', 'Were', 'Be', 'Been', 'Have', 'Has', 'Had',
+      'Do', 'Does', 'Did', 'Will', 'Would', 'Could', 'Should', 'Can', 'May', 'Might',
+      'My', 'Your', 'His', 'Her', 'Our', 'Their', 'Its', 'But', 'And', 'Or', 'So',
+      'Not', 'No', 'Yes', 'Ok', 'Okay', 'Also', 'Just', 'Now', 'Here', 'There',
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+      'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+      'September', 'October', 'November', 'December',
+    ]);
+    const namedMatches = [...message.matchAll(namedPersonPattern)];
+    const uniqueNames = new Set(
+      namedMatches.map(m => m[2]).filter(name => !commonWords.has(name))
+    );
+    score += Math.min(uniqueNames.size * 2, 6); // up to +6 for named people
+
+    // Family relationship words — always autobiographically significant
+    const familyPattern = /\b(cousin|brother|sister|mom|dad|mother|father|uncle|aunt|nephew|niece|grandma|grandpa|grandmother|grandfather|wife|husband|boyfriend|girlfriend|partner|fiance|fiancee|son|daughter|stepbrother|stepsister|stepdad|stepmom|in-law|brother-in-law|sister-in-law)\b/i;
+    if (familyPattern.test(message)) score += 4;
+
+    // Social context: friend, coworker, roommate, classmate, etc.
+    const socialPattern = /\b(friend|coworker|colleague|roommate|classmate|teammate|neighbor|boss|manager|mentor|therapist|doctor|teacher|professor|coach|trainer)\b/i;
+    if (socialPattern.test(message)) score += 2;
+
+    // Relationship verbs: signals a social interaction
+    const interactionPattern = /\b(hanging out|hung out|chilling|visited|met up|caught up|talked|chatted|argued|laughed|helped|worked with|studied with|played with)\b/i;
+    if (interactionPattern.test(message)) score += 2;
+
+    return score;
+  }
+
+  /**
    * Check if message describes an Experience (container)
-   * Has: time range, multiple people, location, story arc
+   * Has: time range, multiple people, location, story arc — OR high entity salience.
+   *
+   * Entity-salient messages (named people + relationship context) are promoted
+   * to EXPERIENCE_INGESTION regardless of time range because they carry
+   * autobiographical graph data critical for character extraction.
    */
   private looksLikeExperience(message: string): boolean {
     const hasTimeRange = /(last night|yesterday|that weekend|when i was|during|while|for \d+)/i.test(message);
@@ -181,9 +235,17 @@ class ModeRouterService {
     const hasLocation = /(at|in|to|from) (the |a |an )?[a-z]+/i.test(message);
     const hasStoryArc = message.length > 200 && /(then|after|later|eventually|finally)/i.test(message);
     const hasDuration = /(hours?|minutes?|all day|all night|the whole)/i.test(message);
-    
-    return (hasTimeRange || hasDuration) && 
-           (hasMultiplePeople || hasLocation || hasStoryArc);
+
+    // Standard experience detection (unchanged)
+    const standardExperience = (hasTimeRange || hasDuration) &&
+      (hasMultiplePeople || hasLocation || hasStoryArc);
+
+    // Entity-salience elevation: named people + relationship context is always
+    // worth ingesting as an experience even without an explicit time range.
+    // Threshold 5 = at least one named person + family/social context.
+    const entitySalient = this.entitySalienceScore(message) >= 5;
+
+    return standardExperience || entitySalient;
   }
 
   /**

@@ -22,6 +22,7 @@ import { Footer } from '../components/Footer';
 import { MockDataToggle } from '../components/settings/MockDataToggle';
 import { useMockData } from '../contexts/MockDataContext';
 import { ChatFirstInterface } from '../features/chat/components/ChatFirstInterface';
+import { ConversationPersistenceInspector } from '../features/chat/components/ConversationPersistenceInspector';
 import { CharacterBook } from '../components/characters/CharacterBook';
 import { LocationBook } from '../components/locations/LocationBook';
 import { PhotoAlbum } from '../components/photos/PhotoAlbum';
@@ -44,13 +45,13 @@ import { PrivacySettings } from '../components/security/PrivacySettings';
 import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
 import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
 import { GuestBanner } from '../components/guest/GuestBanner';
+import { DemoModeBanner } from '../components/DemoModeBanner';
 import { LoveAndRelationshipsView } from '../components/love/LoveAndRelationshipsView';
 import { QuestBoard } from '../components/quests/QuestBoard';
 import { KnowledgeGapDashboard } from '../components/voids/KnowledgeGapDashboard';
-import { getSurfaceFromRoute } from '../utils/routeMapping';
+import { getSurfaceFromRoute, type SurfaceKey } from '../utils/routeMapping';
 
 
-type SurfaceKey = 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'photos' | 'memories' | 'events' | 'entities' | 'organizations' | 'skills' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'love' | 'quests' | 'gaps';
 
 interface AppContentProps {
   defaultSurface?: SurfaceKey;
@@ -209,7 +210,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       memoir: 'Biography Editor',
       lorebook: 'Lore Book',
       photos: 'Photo Album',
-      memories: 'Memories',
+      perceptions: 'Perceptions',
       events: 'Events',
       entities: 'Entities',
       organizations: 'Organizations',
@@ -223,21 +224,14 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       continuity: 'Continuity',
       guide: 'User Guide',
       love: 'Love & Relationships',
-      quests: 'Quests'
+      quests: 'Quests',
+      gaps: 'Knowledge Gaps',
     };
     return names[surface] || 'Lore Book';
   };
 
   return (
-    <div 
-      ref={(el) => {
-        if (el && activeSurface === 'timeline') {
-          // #region agent log
-          const computedStyle = window.getComputedStyle(el);
-          fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:253',message:'Root container height measured',data:{rootHeight:el.offsetHeight,rootStyleHeight:computedStyle.height,rootMinHeight:computedStyle.minHeight,viewportHeight:window.innerHeight,sidebarHeight:el.querySelector('aside')?.offsetHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'height-debug',hypothesisId:'ROOT'})}).catch(()=>{});
-          // #endregion
-        }
-      }}
+    <div
       className={`flex bg-gradient-to-br from-black via-purple-950 to-black ${activeSurface === 'timeline' ? 'min-h-screen' : 'min-h-screen'}`}
       style={{ 
         paddingTop: 'env(safe-area-inset-top, 0)',
@@ -273,16 +267,9 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         isMobileDrawerOpen={isMobileDrawerOpen}
         onMobileDrawerClose={() => setIsMobileDrawerOpen(false)}
       />
-      <main 
-        ref={(el) => {
-          if (el && activeSurface === 'timeline') {
-            // #region agent log
-            const computedStyle = window.getComputedStyle(el);
-            fetch('http://127.0.0.1:7242/ingest/86c57e9a-085e-405c-a06b-76f0f34d18b1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:262',message:'Main element dimensions measured',data:{mainHeight:el.offsetHeight,mainPaddingTop:computedStyle.paddingTop,mainPaddingBottom:computedStyle.paddingBottom,mainPadding:computedStyle.padding,headerHeight:el.querySelector('header')?.offsetHeight,viewportHeight:window.innerHeight,spaceY:computedStyle.gap},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
-          }
-        }}
-        id="main-content" 
+      <DemoModeBanner />
+      <main
+        id="main-content"
         className={`flex-1 text-white overflow-x-hidden flex flex-col ${activeSurface === 'chat' ? 'p-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
         role="main"
         style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : activeSurface === 'chat' ? { height: '100vh', overflow: 'hidden' } : {}}
@@ -433,6 +420,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       </main>
       <ConnectionStatus />
       <ModeBadge />
+      {import.meta.env.DEV && <ConversationPersistenceInspector />}
     </div>
   );
 };

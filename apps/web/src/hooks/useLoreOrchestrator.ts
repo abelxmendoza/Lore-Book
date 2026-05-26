@@ -25,7 +25,7 @@ export function useLoreOrchestrator() {
       api.orchestrator.saga(),
     ]).then(([summary, timeline, identity, continuity, saga]) => {
       setOrchestratorState((prev) => ({ ...prev, summary, timeline, identity, continuity, saga }));
-    });
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {

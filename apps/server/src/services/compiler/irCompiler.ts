@@ -13,6 +13,7 @@ import { supabaseAdmin } from '../supabaseClient';
 
 import { epistemicInvariants } from './epistemicInvariants';
 import { epistemicLatticeService } from './epistemicLattice';
+import { provenanceEdgeService } from '../provenance/provenanceEdgeService';
 import type { EntryIR, KnowledgeType, CertaintySource, EntityRef, EmotionSignal, ThemeSignal, CanonStatus } from './types';
 
 export class IRCompiler {
@@ -98,6 +99,34 @@ export class IRCompiler {
         epistemicInvariants.checkAllInvariants([safeIR]);
       } catch (error) {
         logger.warn({ error, irId: safeIR.id }, 'Invariant check failed (non-blocking)');
+      }
+
+      // Provenance: utterance → entry_ir (EXTRACTED_FROM)
+      // Fire-and-forget — never block IR compilation on provenance writes
+      provenanceEdgeService.createEdge({
+        userId,
+        sourceId:   utteranceId,
+        sourceType: 'utterance',
+        targetId:   safeIR.id,
+        targetType: 'entry_ir',
+        relation:   'EXTRACTED_FROM',
+        confidence: safeIR.confidence,
+      }).catch((e) => logger.warn({ e, irId: safeIR.id }, 'Provenance edge write failed'));
+
+      // Provenance: utterance → entity (MENTIONED_ENTITY) for each extracted entity
+      if (entities.length > 0) {
+        provenanceEdgeService.createEdges(
+          entities.map((ent) => ({
+            userId,
+            sourceId:   utteranceId,
+            sourceType: 'utterance' as const,
+            targetId:   ent.entity_id,
+            targetType: 'entity' as const,
+            relation:   'MENTIONED_ENTITY' as const,
+            confidence: ent.confidence,
+            meta:       { mention_text: ent.mention_text, ir_id: safeIR.id },
+          }))
+        ).catch((e) => logger.warn({ e }, 'Entity mention edge batch write failed'));
       }
 
       // Phase 2: Resolve entities using symbol table
@@ -251,7 +280,7 @@ export class IRCompiler {
       return resolved.map(entity => ({
         entity_id: entity.id,
         mention_text: entity.primary_name,
-        confidence: entity.confidence || 0.7,
+        confidence: (entity as any).confidence ?? 0.7,
       }));
     } catch (error) {
       // FIX 3: Never downgrade errors - throw instead of returning empty

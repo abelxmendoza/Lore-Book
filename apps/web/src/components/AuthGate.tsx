@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { User, Presentation } from 'lucide-react';
 
 import { getConfigDebug, isSupabaseConfigured, supabase } from '../lib/supabase';
+import { clearDemoSession } from '../routes/Demo';
 import { Logo } from './Logo';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -10,6 +11,7 @@ import { TermsOfServiceAgreement } from './security/TermsOfServiceAgreement';
 import { useTermsAcceptance } from '../hooks/useTermsAcceptance';
 import { useGuest } from '../contexts/GuestContext';
 import { useMockData } from '../contexts/MockDataContext';
+import { useRuntimeIdentity } from '../hooks/useRuntimeIdentity';
 
 const AuthScreen = ({ onEmailLogin, onGuestLogin, onDemoMode }: { onEmailLogin: (email: string) => Promise<void>; onGuestLogin: () => void; onDemoMode: () => void }) => {
   const [email, setEmail] = useState('');
@@ -156,30 +158,21 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const { status: termsStatus, loading: termsLoading, error: termsError } = useTermsAcceptance();
+  const { status: termsStatus, loading: termsLoading } = useTermsAcceptance();
   const { isGuest, startGuestSession } = useGuest();
   const { setUseMockData } = useMockData();
+  const { needsAuth, needsTerms } = useRuntimeIdentity();
 
   const isConfigured = isSupabaseConfigured();
   const debug = getConfigDebug();
   
-  // CRITICAL: Set loading to false immediately when auth is disabled (must be at top level)
+  // Non-REAL_USER runtimes never need to wait for a session check.
   useEffect(() => {
-    if (DEV_DISABLE_AUTH || isGuest) {
+    if (DEV_DISABLE_AUTH || !needsAuth) {
       setLoading(false);
     }
-  }, [isGuest]);
+  }, [needsAuth]);
   
-  // Check terms acceptance (works in both dev and production)
-  useEffect(() => {
-    if (termsStatus && !termsStatus.accepted && !termsLoading) {
-      setTermsAccepted(false);
-    } else if (termsStatus?.accepted) {
-      setTermsAccepted(true);
-    }
-  }, [termsStatus, termsLoading]);
-
   // Safety timeout for loading state (must be before early returns)
   useEffect(() => {
     if (loading) {
@@ -191,19 +184,10 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     }
   }, [loading]);
 
-  // Check terms after authentication (must be before early returns)
-  useEffect(() => {
-    if (session && termsStatus && !termsStatus.accepted && !termsLoading) {
-      setTermsAccepted(false);
-    } else if (termsStatus?.accepted) {
-      setTermsAccepted(true);
-    }
-  }, [session, termsStatus, termsLoading]);
-
   // Initialize Supabase session (must be before early returns)
   useEffect(() => {
-    // Skip if auth is disabled or already guest
-    if (DEV_DISABLE_AUTH || isGuest) {
+    // Only REAL_USER runtime needs a session check.
+    if (DEV_DISABLE_AUTH || !needsAuth) {
       return;
     }
 
@@ -231,6 +215,9 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
           console.log('[AuthGate] Session loaded:', data.session ? 'Authenticated' : 'Not authenticated');
           setSession(data.session);
           
+          // Exiting demo runtime — clear the session flag so refreshes don't re-enter demo mode
+          if (data.session?.user) clearDemoSession();
+
           // Identify user for analytics and error tracking on initial load
           if (data.session?.user) {
             import('../lib/monitoring').then(({ analytics, errorTracking }) => {
@@ -259,6 +246,9 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
       console.log('[AuthGate] Auth state changed:', event, newSession ? 'Authenticated' : 'Not authenticated');
       setSession(newSession);
       
+      // Exiting demo runtime when a real session is established
+      if (newSession?.user) clearDemoSession();
+
       // Identify user for analytics and error tracking
       if (newSession?.user) {
         import('../lib/monitoring').then(({ analytics, errorTracking }) => {
@@ -285,33 +275,17 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
       clearTimeout(timeoutId);
       listener?.subscription.unsubscribe();
     };
-  }, [isConfigured, isGuest, debug]);
+  }, [isConfigured, needsAuth, debug]);
   
-  // Allow guest access or authenticated users
-  if (isGuest || DEV_DISABLE_AUTH) {
-    // Skip terms agreement in dev mode if disabled
-    if (DEV_DISABLE_TERMS) {
-      return <>{children}</>;
-    }
-    
-    // Show terms agreement if user hasn't accepted
-    // Show it if:
-    // 1. We have a status and it's not accepted, OR
-    // 2. We're done loading and don't have a status (API failed/timed out - default to not accepted)
-    if (!termsLoading) {
-      if (!termsStatus || !termsStatus.accepted) {
-        return <TermsOfServiceAgreement onAccept={() => {
-          setTermsAccepted(true);
-          // Refresh terms status after acceptance
-          window.location.reload();
-        }} />;
-      }
-    }
+  // DEV-only escape hatch — never reaches production.
+  if (DEV_DISABLE_AUTH) return <>{children}</>;
 
-    // If still loading, show a loading state or children (don't block the app)
-    // The timeout in useTermsAcceptance will handle long waits
-    return <>{children}</>;
-  }
+  // Non-REAL_USER runtimes need neither auth nor terms.
+  // GUEST_USER  → ephemeral sandbox, no account to bind terms to.
+  // DEMO_RUNTIME → synthetic showcase, fully public.
+  // DEGRADED_RUNTIME → user is already authenticated; backend is just temporarily down.
+  if (!needsAuth && !needsTerms) return <>{children}</>;
+
 
   const handleEmailLogin = async (email: string) => {
     console.log('[AuthGate] Attempting email login for:', email);
@@ -426,11 +400,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   // Skip in dev mode if disabled
   if (session && !termsLoading && !DEV_DISABLE_TERMS) {
     if (!termsStatus || !termsStatus.accepted) {
-      return <TermsOfServiceAgreement onAccept={() => {
-        setTermsAccepted(true);
-        // Refresh terms status after acceptance
-        window.location.reload();
-      }} />;
+      return <TermsOfServiceAgreement onAccept={() => window.location.reload()} />;
     }
   }
 

@@ -30,7 +30,8 @@ export type RuntimePhase =
   | 'backend_load_start'
   | 'backend_load_complete'
   | 'backend_load_fallback'  // backend unreachable, fell back to localStorage
-  | 'backend_load_error'
+  | 'backend_load_error'     // backend failed to load threads
+  | 'save_error'             // debounced PATCH / flush save failed (often proxy artifact in dev)
   | 'stream_start'
   | 'stream_complete'
   | 'stream_error'
@@ -59,8 +60,8 @@ const MAX_EVENTS = 200;
 
 const isDev =
   typeof import.meta !== 'undefined' &&
-  (import.meta as Record<string, unknown>).env !== undefined &&
-  ((import.meta as { env: { DEV?: boolean } }).env.DEV === true);
+  (import.meta as unknown as { env?: { DEV?: boolean } }).env !== undefined &&
+  (import.meta as unknown as { env: { DEV?: boolean } }).env.DEV === true;
 
 class RuntimeDiagnosticsService {
   private readonly events: RuntimeEvent[] = [];
@@ -111,7 +112,7 @@ class RuntimeDiagnosticsService {
   /** Expose on window in dev for console inspection: window.__lk_runtime.tail() */
   exposeOnWindow(): void {
     if (typeof window !== 'undefined' && isDev) {
-      (window as Record<string, unknown>).__lk_runtime = this;
+      (window as unknown as Record<string, unknown>).__lk_runtime = this;
     }
   }
 

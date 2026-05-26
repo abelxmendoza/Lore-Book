@@ -4,7 +4,7 @@
  * Centralized mapping between routes and surfaces for consistent navigation
  */
 
-export type SurfaceKey = 
+export type SurfaceKey =
   | 'chat'
   | 'timeline'
   | 'search'
@@ -24,6 +24,7 @@ export type SurfaceKey =
   | 'pricing'
   | 'security'
   | 'privacy-settings'
+  | 'privacy-policy'
   | 'guide'
   | 'love'
   | 'quests'
@@ -83,6 +84,7 @@ export const surfaceToRoute: Record<SurfaceKey, string> = {
   'pricing': '/pricing',
   'security': '/security',
   'privacy-settings': '/privacy',
+  'privacy-policy': '/privacy-policy',
   'guide': '/guide',
   'love': '/love',
   'quests': '/quests',

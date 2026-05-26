@@ -36,6 +36,7 @@ import { diagnoseEndpoints, logDiagnostics } from '../../../utils/errorDiagnosti
 import { analytics } from '../../../lib/monitoring';
 import { fetchJson } from '../../../lib/api';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
+import { ThreadSaveChip } from './ThreadSaveChip';
 import type { ChatSource } from '../message/ChatMessage';
 import '../styles/chat-theme.css';
 import '../styles/message-animations.css';
@@ -280,6 +281,7 @@ export const ChatFirstInterface = () => {
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <h2 className="text-xs sm:text-sm font-semibold text-white/90 flex-shrink-0">Lore Book</h2>
             <CurrentContextBreadcrumbs />
+            <ThreadSaveChip threadId={activeThreadId} />
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <button

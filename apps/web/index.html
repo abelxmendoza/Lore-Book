@@ -142,23 +142,17 @@
         }
       }, true); // Use capture phase to catch errors earlier
       
-      // Log unhandled promise rejections
+      // Log unhandled promise rejections — suppress backend-unavailable noise (main.tsx handles it)
       window.addEventListener('unhandledrejection', function(e) {
-        console.error('[HTML] Unhandled promise rejection:', e.reason);
-        // Store rejection for diagnostics
-        try {
-          const rejectionLog = {
-            location: 'index.html:unhandled-rejection',
-            message: 'Unhandled promise rejection',
-            data: {
-              reason: String(e.reason),
-              errorStack: e.reason?.stack,
-              timestamp: Date.now()
-            },
-            timestamp: Date.now()
-          };
-          localStorage.setItem('lorekeeper_debug_rejection', JSON.stringify(rejectionLog));
-        } catch (err) { /* localStorage may not be available */ }
+        var reason = String(e.reason || '');
+        var isBackendDown = reason.includes('Backend unavailable') ||
+          reason.includes('Backend server is not running') ||
+          reason.includes('Failed to fetch') ||
+          reason.includes('ERR_CONNECTION_REFUSED') ||
+          reason.includes('NetworkError') ||
+          reason.includes('network error');
+        if (isBackendDown) return; // handled by main.tsx; no double-logging
+        console.warn('[HTML] Unhandled promise rejection:', e.reason);
       });
       
       // Try to detect if the module script fails to load/execute

@@ -963,4 +963,189 @@ router.get('/:id/attributes', requireAuth, async (req: AuthenticatedRequest, res
   }
 });
 
+// ─── Character Provenance ─────────────────────────────────────────────────────
+//
+// GET /api/characters/:id/provenance
+//
+// Returns the full provenance report for a character entity:
+//   - Every provenance edge touching this entity
+//   - Source conversation messages that mentioned it
+//   - Mutation history (truth-state changes)
+//   - Derived statistics (mention count, first/last seen)
+//
+// Powers: "Why does Lorekeeper know about this person?"
+
+router.get('/:id/provenance', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const entityId = req.params.id;
+
+  try {
+    const { provenanceEdgeService } = await import('../services/provenance/provenanceEdgeService');
+
+    // Provenance edges for this entity
+    const provenanceReport = await provenanceEdgeService.getEntityProvenance(entityId, userId);
+
+    // Mutation history from cognition_mutations audit log
+    const { data: mutations } = await supabaseAdmin
+      .from('cognition_mutations')
+      .select('id, mutation_type, before_state, after_state, rationale, created_at')
+      .eq('user_id', userId)
+      .eq('artifact_id', entityId)
+      .order('created_at', { ascending: true })
+      .limit(50);
+
+    // Source utterances for the mention edges
+    let sourceUtterances: Array<{ id: string; content: string; created_at: string }> = [];
+    if (provenanceReport.sourceMessageIds.length > 0) {
+      const { data: utteranceData } = await supabaseAdmin
+        .from('utterances')
+        .select('id, content, created_at')
+        .eq('user_id', userId)
+        .in('id', provenanceReport.sourceMessageIds.slice(0, 20))
+        .order('created_at', { ascending: true });
+      sourceUtterances = utteranceData ?? [];
+    }
+
+    // Upstream lineage — what produced this entity?
+    const lineage = await provenanceEdgeService.getUpstreamLineage(entityId, userId, 3);
+
+    res.json({
+      entityId,
+      mentionCount:      provenanceReport.mentionCount,
+      firstMentionedAt:  provenanceReport.firstMentionedAt,
+      lastMentionedAt:   provenanceReport.lastMentionedAt,
+      edges:             provenanceReport.edges,
+      lineage,
+      sourceUtterances,
+      mutationHistory:   mutations ?? [],
+      extractedFromIrIds: provenanceReport.extractedFromIrIds,
+    });
+  } catch (error) {
+    logger.error({ error, entityId }, 'Failed to get character provenance');
+    res.status(500).json({ error: 'Failed to get character provenance' });
+  }
+});
+
+// ─── Contradiction Resolution ─────────────────────────────────────────────────
+//
+// POST /api/characters/:id/contradictions/resolve
+//
+// Resolves a detected contradiction between two omega_claims:
+//   keep_newest   — deactivates the older claim (REVISED truth state)
+//   keep_oldest   — deactivates the newer claim (REVISED truth state)
+//   preserve_both — marks both as CONTEXTUAL (true in different contexts)
+//   mark_uncertain — marks both as PENDING_VERIFICATION for later review
+
+const resolveContradictionSchema = z.object({
+  sourceClaimId: z.string().uuid(),
+  targetClaimId: z.string().uuid(),
+  action: z.enum(['keep_newest', 'keep_oldest', 'preserve_both', 'mark_uncertain']),
+});
+
+router.post('/:id/contradictions/resolve', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+
+  const parsed = resolveContradictionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid resolution payload', details: parsed.error.flatten() });
+  }
+
+  const { sourceClaimId, targetClaimId, action } = parsed.data;
+
+  try {
+    // Verify both claims belong to this user before mutating
+    const { data: claimsRaw, error: fetchError } = await supabaseAdmin
+      .from('omega_claims')
+      .select('id, created_at')
+      .eq('user_id', userId)
+      .in('id', [sourceClaimId, targetClaimId]);
+
+    const claims = claimsRaw as Array<{ id: string; created_at: string }> | null;
+    if (fetchError || !claims || claims.length < 2) {
+      return res.status(404).json({ error: 'Claims not found or not accessible' });
+    }
+
+    // Determine which claim is newer
+    const sorted = [...claims].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    const newerClaimId  = sorted[0].id;
+    const olderClaimId  = sorted[1].id;
+
+    let updates: Array<{ id: string; is_active: boolean; truth_state: string }>;
+
+    switch (action) {
+      case 'keep_newest':
+        updates = [
+          { id: olderClaimId,  is_active: false, truth_state: 'REVISED'  },
+          { id: newerClaimId,  is_active: true,  truth_state: 'CANONICAL' },
+        ];
+        break;
+      case 'keep_oldest':
+        updates = [
+          { id: newerClaimId,  is_active: false, truth_state: 'REVISED'  },
+          { id: olderClaimId,  is_active: true,  truth_state: 'CANONICAL' },
+        ];
+        break;
+      case 'preserve_both':
+        updates = [
+          { id: sourceClaimId, is_active: true, truth_state: 'CONTEXTUAL' },
+          { id: targetClaimId, is_active: true, truth_state: 'CONTEXTUAL' },
+        ];
+        break;
+      case 'mark_uncertain':
+        updates = [
+          { id: sourceClaimId, is_active: true, truth_state: 'PENDING_VERIFICATION' },
+          { id: targetClaimId, is_active: true, truth_state: 'PENDING_VERIFICATION' },
+        ];
+        break;
+    }
+
+    // Apply updates (sequential — second should never see a conflicting write)
+    for (const update of updates) {
+      const { error: updateError } = await supabaseAdmin
+        .from('omega_claims')
+        .update({ is_active: update.is_active, truth_state: update.truth_state, updated_at: new Date().toISOString() })
+        .eq('id', update.id)
+        .eq('user_id', userId);
+
+      if (updateError) {
+        logger.error({ err: updateError, claimId: update.id }, 'Failed to apply contradiction resolution');
+        return res.status(500).json({ error: 'Failed to apply resolution' });
+      }
+    }
+
+    logger.info({ userId, sourceClaimId, targetClaimId, action }, 'Contradiction resolved');
+    return res.json({ resolved: true, action });
+  } catch (error) {
+    logger.error({ error }, 'Failed to resolve contradiction');
+    res.status(500).json({ error: 'Failed to resolve contradiction' });
+  }
+});
+
+// ─── Entity Lifecycle Diagnostics ────────────────────────────────────────────
+//
+// GET /api/characters/:id/lifecycle
+//
+// Returns the 7-stage pipeline lifecycle report for an entity:
+//   extracted → persisted → provenanceGraph → relationships →
+//   contradictions → merges → consolidation
+//
+// Powers: "Why doesn't James appear in the character book?"
+//         "What contradictions exist for Sarah?"
+
+router.get('/:id/lifecycle', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const entityId = req.params.id;
+
+  try {
+    const { entityLifecycleDiagnostics } = await import('../services/entityLifecycleDiagnostics');
+    const report = await entityLifecycleDiagnostics.diagnose(entityId, userId);
+    res.json(report);
+  } catch (error) {
+    logger.error({ error, entityId }, 'Failed to run entity lifecycle diagnostics');
+    res.status(500).json({ error: 'Failed to run lifecycle diagnostics' });
+  }
+});
+
 export const charactersRouter = router;

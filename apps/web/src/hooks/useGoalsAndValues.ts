@@ -183,9 +183,9 @@ export const useGoalsAndValues = (): GoalsAndValuesState => {
         }
       }
       
-      // When logged in, never use mock. When not logged in, use mock if toggle on or no real data.
+      // When logged in, never use mock. When not logged in, use mock only when explicitly toggled on.
       const hasRealData = fetchedValues.length > 0 || fetchedGoals.length > 0;
-      const useMock = shouldUseMock && (isMockDataEnabled || !hasRealData);
+      const useMock = shouldUseMock;
       
       console.log('[useGoalsAndValues] Fetching data:', { 
         useMock, 

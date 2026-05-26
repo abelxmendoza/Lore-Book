@@ -10,11 +10,11 @@ import { isAdmin } from '../middleware/roleGuard';
 import { cn } from '../lib/cn';
 import { UserAvatarButton } from './UserAvatarButton';
 
-import { surfaceToRoute } from '../utils/routeMapping';
+import { surfaceToRoute, type SurfaceKey } from '../utils/routeMapping';
 
 interface SidebarProps {
-  activeSurface?: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills' | 'love' | 'quests';
-  onSurfaceChange?: (surface: 'chat' | 'timeline' | 'search' | 'characters' | 'locations' | 'memoir' | 'lorebook' | 'subscription' | 'pricing' | 'security' | 'privacy-settings' | 'privacy-policy' | 'discovery' | 'continuity' | 'guide' | 'photos' | 'perceptions' | 'events' | 'entities' | 'organizations' | 'skills' | 'love' | 'quests') => void;
+  activeSurface?: SurfaceKey;
+  onSurfaceChange?: (surface: SurfaceKey) => void;
   onToggleDevMode?: () => void;
   devModeEnabled?: boolean;
   isMobileDrawerOpen?: boolean;
@@ -32,14 +32,12 @@ const SidebarContent = ({
   const location = useLocation();
   const { user } = useAuth();
 
-  const handleSurfaceChange = (surface: string) => {
-    // Navigate to route
+  const handleSurfaceChange = (surface: SurfaceKey) => {
     const route = surfaceToRoute[surface];
     if (route) {
       navigate(route);
     }
-    // Also call the callback for backward compatibility
-    onSurfaceChange?.(surface as any);
+    onSurfaceChange?.(surface);
     // Close mobile drawer when navigating
     onMobileDrawerClose?.();
   };

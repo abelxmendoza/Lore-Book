@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { fetchJson } from '../lib/api';
 import { config } from '../config/env';
-import { getGlobalMockDataEnabled } from '../contexts/MockDataContext';
+import { getGlobalRuntimeIdentity, runtimeGuards } from '../lib/runtimeIdentity';
 import { supabase } from '../lib/supabase';
 
 type TermsStatus = {
@@ -52,6 +52,14 @@ export const useTermsAcceptance = () => {
     let timeoutId: NodeJS.Timeout;
 
     const checkTermsStatus = async () => {
+      // Only REAL_USER runtime is bound by terms. Guests and demo users have no
+      // account to record acceptance against — skip entirely.
+      if (!runtimeGuards.needsTerms(getGlobalRuntimeIdentity())) {
+        setStatus({ accepted: true, acceptedAt: null, version: TERMS_VERSION });
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
@@ -62,7 +70,7 @@ export const useTermsAcceptance = () => {
           setLoading(false);
         }, 5000);
 
-        const useMockFallback = getGlobalMockDataEnabled() || config.dev.allowMockData;
+        const useMockFallback = config.dev.allowMockData;
         const data = await fetchJson<TermsStatus>('/api/user/terms-status', undefined, {
           useMockData: useMockFallback,
           mockData: DEFAULT_TERMS_STATUS,

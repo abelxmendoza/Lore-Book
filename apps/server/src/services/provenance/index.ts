@@ -12,3 +12,6 @@ export {
 
 export { correctionAuthority } from './CorrectionAuthority';
 export type { CorrectionClaim, CorrectionResult } from './CorrectionAuthority';
+
+export { provenanceEdgeService } from './provenanceEdgeService';
+export type { CreateEdgeParams, PersistedEdge, EntityProvenanceReport } from './provenanceEdgeService';

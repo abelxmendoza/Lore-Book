@@ -20,6 +20,7 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import type { TruthState, ArtifactType } from './types';
+import { provenanceEdgeService } from './provenanceEdgeService';
 
 // ─── Transition graph ─────────────────────────────────────────────────────────
 //
@@ -192,6 +193,21 @@ class CorrectionAuthority {
         { err: mutError, artifactId, artifactType, userId },
         'CorrectionAuthority: cognition_mutations write failed (revision applied, audit incomplete)'
       );
+    }
+
+    // Provenance: artifact → artifact (REVISED_BY) for CORRECTION and DISPUTE transitions
+    if (rule.mutationType === 'CORRECTION' || rule.mutationType === 'DISPUTE') {
+      provenanceEdgeService.createEdge({
+        userId,
+        sourceId:      artifactId,
+        sourceType:    artifactType,
+        targetId:      artifactId,
+        targetType:    artifactType,
+        relation:      'REVISED_BY',
+        confidence:    1.0,
+        toTruthState:  toState,
+        meta:          { fromState, mutationType: rule.mutationType, mutationId, rationale: rationale ?? null },
+      }).catch((e) => logger.warn({ e, artifactId }, 'Provenance REVISED_BY edge write failed'));
     }
 
     logger.info(

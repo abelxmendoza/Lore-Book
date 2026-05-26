@@ -12,6 +12,7 @@ import { multiVectorRetrieval } from '../rag/multiVectorRetrieval';
 import { queryRewriter } from '../rag/queryRewriter';
 import { reranker } from '../rag/reranker';
 import { temporalWeighting } from '../rag/temporalWeighting';
+import { applyEpistemicWeights } from '../rag/epistemicWeighting';
 
 import type { MemoryContext } from './chatTypes';
 
@@ -279,18 +280,22 @@ export class MemoryRetriever {
         finalEntries = reranked;
       }
 
-      // Step 9: Apply final scoring and sort
-      const sorted = finalEntries
+      // Step 9: Apply epistemic weighting then final scoring and sort
+      const epistemicEntries = applyEpistemicWeights(finalEntries as any[]);
+      const sorted = epistemicEntries
         .map(entry => {
           const semanticScore = (entry as any).similarity || 0.5;
           const temporalWeight = (entry as any)._temporalWeight || 1.0;
           const entityBoost = (entry as any).entityBoost || 1.0;
           const rerankScore = (entry as any).rerankScore || 0.5;
+          // Epistemic multiplier: governed truth-state and knowledge-type quality gate.
+          // Disputed/revised entries are scored lower; canonical/fact entries rank higher.
+          const epistemicWeight = (entry as any)._epistemicWeight ?? 0.85;
           const finalScore =
-            semanticScore * strategy.weights!.semantic +
-            temporalWeight * strategy.weights!.temporal +
-            entityBoost * strategy.weights!.entity +
-            rerankScore * 0.3;
+            (semanticScore * strategy.weights!.semantic +
+             temporalWeight * strategy.weights!.temporal +
+             entityBoost * strategy.weights!.entity +
+             rerankScore * 0.3) * epistemicWeight;
           return { ...entry, _finalScore: finalScore };
         })
         .sort((a, b) => (b as any)._finalScore - (a as any)._finalScore);

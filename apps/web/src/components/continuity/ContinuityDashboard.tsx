@@ -5,7 +5,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
-import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { useMockData } from '../../contexts/MockDataContext';
 
 type ContinuityEvent = {
   id: string;
@@ -143,7 +143,7 @@ export const ContinuityDashboard = () => {
     } catch (error) {
       console.error('Failed to load continuity data:', error);
       // Use mock data if toggle is on
-      if (shouldUseMock) {
+      if (isMockDataEnabled) {
         setEvents(MOCK_CONTINUITY_EVENTS);
         setGoals(MOCK_GOALS);
         setContradictions(MOCK_CONTRADICTIONS);
@@ -227,9 +227,9 @@ export const ContinuityDashboard = () => {
   return (
     <div className="space-y-6">
       {/* Mock Data Banner */}
-      {useMockData && (
+      {isMockDataEnabled && (
         <div className="text-xs text-yellow-400/80 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
-          📊 Showing mock data for demonstration. Real data will appear as you journal and contradictions are detected.
+          📊 Showing demo data. Real continuity data will appear as you journal and contradictions are detected.
         </div>
       )}
 

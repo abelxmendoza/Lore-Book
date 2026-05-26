@@ -19,6 +19,18 @@ window.addEventListener('error', (event) => {
 });
 
 window.addEventListener('unhandledrejection', (event) => {
+  const reason = String(event.reason ?? '');
+  const isBackendDown =
+    reason.includes('Backend unavailable') ||
+    reason.includes('Backend server is not running') ||
+    reason.includes('Failed to fetch') ||
+    reason.includes('ERR_CONNECTION_REFUSED') ||
+    reason.includes('NetworkError') ||
+    reason.includes('network error');
+  if (isBackendDown) {
+    // Expected in dev with no backend running — already surfaced via BackendUnavailableBanner
+    return;
+  }
   console.error('[Lorekeeper] Unhandled promise rejection', event.reason);
   const root = document.getElementById('root');
   if (root && !root.hasChildNodes()) {

@@ -101,6 +101,15 @@ export const useConversationRuntime = ({
       }
       const thread = getThread(threadIdParam);
       if (thread) {
+        // Guard: already hydrated on this thread. getThread changes identity whenever
+        // threads state updates (each streaming chunk → updateThread → threads change →
+        // getThread new ref → this effect re-runs). Without this guard the hydration
+        // effect fires ~20× per message, writing stale stored messages back into live
+        // state and causing a cascade of debounced saves.
+        if (isHydratedRef.current && intendedThreadRef.current === threadIdParam) {
+          runtimeDiagnostics.record('hydration_skip', { threadId: threadIdParam, meta: { reason: 'already_active' } });
+          return;
+        }
         runtimeDiagnostics.startTimer('hydration');
         intendedThreadRef.current = threadIdParam;
         isHydratedRef.current = true;

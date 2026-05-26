@@ -5,9 +5,17 @@
  * When backend is unreachable, mock is auto-enabled so the app stays usable.
  */
 
-import { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback, useMemo } from 'react';
 import { config } from '../config/env';
 import { useAuth } from '../lib/supabase';
+import {
+  type RuntimeIdentityType,
+  resolveRuntimeIdentity,
+  setGlobalRuntimeIdentity,
+} from '../lib/runtimeIdentity';
+
+export type { RuntimeIdentityType };
+export type RuntimeDataMode = 'REAL' | 'DEMO' | 'DEGRADED';
 
 const HEALTH_CHECK_TIMEOUT_MS = 3000; // Match ConnectionStatus so we don't mark backend down when it's just slow
 // Retry less often when backend is down to reduce console/network spam (was 5s)
@@ -17,10 +25,14 @@ interface MockDataContextType {
   useMockData: boolean;
   toggleMockData: () => void;
   setUseMockData: (value: boolean) => void;
-  isMockDataActive: boolean; // True if mock data is actually being used
+  isMockDataActive: boolean;
   setIsMockDataActive: (value: boolean) => void;
   /** True when /api/health failed on load; mock is auto-enabled so the app works without the server */
   backendUnavailable: boolean;
+  /** Legacy 3-way mode — kept for backward compat. Prefer runtimeIdentity. */
+  runtimeDataMode: RuntimeDataMode;
+  /** Canonical runtime identity — single source of truth for all capability decisions. */
+  runtimeIdentity: RuntimeIdentityType;
 }
 
 const MockDataContext = createContext<MockDataContextType | undefined>(undefined);
@@ -66,6 +78,15 @@ export function getBackendUnavailable(): boolean {
 }
 export function setGlobalBackendUnavailable(value: boolean) {
   globalBackendUnavailable = value;
+}
+
+// RuntimeDataMode — single source of truth for what class of data is currently active.
+let globalRuntimeDataMode: RuntimeDataMode = 'REAL';
+export function getRuntimeDataMode(): RuntimeDataMode {
+  return globalRuntimeDataMode;
+}
+function setGlobalRuntimeDataMode(mode: RuntimeDataMode) {
+  globalRuntimeDataMode = mode;
 }
 
 // When any API request succeeds (e.g. Entities), we can clear "backend unavailable" so the banner goes away.
@@ -114,6 +135,16 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(STORAGE_KEY, 'false');
         setGlobalMockDataEnabled(false);
         return false;
+      }
+
+      // Auto-enable for the /demo route so there's no flash before DemoRuntime mounts.
+      // Also honors the sessionStorage flag set by DemoRuntime so refreshing at /characters
+      // while in a demo session stays in demo mode.
+      const isOnDemoPath = window.location.pathname.startsWith('/demo');
+      const isDemoSession = sessionStorage.getItem('lk_demo_runtime') === 'true';
+      if (isOnDemoPath || isDemoSession) {
+        setGlobalMockDataEnabled(true);
+        return true;
       }
 
       // For unauthenticated users, respect saved preference (demo mode toggle)
@@ -237,6 +268,29 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
     setGlobalMockDataEnabled(value);
   }, []);
 
+  const runtimeIdentity = useMemo<RuntimeIdentityType>(() => resolveRuntimeIdentity({
+    isAuthenticated:   !!user,
+    isGuest:           false, // unauthenticated non-demo resolves to GUEST_USER regardless
+    isMockDataEnabled: useMockData,
+    backendUnavailable,
+  }), [useMockData, user, backendUnavailable]);
+
+  // Sync canonical identity to global so non-React code can read it.
+  useEffect(() => {
+    setGlobalRuntimeIdentity(runtimeIdentity);
+  }, [runtimeIdentity]);
+
+  // Derive legacy 3-way mode from identity for backward compat.
+  const runtimeDataMode = useMemo<RuntimeDataMode>(() => {
+    if (runtimeIdentity === 'DEMO_RUNTIME') return 'DEMO';
+    if (runtimeIdentity === 'DEGRADED_RUNTIME') return 'DEGRADED';
+    return 'REAL';
+  }, [runtimeIdentity]);
+
+  useEffect(() => {
+    setGlobalRuntimeDataMode(runtimeDataMode);
+  }, [runtimeDataMode]);
+
   return (
     <MockDataContext.Provider value={{
       useMockData,
@@ -245,6 +299,8 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
       isMockDataActive,
       setIsMockDataActive,
       backendUnavailable,
+      runtimeDataMode,
+      runtimeIdentity,
     }}>
       {children}
     </MockDataContext.Provider>

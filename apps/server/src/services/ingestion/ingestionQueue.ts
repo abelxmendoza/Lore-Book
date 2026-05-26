@@ -22,6 +22,7 @@ import { randomUUID } from 'crypto';
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { pipelineRunService } from './pipelineRunService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -141,7 +142,16 @@ class IngestionQueue {
 
   private async process(job: IngestionJob): Promise<void> {
     job.attempts++;
-    job.lastAttemptAt = Date.now();
+    const attemptStart = Date.now();
+    job.lastAttemptAt = attemptStart;
+
+    // Open a pipeline run record so we can detect partial failures later
+    const runId = await pipelineRunService.start({
+      jobId:         job.id,
+      userId:        job.userId,
+      chatMessageId: job.chatMessageId,
+      sessionId:     job.sessionId,
+    });
 
     try {
       // Lazy import avoids a circular dependency at module load time
@@ -157,6 +167,7 @@ class IngestionQueue {
       );
 
       this.totalCompleted++;
+      if (runId) await pipelineRunService.complete(runId, attemptStart);
       logger.debug(
         { jobId: job.id, userId: job.userId, attempt: job.attempts },
         'IngestionQueue: job completed'
@@ -171,6 +182,8 @@ class IngestionQueue {
           { jobId: job.id, userId: job.userId, attempt: job.attempts, delayMs },
           'IngestionQueue: job failed, will retry'
         );
+        // Mark partial on retryable failures (run will be superseded by the next attempt's run)
+        if (runId) await pipelineRunService.markPartial(runId, attemptStart, 'ingestFromChatMessage');
         setTimeout(() => {
           this.queues[job.priority].push(job);
           this.drain();
@@ -181,6 +194,7 @@ class IngestionQueue {
           { jobId: job.id, userId: job.userId, attempts: job.attempts, err },
           'IngestionQueue: job exhausted retries — sending to dead-letter'
         );
+        if (runId) await pipelineRunService.fail(runId, attemptStart, err, 'ingestFromChatMessage');
         await this.deadLetter(job, err);
       }
     } finally {

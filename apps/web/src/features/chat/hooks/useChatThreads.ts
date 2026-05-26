@@ -3,6 +3,7 @@ import { useAuth } from '../../../lib/supabase';
 import { fetchJson } from '../../../lib/api';
 import { config } from '../../../config/env';
 import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
+import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
 import type { Message } from '../message/ChatMessage';
 
 export type ChatThread = {
@@ -107,13 +108,13 @@ export const useChatThreads = () => {
     try {
       const raw = localStorage.getItem(storageKey(userId));
       const parsed: ChatThread[] = raw ? JSON.parse(raw) : [];
-      setThreads(
-        parsed.map((t) => ({
-          ...t,
-          messages: (t.messages || []).map(parseStoredMessage),
-          updatedAt: t.updatedAt || new Date(0).toISOString(),
-        }))
-      );
+      const hydrated = parsed.map((t) => ({
+        ...t,
+        messages: (t.messages || []).map(parseStoredMessage),
+        updatedAt: t.updatedAt || new Date(0).toISOString(),
+      }));
+      setThreads(hydrated);
+      for (const t of hydrated) threadPersistenceTracker.markRestoredFromLocal(t.id);
       const last = localStorage.getItem(lastThreadKey(userId));
       setCurrentThreadIdState(last ?? null);
     } catch {
@@ -134,6 +135,7 @@ export const useChatThreads = () => {
       const data = await fetchJson<{ threads: any[]; success: boolean }>('/api/conversation/threads');
       const loaded = (data.threads || []).map(dbRowToThread);
       setThreads(loaded);
+      for (const t of loaded) threadPersistenceTracker.markRestoredFromBackend(t.id);
       const last = localStorage.getItem(lastThreadKey(userId));
       if (last && loaded.some((t) => t.id === last)) {
         setCurrentThreadIdState(last);
@@ -149,6 +151,7 @@ export const useChatThreads = () => {
       runtimeDiagnostics.recordTimed('backend_load_fallback', 'backend_load', {
         meta: { error: errMsg },
       });
+      threadPersistenceTracker.markOffline();
       // Backend unreachable — fall back to localStorage.
       // Log in dev so the developer knows (not an error in offline/guest flow).
       if (config.env.isDevelopment) {
@@ -178,12 +181,16 @@ export const useChatThreads = () => {
     clearTimeout(pending.timer);
     delete saveDebounceRef.current[id];
     runtimeDiagnostics.record('flush_save', { threadId: id });
+    threadPersistenceTracker.markPersisting(id);
     fetchJson(`/api/conversation/threads/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ messages: pending.snap }),
+    }).then(() => {
+      threadPersistenceTracker.markPersisted(id);
     }).catch((err: unknown) => {
       const errMsg = err instanceof Error ? err.message : String(err);
-      runtimeDiagnostics.record('backend_load_error', { threadId: id, meta: { op: 'flush_save', error: errMsg } });
+      runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'flush_save', error: errMsg } });
+      threadPersistenceTracker.markSyncFailed(id, errMsg);
       console.error('[useChatThreads] flushSave failed for thread', id, errMsg);
     });
   }, []);
@@ -230,15 +237,22 @@ export const useChatThreads = () => {
     });
     setCurrentThreadIdState(id);
     if (isAuthenticated) {
+      threadPersistenceTracker.markPersistPending(id, 0);
       localStorage.setItem(lastThreadKey(userId), id);
       fetchJson('/api/conversation/threads', {
         method: 'POST',
         body: JSON.stringify({ id, title: 'New chat' }),
+      }).then(() => {
+        threadPersistenceTracker.markPersisted(id);
       }).catch((err: unknown) => {
         const errMsg = err instanceof Error ? err.message : String(err);
-        runtimeDiagnostics.record('backend_load_error', { threadId: id, meta: { op: 'create_thread', error: errMsg } });
+        runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'create_thread', error: errMsg } });
+        threadPersistenceTracker.markSyncFailed(id, errMsg);
         console.error('[useChatThreads] createThread persist failed:', errMsg);
+
       });
+    } else {
+      threadPersistenceTracker.markLocalOnly(id);
     }
     return id;
   }, [isAuthenticated, userId, persistLocal]);
@@ -292,7 +306,7 @@ export const useChatThreads = () => {
             body: JSON.stringify({ title: payload.title }),
           }).catch((err: unknown) => {
             const errMsg = err instanceof Error ? err.message : String(err);
-            runtimeDiagnostics.record('backend_load_error', { threadId: id, meta: { op: 'update_title', error: errMsg } });
+            runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'update_title', error: errMsg } });
           });
         }
         // subtitle is NOT sent here — server already persisted it via the title service
@@ -300,16 +314,21 @@ export const useChatThreads = () => {
           const existing = saveDebounceRef.current[id];
           if (existing) clearTimeout(existing.timer);
           const snap = messagesToJson(payload.messages);
+          threadPersistenceTracker.markPersistPending(id, snap.length);
           saveDebounceRef.current[id] = {
             snap,
             timer: setTimeout(() => {
               delete saveDebounceRef.current[id];
+              threadPersistenceTracker.markPersisting(id);
               fetchJson(`/api/conversation/threads/${id}`, {
                 method: 'PATCH',
                 body: JSON.stringify({ messages: snap }),
+              }).then(() => {
+                threadPersistenceTracker.markPersisted(id);
               }).catch((err: unknown) => {
                 const errMsg = err instanceof Error ? err.message : String(err);
-                runtimeDiagnostics.record('backend_load_error', { threadId: id, meta: { op: 'debounced_save', error: errMsg } });
+                runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'debounced_save', error: errMsg } });
+                threadPersistenceTracker.markSyncFailed(id, errMsg);
                 console.error('[useChatThreads] Debounced save failed for thread', id, errMsg);
               });
             }, 1500),
@@ -335,7 +354,7 @@ export const useChatThreads = () => {
           body: JSON.stringify({ title }),
         }).catch((err: unknown) => {
           const errMsg = err instanceof Error ? err.message : String(err);
-          runtimeDiagnostics.record('backend_load_error', { threadId: id, meta: { op: 'rename_thread', error: errMsg } });
+          runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'rename_thread', error: errMsg } });
           console.error('[useChatThreads] renameThread failed:', errMsg);
         });
       }
@@ -359,10 +378,11 @@ export const useChatThreads = () => {
         setCurrentThreadIdState(null);
         if (isAuthenticated) localStorage.removeItem(lastThreadKey(userId));
       }
+      threadPersistenceTracker.remove(id);
       if (isAuthenticated) {
         fetchJson(`/api/conversation/threads/${id}`, { method: 'DELETE' }).catch((err: unknown) => {
           const errMsg = err instanceof Error ? err.message : String(err);
-          runtimeDiagnostics.record('backend_load_error', { threadId: id, meta: { op: 'delete_thread', error: errMsg } });
+          runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'delete_thread', error: errMsg } });
           console.error('[useChatThreads] deleteThread failed:', errMsg);
         });
       }

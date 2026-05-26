@@ -22,6 +22,8 @@ import type { Character } from './CharacterProfileCard';
 import { CharacterAvatar } from './CharacterAvatar';
 import { useMockData } from '../../contexts/MockDataContext';
 import type { PerceptionEntry } from '../../types/perception';
+import { EntityProvenancePanel } from './EntityProvenancePanel';
+import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
 
 type SocialMedia = {
   instagram?: string;
@@ -948,15 +950,14 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       setLoadingDetails(true);
       try {
         const response = await fetchJson<CharacterDetail>(`/api/characters/${character.id}`);
-        
-        // Generate mock relationship and proximity data if missing
-        const mockRelationshipData = generateMockRelationshipData(response);
-        const characterWithMockData = {
-          ...response,
-          ...mockRelationshipData
-        };
-        
-        setEditedCharacter(characterWithMockData);
+
+        // In DEMO mode only: fill gaps with synthetic relationship data
+        if (isMockDataEnabled) {
+          const mockRelationshipData = generateMockRelationshipData(response);
+          setEditedCharacter({ ...response, ...mockRelationshipData });
+        } else {
+          setEditedCharacter(response);
+        }
         
         // Load full entry details for shared memories
         if (response.shared_memories && response.shared_memories.length > 0) {
@@ -972,13 +973,13 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         }
       } catch (error) {
         console.error('Failed to load character details:', error);
-        // On error, generate mock data for the character
-        const mockRelationshipData = generateMockRelationshipData(character as CharacterDetail);
-        const characterWithMockData = {
-          ...character,
-          ...mockRelationshipData
-        } as CharacterDetail;
-        setEditedCharacter(characterWithMockData);
+        // In DEMO mode only: fill gaps with synthetic relationship data on error
+        if (isMockDataEnabled) {
+          const mockRelationshipData = generateMockRelationshipData(character as CharacterDetail);
+          setEditedCharacter({ ...character, ...mockRelationshipData } as CharacterDetail);
+        } else {
+          setEditedCharacter(character as CharacterDetail);
+        }
         
         // On error, show mock memories only if toggle is enabled
         if (isMockDataEnabled) {
@@ -1115,18 +1116,18 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
           endTime?: string;
         }> }>(`/api/characters/${character.id}/attributes?currentOnly=true`);
         const realAttributes = response.attributes || [];
-        // If no real attributes, use mock data
-        if (realAttributes.length === 0) {
-          const mockAttributes = generateMockAttributes(character.name);
-          setCharacterAttributes(mockAttributes);
+        if (realAttributes.length === 0 && isMockDataEnabled) {
+          setCharacterAttributes(generateMockAttributes(character.name));
         } else {
           setCharacterAttributes(realAttributes);
         }
       } catch (error) {
         console.error('Failed to load character attributes:', error);
-        // On error, use mock data
-        const mockAttributes = generateMockAttributes(character.name);
-        setCharacterAttributes(mockAttributes);
+        if (isMockDataEnabled) {
+          setCharacterAttributes(generateMockAttributes(character.name));
+        } else {
+          setCharacterAttributes([]);
+        }
       } finally {
         setLoadingAttributes(false);
       }
@@ -1137,8 +1138,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   // Load insights when Insights tab is active and ensure analytics exist
   useEffect(() => {
     if (activeTab === 'insights') {
-      // If no analytics exist, generate mock analytics and store in character state
-      if (!editedCharacter.analytics) {
+      // In DEMO mode only: generate synthetic analytics when none exist
+      if (!editedCharacter.analytics && isMockDataEnabled) {
         const mockAnalytics = generateMockAnalytics(editedCharacter);
         setEditedCharacter(prev => ({
           ...prev,
@@ -1221,8 +1222,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     setChatLoading(true);
 
     try {
-      // Build comprehensive character context with analytics (use mock if not available)
-      const analytics = editedCharacter.analytics || generateMockAnalytics(editedCharacter);
+      // Build character context from real analytics only — do NOT fabricate
+      const analytics = editedCharacter.analytics ?? null;
       const analyticsContext = analytics ? `
 RELATIONSHIP ANALYTICS (calculated from conversations, journal entries, and shared memories):
 - Closeness Score: ${analytics.closeness_score}/100 (how close the relationship is)
@@ -2540,23 +2541,27 @@ User's message: ${message}`;
                             Shared Groups (You're both in)
                           </h4>
                           <div className="space-y-2">
-                            {getMockOrganizations().filter(org => org.id === '1' || org.id === '2').map((org) => (
-                              <div
-                                key={org.id}
-                                onClick={() => setSelectedOrganization(org)}
-                                className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 cursor-pointer hover:bg-green-500/20 hover:border-green-500/50 transition-all"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <p className="font-medium text-white">{org.name}</p>
-                                    <p className="text-xs text-white/60 mt-1">{org.description || 'Group'}</p>
+                            {isMockDataEnabled ? (
+                              getMockOrganizations().filter(org => org.id === '1' || org.id === '2').map((org) => (
+                                <div
+                                  key={org.id}
+                                  onClick={() => setSelectedOrganization(org)}
+                                  className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 cursor-pointer hover:bg-green-500/20 hover:border-green-500/50 transition-all"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <p className="font-medium text-white">{org.name}</p>
+                                      <p className="text-xs text-white/60 mt-1">{org.description || 'Group'}</p>
+                                    </div>
+                                    <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/30">
+                                      Shared
+                                    </Badge>
                                   </div>
-                                  <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/30">
-                                    Shared
-                                  </Badge>
                                 </div>
-                              </div>
-                            ))}
+                              ))
+                            ) : (
+                              <p className="text-xs text-white/40 italic">No shared groups recorded yet.</p>
+                            )}
                           </div>
                         </div>
 
@@ -2567,25 +2572,29 @@ User's message: ${message}`;
                             Their Groups (You're not in)
                           </h4>
                           <div className="space-y-2">
-                            {getMockOrganizations().filter(org => org.id === '3' || org.id === '4').map((org) => (
-                              <div
-                                key={org.id}
-                                onClick={() => setSelectedOrganization(org)}
-                                className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30 cursor-pointer hover:bg-orange-500/20 hover:border-orange-500/50 transition-all"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <p className="font-medium text-white">{org.name}</p>
-                                    <p className="text-xs text-white/60 mt-1">{org.description || 'Group'}</p>
+                            {isMockDataEnabled ? (
+                              getMockOrganizations().filter(org => org.id === '3' || org.id === '4').map((org) => (
+                                <div
+                                  key={org.id}
+                                  onClick={() => setSelectedOrganization(org)}
+                                  className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30 cursor-pointer hover:bg-orange-500/20 hover:border-orange-500/50 transition-all"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <p className="font-medium text-white">{org.name}</p>
+                                      <p className="text-xs text-white/60 mt-1">{org.description || 'Group'}</p>
+                                    </div>
+                                    <Tooltip content={getNotSharedBadgeTooltip()}>
+                                      <Badge variant="outline" className="bg-orange-500/20 text-orange-300 border-orange-500/30 cursor-help">
+                                        Not Shared
+                                      </Badge>
+                                    </Tooltip>
                                   </div>
-                                  <Tooltip content={getNotSharedBadgeTooltip()}>
-                                    <Badge variant="outline" className="bg-orange-500/20 text-orange-300 border-orange-500/30 cursor-help">
-                                      Not Shared
-                                    </Badge>
-                                  </Tooltip>
                                 </div>
-                              </div>
-                            ))}
+                              ))
+                            ) : (
+                              <p className="text-xs text-white/40 italic">No group memberships recorded yet.</p>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2773,7 +2782,7 @@ User's message: ${message}`;
             {!loadingDetails && activeTab === 'insights' && (
               <div className="space-y-8">
                 {(() => {
-                  const analytics = editedCharacter.analytics || generateMockAnalytics(editedCharacter);
+                  const analytics = editedCharacter.analytics ?? (isMockDataEnabled ? generateMockAnalytics(editedCharacter) : null);
                   return analytics ? (
                   <>
                     {/* Analytics Dashboard Header */}
@@ -3005,10 +3014,10 @@ User's message: ${message}`;
                         </Tooltip>
 
                         {/* SWOT Analysis */}
-                        {(analytics.strengths?.length > 0 || 
-                          analytics.weaknesses?.length > 0 || 
-                          analytics.opportunities?.length > 0 || 
-                          analytics.risks?.length > 0) && (
+                        {((analytics.strengths?.length ?? 0) > 0 ||
+                          (analytics.weaknesses?.length ?? 0) > 0 ||
+                          (analytics.opportunities?.length ?? 0) > 0 ||
+                          (analytics.risks?.length ?? 0) > 0) && (
                           <div>
                             <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                               <Lightbulb className="h-5 w-5 text-yellow-400" />
@@ -3093,7 +3102,23 @@ User's message: ${message}`;
                       </CardContent>
                     </Card>
                   </>
-                  ) : null;
+                  ) : (
+                    <>
+                      <EntityProvenancePanel entityId={editedCharacter.id} entityName={editedCharacter.name} />
+                      <ContradictionResolutionPanel entityId={editedCharacter.id} entityName={editedCharacter.name} />
+                      {isMockDataEnabled && (
+                        <div className="flex flex-col items-center justify-center py-16 text-center px-8">
+                          <div className="h-12 w-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                            <TrendingUp className="h-6 w-6 text-white/20" />
+                          </div>
+                          <p className="text-white/60 font-medium mb-1">Analytics not yet available</p>
+                          <p className="text-white/30 text-sm max-w-xs">
+                            Relationship analytics build up over time as you mention {editedCharacter.name} in conversations. Keep sharing — Lore Book is listening.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  );
                 })()}
               </div>
             )}

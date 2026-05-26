@@ -22,9 +22,10 @@
   ],
   "env": {
     "NODE_VERSION": "20",
+    "VITE_APP_URL": "https://lore-keeper-web.vercel.app",
     "VITE_USE_MOCK_DATA": "false",
     "VITE_SHOW_DEV_NOTICE": "false",
-    "VITE_SUPABASE_URL": "https://mwtyckyguduigflpnqss.supabase.co",
-    "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im13dHlja3lndWR1aWdmbHBucXNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjMxODEsImV4cCI6MjA5NTIzOTE4MX0.Fz3GF5MyR9LYC2aPPRI42lA1DnSd0AXJZwcs8tO01Zo"
+    "VITE_SUPABASE_URL": "https://cshtthzpgkmrbcsfghyq.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzaHR0aHpwZ2ttcmJjc2ZnaHlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjE0NjgsImV4cCI6MjA5NTIzNzQ2OH0.IzX4Q04kFMZeLBFiUv3Ga5GiAg9AS2898yfTeGG4md8"
   }
 }

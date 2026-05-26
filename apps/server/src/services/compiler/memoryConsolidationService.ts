@@ -20,6 +20,7 @@ import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
 import { supabaseAdmin } from '../supabaseClient';
 import { truthStateFromConsolidation } from '../provenance';
+import { provenanceEdgeService } from '../provenance/provenanceEdgeService';
 
 import type { EntryIR, KnowledgeType } from './types';
 
@@ -122,6 +123,18 @@ class MemoryConsolidationService {
       // Mark IR as consolidated — this is the provenance link
       await this.markIR(irId, 'CONSOLIDATED', journalEntryId);
 
+      // Provenance: entry_ir → journal_entry (COMPILED_INTO)
+      provenanceEdgeService.createEdge({
+        userId,
+        sourceId:      irId,
+        sourceType:    'entry_ir',
+        targetId:      journalEntryId,
+        targetType:    'journal_entry',
+        relation:      'COMPILED_INTO',
+        confidence:    ir.confidence,
+        toTruthState:  truthStateFromConsolidation(ir.confidence, ir.canon?.status ?? 'CANON'),
+      }).catch((e) => logger.warn({ e, irId, journalEntryId }, 'Provenance COMPILED_INTO edge write failed'));
+
       // Generate embedding non-blocking — BM25 covers retrieval until it lands
       this.generateEmbeddingAsync(userId, journalEntryId, ir.content);
 
@@ -158,7 +171,7 @@ class MemoryConsolidationService {
       return;
     }
 
-    for (const row of pending ?? []) {
+    for (const row of (pending as Array<{ id: string }>) ?? []) {
       await this.consolidateEntry(userId, row.id).catch(err => {
         logger.warn({ err, irId: row.id, userId }, 'sweepPendingForUser: individual consolidation failed');
       });
@@ -193,7 +206,7 @@ class MemoryConsolidationService {
           canon_confidence:      ir.canon?.confidence,
           ir_confidence:         ir.confidence,
           truth_state:           truthStateFromConsolidation(ir.confidence, ir.canon?.status ?? 'CANON'),
-          compiler_version:      (ir.compiler_flags as Record<string, unknown>)?.compilation_version ?? 1,
+          compiler_version:      (ir.compiler_flags as unknown as Record<string, unknown>)?.compilation_version ?? 1,
           consolidated_at:       new Date().toISOString(),
           entity_ids:            Array.isArray(ir.entities)
                                    ? (ir.entities as Array<{ entity_id: string }>).map(e => e.entity_id)
@@ -207,7 +220,7 @@ class MemoryConsolidationService {
     if (error) {
       throw new Error(`journal_entry insert failed: ${error.message}`);
     }
-    return data.id;
+    return (data as { id: string }).id;
   }
 
   private generateEmbeddingAsync(userId: string, journalEntryId: string, content: string): void {

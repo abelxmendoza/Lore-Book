@@ -26,7 +26,7 @@ if (result.error) {
   logger.warn(`⚠️  Failed to load ${envFileName}, trying .env`);
   result = dotenv.config({ path: defaultEnvPath });
   if (result.error) {
-    logger.error(`❌ Failed to load .env from ${defaultEnvPath}:`, result.error.message);
+    logger.error({ err: result.error }, `❌ Failed to load .env from ${defaultEnvPath}`);
     // Try process.cwd() as fallback
     const fallbackPath = path.resolve(process.cwd(), '.env');
     const fallbackResult = dotenv.config({ path: fallbackPath });
@@ -120,7 +120,7 @@ export const assertConfig = () => {
     console.error(`\n⚠️  Missing or placeholder environment variables: ${missing.join(', ')}`);
     console.error('⚠️  Backend will start but authentication and API features will not work.');
     console.error('\n📝 To fix:');
-    console.error('   1. Get your Supabase Service Role Key from: https://supabase.com/dashboard/project/mwtyckyguduigflpnqss/settings/api');
+    console.error('   1. Get your Supabase Service Role Key from: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/settings/api');
     console.error('   2. Get your OpenAI API Key from: https://platform.openai.com/api-keys');
     console.error('   3. Update your .env file with the real values\n');
     // Don't throw - allow server to start for development

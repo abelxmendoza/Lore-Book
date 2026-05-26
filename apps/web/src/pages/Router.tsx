@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { AuthGate } from '../components/AuthGate';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
@@ -14,6 +14,9 @@ const DevConsolePage = lazy(() => import('./dev-console'));
 const Onboarding = lazy(() => import('../routes/Onboarding'));
 const AccountCenter = lazy(() => import('../routes/AccountCenter'));
 
+// Lazy load demo runtime (auth-free, synthetic cognition showcase)
+const Demo = lazy(() => import('../routes/Demo'));
+
 // Lazy load public routes
 const Login = lazy(() => import('../routes/Login'));
 const AuthCallback = lazy(() => import('../routes/AuthCallback'));
@@ -21,7 +24,6 @@ const NotFound = lazy(() => import('../routes/NotFound'));
 const Terms = lazy(() => import('../routes/Terms'));
 const PrivacyPolicy = lazy(() => import('../routes/PrivacyPolicy'));
 const UserGuide = lazy(() => import('../components/guide/UserGuide'));
-const Perceptions = lazy(() => import('../routes/Perceptions'));
 const WhatAIKnows = lazy(() => import('../routes/WhatAIKnows'));
 
 // Lazy load landing pages
@@ -169,21 +171,31 @@ export const Router = () => {
           </LazyRoute>
         } 
       />
-      <Route 
-        path="/memories" 
+      <Route
+        path="/memories"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="memories" /></AuthGate>
+            <AuthGate><App defaultSurface="search" /></AuthGate>
           </LazyRoute>
-        } 
+        }
       />
-      <Route 
-        path="/perceptions" 
+      <Route
+        path="/perceptions"
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="perceptions" /></AuthGate>
           </LazyRoute>
-        } 
+        }
+      />
+
+      {/* /demo — public showcase runtime, no AuthGate, no ToS, synthetic cognition only */}
+      <Route
+        path="/demo"
+        element={
+          <LazyRoute>
+            <Demo />
+          </LazyRoute>
+        }
       />
       <Route 
         path="/events" 

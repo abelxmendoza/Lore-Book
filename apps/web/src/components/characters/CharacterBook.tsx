@@ -2085,7 +2085,7 @@ const MainCharacterSection = ({ user }: { user: any }) => {
 
 export const CharacterBook = () => {
   const { user } = useAuth();
-  const { useMockData: isMockDataEnabled } = useMockData();
+  const { useMockData: isMockDataEnabled, runtimeDataMode } = useMockData();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
@@ -2188,6 +2188,21 @@ export const CharacterBook = () => {
     void loadCharacters();
     void loadRelationships();
   }, [isMockDataEnabled]);
+
+  // Refresh + briefly highlight cards when the chat pipeline updates characters.
+  const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ids: string[] = (e as CustomEvent<{ ids: string[] }>).detail?.ids ?? [];
+      void loadCharacters();
+      if (ids.length > 0) {
+        setRecentlyUpdatedIds(new Set(ids));
+        setTimeout(() => setRecentlyUpdatedIds(new Set()), 4000);
+      }
+    };
+    window.addEventListener('lk:characters-updated', handler);
+    return () => window.removeEventListener('lk:characters-updated', handler);
+  }, []);
 
   // Convert entries to MemoryCard format for modal
   useEffect(() => {
@@ -2527,8 +2542,17 @@ export const CharacterBook = () => {
       ) : filteredCharacters.length === 0 ? (
         <div className="text-center py-8 sm:py-12 text-white/60 px-4">
           <User className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 text-white/20" />
-          <p className="text-base sm:text-lg font-medium mb-2">No characters found</p>
-          <p className="text-xs sm:text-sm">Try a different search term or mention characters in chat to auto-create them</p>
+          {characters.length === 0 && runtimeDataMode === 'REAL' ? (
+            <>
+              <p className="text-base sm:text-lg font-medium mb-2">Your character graph is empty</p>
+              <p className="text-xs sm:text-sm max-w-xs mx-auto">Mention people in your conversations and Lore Book will build your character graph from what you share</p>
+            </>
+          ) : (
+            <>
+              <p className="text-base sm:text-lg font-medium mb-2">No characters found</p>
+              <p className="text-xs sm:text-sm">Try a different search term or filter</p>
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -2569,15 +2593,20 @@ export const CharacterBook = () => {
                     <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                       {charactersByImpact.map((character, index) => {
                         try {
+                          const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
                           return (
-                            <CharacterProfileCard
+                            <div
                               key={character.id || `char-${index}`}
-                              character={character}
-                              relationship={relationships.get(character.id)}
-                              onClick={() => {
-                                setSelectedCharacter(character);
-                              }}
-                            />
+                              className={isUpdated ? 'ring-2 ring-primary/70 rounded-lg transition-all duration-500' : ''}
+                            >
+                              <CharacterProfileCard
+                                character={character}
+                                relationship={relationships.get(character.id)}
+                                onClick={() => {
+                                  setSelectedCharacter(character);
+                                }}
+                              />
+                            </div>
                           );
                         } catch {
                           return null;
@@ -2619,15 +2648,20 @@ export const CharacterBook = () => {
                             <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                               {chars.map((character, index) => {
                                 try {
+                                  const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
                                   return (
-                                    <CharacterProfileCard
+                                    <div
                                       key={character.id || `char-${index}`}
-                                      character={character}
-                                      relationship={relationships.get(character.id)}
-                                      onClick={() => {
-                                        setSelectedCharacter(character);
-                                      }}
-                                    />
+                                      className={isUpdated ? 'ring-2 ring-primary/70 rounded-lg transition-all duration-500' : ''}
+                                    >
+                                      <CharacterProfileCard
+                                        character={character}
+                                        relationship={relationships.get(character.id)}
+                                        onClick={() => {
+                                          setSelectedCharacter(character);
+                                        }}
+                                      />
+                                    </div>
                                   );
                                 } catch {
                                   return null;
