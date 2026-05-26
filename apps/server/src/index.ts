@@ -11,7 +11,7 @@ import { logger } from './logger';
 import { auditLogger } from './middleware/auditLogger';
 import { authMiddleware } from './middleware/auth';
 import { csrfTokenMiddleware, csrfProtection } from './middleware/csrf';
-import { errorHandler , asyncHandler } from './middleware/errorHandler';
+import { errorHandler } from './middleware/errorHandler';
 import { intrusionDetection } from './middleware/intrusionDetection';
 import { rateLimitMiddleware } from './middleware/rateLimit';
 import { validateRequestSize, validateCommonPatterns } from './middleware/requestValidation';
@@ -143,8 +143,22 @@ app.use(express.urlencoded({ extended: true, limit: isDevelopment ? '50mb' : '1m
 app.use(requestIdMiddleware);
 
 // Liveness: GET /api/health first so nothing else can return 500 for it (no auth, no DB)
+const SERVER_START_TIME = Date.now();
 app.get('/api/health', (_req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  const uptimeSeconds = Math.floor((Date.now() - SERVER_START_TIME) / 1000);
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds,
+    deploymentEnv: process.env.NODE_ENV ?? 'unknown',
+    envPresent: {
+      SUPABASE_URL: !!process.env.SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+      FRONTEND_URL: !!process.env.FRONTEND_URL,
+      PORT: !!process.env.PORT,
+    },
+  });
 });
 
 // Database schema health: status, missing tables, last check (no auth)

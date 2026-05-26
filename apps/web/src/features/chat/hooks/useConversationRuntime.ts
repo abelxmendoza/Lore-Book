@@ -34,6 +34,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../../lib/supabase';
 import { fetchJson } from '../../../lib/api';
 import { useChatThreads } from './useChatThreads';
+import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
 import type { Message } from '../message/ChatMessage';
 import type { TitleGenerationResult } from '../types/conversationMetadata';
 
@@ -94,15 +95,18 @@ export const useConversationRuntime = ({
     if (threadIdParam) {
       // Handler already loaded this thread — skip to avoid double setMessages
       if (hydratedByHandlerRef.current === threadIdParam) {
+        runtimeDiagnostics.record('hydration_skip', { threadId: threadIdParam });
         hydratedByHandlerRef.current = null;
         return;
       }
       const thread = getThread(threadIdParam);
       if (thread) {
+        runtimeDiagnostics.startTimer('hydration');
         intendedThreadRef.current = threadIdParam;
         isHydratedRef.current = true;
         setMessages(thread.messages);
         switchThread(threadIdParam);
+        runtimeDiagnostics.recordTimed('hydration_complete', 'hydration', { threadId: threadIdParam });
       } else if (threadsReady) {
         navigate('/chat', { replace: true });
       }
@@ -125,6 +129,7 @@ export const useConversationRuntime = ({
     if (!threadIdParam && messages.length > 0 && !pendingNewThreadRef.current) {
       pendingNewThreadRef.current = true;
       const id = createThread();
+      runtimeDiagnostics.record('thread_create', { threadId: id });
       const firstUser = messages.find((m) => m.role === 'user');
       const provisionalTitle = firstUser
         ? firstUser.content.slice(0, 50).trim() || 'New chat'
@@ -143,6 +148,7 @@ export const useConversationRuntime = ({
   useEffect(() => {
     const tid = intendedThreadRef.current;
     if (!tid || !isHydratedRef.current) return;
+    runtimeDiagnostics.record('sync_write', { threadId: tid });
     updateThread(tid, { messages, updatedAt: new Date().toISOString() });
   }, [messages, updateThread]);
 
@@ -160,9 +166,14 @@ export const useConversationRuntime = ({
     if (titleGeneratedRef.current === threadIdParam) return;
 
     const currentThread = getThread(threadIdParam);
-    if (currentThread?.title && currentThread.title !== 'New chat') return;
+    if (currentThread?.title && currentThread.title !== 'New chat') {
+      runtimeDiagnostics.record('title_skip', { threadId: threadIdParam, meta: { reason: 'already_titled' } });
+      return;
+    }
 
     titleGeneratedRef.current = threadIdParam;
+    runtimeDiagnostics.record('title_start', { threadId: threadIdParam });
+    runtimeDiagnostics.startTimer(`title_${threadIdParam}`);
 
     const payload = messages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -185,20 +196,36 @@ export const useConversationRuntime = ({
       }
     )
       .then(({ title, subtitle }) => {
+        runtimeDiagnostics.recordTimed('title_complete', `title_${threadIdParam}`, {
+          threadId: threadIdParam,
+          meta: { title },
+        });
         if (title && title !== 'New chat') {
           updateThread(threadIdParam, { title, subtitle });
         }
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        runtimeDiagnostics.recordTimed('title_error', `title_${threadIdParam}`, {
+          threadId: threadIdParam,
+          meta: { error: errMsg },
+        });
+        // Title generation failure is non-fatal — the thread keeps its provisional title.
+        // The error is logged via runtimeDiagnostics (visible in dev console).
+      });
   }, [threadIdParam, messages, getThread, updateThread]);
 
   // ── Navigation helpers ──────────────────────────────────────────────────────
 
   /** Start a new chat: flush current thread, create new thread, navigate */
   const handleNewChat = useCallback(() => {
-    if (currentThreadId) flushSave(currentThreadId);
+    if (currentThreadId) {
+      runtimeDiagnostics.record('flush_save', { threadId: currentThreadId });
+      flushSave(currentThreadId);
+    }
     clearMessages();
     const id = createThread();
+    runtimeDiagnostics.record('thread_create', { threadId: id });
     intendedThreadRef.current = id;
     isHydratedRef.current = true;
     hydratedByHandlerRef.current = id; // thread is empty — skip URL hydration setMessages
@@ -208,7 +235,11 @@ export const useConversationRuntime = ({
   /** Switch to an existing thread: flush current, load messages, navigate */
   const handleSelectThread = useCallback(
     (id: string) => {
-      if (currentThreadId && currentThreadId !== id) flushSave(currentThreadId);
+      if (currentThreadId && currentThreadId !== id) {
+        runtimeDiagnostics.record('flush_save', { threadId: currentThreadId });
+        flushSave(currentThreadId);
+      }
+      runtimeDiagnostics.startTimer('thread_switch');
       const thread = getThread(id);
       if (thread) {
         // Set intendedThreadRef BEFORE setMessages to prevent sync contamination
@@ -220,6 +251,7 @@ export const useConversationRuntime = ({
       }
       switchThread(id);
       navigate(`/chat/${id}`);
+      runtimeDiagnostics.recordTimed('thread_switch', 'thread_switch', { threadId: id });
     },
     [currentThreadId, flushSave, getThread, setMessages, switchThread, navigate]
   );
@@ -229,6 +261,7 @@ export const useConversationRuntime = ({
     (id: string) => {
       const remaining = threads.filter((t) => t.id !== id);
       const next = remaining[0];
+      runtimeDiagnostics.record('thread_delete', { threadId: id });
       deleteThread(id);
       if (threadIdParam === id) {
         if (next) {
