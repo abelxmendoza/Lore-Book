@@ -59,10 +59,16 @@ export const TermsOfServiceAgreement = ({ onAccept }: TermsOfServiceAgreementPro
       }
 
       console.error('Failed to accept terms:', error);
-      const detailedMessage = errorMessage.includes('table does not exist') || errorMessage.includes('Database table not found')
-        ? `Database migration required!\n\n${errorMessage}\n\nPlease run the migration:\nmigrations/20250120_terms_acceptance.sql`
-        : errorMessage;
-      alert(`Failed to accept terms: ${detailedMessage}\n\nCheck the browser console for more details.`);
+
+      let userMessage: string;
+      if (errorMessage.includes('Security validation') || errorMessage.includes('CSRF')) {
+        userMessage = 'Security validation failed. Please refresh the page and try again.';
+      } else if (errorMessage.includes('table does not exist') || errorMessage.includes('Database table not found')) {
+        userMessage = `Database migration required. Please contact support.\n\nDetails: ${errorMessage}`;
+      } else {
+        userMessage = `Failed to accept terms: ${errorMessage}\n\nCheck the browser console for more details.`;
+      }
+      alert(userMessage);
     } finally {
       setLoading(false);
     }

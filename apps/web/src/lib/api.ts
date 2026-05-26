@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { addCsrfHeaders } from './security';
+import { addCsrfHeaders, acquireCsrfToken, getCsrfToken, invalidateCsrfToken } from './security';
 import { config, log } from '../config/env';
 import { performance as perfMonitoring, errorTracking } from './monitoring';
 import { apiCache, generateCacheKey } from './cache';
@@ -92,6 +92,14 @@ export const fetchJson = async <T>(
     }
 
     try {
+      // Pre-acquire CSRF token before mutating requests so csrfProtection middleware
+      // doesn't reject the first POST/PUT/PATCH/DELETE with 403.
+      const isMutatingMethod = !!init?.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(init.method);
+      if (isMutatingMethod && token && !getCsrfToken()) {
+        console.debug(`[CSRF] Acquiring token before ${init.method} ${urlStr}`);
+        await acquireCsrfToken(token, apiBaseUrl);
+      }
+
       const headers = addCsrfHeaders({
         'Content-Type': 'application/json',
         ...(init?.headers ?? {}),
@@ -152,6 +160,20 @@ export const fetchJson = async <T>(
             );
           }
         }
+        // CSRF token rejected — invalidate cache, re-acquire for next attempt, surface clear error.
+        // Happens when the session's token expired (1hr TTL) or was never acquired.
+        if (res.status === 403) {
+          const csrfErrors = new Set(['CSRF token required', 'CSRF token expired', 'Invalid CSRF token', 'CSRF token missing']);
+          if (csrfErrors.has(error.error)) {
+            console.warn(`[CSRF] ${error.error} on ${init?.method} ${urlStr} — invalidating cache`);
+            invalidateCsrfToken();
+            if (token) await acquireCsrfToken(token, apiBaseUrl).catch(() => {});
+            const csrfError = new Error('Security validation failed. Please refresh and try again.');
+            if (options?.onError) options.onError(csrfError);
+            throw csrfError;
+          }
+        }
+
         if (res.status === 401) {
           const authError = new Error('Authentication required. Please sign in again.');
           if (options?.onError) options.onError(authError);

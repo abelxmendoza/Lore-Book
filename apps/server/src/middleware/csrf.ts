@@ -140,6 +140,21 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
   next();
 };
 
+/**
+ * Returns a valid CSRF token for the given userId, creating one if needed.
+ * Used by GET /api/security/csrf-token so the frontend can pre-fetch a token
+ * before its first mutating request.
+ */
+export const createCsrfTokenForUser = (userId: string): string => {
+  const existing = tokenStore.get(userId);
+  if (existing && Date.now() <= existing.expiresAt) {
+    return existing.token;
+  }
+  const token = generateCsrfToken();
+  tokenStore.set(userId, { token, expiresAt: Date.now() + TOKEN_EXPIRY_MS });
+  return token;
+};
+
 // Cleanup expired tokens periodically
 setInterval(() => {
   const now = Date.now();

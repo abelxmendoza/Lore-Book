@@ -81,6 +81,7 @@ import timeRouter from './time';
 import { privacyRouter } from './privacy';
 import { subscriptionRouter } from './subscription';
 import { userRouter } from './user';
+import { securityRouter } from './security';
 import { essenceRouter } from './essence';
 import { verificationRouter } from './verification';
 import timelineV2Router from './timelineV2';
@@ -206,6 +207,14 @@ export const routeRegistry: RouteEntry[] = [
     requiresAuth: false,
     classification: 'CORE_RUNTIME',
     description: 'Runtime diagnostics',
+  },
+
+  // ---- SECURITY -----------------------------------------------------------
+  {
+    path: '/api/security',
+    router: securityRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'CSRF token endpoint — GET /api/security/csrf-token',
   },
 
   // ---- AUTH / ACCOUNT -----------------------------------------------------
