@@ -16,9 +16,12 @@ class RAGPacketCacheService {
 
   getLoreCache(userId: string): any | null {
     const cached = this.loreCache.get(userId);
-    if (cached && cached.expiresAt > Date.now()) return cached.data;
-    if (cached) this.loreCache.delete(userId);
-    return null;
+    if (!cached) return null;
+    if (cached.expiresAt <= Date.now()) { this.loreCache.delete(userId); return null; }
+    // Promote to MRU position
+    this.loreCache.delete(userId);
+    this.loreCache.set(userId, cached);
+    return cached.data;
   }
 
   setLoreCache(userId: string, data: any): void {
@@ -40,42 +43,46 @@ class RAGPacketCacheService {
   }
 
   /**
-   * Get cached RAG packet
+   * Get cached RAG packet — LRU: promote to tail on hit so eviction always removes
+   * the least-recently-used entry, not the oldest-inserted one.
    */
   getCachedPacket(userId: string, message: string): any | null {
     const hash = this.hashMessage(userId, message);
     const cached = this.memoryCache.get(hash);
-    
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.data;
-    }
-    
-    // Remove expired entry
-    if (cached) {
+
+    if (!cached) return null;
+
+    if (cached.expiresAt <= Date.now()) {
       this.memoryCache.delete(hash);
+      return null;
     }
-    
-    return null;
+
+    // Promote to MRU position — delete + re-insert moves entry to Map tail
+    this.memoryCache.delete(hash);
+    this.memoryCache.set(hash, cached);
+
+    return cached.data;
   }
 
   /**
-   * Cache RAG packet
+   * Cache RAG packet — evicts LRU entry (Map head) when at capacity.
    */
   cachePacket(userId: string, message: string, packet: any): void {
     const hash = this.hashMessage(userId, message);
-    
-    // If cache is full, remove oldest entry
-    if (this.memoryCache.size >= this.MEMORY_CACHE_SIZE) {
-      const firstKey = this.memoryCache.keys().next().value;
-      if (firstKey) {
-        this.memoryCache.delete(firstKey);
-      }
+
+    // If already present, delete first so re-insert lands at tail (MRU)
+    if (this.memoryCache.has(hash)) {
+      this.memoryCache.delete(hash);
+    } else if (this.memoryCache.size >= this.MEMORY_CACHE_SIZE) {
+      // Evict LRU: Map preserves insertion order, so .keys().next() is the least-recently-used
+      const lruKey = this.memoryCache.keys().next().value;
+      if (lruKey) this.memoryCache.delete(lruKey);
     }
-    
+
     this.memoryCache.set(hash, {
       data: packet,
       expiresAt: Date.now() + this.CACHE_TTL_MS,
-      cachedAt: Date.now()
+      cachedAt: Date.now(),
     });
   }
 

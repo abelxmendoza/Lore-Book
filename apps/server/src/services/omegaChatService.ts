@@ -153,6 +153,11 @@ export type StreamingChatResponse = {
     activePersona?: string;
     sessionId?: string;
     messageId?: string;
+    continuityAcknowledged?: {
+      signals: string[];
+      entityHints: string[];
+      timelineSignificant: boolean;
+    };
   };
 };
 
@@ -927,6 +932,41 @@ class OmegaChatService {
       }
     }
 
+    // Detect continuity intent before building system prompt
+    const { detectContinuityIntent } = await import('../utils/continuityIntentDetection');
+    const continuityIntent = detectContinuityIntent(message);
+    if (continuityIntent.detected) {
+      logger.debug({ userId, signals: continuityIntent.signals, entityHints: continuityIntent.entityHints }, 'Continuity intent detected');
+    }
+
+    // Return-to-thread orientation: detect idle gap and inject grounding context
+    let returnToThreadContext = '';
+    if (currentContext?.threadId) {
+      try {
+        const { data: threadRow } = await supabaseAdmin
+          .from('conversation_sessions')
+          .select('updated_at, title, metadata')
+          .eq('id', currentContext.threadId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (threadRow?.updated_at) {
+          const idleMs = Date.now() - new Date(threadRow.updated_at).getTime();
+          const idleHours = idleMs / 3_600_000;
+          if (idleHours >= 24) {
+            const idleDays = Math.floor(idleHours / 24);
+            const timeLabel = idleDays === 1 ? '1 day' : `${idleDays} days`;
+            const subtitle = (threadRow.metadata as any)?.subtitle as string | undefined;
+            const entities: string[] = (threadRow.metadata as any)?.dominantEntities ?? [];
+            const entityPhrase = entities.length > 0 ? ` The recurring context included: ${entities.slice(0, 3).join(', ')}.` : '';
+            const subtitlePhrase = subtitle ? ` The last topic was: ${subtitle}.` : '';
+            returnToThreadContext = `\n\n**THREAD RESUMED AFTER ${timeLabel.toUpperCase()} GAP**: This conversation was last active ${timeLabel} ago.${subtitlePhrase}${entityPhrase} Orient naturally to the resumed context — no dramatic welcome, just quiet continuity.`;
+          }
+        }
+      } catch (err) {
+        logger.debug({ err, threadId: currentContext.threadId }, 'Return-to-thread context lookup failed, continuing without');
+      }
+    }
+
     // Build system prompt with comprehensive lore and essence profile
     let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -958,8 +998,13 @@ class OmegaChatService {
       undefined,
       undefined,
       currentFocusLine,
-      timelineInsight
+      timelineInsight,
+      continuityIntent
     );
+
+    if (returnToThreadContext) {
+      systemPrompt += returnToThreadContext;
+    }
 
     if (refinementClarificationRequest) {
       systemPrompt += `\n\n**REFINEMENT CLARIFICATION**: The user may be correcting something in their Soul Profile. If your reply is about that, first ask them: "${refinementClarificationRequest}"`;
@@ -1310,6 +1355,11 @@ class OmegaChatService {
         disambiguationPrompt: disambiguationPrompt || undefined,
         activePersona: activePersona || undefined,
         modeDecision: modeDecision || undefined,
+        continuityAcknowledged: continuityIntent?.detected ? {
+          signals: continuityIntent.signals,
+          entityHints: continuityIntent.entityHints,
+          timelineSignificant: continuityIntent.timelineSignificant,
+        } : undefined,
         ragStats: {
           sourceCount: sources.length,
           cacheHit: ragCacheHit,

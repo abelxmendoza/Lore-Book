@@ -99,6 +99,7 @@ export type Message = {
   ragStats?: { sourceCount: number; cacheHit: boolean; retrievalMs: number; contextItems: number };
   activePersona?: string;
   cognitionFeedback?: import('../../../hooks/useChatStream').MemoryFeedbackEvent;
+  continuityAcknowledged?: { signals: string[]; entityHints: string[]; timelineSignificant: boolean };
 };
 
 type ChatMessageProps = {
@@ -553,6 +554,20 @@ export const ChatMessage = ({
           {!isUser && message.modeDecision && (
             <div className="mt-2">
               <ModeAttributionBadge modeDecision={message.modeDecision} />
+            </div>
+          )}
+
+          {/* Continuity acknowledgement chip */}
+          {!isUser && message.continuityAcknowledged && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className="inline-flex items-center gap-1 text-xs text-emerald-400/70 bg-emerald-400/8 border border-emerald-400/15 rounded px-2 py-0.5">
+                ✓ {message.continuityAcknowledged.timelineSignificant ? 'Added to Lorekeeper journey' : 'Captured in your record'}
+              </span>
+              {message.continuityAcknowledged.entityHints.slice(0, 2).map((hint, i) => (
+                <span key={i} className="inline-flex items-center text-xs text-white/30 bg-white/4 border border-white/8 rounded px-2 py-0.5">
+                  {hint}
+                </span>
+              ))}
             </div>
           )}
 

@@ -259,6 +259,7 @@ export const useChat = () => {
             modeDecision: metadata?.modeDecision,
             ragStats: metadata?.ragStats,
             activePersona: metadata?.activePersona,
+            continuityAcknowledged: metadata?.continuityAcknowledged,
             // Memory Recall fields
             response_mode: metadata?.response_mode,
             recall_sources: metadata?.recall_sources,

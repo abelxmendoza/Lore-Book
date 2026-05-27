@@ -46,6 +46,7 @@ import type { Message, Utterance, ExtractedUnit, NormalizationResult } from '../
 import { questExtractor } from '../quests/questExtractor';
 import { questService } from '../quests/questService';
 import { ingestConversationER } from '../unifiedErIngestion';
+import { eventCandidateService } from '../eventCandidates/eventCandidateService';
 
 /**
  * Main ingestion pipeline for conversation messages
@@ -1326,6 +1327,53 @@ export class ConversationIngestionPipeline {
             // Step 12.6: Detect event impacts (how events affect the user)
             // This happens after event assembly so we have event IDs
             if (assembledEvents && assembledEvents.length > 0) {
+              // Batch-fetch all resolved_events and their mentions up front.
+              // Reduces from 4N queries to 4 queries total (DataLoader pattern).
+              const assembledEventIds = assembledEvents.map(e => e.event_id);
+
+              const [eventsResult, mentionsResult] = await Promise.all([
+                supabaseAdmin
+                  .from('resolved_events')
+                  .select('*')
+                  .in('id', assembledEventIds)
+                  .eq('user_id', userId),
+                supabaseAdmin
+                  .from('event_mentions')
+                  .select('event_id, memory_id')
+                  .in('event_id', assembledEventIds),
+              ]);
+
+              const fullEventsMap = new Map(
+                (eventsResult.data ?? []).map((e: any) => [e.id, e])
+              );
+
+              // Group mention source IDs by event, collect all unique source IDs
+              const mentionsByEvent = new Map<string, string[]>();
+              const allSourceIds = new Set<string>();
+              for (const m of (mentionsResult.data ?? [])) {
+                const arr = mentionsByEvent.get(m.event_id) ?? [];
+                arr.push(m.memory_id);
+                mentionsByEvent.set(m.event_id, arr);
+                allSourceIds.add(m.memory_id);
+              }
+
+              const sourceIdsArr = Array.from(allSourceIds);
+              const [messagesResult, journalResult] = await Promise.all([
+                sourceIdsArr.length > 0
+                  ? supabaseAdmin.from('chat_messages').select('id, content').in('id', sourceIdsArr).limit(50)
+                  : Promise.resolve({ data: [] as any[] }),
+                sourceIdsArr.length > 0
+                  ? supabaseAdmin.from('journal_entries').select('id, content').in('id', sourceIdsArr).limit(50)
+                  : Promise.resolve({ data: [] as any[] }),
+              ]);
+
+              const messagesById = new Map(
+                (messagesResult.data ?? []).map((m: any) => [m.id, m.content as string])
+              );
+              const journalById = new Map(
+                (journalResult.data ?? []).map((e: any) => [e.id, e.content as string])
+              );
+
               for (const eventResult of assembledEvents) {
                 try {
                   // Link to previous context
@@ -1338,50 +1386,19 @@ export class ConversationIngestionPipeline {
                     );
                   }
 
-                  // Detect event impacts
-                  const { data: fullEvent } = await supabaseAdmin
-                    .from('resolved_events')
-                    .select('*')
-                    .eq('id', eventResult.event_id)
-                    .eq('user_id', userId)
-                    .single();
+                  const fullEvent = fullEventsMap.get(eventResult.event_id);
 
                   if (fullEvent) {
-                    // Get source messages and journal entries for this event
-                    const { data: mentions } = await supabaseAdmin
-                      .from('event_mentions')
-                      .select('memory_id')
-                      .eq('event_id', fullEvent.id);
+                    const sourceMessageIds = mentionsByEvent.get(fullEvent.id) ?? [];
 
-                    const sourceMessageIds = mentions?.map(m => m.memory_id) || [];
+                    // Resolve from pre-fetched maps — no per-event DB queries
+                    const sourceMessages = sourceMessageIds
+                      .map(id => ({ id, content: messagesById.get(id) ?? '' }))
+                      .filter(m => m.content);
 
-                    // Get message content for impact analysis
-                    const sourceMessages: Array<{ id: string; content: string }> = [];
-                    if (sourceMessageIds.length > 0) {
-                      const { data: messages } = await supabaseAdmin
-                        .from('chat_messages')
-                        .select('id, content')
-                        .in('id', sourceMessageIds)
-                        .limit(10); // Limit for performance
-
-                      if (messages) {
-                        sourceMessages.push(...messages.map(m => ({ id: m.id, content: m.content })));
-                      }
-                    }
-
-                    // Get journal entry content
-                    const sourceJournalEntries: Array<{ id: string; content: string }> = [];
-                    if (sourceMessageIds.length > 0) {
-                      const { data: entries } = await supabaseAdmin
-                        .from('journal_entries')
-                        .select('id, content')
-                        .in('id', sourceMessageIds)
-                        .limit(10);
-
-                      if (entries) {
-                        sourceJournalEntries.push(...entries.map(e => ({ id: e.id, content: e.content })));
-                      }
-                    }
+                    const sourceJournalEntries = sourceMessageIds
+                      .map(id => ({ id, content: journalById.get(id) ?? '' }))
+                      .filter(e => e.content);
 
                     // Detect impact
                     const impact = await eventImpactDetector.detectEventImpact(
@@ -1452,6 +1469,13 @@ export class ConversationIngestionPipeline {
                           logger.debug({ err }, 'Character timeline processing failed (non-blocking)');
                         });
                     }
+
+                    // Step 12.8.5: Recurring scene detection — non-blocking
+                    eventCandidateService
+                      .processResolvedEvent(userId, fullEvent.id)
+                      .catch(err => {
+                        logger.debug({ err }, 'Event candidate processing failed (non-blocking)');
+                      });
 
                     // Step 12.9: Detect workout events and extract biometrics
                     // Check if this event is workout-related

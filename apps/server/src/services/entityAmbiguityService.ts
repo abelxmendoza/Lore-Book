@@ -8,6 +8,7 @@
 
 import { logger } from '../logger';
 import type { UserIntent } from '../types/conversationalOrchestration';
+import { jaroWinkler } from '../utils/jaroWinkler';
 
 import { entityResolutionService, type EntityCandidate, type ResolutionTier } from './entityResolutionService';
 
@@ -182,17 +183,25 @@ export class EntityAmbiguityService {
       } else if (normalizedName.includes(normalizedMention) || normalizedMention.includes(normalizedName)) {
         nameScore = 0.8;
       } else {
-        // Check aliases
+        // Check aliases with substring match first, then Jaro-Winkler fallback
         const aliasMatch = candidate.aliases.some(alias => {
           const normalizedAlias = alias.toLowerCase();
-          return normalizedAlias === normalizedMention || 
+          return normalizedAlias === normalizedMention ||
                  normalizedAlias.includes(normalizedMention) ||
                  normalizedMention.includes(normalizedAlias);
         });
         if (aliasMatch) {
           nameScore = 0.7;
         } else {
-          nameScore = 0.5; // Fuzzy match
+          // Jaro-Winkler: catches Sara/Sarah, Jerry/Jeremy, Jon/John, etc.
+          // Also check all aliases — the user may refer to an entity by a near-match of its alias
+          const jwName = jaroWinkler(normalizedMention, normalizedName);
+          const jwAlias = candidate.aliases.length > 0
+            ? Math.max(...candidate.aliases.map(a => jaroWinkler(normalizedMention, a.toLowerCase())))
+            : 0;
+          const jw = Math.max(jwName, jwAlias);
+          // Map JW score to name score: JW ≥ 0.88 → high confidence, JW < 0.72 → effectively no match
+          nameScore = jw >= 0.88 ? 0.75 : jw >= 0.80 ? 0.60 : jw >= 0.72 ? 0.45 : 0.20;
         }
       }
 

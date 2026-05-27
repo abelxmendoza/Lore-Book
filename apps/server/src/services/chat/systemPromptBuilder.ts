@@ -4,6 +4,7 @@ import type { ChatContextExtension } from '../../types/timelineInsight';
 import type { TransitionAnalysis, EmotionalState } from '../conversationCentered/tangentTransitionDetector';
 import type { ChatSource } from '../omegaChatService';
 import { supabaseAdmin } from '../supabaseClient';
+import type { ContinuityIntent } from '../../utils/continuityIntentDetection';
 
 export function buildSystemPrompt(
   orchestratorSummary: any,
@@ -35,16 +36,34 @@ export function buildSystemPrompt(
   transitionAnalysis?: TransitionAnalysis | null,
   currentEmotionalState?: EmotionalState | null,
   currentFocusLine?: string,
-  timelineInsight?: ChatContextExtension & { layer?: string }
+  timelineInsight?: ChatContextExtension & { layer?: string },
+  continuityIntent?: ContinuityIntent | null
 ): string {
   const timelineSummary = orchestratorSummary.timeline.events
     .slice(0, 20)
     .map((e: any) => `Date: ${e.date}\n${e.summary || e.content?.substring(0, 100)}`)
     .join('\n---\n');
 
+  // Rank characters by continuity salience — most recently active first.
+  // Cap at 25 to prevent system prompt bloat; a user with 200 characters still gets
+  // the 25 most relevant ones, not all 200 serialized into the context window.
+  const MAX_CHARACTERS = 25;
+  const MAX_LOCATIONS = 20;
+  const rankedCharacters = loreData?.allCharacters
+    ? [...loreData.allCharacters]
+        .sort((a: any, b: any) => {
+          // Primary: confidence descending (more established entities first)
+          const confDiff = (b.confidence ?? 1) - (a.confidence ?? 1);
+          if (Math.abs(confDiff) > 0.05) return confDiff;
+          // Secondary: recency (updated_at descending)
+          return new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime();
+        })
+        .slice(0, MAX_CHARACTERS)
+    : [];
+
   // Build comprehensive character knowledge (including nicknames/aliases and attributes)
-  const charactersKnowledge = loreData?.allCharacters?.length
-    ? loreData.allCharacters.map((char: any) => {
+  const charactersKnowledge = rankedCharacters.length
+    ? rankedCharacters.map((char: any) => {
         const aliases = char.alias && Array.isArray(char.alias) && char.alias.length > 0
           ? ` (also known as: ${char.alias.join(', ')})`
           : '';
@@ -78,9 +97,14 @@ export function buildSystemPrompt(
         })
         .join(', ');
 
-  // Build comprehensive location knowledge
-  const locationsKnowledge = loreData?.allLocations?.length
-    ? loreData.allLocations.map((loc: any) => {
+  // Build comprehensive location knowledge — ranked by visit frequency, capped at 20
+  const rankedLocations = loreData?.allLocations
+    ? [...loreData.allLocations]
+        .sort((a: any, b: any) => (b.visitCount ?? 0) - (a.visitCount ?? 0))
+        .slice(0, MAX_LOCATIONS)
+    : [];
+  const locationsKnowledge = rankedLocations.length
+    ? rankedLocations.map((loc: any) => {
         return `- ${loc.name}: Visited ${loc.visitCount || 0} times${loc.firstVisited ? ` (first: ${loc.firstVisited})` : ''}${loc.lastVisited ? ` (last: ${loc.lastVisited})` : ''}`;
       }).join('\n')
     : '';
@@ -489,7 +513,27 @@ ${currentEmotionalState.transitionReason ? `- Reason: ${currentEmotionalState.tr
 **KEY PRINCIPLE**: Like Grok, you should naturally follow tangents and transitions. The user's mind is going where it wants to go - your job is to follow, validate, and engage with where they're at NOW, not where they were 3 messages ago. Build on the new topic while showing you remember the context.
 ` : ''}
 ${currentFocusLine ? `\n\n**Current focus:** ${currentFocusLine}.` : ''}
-${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineInsight.parallelSummary?.explicitCount ?? 0) + (timelineInsight.parallelSummary?.implicitCount ?? 0) > 0 ? `\n\n**Timeline context:** This ${timelineInsight.layer ?? 'node'} has ${timelineInsight.hierarchyGaps?.length ?? 0} empty time spans and ${timelineInsight.parallelSummary?.explicitCount ?? 0} explicit parallels (${timelineInsight.parallelSummary?.implicitCount ?? 0} overlaps). You may gently explore gaps or contextualize interruptions when relevant.` : ''}`;
+${timelineInsight && (timelineInsight.hierarchyGaps?.length ?? 0) + (timelineInsight.parallelSummary?.explicitCount ?? 0) + (timelineInsight.parallelSummary?.implicitCount ?? 0) > 0 ? `\n\n**Timeline context:** This ${timelineInsight.layer ?? 'node'} has ${timelineInsight.hierarchyGaps?.length ?? 0} empty time spans and ${timelineInsight.parallelSummary?.explicitCount ?? 0} explicit parallels (${timelineInsight.parallelSummary?.implicitCount ?? 0} overlaps). You may gently explore gaps or contextualize interruptions when relevant.` : ''}
+${continuityIntent?.detected ? `
+
+**CONTINUITY INTENT DETECTED** (confidence: ${(continuityIntent.confidence * 100).toFixed(0)}%):
+
+The user has explicitly signaled that this moment should be persisted — they want Lorekeeper to remember, save, or track what they are sharing right now.
+
+**WHAT WAS DETECTED:** ${continuityIntent.signals.join(', ')}
+${continuityIntent.entityHints.length > 0 ? `**PEOPLE/ENTITIES MENTIONED:** ${continuityIntent.entityHints.join(', ')}` : ''}
+${continuityIntent.timelineSignificant ? `**TIMELINE SIGNIFICANCE:** User explicitly referenced timeline, memoir, or creation journey.` : ''}
+
+**HOW TO RESPOND:**
+1. Open with explicit acknowledgement of what is being tracked — name the thing, name the person, name the moment. Do NOT start with a generic question.
+   Example: "Got it — I'm tracking this as part of your Lorekeeper creation journey. [Name/event/feeling] is now part of your record."
+2. Name what will be remembered: the entity (if any), the emotional context (if shared), the timeline significance (if stated).
+3. Be factual and grounded. Do NOT be emotionally performative. Do NOT generate synthetic warmth.
+4. After the acknowledgement, you may ask ONE natural follow-up only if it genuinely advances the record (e.g., a date, a relationship, a missing detail). Skip the follow-up if the record is already complete.
+5. DO NOT: over-explain, ask multiple questions, roleplay feelings, invent emotions, or produce AI-therapist behavior.
+
+**PRINCIPLE:** Sparse authentic continuity > synthetic emotional richness. The user trusts Lorekeeper to remember — show it.
+` : ''}`;
 }
 
 export function buildEssenceContext(profile: any): string {

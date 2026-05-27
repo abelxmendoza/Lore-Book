@@ -244,7 +244,19 @@ function ThreadItem({
               {thread.title || 'New chat'}
             </p>
             {thread.subtitle && (
-              <p className="text-[9px] text-white/25 truncate mt-px">{thread.subtitle}</p>
+              <p className="text-[9px] text-white/45 truncate mt-px">{thread.subtitle}</p>
+            )}
+            {thread.dominantEntities && thread.dominantEntities.length > 0 && (
+              <div className="flex gap-1 mt-1 flex-wrap">
+                {thread.dominantEntities.slice(0, 3).map((entity) => (
+                  <span
+                    key={entity}
+                    className="text-[8px] leading-none px-1 py-0.5 rounded bg-white/6 text-white/35 truncate max-w-[5rem]"
+                  >
+                    {entity}
+                  </span>
+                ))}
+              </div>
             )}
             <p className="text-[10px] text-white/30 mt-0.5">{formatTimestamp(thread.updatedAt)}</p>
           </div>

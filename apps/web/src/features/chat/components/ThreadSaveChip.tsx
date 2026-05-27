@@ -21,12 +21,12 @@ type VisibleState = Extract<
 >;
 
 const CHIP_CONFIG: Record<VisibleState, { label: string; className: string }> = {
-  PERSISTED:       { label: '✓ Saved',    className: 'text-green-500/70' },
-  PERSISTING:      { label: '↑ Saving…',  className: 'text-blue-400/80 animate-pulse' },
-  PERSIST_PENDING: { label: '· Queued',   className: 'text-blue-400/50' },
-  SYNC_FAILED:     { label: '⚠ Not saved',className: 'text-red-400' },
-  OFFLINE_MODE:    { label: '○ Offline',  className: 'text-orange-400/80' },
-  LOCAL_ONLY:      { label: '○ Local',    className: 'text-yellow-400/60' },
+  PERSISTED:       { label: '· Cloud backed', className: 'text-white/20' },
+  PERSISTING:      { label: '· Syncing…',     className: 'text-white/30 animate-pulse' },
+  PERSIST_PENDING: { label: '· Queued',        className: 'text-white/20' },
+  SYNC_FAILED:     { label: '⚠ Not backed up', className: 'text-red-400/70' },
+  OFFLINE_MODE:    { label: '· Offline — local only', className: 'text-orange-400/60' },
+  LOCAL_ONLY:      { label: '· Local only',    className: 'text-yellow-400/45' },
 };
 
 const VISIBLE_STATES = new Set<ThreadPersistenceState>([
