@@ -4,6 +4,7 @@ import { useMockData } from '../contexts/MockDataContext';
 import { fetchJson } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import type { CurrentContext } from '../types/currentContext';
+import { MOCK_ENTRIES, MOCK_TIMELINE, MOCK_TAGS, MOCK_CHAPTERS } from '../mocks/journalData';
 
 export type JournalEntry = {
   id: string;
@@ -114,8 +115,8 @@ export const useLoreKeeper = () => {
   const refreshEntries = useCallback(async () => {
     try {
       const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries', undefined, {
-        isMockEnabled,
-        mockData: { entries: [] },
+        useMockData: isMockEnabled,
+        mockData: { entries: MOCK_ENTRIES },
       });
       setEntries(data?.entries || []);
     } catch (error) {
@@ -128,12 +129,12 @@ export const useLoreKeeper = () => {
     try {
       const [timelineData, tagData] = await Promise.all([
         fetchJson<{ timeline: TimelineResponse }>('/api/timeline', undefined, {
-          isMockEnabled,
-          mockData: { timeline: EMPTY_TIMELINE },
+          useMockData: isMockEnabled,
+          mockData: { timeline: MOCK_TIMELINE },
         }),
         fetchJson<{ tags: { name: string; count: number }[] }>('/api/timeline/tags', undefined, {
-          isMockEnabled,
-          mockData: { tags: [] },
+          useMockData: isMockEnabled,
+          mockData: { tags: MOCK_TAGS },
         }),
       ]);
       setTimeline(timelineData?.timeline || EMPTY_TIMELINE);
@@ -148,8 +149,8 @@ export const useLoreKeeper = () => {
   const refreshChapters = useCallback(async () => {
     try {
       const data = await fetchJson<{ chapters: ChapterProfile[]; candidates?: ChapterCandidate[] }>('/api/chapters', undefined, {
-        isMockEnabled,
-        mockData: { chapters: [], candidates: [] },
+        useMockData: isMockEnabled,
+        mockData: { chapters: MOCK_CHAPTERS, candidates: [] },
       });
       setChapters(data?.chapters ?? []);
       setChapterCandidates(data?.candidates ?? []);
@@ -163,7 +164,7 @@ export const useLoreKeeper = () => {
   const refreshEvolution = useCallback(async () => {
     try {
       const data = await fetchJson<{ insights: EvolutionInsights | null }>('/api/evolution', undefined, {
-        isMockEnabled,
+        useMockData: isMockEnabled,
         mockData: { insights: null },
       });
       setEvolution(data?.insights ?? null);

@@ -53,6 +53,13 @@ export const fetchJson = async <T>(
   const shouldUseMock = !isLoggedIn && (globalMockEnabled || options?.useMockData === true) && 
                        options?.useMockData !== false;
   
+  // Demo/mock mode: return mock data immediately without a network call.
+  // Prevents 401s in demo mode (guest users have no JWT) and ensures
+  // the UI always shows synthetic data when mock is active.
+  if (shouldUseMock && options?.mockData !== undefined) {
+    return options.mockData;
+  }
+
   // Check cache for GET requests (skip cache if using mock data)
   const isGetRequest = !init?.method || init.method === 'GET';
   const useCache = !shouldUseMock && isGetRequest;
