@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageSquarePlus, MessageSquareText, Pencil, Trash2, PanelLeftClose, PanelLeft, PanelRightClose } from 'lucide-react';
+import { MessageSquarePlus, MessageSquareText, Pencil, Trash2, PanelLeftClose, PanelLeft, X } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import type { ChatThread } from '../hooks/useChatThreads';
 
@@ -92,9 +92,12 @@ function ThreadItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressStartPos = useRef<{ x: number; y: number } | null>(null);
+  const confirmDeleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Focus and select all when edit mode activates
   useEffect(() => {
     if (editing && inputRef.current) {
       inputRef.current.focus();
@@ -102,9 +105,27 @@ function ThreadItem({
     }
   }, [editing]);
 
-  const startEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+      if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
+    };
+  }, []);
+
+  // Cancel pending delete confirmation when thread becomes inactive
+  useEffect(() => {
+    if (!isActive && confirmingDelete) {
+      setConfirmingDelete(false);
+      if (confirmDeleteTimer.current) {
+        clearTimeout(confirmDeleteTimer.current);
+        confirmDeleteTimer.current = null;
+      }
+    }
+  }, [isActive, confirmingDelete]);
+
+  const startEdit = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    e?.preventDefault();
     setEditValue(thread.title);
     setEditing(true);
   };
@@ -120,6 +141,55 @@ function ThreadItem({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
     if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+  };
+
+  // Long-press to rename (mobile only)
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (!isMobile || !onRename) return;
+    longPressStartPos.current = { x: e.clientX, y: e.clientY };
+    longPressTimer.current = setTimeout(() => {
+      longPressTimer.current = null;
+      longPressStartPos.current = null;
+      startEdit();
+    }, 600);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    longPressStartPos.current = null;
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!longPressStartPos.current) return;
+    const dx = Math.abs(e.clientX - longPressStartPos.current.x);
+    const dy = Math.abs(e.clientY - longPressStartPos.current.y);
+    if (dx > 8 || dy > 8) cancelLongPress();
+  };
+
+  // Delete with inline confirmation on mobile, direct on desktop
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isMobile) {
+      if (!confirmingDelete) {
+        setConfirmingDelete(true);
+        confirmDeleteTimer.current = setTimeout(() => {
+          setConfirmingDelete(false);
+          confirmDeleteTimer.current = null;
+        }, 3000);
+      } else {
+        if (confirmDeleteTimer.current) {
+          clearTimeout(confirmDeleteTimer.current);
+          confirmDeleteTimer.current = null;
+        }
+        setConfirmingDelete(false);
+        onDelete(e);
+      }
+    } else {
+      onDelete(e);
+    }
   };
 
   if (editing) {
@@ -155,9 +225,13 @@ function ThreadItem({
         <button
           type="button"
           onClick={onSelect}
-          onDoubleClick={onRename ? startEdit : undefined}
-          className="flex-1 min-w-0 text-left flex items-start gap-2 px-2 py-2.5 sm:py-2 touch-manipulation"
-          title={onRename ? 'Double-click to rename' : undefined}
+          onDoubleClick={onRename && !isMobile ? startEdit : undefined}
+          onPointerDown={handlePointerDown}
+          onPointerUp={cancelLongPress}
+          onPointerMove={handlePointerMove}
+          onPointerCancel={cancelLongPress}
+          className="flex-1 min-w-0 text-left flex items-start gap-2 px-2 py-2.5 sm:py-2 touch-manipulation select-none"
+          title={isMobile ? (onRename ? 'Hold to rename' : undefined) : (onRename ? 'Double-click to rename' : undefined)}
         >
           <MessageSquareText
             className={cn(
@@ -176,7 +250,7 @@ function ThreadItem({
           </div>
         </button>
 
-        {/* Action buttons — pencil always hidden on mobile, shown on hover desktop */}
+        {/* Actions */}
         <div className={cn(
           'flex items-center flex-shrink-0 mr-1',
           isMobile ? 'gap-0' : 'gap-0 opacity-0 group-hover:opacity-100'
@@ -193,14 +267,25 @@ function ThreadItem({
           )}
           <button
             type="button"
-            onClick={onDelete}
+            onClick={handleDeleteClick}
             className={cn(
-              'p-2 sm:p-1.5 rounded text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-colors touch-manipulation',
-              isMobile ? 'opacity-60' : ''
+              'transition-all touch-manipulation rounded',
+              isMobile
+                ? confirmingDelete
+                  ? 'flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-red-400 bg-red-500/20 border border-red-500/40 min-h-[36px]'
+                  : 'p-2 text-white/25 hover:text-red-400 hover:bg-red-500/10'
+                : 'p-1.5 text-white/30 hover:text-red-400 hover:bg-red-500/10'
             )}
-            aria-label="Delete thread"
+            aria-label={confirmingDelete ? 'Confirm delete' : 'Delete thread'}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            {confirmingDelete ? (
+              <>
+                <Trash2 className="h-3 w-3" />
+                <span>Delete?</span>
+              </>
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
           </button>
         </div>
       </div>
@@ -223,6 +308,8 @@ export const ChatThreadList = ({
   onMobileClose,
   isMobile = false,
 }: ChatThreadListProps) => {
+  const drawerSwipeStartX = useRef<number | null>(null);
+
   const handleNewChat = () => {
     onNewChat();
     onMobileClose?.();
@@ -239,6 +326,16 @@ export const ChatThreadList = ({
     <>
       {/* Header */}
       <div className="flex items-center gap-1 p-2 border-b border-white/8 flex-shrink-0 min-h-[52px] sm:min-h-[44px]">
+        {isMobile && (
+          <button
+            type="button"
+            onClick={onMobileClose}
+            className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition-colors touch-manipulation flex-shrink-0"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
         {!collapsed && (
           <button
             type="button"
@@ -257,16 +354,6 @@ export const ChatThreadList = ({
             aria-label={collapsed ? 'Expand thread list' : 'Collapse thread list'}
           >
             {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-          </button>
-        )}
-        {isMobile && (
-          <button
-            type="button"
-            onClick={onMobileClose}
-            className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition-colors touch-manipulation flex-shrink-0"
-            aria-label="Close"
-          >
-            <PanelRightClose className="h-5 w-5" />
           </button>
         )}
       </div>
@@ -336,6 +423,13 @@ export const ChatThreadList = ({
           </div>
         )}
       </div>
+
+      {/* Mobile footer hint */}
+      {isMobile && threads.length > 0 && (
+        <div className="flex-shrink-0 px-3 py-2 border-t border-white/6">
+          <p className="text-[10px] text-white/20 text-center">Hold a chat to rename it</p>
+        </div>
+      )}
     </>
   );
 
@@ -351,17 +445,32 @@ export const ChatThreadList = ({
           onClick={onMobileClose}
           aria-hidden
         />
-        {/* Drawer */}
+        {/* Left-side drawer */}
         <div
           className={cn(
-            'fixed inset-y-0 right-0 z-50 w-[min(20rem,90vw)] max-w-[20rem] flex flex-col border-l border-white/10 bg-black/95 sm:hidden transition-transform duration-200 ease-out will-change-transform',
-            mobileOpen ? 'translate-x-0' : 'translate-x-full'
+            'fixed inset-y-0 left-0 z-50 w-[min(20rem,85vw)] flex flex-col border-r border-white/10 bg-[#0a0a0a] sm:hidden transition-transform duration-250 ease-out will-change-transform',
+            mobileOpen ? 'translate-x-0' : '-translate-x-full'
           )}
           style={{
             paddingTop: 'env(safe-area-inset-top, 0)',
             paddingBottom: 'env(safe-area-inset-bottom, 0)',
+            paddingLeft: 'env(safe-area-inset-left, 0)',
             minHeight: '100dvh',
             maxHeight: '100dvh',
+          }}
+          onTouchStart={(e) => {
+            drawerSwipeStartX.current = e.touches[0].clientX;
+          }}
+          onTouchMove={(e) => {
+            if (drawerSwipeStartX.current === null) return;
+            const dx = drawerSwipeStartX.current - e.touches[0].clientX;
+            if (dx > 60) {
+              onMobileClose?.();
+              drawerSwipeStartX.current = null;
+            }
+          }}
+          onTouchEnd={() => {
+            drawerSwipeStartX.current = null;
           }}
         >
           {content}
@@ -373,7 +482,7 @@ export const ChatThreadList = ({
   return (
     <div
       className={cn(
-        'flex flex-col border-r border-white/8 bg-black/50 flex-shrink-0 transition-[width] duration-200 overflow-hidden hidden sm:flex',
+        'hidden sm:flex flex-col border-r border-white/8 bg-black/50 flex-shrink-0 transition-[width] duration-200 overflow-hidden',
         collapsed ? 'w-12' : 'w-56 sm:w-64'
       )}
     >

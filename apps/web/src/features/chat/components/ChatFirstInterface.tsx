@@ -87,6 +87,7 @@ export const ChatFirstInterface = () => {
   const [initialDate, setInitialDate] = useState<string | null>(null);
   const [threadListCollapsed, setThreadListCollapsed] = useState(false);
   const [threadListMobileOpen, setThreadListMobileOpen] = useState(false);
+  const swipeStartX = useRef<number | null>(null);
   const [backendStatus, setBackendStatus] = useState<'ok' | 'degraded' | 'unreachable' | null>(null);
   const [statusDismissed, setStatusDismissed] = useState(false);
   const isMobile = useIsMobile(640);
@@ -165,7 +166,6 @@ export const ChatFirstInterface = () => {
 
   const handleDeleteThread = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Delete this chat?')) return;
     handleDeleteThreadBase(id);
   };
 
@@ -278,10 +278,39 @@ export const ChatFirstInterface = () => {
         isMobile={isMobile}
       />
 
-      <div className="flex flex-col flex-1 min-w-0 relative chat-container overflow-hidden">
+      <div
+        className="flex flex-col flex-1 min-w-0 relative chat-container overflow-hidden"
+        onTouchStart={isMobile ? (e) => {
+          const touch = e.touches[0];
+          if (touch.clientX < 24 && !threadListMobileOpen) {
+            swipeStartX.current = touch.clientX;
+          }
+        } : undefined}
+        onTouchMove={isMobile ? (e) => {
+          if (swipeStartX.current === null) return;
+          if (e.touches[0].clientX - swipeStartX.current > 60) {
+            setThreadListMobileOpen(true);
+            swipeStartX.current = null;
+          }
+        } : undefined}
+        onTouchEnd={isMobile ? () => { swipeStartX.current = null; } : undefined}
+      >
         {/* Header */}
         <div className="border-b border-white/10 bg-black/40 backdrop-blur-sm px-3 sm:px-4 py-3 sm:py-2 flex items-center justify-between flex-shrink-0 gap-2" style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
           <div className="flex items-center gap-2 min-w-0 flex-1">
+            {isMobile && (
+              <button
+                type="button"
+                onClick={() => setThreadListMobileOpen(true)}
+                className="relative flex-shrink-0 h-9 w-9 flex items-center justify-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors touch-manipulation"
+                aria-label="Chat history"
+              >
+                <MessageSquareText className="h-5 w-5" />
+                {threads.length > 0 && (
+                  <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary/80" />
+                )}
+              </button>
+            )}
             <h2 className="text-xs sm:text-sm font-semibold text-white/90 flex-shrink-0">Lore Book</h2>
             <CurrentContextBreadcrumbs />
             <ThreadSaveChip threadId={activeThreadId} />
@@ -296,22 +325,13 @@ export const ChatFirstInterface = () => {
               <Brain className="h-4 w-4" />
             </button>
             <button
+              type="button"
               onClick={() => setShowSearch(!showSearch)}
               className="text-white/60 hover:text-white h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
               title="Search conversation (⌘K)"
             >
               <SearchIcon className="h-4 w-4 sm:h-4 sm:w-4" />
             </button>
-            {isMobile && (
-              <button
-                type="button"
-                onClick={() => setThreadListMobileOpen(true)}
-                className="text-white/60 hover:text-white h-9 w-9 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
-                aria-label="Chat history"
-              >
-                <MessageSquareText className="h-5 w-5" />
-              </button>
-            )}
             {messages.length > 0 && (
               <button
                 onClick={handleClearConversation}
