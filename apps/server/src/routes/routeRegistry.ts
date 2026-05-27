@@ -529,8 +529,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/conversation',
     router: conversationCenteredRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Conversation-centered extraction system',
+    classification: 'CORE_RUNTIME',
+    description: 'Chat thread CRUD — create, load, save, delete conversation threads',
   },
 
   // ---- ENTITY EXTENSIONS --------------------------------------------------
@@ -556,8 +556,8 @@ export const routeRegistry: RouteEntry[] = [
     path: '/api/locations',
     router: locationsRouter,
     requiresAuth: false,
-    classification: 'EXPERIMENTAL',
-    description: 'Location entity management',
+    classification: 'CORE_RUNTIME',
+    description: 'Location entity management — used in lorebook, character profiles, entity detail',
   },
   {
     path: '/api/location-resolution',
