@@ -2,11 +2,12 @@ import { cn } from '../lib/cn';
 
 interface LogoProps {
   className?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   showText?: boolean;
 }
 
 const sizeClasses = {
+  xs: 'h-9',
   sm: 'h-12',
   md: 'h-20',
   lg: 'h-32',

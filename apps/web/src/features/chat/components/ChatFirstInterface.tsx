@@ -18,7 +18,7 @@ function useIsMobile(breakpoint = 640): boolean {
 import { useChat } from '../hooks/useChat';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useConversationRuntime } from '../hooks/useConversationRuntime';
-import { Search as SearchIcon, MessageSquareText, Brain } from 'lucide-react';
+import { Search as SearchIcon, MessageSquareText, Brain, Menu, SquarePen, UserCircle } from 'lucide-react';
 import { useLocalStorage } from '../../../hooks/useLocalStorage';
 import { ChatEmptyState } from './ChatEmptyState';
 import { ChatMessageList } from '../message/ChatMessageList';
@@ -37,11 +37,13 @@ import { analytics } from '../../../lib/monitoring';
 import { fetchJson } from '../../../lib/api';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
 import { ThreadSaveChip } from './ThreadSaveChip';
+import { Logo } from '../../../components/Logo';
+import { useAuth } from '../../../lib/supabase';
 import type { ChatSource } from '../message/ChatMessage';
 import '../styles/chat-theme.css';
 import '../styles/message-animations.css';
 
-export const ChatFirstInterface = () => {
+export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -77,6 +79,12 @@ export const ChatFirstInterface = () => {
   });
 
   const { isGuest, canSendChatMessage } = useGuest();
+  const { user } = useAuth();
+  const avatarUrl: string | undefined = user?.user_metadata?.avatar_url;
+  const avatarInitial: string | null = (() => {
+    const name: string = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || '';
+    return name ? name.charAt(0).toUpperCase() : null;
+  })();
 
   const [selectedSource, setSelectedSource] = useState<ChatSource | null>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -167,12 +175,6 @@ export const ChatFirstInterface = () => {
   const handleDeleteThread = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     handleDeleteThreadBase(id);
-  };
-
-  const handleClearConversation = () => {
-    if (confirm('Start a new chat? Current messages will be saved in this thread.')) {
-      handleNewChat();
-    }
   };
 
   // ── Source handling ───────────────────────────────────────────────────────────
@@ -311,7 +313,17 @@ export const ChatFirstInterface = () => {
                 )}
               </button>
             )}
-            <h2 className="text-xs sm:text-sm font-semibold text-white/90 flex-shrink-0">Lore Book</h2>
+            {isMobile ? (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <Logo size="xs" showText={false} />
+                <div className="flex items-baseline gap-0.5 leading-none">
+                  <span className="text-sm font-bold tracking-widest text-primary drop-shadow-[0_0_6px_rgba(124,58,237,0.7)]">LORE</span>
+                  <span className="text-sm font-bold tracking-widest text-gray-300">BOOK</span>
+                </div>
+              </div>
+            ) : (
+              <h2 className="text-xs sm:text-sm font-semibold text-white/90 flex-shrink-0">Lore Book</h2>
+            )}
             <CurrentContextBreadcrumbs />
             <ThreadSaveChip threadId={activeThreadId} />
           </div>
@@ -324,21 +336,47 @@ export const ChatFirstInterface = () => {
             >
               <Brain className="h-4 w-4" />
             </button>
-            <button
-              type="button"
-              onClick={() => setShowSearch(!showSearch)}
-              className="text-white/60 hover:text-white h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
-              title="Search conversation (⌘K)"
-            >
-              <SearchIcon className="h-4 w-4 sm:h-4 sm:w-4" />
-            </button>
-            {messages.length > 0 && (
+            {!isMobile && (
               <button
-                onClick={handleClearConversation}
-                className="text-xs text-white/40 hover:text-white/60 transition-colors px-1.5 sm:px-2"
+                type="button"
+                onClick={() => setShowSearch(!showSearch)}
+                className="text-white/60 hover:text-white h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
+                title="Search conversation (⌘K)"
               >
-                Clear
+                <SearchIcon className="h-4 w-4 sm:h-4 sm:w-4" />
               </button>
+            )}
+            {!isMobile && (
+              <button
+                type="button"
+                onClick={handleNewChat}
+                className="h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors touch-manipulation"
+                title="New chat"
+                aria-label="New chat"
+              >
+                <SquarePen className="h-4 w-4" />
+              </button>
+            )}
+            {isMobile && onOpenAppSidebar && (
+              <button
+                type="button"
+                onClick={onOpenAppSidebar}
+                className="h-9 w-9 flex items-center justify-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors touch-manipulation"
+                aria-label="App menu"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+            )}
+            {isMobile && (
+              <div className="h-8 w-8 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center border border-white/20 bg-white/8 ml-0.5">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Profile" className="h-full w-full object-cover" />
+                ) : avatarInitial ? (
+                  <span className="text-xs font-semibold text-primary">{avatarInitial}</span>
+                ) : (
+                  <UserCircle className="h-5 w-5 text-white/30" />
+                )}
+              </div>
             )}
           </div>
         </div>

@@ -132,7 +132,7 @@ class ModeHandlers {
       // If low confidence, be explicit
       if (recallResult.confidence < 0.5) {
         return {
-          content: "I don't have a clear record of that. If you want, you can tell me now and I'll remember it.",
+          content: "I don't have a clear record of that yet. Tell me now and it goes into your lore.",
           response_mode: 'LOW_CONFIDENCE_RECALL',
           confidence: recallResult.confidence,
           metadata: {
@@ -159,7 +159,7 @@ class ModeHandlers {
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to handle memory recall mode');
       return {
-        content: "I don't have a clear record of that. If you want, you can tell me now and I'll remember it.",
+        content: "I don't have a clear record of that yet. Tell me now and it goes into your lore.",
         response_mode: 'SILENCE',
         confidence: 0.5,
       };
@@ -426,7 +426,7 @@ class ModeHandlers {
 
       if (entries.length === 0) {
         return {
-          content: "I don't have any journal entries to build a narrative from yet. Start writing and I'll weave your story together.",
+          content: "You're starting to build that story now. As you share — recurring people, places, what you're working on, what matters — Lorekeeper gradually accumulates the patterns that become your narrative. Share something from your life and it becomes part of your record.",
           response_mode: 'NARRATIVE_STORY',
           confidence: 1.0,
           metadata: { empty: true },

@@ -242,8 +242,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
     >
       <SkipLink />
       
-      {/* Mobile Header */}
-      <header className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden" style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
+      {/* Mobile Header — hidden in chat (chat has its own header with thread list + app menu) */}
+      <header className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden${activeSurface === 'chat' ? ' hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -291,7 +291,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
 
         {activeSurface === 'chat' && (
           <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
-            <ChatFirstInterface />
+            <ChatFirstInterface onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
           </div>
         )}
         {activeSurface === 'timeline' && <OmniTimelinePanel />}

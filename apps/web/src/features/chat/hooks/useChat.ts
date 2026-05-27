@@ -7,6 +7,7 @@ import { useCurrentContext } from '../../../contexts/CurrentContextContext';
 import { useSoulProfileChatContextOptional } from '../../../contexts/SoulProfileChatContext';
 import { useConversationStore } from './useConversationStore';
 import { getGlobalMockDataEnabled } from '../../../contexts/MockDataContext';
+import { useAuth } from '../../../lib/supabase';
 import { apiCache } from '../../../lib/cache';
 import { fetchJson } from '../../../lib/api';
 import type { Message, ChatSource } from '../message/ChatMessage';
@@ -87,6 +88,7 @@ export const useChat = () => {
   const { currentContext } = useCurrentContext();
   const soulProfileChat = useSoulProfileChatContextOptional();
   const soulProfileContext = soulProfileChat?.soulProfileContext ?? undefined;
+  const { user } = useAuth();
   
   const [loading, setLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState<LoadingStage>('analyzing');
@@ -99,16 +101,30 @@ export const useChat = () => {
   const sendMessage = useCallback(async (messageText: string) => {
     if (!messageText.trim() || loading) return;
 
-    // Check guest limits
-    if (isGuest && !canSendChatMessage()) {
-      const limitMessage: Message = {
-        id: `limit-${Date.now()}`,
+    // Block unauthenticated users before hitting the backend
+    if (!user) {
+      const isDemo = getGlobalMockDataEnabled();
+      addMessage({
+        id: `authwall-${Date.now()}`,
         role: 'assistant',
-        content: `You've reached the guest chat limit (${guestState?.chatLimit || 5} messages). Sign up to continue chatting!`,
+        content: isDemo
+          ? "You're in demo mode. Sign in to start chatting with your real Lore Book and save your memories."
+          : "You need to sign in to chat. Create a free account to start building your lore and have your memories saved.",
         timestamp: new Date(),
         isSystemMessage: true,
-      };
-      addMessage(limitMessage);
+      });
+      return;
+    }
+
+    // Block guest sessions — no valid auth token, backend will reject
+    if (isGuest) {
+      addMessage({
+        id: `guestwall-${Date.now()}`,
+        role: 'assistant',
+        content: "Create a free account to start chatting. Your conversations, memories, and lore will be saved to your account.",
+        timestamp: new Date(),
+        isSystemMessage: true,
+      });
       return;
     }
 

@@ -94,8 +94,8 @@ export const useChatStream = () => {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
-        credentials: 'include',
-        mode: 'cors', // Explicitly set CORS mode
+        credentials: 'omit',
+        mode: 'cors',
         body: JSON.stringify({
           message,
           conversationHistory,

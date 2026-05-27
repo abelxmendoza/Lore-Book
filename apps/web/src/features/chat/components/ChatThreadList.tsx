@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageSquarePlus, MessageSquareText, Pencil, Trash2, PanelLeftClose, PanelLeft, X } from 'lucide-react';
+import { MessageSquarePlus, MessageSquareText, Pencil, Trash2, PanelLeftClose, PanelLeft, X, Search } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import type { ChatThread } from '../hooks/useChatThreads';
 
@@ -321,18 +321,25 @@ export const ChatThreadList = ({
   isMobile = false,
 }: ChatThreadListProps) => {
   const drawerSwipeStartX = useRef<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleNewChat = () => {
+    setSearchQuery('');
     onNewChat();
     onMobileClose?.();
   };
 
   const handleSelectThread = (id: string) => {
+    setSearchQuery('');
     onSelectThread(id);
     onMobileClose?.();
   };
 
-  const groups = groupThreadsByDate(threads);
+  const filteredThreads = searchQuery.trim()
+    ? threads.filter((t) => t.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : threads;
+
+  const groups = groupThreadsByDate(filteredThreads);
 
   const content = (
     <>
@@ -370,6 +377,32 @@ export const ChatThreadList = ({
         )}
       </div>
 
+      {/* Search */}
+      {!collapsed && (
+        <div className="px-3 py-2 border-b border-white/6 flex-shrink-0">
+          <div className="relative flex items-center">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/25 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search chats…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-black/40 border border-white/12 rounded-lg pl-9 pr-8 py-2 text-sm text-white/90 placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-black/60 focus:ring-1 focus:ring-primary/20 transition-all"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70 transition-colors"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
+
       {/* Thread list */}
       <div
         className="flex-1 overflow-y-auto overflow-x-hidden chat-scrollbar py-2 min-h-0 overscroll-contain"
@@ -403,11 +436,17 @@ export const ChatThreadList = ({
               </button>
             ))}
           </div>
-        ) : threads.length === 0 ? (
+        ) : filteredThreads.length === 0 ? (
           <div className="px-3 py-8 text-center">
             <MessageSquareText className="h-8 w-8 text-white/15 mx-auto mb-3" />
-            <p className="text-xs text-white/30">No conversations yet</p>
-            <p className="text-[10px] text-white/20 mt-1">Start a new chat to begin</p>
+            {searchQuery ? (
+              <p className="text-xs text-white/30">No chats match &ldquo;{searchQuery}&rdquo;</p>
+            ) : (
+              <>
+                <p className="text-xs text-white/30">No conversations yet</p>
+                <p className="text-[10px] text-white/20 mt-1">Start a new chat to begin</p>
+              </>
+            )}
           </div>
         ) : (
           /* Grouped thread list */

@@ -107,19 +107,20 @@ app.use(cors({
         const allowedOrigins = [
           process.env.FRONTEND_URL,
           process.env.VITE_API_URL?.replace(/\/api\/?$/, ''), // Base URL without /api
-          'http://localhost:5173',
-          'http://127.0.0.1:5173',
           'https://lorekeeper.app',
           'https://www.lorekeeper.app',
           'https://lore-keeper-web.vercel.app' // Deployed Vercel frontend
         ].filter(Boolean) as string[];
-        
+
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) {
           return callback(null, true);
         }
-        
-        if (allowedOrigins.includes(origin)) {
+
+        // Allow any localhost/127.0.0.1 port (dev tools, mobile simulators, browser extensions)
+        const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+
+        if (isLocalhost || allowedOrigins.includes(origin)) {
           callback(null, true);
         } else {
           logger.warn({ origin, allowedOrigins }, 'CORS: Blocked request from unauthorized origin');
