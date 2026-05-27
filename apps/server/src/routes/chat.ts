@@ -49,6 +49,25 @@ const chatSchema = z.object({
 
 // Streaming endpoint
 router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+  // Disable Nagle's algorithm so SSE chunks reach the client immediately without buffering.
+  req.socket?.setNoDelay(true);
+
+  // Track whether the client closed the connection before we finished writing.
+  let clientGone = false;
+  req.on('close', () => { clientGone = true; });
+
+  // Safe write helper — no-ops if client disconnected or response already ended.
+  const sseWrite = (payload: object): boolean => {
+    if (clientGone || res.writableEnded) return false;
+    try {
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      return true;
+    } catch {
+      clientGone = true;
+      return false;
+    }
+  };
+
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -58,58 +77,70 @@ router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, a
     const { message, conversationHistory = [], entityContext, currentContext, soulProfileContext } = parsed.data;
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
-    // Set up SSE headers
+    // Resolve the chat stream BEFORE committing SSE headers.
+    // If chatStream() throws (OpenAI quota, DB error, etc.) we can still return a
+    // proper JSON error response instead of sending a broken SSE stream.
+    let result: Awaited<ReturnType<typeof omegaChatService.chatStream>>;
+    try {
+      result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext);
+    } catch (setupError) {
+      if (isFallbackEnabled() && isFallbackError(setupError)) {
+        const reason = (setupError instanceof Error && setupError.message.includes('429'))
+          ? 'OpenAI 429 quota exceeded'
+          : `OpenAI error: ${setupError instanceof Error ? setupError.message.substring(0, 60) : 'unknown'}`;
+        const msgForFallback = (req.body as { message?: string })?.message ?? '';
+        // Headers not yet sent — streamFallbackResponse will set them.
+        await streamFallbackResponse(res, msgForFallback, reason);
+      } else {
+        logger.error({ err: setupError }, 'Chat stream setup error');
+        // Headers not yet committed — safe to send JSON.
+        res.status(500).json({
+          error: 'Failed to process chat message',
+          message: setupError instanceof Error ? setupError.message : 'Unknown error',
+        });
+      }
+      return;
+    }
+
+    // chatStream() succeeded — now commit SSE headers and begin streaming.
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext);
-
     // Increment usage count (fire and forget)
-    incrementAiRequestCount(userId).catch(err => 
+    incrementAiRequestCount(userId).catch(err =>
       logger.warn({ error: err }, 'Failed to increment AI request count')
     );
 
-    // Send metadata first
-    res.write(`data: ${JSON.stringify({ type: 'metadata', data: result.metadata })}\n\n`);
+    sseWrite({ type: 'metadata', data: result.metadata });
 
-    // Stream response chunks
     try {
       for await (const chunk of result.stream) {
+        if (clientGone) break;
         const content = chunk.choices[0]?.delta?.content;
-        if (content) {
-          res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
-        }
+        if (content) sseWrite({ type: 'chunk', content });
       }
-      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
-      res.end();
+      if (!clientGone) {
+        sseWrite({ type: 'done' });
+        res.end();
+      }
     } catch (streamError) {
-      // Headers already committed — can only write events, not change status.
-      // If OpenAI fails mid-stream and fallback is enabled, write a fallback chunk.
+      // Mid-stream failure — headers committed, can only write an error event.
       if (isFallbackEnabled() && isFallbackError(streamError)) {
         writeFallbackToOpenStream(res, message, streamError instanceof Error ? streamError.message : 'stream error');
       } else {
-        logger.error({ error: streamError }, 'Stream error');
-        res.write(`data: ${JSON.stringify({ type: 'error', error: streamError instanceof Error ? streamError.message : 'Unknown error' })}\n\n`);
-        res.end();
+        logger.error({ error: streamError }, 'Chat stream mid-stream error');
+        sseWrite({ type: 'error', error: streamError instanceof Error ? streamError.message : 'Unknown stream error' });
+        if (!res.writableEnded) res.end();
       }
     }
   } catch (error) {
-    // chatStream() threw before any res.write() — headers set but not committed.
-    // If it's an OpenAI quota/network error and fallback is enabled, stream a fake response.
-    if (isFallbackEnabled() && isFallbackError(error)) {
-      const reason = (error instanceof Error && error.message.includes('429'))
-        ? 'OpenAI 429 quota exceeded'
-        : `OpenAI error: ${error instanceof Error ? error.message.substring(0, 60) : 'unknown'}`;
-      // message may be out of scope here; fall back to req.body for fallback inference
-      const msgForFallback = (req.body as { message?: string })?.message ?? '';
-      await streamFallbackResponse(res, msgForFallback, reason);
-    } else {
-      logger.error({ err: error }, 'Chat stream endpoint error');
-      res.status(500).json({
-        error: 'Failed to process chat message',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
+    logger.error({ err: error }, 'Chat stream unhandled error');
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    } else if (!res.writableEnded) {
+      sseWrite({ type: 'error', error: 'Internal server error' });
+      res.end();
     }
   }
 });
@@ -159,7 +190,7 @@ router.post('/', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (
 });
 
 // Test OpenAI connection endpoint
-router.get('/test-openai', rateLimitMiddleware, optionalAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/test-openai', rateLimitMiddleware, optionalAuth, async (_req: AuthenticatedRequest, res) => {
   try {
     const { openai } = await import('../lib/openai');
     const { config } = await import('../config');

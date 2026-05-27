@@ -17,7 +17,8 @@ import { rateLimitMiddleware } from './middleware/rateLimit';
 import { validateRequestSize, validateCommonPatterns } from './middleware/requestValidation';
 import { inputSanitizer } from './middleware/sanitize';
 import { secureHeaders } from './middleware/secureHeaders';
-import { registerRoutes } from './routes/routeRegistry';
+import { registerRoutes, getDisabledRoutePaths } from './routes/routeRegistry';
+import { runtimeRouter } from './routes/runtime';
 import { subscriptionRouter } from './routes/subscription';
 import { setupSwagger } from './swagger';
 import { requestIdMiddleware } from './utils/requestId';
@@ -223,6 +224,9 @@ registerRoutes(app, apiRouter);
 // Mount protected routes under /api
 app.use('/api', apiRouter);
 
+// Runtime diagnostics — public, no auth (must be after apiRouter so it doesn't go through the auth stack)
+app.use('/api/runtime', runtimeRouter);
+
 // API Documentation (only in development or when enabled)
 if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true') {
   setupSwagger(app);
@@ -232,6 +236,24 @@ if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'tr
 // Health check (unprotected — used to verify server is alive)
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// 503 for disabled EXPERIMENTAL routes — more useful than a generic 404.
+// Fires before the 404 catch-all so callers know the route exists but is gated.
+app.use('/api', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const disabledPaths = getDisabledRoutePaths();
+  const matchedDisabled = disabledPaths.find((p) =>
+    req.path === p.replace(/^\/api/, '') || req.path.startsWith(p.replace(/^\/api/, '') + '/')
+  );
+  if (matchedDisabled) {
+    return res.status(503).json({
+      error: 'Feature not available in production mode',
+      path: req.path,
+      message: `${matchedDisabled} is an EXPERIMENTAL route disabled in this deployment. ` +
+        'Set ENABLE_EXPERIMENTAL_RUNTIME=true to enable it.',
+    });
+  }
+  return next();
 });
 
 // 404 handler

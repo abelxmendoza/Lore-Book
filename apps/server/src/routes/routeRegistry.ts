@@ -484,7 +484,7 @@ export const routeRegistry: RouteEntry[] = [
     path: '/api/chapters',
     router: chaptersRouter,
     requiresAuth: false,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Chapter-based narrative organization',
   },
   {
@@ -497,7 +497,7 @@ export const routeRegistry: RouteEntry[] = [
     path: '/api/evolution',
     router: evolutionRouter,
     requiresAuth: false,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Personal evolution tracking',
   },
   {
@@ -1021,7 +1021,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/characters',
     router: charactersRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Character / people management',
   },
 
@@ -1228,10 +1228,58 @@ export function registerRoutes(
     }
   }
 
+  const skippedPaths = routeRegistry
+    .filter((e) => !experimentalEnabled && EXPERIMENTAL_TIERS.includes(e.classification))
+    .map((e) => e.path);
+
   logger.info(
     `Routes registered: ${publicCount} public, ${protectedCount} protected` +
     (skippedCount > 0 ? `, ${skippedCount} skipped (ENABLE_EXPERIMENTAL_RUNTIME=false)` : '')
   );
+
+  if (skippedCount > 0) {
+    logger.info(
+      { skippedPaths },
+      'Disabled routes (set ENABLE_EXPERIMENTAL_RUNTIME=true to activate)'
+    );
+  }
+
+  // Log every registered CORE_RUNTIME path at info level for Railway startup verification
+  logger.info(
+    {
+      core: routeRegistry
+        .filter((e) => e.classification === 'CORE_RUNTIME')
+        .map((e) => e.path),
+    },
+    'CORE_RUNTIME routes active'
+  );
+}
+
+/** Returns all route paths that are disabled in the current runtime (EXPERIMENTAL not enabled). */
+export function getDisabledRoutePaths(): string[] {
+  const experimentalEnabled = process.env.ENABLE_EXPERIMENTAL_RUNTIME === 'true';
+  if (experimentalEnabled) return [];
+  return routeRegistry
+    .filter((e) => EXPERIMENTAL_TIERS.includes(e.classification))
+    .map((e) => e.path);
+}
+
+/** Returns a summary of all routes for the /api/runtime/routes endpoint. */
+export function getRegisteredRoutes(): Array<{
+  path: string;
+  classification: RouteClassification;
+  description: string;
+  active: boolean;
+  requiresAuth: boolean;
+}> {
+  const experimentalEnabled = process.env.ENABLE_EXPERIMENTAL_RUNTIME === 'true';
+  return routeRegistry.map((e) => ({
+    path: e.path,
+    classification: e.classification,
+    description: e.description ?? '',
+    active: experimentalEnabled || e.classification === 'CORE_RUNTIME',
+    requiresAuth: e.requiresAuth !== false,
+  }));
 }
 
 // Development-time duplicate check
