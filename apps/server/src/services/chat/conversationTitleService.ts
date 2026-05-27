@@ -29,6 +29,7 @@ export interface TitleInput {
 export interface TitleOutput {
   title: string;
   subtitle?: string;
+  dominantEntities?: string[];
 }
 
 // Stop-words for keyword fallback
@@ -173,14 +174,57 @@ class ConversationTitleService {
     const newMeta: Record<string, unknown> = { ...existingMeta, titleSource: 'auto' };
     if (subtitle) newMeta.subtitle = subtitle;
 
+    // Persist entity chips — shown in thread list before the first response renders.
+    // If caller didn't pass entities, query knowledge_units for this thread.
+    // Merges with any previously stored entities so recurring names accumulate over time.
+    let resolvedEntities: string[] = entities ?? [];
+    if (resolvedEntities.length === 0) {
+      try {
+        // Traverse: conversation_sessions → conversation_messages → knowledge_units.entities
+        const { data: msgs } = await supabaseAdmin
+          .from('conversation_messages')
+          .select('id')
+          .eq('session_id', threadId)
+          .limit(30);
+        if (msgs && msgs.length > 0) {
+          const msgIds = msgs.map((m: any) => m.id);
+          const { data: kus } = await supabaseAdmin
+            .from('knowledge_units')
+            .select('entities')
+            .in('utterance_id', msgIds)
+            .not('entities', 'is', null)
+            .limit(50);
+          if (kus) {
+            const names = new Set<string>();
+            for (const ku of kus) {
+              const ents: any[] = Array.isArray(ku.entities) ? ku.entities : [];
+              for (const e of ents) {
+                const n = e?.name ?? e?.text ?? (typeof e === 'string' ? e : null);
+                if (n && typeof n === 'string' && n.length > 1) names.add(n);
+              }
+            }
+            resolvedEntities = Array.from(names).slice(0, 8);
+          }
+        }
+      } catch {
+        // Non-critical — entity chips are best-effort
+      }
+    }
+    if (resolvedEntities.length > 0) {
+      const existing = Array.isArray(existingMeta.dominantEntities) ? existingMeta.dominantEntities as string[] : [];
+      const merged = Array.from(new Set([...existing, ...resolvedEntities])).slice(0, 8);
+      newMeta.dominantEntities = merged;
+    }
+
     await supabaseAdmin
       .from('conversation_sessions')
       .update({ title, metadata: newMeta, updated_at: new Date().toISOString() })
       .eq('id', threadId)
       .eq('user_id', userId);
 
-    logger.debug({ threadId, title, subtitle }, 'Conversation title generated');
-    return { title, subtitle };
+    const finalEntities = (newMeta.dominantEntities as string[] | undefined) ?? undefined;
+    logger.debug({ threadId, title, subtitle, entityCount: finalEntities?.length ?? 0 }, 'Conversation title generated');
+    return { title, subtitle, dominantEntities: finalEntities };
   }
 
   /**

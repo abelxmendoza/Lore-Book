@@ -282,6 +282,7 @@ export const useChatThreads = () => {
       title?: string;
       /** subtitle is local-only — server persists it via the title service, not via this PATCH */
       subtitle?: string;
+      dominantEntities?: string[];
       messages?: Message[];
       updatedAt?: string;
     }) => {
@@ -293,6 +294,7 @@ export const useChatThreads = () => {
                 ...t,
                 ...(payload.title !== undefined && { title: payload.title }),
                 ...(payload.subtitle !== undefined && { subtitle: payload.subtitle }),
+                ...(payload.dominantEntities !== undefined && { dominantEntities: payload.dominantEntities }),
                 ...(payload.messages !== undefined && { messages: payload.messages }),
                 updatedAt,
               }

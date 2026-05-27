@@ -308,20 +308,21 @@ export const useChat = () => {
             body: JSON.stringify({ text: messageText.trim() }),
           }).catch(() => {});
 
-          // Ingestion pipeline is async — single refresh after it completes (~2-3s).
-          // Also invalidate characters and entities so the knowledge base stays current
-          // after the pipeline extracts new people, places, or relationships from the message.
-          setTimeout(() => {
+          // Ingestion pipeline is async — fire a first refresh at 4s (catches fast completions)
+          // and a second at 11s (catches slow LLM-backed steps: event assembly, interest extraction).
+          // The 3s fixed delay was too short; pipeline can take 8-15s end-to-end.
+          const doRefresh = () => {
             apiCache.deletePattern(/\/api\/(entries|timeline|chapters|characters|entity-resolution)/);
             Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]).catch(() => {});
-            // Notify character book to refresh if the server identified affected characters.
             const ids: string[] | undefined = metadata?.characterIds;
             if (ids && ids.length > 0) {
               window.dispatchEvent(
                 new CustomEvent('lk:characters-updated', { detail: { ids } })
               );
             }
-          }, 3000);
+          };
+          setTimeout(doRefresh, 4000);
+          setTimeout(doRefresh, 11000);
         },
         (error) => {
           if (progressIntervalRef.current) {

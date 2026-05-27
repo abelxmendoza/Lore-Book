@@ -204,13 +204,13 @@ export const useConversationRuntime = ({
         }),
       }
     )
-      .then(({ title, subtitle }) => {
+      .then(({ title, subtitle, dominantEntities }) => {
         runtimeDiagnostics.recordTimed('title_complete', `title_${threadIdParam}`, {
           threadId: threadIdParam,
           meta: { title },
         });
         if (title && title !== 'New chat') {
-          updateThread(threadIdParam, { title, subtitle });
+          updateThread(threadIdParam, { title, subtitle, ...(dominantEntities ? { dominantEntities } : {}) });
         }
       })
       .catch((err: unknown) => {

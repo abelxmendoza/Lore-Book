@@ -14,6 +14,8 @@ export interface StepResult {
   success: boolean;
   duration_ms: number;
   error?: string;
+  row_count?: number;     // entities created, events assembled, etc.
+  metadata?: Record<string, unknown>; // arbitrary step-specific data
 }
 
 class PipelineRunService {
@@ -54,17 +56,35 @@ class PipelineRunService {
   async recordStep(runId: string, result: StepResult): Promise<void> {
     // Use jsonb_array_append via raw SQL to atomically push to the array
     const { error } = await supabaseAdmin.rpc('pipeline_run_append_step', {
-      p_run_id:     runId,
-      p_step:       result.step,
-      p_success:    result.success,
+      p_run_id:      runId,
+      p_step:        result.step,
+      p_success:     result.success,
       p_duration_ms: result.duration_ms,
-      p_error:      result.error ?? null,
+      p_error:       result.error ?? null,
     });
 
     if (error) {
-      // Fallback: fetch-increment-write (less efficient but works without the RPC)
+      // Fallback: fetch-increment-write (also stores row_count + metadata)
       await this.recordStepFallback(runId, result);
+    } else if (result.row_count != null || result.metadata) {
+      // RPC succeeded but doesn't carry extras — patch the last element directly
+      await this.patchLastStep(runId, result);
     }
+  }
+
+  private async patchLastStep(runId: string, result: StepResult): Promise<void> {
+    const { data: current } = await supabaseAdmin
+      .from('pipeline_runs')
+      .select('step_results')
+      .eq('id', runId)
+      .single();
+    if (!current) return;
+    const steps: StepResult[] = (current.step_results as StepResult[]) ?? [];
+    if (steps.length === 0) return;
+    const last = steps[steps.length - 1];
+    if (result.row_count != null) last.row_count = result.row_count;
+    if (result.metadata) last.metadata = result.metadata;
+    await supabaseAdmin.from('pipeline_runs').update({ step_results: steps }).eq('id', runId);
   }
 
   private async recordStepFallback(runId: string, result: StepResult): Promise<void> {

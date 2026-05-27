@@ -167,6 +167,14 @@ class IngestionQueue {
       );
 
       this.totalCompleted++;
+
+      // Capture what this pipeline run produced. Non-blocking — errors are swallowed.
+      // Queries by user_id + created_at > job start so we see only this run's outputs.
+      if (runId) {
+        const sinceIso = new Date(attemptStart).toISOString();
+        void this.captureProductionSummary(runId, job.userId, sinceIso, attemptStart);
+      }
+
       if (runId) await pipelineRunService.complete(runId, attemptStart);
       logger.debug(
         { jobId: job.id, userId: job.userId, attempt: job.attempts },
@@ -200,6 +208,50 @@ class IngestionQueue {
     } finally {
       this.activeJobs--;
       this.drain();
+    }
+  }
+
+  /**
+   * Query what this pipeline run actually produced and record it as a step.
+   * Called after successful ingestion — non-blocking, all errors swallowed.
+   * Uses created_at > sinceIso to isolate this run's outputs.
+   */
+  private async captureProductionSummary(
+    runId: string,
+    userId: string,
+    sinceIso: string,
+    startedAt: number
+  ): Promise<void> {
+    try {
+      const [kuRes, evRes, charRes, candRes, kuRes2] = await Promise.allSettled([
+        supabaseAdmin.from('knowledge_units').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', sinceIso),
+        supabaseAdmin.from('conversation_events').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', sinceIso),
+        supabaseAdmin.from('characters').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', sinceIso),
+        supabaseAdmin.from('event_candidates').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', sinceIso),
+        supabaseAdmin.from('knowledge_units').select('*', { count: 'exact', head: true }).eq('user_id', userId).gte('updated_at', sinceIso),
+      ]);
+
+      const kuCount      = kuRes.status      === 'fulfilled' ? (kuRes.value.count      ?? 0) : -1;
+      const evCount      = evRes.status      === 'fulfilled' ? (evRes.value.count      ?? 0) : -1;
+      const charCount    = charRes.status    === 'fulfilled' ? (charRes.value.count    ?? 0) : -1;
+      const candCount    = candRes.status    === 'fulfilled' ? (candRes.value.count    ?? 0) : -1;
+      const kuTouched    = kuRes2.status     === 'fulfilled' ? (kuRes2.value.count     ?? 0) : -1;
+
+      await pipelineRunService.recordStep(runId, {
+        step: 'production_summary',
+        success: true,
+        duration_ms: Date.now() - startedAt,
+        row_count: kuCount,
+        metadata: {
+          knowledge_units_created:   kuCount,
+          knowledge_units_touched:   kuTouched,
+          events_assembled:          evCount,
+          entities_created:          charCount,
+          event_candidates_created:  candCount,
+        },
+      });
+    } catch {
+      // Non-critical — production summary is observability only
     }
   }
 

@@ -1920,7 +1920,7 @@ router.post(
       modeDecision: body.modeDecision,
     });
 
-    res.json({ success: true, title: result.title, subtitle: result.subtitle });
+    res.json({ success: true, title: result.title, subtitle: result.subtitle, dominantEntities: result.dominantEntities });
   })
 );
 

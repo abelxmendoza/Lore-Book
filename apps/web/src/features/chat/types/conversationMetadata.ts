@@ -85,4 +85,5 @@ export interface SerializedMessage {
 export interface TitleGenerationResult {
   title: string;
   subtitle?: string;
+  dominantEntities?: string[];
 }
