@@ -159,7 +159,7 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   const { status: termsStatus, loading: termsLoading } = useTermsAcceptance();
-  const { isGuest, startGuestSession } = useGuest();
+  const { isGuest, startGuestSession, endGuestSession } = useGuest();
   const { setUseMockData } = useMockData();
   const { needsAuth, needsTerms } = useRuntimeIdentity();
 
@@ -215,8 +215,11 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
           console.log('[AuthGate] Session loaded:', data.session ? 'Authenticated' : 'Not authenticated');
           setSession(data.session);
           
-          // Exiting demo runtime — clear the session flag so refreshes don't re-enter demo mode
-          if (data.session?.user) clearDemoSession();
+          // Exiting demo/guest runtime when a real session is established
+          if (data.session?.user) {
+            clearDemoSession();
+            endGuestSession();
+          }
 
           // Identify user for analytics and error tracking on initial load
           if (data.session?.user) {
@@ -246,8 +249,11 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
       console.log('[AuthGate] Auth state changed:', event, newSession ? 'Authenticated' : 'Not authenticated');
       setSession(newSession);
       
-      // Exiting demo runtime when a real session is established
-      if (newSession?.user) clearDemoSession();
+      // Exiting demo/guest runtime when a real session is established
+      if (newSession?.user) {
+        clearDemoSession();
+        endGuestSession();
+      }
 
       // Identify user for analytics and error tracking
       if (newSession?.user) {
