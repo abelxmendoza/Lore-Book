@@ -26,9 +26,9 @@ async function getUserRole(userId: string): Promise<UserRole> {
       return 'standard_user';
     }
 
-    // Check by email (Abel Mendoza - abelxmendoza@gmail.com)
-    const adminEmail = process.env.ADMIN_EMAIL || 'abelxmendoza@gmail.com';
-    if (userData.user.email === adminEmail) {
+    // Email-based fallback — only if ADMIN_EMAIL env var is explicitly set.
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (adminEmail && userData.user.email?.toLowerCase() === adminEmail.toLowerCase()) {
       return 'admin';
     }
 
@@ -83,20 +83,13 @@ export function requireRole(...allowedRoles: UserRole[]) {
 }
 
 /**
- * Check if user is admin
- * In development mode, allow access for testing
+ * Check if user is admin — always enforced, no dev bypass.
  */
 export const requireAdmin = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ) => {
-  // Allow access in development mode for testing
-  if (config.apiEnv === 'dev' || config.apiEnv === 'development') {
-    return next();
-  }
-  
-  // In production, require admin role
   return requireRole('admin', 'developer')(req, res, next);
 };
 

@@ -1,974 +1,320 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { User, BookOpen, Users, Tag, TrendingUp, Sparkles, Activity, Brain, AlertCircle, Briefcase, DollarSign, Smile, Home, Heart as HeartIcon } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { useLoreKeeper } from '../../hooks/useLoreKeeper';
+import { useState, useEffect } from 'react';
+import { BookOpen, TrendingUp, Sparkles, AlertCircle } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { useAuth } from '../../lib/supabase';
-import { IdentityPulseModal } from '../identity/IdentityPulseModal';
-import { InsightsModal } from '../InsightsModal';
-import { AIInsightModal } from './AIInsightModal';
+import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { useMockData } from '../../contexts/MockDataContext';
+import { AIInsightModal } from './AIInsightModal';
+import type { Character } from './CharacterProfileCard';
 
-const DEBUG = true; // Set to false in production
+interface UserProfileProps {
+  characters?: Character[];
+}
 
-const debugLog = (component: string, message: string, data?: any) => {
-  if (DEBUG) {
-    console.log(`[UserProfile:${component}]`, message, data || '');
-  }
+type CharacterAttribute = {
+  id: string;
+  attributeType: string;
+  attributeValue: string;
+  confidence: number;
+  isCurrent: boolean;
 };
 
-const debugError = (component: string, message: string, error: any) => {
-  console.error(`[UserProfile:${component}] ERROR:`, message, error);
-  if (DEBUG) {
-    console.error('Error details:', {
-      message: error?.message,
-      stack: error?.stack,
-      response: error?.response,
-      status: error?.status
-    });
-  }
+// ─── Insight chips ────────────────────────────────────────────────────────────
+
+const INSIGHT_CHIPS = [
+  {
+    key: 'storyOfSelf',
+    label: 'Story',
+    icon: BookOpen,
+    getValue: (d: any) => d?.mode?.mode ?? null,
+    color: 'text-primary border-primary/30 bg-primary/8',
+  },
+  {
+    key: 'archetype',
+    label: 'Archetype',
+    icon: Sparkles,
+    getValue: (d: any) => d?.profile?.dominant ?? null,
+    color: 'text-violet-400 border-violet-400/30 bg-violet-400/8',
+  },
+  {
+    key: 'growth',
+    label: 'Growth',
+    icon: TrendingUp,
+    getValue: (d: any) => d?.trajectory ?? null,
+    color: 'text-emerald-400 border-emerald-400/30 bg-emerald-400/8',
+  },
+  {
+    key: 'shadow',
+    label: 'Shadow',
+    icon: AlertCircle,
+    getValue: (d: any) => d?.dominant_shadow ?? null,
+    color: 'text-rose-400 border-rose-400/30 bg-rose-400/8',
+  },
+] as const;
+
+// ─── Mock data ────────────────────────────────────────────────────────────────
+
+const MOCK_ENGINE: Record<string, any> = {
+  storyOfSelf: { mode: { mode: 'Reflective' }, themes: [{ theme: 'Self-Discovery' }] },
+  archetype:   { profile: { dominant: 'The Seeker', secondary: ['The Sage'] } },
+  growth:      { trajectory: 'Ascending', velocity: 0.73 },
+  shadow:      { dominant_shadow: 'The Perfectionist', projection: { recommended_focus: 'Self-compassion' } },
 };
 
-type UserStats = {
-  totalEntries: number;
-  totalCharacters: number;
-  totalChapters: number;
-  totalTags: number;
-  timelineSpan: { start: string; end: string; days: number };
-  mostActivePeriod: { month: string; count: number };
-  topTags: Array<{ tag: string; count: number }>;
-  memoirProgress: { sections: number; lastUpdated: string | null };
-  writingStreak: number;
-  averageEntriesPerWeek: number;
-  characterRelationships: number;
-  mostMentionedCharacters: Array<{ name: string; mentions: number }>;
-  entryFrequency: { thisWeek: number; lastWeek: number; trend: 'up' | 'down' | 'stable' };
+const MOCK_ATTRIBUTES: CharacterAttribute[] = [
+  { id: 'a1', attributeType: 'occupation',          attributeValue: 'Creative professional', confidence: 0.89, isCurrent: true },
+  { id: 'a2', attributeType: 'relationship_status',  attributeValue: 'In a relationship',    confidence: 0.92, isCurrent: true },
+  { id: 'a3', attributeType: 'lifestyle_pattern',   attributeValue: 'Journaling',           confidence: 0.88, isCurrent: true },
+];
+
+// ─── Archetype chip colours ───────────────────────────────────────────────────
+
+const ARCHETYPE_COLORS: Record<string, string> = {
+  ally:         'bg-blue-500/20 text-blue-300',
+  family:       'bg-amber-500/20 text-amber-300',
+  mentor:       'bg-purple-500/20 text-purple-300',
+  romantic:     'bg-rose-500/20 text-rose-300',
+  friend:       'bg-teal-500/20 text-teal-300',
+  colleague:    'bg-slate-500/20 text-slate-300',
+  collaborator: 'bg-indigo-500/20 text-indigo-300',
 };
 
-export const UserProfile = () => {
-  const navigate = useNavigate();
+function initials(name: string): string {
+  return name
+    .split(' ')
+    .map(w => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || '?';
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export const UserProfile = ({ characters = [] }: UserProfileProps) => {
   const { user: authUser } = useAuth();
-  const { useMockData: isMockDataEnabled } = useMockData();
-  const { entries = [], chapters = [], tags = [], timeline } = useLoreKeeper();
-  const [characters, setCharacters] = useState<any[]>([]);
-  const [stats, setStats] = useState<UserStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [languageStyle, setLanguageStyle] = useState<string | null>(null);
-  const [charactersLoaded, setCharactersLoaded] = useState(false);
-  const [insights, setInsights] = useState<any>(null);
-  const [insightsLoading, setInsightsLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [identityPulseModalOpen, setIdentityPulseModalOpen] = useState(false);
-  const [insightsModalOpen, setInsightsModalOpen] = useState(false);
-  const [engineResults, setEngineResults] = useState<Record<string, any> | null>(null);
-  const [engineResultsLoading, setEngineResultsLoading] = useState(false);
-  const [aiInsightModal, setAiInsightModal] = useState<{ type: string; data: any } | null>(null);
-  const [userCharacterId, setUserCharacterId] = useState<string | null>(null);
-  const [userCharacter, setUserCharacter] = useState<{ id: string; name?: string; summary?: string; role?: string } | null>(null);
-  const [attributes, setAttributes] = useState<Array<{
-    id: string;
-    attributeType: string;
-    attributeValue: string;
-    confidence: number;
-    isCurrent: boolean;
-    evidence?: string;
-  }>>([]);
-  const [loadingAttributes, setLoadingAttributes] = useState(false);
+  const { useMockData: isMockEnabled } = useMockData();
+  const { entries = [] } = useLoreKeeper();
 
-  // Mock main character data for UI preview when mock mode is on
-  const getMockUserCharacter = (): { id: string; name: string; summary: string; role?: string } => ({
-    id: 'char-you',
-    name: 'Jordan',
-    summary: 'A 28-year-old in a creative renaissance—transitioning from software to music and writing. Curious, reflective, and drawn to self-discovery.',
-    role: 'Main Character'
-  });
+  const [attributes,     setAttributes]     = useState<CharacterAttribute[]>([]);
+  const [engineResults,  setEngineResults]  = useState<Record<string, any> | null>(null);
+  const [userCharId,     setUserCharId]     = useState<string | null>(null);
+  const [insightModal,   setInsightModal]   = useState<{ type: string; data: any } | null>(null);
 
-  const getMockMainCharacterAttributes = () => [
-    { id: 'attr-1', attributeType: 'occupation', attributeValue: 'Creative professional', confidence: 0.89, isCurrent: true },
-    { id: 'attr-2', attributeType: 'relationship_status', attributeValue: 'In a relationship', confidence: 0.92, isCurrent: true },
-    { id: 'attr-3', attributeType: 'personality_trait', attributeValue: 'Reflective', confidence: 0.85, isCurrent: true },
-    { id: 'attr-4', attributeType: 'living_situation', attributeValue: 'Urban apartment', confidence: 0.78, isCurrent: true },
-    { id: 'attr-5', attributeType: 'lifestyle_pattern', attributeValue: 'Journaling', confidence: 0.88, isCurrent: true }
-  ];
+  // ── Auth-derived display values ─────────────────────────────────────────────
+  const displayName =
+    authUser?.user_metadata?.full_name  ||
+    authUser?.user_metadata?.name       ||
+    authUser?.email?.split('@')[0]      ||
+    'You';
 
-  const getMockMainCharacterStats = (): UserStats => {
-    const start = '2024-01-15';
-    const end = new Date().toISOString().split('T')[0];
-    const days = Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)));
-    return {
-      totalEntries: 0,
-      totalCharacters: 0,
-      totalChapters: 0,
-      totalTags: 0,
-      timelineSpan: { start, end, days },
-      mostActivePeriod: { month: 'January 2025', count: 12 },
-      topTags: [],
-      memoirProgress: { sections: 4, lastUpdated: new Date().toISOString() },
-      writingStreak: 7,
-      averageEntriesPerWeek: 2.1,
-      characterRelationships: 0,
-      mostMentionedCharacters: [
-        { name: 'Sarah Chen', mentions: 24 },
-        { name: 'Alex Rivera', mentions: 18 },
-        { name: 'Marcus Johnson', mentions: 12 },
-        { name: 'Emma Thompson', mentions: 8 }
-      ],
-      entryFrequency: { thisWeek: 3, lastWeek: 2, trend: 'up' as const }
-    };
-  };
+  const avatarUrl =
+    authUser?.user_metadata?.custom_avatar_url ||
+    authUser?.user_metadata?.avatar_url        ||
+    null;
 
-  // Mock engine results for UI preview
-  const getMockEngineResults = (): Record<string, any> => ({
-    storyOfSelf: {
-      mode: {
-        mode: 'Reflective',
-        confidence: 0.85
-      },
-      themes: [
-        { theme: 'Self-Discovery', confidence: 0.92, frequency: 45 },
-        { theme: 'Growth', confidence: 0.88, frequency: 38 },
-        { theme: 'Connection', confidence: 0.75, frequency: 32 }
-      ],
-      coherence: {
-        score: 0.82,
-        contradictions: []
-      }
-    },
-    archetype: {
-      profile: {
-        dominant: 'The Seeker',
-        secondary: ['The Sage', 'The Creator'],
-        scores: {
-          seeker: 0.89,
-          sage: 0.76,
-          creator: 0.71
-        }
-      }
-    },
-    shadow: {
-      dominant_shadow: 'The Perfectionist',
-      archetype_scores: {
-        perfectionist: 0.78,
-        critic: 0.65,
-        controller: 0.52
-      },
-      projection: {
-        recommended_focus: 'Self-compassion',
-        trajectory: 'Integrating shadow patterns'
-      }
-    },
-    growth: {
-      trajectory: 'Ascending',
-      milestones: [
-        { date: '2024-01', event: 'Started journaling' },
-        { date: '2024-06', event: 'Major breakthrough' }
-      ],
-      velocity: 0.73
-    },
-    innerDialogue: {
-      voices: [
-        { role: 'future_self', tone: 'encouraging', frequency: 0.45 },
-        { role: 'inner_critic', tone: 'critical', frequency: 0.32 },
-        { role: 'wise_self', tone: 'compassionate', frequency: 0.28 }
-      ],
-      dominant_voice: 'future_self'
-    },
-    alternateSelf: {
-      clusters: [
-        { self_type: 'The Ideal Self', trajectory: 'aspiring', confidence: 0.85 },
-        { self_type: 'The Past Self', trajectory: 'reflecting', confidence: 0.72 }
-      ],
-      trajectory: 'Forward-moving'
-    },
-    cognitiveBias: {
-      dominant_bias: 'Confirmation Bias',
-      impact_score: 0.68,
-      biases: [
-        { type: 'confirmation', severity: 0.75 },
-        { type: 'anchoring', severity: 0.52 }
-      ]
-    },
-    paracosm: {
-      clusters: [
-        { category: 'Imagined Worlds', signals: Array(12).fill({}), confidence: 0.81 },
-        { category: 'Future Visions', signals: Array(8).fill({}), confidence: 0.74 }
-      ]
+  // ── Derived stats ───────────────────────────────────────────────────────────
+  const writingStreak = (() => {
+    const uniqueDates = Array.from(
+      new Set(entries.map(e => e.date?.split('T')[0]).filter(Boolean))
+    ).sort().reverse();
+    let streak = 0;
+    let cursor = new Date().toISOString().split('T')[0];
+    for (const date of uniqueDates) {
+      const diff = Math.floor(
+        (new Date(cursor).getTime() - new Date(date).getTime()) / 86_400_000
+      );
+      if (diff === 0 || (streak === 0 && diff <= 1)) {
+        streak++;
+        cursor = new Date(new Date(date).getTime() - 86_400_000).toISOString().split('T')[0];
+      } else break;
     }
-  });
+    return streak;
+  })();
 
-  const loadEngineResults = useCallback(async () => {
-    debugLog('loadEngineResults', 'Starting to load engine results');
-    setEngineResultsLoading(true);
-    setErrors(prev => ({ ...prev, engineResults: '' }));
-    try {
-      const result = await fetchJson<Record<string, any>>('/api/engine-runtime/summary/cached');
-      debugLog('loadEngineResults', 'Engine results loaded successfully', { 
-        engines: result ? Object.keys(result) : [] 
-      });
-      // Use mock data only if toggle is enabled and no real data
-      if (result && Object.keys(result).length > 0) {
-        setEngineResults(result);
-      } else if (isMockDataEnabled) {
-        setEngineResults(getMockEngineResults());
-      } else {
-        setEngineResults(null);
-      }
-    } catch (error: any) {
-      debugError('loadEngineResults', 'Failed to load engine results', error);
-      // Use mock data on error only if toggle is enabled
-      if (isMockDataEnabled) {
-        setEngineResults(getMockEngineResults());
-        setErrors(prev => ({ 
-          ...prev, 
-          engineResults: error?.message || 'Using mock data for preview' 
-        }));
-      } else {
-        setEngineResults(null);
-        setErrors(prev => ({ 
-          ...prev, 
-          engineResults: error?.message || 'Failed to load engine results' 
-        }));
-      }
-    } finally {
-      setEngineResultsLoading(false);
-    }
-  }, [isMockDataEnabled]);
+  const activeSince = (() => {
+    const valid = entries
+      .map(e => new Date(e.date))
+      .filter(d => !isNaN(d.getTime()));
+    if (!valid.length) return null;
+    return new Date(Math.min(...valid.map(d => d.getTime())))
+      .toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  })();
 
-  // Find user character (use mock when mock mode is on)
+  // ── Load user character id from passed-in characters ───────────────────────
   useEffect(() => {
-    const findUserCharacter = async () => {
-      if (isMockDataEnabled) {
-        const mock = getMockUserCharacter();
-        setUserCharacter(mock);
-        setUserCharacterId(mock.id);
-        return;
-      }
-      try {
-        const response = await fetchJson<{ characters: any[] }>('/api/characters/list');
-        const userChar = response.characters?.find(
-          c => c.metadata?.is_self === true || 
-               c.metadata?.is_user === true ||
-               c.name.toLowerCase() === 'me' ||
-               c.name.toLowerCase() === 'myself' ||
-               c.name.toLowerCase() === 'self'
-        );
-        if (userChar) {
-          setUserCharacterId(userChar.id);
-          setUserCharacter({ id: userChar.id, name: userChar.name, summary: userChar.summary, role: userChar.role });
-        } else {
-          setUserCharacter(null);
-        }
-      } catch (error) {
-        console.error('Failed to find user character:', error);
-      }
-    };
-    void findUserCharacter();
-  }, [isMockDataEnabled]);
-
-  // Load attributes for user character (use mock when mock mode is on)
-  useEffect(() => {
-    if (isMockDataEnabled) {
-      setAttributes(getMockMainCharacterAttributes());
-      setLoadingAttributes(false);
-      return;
-    }
-    const loadAttributes = async () => {
-      if (!userCharacterId) return;
-      setLoadingAttributes(true);
-      try {
-        const response = await fetchJson<{ attributes: Array<{
-          id: string;
-          attributeType: string;
-          attributeValue: string;
-          confidence: number;
-          isCurrent: boolean;
-          evidence?: string;
-        }> }>(`/api/characters/${userCharacterId}/attributes?currentOnly=true`);
-        setAttributes(response.attributes || []);
-      } catch (error) {
-        console.error('Failed to load user attributes:', error);
-        setAttributes([]);
-      } finally {
-        setLoadingAttributes(false);
-      }
-    };
-    void loadAttributes();
-  }, [userCharacterId, isMockDataEnabled]);
-
-  useEffect(() => {
-    debugLog('useEffect', 'Component mounted, loading initial data', { isMockDataEnabled });
-    loadCharacters();
-    loadLanguageStyle();
-    loadInsights();
-    loadEngineResults();
-  }, [isMockDataEnabled, loadEngineResults]);
-
-  const loadInsights = async () => {
-    debugLog('loadInsights', 'Starting to load insights');
-    setInsightsLoading(true);
-    setErrors(prev => ({ ...prev, insights: '' }));
-    try {
-      const result = await fetchJson<{ insights?: any }>('/api/insights/recent');
-      debugLog('loadInsights', 'Insights loaded successfully', { hasInsights: !!result.insights });
-      setInsights(result.insights || result);
-    } catch (error: any) {
-      debugError('loadInsights', 'Failed to load insights', error);
-      // Insights are optional, so don't fail if they're not available
-      setInsights(null);
-      setErrors(prev => ({ 
-        ...prev, 
-        insights: error?.message || 'Failed to load insights (optional)' 
-      }));
-    } finally {
-      setInsightsLoading(false);
-    }
-  };
-
-  // Use refs to track previous values and prevent unnecessary reloads
-  const prevDataRef = useRef<{ entriesLength: number; charactersLength: number; chaptersLength: number; tagsLength: number } | null>(null);
-  
-  useEffect(() => {
-    // When mock mode is on, use mock stats immediately
-    if (isMockDataEnabled) {
-      void loadStats();
-      return;
-    }
-    // Only load stats once characters are loaded
-    if (!charactersLoaded) return;
-    
-    // Check if data has actually changed
-    const currentData = {
-      entriesLength: entries?.length || 0,
-      charactersLength: characters?.length || 0,
-      chaptersLength: chapters?.length || 0,
-      tagsLength: tags?.length || 0
-    };
-    
-    const prevData = prevDataRef.current;
-    if (prevData && 
-        prevData.entriesLength === currentData.entriesLength &&
-        prevData.charactersLength === currentData.charactersLength &&
-        prevData.chaptersLength === currentData.chaptersLength &&
-        prevData.tagsLength === currentData.tagsLength) {
-      // Data hasn't changed, skip reload
-      return;
-    }
-    
-    prevDataRef.current = currentData;
-    loadStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMockDataEnabled, charactersLoaded, entries?.length, characters?.length, chapters?.length, tags?.length]);
-
-  const loadCharacters = async () => {
-    debugLog('loadCharacters', 'Starting to load characters');
-    setErrors(prev => ({ ...prev, characters: '' }));
-    try {
-      const response = await fetchJson<{ characters: any[] }>('/api/characters/list');
-      const characterList = response.characters || [];
-      debugLog('loadCharacters', 'Characters loaded successfully', { count: characterList.length });
-      setCharacters(characterList);
-      setCharactersLoaded(true);
-    } catch (error: any) {
-      debugError('loadCharacters', 'Failed to load characters', error);
-      setCharactersLoaded(true); // Still mark as loaded even on error to prevent infinite loading
-      setErrors(prev => ({ 
-        ...prev, 
-        characters: error?.message || 'Failed to load characters' 
-      }));
-    }
-  };
-
-  const loadLanguageStyle = async () => {
-    debugLog('loadLanguageStyle', 'Starting to load language style');
-    setErrors(prev => ({ ...prev, languageStyle: '' }));
-    try {
-      const result = await fetchJson<{ languageStyle: string | null }>('/api/documents/language-style');
-      debugLog('loadLanguageStyle', 'Language style loaded', { hasStyle: !!result.languageStyle });
-      setLanguageStyle(result.languageStyle);
-    } catch (error: any) {
-      debugError('loadLanguageStyle', 'Failed to load language style', error);
-      setErrors(prev => ({ 
-        ...prev, 
-        languageStyle: error?.message || 'Failed to load language style (optional)' 
-      }));
-    }
-  };
-
-  const loadStats = async () => {
-    if (isMockDataEnabled) {
-      setStats(getMockMainCharacterStats());
-      setLoading(false);
-      return;
-    }
-    debugLog('loadStats', 'Starting to calculate stats', {
-      entriesCount: entries?.length || 0,
-      charactersCount: characters?.length || 0,
-      chaptersCount: chapters?.length || 0,
-      tagsCount: tags?.length || 0
-    });
-    setLoading(true);
-    setErrors(prev => ({ ...prev, stats: '' }));
-    try {
-      // Ensure we have arrays (handle undefined)
-      const safeEntries = entries || [];
-      const safeCharacters = characters || [];
-      const safeChapters = chapters || [];
-      const safeTags = tags || [];
-
-      // Calculate timeline span
-      const entryDates = safeEntries.map(e => new Date(e.date)).sort((a, b) => a.getTime() - b.getTime());
-      const timelineSpan = entryDates.length > 0
-        ? {
-            start: entryDates[0].toISOString().split('T')[0],
-            end: entryDates[entryDates.length - 1].toISOString().split('T')[0],
-            days: Math.ceil((entryDates[entryDates.length - 1].getTime() - entryDates[0].getTime()) / (1000 * 60 * 60 * 24))
-          }
-        : { start: '', end: '', days: 0 };
-
-      // Calculate most active period
-      const monthCounts = new Map<string, number>();
-      safeEntries.forEach(entry => {
-        const month = new Date(entry.date).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-        monthCounts.set(month, (monthCounts.get(month) || 0) + 1);
-      });
-      const mostActivePeriodEntry = Array.from(monthCounts.entries())
-        .sort((a, b) => b[1] - a[1])[0];
-      const mostActivePeriod = mostActivePeriodEntry 
-        ? { month: mostActivePeriodEntry[0], count: mostActivePeriodEntry[1] }
-        : { month: 'N/A', count: 0 };
-
-      // Calculate top tags
-      const tagCounts = new Map<string, number>();
-      safeEntries.forEach(entry => {
-        entry.tags?.forEach(tag => {
-          tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
-        });
-      });
-      const topTags = Array.from(tagCounts.entries())
-        .map(([tag, count]) => ({ tag, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-      // Calculate writing streak (consecutive days with entries)
-      const uniqueDates = new Set(safeEntries.map(e => e.date.split('T')[0]));
-      const sortedDates = Array.from(uniqueDates).sort().reverse();
-      let streak = 0;
-      const today = new Date().toISOString().split('T')[0];
-      let currentDate = today;
-      
-      for (const date of sortedDates) {
-        const dateObj = new Date(date);
-        const expectedDate = new Date(currentDate);
-        const diffDays = Math.floor((expectedDate.getTime() - dateObj.getTime()) / (1000 * 60 * 60 * 24));
-        
-        if (diffDays === 0 || (streak === 0 && diffDays <= 1)) {
-          streak++;
-          currentDate = new Date(dateObj.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        } else {
-          break;
-        }
-      }
-
-      // Calculate average entries per week
-      const weeks = timelineSpan.days > 0 ? Math.max(1, Math.ceil(timelineSpan.days / 7)) : 1;
-      const averageEntriesPerWeek = safeEntries.length / weeks;
-
-      // Get memoir progress (don't block on this - set it to default if it fails)
-      let memoirProgress = { sections: 0, lastUpdated: null };
-      try {
-        // Add timeout to prevent hanging
-        const memoirPromise = fetchJson<{ sections: any[]; updated_at?: string }>('/api/memoir/outline');
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
-        const memoir = await Promise.race([memoirPromise, timeoutPromise]);
-        
-        if (memoir) {
-          memoirProgress = {
-            sections: memoir.sections?.length || 0,
-            lastUpdated: memoir.updated_at || null
-          };
-        }
-      } catch (error) {
-        // Memoir might not exist yet - that's okay, use defaults
-        console.debug('No memoir found yet');
-      }
-
-      // Calculate character relationships (approximate)
-      const characterRelationships = safeCharacters.reduce((sum, char) => {
-        const relationships = (char.metadata as any)?.relationships || [];
-        return sum + relationships.length;
-      }, 0);
-
-      // Calculate most mentioned characters
-      const characterMentions = new Map<string, number>();
-      safeEntries.forEach(entry => {
-        safeCharacters.forEach(char => {
-          const content = (entry.content || '').toLowerCase();
-          const name = char.name.toLowerCase();
-          if (content.includes(name)) {
-            characterMentions.set(char.name, (characterMentions.get(char.name) || 0) + 1);
-          }
-        });
-      });
-      const mostMentionedCharacters = Array.from(characterMentions.entries())
-        .map(([name, mentions]) => ({ name, mentions }))
-        .sort((a, b) => b.mentions - a.mentions)
-        .slice(0, 5);
-
-      // Calculate entry frequency trend
-      const now = new Date();
-      const thisWeekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const lastWeekStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
-      const thisWeekEntries = safeEntries.filter(e => new Date(e.date) >= thisWeekStart).length;
-      const lastWeekEntries = safeEntries.filter(e => {
-        const date = new Date(e.date);
-        return date >= lastWeekStart && date < thisWeekStart;
-      }).length;
-      
-      let trend: 'up' | 'down' | 'stable' = 'stable';
-      if (thisWeekEntries > lastWeekEntries) trend = 'up';
-      else if (thisWeekEntries < lastWeekEntries) trend = 'down';
-
-      setStats({
-        totalEntries: safeEntries.length,
-        totalCharacters: safeCharacters.length,
-        totalChapters: safeChapters.length,
-        totalTags: safeTags.length,
-        timelineSpan,
-        mostActivePeriod,
-        topTags,
-        memoirProgress,
-        writingStreak: streak,
-        averageEntriesPerWeek: Math.round(averageEntriesPerWeek * 10) / 10,
-        characterRelationships,
-        mostMentionedCharacters,
-        entryFrequency: { thisWeek: thisWeekEntries, lastWeek: lastWeekEntries, trend }
-      });
-      debugLog('loadStats', 'Stats calculated successfully');
-    } catch (error: any) {
-      debugError('loadStats', 'Failed to calculate stats', error);
-      setErrors(prev => ({ 
-        ...prev, 
-        stats: error?.message || 'Failed to calculate stats' 
-      }));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading || !stats) {
-    return (
-      <Card className="bg-black/40 border-border/60">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        </CardContent>
-      </Card>
+    if (isMockEnabled) { setUserCharId('mock-self'); return; }
+    const self = characters.find(c =>
+      c.metadata?.is_self === true  ||
+      c.metadata?.is_user === true  ||
+      c.name?.toLowerCase() === 'me' ||
+      c.name?.toLowerCase() === 'myself'
     );
-  }
+    if (self) setUserCharId(self.id);
+  }, [characters, isMockEnabled]);
 
+  // ── Load attributes ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (isMockEnabled) { setAttributes(MOCK_ATTRIBUTES); return; }
+    if (!userCharId || userCharId === 'mock-self') return;
+    fetchJson<{ attributes: CharacterAttribute[] }>(
+      `/api/characters/${userCharId}/attributes?currentOnly=true`
+    )
+      .then(r => setAttributes(r.attributes || []))
+      .catch(() => setAttributes([]));
+  }, [userCharId, isMockEnabled]);
+
+  // ── Load engine results ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (isMockEnabled) { setEngineResults(MOCK_ENGINE); return; }
+    fetchJson<Record<string, any>>('/api/engine-runtime/summary/cached')
+      .then(r => setEngineResults(r && Object.keys(r).length > 0 ? r : null))
+      .catch(() => setEngineResults(null));
+  }, [isMockEnabled]);
+
+  // ── Derived display values ──────────────────────────────────────────────────
+  const topPeople = [...characters]
+    .filter(c => c.archetype !== 'place')
+    .sort((a, b) => (b.importance_score ?? 0) - (a.importance_score ?? 0))
+    .slice(0, 8);
+
+  const attributeLine = attributes
+    .filter(a => a.isCurrent && a.confidence > 0.7)
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 3)
+    .map(a => a.attributeValue)
+    .join(' · ');
+
+  const activeChips = INSIGHT_CHIPS.filter(
+    chip => engineResults?.[chip.key] && chip.getValue(engineResults[chip.key])
+  );
+
+  const hasStats = characters.length > 0 || entries.length > 0 || writingStreak > 0 || activeSince;
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
-      {/* Main Profile Card */}
-      <Card className="bg-gradient-to-br from-primary/10 to-purple-900/20 border-primary/30">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center border-2 border-primary/50">
-              <User className="h-8 w-8 text-primary" />
-            </div>
-            <div className="flex-1">
-              <CardTitle className="text-xl sm:text-2xl">Main Character</CardTitle>
-              <p className="text-sm text-white/60 mt-1">Your lore-building journey</p>
-            </div>
+    <div className="bg-gradient-to-br from-primary/8 to-purple-900/15 border border-primary/20 rounded-xl p-5 space-y-5">
+
+      {/* ── Hero ── */}
+      <div className="flex items-start gap-4">
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={displayName}
+            className="w-14 h-14 rounded-full object-cover border-2 border-primary/40 flex-shrink-0"
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+        ) : (
+          <div className="w-14 h-14 rounded-full bg-primary/20 border-2 border-primary/40 flex items-center justify-center flex-shrink-0">
+            <span className="text-lg font-bold text-primary">{initials(displayName)}</span>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* About you */}
-          <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-            <div className="text-sm font-semibold text-white/70 mb-1">About you</div>
-            <div className="text-lg font-bold text-white">
-              {userCharacter?.name ?? authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? authUser?.email ?? 'You'}
-            </div>
-            <div className="text-sm text-white/60 mt-1">
-              {userCharacter?.summary
-                ? userCharacter.summary
-                : engineResults?.storyOfSelf?.mode?.mode && engineResults?.storyOfSelf?.themes?.[0]?.theme
-                  ? `${engineResults.storyOfSelf.mode.mode} · ${engineResults.storyOfSelf.themes[0].theme}`
-                  : engineResults?.storyOfSelf?.mode?.mode
-                    ? String(engineResults.storyOfSelf.mode.mode)
-                    : 'Your story is taking shape'}
-            </div>
+        )}
+
+        <div className="flex-1 min-w-0 pt-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-lg font-bold text-white">{displayName}</h2>
+            <span className="text-[10px] text-white/25 font-mono uppercase tracking-widest">you</span>
           </div>
-
-          {/* What we know about you */}
-          {loadingAttributes ? (
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-2">
-                <Tag className="h-4 w-4" />
-                <span className="text-sm font-semibold">What we know about you</span>
-              </div>
-              <p className="text-xs text-white/50">Loading attributes...</p>
-            </div>
-          ) : attributes.length > 0 ? (
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-3">
-                <Tag className="h-4 w-4" />
-                <span className="text-sm font-semibold">What we know about you</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {attributes.map((attr) => {
-                  const getAttributeIcon = (type: string) => {
-                    switch (type) {
-                      case 'employment_status':
-                      case 'occupation':
-                      case 'workplace':
-                        return <Briefcase className="h-3 w-3" />;
-                      case 'financial_status':
-                        return <DollarSign className="h-3 w-3" />;
-                      case 'lifestyle_pattern':
-                        return <Activity className="h-3 w-3" />;
-                      case 'personality_trait':
-                        return <Smile className="h-3 w-3" />;
-                      case 'relationship_status':
-                        return <HeartIcon className="h-3 w-3" />;
-                      case 'living_situation':
-                        return <Home className="h-3 w-3" />;
-                      default:
-                        return <Tag className="h-3 w-3" />;
-                    }
-                  };
-
-                  const getAttributeColor = (type: string) => {
-                    switch (type) {
-                      case 'employment_status':
-                      case 'occupation':
-                      case 'workplace':
-                        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-                      case 'financial_status':
-                        return 'bg-green-500/20 text-green-400 border-green-500/30';
-                      case 'lifestyle_pattern':
-                        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-                      case 'personality_trait':
-                        return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
-                      case 'relationship_status':
-                        return 'bg-red-500/20 text-red-400 border-red-500/30';
-                      case 'living_situation':
-                        return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-                      default:
-                        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
-                    }
-                  };
-
-                  return (
-                    <Badge
-                      key={attr.id}
-                      variant="outline"
-                      className={`${getAttributeColor(attr.attributeType)} text-xs px-2 py-1 flex items-center gap-1.5`}
-                      title={`${attr.attributeType}: ${attr.attributeValue} (${Math.round(attr.confidence * 100)}% confidence)`}
-                    >
-                      {getAttributeIcon(attr.attributeType)}
-                      <span className="font-medium">{attr.attributeValue}</span>
-                    </Badge>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-              <div className="flex items-center gap-2 text-white/70 mb-2">
-                <Tag className="h-4 w-4" />
-                <span className="text-sm font-semibold">What we know about you</span>
-              </div>
-              <p className="text-xs text-white/50 italic">Attributes are added as you write.</p>
-            </div>
+          {attributeLine && (
+            <p className="text-sm text-white/45 mt-0.5">{attributeLine}</p>
           )}
+        </div>
+      </div>
 
-          {/* People in your story */}
-          <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-            <div className="flex items-center gap-2 text-white/70 mb-2">
-              <Users className="h-4 w-4" />
-              <span className="text-sm font-semibold">People in your story</span>
-            </div>
-            {stats.mostMentionedCharacters.length > 0 ? (
-              <div className="space-y-1.5">
-                {stats.mostMentionedCharacters.map(({ name, mentions }) => (
-                  <div key={name} className="flex items-center justify-between">
-                    <span className="text-sm text-white">{name}</span>
-                    <span className="text-xs text-white/50">{mentions} mentions</span>
+      {/* ── Stat strip ── */}
+      {hasStats && (
+        <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-white/45 border-t border-white/6 pt-4">
+          {characters.length > 0 && (
+            <span>
+              <span className="text-white/80 font-medium">{characters.length}</span> people
+            </span>
+          )}
+          {entries.length > 0 && (
+            <span>
+              <span className="text-white/80 font-medium">{entries.length}</span> memories
+            </span>
+          )}
+          {writingStreak > 0 && (
+            <span className="text-primary/80">
+              <span className="font-medium">{writingStreak}</span>-day streak
+            </span>
+          )}
+          {activeSince && (
+            <span>since <span className="text-white/60">{activeSince}</span></span>
+          )}
+        </div>
+      )}
+
+      {/* ── People in your story ── */}
+      {topPeople.length > 0 && (
+        <div className="border-t border-white/6 pt-4">
+          <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-3">
+            People in your story
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {topPeople.map(person => {
+              const chipColor =
+                ARCHETYPE_COLORS[person.archetype?.toLowerCase() ?? ''] ??
+                'bg-white/10 text-white/50';
+              return (
+                <div
+                  key={person.id}
+                  title={person.role ?? person.archetype}
+                  className="flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 rounded-full border border-white/8 bg-black/25"
+                >
+                  <div
+                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${chipColor}`}
+                  >
+                    {initials(person.name)}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-white/50 italic">The people you write about will show up here.</p>
-            )}
+                  <span className="text-xs text-white/65 truncate max-w-[90px]">
+                    {person.name}
+                  </span>
+                </div>
+              );
+            })}
           </div>
+        </div>
+      )}
 
-          {/* Meaningful stats */}
-          <div className="bg-black/40 rounded-lg p-4 border border-border/50">
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              {stats.timelineSpan.days > 0 ? (
-                <span className="text-white/80">
-                  Your story since {new Date(stats.timelineSpan.start).toLocaleDateString()}
-                </span>
-              ) : (
-                <span className="text-white/50">Start writing to begin your timeline.</span>
-              )}
-              {stats.writingStreak > 0 && (
-                <span className="text-primary font-medium">{stats.writingStreak} day streak</span>
-              )}
-              {stats.memoirProgress.sections > 0 && (
-                <span className="text-white/70">Your memoir: {stats.memoirProgress.sections} sections</span>
-              )}
-            </div>
+      {/* ── AI snapshot chips ── */}
+      {activeChips.length > 0 && (
+        <div className="border-t border-white/6 pt-4">
+          <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-3">
+            AI snapshot
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {activeChips.map(chip => {
+              const Icon = chip.icon;
+              const value = chip.getValue(engineResults![chip.key]);
+              return (
+                <button
+                  key={chip.key}
+                  type="button"
+                  onClick={() => setInsightModal({ type: chip.key, data: engineResults![chip.key] })}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-opacity hover:opacity-75 ${chip.color}`}
+                >
+                  <Icon className="h-3 w-3 flex-shrink-0" />
+                  <span>
+                    {chip.label}:{' '}
+                    <span className="font-bold">{value}</span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
+        </div>
+      )}
 
-          {/* Engine Quick Insights */}
-          {(engineResults && Object.keys(engineResults).length > 0) && (
-            <div className="mt-4">
-              <div className="flex items-center gap-2 text-white/70 mb-3">
-                <Sparkles className="h-4 w-4" />
-                <span className="text-sm font-semibold">AI Insights</span>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {/* Story of Self - Quick */}
-                {engineResults.storyOfSelf && (
-                  <button
-                    onClick={() => setAiInsightModal({ type: 'storyOfSelf', data: engineResults.storyOfSelf })}
-                    className="bg-black/40 rounded-lg p-3 border border-border/50 hover:border-primary/50 transition-colors text-left group"
-                  >
-                    <div className="flex items-center gap-2 text-white/60 mb-1">
-                      <BookOpen className="h-4 w-4" />
-                      <span className="text-xs">Your Story</span>
-                    </div>
-                    <div className="text-sm font-bold text-primary group-hover:text-primary/80">
-                      {engineResults.storyOfSelf.mode?.mode || 'Discovering...'}
-                    </div>
-                    {engineResults.storyOfSelf.themes?.[0] && (
-                      <div className="text-xs text-white/50 mt-1 truncate">
-                        {engineResults.storyOfSelf.themes[0].theme}
-                      </div>
-                    )}
-                  </button>
-                )}
-
-                {/* Archetype - Quick */}
-                {engineResults.archetype && (
-                  <button
-                    onClick={() => setAiInsightModal({ type: 'archetype', data: engineResults.archetype })}
-                    className="bg-black/40 rounded-lg p-3 border border-border/50 hover:border-primary/50 transition-colors text-left group"
-                  >
-                    <div className="flex items-center gap-2 text-white/60 mb-1">
-                      <Sparkles className="h-4 w-4" />
-                      <span className="text-xs">Archetype</span>
-                    </div>
-                    <div className="text-sm font-bold text-primary group-hover:text-primary/80">
-                      {engineResults.archetype.profile?.dominant || 'Unknown'}
-                    </div>
-                    {engineResults.archetype.profile?.secondary?.[0] && (
-                      <div className="text-xs text-white/50 mt-1 truncate">
-                        Also: {engineResults.archetype.profile.secondary[0]}
-                      </div>
-                    )}
-                  </button>
-                )}
-
-                {/* Shadow - Quick */}
-                {engineResults.shadow && (
-                  <button
-                    onClick={() => setAiInsightModal({ type: 'shadow', data: engineResults.shadow })}
-                    className="bg-black/40 rounded-lg p-3 border border-red-500/30 hover:border-red-500/50 transition-colors text-left group"
-                  >
-                    <div className="flex items-center gap-2 text-white/60 mb-1">
-                      <AlertCircle className="h-4 w-4" />
-                      <span className="text-xs">Shadow</span>
-                    </div>
-                    <div className="text-sm font-bold text-red-300 group-hover:text-red-200">
-                      {engineResults.shadow.dominant_shadow || 'None'}
-                    </div>
-                    {engineResults.shadow.projection?.recommended_focus && (
-                      <div className="text-xs text-white/50 mt-1 truncate">
-                        {engineResults.shadow.projection.recommended_focus}
-                      </div>
-                    )}
-                  </button>
-                )}
-
-                {/* Growth - Quick */}
-                {engineResults.growth && (
-                  <button
-                    onClick={() => setAiInsightModal({ type: 'growth', data: engineResults.growth })}
-                    className="bg-black/40 rounded-lg p-3 border border-green-500/30 hover:border-green-500/50 transition-colors text-left group"
-                  >
-                    <div className="flex items-center gap-2 text-white/60 mb-1">
-                      <TrendingUp className="h-4 w-4" />
-                      <span className="text-xs">Growth</span>
-                    </div>
-                    <div className="text-sm font-bold text-green-300 group-hover:text-green-200">
-                      {engineResults.growth.trajectory || 'Analyzing...'}
-                    </div>
-                    <div className="text-xs text-white/50 mt-1">
-                      View trajectory →
-                    </div>
-                  </button>
-                )}
-
-                {/* Inner Dialogue - Quick */}
-                {engineResults.innerDialogue && (
-                  <button
-                    onClick={() => setAiInsightModal({ type: 'innerDialogue', data: engineResults.innerDialogue })}
-                    className="bg-black/40 rounded-lg p-3 border border-border/50 hover:border-primary/50 transition-colors text-left group"
-                  >
-                    <div className="flex items-center gap-2 text-white/60 mb-1">
-                      <Brain className="h-4 w-4" />
-                      <span className="text-xs">Inner Voice</span>
-                    </div>
-                    <div className="text-sm font-bold text-primary group-hover:text-primary/80">
-                      {engineResults.innerDialogue.voices?.[0]?.role || 'Exploring...'}
-                    </div>
-                    {engineResults.innerDialogue.voices?.[0]?.tone && (
-                      <div className="text-xs text-white/50 mt-1 truncate">
-                        {engineResults.innerDialogue.voices[0].tone}
-                      </div>
-                    )}
-                  </button>
-                )}
-
-                {/* Alternate Self - Quick */}
-                {engineResults.alternateSelf && (
-                  <button
-                    onClick={() => setAiInsightModal({ type: 'alternateSelf', data: engineResults.alternateSelf })}
-                    className="bg-black/40 rounded-lg p-3 border border-border/50 hover:border-primary/50 transition-colors text-left group"
-                  >
-                    <div className="flex items-center gap-2 text-white/60 mb-1">
-                      <Users className="h-4 w-4" />
-                      <span className="text-xs">Alternate Self</span>
-                    </div>
-                    <div className="text-sm font-bold text-primary group-hover:text-primary/80">
-                      {engineResults.alternateSelf.clusters?.[0]?.self_type || 'Exploring...'}
-                    </div>
-                    {engineResults.alternateSelf.clusters?.[0]?.trajectory && (
-                      <div className="text-xs text-white/50 mt-1 truncate">
-                        {engineResults.alternateSelf.clusters[0].trajectory}
-                      </div>
-                    )}
-                  </button>
-                )}
-
-                {/* Cognitive Bias - Quick */}
-                {engineResults.cognitiveBias && (
-                  <button
-                    onClick={() => setAiInsightModal({ type: 'cognitiveBias', data: engineResults.cognitiveBias })}
-                    className="bg-black/40 rounded-lg p-3 border border-yellow-500/30 hover:border-yellow-500/50 transition-colors text-left group"
-                  >
-                    <div className="flex items-center gap-2 text-white/60 mb-1">
-                      <AlertCircle className="h-4 w-4" />
-                      <span className="text-xs">Bias Patterns</span>
-                    </div>
-                    <div className="text-sm font-bold text-yellow-300 group-hover:text-yellow-200">
-                      {engineResults.cognitiveBias.dominant_bias || 'None'}
-                    </div>
-                    {engineResults.cognitiveBias.impact_score !== undefined && (
-                      <div className="text-xs text-white/50 mt-1">
-                        Impact: {Math.round(engineResults.cognitiveBias.impact_score * 100)}%
-                      </div>
-                    )}
-                  </button>
-                )}
-
-                {/* Paracosm - Quick */}
-                {engineResults.paracosm && (
-                  <button
-                    onClick={() => setAiInsightModal({ type: 'paracosm', data: engineResults.paracosm })}
-                    className="bg-black/40 rounded-lg p-3 border border-border/50 hover:border-primary/50 transition-colors text-left group"
-                  >
-                    <div className="flex items-center gap-2 text-white/60 mb-1">
-                      <Sparkles className="h-4 w-4" />
-                      <span className="text-xs">Paracosm</span>
-                    </div>
-                    <div className="text-sm font-bold text-primary group-hover:text-primary/80">
-                      {engineResults.paracosm.clusters?.[0]?.category || 'Exploring...'}
-                    </div>
-                    {engineResults.paracosm.clusters?.[0]?.signals?.length > 0 && (
-                      <div className="text-xs text-white/50 mt-1">
-                        {engineResults.paracosm.clusters[0].signals.length} signals
-                      </div>
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Identity Pulse & Insights - Clickable Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <button
-              onClick={() => setIdentityPulseModalOpen(true)}
-              className="bg-gradient-to-br from-primary/10 to-purple-900/20 border border-primary/30 rounded-lg p-4 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/20 transition-all text-left group cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50"
-              aria-label="Open Identity Pulse modal"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30 group-hover:bg-primary/30 transition-colors">
-                  <Activity className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-white group-hover:text-primary transition-colors">Identity Pulse</h3>
-                  <p className="text-xs text-white/60">Active persona signature</p>
-                </div>
-              </div>
-              <p className="text-sm text-white/70 mt-2">View your identity metrics, emotional trajectory, and stability indicators</p>
-              <div className="mt-3 text-xs text-primary/70 flex items-center gap-1">
-                <span>Click to explore</span>
-                <span>→</span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => setInsightsModalOpen(true)}
-              className="bg-gradient-to-br from-primary/10 to-purple-900/20 border border-primary/30 rounded-lg p-4 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/20 transition-all text-left group cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50"
-              aria-label="Open AI-Assisted Patterns modal"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30 group-hover:bg-primary/30 transition-colors">
-                  <Brain className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-white group-hover:text-primary transition-colors">AI-Assisted Patterns</h3>
-                  <p className="text-xs text-white/60">Discover insights</p>
-                </div>
-              </div>
-              <p className="text-sm text-white/70 mt-2">Explore patterns, correlations, cycles, and predictions in your journal</p>
-              <div className="mt-3 text-xs text-primary/70 flex items-center gap-1">
-                <span>Click to explore</span>
-                <span>→</span>
-              </div>
-            </button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Modals */}
-      <IdentityPulseModal
-        isOpen={identityPulseModalOpen}
-        onClose={() => setIdentityPulseModalOpen(false)}
-      />
-      <InsightsModal
-        isOpen={insightsModalOpen}
-        onClose={() => setInsightsModalOpen(false)}
-        insights={insights}
-        loading={insightsLoading}
-        onRefresh={loadInsights}
-      />
-      {aiInsightModal && (
+      {/* ── Modal ── */}
+      {insightModal && (
         <AIInsightModal
-          isOpen={!!aiInsightModal}
-          onClose={() => setAiInsightModal(null)}
-          engineType={aiInsightModal.type as any}
-          engineData={aiInsightModal.data}
+          isOpen
+          onClose={() => setInsightModal(null)}
+          engineType={insightModal.type as any}
+          engineData={insightModal.data}
         />
       )}
     </div>
   );
 };
-

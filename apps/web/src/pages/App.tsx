@@ -52,6 +52,7 @@ import { QuestBoard } from '../components/quests/QuestBoard';
 import { KnowledgeGapDashboard } from '../components/voids/KnowledgeGapDashboard';
 import { SagaScreen } from '../components/_future-surfaces/saga/SagaScreen';
 import { ContinuityPanel } from '../components/ContinuityPanel';
+import { HomeScreen } from '../components/HomeScreen';
 import { getSurfaceFromRoute, type SurfaceKey } from '../utils/routeMapping';
 
 
@@ -205,13 +206,14 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
   // Get surface display name
   const getSurfaceName = (surface: SurfaceKey): string => {
     const names: Record<SurfaceKey, string> = {
+      home: 'Home',
       chat: 'Chat',
       timeline: 'Omni Timeline',
       search: 'Memory Explorer',
       characters: 'Characters',
       locations: 'Locations',
       memoir: 'Biography Editor',
-      lorebook: 'Lore Book',
+      lorebook: 'Lorebooks',
       photos: 'Photo Album',
       perceptions: 'Perceptions',
       events: 'Events',
@@ -276,11 +278,11 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <DemoModeBanner />
       <main
         id="main-content"
-        className={`flex-1 text-white overflow-x-hidden flex flex-col ${(activeSurface === 'chat' || activeSurface === 'lorebook') ? 'p-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
+        className={`flex-1 text-white overflow-x-hidden flex flex-col ${(activeSurface === 'chat' || activeSurface === 'lorebook') ? 'p-0' : activeSurface === 'home' ? 'p-0 pt-14 lg:pt-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
         role="main"
-        style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : (activeSurface === 'chat' || activeSurface === 'lorebook') ? { height: '100vh', overflow: 'hidden' } : {}}
+        style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : (activeSurface === 'chat' || activeSurface === 'lorebook') ? { height: '100vh', overflow: 'hidden' } : activeSurface === 'home' ? { minHeight: '100vh', overflowY: 'auto' } : {}}
       >
-        {activeSurface !== 'chat' && (
+        {activeSurface !== 'chat' && activeSurface !== 'home' && (
           <>
             <header className="hidden lg:flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
               <div>
@@ -295,6 +297,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </>
         )}
 
+        {activeSurface === 'home' && <HomeScreen />}
         {activeSurface === 'chat' && (
           <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
             <ChatFirstInterface onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />

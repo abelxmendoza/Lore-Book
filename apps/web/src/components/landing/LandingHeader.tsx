@@ -5,10 +5,12 @@ import { Logo } from '../Logo';
 import { Button } from '../ui/button';
 import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '../../lib/supabase';
 
 export const LandingHeader = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
@@ -43,12 +45,34 @@ export const LandingHeader = () => {
                 {link.label}
               </Link>
             ))}
-            <Button
-              onClick={() => navigate('/login')}
-              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-            >
-              Get Started
-            </Button>
+            <div className="flex items-center gap-3">
+              {user ? (
+                <Button
+                  onClick={() => navigate('/')}
+                  variant="outline"
+                  size="sm"
+                  className="border-primary/40 text-primary hover:bg-primary/10"
+                >
+                  Open App
+                </Button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => navigate('/login')}
+                    className="text-sm font-medium text-white/70 hover:text-white transition-colors"
+                  >
+                    Sign in
+                  </button>
+                  <Button
+                    type="button"
+                    onClick={() => navigate('/login')}
+                    className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                  >
+                    Get Started
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Mobile menu button */}
@@ -79,15 +103,30 @@ export const LandingHeader = () => {
                   {link.label}
                 </Link>
               ))}
-              <Button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  navigate('/login');
-                }}
-                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-              >
-                Get Started
-              </Button>
+              {user ? (
+                <Button
+                  onClick={() => { setMobileMenuOpen(false); navigate('/'); }}
+                  variant="outline"
+                  className="w-full border-primary/40 text-primary hover:bg-primary/10"
+                >
+                  Open App
+                </Button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => { setMobileMenuOpen(false); navigate('/login'); }}
+                    className="text-base font-medium text-white/70 hover:text-white transition-colors text-left"
+                  >
+                    Sign in
+                  </button>
+                  <Button
+                    onClick={() => { setMobileMenuOpen(false); navigate('/login'); }}
+                    className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                  >
+                    Get Started Free
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         )}

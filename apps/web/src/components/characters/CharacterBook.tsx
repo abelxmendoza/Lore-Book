@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, Star, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap } from 'lucide-react';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
@@ -2034,8 +2034,15 @@ const MainCharacterSection = ({ user }: { user: any }) => {
   const displayName =
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
-    user?.email ||
+    user?.email?.split('@')[0] ||
     'You';
+  const nameInitials = displayName
+    .split(' ')
+    .map((w: string) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || '?';
 
   return (
     <div className="mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-amber-800/20">
@@ -2049,12 +2056,13 @@ const MainCharacterSection = ({ user }: { user: any }) => {
           />
         ) : (
           <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-amber-900/30 border border-amber-700/40 flex items-center justify-center flex-shrink-0">
-            <Star className="h-4 w-4 text-amber-600/80" aria-hidden="true" />
+            <span className="text-xs font-bold text-amber-700/80">{nameInitials}</span>
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-xs sm:text-sm font-semibold text-amber-900/60 break-words">
-            Main Character: <span className="text-amber-900/80">{displayName}</span>
+          <p className="text-xs sm:text-sm font-semibold text-amber-900/80 break-words">
+            {displayName}
+            <span className="ml-1.5 text-[10px] font-normal text-amber-700/50 uppercase tracking-wider">you</span>
           </p>
         </div>
       </div>
@@ -2381,7 +2389,7 @@ export const CharacterBook = () => {
       <ChatFirstViewHint />
       {/* User Profile & Insights - Displayed first */}
       <div className="space-y-3 sm:space-y-4">
-        <UserProfile />
+        <UserProfile characters={characters} />
       </div>
 
       {/* Character Search Bar and Navigation Tabs */}

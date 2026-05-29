@@ -60,6 +60,42 @@ billingRouter.post('/portal', requireAuth, async (req, res) => {
 });
 
 billingRouter.post('/webhook', async (req, res) => {
-  // In production you would verify the signature header and handle events.
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error('[Billing] STRIPE_WEBHOOK_SECRET not set — webhook rejected');
+    return res.status(500).json({ error: 'Webhook secret not configured' });
+  }
+
+  const sig = req.headers['stripe-signature'];
+  if (!sig) {
+    return res.status(400).json({ error: 'Missing stripe-signature header' });
+  }
+
+  let event: import('stripe').Stripe.Event;
+  try {
+    const stripeClient = ensureStripe();
+    // req.body must be the raw Buffer — ensure express.raw() is used for this route
+    event = stripeClient.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
+  } catch (err) {
+    console.error('[Billing] Webhook signature verification failed:', err);
+    return res.status(400).json({ error: 'Invalid webhook signature' });
+  }
+
+  // Handle events — extend as needed
+  switch (event.type) {
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted':
+      // TODO: sync subscription status to Supabase subscriptions table
+      console.info('[Billing] Stripe event received:', event.type, event.id);
+      break;
+    case 'invoice.payment_succeeded':
+    case 'invoice.payment_failed':
+      console.info('[Billing] Invoice event:', event.type, event.id);
+      break;
+    default:
+      console.info('[Billing] Unhandled Stripe event type:', event.type);
+  }
+
   res.status(200).json({ received: true });
 });

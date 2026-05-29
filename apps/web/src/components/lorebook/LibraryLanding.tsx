@@ -126,10 +126,10 @@ export const LibraryLanding = ({
         <div className="text-center mb-7 sm:mb-12">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 mb-4">
             <BookMarked className="h-3.5 w-3.5 text-primary/70" />
-            <span className="text-xs text-primary/70 font-mono tracking-wider uppercase">Personal Library</span>
+            <span className="text-xs text-primary/70 font-mono tracking-wider uppercase">LoreBook Library</span>
           </div>
           <h1 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-white mb-2" style={{ fontFamily: 'Georgia, serif' }}>
-            Your Library
+            Your LoreBook Library
           </h1>
           <p className="text-white/50 text-sm sm:text-base max-w-sm mx-auto">
             Generate a book from your life, or open one you've made.

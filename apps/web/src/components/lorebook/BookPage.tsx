@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import './bookPage.css';
-import type { ReadingTheme } from './BookCoverPage';
 
 export interface BookPageProps {
   content: string;
@@ -14,7 +13,6 @@ export interface BookPageProps {
   animationDirection?: 'none' | 'next' | 'prev';
   onAnimationEnd?: () => void;
   className?: string;
-  theme?: ReadingTheme;
 }
 
 /**
@@ -33,7 +31,6 @@ export const BookPage = ({
   animationDirection = 'none',
   onAnimationEnd,
   className = '',
-  theme = 'lore',
 }: BookPageProps) => {
   const pageRef = useRef<HTMLDivElement>(null);
 
@@ -68,10 +65,10 @@ export const BookPage = ({
   };
 
   const fontSizePx = {
-    sm: 18,
-    base: 22,
-    lg: 26,
-    xl: 30
+    sm: 13,
+    base: 15,
+    lg: 17,
+    xl: 20
   };
 
   const lineHeightMultiplier = {

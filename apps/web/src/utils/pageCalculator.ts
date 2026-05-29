@@ -209,10 +209,10 @@ export function getViewportDimensions(): { width: number; height: number } {
 export function fontSizeToPixels(size: 'sm' | 'base' | 'lg' | 'xl'): number {
   // Match BookPage component font sizes exactly
   const sizes = {
-    sm: 18,
-    base: 22,
-    lg: 26,
-    xl: 30
+    sm: 13,
+    base: 15,
+    lg: 17,
+    xl: 20
   };
   
   return sizes[size];

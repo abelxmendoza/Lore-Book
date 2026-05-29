@@ -238,13 +238,13 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Back to app link */}
-        <div className="mt-6 text-center">
+        {/* Back to landing page */}
+        <div className="mt-6 text-center space-y-2">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/home')}
             className="text-white/60 hover:text-white text-sm transition"
           >
-            ← Back to app
+            ← Back to home
           </button>
         </div>
       </div>

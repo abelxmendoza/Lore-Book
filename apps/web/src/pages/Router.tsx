@@ -88,14 +88,14 @@ export const Router = () => {
         } 
       />
 
-      {/* Root — defaults to chat */}
-      <Route 
-        path="/" 
+      {/* Root — defaults to home dashboard */}
+      <Route
+        path="/"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="chat" /></AuthGate>
+            <AuthGate><App defaultSurface="home" /></AuthGate>
           </LazyRoute>
-        } 
+        }
       />
 
       {/* Feature routes mapped to surfaces */}

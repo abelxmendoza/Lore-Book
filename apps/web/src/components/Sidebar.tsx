@@ -54,7 +54,15 @@ const SidebarContent = ({
     <div className="flex flex-col h-full relative">
       <div className="flex-1 overflow-y-auto pb-20">
         <div className="mb-6 hidden lg:block">
-          <Logo size="lg" showText={true} />
+          {/* Logo — clicking returns to Home dashboard */}
+          <button
+            type="button"
+            onClick={() => handleSurfaceChange('home')}
+            className="block w-full text-left hover:opacity-80 transition-opacity"
+            aria-label="Go to home"
+          >
+            <Logo size="lg" showText={true} />
+          </button>
           <p className="mt-4 text-xs text-white/50">Your personal memory system. Remember everything that matters.</p>
           <p className="mt-1.5 text-xs text-primary/70">Chat first — timelines & views help you explore what you&apos;ve shared.</p>
           <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-green-500/20 bg-green-500/5 px-2 py-1">
@@ -63,6 +71,23 @@ const SidebarContent = ({
           </div>
         </div>
         <div className="mt-8 space-y-2">
+          {/* 0. Home — dashboard overview */}
+          <button
+            type="button"
+            onClick={() => handleSurfaceChange('home')}
+            aria-label="Go to home dashboard"
+            aria-current={activeSurface === 'home' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'home'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <BookMarked className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Home</span>
+          </button>
+
           {/* 1. Chat — main feature: accent bar + tagline */}
           <button
             onClick={() => handleSurfaceChange('chat')}
@@ -321,7 +346,7 @@ const SidebarContent = ({
             )}
           >
             <BookMarked className="h-5 w-5 text-primary" aria-hidden="true" />
-            Lore Book
+            LoreBooks
           </button>
           <button
             onClick={() => handleSurfaceChange('photos')}

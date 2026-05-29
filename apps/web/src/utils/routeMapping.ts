@@ -5,6 +5,7 @@
  */
 
 export type SurfaceKey =
+  | 'home'
   | 'chat'
   | 'timeline'
   | 'search'
@@ -35,7 +36,7 @@ export type SurfaceKey =
  * Map from route path to surface key
  */
 export const routeToSurface: Record<string, SurfaceKey> = {
-  '/': 'chat',
+  '/': 'home',
   '/chat': 'chat',
   '/timeline': 'timeline',
   '/search': 'search',
@@ -67,6 +68,7 @@ export const routeToSurface: Record<string, SurfaceKey> = {
  * Map from surface key to route path
  */
 export const surfaceToRoute: Record<SurfaceKey, string> = {
+  'home': '/',
   'chat': '/chat',
   'timeline': '/timeline',
   'search': '/search',

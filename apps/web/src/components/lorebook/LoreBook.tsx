@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, ChevronUp, ChevronDown, Type, AlignJustify, Loader2, Download, Menu, X } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, Type, AlignJustify, Loader2, Download, Menu, X } from 'lucide-react';
 import { LibraryLanding } from './LibraryLanding';
 import { BookCoverPage, type ReadingTheme } from './BookCoverPage';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
-import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { ChatFirstInterface } from '../../features/chat/components/ChatFirstInterface';
 import { KnowledgeBaseCreator } from './KnowledgeBaseCreator';
 import { fetchJson } from '../../lib/api';
@@ -929,98 +928,86 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         </div>
       </div>
 
-      {/* ── Desktop compact top bar: library back + theme switcher ── */}
-      <div className="hidden lg:flex border-b border-white/10 bg-black/40 px-4 py-2 items-center justify-between flex-shrink-0">
-        <button
-          type="button"
-          onClick={() => setShowLibrary(true)}
-          className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition-colors font-mono"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          Library
-        </button>
-        <div className="flex items-center gap-1">
-          {(['lore', 'parchment', 'daylight'] as ReadingTheme[]).map((t) => (
-            <button
-              type="button"
-              key={t}
-              onClick={() => setTheme(t)}
-              className={`px-3 py-1 rounded-full text-xs font-mono transition-all ${
-                theme === t
-                  ? 'bg-white/15 text-white'
-                  : 'text-white/35 hover:text-white/70'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
+      {/* ── Desktop unified top bar (one lean bar) ── */}
+      <div className="hidden lg:flex border-b border-white/8 px-4 py-2 items-center justify-between flex-shrink-0 gap-3"
+        style={{ background: theme === 'daylight' ? '#ece6d8' : theme === 'parchment' ? '#1a1208' : 'rgba(0,0,0,0.7)', borderColor: theme === 'daylight' ? 'rgba(100,80,40,0.15)' : 'rgba(255,255,255,0.07)' }}>
+        {/* Left: back + title + page count */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <button type="button" onClick={() => setShowLibrary(true)}
+            className={`flex items-center gap-1 text-xs font-mono shrink-0 transition-colors ${theme === 'daylight' ? 'text-[#6b5a3a] hover:text-[#1a1208]' : 'text-white/40 hover:text-white'}`}>
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Library
+          </button>
+          <div className={`w-px h-3.5 shrink-0 ${theme === 'daylight' ? 'bg-[#6b5a3a]/20' : 'bg-white/10'}`} />
+          <div className="flex items-center gap-2 min-w-0">
+            <BookMarked className="h-4 w-4 text-primary shrink-0" />
+            <h1 className={`text-sm font-semibold truncate ${theme === 'daylight' ? 'text-[#1a1208]' : theme === 'parchment' ? 'text-[#e8d5a0]' : 'text-white/90'}`}
+              style={{ fontFamily: 'Georgia, serif' }}>{outline.title || 'My Lorebook'}</h1>
+            {allPages.length > 0 && (
+              <span className={`text-xs font-mono shrink-0 ${theme === 'daylight' ? 'text-[#6b5a3a]/60' : 'text-white/30'}`}>
+                {currentPageIndex + 1}/{allPages.length}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Header - Kindle Style (desktop only) */}
-      <div className="hidden lg:flex border-b border-white/10 bg-[#1a1a1a] backdrop-blur-sm px-4 sm:px-8 py-3 sm:py-4 items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3 sm:gap-4">
-          {/* Mobile Menu Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowSidebar(!showSidebar)}
-            className="lg:hidden text-white/70 hover:text-white"
-            aria-label="Toggle sidebar"
-          >
-            {showSidebar ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </Button>
-          
-          <div className="flex items-center gap-2">
-            <BookMarked className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-            <h1 className="text-lg sm:text-xl font-bold text-white">{outline.title || 'My Lore Book'}</h1>
-          </div>
-          {allPages.length > 0 && (
-            <div className="hidden sm:flex text-xs sm:text-sm text-white/50 bg-black/40 px-2 sm:px-3 py-1 rounded-full border border-white/10">
-              Page {currentPageIndex + 1} of {allPages.length}
-          </div>
-          )}
-        </div>
-        
-        {/* Header Actions */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            onClick={() => setShowStats(!showStats)}
-            className="px-3 py-1.5 bg-black/60 border border-white/10 rounded-md text-xs text-white hover:bg-black/80 transition-colors sm:text-sm"
-            title="View Statistics"
-          >
+        {/* Right: actions + typography + theme */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Chat toggle */}
+          <button type="button" onClick={() => setShowChat(c => !c)}
+            className={`p-1.5 rounded transition-colors ${showChat ? 'text-primary' : theme === 'daylight' ? 'text-[#6b5a3a]/60 hover:text-[#1a1208]' : 'text-white/35 hover:text-white'}`}
+            title="Ask Lorebook">
+            <MessageSquare className="h-4 w-4" />
+          </button>
+          {/* Download */}
+          <button type="button" onClick={handleDownload} disabled={downloading}
+            className={`p-1.5 rounded transition-colors disabled:opacity-30 ${theme === 'daylight' ? 'text-[#6b5a3a]/60 hover:text-[#1a1208]' : 'text-white/35 hover:text-white'}`}
+            title="Download PDF">
+            {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          </button>
+          {/* Stats */}
+          <button type="button" onClick={() => setShowStats(s => !s)}
+            className={`px-2 py-1 rounded text-xs transition-colors ${showStats ? 'text-primary bg-primary/10' : theme === 'daylight' ? 'text-[#6b5a3a]/60 hover:text-[#1a1208]' : 'text-white/35 hover:text-white'}`}>
             Stats
           </button>
-        
-        {/* Reading Controls */}
-          {/* Font Size */}
-          <div className="flex items-center gap-1 sm:gap-2 bg-black/60 border border-white/10 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5">
-            <Type className="h-3 w-3 sm:h-4 sm:w-4 text-white/50" />
-            <select
-              value={fontSize}
-              onChange={(e) => setFontSize(e.target.value as typeof fontSize)}
-              className="bg-transparent border-none text-xs sm:text-sm text-white focus:outline-none cursor-pointer"
-            >
-              <option value="sm" className="bg-black">Small</option>
-              <option value="base" className="bg-black">Normal</option>
-              <option value="lg" className="bg-black">Large</option>
-              <option value="xl" className="bg-black">Extra Large</option>
+
+          <div className={`w-px h-3.5 ${theme === 'daylight' ? 'bg-[#6b5a3a]/20' : 'bg-white/10'}`} />
+
+          {/* Font size */}
+          <div className={`flex items-center gap-1 rounded px-1.5 py-1 ${theme === 'daylight' ? 'bg-[#6b5a3a]/8' : 'bg-white/5'}`}>
+            <Type className={`h-3 w-3 ${theme === 'daylight' ? 'text-[#6b5a3a]/50' : 'text-white/40'}`} />
+            <select value={fontSize} onChange={(e) => setFontSize(e.target.value as typeof fontSize)}
+              title="Font size"
+              aria-label="Font size"
+              className={`bg-transparent border-none text-xs focus:outline-none cursor-pointer ${theme === 'daylight' ? 'text-[#1a1208]' : 'text-white'}`}>
+              <option value="sm" className="bg-black">S</option>
+              <option value="base" className="bg-black">M</option>
+              <option value="lg" className="bg-black">L</option>
+              <option value="xl" className="bg-black">XL</option>
             </select>
           </div>
-          
-          {/* Line Height */}
-          <div className="hidden sm:flex items-center gap-2 bg-black/60 border border-white/10 rounded-lg px-3 py-1.5">
-            <AlignJustify className="h-4 w-4 text-white/50" />
-            <select
-              value={lineHeight}
-              onChange={(e) => setLineHeight(e.target.value as typeof lineHeight)}
-              className="bg-transparent border-none text-sm text-white focus:outline-none cursor-pointer"
-            >
+          {/* Line height */}
+          <div className={`flex items-center gap-1 rounded px-1.5 py-1 ${theme === 'daylight' ? 'bg-[#6b5a3a]/8' : 'bg-white/5'}`}>
+            <AlignJustify className={`h-3 w-3 ${theme === 'daylight' ? 'text-[#6b5a3a]/50' : 'text-white/40'}`} />
+            <select value={lineHeight} onChange={(e) => setLineHeight(e.target.value as typeof lineHeight)}
+              title="Line spacing"
+              aria-label="Line spacing"
+              className={`bg-transparent border-none text-xs focus:outline-none cursor-pointer ${theme === 'daylight' ? 'text-[#1a1208]' : 'text-white'}`}>
               <option value="normal" className="bg-black">Tight</option>
               <option value="relaxed" className="bg-black">Normal</option>
               <option value="loose" className="bg-black">Wide</option>
             </select>
           </div>
+
+          <div className={`w-px h-3.5 ${theme === 'daylight' ? 'bg-[#6b5a3a]/20' : 'bg-white/10'}`} />
+
+          {/* Theme switcher */}
+          {(['lore', 'parchment', 'daylight'] as ReadingTheme[]).map((t) => (
+            <button type="button" key={t} onClick={() => setTheme(t)}
+              className={`px-2 py-1 rounded text-xs font-mono transition-all ${theme === t ? 'bg-white/15 text-white' : 'text-white/30 hover:text-white/70'}`}>
+              {t}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1153,7 +1140,6 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
                   lineHeight={lineHeight}
                   animationDirection={animationDirection}
                   onAnimationEnd={handleAnimationEnd}
-                  theme={theme}
                   className="w-full h-full max-w-[100%] sm:max-w-[95%] md:max-w-[90%] lg:max-w-5xl xl:max-w-6xl"
                 />
               </div>
@@ -1276,52 +1262,23 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         </Button>
       </div>
 
-      {/* Ask Lore Book Chat Interface */}
-      <div className="border-t border-border/60 bg-black/60 backdrop-blur-sm flex-shrink-0">
-        <Button
-          variant="ghost"
-          onClick={() => setShowChat(!showChat)}
-          className="w-full px-6 py-3 flex items-center justify-between hover:bg-black/40 transition rounded-none border-none"
-          aria-label={showChat ? 'Hide chat' : 'Show chat'}
-        >
-          <div className="flex items-center gap-3">
-            <MessageSquare className="h-5 w-5 text-primary" />
-            <span className="text-white font-medium">Ask Lore Book</span>
-            <span className="text-xs text-white/50 hidden sm:inline">Get insights about your story</span>
+      {/* Chat Panel — toggled from top bar icon */}
+      {showChat && (
+        <div className="border-t border-border/40 h-[520px] max-h-[55vh] flex flex-col overflow-hidden bg-black/40 flex-shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-white/8 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-white/80">Ask Lorebook</span>
+            </div>
+            <button type="button" onClick={() => setShowChat(false)}
+              className="p-1.5 rounded text-white/40 hover:text-white transition-colors" aria-label="Close chat">
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          {showChat ? (
-            <ChevronDown className="h-5 w-5 text-white/50" />
-          ) : (
-            <ChevronUp className="h-5 w-5 text-white/50" />
-          )}
-        </Button>
-        
-        {showChat && (
-          <div className="border-t border-border/40 h-[600px] max-h-[60vh] flex flex-col overflow-hidden bg-black/40">
-            <ChatFirstInterface />
-          </div>
-        )}
-      </div>
+          <ChatFirstInterface />
+        </div>
+      )}
 
-      {/* Horizontal Timeline — desktop only */}
-      <div className="hidden lg:block flex-shrink-0 border-t border-border/60 bg-black/50">
-        <ColorCodedTimeline
-          chapters={chapters}
-          sections={flatSections.map(s => ({
-            id: s.id,
-            title: s.title,
-            period: s.period
-          }))}
-          currentItemId={currentSection ? `section-${currentSection.id}` : undefined}
-          onItemClick={(item) => {
-            if (item.type === 'section' && item.sectionIndex !== undefined) {
-              goToSection(item.sectionIndex);
-            }
-          }}
-          showLabel={true}
-          sectionIndexMap={new Map(flatSections.map((s, idx) => [s.id, idx]))}
-        />
-      </div>
 
       {/* Knowledge Base Creator Modal */}
       {showKnowledgeBaseCreator && (

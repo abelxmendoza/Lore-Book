@@ -77,7 +77,7 @@ export const FinanceDashboard = () => {
           Showing demo data - Mock data toggle is enabled
         </div>
       )}
-      {error && !isMockData && (
+      {error && !isMockDataEnabled && (
         <div className="rounded-lg bg-red-500/20 border border-red-500/50 p-4 text-red-200 flex items-center gap-2">
           <AlertTriangle className="h-5 w-5" />
           {error}
