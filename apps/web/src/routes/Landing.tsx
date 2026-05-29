@@ -262,9 +262,10 @@ export default function Landing() {
                   className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover flex-shrink-0 border-2 border-white/10"
                 />
                 <div className="flex-1 text-center sm:text-left">
+                  <p className="text-xs font-mono text-primary/70 uppercase tracking-widest mb-1">Founder & Lead Developer</p>
                   <h3 className="text-xl sm:text-2xl font-semibold text-white mb-2">Abel Mendoza</h3>
                   <p className="text-sm sm:text-base text-white/70 leading-relaxed">
-                    Founder & Lead Developer. Building LoreBook as a long-term personal continuity system — one that earns trust through what it actually holds onto, not what it promises to be.
+                    Building LoreBook, an AI designed to remember, connect, and preserve the story of a human life over time.
                   </p>
                 </div>
               </div>

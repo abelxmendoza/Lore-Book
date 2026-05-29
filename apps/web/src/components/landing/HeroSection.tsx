@@ -23,17 +23,18 @@ export const HeroSection = () => {
 
         {/* Main Heading */}
         <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-4 sm:mb-6 leading-tight px-2 sm:px-0">
-          You don't have to
+          Your life has years of history.
           <br />
           <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-            start from zero.
+            LoreBook remembers all of it.
           </span>
         </h1>
 
         {/* Subheading */}
         <p className="text-base sm:text-xl md:text-2xl text-white/70 mb-6 sm:mb-8 max-w-3xl mx-auto leading-relaxed px-4 sm:px-6 lg:px-0">
-          The people, places, and situations that keep coming up in your life —
-          LoreBook remembers them across every conversation.
+          An autobiographical knowledge base for a human life. LoreBook accumulates
+          the people, places, timelines, and chapters of your experience — building
+          personal biographies and connected history across years of conversations.
         </p>
 
         {/* CTA Buttons */}
