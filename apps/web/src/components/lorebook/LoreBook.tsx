@@ -1,17 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, ChevronUp, ChevronDown, Type, AlignJustify, Search, Sparkles, Loader2, Download, Menu, X } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, ChevronUp, ChevronDown, Type, AlignJustify, Loader2, Download, Menu, X } from 'lucide-react';
+import { LibraryLanding } from './LibraryLanding';
+import { BookCoverPage, type ReadingTheme } from './BookCoverPage';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { ChatFirstInterface } from '../../features/chat/components/ChatFirstInterface';
-import { BiographyGenerator } from '../biography/BiographyGenerator';
-import { BiographyRecommendations } from './BiographyRecommendations';
-import { SavedBiographies } from './SavedBiographies';
-import { CoreLorebooks } from './CoreLorebooks';
 import { KnowledgeBaseCreator } from './KnowledgeBaseCreator';
-import { LorebookRecommendations } from './LorebookRecommendations';
-import { QuerySuggestions } from './QuerySuggestions';
 import { fetchJson } from '../../lib/api';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
@@ -25,19 +20,14 @@ type Biography = {
   id: string;
   user_id: string;
   lorebook_name: string;
+  title: string;
   spec: any;
   outline: any;
   sections: any[];
+  chapters: Array<{ id: string; title: string; text: string; timeSpan: { start: string; end: string } }>;
+  metadata: { generatedAt: string; [key: string]: any };
   created_at: string;
   updated_at: string;
-};
-
-type BiographySpec = {
-  scope: string;
-  depth: string;
-  tone?: string;
-  audience?: string;
-  version?: string;
 };
 
 type MemoirSection = {
@@ -224,21 +214,11 @@ export const LoreBook = () => {
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('xl');
   const [lineHeight, setLineHeight] = useState<'normal' | 'relaxed' | 'loose'>('relaxed');
-  const [showChat, setShowChat] = useState(false); // Hidden by default for reading focus
-  const [searchQuery, setSearchQuery] = useState('');
+  const [showChat, setShowChat] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [selectedBiography, setSelectedBiography] = useState<Biography | null>(null);
-  const [showGenerator, setShowGenerator] = useState(false);
-  const [showRecommendations, setShowRecommendations] = useState(true);
-  const [showSaved, setShowSaved] = useState(false);
-  const [showCoreLorebooks, setShowCoreLorebooks] = useState(false);
   const [showKnowledgeBaseCreator, setShowKnowledgeBaseCreator] = useState(false);
-  const [availableBiographies, setAvailableBiographies] = useState<Biography[]>([]);
   const [downloading, setDownloading] = useState(false);
-  const [showQuerySuggestions, setShowQuerySuggestions] = useState(false);
-  const [characters, setCharacters] = useState<Array<{ id: string; name: string }>>([]);
-  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
-  const [skills, setSkills] = useState<Array<{ id: string; name: string }>>([]);
   
   // Page-based state
   const [allPages, setAllPages] = useState<BookPageType[]>([]);
@@ -246,31 +226,14 @@ export const LoreBook = () => {
   const [animationDirection, setAnimationDirection] = useState<'none' | 'next' | 'prev'>('none');
   const [isAnimating, setIsAnimating] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [showStats, setShowStats] = useState(false); // Mobile sidebar state
+  const [showStats, setShowStats] = useState(false);
   const [viewportDimensions, setViewportDimensions] = useState(getViewportDimensions());
   const pageContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load entities for query suggestions
-  useEffect(() => {
-    const loadEntities = async () => {
-      try {
-        // Load characters
-        const charData = await fetchJson<{ characters: Array<{ id: string; name: string }> }>('/api/characters/list');
-        setCharacters(charData.characters || []);
-
-        // Load locations
-        const locData = await fetchJson<{ locations: Array<{ id: string; name: string }> }>('/api/locations');
-        setLocations(locData.locations || []);
-
-        // Load skills
-        const skillData = await fetchJson<{ skills: Array<{ id: string; name: string; skill_name: string }> }>('/api/skills');
-        setSkills((skillData.skills || []).map(s => ({ id: s.id, name: s.skill_name || s.name })));
-      } catch (error) {
-        console.warn('Failed to load entities for suggestions:', error);
-      }
-    };
-    loadEntities();
-  }, []);
+  // New library / reading experience state
+  const [showLibrary, setShowLibrary] = useState(true);
+  const [isCoverVisible, setIsCoverVisible] = useState(false);
+  const [theme, setTheme] = useState<ReadingTheme>('lore');
 
   // Stable key so we don't re-run when useLoreKeeper returns a new array reference every render
   const loreChaptersKey = loreChapters.length > 0 ? loreChapters.map((c) => c.id).join(',') : '';
@@ -688,49 +651,6 @@ export const LoreBook = () => {
     );
   }
 
-  const handleGenerateFromSearch = async () => {
-    if (!searchQuery.trim()) return;
-    
-    setGenerating(true);
-    try {
-      // Use intelligent search parser
-      const result = await fetchJson<{ biography: Biography; parsedQuery: any }>('/api/biography/search', {
-        method: 'POST',
-        body: JSON.stringify({ query: searchQuery.trim() })
-      });
-
-      if (result.biography) {
-        // Convert biography to memoir outline format
-        const newOutline: MemoirOutline = {
-          id: result.biography.id,
-          title: result.biography.title,
-          lastUpdated: result.biography.metadata.generatedAt,
-          autoUpdate: false,
-          sections: result.biography.chapters.map((chapter, idx) => ({
-            id: chapter.id,
-            title: chapter.title,
-            content: chapter.text,
-            order: idx + 1,
-            period: {
-              from: chapter.timeSpan.start,
-              to: chapter.timeSpan.end
-            }
-          }))
-        };
-
-        setOutline(newOutline);
-        setCurrentSectionIndex(0);
-        setSelectedBiography(result.biography);
-        setShowGenerator(false);
-        setSearchQuery('');
-      }
-    } catch (error) {
-      console.error('Failed to generate biography:', error);
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const handleDownload = async () => {
     if (downloading) return;
     
@@ -874,21 +794,19 @@ export const LoreBook = () => {
     setOutline(newOutline);
     setCurrentSectionIndex(0);
     setSelectedBiography(biography);
-    setShowSaved(false);
-    setShowRecommendations(false);
   };
 
-  const handleGenerateFromRecommendation = async (spec: BiographySpec & { characterIds?: string[]; locationIds?: string[]; eventIds?: string[]; skillIds?: string[] }, version?: string) => {
+  const handleGenerateFromQuery = async (query: string) => {
     setGenerating(true);
-    setShowRecommendations(false);
+    setShowLibrary(false);
     try {
-      const result = await fetchJson<{ biography: Biography }>('/api/biography/generate', {
+      const result = await fetchJson<{ biography: Biography; parsedQuery: any }>('/api/biography/search', {
         method: 'POST',
-        body: JSON.stringify(spec)
+        body: JSON.stringify({ query })
       });
-
       if (result.biography) {
         handleLoadBiography(result.biography);
+        setIsCoverVisible(true);
       }
     } catch (error) {
       console.error('Failed to generate biography:', error);
@@ -897,139 +815,68 @@ export const LoreBook = () => {
     }
   };
 
-  // Show recommendations if no book is loaded
-  if (showRecommendations && (!outline || outline.sections.length === 0)) {
+  // Library landing — shown on first load or when user returns to library
+  if (showLibrary) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] flex flex-col bg-gradient-to-br from-black via-purple-950/20 to-black p-8">
-        <div className="max-w-6xl mx-auto w-full">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-white mb-2">Your Lorebook</h1>
-            <p className="text-white/60">Choose a lorebook to generate or view your recommendations</p>
-          </div>
-          <BiographyRecommendations onGenerate={handleGenerateFromRecommendation} />
-        </div>
+      <LibraryLanding
+        onGenerate={(query) => {
+          void handleGenerateFromQuery(query);
+        }}
+        onOpenDemoBook={() => {
+          setOutline(dummyBook);
+          setChapters(dummyChapters);
+          setIsCoverVisible(true);
+          setShowLibrary(false);
+        }}
+        generating={generating}
+        isMockData={shouldUseMock}
+      />
+    );
+  }
+
+  // Cover page — full-screen before the reader
+  if (isCoverVisible && outline) {
+    return (
+      <div className={`h-screen w-full theme-${theme}`} data-testid="lorebook-cover">
+        <BookCoverPage
+          title={outline.title || 'My Lore Book'}
+          scope={outline.metadata?.languageStyle}
+          chapterCount={flatSections.length}
+          theme={theme}
+          onOpen={() => setIsCoverVisible(false)}
+        />
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-full flex flex-col bg-gradient-to-br from-black via-purple-950/20 to-black overflow-hidden" style={{ minHeight: '100vh', height: '100vh' }} data-testid="lorebook">
-      {/* Search Bar Section - Above the book */}
-      <div className="border-b border-border/50 p-4 bg-black/30">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              <h3 className="text-lg font-semibold text-white">Search & Generate Lorebook</h3>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShowKnowledgeBaseCreator(true);
-                  setShowRecommendations(false);
-                  setShowSaved(false);
-                }}
-                className="text-white/60 hover:text-white bg-primary/10 hover:bg-primary/20"
-                leftIcon={<Sparkles className="h-4 w-4" />}
-              >
-                Create Lorebook
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShowSaved(!showSaved);
-                  setShowRecommendations(false);
-                }}
-                className="text-white/60 hover:text-white"
-              >
-                {showSaved ? 'Hide' : 'Show'} Saved
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShowRecommendations(!showRecommendations);
-                  setShowSaved(false);
-                }}
-                className="text-white/60 hover:text-white"
-              >
-                {showRecommendations ? 'Hide' : 'Show'} Recommendations
-              </Button>
-            </div>
-          </div>
-          {showRecommendations && (
-            <div className="mb-4 space-y-6">
-              <LorebookRecommendations onGenerate={handleGenerateFromRecommendation} />
-              <div className="border-t border-border/50 pt-6">
-                <BiographyRecommendations onGenerate={handleGenerateFromRecommendation} />
-              </div>
-            </div>
-          )}
-          {showSaved && (
-            <div className="mb-4">
-              <SavedBiographies onLoadBiography={handleLoadBiography} />
-            </div>
-          )}
-          {/* Instructions */}
-          <div className="mb-3">
-            <p className="text-sm text-white/70 leading-relaxed">
-              <span className="font-medium text-white/90">Intelligent Lorebook Search:</span> Search by timeline ("my 2020 story"), characters ("my story with Sarah"), locations ("everything at the gym"), events ("the wedding"), skills ("my fighting journey"), or topics ("robotics", "relationships"). The system understands natural language and will generate the perfect lorebook for you.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/40" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setShowQuerySuggestions(true);
-                }}
-                onFocus={() => setShowQuerySuggestions(true)}
-                onBlur={() => setTimeout(() => setShowQuerySuggestions(false), 200)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !generating) {
-                    handleGenerateFromSearch();
-                    setShowQuerySuggestions(false);
-                  }
-                }}
-                placeholder="e.g., 'my story with Sarah', 'everything at the gym', 'my 2020 story', 'my fighting journey'..."
-                className="pl-10 bg-black/60 border-white/20 text-white placeholder:text-white/40"
-              />
-              {showQuerySuggestions && (
-                <QuerySuggestions
-                  query={searchQuery}
-                  onSelect={(query) => {
-                    setSearchQuery(query);
-                    setShowQuerySuggestions(false);
-                  }}
-                  characters={characters}
-                  locations={locations}
-                  skills={skills}
-                />
-              )}
-            </div>
-            <Button
-              onClick={handleGenerateFromSearch}
-              disabled={!searchQuery.trim() || generating}
-              className="bg-primary/20 hover:bg-primary/30 text-primary border-primary/30"
+    <div className={`h-screen w-full flex flex-col overflow-hidden theme-${theme}`} style={{ minHeight: '100vh', height: '100vh', background: theme === 'daylight' ? '#f5f0e8' : '#1a1a1a' }} data-testid="lorebook">
+
+      {/* Compact top bar: library back + theme switcher */}
+      <div className="border-b border-white/10 bg-black/40 px-4 py-2 flex items-center justify-between flex-shrink-0">
+        <button
+          type="button"
+          onClick={() => setShowLibrary(true)}
+          className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition-colors font-mono"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Library
+        </button>
+        <div className="flex items-center gap-1">
+          {(['lore', 'parchment', 'daylight'] as ReadingTheme[]).map((t) => (
+            <button
+              type="button"
+              key={t}
+              onClick={() => setTheme(t)}
+              className={`px-3 py-1 rounded-full text-xs font-mono transition-all ${
+                theme === t
+                  ? 'bg-white/15 text-white'
+                  : 'text-white/35 hover:text-white/70'
+              }`}
             >
-              {generating ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Generate
-                </>
-              )}
-            </Button>
-          </div>
+              {t}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1223,11 +1070,13 @@ export const LoreBook = () => {
                   pageNumber={allPages[currentPageIndex].pageNumber}
                   totalPages={allPages[currentPageIndex].totalPagesInSection}
                   sectionTitle={flatSections[allPages[currentPageIndex].sectionIndex]?.title}
+                  bookTitle={outline.title || 'My Lore Book'}
                   sectionPeriod={flatSections[allPages[currentPageIndex].sectionIndex]?.period}
                   fontSize={fontSize}
                   lineHeight={lineHeight}
                   animationDirection={animationDirection}
                   onAnimationEnd={handleAnimationEnd}
+                  theme={theme}
                   className="w-full h-full max-w-[100%] sm:max-w-[95%] md:max-w-[90%] lg:max-w-5xl xl:max-w-6xl"
                 />
               </div>

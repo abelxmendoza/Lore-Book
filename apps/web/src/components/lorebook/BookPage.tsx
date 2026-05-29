@@ -1,17 +1,20 @@
 import { useEffect, useRef } from 'react';
 import './bookPage.css';
+import type { ReadingTheme } from './BookCoverPage';
 
 export interface BookPageProps {
   content: string;
   pageNumber: number;
   totalPages: number;
   sectionTitle?: string;
+  bookTitle?: string;
   sectionPeriod?: { from: string; to?: string };
   fontSize: 'sm' | 'base' | 'lg' | 'xl';
   lineHeight: 'normal' | 'relaxed' | 'loose';
   animationDirection?: 'none' | 'next' | 'prev';
   onAnimationEnd?: () => void;
   className?: string;
+  theme?: ReadingTheme;
 }
 
 /**
@@ -23,12 +26,14 @@ export const BookPage = ({
   pageNumber,
   totalPages,
   sectionTitle,
+  bookTitle,
   sectionPeriod,
   fontSize,
   lineHeight,
   animationDirection = 'none',
   onAnimationEnd,
-  className = ''
+  className = '',
+  theme = 'lore',
 }: BookPageProps) => {
   const pageRef = useRef<HTMLDivElement>(null);
 
@@ -86,25 +91,26 @@ export const BookPage = ({
     <div
       ref={pageRef}
       className={`book-page ${animationClass} ${className}`}
-      style={{
-        transform: animationDirection === 'next' 
-          ? 'translateX(100%)' 
-          : animationDirection === 'prev'
-          ? 'translateX(-100%)'
-          : 'translateX(0)'
-      }}
       role="article"
       aria-label={`Page ${pageNumber} of ${totalPages}`}
     >
       <div className="book-page-content">
-        {/* Page Header (optional - can be hidden on mobile) */}
-        {sectionTitle && (
+        {/* Running header — chapter on left, book title on right */}
+        {(sectionTitle || bookTitle) && (
+          <div className="book-running-header hidden sm:flex">
+            <span>{sectionTitle ?? ''}</span>
+            <span>{bookTitle ?? ''}</span>
+          </div>
+        )}
+
+        {/* Chapter title — only on the first page of a section */}
+        {sectionTitle && pageNumber === 1 && (
           <header className="book-page-header">
             <h2 className="book-section-title">{sectionTitle}</h2>
             {sectionPeriod && (
               <p className="book-section-period">
                 {new Date(sectionPeriod.from).toLocaleDateString()}
-                {sectionPeriod.to && ` - ${new Date(sectionPeriod.to).toLocaleDateString()}`}
+                {sectionPeriod.to && ` – ${new Date(sectionPeriod.to).toLocaleDateString()}`}
               </p>
             )}
           </header>
