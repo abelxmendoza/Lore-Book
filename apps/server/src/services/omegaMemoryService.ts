@@ -4,10 +4,14 @@
  * Enhanced with LLM, semantic similarity, evidence scoring, and temporal reasoning
  */
 
-import OpenAI from 'openai';
-
 import { config } from '../config';
+import { AI_THRESHOLDS } from '../config/aiThresholds';
 import { logger } from '../logger';
+import {
+  PRIORS, updateBelief, beliefStats, fromFloat, serializeBelief, deserializeBelief,
+} from './bayesian/beliefUpdater';
+import { openai } from '../lib/openai';
+import { jaroWinkler } from '../utils/jaroWinkler';
 import type {
   Entity,
   Claim,
@@ -21,64 +25,13 @@ import type {
   IngestionResult,
 } from '../types/omegaMemory';
 
+import { correctionTracker } from './activeLearning/correctionTracker';
 import { continuityService } from './continuityService';
 import { embeddingService } from './embeddingService';
 import { memoryReviewQueueService } from './memoryReviewQueueService';
 import { perspectiveService } from './perspectiveService';
 import { provenanceEdgeService } from './provenance/provenanceEdgeService';
 import { supabaseAdmin } from './supabaseClient';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
-
-// ─── Jaro-Winkler similarity (no external dependency) ────────────────────────
-// Returns [0, 1]. 1 = identical. Used to gate the expensive embedding call.
-
-function jaroSimilarity(a: string, b: string): number {
-  if (a === b) return 1;
-  const lenA = a.length, lenB = b.length;
-  const matchDist = Math.floor(Math.max(lenA, lenB) / 2) - 1;
-  const matchedA = new Array(lenA).fill(false);
-  const matchedB = new Array(lenB).fill(false);
-  let matches = 0, transpositions = 0;
-  for (let i = 0; i < lenA; i++) {
-    const start = Math.max(0, i - matchDist);
-    const end   = Math.min(i + matchDist + 1, lenB);
-    for (let j = start; j < end; j++) {
-      if (matchedB[j] || a[i] !== b[j]) continue;
-      matchedA[i] = matchedB[j] = true;
-      matches++;
-      break;
-    }
-  }
-  if (matches === 0) return 0;
-  let k = 0;
-  for (let i = 0; i < lenA; i++) {
-    if (!matchedA[i]) continue;
-    while (!matchedB[k]) k++;
-    if (a[i] !== b[k]) transpositions++;
-    k++;
-  }
-  return (matches / lenA + matches / lenB + (matches - transpositions / 2) / matches) / 3;
-}
-
-function jaroWinkler(a: string, b: string): number {
-  const jaro = jaroSimilarity(a, b);
-  let prefix = 0;
-  for (let i = 0; i < Math.min(4, a.length, b.length); i++) {
-    if (a[i] === b[i]) prefix++; else break;
-  }
-  return jaro + prefix * 0.1 * (1 - jaro);
-}
-
-// Returns true if the query name is "close enough" to a candidate name
-// without spending tokens on an embedding call.
-function fuzzyNameMatch(query: string, candidate: string, threshold = 0.88): boolean {
-  const q = query.toLowerCase().trim();
-  const c = candidate.toLowerCase().trim();
-  if (q === c) return true;
-  if (q.includes(c) || c.includes(q)) return true;
-  return jaroWinkler(q, c) >= threshold;
-}
 
 export class OmegaMemoryService {
   /**
@@ -94,7 +47,10 @@ export class OmegaMemoryService {
       
       // Step 3: Extract claims
       const claims = await this.extractClaims(userId, inputText, resolvedEntities, source);
-      
+
+      // O(1) entity lookup by id — avoids O(n) .find() on every claim
+      const entityById = new Map(resolvedEntities.map(e => [e.id, e]));
+
       // Step 4: Detect narrative divergence (observational, non-destructive)
       let divergencesDetected = 0;
       for (const claim of claims) {
@@ -115,6 +71,21 @@ export class OmegaMemoryService {
           // Continuity event (fire-and-forget)
           continuityService.recordContradiction(userId, storedClaim, conflictingClaims[0])
             .catch((err) => logger.warn({ err }, 'Contradiction continuity event failed (non-fatal)'));
+
+          // activeLearning: record as a training signal so the correction tracker
+          // can surface patterns for future model improvement.
+          correctionTracker.recordCorrection(userId, {
+            correction_type: 'entity',
+            original_value: (conflictingClaims[0].text ?? '').substring(0, 500),
+            corrected_value: (storedClaim.text ?? '').substring(0, 500),
+            context: `Contradiction detected for entity ${storedClaim.entity_id}`,
+            metadata: {
+              entity_id: storedClaim.entity_id,
+              claim_id: storedClaim.id,
+              conflicting_claim_id: conflictingClaims[0].id,
+              source: 'contradiction_detection',
+            },
+          }).catch((err: unknown) => logger.warn({ err }, 'correction tracker record failed (non-fatal)'));
 
           // CONTRADICTS provenance edges — first-class causal graph record
           Promise.all(
@@ -142,7 +113,7 @@ export class OmegaMemoryService {
         }
         
         // Record claim creation event
-        const entity = resolvedEntities.find(e => e.id === claim.entity_id);
+        const entity = entityById.get(claim.entity_id);
         if (entity) {
           await continuityService.recordClaimCreation(
             userId,
@@ -186,10 +157,10 @@ export class OmegaMemoryService {
       // Step 7: Generate suggestions (but don't auto-apply)
       const suggestions = await this.suggestUpdates(userId, inputText, resolvedEntities, claims, relationships);
       
-      // Track conflicts detected during processing
-      const conflictsDetected = claims.some(claim => 
+      // Count claims flagged as conflicting
+      const conflictsDetected = claims.filter(claim =>
         claim.confidence < 0.5 || claim.metadata?.flagged === true
-      );
+      ).length;
       
       return {
         entities: resolvedEntities,
@@ -269,21 +240,101 @@ Only extract entities that are clearly mentioned. Be conservative with confidenc
   }
 
   /**
-   * Resolve entities: find existing by name/alias or create new
+   * Resolve entities: find existing by name/alias or create new.
+   *
+   * Batch optimization: pre-load all omega_entities for the user (one query per
+   * distinct entity type) then run exact + JW matching in-memory.  Only falls
+   * back to a per-entity DB query for the semantic embedding path and for new
+   * entity creation, turning O(n×3 DB) → O(types DB + n×in-memory).
    */
   async resolveEntities(
     userId: string,
     candidates: Array<{ name: string; type: EntityType }>
   ): Promise<Entity[]> {
+    if (candidates.length === 0) return [];
+
+    // 1. Gather distinct types
+    const distinctTypes = [...new Set(candidates.map(c => c.type))];
+
+    // 2. Batch-load all entities per type in parallel
+    const typeEntities = new Map<EntityType, Entity[]>();
+    await Promise.all(
+      distinctTypes.map(async (type) => {
+        const { data } = await supabaseAdmin
+          .from('omega_entities')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('type', type)
+          .limit(500);
+        typeEntities.set(type, (data as Entity[]) ?? []);
+      })
+    );
+
+    // 3. Resolve each candidate in-memory (exact → JW) with per-candidate
+    //    embedding fallback only when needed
     const resolved: Entity[] = [];
 
     for (const candidate of candidates) {
-      // Try to find by primary name
-      let match = await this.findEntityByNameOrAlias(userId, candidate.name, candidate.type);
+      const pool = typeEntities.get(candidate.type) ?? [];
+      const nameLower = candidate.name.toLowerCase().trim();
 
+      // Exact / alias match (in-memory)
+      let match: Entity | null =
+        pool.find(
+          e =>
+            e.primary_name.toLowerCase() === nameLower ||
+            (Array.isArray(e.aliases) &&
+              e.aliases.some((a: string) => a.toLowerCase() === nameLower))
+        ) ?? null;
+
+      if (match) {
+        await continuityService.recordEntityResolved(userId, match, 'exact_match').catch(() => {});
+        this.promoteMentionIfNeeded(userId, match);
+      }
+
+      // JW fuzzy match (in-memory)
       if (!match) {
-        // Create new entity
+        let bestScore = 0;
+        let bestEntity: Entity | null = null;
+
+        for (const entity of pool) {
+          const namesToCheck: string[] = [
+            entity.primary_name,
+            ...(Array.isArray(entity.aliases) ? entity.aliases : []),
+          ].filter(Boolean);
+
+          const score = Math.max(
+            ...namesToCheck.map((n: string) =>
+              jaroWinkler(nameLower, n.toLowerCase().trim())
+            )
+          );
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestEntity = entity;
+          }
+        }
+
+        if (bestScore >= AI_THRESHOLDS.JW_ENTITY_MATCH && bestEntity) {
+          match = bestEntity;
+          await continuityService.recordEntityResolved(userId, match, 'alias_match').catch(() => {});
+          this.promoteMentionIfNeeded(userId, match);
+        }
+      }
+
+      // Semantic embedding fallback (single DB call per unresolved candidate)
+      if (!match) {
+        match = await this.findEntityByNameOrAlias(userId, candidate.name, candidate.type).catch(
+          () => null
+        );
+      }
+
+      // Create if still unresolved
+      if (!match) {
         match = await this.createEntity(userId, candidate.name, candidate.type);
+        // Add to pool so later candidates in this batch can match it
+        pool.push(match);
+        typeEntities.set(candidate.type, pool);
       }
 
       resolved.push(match);
@@ -364,11 +415,11 @@ Only extract entities that are clearly mentioned. Be conservative with confidenc
       const nameEmbedding = await embeddingService.embedText(name);
       
       // Find similar entities using vector similarity
-      const { data: similarEntities, error: similarError } = await supabaseAdmin.rpc(
+      const { data: similarEntities } = await supabaseAdmin.rpc(
         'match_omega_entities',
         {
           query_embedding: `[${nameEmbedding.join(',')}]`,
-          match_threshold: 0.7,
+          match_threshold: AI_THRESHOLDS.SEMANTIC_ENTITY_MATCH,
           match_count: 5,
           user_id_param: userId,
           type_param: type,
@@ -407,6 +458,8 @@ Only extract entities that are clearly mentioned. Be conservative with confidenc
         type,
         aliases,
         embedding: `[${embedding.join(',')}]`,
+        mention_count: 1,
+        mention_status: 'mentioned_only',
       })
       .select()
       .single();
@@ -696,6 +749,26 @@ Only extract clear relationships. Include temporal context when available.`
   }
 
   /**
+   * Fire-and-forget: increment mention_count and promote 'mentioned_only' →
+   * 'confirmed' once the entity has been seen ENTITY_CONFIRMATION_THRESHOLD times.
+   */
+  private promoteMentionIfNeeded(userId: string, entity: Entity): void {
+    const e = entity as Entity & { mention_status?: string; mention_count?: number };
+    if (e.mention_status !== 'mentioned_only') return;
+    const newCount = (e.mention_count ?? 1) + 1;
+    const newStatus = newCount >= AI_THRESHOLDS.ENTITY_CONFIRMATION_THRESHOLD
+      ? 'confirmed'
+      : 'mentioned_only';
+    Promise.resolve(
+      supabaseAdmin
+        .from('omega_entities')
+        .update({ mention_count: newCount, mention_status: newStatus })
+        .eq('id', entity.id)
+        .eq('user_id', userId)
+    ).catch((err: unknown) => logger.warn({ err, entityId: entity.id }, 'mention promotion failed (non-fatal)'));
+  }
+
+  /**
    * Check temporal overlap between two time ranges
    */
   private temporalOverlap(
@@ -873,13 +946,23 @@ A contradiction means the claims cannot both be true at the same time.`
    */
   async lowerConfidence(claims: Claim[]): Promise<void> {
     for (const claim of claims) {
-      const newConfidence = Math.max(0.1, claim.confidence - 0.2);
-      
+      // Bayesian update: add a contradiction observation rather than flat subtraction.
+      // This preserves how much prior evidence we had — a well-supported claim that
+      // receives one contradiction stays more stable than a weak claim.
+      const existing = deserializeBelief((claim as any).metadata ?? null)
+        || fromFloat(claim.confidence ?? 0.6);
+      const updated = updateBelief(existing, 0, 1.0); // one full contradiction
+      const { mean: newConfidence } = beliefStats(updated);
+
       const { error } = await supabaseAdmin
         .from('omega_claims')
         .update({
           confidence: newConfidence,
           updated_at: new Date().toISOString(),
+          metadata: {
+            ...((claim as any).metadata ?? {}),
+            belief: serializeBelief(updated),
+          },
         })
         .eq('id', claim.id);
 
@@ -893,16 +976,31 @@ A contradiction means the claims cannot both be true at the same time.`
    * Store a claim in the database with embedding
    */
   async storeClaim(claim: Partial<Claim> & { embedding?: number[] }): Promise<Claim> {
+    // Initialise Beta belief from source type and the AI-derived confidence float.
+    // This replaces raw float storage with a distributional model that accumulates
+    // evidence over time rather than being overwritten on each update.
+    const prior = claim.source === 'USER' ? PRIORS.userStated
+                : claim.source === 'AI'   ? PRIORS.aiInferred
+                : PRIORS.uniform;
+    const rawConf = claim.confidence ?? 0.6;
+    // Blend prior with the AI-estimated confidence: one "observation" at rawConf strength
+    const initialBelief = updateBelief(prior, rawConf, 1.0 - rawConf);
+    const { mean: derivedConfidence } = beliefStats(initialBelief);
+
     const claimData: any = {
       user_id: claim.user_id!,
       entity_id: claim.entity_id!,
       text: claim.text!,
       source: claim.source!,
-      confidence: claim.confidence ?? 0.6,
+      confidence: derivedConfidence,
       sentiment: claim.sentiment,
       start_time: claim.start_time || new Date().toISOString(),
       end_time: claim.end_time,
       is_active: claim.is_active ?? true,
+      metadata: {
+        ...(claim.metadata ?? {}),
+        belief: serializeBelief(initialBelief),
+      },
     };
 
     // Add embedding if provided
@@ -1236,7 +1334,7 @@ Generate a comprehensive summary that:
    * Suggest updates (AI analyzes, human approves) using LLM
    */
   async suggestUpdates(
-    userId: string,
+    _userId: string,
     inputText: string,
     entities: Entity[],
     claims: Claim[],
@@ -1316,7 +1414,11 @@ Propose updates that should be reviewed before applying.`
             .single();
           
           if (claim) {
-            await this.markClaimsInactive([claim]);
+            const now = new Date().toISOString();
+            await supabaseAdmin
+              .from('omega_claims')
+              .update({ is_active: false, end_time: now, updated_at: now })
+              .eq('id', suggestion.claim_id);
           }
         }
         break;
@@ -1378,9 +1480,12 @@ Propose updates that should be reviewed before applying.`
   }
 
   /**
-   * Get all entities for a user
+   * Get all entities for a user.
+   * By default returns only confirmed/canonical entities (mention_status != 'mentioned_only')
+   * so ghost entities from single-pass LLM extractions never reach consumers.
+   * Pass includeUnconfirmed=true for internal tooling or admin views.
    */
-  async getEntities(userId: string, type?: EntityType): Promise<Entity[]> {
+  async getEntities(userId: string, type?: EntityType, includeUnconfirmed = false): Promise<Entity[]> {
     let query = supabaseAdmin
       .from('omega_entities')
       .select('*')
@@ -1389,6 +1494,9 @@ Propose updates that should be reviewed before applying.`
 
     if (type) {
       query = query.eq('type', type);
+    }
+    if (!includeUnconfirmed) {
+      query = query.neq('mention_status', 'mentioned_only');
     }
 
     const { data, error } = await query;

@@ -1,13 +1,14 @@
 import { randomUUID } from 'crypto';
 
 import { Router } from 'express';
-import OpenAI from 'openai';
 import { z } from 'zod';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { characterAnalyticsService } from '../services/characterAnalyticsService';
+import { findSimilarCharacter } from '../services/characterDeduplicationService';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 import { peoplePlacesService } from '../services/peoplePlacesService';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -183,6 +184,23 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       if (associatedChars) {
         associatedWithIds = associatedChars.map(c => c.id);
       }
+    }
+
+    // Fuzzy dedup: return the existing character if a similar one already exists.
+    // Catches "my mom" vs "Mom", "Jerry" vs "Jerry Smith", "Sara" vs "Sarah".
+    const { data: existingForDedup } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, alias')
+      .eq('user_id', userId);
+    const similar = findSimilarCharacter(characterData.name, existingForDedup || []);
+    if (similar) {
+      logger.info({ userId, existingId: similar.id, incomingName: characterData.name }, 'Dedup: returning existing character');
+      const { data: existingChar } = await supabaseAdmin
+        .from('characters')
+        .select('*')
+        .eq('id', similar.id)
+        .single();
+      return res.status(200).json({ character: existingChar, deduplicated: true });
     }
 
     // Merge social_media into metadata
@@ -723,8 +741,6 @@ router.post('/extract-from-chat', requireAuth, async (req: AuthenticatedRequest,
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Message is required' });
     }
-
-    const openai = new OpenAI({ apiKey: config.openAiKey });
 
     // Use OpenAI to extract character information (named and unnamed)
     const completion = await openai.chat.completions.create({

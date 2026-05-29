@@ -86,62 +86,58 @@ export class ChronologyStorageService {
   }
 
   /**
-   * Save gaps (store in metadata or separate table if needed)
+   * Save gaps to chronology_snapshots (merged into saveChronologyResult)
    */
   async saveGaps(userId: string, gaps: Gap[]): Promise<void> {
-    if (gaps.length === 0) return;
-
-    // Store gaps in user metadata or a dedicated table
-    // For now, we'll log them - can be extended to store in a gaps table
-    logger.debug({ userId, gapCount: gaps.length }, 'Saving temporal gaps');
-    
-    // TODO: Create gaps table if needed, or store in user metadata
-    // This is a placeholder for future implementation
+    // Persisted as part of saveChronologyResult — no standalone table needed
+    logger.debug({ userId, gapCount: gaps.length }, 'chronology: gaps noted');
   }
 
   /**
-   * Save causal chains (store in metadata or separate table if needed)
+   * Save causal chains (merged into saveChronologyResult)
    */
   async saveCausalChains(userId: string, chains: CausalChain[]): Promise<void> {
-    if (chains.length === 0) return;
-
-    // Store chains in metadata or a dedicated table
-    logger.debug({ userId, chainCount: chains.length }, 'Saving causal chains');
-    
-    // TODO: Create causal_chains table if needed, or store in insights table
-    // This is a placeholder for future implementation
+    logger.debug({ userId, chainCount: chains.length }, 'chronology: chains noted');
   }
 
   /**
-   * Save complete chronology result
+   * Persist a full chronology result snapshot to chronology_snapshots.
+   * One row per user per run — upsert on user_id so we keep the latest.
    */
-  async saveChronologyResult(
-    userId: string,
-    result: ChronologyResult
-  ): Promise<void> {
+  async saveChronologyResult(userId: string, result: ChronologyResult): Promise<void> {
     try {
-      // Save temporal edges if we have component ID mappings
-      // This would require fetching component IDs from events
-      // For now, we'll just log the result
-      logger.debug(
+      const { error } = await supabaseAdmin
+        .from('chronology_snapshots')
+        .upsert(
+          {
+            user_id: userId,
+            node_count: result.graph.nodes.length,
+            edge_count: result.graph.edges.length,
+            gap_count: result.gaps.length,
+            chain_count: result.causalChains.length,
+            pattern_count: result.patterns.length,
+            gaps: result.gaps,
+            causal_chains: result.causalChains,
+            patterns: result.patterns,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+
+      if (error) throw error;
+
+      logger.info(
         {
           userId,
-          eventCount: result.graph.nodes.length,
-          edgeCount: result.graph.edges.length,
-          chainCount: result.causalChains.length,
-          gapCount: result.gaps.length,
+          nodes: result.graph.nodes.length,
+          edges: result.graph.edges.length,
+          gaps: result.gaps.length,
+          chains: result.causalChains.length,
         },
-        'Saving chronology result'
+        'chronology: snapshot saved'
       );
-
-      // TODO: Implement full persistence logic
-      // This could involve:
-      // 1. Saving temporal edges to graph_edges
-      // 2. Saving gaps to a gaps table
-      // 3. Saving causal chains to insights or a chains table
-      // 4. Storing patterns in insights table
     } catch (error) {
-      logger.error({ error, userId }, 'Failed to save chronology result');
+      logger.error({ error, userId }, 'chronology: failed to save snapshot');
     }
   }
 }

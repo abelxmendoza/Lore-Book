@@ -1,7 +1,6 @@
-import OpenAI from 'openai';
-
 import { config } from '../config';
 import { logger } from '../logger';
+import { openai } from '../lib/openai';
 import type { MemoryEntry } from '../types';
 
 import { memoryService } from './memoryService';
@@ -32,7 +31,6 @@ type SyncOptions = {
 
 class XService {
   private readonly baseUrl = 'https://api.twitter.com/2';
-  private readonly openai = new OpenAI({ apiKey: config.openAiKey });
 
   private getAuthHeaders() {
     if (!config.xBearerToken) {
@@ -116,7 +114,7 @@ class XService {
     const fallback = `Posted on X (@${handle}): ${post.text}`;
 
     try {
-      const completion = await this.openai.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0.6,
         messages: [

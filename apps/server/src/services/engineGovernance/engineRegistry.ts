@@ -324,6 +324,20 @@ export const ENGINE_DESCRIPTORS: Record<string, EngineDescriptor> = {
     riskLevel: 'medium'
   },
 
+  willEngine: {
+    name: 'willEngine',
+    category: 'identity',
+    maturity: 'stable',
+    runMode: 'auto',
+    visibility: 'supporting',
+    confidenceWeight: 0.6,
+    downstreamConsumers: ['essenceProfile', 'recommendationEngine'],
+    description: 'Detects patterns of intention, volition, and purposeful action',
+    humanQuestion: undefined,
+    outputType: 'signal',
+    riskLevel: 'low',
+  },
+
   // ===== TOXICITY (Must Stay Hidden) =====
   toxicityResolver: {
     name: 'toxicityResolver',

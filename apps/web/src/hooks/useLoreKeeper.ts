@@ -15,6 +15,7 @@ export type JournalEntry = {
   mood?: string | null;
   chapter_id?: string | null;
   source: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type TimelineGroup = {

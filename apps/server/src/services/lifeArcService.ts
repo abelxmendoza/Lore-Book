@@ -4,18 +4,15 @@
 // summaries of recent life events
 // =====================================================
 
-import OpenAI from 'openai';
-
 import { config } from '../config';
 import { logger } from '../logger';
+import { openai } from '../lib/openai';
 
 import { entityConfidenceService } from './entityConfidenceService';
 import { metaControlService } from './metaControlService';
 import { narrativeContinuityService } from './narrativeContinuityService';
 import { stabilityDetectionService } from './stabilityDetectionService';
 import { supabaseAdmin } from './supabaseClient';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type Timeframe = 'LAST_7_DAYS' | 'LAST_30_DAYS' | 'LAST_90_DAYS';
 

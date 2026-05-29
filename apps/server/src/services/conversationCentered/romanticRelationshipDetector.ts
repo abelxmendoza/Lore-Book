@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
 
 export type RomanticRelationshipType =
@@ -66,7 +67,6 @@ export class RomanticRelationshipDetector {
       // Use LLM to detect romantic relationships
       const { config } = await import('../../config');
       const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: config.openAiKey });
 
       const entityList = mentionedEntities.map(e => `${e.name} (${e.type})`).join('\n');
 
@@ -258,7 +258,6 @@ Only include relationships with confidence >= 0.7. Be conservative.`,
     try {
       const { config } = await import('../../config');
       const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: config.openAiKey });
 
       const completion = await openai.chat.completions.create({
         model: config.defaultModel,

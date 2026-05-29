@@ -1,9 +1,8 @@
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type QueryIntent = 'factual' | 'temporal' | 'relational' | 'analytical' | 'exploratory';
 

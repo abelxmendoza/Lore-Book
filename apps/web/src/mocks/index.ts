@@ -9,7 +9,6 @@
 export { generateUnifiedNarrativeData, ENTITY_IDS, type UnifiedNarrativeData, type NarrativeEvent, type NarrativeLocation, type NarrativeMemory } from './unifiedNarrativeData';
 
 // Character mock data
-export { default as mockCharacters } from './characters';
 export { dummyCharacters } from '../components/characters/CharacterBook';
 
 // Location mock data
@@ -75,4 +74,4 @@ export {
 export { generateMockRomanticRelationships, getMockRomanticRelationships } from './romanticRelationships';
 export { MOCK_GOALS_VALUES_DATA } from './goalsValues';
 export { MOCK_MEMORY_PROPOSALS } from './memoryProposals';
-export { MOCK_CONTINUITY_EVENTS, MOCK_GOALS, MOCK_CONTRADICTIONS } from './contradictionData';
+export { mockContradictions, mockContradictionDetails } from './contradictionData';

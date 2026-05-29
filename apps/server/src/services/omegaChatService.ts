@@ -22,6 +22,7 @@ import { tangentTransitionDetector, type TransitionAnalysis, type EmotionalState
 import { entityAmbiguityService } from './entityAmbiguityService';
 import { essenceProfileService } from './essenceProfileService';
 import { essenceRefinementEngine } from './essenceRefinement';
+import { epiphanySessionManager } from './epiphanyEngine/epiphanySessionManager';
 import { intentDetectionService } from './intentDetectionService';
 import { locationService } from './locationService';
 import { memoirService } from './memoirService';
@@ -87,6 +88,7 @@ export type OmegaChatResponse = {
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   memories?: MemoryClaim[]; // Memory claims used in this response
   memorySuggestion?: MemorySuggestion; // Proactive memory suggestion
+  mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' }>;
 };
 
 export type MemorySuggestion = {
@@ -158,6 +160,13 @@ export type StreamingChatResponse = {
       entityHints: string[];
       timelineSignificant: boolean;
     };
+    mentionedEntities?: Array<{
+      id: string;
+      name: string;
+      type: 'character' | 'location';
+    }>;
+    mode?: string;
+    confidence?: number;
   };
 };
 
@@ -323,6 +332,10 @@ class OmegaChatService {
       workoutEvents?: any[];
       recentBiometrics?: any[];
       topInterests?: any[];
+      recentInterpretations?: any[];
+      stableArcs?: any[];
+      episodicEvents?: any[];
+      socialCommunities?: any[];
     },
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     entityAnalytics?: any,
@@ -332,9 +345,10 @@ class OmegaChatService {
     transitionAnalysis?: TransitionAnalysis | null,
     currentEmotionalState?: EmotionalState | null,
     currentFocusLine?: string,
-    timelineInsight?: ChatContextExtension & { layer?: string }
+    timelineInsight?: ChatContextExtension & { layer?: string },
+    continuityIntent?: import('../../utils/continuityIntentDetection').ContinuityIntent | null
   ): string {
-    return _buildSystemPrompt(orchestratorSummary, connections, continuityWarnings, strategicGuidance, sources, loreData, entityContext, entityAnalytics, entityConfidence, analyticsGate, personaBlend, transitionAnalysis, currentEmotionalState, currentFocusLine, timelineInsight);
+    return _buildSystemPrompt(orchestratorSummary, connections, continuityWarnings, strategicGuidance, sources, loreData, entityContext, entityAnalytics, entityConfidence, analyticsGate, personaBlend, transitionAnalysis, currentEmotionalState, currentFocusLine, timelineInsight, continuityIntent);
   }
 
   /**
@@ -741,71 +755,6 @@ class OmegaChatService {
     }
 
     // =====================================================
-    // MEMORY RECALL DETECTION
-    // =====================================================
-    const { isRecallQuery } = await import('./memoryRecall/recallDetector');
-    const isRecall = isRecallQuery(message);
-    let recallResult: any = null;
-
-    if (isRecall) {
-      try {
-        const { memoryRecallEngine } = await import('./memoryRecall/recallEngine');
-        const { personaController } = await import('./personaController');
-        
-        // Determine persona (Archivist for recall, or user preference)
-        const recallPersona = this.detectArchivistIntent(message) ? 'ARCHIVIST' : 'DEFAULT';
-        
-        recallResult = await memoryRecallEngine.recallMemory(userId, {
-          text: message,
-          persona: recallPersona,
-        });
-
-        // If silence response, return early with simple message
-        if ('message' in recallResult && recallResult.message.includes("don't see")) {
-          // Create a simple non-streaming response for silence
-          const silenceMessage = recallResult.message;
-          return {
-            stream: this.createTextStream(silenceMessage),
-            metadata: {
-              activePersona: recallPersona,
-            },
-          };
-        }
-
-        // Format recall for chat
-        const formatted = memoryRecallEngine.formatRecallForChat(recallResult);
-        
-        // Apply persona rules
-        const personaResponse = personaController.applyPersona(
-          { text: formatted.text },
-          recallPersona
-        );
-
-        // Build recall response text with moments
-        const momentsText = formatted.moments
-          .slice(0, 3)
-          .map(
-            (m, i) =>
-              `${i + 1}. ${new Date(m.timestamp).toLocaleDateString()}: ${m.summary.substring(0, 100)}${m.summary.length > 100 ? '...' : ''}`
-          )
-          .join('\n');
-
-        const recallText = `${personaResponse.text}\n\n${momentsText}${personaResponse.footer ? `\n\n${personaResponse.footer}` : ''}`;
-
-        // Create response with recall moments
-        return {
-          stream: this.createTextStream(recallText),
-          metadata: {
-            activePersona: recallPersona,
-          },
-        };
-      } catch (error) {
-        logger.warn({ error }, 'Memory recall failed, falling back to normal chat');
-        // Fall through to normal chat
-      }
-    }
-
-    // =====================================================
     // PERSONA DETECTION (Archivist mode)
     // =====================================================
     const isArchivistQuery = this.detectArchivistIntent(message);
@@ -988,7 +937,11 @@ class OmegaChatService {
         deprecatedUnits: ragPacket.deprecatedUnits,
         workoutEvents: ragPacket.workoutEvents,
         recentBiometrics: ragPacket.recentBiometrics,
-        topInterests: ragPacket.topInterests
+        topInterests: ragPacket.topInterests,
+        recentInterpretations: ragPacket.recentInterpretations,
+        stableArcs: ragPacket.stableArcs,
+        episodicEvents: ragPacket.episodicEvents,
+        socialCommunities: ragPacket.socialCommunities,
       },
       entityContext,
       entityAnalytics,
@@ -1202,13 +1155,24 @@ class OmegaChatService {
         entryId = savedMessage.id;
 
         // Enqueue ingestion — fully off the chat critical path.
-        // The queue handles retry (exponential backoff) and dead-letter persistence.
-        ingestionQueue.enqueue({
-          userId,
-          chatMessageId: savedMessage.id,
-          sessionId,
-          conversationHistory,
-        }, 'NORMAL');
+        // Skip when entityContext is set: ingestMessageWithContext() fires separately
+        // and handles the full pipeline for entity-scoped sessions. Enqueueing here
+        // too would double-ingest the same content → duplicate entities and events.
+        if (!entityContext) {
+          ingestionQueue.enqueue({
+            userId,
+            chatMessageId: savedMessage.id,
+            sessionId,
+            conversationHistory,
+          }, 'NORMAL');
+        }
+
+        // Fire-and-forget: retroactive pattern detection across journal/chat
+        epiphanySessionManager.feedEntry(userId, {
+          id: savedMessage.id,
+          content: message,
+          date: new Date().toISOString(),
+        }).catch(err => logger.warn({ err, userId }, 'epiphany feed failed'));
 
         timelineUpdates.push('Message saved and queued for processing');
       }
@@ -1249,6 +1213,8 @@ class OmegaChatService {
       return nameMatch || aliasMatch;
     });
     const characterIds = mentionedCharacters.map(c => c.id);
+    const mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' }> =
+      mentionedCharacters.map(c => ({ id: c.id, name: c.name, type: 'character' as const }));
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');
@@ -1347,6 +1313,7 @@ class OmegaChatService {
         messageId, // Include messageId for feedback
         sessionId, // Include sessionId for action tracking
         characterIds,
+        mentionedEntities: mentionedEntities.length > 0 ? mentionedEntities : undefined,
         sources: sources.slice(0, 10),
         connections,
         continuityWarnings,
@@ -1660,7 +1627,11 @@ class OmegaChatService {
         deprecatedUnits: ragPacket.deprecatedUnits,
         workoutEvents: ragPacket.workoutEvents,
         recentBiometrics: ragPacket.recentBiometrics,
-        topInterests: ragPacket.topInterests
+        topInterests: ragPacket.topInterests,
+        recentInterpretations: ragPacket.recentInterpretations,
+        stableArcs: ragPacket.stableArcs,
+        episodicEvents: ragPacket.episodicEvents,
+        socialCommunities: ragPacket.socialCommunities,
       },
       entityContext,
       entityAnalytics,
@@ -1826,13 +1797,17 @@ class OmegaChatService {
         if (result.data && result.data.id) {
           logger.debug({ userId, sessionId }, 'Saved assistant response');
           
-          // Enqueue AI response ingestion at LOW priority (user messages take precedence)
-          ingestionQueue.enqueue({
-            userId,
-            chatMessageId: result.data.id,
-            sessionId,
-            conversationHistory,
-          }, 'LOW');
+          // Enqueue AI response ingestion at LOW priority (user messages take precedence).
+          // Skip when entityContext is set — entity-scoped sessions are handled by
+          // ingestMessageWithContext and enqueueing here would double-ingest.
+          if (!entityContext) {
+            ingestionQueue.enqueue({
+              userId,
+              chatMessageId: result.data.id,
+              sessionId,
+              conversationHistory,
+            }, 'LOW');
+          }
         }
       })
       .catch(err => {
@@ -1950,6 +1925,8 @@ class OmegaChatService {
       message.toLowerCase().includes(char.name.toLowerCase())
     );
     const characterIds = mentionedCharacters.map(c => c.id);
+    const mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' }> =
+      mentionedCharacters.map(c => ({ id: c.id, name: c.name, type: 'character' as const }));
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');
@@ -2022,6 +1999,7 @@ class OmegaChatService {
       messageId, // Include messageId for feedback
       sessionId, // Include sessionId for action tracking
       characterIds,
+      mentionedEntities: mentionedEntities.length > 0 ? mentionedEntities : undefined,
       connections,
       continuityWarnings,
       timelineUpdates,

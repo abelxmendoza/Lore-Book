@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
 
 export type GroupRelationshipType =
@@ -224,7 +225,6 @@ export class GroupNetworkBuilder {
       // Use LLM to detect relationships
       const { config } = await import('../../config');
       const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: config.openAiKey });
 
       const groupList = mentionedGroups
         .map(g => `${g.name} (members: ${g.members.join(', ')})`)

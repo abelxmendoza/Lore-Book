@@ -1,7 +1,7 @@
-import OpenAI from 'openai';
 import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
@@ -12,7 +12,6 @@ import { memoryService } from './memoryService';
 import { peoplePlacesService } from './peoplePlacesService';
 import { supabaseAdmin } from './supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 type DocumentAnalysis = {
   entries: Array<{ 

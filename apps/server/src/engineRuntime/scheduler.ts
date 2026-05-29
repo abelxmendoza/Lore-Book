@@ -20,17 +20,24 @@ export function startEngineScheduler(): void {
     logger.info('Running scheduled daily engine recalculation');
 
     try {
-      // Get all users (adjust query based on your schema)
-      const { data: users, error } = await supabaseAdmin
-        .from('users')
-        .select('id');
+      // Get active users from journal entries (last 90 days)
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 90);
+      const { data: entries, error } = await supabaseAdmin
+        .from('journal_entries')
+        .select('user_id')
+        .gte('date', cutoff.toISOString())
+        .limit(5000);
 
       if (error) {
         logger.error({ error }, 'Error fetching users for scheduled run');
         return;
       }
 
-      if (!users || users.length === 0) {
+      const users = [...new Set((entries || []).map((e: { user_id: string }) => e.user_id))]
+        .map((id) => ({ id }));
+
+      if (users.length === 0) {
         logger.info('No active users found for scheduled run');
         return;
       }

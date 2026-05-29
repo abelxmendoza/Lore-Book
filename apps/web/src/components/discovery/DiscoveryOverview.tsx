@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  Brain, 
-  Sparkles, 
-  Zap, 
-  Heart, 
+import {
+  Brain,
+  Sparkles,
+  Zap,
+  Heart,
   Compass,
   X,
   Users,
@@ -14,7 +14,8 @@ import {
   TrendingUp,
   Target,
   Database,
-  HeartPulse
+  HeartPulse,
+  Ghost
 } from 'lucide-react';
 import { IdentityPulsePanel } from '../identity/IdentityPulsePanel';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
@@ -32,6 +33,8 @@ import { ReactionsResiliencePanel } from './ReactionsResiliencePanel';
 import { LifeArcPanel } from './LifeArcPanel';
 import { CorrectionDashboard } from '../correction-dashboard/CorrectionDashboard';
 import { EntityResolutionDashboard } from '../entity-resolution/EntityResolutionDashboard';
+import { MemoryFadePanel } from './MemoryFadePanel';
+import { HabitValuesPanel } from './HabitValuesPanel';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { fetchJson } from '../../lib/api';
 
@@ -181,11 +184,25 @@ const ALL_PANEL_CONFIGS: PanelConfig[] = [
     description: 'Give explicit control over people, places, orgs, and concepts the system has inferred. No silent merges or splits.',
     icon: Users,
     component: EntityResolutionDashboard
+  },
+  {
+    id: 'memory-fade',
+    title: 'Memory Fade Index',
+    description: 'Memories that are slipping away — ranked by accessibility score. Revisit them before they go dark.',
+    icon: Ghost,
+    component: MemoryFadePanel
+  },
+  {
+    id: 'habit-values',
+    title: 'Habits & Values',
+    description: 'Behavioral patterns and core values emerging from your entries. Streaks, decay risk, and what you keep returning to.',
+    icon: Zap,
+    component: HabitValuesPanel
   }
 ];
 
-const CORE_PANEL_IDS = ['soul-profile', 'identity', 'relationships', 'insights', 'insights-predictions', 'goals-values', 'decisions', 'life-arc', 'shadow', 'xp', 'reactions-resilience'];
-const DATA_CONTROL_PANEL_IDS = ['memory-management', 'memory-review', 'continuity', 'correction-dashboard', 'entity-resolution'];
+const CORE_PANEL_IDS = ['soul-profile', 'identity', 'relationships', 'insights', 'insights-predictions', 'goals-values', 'decisions', 'life-arc', 'shadow', 'xp', 'reactions-resilience', 'habit-values'];
+const DATA_CONTROL_PANEL_IDS = ['memory-management', 'memory-review', 'continuity', 'correction-dashboard', 'entity-resolution', 'memory-fade'];
 
 const CORE_PANEL_CONFIGS = CORE_PANEL_IDS.map(id => ALL_PANEL_CONFIGS.find(p => p.id === id)!).filter(Boolean);
 const DATA_CONTROL_PANEL_CONFIGS = DATA_CONTROL_PANEL_IDS.map(id => ALL_PANEL_CONFIGS.find(p => p.id === id)!).filter(Boolean);

@@ -1,12 +1,11 @@
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 
 import { skillService, type SkillCategory } from './skillService';
 import { skillDetailsExtractionService } from './skillDetailsExtractionService';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export interface ExtractedSkill {
   skill_name: string;

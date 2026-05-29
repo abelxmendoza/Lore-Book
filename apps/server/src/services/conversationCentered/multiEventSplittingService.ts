@@ -3,13 +3,12 @@
 // Purpose: Split single entries into multiple distinct events
 // =====================================================
 
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import type { ExtractedUnit } from '../../types/conversationCentered';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export interface SplitEvent {
   id: string;

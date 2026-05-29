@@ -1321,7 +1321,7 @@ export class ConversationIngestionPipeline {
       // Event assembly will skip deprecated units automatically
       if (unitIds.length > 0) {
         eventAssemblyService
-          .assembleEvents(userId)
+          .assembleEvents(userId, threadId)
           .then(async (assembledEvents) => {
             // Step 12.5: Link assembled events to previous context (Phase-Safe)
             // Step 12.6: Detect event impacts (how events affect the user)

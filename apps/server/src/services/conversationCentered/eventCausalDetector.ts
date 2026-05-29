@@ -4,13 +4,12 @@
 // Example: "abuelo got West Nile virus" → "tia Lourdes at post-acute center"
 // =====================================================
 
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type CausalType =
   | 'causes'           // Event A directly causes Event B

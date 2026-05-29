@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
 
 export type SkillRelationshipType =
@@ -210,7 +211,6 @@ export class SkillNetworkBuilder {
       // Use LLM to detect relationships
       const { config } = await import('../../config');
       const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: config.openAiKey });
 
       const skillList = mentionedSkills.map(s => s.name).join(', ');
 

@@ -1,13 +1,12 @@
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import { memoryService } from '../memoryService';
 
 import type { WillEvent, WillProcessingContext } from './types';
 import { WillStorage } from './willStorage';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 /**
  * Will Engine

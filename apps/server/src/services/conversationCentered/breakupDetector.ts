@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
 
 export type BreakupType =
@@ -61,7 +62,6 @@ export class BreakupDetector {
       // Use LLM to analyze breakup
       const { config } = await import('../../config');
       const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: config.openAiKey });
 
       const completion = await openai.chat.completions.create({
         model: config.defaultModel,

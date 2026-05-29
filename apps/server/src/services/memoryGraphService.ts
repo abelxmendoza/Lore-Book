@@ -17,6 +17,17 @@ import { memoryService } from './memoryService';
 import { peoplePlacesService } from './peoplePlacesService';
 
 class MemoryGraphService {
+  // Per-user graph cache — TTL 3 minutes, max 50 users.
+  // Both ragBuilderService and memoryRetriever call buildGraph per turn;
+  // the cache prevents the expensive 250-entry rebuild on the second call.
+  private graphCache = new Map<string, { graph: MemoryGraph; ts: number }>();
+  private readonly GRAPH_TTL = 3 * 60 * 1000;
+  private readonly GRAPH_MAX_USERS = 50;
+
+  invalidateGraph(userId: string) {
+    this.graphCache.delete(userId);
+  }
+
   private addNode(nodes: Map<string, MemoryGraphNode>, node: MemoryGraphNode) {
     if (!nodes.has(node.id)) {
       nodes.set(node.id, node);
@@ -141,6 +152,9 @@ class MemoryGraphService {
   }
 
   async buildGraph(userId: string): Promise<MemoryGraph> {
+    const cached = this.graphCache.get(userId);
+    if (cached && Date.now() - cached.ts < this.GRAPH_TTL) return cached.graph;
+
     const [entries, entities, chapters] = await Promise.all([
       memoryService.searchEntriesWithCorrections(userId, { limit: 250 }),
       peoplePlacesService.listEntities(userId),
@@ -332,12 +346,65 @@ class MemoryGraphService {
       }
     }
 
-    return {
+    const graph: MemoryGraph = {
       nodes: Array.from(nodes.values()),
       edges: Array.from(edges.values()),
       generatedAt: new Date().toISOString(),
       entryCount: entries.length
-    } satisfies MemoryGraph;
+    };
+
+    // Evict oldest user if at capacity before storing
+    if (!this.graphCache.has(userId) && this.graphCache.size >= this.GRAPH_MAX_USERS) {
+      const oldest = [...this.graphCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+      if (oldest) this.graphCache.delete(oldest[0]);
+    }
+    this.graphCache.set(userId, { graph, ts: Date.now() });
+    return graph;
+  }
+
+  /**
+   * Spreading activation over a pre-built MemoryGraph.
+   *
+   * Starting from seedNodeIds (e.g. entity IDs mentioned in the current query),
+   * activation propagates along graph edges for `hops` steps. Each hop multiplies
+   * by edge.weight * decayFactor, so distant or weakly-connected nodes receive
+   * progressively less activation. Seed nodes always start at 1.0.
+   *
+   * Returns a Map<nodeId, activation> sorted highest-first. Callers can use
+   * the node IDs to boost retrieval ranking for contextually adjacent entries.
+   */
+  spreadActivationFromGraph(
+    graph: MemoryGraph,
+    seedNodeIds: string[],
+    hops = 2,
+    decayFactor = 0.5
+  ): Map<string, number> {
+    const activation = new Map<string, number>();
+    for (const id of seedNodeIds) activation.set(id, 1.0);
+
+    // Build bidirectional adjacency list
+    const adj = new Map<string, Array<{ id: string; weight: number }>>();
+    for (const edge of graph.edges) {
+      if (!adj.has(edge.source)) adj.set(edge.source, []);
+      if (!adj.has(edge.target)) adj.set(edge.target, []);
+      adj.get(edge.source)!.push({ id: edge.target, weight: edge.weight });
+      adj.get(edge.target)!.push({ id: edge.source, weight: edge.weight });
+    }
+
+    let frontier = new Set(seedNodeIds);
+    for (let hop = 0; hop < hops; hop++) {
+      const next = new Set<string>();
+      for (const nodeId of frontier) {
+        const current = activation.get(nodeId) ?? 0;
+        for (const { id, weight } of (adj.get(nodeId) ?? [])) {
+          activation.set(id, (activation.get(id) ?? 0) + current * weight * decayFactor);
+          next.add(id);
+        }
+      }
+      frontier = next;
+    }
+
+    return new Map([...activation.entries()].sort((a, b) => b[1] - a[1]));
   }
 }
 

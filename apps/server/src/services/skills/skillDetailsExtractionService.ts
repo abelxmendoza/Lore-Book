@@ -1,9 +1,8 @@
-import OpenAI from 'openai';
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 import { config } from '../../config';
 import { supabaseAdmin } from '../supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export interface SkillMetadata {
   // Learning Context

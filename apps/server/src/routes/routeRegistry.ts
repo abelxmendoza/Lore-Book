@@ -84,7 +84,6 @@ import { userRouter } from './user';
 import { securityRouter } from './security';
 import { essenceRouter } from './essence';
 import { verificationRouter } from './verification';
-import timelineV2Router from './timelineV2';
 import { omegaMemoryRouter } from './omegaMemory';
 import { perspectivesRouter } from './perspectives';
 import { memoryReviewQueueRouter } from './memoryReviewQueue';
@@ -162,6 +161,7 @@ import willRouter from './will';
 import { voidRouter } from './voids';
 import biasEthicsRouter from './biasEthics';
 import thoughtsRouter from './thoughts';
+import { countsRouter } from './counts';
 
 // ---------------------------------------------------------------------------
 
@@ -207,6 +207,13 @@ export const routeRegistry: RouteEntry[] = [
     requiresAuth: false,
     classification: 'CORE_RUNTIME',
     description: 'Runtime diagnostics',
+  },
+  {
+    path: '/api/counts',
+    router: countsRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Entity count summary for sidebar badges',
   },
 
   // ---- SECURITY -----------------------------------------------------------
@@ -501,10 +508,10 @@ export const routeRegistry: RouteEntry[] = [
     description: 'Personal evolution tracking',
   },
   {
-    path: '/api/life-arc',
+    path: '/api/life-arcs',
     router: lifeArcRouter,
     classification: 'EXPERIMENTAL',
-    description: 'Life arc narrative engine',
+    description: 'Life arc CRUD — list, create, update, delete arcs and relationships',
   },
   {
     path: '/api/life',
@@ -1130,13 +1137,6 @@ export const routeRegistry: RouteEntry[] = [
     description: 'External data ingestion hub',
   },
 
-  // ---- LEGACY -------------------------------------------------------------
-  {
-    path: '/api/timeline-v2',
-    router: timelineV2Router,
-    classification: 'LEGACY',
-    description: 'Superseded by /api/timeline — kept for data migration',
-  },
 ];
 
 // ---------------------------------------------------------------------------

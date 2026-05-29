@@ -14,6 +14,7 @@ import { ValueClassifier } from './valueClassifier';
 import { ValueConflictDetector } from './valueConflictDetector';
 import { ValueEvolution } from './valueEvolution';
 import { ValueExtractor } from './valueExtractor';
+import { essenceProfileService } from '../essenceProfileService';
 
 /**
  * Main Values & Beliefs Engine
@@ -285,8 +286,7 @@ export class ValuesEngine {
       // Get continuity data if available
       // TODO: Fetch from continuity engine if needed
 
-      // Get identity pulse data if available
-      // TODO: Fetch from identity pulse service if needed
+      context.identity_pulse = await essenceProfileService.getProfile(userId).catch(() => undefined);
 
     } catch (error) {
       logger.error({ error }, 'Failed to build values context');

@@ -3,10 +3,9 @@
  * Service for managing multiple viewpoints on the same reality
  */
 
-import OpenAI from 'openai';
-
 import { config } from '../config';
 import { logger } from '../logger';
+import { openai } from '../lib/openai';
 import type {
   Perspective,
   PerspectiveClaim,
@@ -23,8 +22,6 @@ import type {
 import { continuityService } from './continuityService';
 import { embeddingService } from './embeddingService';
 import { supabaseAdmin } from './supabaseClient';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export class PerspectiveService {
   /**

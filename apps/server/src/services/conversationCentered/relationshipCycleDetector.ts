@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
 
 export type CycleType =
@@ -90,7 +91,6 @@ export class RelationshipCycleDetector {
       // Use LLM to detect cycles
       const { config } = await import('../../config');
       const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: config.openAiKey });
 
       const mentionTimeline = allMentions
         .map(m => `[${new Date(m.created_at).toLocaleDateString()}] ${m.content.substring(0, 150)}`)

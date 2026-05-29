@@ -496,6 +496,23 @@ export const LocationBook = () => {
     }
   };
 
+  // Auto-open modal when navigated here from an entity chip (chat → locations).
+  useEffect(() => {
+    if (loading || locations.length === 0) return;
+    const id = sessionStorage.getItem('highlightItem');
+    if (!id) return;
+    sessionStorage.removeItem('highlightItem');
+    const match = locations.find(l => l.id === id);
+    if (match) setSelectedLocation(match);
+  }, [loading, locations]);
+
+  // Refresh when chat pipeline creates/updates locations.
+  useEffect(() => {
+    const handler = () => { void loadLocations(); };
+    window.addEventListener('lk:locations-updated', handler);
+    return () => window.removeEventListener('lk:locations-updated', handler);
+  }, []);
+
   // Arrow key navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -711,10 +728,7 @@ export const LocationBook = () => {
           location={selectedLocation}
           onClose={() => {
             setSelectedLocation(null);
-          }}
-          onUpdate={() => {
             void loadLocations();
-            setSelectedLocation(null);
           }}
         />
       )}

@@ -3,9 +3,9 @@
  * AI-powered classification for entries: tags, lane, hierarchy, characters
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import type { MemoryEntry } from '../types';
 
@@ -15,7 +15,6 @@ import { ruleBasedTagExtractionService } from './ruleBasedTagExtraction';
 import { timelineManager } from './timelineManager';
 
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type AutoTaggingResult = {
   tags: string[];

@@ -3,9 +3,9 @@
  * Service for capturing and retrieving decision memory
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import type {
   Decision,
@@ -27,7 +27,6 @@ import { omegaMemoryService } from './omegaMemoryService';
 import { perspectiveService } from './perspectiveService';
 import { supabaseAdmin } from './supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export class DecisionMemoryService {
   /**

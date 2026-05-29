@@ -3,9 +3,9 @@
  * Service for generating insights from existing memory
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import type {
   Insight,
@@ -25,7 +25,6 @@ import { omegaMemoryService } from './omegaMemoryService';
 import { perspectiveService } from './perspectiveService';
 import { supabaseAdmin } from './supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 const THEME_THRESHOLD = 3; // Minimum frequency for recurring themes
 

@@ -76,7 +76,7 @@ describe('OmegaMemoryService', () => {
 
       // Mock continuityService.emitEvent to prevent actual DB calls
       const { continuityService } = await import('../../src/services/continuityService');
-      vi.mocked(continuityService.emitEvent).mockResolvedValue(undefined);
+      vi.mocked(continuityService.emitEvent).mockResolvedValue(undefined as any);
 
       vi.mocked(supabaseAdmin.from).mockReturnValue(mockChain as any);
 
@@ -91,7 +91,7 @@ describe('OmegaMemoryService', () => {
     it('should create new entity if not found', async () => {
       // Mock continuityService.emitEvent to prevent actual DB calls
       const { continuityService } = await import('../../src/services/continuityService');
-      vi.mocked(continuityService.emitEvent).mockResolvedValue(undefined);
+      vi.mocked(continuityService.emitEvent).mockResolvedValue(undefined as any);
       
       // Mock findEntityByNameOrAlias to return null (not found)
       const mockFindChain = {
@@ -119,9 +119,31 @@ describe('OmegaMemoryService', () => {
         single: vi.fn().mockResolvedValue({ data: newEntity, error: null })
       };
 
+      // resolveEntities call order:
+      //   1. batch load (empty pool)       → mockBatchChain
+      //   2. exact match query             → mockFindChain (returns null via .single())
+      //   3. fuzzy scan (all entities)     → mockFuzzyScanChain (returns empty)
+      //   4. (rpc semantic search — auto-mocked, returns undefined, caught gracefully)
+      //   5. createEntity insert           → mockCreateChain
+      const mockBatchChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        then: (resolve: any) => resolve({ data: [], error: null }),
+      };
+
+      const mockFuzzyScanChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        then: (resolve: any) => resolve({ data: [], error: null }),
+      };
+
       vi.mocked(supabaseAdmin.from)
-        .mockReturnValueOnce(mockFindChain as any)
-        .mockReturnValueOnce(mockCreateChain as any);
+        .mockReturnValueOnce(mockBatchChain as any)      // 1. batch load
+        .mockReturnValueOnce(mockFindChain as any)       // 2. exact match
+        .mockReturnValueOnce(mockFuzzyScanChain as any)  // 3. fuzzy scan
+        .mockReturnValueOnce(mockCreateChain as any);    // 4. createEntity insert
 
       const result = await omegaMemoryService.resolveEntities('user-123', [
         { name: 'Jane Doe', type: 'PERSON' }

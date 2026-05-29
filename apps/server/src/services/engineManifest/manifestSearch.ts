@@ -1,6 +1,6 @@
-import OpenAI from 'openai';
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
 
 import type { EngineSearchResult } from './manifestTypes';
@@ -9,13 +9,7 @@ import type { EngineSearchResult } from './manifestTypes';
  * Search across all engine blueprints via embeddings
  */
 export class ManifestSearch {
-  private openai: OpenAI;
 
-  constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-  }
 
   /**
    * Search engines by query
@@ -25,7 +19,7 @@ export class ManifestSearch {
       logger.debug({ query, limit }, 'Searching engines');
 
       // Create query embedding
-      const embeddingResponse = await this.openai.embeddings.create({
+      const embeddingResponse = await openai.embeddings.create({
         model: 'text-embedding-3-large',
         input: query,
       });

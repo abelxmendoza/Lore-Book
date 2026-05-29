@@ -170,6 +170,18 @@ export async function runLegacyAnalytics(
   return executeModuleSafely(descriptor, context);
 }
 
+/**
+ * Modules skipped when signal ratio is too low to justify their compute cost.
+ * IdentityPulse and RelationshipAnalytics still run (cheap, always useful).
+ */
+const HEAVY_MODULES = new Set([
+  'sagaEngine', 'predictionEngine', 'insightEngine',
+  'memoryFabric', 'lifeMap', 'shadowEngine',
+]);
+
+/** Minimum fraction of meaningful entries required to run heavy analytics modules. */
+const MIN_SIGNAL_RATIO = 0.15;
+
 /** Run multiple modules through the orchestrator. Returns map of moduleName -> AnalyticsResult. */
 export async function runAnalyticsOrchestrator(
   request: OrchestratorRequest,
@@ -177,11 +189,31 @@ export async function runAnalyticsOrchestrator(
 ): Promise<Record<string, AnalyticsResult<AnalyticsPayload>>> {
   const context = await buildAnalyticsContext(request);
   const results: Record<string, AnalyticsResult<AnalyticsPayload>> = {};
-  const requested = Object.keys(runMap);
 
-  for (const moduleName of requested) {
+  // Signal gate: skip expensive modules when the user's entries are mostly
+  // routine noise (< MIN_SIGNAL_RATIO meaningful entries in the time window).
+  // This prevents running saga/prediction/insight analytics on a user who has
+  // only written "went to work, had coffee" for the past month.
+  let signalRatio = 1.0;
+  const hasHeavyModules = Object.keys(runMap).some(m => HEAVY_MODULES.has(m));
+  if (hasHeavyModules) {
+    try {
+      const { signalNoiseAnalysisService } = await import('../signalNoiseAnalysis/signalNoiseAnalysisService');
+      signalRatio = await signalNoiseAnalysisService.getSignalRatio(request.userId);
+      logger.debug({ userId: request.userId, signalRatio }, 'analytics signal gate evaluated');
+    } catch (err) {
+      logger.warn({ err }, 'signal gate check failed — proceeding without gate');
+    }
+  }
+
+  for (const moduleName of Object.keys(runMap)) {
     const run = runMap[moduleName];
     if (!run) continue;
+    if (HEAVY_MODULES.has(moduleName) && signalRatio < MIN_SIGNAL_RATIO) {
+      logger.debug({ moduleName, signalRatio }, 'analytics module skipped: signal too low');
+      results[moduleName] = buildDegradedResult(moduleName, new Error('SIGNAL_TOO_LOW'));
+      continue;
+    }
     const descriptor = createLegacyDescriptor(moduleName, run);
     results[moduleName] = await executeModuleSafely(descriptor, context);
   }

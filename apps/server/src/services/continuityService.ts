@@ -354,11 +354,12 @@ export class ContinuityService {
         relatedContext.claims = claims || [];
       }
 
-      // Fetch related entities
+      // Fetch related entities — scoped to userId to prevent cross-user bleed
       if (event.related_entity_ids && event.related_entity_ids.length > 0) {
         const { data: entities } = await supabaseAdmin
           .from('omega_entities')
           .select('id, primary_name, type')
+          .eq('user_id', userId)
           .in('id', event.related_entity_ids);
         relatedContext.entities = entities || [];
       }
@@ -532,20 +533,22 @@ export class ContinuityService {
   private async createSnapshot(event: ContinuityEvent): Promise<Record<string, any>> {
     const snapshot: Record<string, any> = {};
 
-    // Snapshot claims
+    // Snapshot claims — scoped to event owner to prevent cross-user bleed
     if (event.related_claim_ids && event.related_claim_ids.length > 0) {
       const { data: claims } = await supabaseAdmin
         .from('omega_claims')
         .select('*')
+        .eq('user_id', event.user_id)
         .in('id', event.related_claim_ids);
       snapshot.claims = claims || [];
     }
 
-    // Snapshot entities
+    // Snapshot entities — scoped to event owner to prevent cross-user bleed
     if (event.related_entity_ids && event.related_entity_ids.length > 0) {
       const { data: entities } = await supabaseAdmin
         .from('omega_entities')
         .select('*')
+        .eq('user_id', event.user_id)
         .in('id', event.related_entity_ids);
       snapshot.entities = entities || [];
     }
@@ -626,6 +629,66 @@ export class ContinuityService {
       logger.error({ err: error, eventId, userId }, 'Failed to get reversal log');
       return null;
     }
+  }
+
+  /**
+   * Summarise recent continuity events into a snapshot.
+   * Called nightly by the engine runtime to track drift/contradiction trends.
+   */
+  async runContinuityAnalysis(userId: string): Promise<{
+    events: ContinuityEvent[];
+    summary: {
+      contradictions: number;
+      abandonedGoals: number;
+      arcShifts: number;
+      identityDrifts: number;
+      emotionalTransitions: number;
+      thematicDrifts: number;
+    };
+  }> {
+    const WINDOW_DAYS = 30;
+    const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data, error } = await supabaseAdmin
+      .from('continuity_events')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (error) {
+      logger.error({ error, userId }, 'continuity: failed to load events');
+      return { events: [], summary: { contradictions: 0, abandonedGoals: 0, arcShifts: 0, identityDrifts: 0, emotionalTransitions: 0, thematicDrifts: 0 } };
+    }
+
+    const events = (data ?? []) as ContinuityEvent[];
+    const count = (type: string) => events.filter(e => e.type === type).length;
+
+    const summary = {
+      contradictions: count('CONTRADICTION_DETECTED'),
+      abandonedGoals: count('GOAL_ABANDONED'),
+      arcShifts: count('ARC_SHIFT'),
+      identityDrifts: count('IDENTITY_DRIFT'),
+      emotionalTransitions: count('EMOTIONAL_TRANSITION'),
+      thematicDrifts: count('THEMATIC_DRIFT'),
+    };
+
+    // Persist snapshot so trend data accumulates over time
+    await supabaseAdmin
+      .from('continuity_snapshots')
+      .insert({
+        user_id: userId,
+        window_days: WINDOW_DAYS,
+        ...summary,
+        created_at: new Date().toISOString(),
+      })
+      .then(({ error: e }) => {
+        if (e) logger.warn({ e, userId }, 'continuity: snapshot insert failed');
+      });
+
+    logger.info({ userId, summary }, 'continuity: analysis complete');
+    return { events, summary };
   }
 }
 

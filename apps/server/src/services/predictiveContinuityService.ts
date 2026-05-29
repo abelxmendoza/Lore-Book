@@ -3,9 +3,9 @@
  * Service for generating probabilistic predictions
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import type {
   Prediction,
@@ -26,7 +26,6 @@ import { insightReflectionService } from './insightReflectionService';
 import { omegaMemoryService } from './omegaMemoryService';
 import { supabaseAdmin } from './supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 const MIN_SAMPLE = 3;
 
 export class PredictiveContinuityService {

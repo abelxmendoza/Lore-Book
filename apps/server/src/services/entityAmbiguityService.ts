@@ -7,10 +7,11 @@
 // =====================================================
 
 import { logger } from '../logger';
+import { AI_THRESHOLDS } from '../config/aiThresholds';
 import type { UserIntent } from '../types/conversationalOrchestration';
 import { jaroWinkler } from '../utils/jaroWinkler';
 
-import { entityResolutionService, type EntityCandidate, type ResolutionTier } from './entityResolutionService';
+import { entityResolutionService, type EntityCandidate } from './entityResolutionService';
 
 // -----------------------------
 // TYPES
@@ -84,7 +85,7 @@ export class EntityAmbiguityService {
     // Pattern: Capitalized words (potential names)
     // This is a simple heuristic - can be enhanced with LLM
     const namePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/g;
-    let match;
+    let match: RegExpExecArray | null;
 
     while ((match = namePattern.exec(message)) !== null) {
       const text = match[1];
@@ -200,8 +201,11 @@ export class EntityAmbiguityService {
             ? Math.max(...candidate.aliases.map(a => jaroWinkler(normalizedMention, a.toLowerCase())))
             : 0;
           const jw = Math.max(jwName, jwAlias);
-          // Map JW score to name score: JW ≥ 0.88 → high confidence, JW < 0.72 → effectively no match
-          nameScore = jw >= 0.88 ? 0.75 : jw >= 0.80 ? 0.60 : jw >= 0.72 ? 0.45 : 0.20;
+          // Map JW score to name score: JW ≥ JW_ENTITY_MATCH → high confidence, JW < JW_PARTIAL_LOW → no match
+          nameScore = jw >= AI_THRESHOLDS.JW_ENTITY_MATCH ? 0.75
+            : jw >= AI_THRESHOLDS.JW_PARTIAL_HIGH        ? 0.60
+            : jw >= AI_THRESHOLDS.JW_PARTIAL_LOW         ? 0.45
+            : 0.20;
         }
       }
 
@@ -252,7 +256,7 @@ export class EntityAmbiguityService {
    * Build disambiguation prompt for UI
    */
   buildDisambiguationPrompt(ambiguity: AmbiguitySignal): DisambiguationPrompt {
-    const options = ambiguity.candidates.map(candidate => {
+    const options: DisambiguationPrompt['options'] = ambiguity.candidates.map(candidate => {
       // Build subtitle with context hints
       const hints: string[] = [];
       

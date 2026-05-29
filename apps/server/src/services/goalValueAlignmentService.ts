@@ -3,9 +3,8 @@
  * Service for tracking values, goals, and alignment
  */
 
-import OpenAI from 'openai';
-
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import type {
   Value,
@@ -26,8 +25,6 @@ import { decisionMemoryService } from './decisionMemoryService';
 import { insightReflectionService } from './insightReflectionService';
 import { omegaMemoryService } from './omegaMemoryService';
 import { supabaseAdmin } from './supabaseClient';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export class GoalValueAlignmentService {
   /**

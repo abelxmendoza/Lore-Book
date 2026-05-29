@@ -93,6 +93,52 @@ export class EntityResolutionService {
   }
 
   /**
+   * Batch-load usage counts for a set of entity IDs in O(1) queries.
+   * Returns a Map<entityId, count>. Falls back to zero counts on error.
+   */
+  private async batchLoadUsageCounts(entityIds: string[]): Promise<Map<string, number>> {
+    const countMap = new Map<string, number>();
+    if (entityIds.length === 0) return countMap;
+
+    try {
+      const { data } = await supabaseAdmin
+        .from('entity_unit_links')
+        .select('entity_id')
+        .in('entity_id', entityIds);
+
+      for (const row of data ?? []) {
+        countMap.set(row.entity_id, (countMap.get(row.entity_id) ?? 0) + 1);
+      }
+      return countMap;
+    } catch {
+      // entity_unit_links unavailable — fall through to per-table fallback
+    }
+
+    // Fallback: batch count from type-specific tables in parallel
+    try {
+      const [charCounts, locCounts, entityCounts] = await Promise.all([
+        supabaseAdmin.from('character_memories').select('character_id').in('character_id', entityIds),
+        supabaseAdmin.from('location_mentions').select('location_id').in('location_id', entityIds),
+        supabaseAdmin.from('entity_mentions').select('entity_id').in('entity_id', entityIds),
+      ]);
+
+      for (const row of charCounts.data ?? []) {
+        countMap.set(row.character_id, (countMap.get(row.character_id) ?? 0) + 1);
+      }
+      for (const row of locCounts.data ?? []) {
+        countMap.set(row.location_id, (countMap.get(row.location_id) ?? 0) + 1);
+      }
+      for (const row of entityCounts.data ?? []) {
+        countMap.set(row.entity_id, (countMap.get(row.entity_id) ?? 0) + 1);
+      }
+    } catch (err) {
+      logger.debug({ err }, 'batchLoadUsageCounts: fallback tables unavailable, using zero counts');
+    }
+
+    return countMap;
+  }
+
+  /**
    * List all entities for a user with tiered loading
    */
   async listEntities(
@@ -105,203 +151,100 @@ export class EntityResolutionService {
     const entities: EntityCandidate[] = [];
 
     try {
-      // =====================================================
-      // PRIMARY ENTITIES (DEFAULT - USER-FACING)
-      // =====================================================
+      // ── Fetch all raw rows concurrently ──────────────────────────────────────
+      const [
+        { data: characters },
+        { data: locations },
+        { data: orgs },
+        personResult,
+        conceptResult,
+        genericResult,
+      ] = await Promise.all([
+        supabaseAdmin.from('characters').select('id, name, alias, created_at, updated_at').eq('user_id', userId).order('updated_at', { ascending: false }),
+        supabaseAdmin.from('locations').select('id, name, created_at, updated_at').eq('user_id', userId).order('updated_at', { ascending: false }),
+        supabaseAdmin.from('entities').select('id, canonical_name, aliases, created_at, updated_at').eq('user_id', userId).eq('type', 'org').order('updated_at', { ascending: false }),
+        options.include_secondary
+          ? supabaseAdmin.from('omega_entities').select('id, primary_name, aliases, created_at, updated_at').eq('user_id', userId).eq('type', 'PERSON').neq('mention_status', 'mentioned_only').order('updated_at', { ascending: false })
+          : Promise.resolve({ data: null, error: null }),
+        options.include_tertiary
+          ? supabaseAdmin.from('entities').select('id, canonical_name, aliases, created_at, updated_at').eq('user_id', userId).eq('type', 'thing').order('updated_at', { ascending: false })
+          : Promise.resolve({ data: null, error: null }),
+        options.include_tertiary
+          ? supabaseAdmin.from('entities').select('id, canonical_name, aliases, created_at, updated_at').eq('user_id', userId).in('type', ['event', 'thing']).order('updated_at', { ascending: false })
+          : Promise.resolve({ data: null, error: null }),
+      ]);
 
-      // Get characters
-      const { data: characters, error: charError } = await supabaseAdmin
-        .from('characters')
-        .select('id, name, alias, created_at, updated_at')
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: false });
+      const persons = personResult.data;
+      const concepts = conceptResult.data;
+      const genericEntities = genericResult.data;
 
-      if (!charError && characters) {
-        for (const char of characters) {
-          const normalized = await this.normalizeEntity(
-            {
-              id: char.id,
-              name: char.name,
-              aliases: Array.isArray(char.alias) ? char.alias : (char.alias ? [char.alias] : []),
-              created_at: char.created_at,
-              updated_at: char.updated_at,
-            },
-            'CHARACTER',
-            'PRIMARY',
-            'characters',
-            userId
+      // ── Batch-load ALL usage counts in 1–4 queries (not N×4) ─────────────────
+      const allIds = [
+        ...(characters ?? []).map((c: any) => c.id),
+        ...(locations ?? []).map((l: any) => l.id),
+        ...(orgs ?? []).map((o: any) => o.id),
+        ...(persons ?? []).map((p: any) => p.id),
+        ...(concepts ?? []).map((c: any) => c.id),
+        ...(genericEntities ?? []).map((g: any) => g.id),
+      ];
+      const usageCountMap = await this.batchLoadUsageCounts(allIds);
+
+      // ── Build EntityCandidates synchronously from pre-fetched data ───────────
+      for (const char of characters ?? []) {
+        const n = this.normalizeEntity(
+          { id: char.id, name: char.name, aliases: Array.isArray(char.alias) ? char.alias : (char.alias ? [char.alias] : []), created_at: char.created_at, updated_at: char.updated_at },
+          'CHARACTER', 'PRIMARY', 'characters', usageCountMap.get(char.id) ?? 0
+        );
+        if (n) entities.push(n);
+      }
+
+      for (const loc of locations ?? []) {
+        const n = this.normalizeEntity(
+          { id: loc.id, name: loc.name, aliases: [], created_at: loc.created_at, updated_at: loc.updated_at },
+          'LOCATION', 'PRIMARY', 'locations', usageCountMap.get(loc.id) ?? 0
+        );
+        if (n) entities.push(n);
+      }
+
+      for (const org of orgs ?? []) {
+        const n = this.normalizeEntity(
+          { id: org.id, name: org.canonical_name, aliases: org.aliases ?? [], created_at: org.created_at, updated_at: org.updated_at },
+          'ORG', 'PRIMARY', 'entities', usageCountMap.get(org.id) ?? 0
+        );
+        if (n) entities.push(n);
+      }
+
+      for (const person of persons ?? []) {
+        const n = this.normalizeEntity(
+          { id: person.id, name: person.primary_name, aliases: person.aliases ?? [], created_at: person.created_at, updated_at: person.updated_at },
+          'PERSON', 'SECONDARY', 'omega_entities', usageCountMap.get(person.id) ?? 0
+        );
+        if (n) entities.push(n);
+      }
+
+      if (concepts || genericEntities) {
+        const conceptIdSet = new Set((concepts ?? []).map((c: any) => c.id as string));
+
+        for (const concept of concepts ?? []) {
+          const n = this.normalizeEntity(
+            { id: concept.id, name: concept.canonical_name, aliases: concept.aliases ?? [], created_at: concept.created_at, updated_at: concept.updated_at },
+            'CONCEPT', 'TERTIARY', 'entities', usageCountMap.get(concept.id) ?? 0
           );
-          if (normalized) {
-            entities.push(normalized);
-          }
+          if (n) entities.push(n);
         }
-      }
 
-      // Get locations
-      const { data: locations, error: locError } = await supabaseAdmin
-        .from('locations')
-        .select('id, name, created_at, updated_at')
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: false });
-
-      if (!locError && locations) {
-        for (const loc of locations) {
-          const normalized = await this.normalizeEntity(
-            {
-              id: loc.id,
-              name: loc.name,
-            aliases: [],
-              created_at: loc.created_at,
-              updated_at: loc.updated_at,
-            },
-            'LOCATION',
-            'PRIMARY',
-            'locations',
-            userId
+        for (const generic of genericEntities ?? []) {
+          if (conceptIdSet.has(generic.id)) continue;
+          const n = this.normalizeEntity(
+            { id: generic.id, name: generic.canonical_name, aliases: generic.aliases ?? [], created_at: generic.created_at, updated_at: generic.updated_at },
+            'ENTITY', 'TERTIARY', 'entities', usageCountMap.get(generic.id) ?? 0
           );
-          if (normalized) {
-            entities.push(normalized);
-          }
+          if (n) entities.push(n);
         }
       }
 
-      // Get organizations from entities table
-      const { data: orgs, error: orgError } = await supabaseAdmin
-        .from('entities')
-        .select('id, canonical_name, aliases, created_at, updated_at')
-        .eq('user_id', userId)
-        .eq('type', 'org')
-        .order('updated_at', { ascending: false });
-
-      if (!orgError && orgs) {
-        for (const org of orgs) {
-          const normalized = await this.normalizeEntity(
-            {
-              id: org.id,
-              name: org.canonical_name,
-              aliases: org.aliases || [],
-              created_at: org.created_at,
-              updated_at: org.updated_at,
-            },
-            'ORG',
-            'PRIMARY',
-            'entities',
-            userId
-          );
-          if (normalized) {
-            entities.push(normalized);
-          }
-        }
-      }
-
-      // =====================================================
-      // SECONDARY ENTITIES (OPTIONAL - OMEGA-INTERNAL)
-      // =====================================================
-
-      if (options.include_secondary) {
-        const { data: persons, error: personError } = await supabaseAdmin
-          .from('omega_entities')
-          .select('id, primary_name, aliases, created_at, updated_at')
-          .eq('user_id', userId)
-          .eq('type', 'PERSON')
-          .order('updated_at', { ascending: false });
-
-        if (!personError && persons) {
-          for (const person of persons) {
-            const normalized = await this.normalizeEntity(
-              {
-                id: person.id,
-                name: person.primary_name,
-                aliases: person.aliases || [],
-                created_at: person.created_at,
-                updated_at: person.updated_at,
-              },
-              'PERSON',
-              'SECONDARY',
-              'omega_entities',
-              userId
-            );
-            if (normalized) {
-              entities.push(normalized);
-            }
-          }
-        }
-      }
-
-      // =====================================================
-      // TERTIARY ENTITIES (ADVANCED - DEBUG ONLY)
-      // =====================================================
-
-      if (options.include_tertiary) {
-        // Get concepts
-        const { data: concepts, error: conceptError } = await supabaseAdmin
-          .from('entities')
-          .select('id, canonical_name, aliases, created_at, updated_at')
-          .eq('user_id', userId)
-          .eq('type', 'thing') // Assuming concepts are stored as 'thing' type
-          .order('updated_at', { ascending: false });
-
-        if (!conceptError && concepts) {
-          for (const concept of concepts) {
-            const normalized = await this.normalizeEntity(
-              {
-                id: concept.id,
-                name: concept.canonical_name,
-                aliases: concept.aliases || [],
-                created_at: concept.created_at,
-                updated_at: concept.updated_at,
-              },
-              'CONCEPT',
-              'TERTIARY',
-              'entities',
-              userId
-            );
-            if (normalized) {
-              entities.push(normalized);
-            }
-          }
-        }
-
-        // Get generic entities
-        const { data: genericEntities, error: genericError } = await supabaseAdmin
-          .from('entities')
-          .select('id, canonical_name, aliases, created_at, updated_at')
-          .eq('user_id', userId)
-          .in('type', ['event', 'thing'])
-          .order('updated_at', { ascending: false });
-
-        if (!genericError && genericEntities) {
-          for (const generic of genericEntities) {
-            // Skip if already processed as concept
-            if (concepts?.some(c => c.id === generic.id)) {
-              continue;
-            }
-
-            const normalized = await this.normalizeEntity(
-              {
-                id: generic.id,
-                name: generic.canonical_name,
-                aliases: generic.aliases || [],
-                created_at: generic.created_at,
-                updated_at: generic.updated_at,
-              },
-              'ENTITY',
-              'TERTIARY',
-              'entities',
-              userId
-            );
-            if (normalized) {
-              entities.push(normalized);
-            }
-          }
-        }
-      }
-
-      // Sort by usage count, then last seen
       entities.sort((a, b) => {
-        if (b.usage_count !== a.usage_count) {
-          return b.usage_count - a.usage_count;
-        }
+        if (b.usage_count !== a.usage_count) return b.usage_count - a.usage_count;
         return new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime();
       });
 
@@ -315,7 +258,7 @@ export class EntityResolutionService {
   /**
    * Normalize entity from different sources to unified shape
    */
-  private async normalizeEntity(
+  private normalizeEntity(
     row: {
       id: string;
       name: string;
@@ -326,50 +269,10 @@ export class EntityResolutionService {
     entityType: EntityType,
     tier: ResolutionTier,
     sourceTable: string,
-    userId: string
-  ): Promise<EntityCandidate | null> {
+    usageCount: number
+  ): EntityCandidate | null {
     try {
-      // Compute usage count
-      let usageCount = 0;
-      try {
-        const { count } = await supabaseAdmin
-          .from('entity_unit_links')
-          .select('*', { count: 'exact', head: true })
-          .eq('entity_id', row.id)
-          .eq('entity_type', entityType);
-
-        usageCount = count || 0;
-      } catch {
-        // If entity_unit_links doesn't exist or fails, try alternative methods
-        // For characters, check character_memories
-        if (sourceTable === 'characters') {
-          const { count } = await supabaseAdmin
-            .from('character_memories')
-            .select('*', { count: 'exact', head: true })
-            .eq('character_id', row.id);
-          usageCount = count || 0;
-        }
-        // For locations, check location_mentions
-        else if (sourceTable === 'locations') {
-          const { count } = await supabaseAdmin
-            .from('location_mentions')
-            .select('*', { count: 'exact', head: true })
-            .eq('location_id', row.id);
-          usageCount = count || 0;
-        }
-        // For entities table, check entity_mentions
-        else if (sourceTable === 'entities') {
-          const { count } = await supabaseAdmin
-            .from('entity_mentions')
-            .select('*', { count: 'exact', head: true })
-            .eq('entity_id', row.id);
-          usageCount = count || 0;
-        }
-      }
-
-      // Compute confidence based on usage frequency and source diversity
       const confidence = this.computeConfidence(usageCount, tier);
-
       return {
         entity_id: row.id,
         primary_name: row.name,
@@ -732,8 +635,8 @@ export class EntityResolutionService {
         throw error;
       }
 
-      // Normalize to EntityCandidate format
-      const normalized = await this.normalizeEntity(
+      // Normalize to EntityCandidate format (usage count unknown at creation time — use 0)
+      const normalized = this.normalizeEntity(
         {
           id: data.id,
           name: data.name,
@@ -744,7 +647,7 @@ export class EntityResolutionService {
         entityType,
         'PRIMARY',
         tableName,
-        userId
+        0
       );
 
       if (!normalized) {

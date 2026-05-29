@@ -3,10 +3,10 @@
  * Manages the 9-layer timeline hierarchy system
  */
 
-import OpenAI from 'openai';
 import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import {
   TimelineLayer,
@@ -25,7 +25,6 @@ import {
 import { supabaseAdmin } from './supabaseClient';
 import { titleGenerationService } from './titleGenerationService';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 class TimelineManager {
   /**

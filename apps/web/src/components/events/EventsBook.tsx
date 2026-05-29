@@ -5,23 +5,22 @@
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
-import { Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search, BookOpen, RefreshCw, ChevronLeft, ChevronRight, Star, TrendingUp, AlertTriangle, Filter, X, SortAsc, SortDesc, HelpCircle, Cake, PartyPopper, Music2, Building2, Briefcase, Plane, Heart } from 'lucide-react';
+import { Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search, BookOpen, RefreshCw, ChevronLeft, ChevronRight, Star, TrendingUp, Filter, X, HelpCircle, Cake, PartyPopper, Music2, Building2, Briefcase, Plane, Heart } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
-import { format, parseISO, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+import { parseISO, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { EventDetailModal } from './EventDetailModal';
 import { EventProfileCard, type Event } from './EventProfileCard';
 import { EventCardExample } from './EventCardExample';
 import { EventCardExampleModal } from './EventCardExampleModal';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
-import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
+import { type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
-import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
@@ -226,9 +225,8 @@ export const EventsBook: React.FC = () => {
   }, [activeCategory]);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
-  const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(ITEMS_PER_PAGE);
+  const [itemsPerPage] = useState(ITEMS_PER_PAGE);
   const [sortBy, setSortBy] = useState<SortOption>('date_desc'); // Default: newest first
   const [showFilters, setShowFilters] = useState(false);
   const [showExample, setShowExample] = useState(false);
@@ -245,28 +243,12 @@ export const EventsBook: React.FC = () => {
     hasPeople: null
   });
   
-  const { entries = [], chapters = [] } = useLoreKeeper();
   const isMockDataEnabled = useShouldUseMockData();
 
   useEffect(() => {
     void loadEvents();
   }, [isMockDataEnabled]);
 
-  // Convert entries to MemoryCard format for modal
-  useEffect(() => {
-    const memoryCards = entries.map(entry => memoryEntryToCard({
-      id: entry.id,
-      date: entry.date,
-      content: entry.content,
-      summary: entry.summary || null,
-      tags: entry.tags || [],
-      mood: entry.mood || null,
-      chapter_id: entry.chapter_id || null,
-      source: entry.source || 'manual',
-      metadata: entry.metadata || {}
-    }));
-    setAllMemories(memoryCards);
-  }, [entries]);
 
   const loadEvents = async () => {
     setLoading(true);
@@ -299,7 +281,7 @@ export const EventsBook: React.FC = () => {
 
   // Get unique values for filter options
   const uniqueTypes = useMemo(() => {
-    const types = new Set(events.map(e => e.type).filter(Boolean));
+    const types = new Set(events.map(e => e.type).filter((t): t is string => Boolean(t)));
     return Array.from(types).sort();
   }, [events]);
 
@@ -471,6 +453,13 @@ export const EventsBook: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentPage, totalPages]);
+
+  // Refresh when chat pipeline creates/updates events.
+  useEffect(() => {
+    const handler = () => { void loadEvents(); };
+    window.addEventListener('lk:events-updated', handler);
+    return () => window.removeEventListener('lk:events-updated', handler);
+  }, []);
 
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {

@@ -1,9 +1,23 @@
+/**
+ * correctionService — journal entry corrections (human-initiated edits).
+ *
+ * Domain: user manually correcting a journal/memory entry they wrote.
+ * This is NOT the same as correctionResolutionService (AI-pipeline extraction
+ * correction) or correctionDashboardService (entity resolution UI).
+ * Active consumers: routes/corrections, chaptersController, canonicalService,
+ * memoryService, chatService, memoryLadderRenderer, chapterInsightsService,
+ * narrativeRecall/narrativeRecallCorrection.
+ *
+ * Do NOT retire — this is the journal-edit API used by the frontend.
+ */
+
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../logger';
 import type { EntryCorrection, MemoryEntry, ResolvedMemoryEntry } from '../types';
 
 import { supabaseAdmin } from './supabaseClient';
+import { correctionTracker } from './activeLearning/correctionTracker';
 
 export type CorrectionPayload = {
   correctedContent: string;
@@ -78,6 +92,14 @@ class CorrectionService {
       logger.error({ error }, 'Failed to append correction');
       throw error;
     }
+
+    correctionTracker.recordCorrection(userId, {
+      correction_type: 'extraction',
+      original_value: existing.content,
+      corrected_value: payload.correctedContent,
+      context: payload.reason,
+      source_unit_id: entryId,
+    }).catch(() => {});
 
     return correction;
   }

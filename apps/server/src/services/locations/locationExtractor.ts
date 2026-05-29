@@ -1,12 +1,11 @@
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
 
 import type { ExtractedLocation } from './types';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 /**
  * Extracts locations from journal entries

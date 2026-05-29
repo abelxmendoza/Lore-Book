@@ -215,6 +215,128 @@ export async function updateTemporalEdge(
   if (error) logger.warn({ err: error, id, phase: payload.phase }, 'updateTemporalEdge failed');
 }
 
+// ── Phase transition thresholds (days without evidence → phase degrades) ────
+// These are the HMM-equivalent transition rules expressed as time thresholds.
+// Full stochastic HMM learning is Phase 5 (needs training data); this deterministic
+// version gets 90% of the value with zero training data required.
+//
+//   CORE    → ACTIVE  : 14 days without a mention
+//   ACTIVE  → WEAK    : 45 days without a mention
+//   WEAK    → DORMANT : 120 days without a mention
+//   DORMANT → ENDED   : 365 days without a mention (or explicit signal)
+//
+// Evidence (a new mention / journal entry referencing this relationship):
+//   Any phase → ACTIVE (minimum); CORE requires days_since < 14 AND confidence ≥ 0.7
+
+const PHASE_DECAY_THRESHOLDS: Record<RelationshipPhase, number> = {
+  CORE:    14,
+  ACTIVE:  45,
+  WEAK:    120,
+  DORMANT: 365,
+  ENDED:   Infinity,
+};
+
+/**
+ * Evaluate the correct phase for an edge based on current time, without mutating DB.
+ * Call this wherever you need the *current* phase rather than the cached column value.
+ *
+ * Upgrades are handled separately — see `reinforceEdgePhase`.
+ */
+export function evaluatePhase(edge: {
+  last_evidence_at: string | null;
+  confidence: number;
+  phase: RelationshipPhase | string;
+}): RelationshipPhase {
+  const daysSince = edge.last_evidence_at
+    ? daysBetween(edge.last_evidence_at, new Date())
+    : Infinity;
+
+  const currentPhase = (edge.phase as RelationshipPhase) ?? 'ACTIVE';
+  const threshold = PHASE_DECAY_THRESHOLDS[currentPhase] ?? 45;
+
+  if (daysSince < threshold) return currentPhase; // no decay yet
+
+  // Find the degraded phase
+  if (daysSince >= PHASE_DECAY_THRESHOLDS.DORMANT) return 'ENDED';
+  if (daysSince >= PHASE_DECAY_THRESHOLDS.WEAK)    return 'DORMANT';
+  if (daysSince >= PHASE_DECAY_THRESHOLDS.ACTIVE)  return 'WEAK';
+  if (daysSince >= PHASE_DECAY_THRESHOLDS.CORE)    return 'ACTIVE';
+  return currentPhase;
+}
+
+/**
+ * When new evidence arrives for an edge (a journal entry mentions this person/entity),
+ * upgrade the phase and record the evidence. Minimum upgrade is to ACTIVE.
+ *
+ * @param edgeId     ID of the temporal_edge row to reinforce
+ * @param confidence New confidence score (0–1) from the evidence
+ * @param sourceId   ID of the journal_entry providing this evidence
+ */
+export async function reinforceEdgePhase(
+  edgeId: string,
+  confidence: number,
+  sourceId?: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  // Determine upgraded phase: confidence ≥ 0.7 → CORE, else ACTIVE
+  const newPhase: RelationshipPhase = confidence >= 0.7 ? 'CORE' : 'ACTIVE';
+
+  const { data: existing } = await supabaseAdmin
+    .from('temporal_edges')
+    .select('evidence_source_ids, confidence, phase')
+    .eq('id', edgeId)
+    .single();
+
+  const existingSourceIds: string[] = (existing as any)?.evidence_source_ids ?? [];
+  const updatedSourceIds = sourceId
+    ? [...new Set([...existingSourceIds, sourceId])].slice(-50) // cap at 50
+    : existingSourceIds;
+
+  // Blend confidence: weighted average (new evidence gets 40% weight)
+  const prevConf: number = (existing as any)?.confidence ?? confidence;
+  const blendedConf = prevConf * 0.6 + confidence * 0.4;
+
+  const { error } = await supabaseAdmin
+    .from('temporal_edges')
+    .update({
+      phase: newPhase,
+      active: true,
+      confidence: blendedConf,
+      last_evidence_at: now,
+      evidence_source_ids: updatedSourceIds,
+      updated_at: now,
+    })
+    .eq('id', edgeId);
+
+  if (error) logger.warn({ err: error, edgeId }, 'reinforceEdgePhase failed');
+}
+
+/**
+ * Sweep all active temporal edges for a user and decay any whose phase has expired.
+ * Called by the evolve job (daily). Returns count of edges that were degraded.
+ */
+export async function decayStaleEdges(userId: string): Promise<number> {
+  const edges = await fetchActiveTemporalEdges(userId);
+  let decayed = 0;
+
+  for (const edge of edges) {
+    const correctPhase = evaluatePhase(edge as any);
+    if (correctPhase !== edge.phase) {
+      const isEnded = correctPhase === 'ENDED';
+      await updateTemporalEdge(edge.id, {
+        phase: correctPhase,
+        active: !isEnded,
+        end_time: isEnded ? new Date().toISOString() : undefined,
+      });
+      decayed++;
+    }
+  }
+
+  if (decayed > 0) logger.info({ userId, decayed }, 'Temporal edge phase decay applied');
+  return decayed;
+}
+
 /**
  * Fetch all active temporal edges, optionally for one user. Used by the evolve job.
  */

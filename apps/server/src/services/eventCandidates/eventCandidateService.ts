@@ -88,12 +88,13 @@ function buildCanonicalTitle(event: ResolvedEvent, entityNames: string[]): strin
   return entityNames.slice(0, 3).join(', ') || 'Recurring moment';
 }
 
-async function getEntityNames(entityIds: string[]): Promise<string[]> {
+async function getEntityNames(entityIds: string[], userId: string): Promise<string[]> {
   if (entityIds.length === 0) return [];
   try {
     const { data } = await supabaseAdmin
       .from('entities')
       .select('id, canonical_name')
+      .eq('user_id', userId)
       .in('id', entityIds);
     if (!data) return [];
     // Preserve order of entityIds
@@ -186,7 +187,7 @@ async function processResolvedEvent(userId: string, eventId: string): Promise<vo
       const updatedEntities = Array.from(
         new Set([...bestMatch.dominant_entities, ...allEntities])
       );
-      const updatedEntityNames = await getEntityNames(updatedEntities);
+      const updatedEntityNames = await getEntityNames(updatedEntities, userId);
       const newActivities = extractActivityWords(`${event.title} ${event.summary ?? ''}`);
       const updatedActivities = Array.from(
         new Set([...bestMatch.recurring_activities, ...newActivities])
@@ -223,7 +224,7 @@ async function processResolvedEvent(userId: string, eventId: string): Promise<vo
       );
     } else {
       // Create new candidate — first occurrence, low confidence
-      const entityNames = await getEntityNames(allEntities);
+      const entityNames = await getEntityNames(allEntities, userId);
       const activityWords = extractActivityWords(`${event.title} ${event.summary ?? ''}`);
       const threadId = getThreadIdFromMetadata(event);
 

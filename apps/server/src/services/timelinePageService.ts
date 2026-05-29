@@ -3,6 +3,7 @@
  * Transforms data for the multi-lane timeline visualization
  */
 
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import type { MemoryEntry } from '../types';
 import type { TimelineLayer } from '../types/timeline';
@@ -347,9 +348,7 @@ class TimelinePageService {
     // If AI scoring is requested and OpenAI is available
     if (useAI) {
       try {
-        const { default: OpenAI } = await import('openai');
-        const { config } = await import('../config');
-        const openai = new OpenAI({ apiKey: config.openAiKey });
+
 
         const completion = await openai.chat.completions.create({
           model: config.defaultModel,

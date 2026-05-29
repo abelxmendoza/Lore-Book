@@ -5,6 +5,7 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 
 export class RelationshipUpdateExtractor {
   /**
@@ -83,7 +84,6 @@ export class RelationshipUpdateExtractor {
   } | null> {
     try {
       const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: config.openAiKey });
 
       const currentPros = relationship.pros || [];
       const currentCons = relationship.cons || [];

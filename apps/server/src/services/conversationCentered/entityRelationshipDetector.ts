@@ -4,9 +4,9 @@
 // Example: "Sam from Strativ Group recruits for Mach Industries"
 // =====================================================
 
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import {
@@ -17,7 +17,6 @@ import {
   type RelationshipKind as ErRelationshipKind,
 } from '../../er/erSchema';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type RelationshipType =
   // Professional/Employment

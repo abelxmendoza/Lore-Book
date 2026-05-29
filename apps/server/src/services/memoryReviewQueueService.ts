@@ -3,10 +3,10 @@
  * Service for managing memory proposals and review queue
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../config';
 import { logger } from '../logger';
+import { openai } from '../lib/openai';
 import type {
   MemoryProposal,
   MemoryDecision,
@@ -29,11 +29,6 @@ import { peoplePlacesService } from './peoplePlacesService';
 import { supabaseAdmin } from './supabaseClient';
 
 export class MemoryReviewQueueService {
-  private openai: OpenAI;
-
-  constructor(openaiInstance?: OpenAI) {
-    this.openai = openaiInstance || new OpenAI({ apiKey: config.openAiKey });
-  }
   /**
    * Classify risk level for a memory proposal
    */
@@ -87,7 +82,7 @@ export class MemoryReviewQueueService {
    */
   private async affectsIdentity(claimText: string): Promise<boolean> {
     try {
-      const completion = await this.openai.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel || 'gpt-4o-mini',
         temperature: 0.1,
         response_format: { type: 'json_object' },
@@ -440,7 +435,7 @@ Identity-affecting claims include:
   ): Promise<void> {
     try {
       // Use LLM to extract dates from text
-      const completion = await this.openai.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel || 'gpt-4o-mini',
         temperature: 0.1,
         response_format: { type: 'json_object' },
@@ -730,7 +725,7 @@ Only extract if there's a clear date reference. Return has_date: false if uncert
    */
   private async generateReasoning(claim: any, entity: any, sourceText: string): Promise<string> {
     try {
-      const completion = await this.openai.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel || 'gpt-4o-mini',
         temperature: 0.2,
         messages: [
@@ -783,7 +778,7 @@ Why was this memory inferred?`
    */
   private async llmDetectContradiction(text1: string, text2: string): Promise<boolean> {
     try {
-      const completion = await this.openai.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel || 'gpt-4o-mini',
         temperature: 0.1,
         response_format: { type: 'json_object' },

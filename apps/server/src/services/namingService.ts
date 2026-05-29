@@ -1,11 +1,8 @@
-import OpenAI from 'openai';
-
 import { config } from '../config';
 import { logger } from '../logger';
+import { openai } from '../lib/openai';
 
 import { supabaseAdmin } from './supabaseClient';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 class NamingService {
   async generateChapterName(userId: string, chapterId: string, entries: Array<{ content: string; date: string }>): Promise<string> {

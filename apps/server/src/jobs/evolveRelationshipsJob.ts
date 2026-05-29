@@ -2,12 +2,14 @@ import cron from 'node-cron';
 
 import { logger } from '../logger';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { trainingSignalLogger } from '../services/neural/trainingSignalLogger';
 import {
   computeRelationshipStrength,
   determinePhase,
   updateTemporalEdge,
   fetchActiveTemporalEdges,
   writeRelationshipSnapshot,
+  decayStaleEdges,
 } from '../er/temporalEdgeService';
 import type { TemporalEdgeRow } from '../er/temporalEdgeService';
 
@@ -39,13 +41,16 @@ class EvolveRelationshipsJob {
 
       let totalUpdated = 0;
       let totalEnded = 0;
+      let totalDecayed = 0;
       for (const userId of userIds) {
         const { updated, ended } = await this.evolveForUser(userId);
         totalUpdated += updated;
         totalEnded += ended;
+        // Apply time-based phase decay (CORE→ACTIVE→WEAK→DORMANT→ENDED)
+        totalDecayed += await decayStaleEdges(userId);
       }
 
-      logger.info({ userCount: userIds.length, updated: totalUpdated, ended: totalEnded }, 'Evolve relationships job completed');
+      logger.info({ userCount: userIds.length, updated: totalUpdated, ended: totalEnded, decayed: totalDecayed }, 'Evolve relationships job completed');
     } catch (error) {
       logger.error({ err: error }, 'Evolve relationships job failed');
     }
@@ -72,6 +77,21 @@ class EvolveRelationshipsJob {
       });
 
       await writeRelationshipSnapshot({ ...edge, phase: phaseToWrite }, edge.scope);
+
+      const daysSince = edge.last_evidence_at
+        ? Math.floor((Date.now() - new Date(edge.last_evidence_at).getTime()) / 86_400_000)
+        : 0;
+      trainingSignalLogger.logTransition({
+        userId,
+        edgeId: edge.id,
+        fromPhase: edge.phase,
+        toPhase: phaseToWrite,
+        daysSinceLastEvidence: daysSince,
+        confidence: edge.confidence,
+        kind: edge.kind,
+        trigger: 'decay',
+      });
+
       updated++;
       if (isEnded) ended++;
     }

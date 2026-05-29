@@ -1,13 +1,12 @@
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
 import { logger } from '../logger';
+import { openai } from '../lib/openai';
 
 import { memoirCacheService } from './memoirCacheService';
 import { supabaseAdmin } from './supabaseClient';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 type MemoirSection = {
   id: string;

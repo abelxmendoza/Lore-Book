@@ -39,6 +39,11 @@ import { TimeEngine } from '../services/time/timeEngine';
 import { ToxicityResolver } from '../services/toxicity';
 import { ValuesEngine } from '../services/values/valuesEngine';
 import { WillEngine } from '../services/will/willEngine';
+import { IdentityPulseModule } from '../services/analytics/identityPulse';
+import { InsightEngineModule } from '../services/analytics/insightEngine';
+import { XpEngineModule } from '../services/analytics/xpEngine';
+import { essenceProfileService } from '../services/essenceProfileService';
+import { TimelineEngine as TimelineStorageEngine } from '../services/timeline/timelineEngine';
 
 import type { EngineFunction, EngineContext } from './types';
 
@@ -306,33 +311,80 @@ export const ENGINE_REGISTRY: Record<string, EngineFunction> = {
     return await engine.generateRecommendations(userId);
   },
 
-  // Placeholder engines (to be implemented)
   chronology: async (userId: string, ctx: EngineContext) => {
     try {
       const engine = new ChronologyEngine();
-      // Chronology engine needs events - convert entries to events
-      // For now, return empty result if no entries
       if (ctx.entries.length === 0) {
-        return {
-          graph: { nodes: [], edges: [] },
-          causalChains: [],
-          gaps: [],
-          patterns: [],
-          metadata: { eventCount: 0 },
-        };
+        return { graph: { nodes: [], edges: [] }, causalChains: [], gaps: [], patterns: [], metadata: { eventCount: 0 } };
       }
-      // Convert entries to events format (simplified)
       const events = ctx.entries.map(entry => ({
         id: entry.id || '',
         content: entry.content,
         date: entry.date,
-        type: 'journal_entry',
+        type: 'journal_entry' as const,
         metadata: entry.metadata || {},
+        timestamp: entry.date || new Date().toISOString(),
+        embedding: [] as number[],
       }));
-      return await engine.process(events);
+      const result = await engine.process(events);
+      const { chronologyStorageService } = await import('../services/chronology/storageService');
+      await chronologyStorageService.saveChronologyResult(userId, result);
+      return result;
     } catch (error) {
       logger.warn({ engine: 'chronology', error }, 'Chronology engine error');
       return { message: 'Chronology engine error', error: String(error) };
+    }
+  },
+
+  // ── Governance engines (were in ENGINE_DESCRIPTORS but had no runtime handler) ──
+
+  identityPulse: async (userId: string, _ctx: EngineContext) => {
+    try {
+      const module = new IdentityPulseModule();
+      return await module.run(userId);
+    } catch (error) {
+      logger.warn({ error, userId }, 'identityPulse engine failed');
+      return { metrics: {}, charts: [], insights: [], metadata: {} };
+    }
+  },
+
+  essenceProfile: async (userId: string, _ctx: EngineContext) => {
+    try {
+      return await essenceProfileService.getProfile(userId);
+    } catch (error) {
+      logger.warn({ error, userId }, 'essenceProfile engine failed');
+      return { hopes: [], dreams: [], fears: [], strengths: [], weaknesses: [], topSkills: [], coreValues: [], personalityTraits: [], relationshipPatterns: [], evolution: [] };
+    }
+  },
+
+  insightEngine: async (userId: string, _ctx: EngineContext) => {
+    try {
+      const module = new InsightEngineModule();
+      return await module.run(userId);
+    } catch (error) {
+      logger.warn({ error, userId }, 'insightEngine engine failed');
+      return { metrics: {}, charts: [], insights: [], metadata: {} };
+    }
+  },
+
+  timelineEngine: async (userId: string, _ctx: EngineContext) => {
+    try {
+      const engine = new TimelineStorageEngine();
+      const events = await engine.getTimeline(userId, { limit: 200 });
+      return { events, count: events.length };
+    } catch (error) {
+      logger.warn({ error, userId }, 'timelineEngine engine failed');
+      return { events: [], count: 0 };
+    }
+  },
+
+  xpEngine: async (userId: string, _ctx: EngineContext) => {
+    try {
+      const module = new XpEngineModule();
+      return await module.run(userId);
+    } catch (error) {
+      logger.warn({ error, userId }, 'xpEngine engine failed');
+      return { metrics: {}, charts: [], insights: [], metadata: {} };
     }
   },
 

@@ -1,6 +1,19 @@
-import OpenAI from 'openai';
+
+/**
+ * factExtractionService — LLM-based fact extraction from free text.
+ *
+ * Domain: extracting structured facts from raw user input (pre-ingestion pipeline).
+ * Provides ExtractedFact / FactExtractionResult types shared by: math/factHashing,
+ * math/booleanContradiction, math/factSetTheory, ruleBasedFactExtraction,
+ * factCacheService, truthVerificationService, chatGPTImportService.
+ *
+ * The modern ingestion pipeline uses semanticExtractionService for live messages,
+ * but factExtractionService remains the type source and handles import flows.
+ * Do NOT retire without migrating ExtractedFact consumers.
+ */
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 
 export type ClaimType = 'date' | 'location' | 'character' | 'event' | 'relationship' | 'attribute' | 'other';
@@ -20,18 +33,12 @@ export type FactExtractionResult = {
 };
 
 class FactExtractionService {
-  private openai: OpenAI;
-
-  constructor() {
-    this.openai = new OpenAI({ apiKey: config.openAiKey });
-  }
-
   /**
    * Extract factual claims from journal entry text
    */
   async extractFacts(content: string): Promise<FactExtractionResult> {
     try {
-      const completion = await this.openai.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0.1, // Low temperature for consistent extraction
         response_format: { type: 'json_object' },

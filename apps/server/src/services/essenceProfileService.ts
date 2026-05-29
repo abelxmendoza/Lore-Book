@@ -3,15 +3,14 @@
  * Extracts and tracks user's psychological essence: hopes, dreams, fears, strengths, weaknesses, skills, values, traits, and relationship patterns
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 
 import { memoryService } from './memoryService';
 import { supabaseAdmin } from './supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type EssenceInsight = {
   text: string;

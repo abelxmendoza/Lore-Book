@@ -285,7 +285,9 @@ export const useChat = () => {
             disclaimer: metadata?.disclaimer,
             // Narrative Story fields
             narrativeStory: metadata?.story,
-            narrativeEntryCount: metadata?.entry_count
+            narrativeEntryCount: metadata?.entry_count,
+            // Entity chips
+            mentionedEntities: metadata?.mentionedEntities,
           });
 
           // If there's a disambiguation prompt, attach it to the user message
@@ -318,6 +320,14 @@ export const useChat = () => {
             if (ids && ids.length > 0) {
               window.dispatchEvent(
                 new CustomEvent('lk:characters-updated', { detail: { ids } })
+              );
+            }
+            const locationIds = (metadata?.mentionedEntities as Array<{ id: string; type: string }> | undefined)
+              ?.filter((e) => e.type === 'location')
+              .map((e) => e.id) ?? [];
+            if (locationIds.length > 0) {
+              window.dispatchEvent(
+                new CustomEvent('lk:locations-updated', { detail: { ids: locationIds } })
               );
             }
           };

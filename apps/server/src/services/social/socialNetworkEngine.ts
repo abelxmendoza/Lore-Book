@@ -1,5 +1,6 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { trainingSignalLogger } from '../neural/trainingSignalLogger';
 
 import { CentralityCalculator } from './centralityCalculator';
 import { CommunityDetector } from './communityDetector';
@@ -67,6 +68,20 @@ export class SocialNetworkEngine {
       // Detect communities
       const communities = this.communityDetector.detect(edges);
       communities.forEach(c => { c.user_id = userId; });
+
+      // Log community assignments for GNN training (fire-and-forget)
+      communities.forEach(c => {
+        (c.members || []).forEach((member: string) => {
+          trainingSignalLogger.logCommunity({
+            userId,
+            nodeId: member,
+            communityId: c.id,
+            theme: c.theme || 'unknown',
+            cohesion: c.cohesion ?? 0.5,
+            algorithm: 'louvain',
+          });
+        });
+      });
 
       // Detect toxicity
       const toxic = this.toxicityAnalyzer.detect(edges);

@@ -9,6 +9,7 @@ import { InvestmentBehavior } from './investmentBehavior';
 import { MoneyMindsetDetector } from './patternDetector';
 import { SpendingClassifier } from './spendingClassifier';
 import { TransactionExtractor } from './transactionExtractor';
+import { essenceProfileService } from '../essenceProfileService';
 import type {
   FinancialOutput,
   FinancialContext,
@@ -302,8 +303,7 @@ export class FinancialEngine {
       // Get chronology data if available
       // TODO: Fetch from chronology engine if needed
 
-      // Get identity pulse data if available
-      // TODO: Fetch from identity pulse service if needed
+      context.identity_pulse = await essenceProfileService.getProfile(userId).catch(() => undefined);
 
     } catch (error) {
       logger.error({ error }, 'Failed to build financial context');

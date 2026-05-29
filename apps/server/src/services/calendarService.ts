@@ -1,6 +1,6 @@
-import OpenAI from 'openai';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 
 import { memoryService } from './memoryService';
@@ -71,9 +71,9 @@ ${context}
 
 Generate a journal entry:`;
 
-      const openaiClient = new OpenAI({ apiKey: config.openAiKey });
+
       
-      const completion = await openaiClient.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0.7,
         messages: [

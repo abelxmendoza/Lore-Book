@@ -1,6 +1,7 @@
 import { config } from '../config';
 import { logger } from '../logger';
 
+import { findSimilarCharacter } from './characterDeduplicationService';
 import { openai } from './openaiClient';
 import { peoplePlacesService } from './peoplePlacesService';
 import { perceptionService, type CreatePerceptionEntryInput } from './perceptionService';
@@ -124,22 +125,29 @@ IMPORTANT:
       const { supabaseAdmin } = await import('./supabaseClient');
       const { data: existingCharactersData } = await supabaseAdmin
         .from('characters')
-        .select('id, name')
+        .select('id, name, alias')
         .eq('user_id', userId);
-      const existingCharacters = (existingCharactersData || []).map(c => ({ id: c.id, name: c.name }));
+      const existingCharacters = (existingCharactersData || []).map(c => ({ id: c.id, name: c.name, alias: c.alias }));
       const charactersCreated: Array<{ id: string; name: string }> = [];
       const charactersLinked: Array<{ id: string; name: string }> = [];
 
-      // Create new characters in characters table
+      // Create new characters in characters table — dedup first
       for (const newChar of newCharacters) {
         try {
-          const { supabaseAdmin } = await import('./supabaseClient');
+          // Pre-check: if a similar character already exists, link instead of creating
+          const existing = findSimilarCharacter(newChar.name, existingCharacters);
+          if (existing) {
+            charactersLinked.push({ id: existing.id, name: existing.name });
+            logger.info({ userId, existingId: existing.id, incomingName: newChar.name }, 'Dedup: linked to existing character');
+            continue;
+          }
+
           const { v4: uuid } = await import('uuid');
-          
+
           const characterId = uuid();
           const now = new Date().toISOString();
           const nameParts = newChar.name.split(' ');
-          
+
           const { data: created, error } = await supabaseAdmin
             .from('characters')
             .insert({
@@ -152,8 +160,8 @@ IMPORTANT:
               role: newChar.role || 'other',
               importance_level: 'minor',
               importance_score: 0,
-              metadata: { 
-                autoCreated: true, 
+              metadata: {
+                autoCreated: true,
                 createdFrom: 'perception_chat'
               },
               created_at: now,
@@ -161,9 +169,11 @@ IMPORTANT:
             })
             .select('id, name')
             .single();
-          
+
           if (!error && created) {
             charactersCreated.push({ id: created.id, name: created.name });
+            // Add to local list so subsequent iterations in this batch can match against it
+            existingCharacters.push({ id: created.id, name: created.name, alias: [] });
             logger.info({ userId, characterId: created.id, name: created.name }, 'Created character from perception chat');
           } else {
             logger.warn({ error, character: newChar }, 'Failed to create character from perception chat');
@@ -173,12 +183,10 @@ IMPORTANT:
         }
       }
 
-      // Match existing characters
+      // Match existing characters — use fuzzy matching to improve link quality
       for (const match of existingCharacterMatches) {
-        const found = existingCharacters.find(c => 
-          c.name.toLowerCase() === match.name.toLowerCase() ||
-          c.id === match.suggested_character_id
-        );
+        const found = existingCharacters.find(c => c.id === match.suggested_character_id)
+          || findSimilarCharacter(match.name, existingCharacters);
         if (found) {
           charactersLinked.push({ id: found.id, name: found.name });
         }

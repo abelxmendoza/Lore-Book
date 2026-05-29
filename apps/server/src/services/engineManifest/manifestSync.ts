@@ -1,6 +1,6 @@
-import OpenAI from 'openai';
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 
 import { ManifestRegistry } from './manifestRegistry';
 import { ManifestService } from './manifestService';
@@ -9,13 +9,9 @@ import { ManifestService } from './manifestService';
  * Syncs local blueprints to Supabase and creates embeddings
  */
 export class ManifestSync {
-  private openai: OpenAI;
   private manifestService: ManifestService;
 
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
     this.manifestService = new ManifestService();
   }
 
@@ -44,7 +40,7 @@ export class ManifestSync {
 
         // Create embedding
         try {
-          const embeddingResponse = await this.openai.embeddings.create({
+          const embeddingResponse = await openai.embeddings.create({
             model: 'text-embedding-3-large',
             input: blueprint.blueprint,
           });

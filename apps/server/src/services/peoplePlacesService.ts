@@ -1,8 +1,8 @@
-import OpenAI from 'openai';
 import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
 import { logger } from '../logger';
+import { openai } from '../lib/openai';
 import type {
   EntryRelationship,
   MemoryEntry,
@@ -22,8 +22,6 @@ type DetectedEntity = {
 };
 
 class PeoplePlacesService {
-  private openai = new OpenAI({ apiKey: config.openAiKey });
-
   private normalizeName(name: string) {
     return name.trim();
   }
@@ -154,7 +152,7 @@ class PeoplePlacesService {
     // Fallback to API only if rule-based found nothing (optional enhancement)
     // This can be disabled entirely if you want 100% free
     try {
-      const completion = await this.openai.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0,
         response_format: { type: 'json_object' },

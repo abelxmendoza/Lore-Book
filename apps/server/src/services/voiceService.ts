@@ -1,10 +1,9 @@
 import type { Express } from 'express';
-import OpenAI from 'openai';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type VoiceFormatting = {
   content: string;

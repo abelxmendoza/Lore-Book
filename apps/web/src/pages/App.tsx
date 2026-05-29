@@ -46,9 +46,12 @@ import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
 import { DiscoveryHub } from '../components/discovery/DiscoveryHub';
 import { GuestBanner } from '../components/guest/GuestBanner';
 import { DemoModeBanner } from '../components/DemoModeBanner';
+import { DemoModeBootstrap } from '../components/DemoModeBootstrap';
 import { LoveAndRelationshipsView } from '../components/love/LoveAndRelationshipsView';
 import { QuestBoard } from '../components/quests/QuestBoard';
 import { KnowledgeGapDashboard } from '../components/voids/KnowledgeGapDashboard';
+import { SagaScreen } from '../components/_future-surfaces/saga/SagaScreen';
+import { ContinuityPanel } from '../components/ContinuityPanel';
 import { getSurfaceFromRoute, type SurfaceKey } from '../utils/routeMapping';
 
 
@@ -226,6 +229,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       love: 'Love & Relationships',
       quests: 'Quests',
       gaps: 'Knowledge Gaps',
+      saga: 'Life Saga',
     };
     return names[surface] || 'Lore Book';
   };
@@ -241,7 +245,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       }}
     >
       <SkipLink />
-      
+      <DemoModeBootstrap />
+
       {/* Mobile Header — hidden in chat (chat has its own header with thread list + app menu) */}
       <header className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden${activeSurface === 'chat' ? ' hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
         <div className="flex items-center gap-3">
@@ -267,6 +272,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         isMobileDrawerOpen={isMobileDrawerOpen}
         onMobileDrawerClose={() => setIsMobileDrawerOpen(false)}
       />
+      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
       <DemoModeBanner />
       <main
         id="main-content"
@@ -373,6 +379,16 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                           </div>
                         )}
         {activeSurface === 'guide' && <UserGuide />}
+        {activeSurface === 'saga' && (
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+            <SagaScreen />
+          </div>
+        )}
+        {activeSurface === 'continuity' && (
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+            <ContinuityPanel />
+          </div>
+        )}
 
         {/* Hide dev mode panel in production and timeline view */}
         {!config.env.isProduction && devMode && activeSurface !== 'timeline' && (
@@ -418,6 +434,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
 
         {activeSurface !== 'chat' && <Footer />}
       </main>
+      </div>
       <ConnectionStatus />
       <ModeBadge />
       {import.meta.env.DEV && <ConversationPersistenceInspector />}

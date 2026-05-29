@@ -4,15 +4,14 @@
  * Uses AI to extract unique identity signals from user's journal entries
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 
 import { BaseAnalyticsModule } from './base';
 import type { AnalyticsPayload, MemoryData } from './types';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export class IdentityPulseModule extends BaseAnalyticsModule {
   protected readonly moduleType = 'identity_pulse' as const;

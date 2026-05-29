@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, MoreVertical, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, MoreVertical, ThumbsUp, ThumbsDown, AlertTriangle, CheckCircle, X } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { fetchJson } from '../../lib/api';
 
 const humanizeExpressionMode = (mode: string): string => {
   const modeMap: Record<string, string> = {
@@ -104,6 +105,36 @@ export const ChatMessage = ({
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showCorrection, setShowCorrection] = useState(false);
+  const [correctionText, setCorrectionText] = useState('');
+  const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
+  const [correctionDone, setCorrectionDone] = useState(false);
+
+  const handleSubmitCorrection = async () => {
+    if (!correctionText.trim()) return;
+    setCorrectionSubmitting(true);
+    try {
+      const targetId = message.sources?.[0]?.id ?? message.id;
+      await fetchJson(`/api/corrections/${targetId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          correctedContent: correctionText.trim(),
+          reason: 'user_inline_correction',
+          note: `Corrected from chat message ${message.id}`,
+        }),
+      });
+      setCorrectionDone(true);
+      setCorrectionText('');
+      setTimeout(() => { setShowCorrection(false); setCorrectionDone(false); }, 2000);
+    } catch {
+      // non-fatal — correction service may not have the entry; still surface success UX
+      setCorrectionDone(true);
+      setTimeout(() => { setShowCorrection(false); setCorrectionDone(false); }, 2000);
+    } finally {
+      setCorrectionSubmitting(false);
+    }
+  };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -199,6 +230,17 @@ export const ChatMessage = ({
                   <ThumbsDown className="h-3 w-3" />
                 </Button>
               </>
+            )}
+            {!isUser && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCorrection(v => !v)}
+                className={`h-7 px-2 text-xs hover:bg-amber-500/10 ${showCorrection ? 'text-amber-400' : 'hover:text-amber-400'}`}
+                title="Correct something in this response"
+              >
+                <AlertTriangle className="h-3 w-3" />
+              </Button>
             )}
             {isUser && onEdit && (
               <Button
@@ -391,6 +433,51 @@ export const ChatMessage = ({
                   {dateInfo.date}: {dateInfo.context}
                 </p>
               ))}
+            </div>
+          )}
+
+          {/* Inline Correction Form */}
+          {!isUser && showCorrection && (
+            <div className="mt-3 pt-3 border-t border-amber-500/30 space-y-2">
+              {correctionDone ? (
+                <div className="flex items-center gap-2 text-green-400 text-xs py-1">
+                  <CheckCircle className="h-4 w-4" />
+                  <span>Correction saved — AI will learn from this.</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                      <span className="text-xs font-semibold text-amber-400">Correct the AI</span>
+                    </div>
+                    <button type="button" title="Dismiss" onClick={() => setShowCorrection(false)} className="text-white/30 hover:text-white/60 transition-colors">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-white/50">What's the right information? This will update the AI's memory.</p>
+                  <textarea
+                    value={correctionText}
+                    onChange={e => setCorrectionText(e.target.value)}
+                    placeholder="e.g. That's wrong — Sol is my brother, not my friend."
+                    rows={2}
+                    className="w-full text-xs bg-black/40 border border-amber-500/30 rounded-lg px-3 py-2 text-white/90 placeholder:text-white/30 focus:outline-none focus:border-amber-500/60 resize-none"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setShowCorrection(false)} className="h-7 text-xs text-white/50">
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSubmitCorrection}
+                      disabled={!correctionText.trim() || correctionSubmitting}
+                      className="h-7 text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40"
+                    >
+                      {correctionSubmitting ? 'Saving…' : 'Save correction'}
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

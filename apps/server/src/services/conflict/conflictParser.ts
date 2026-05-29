@@ -1,6 +1,6 @@
-import OpenAI from 'openai';
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 
 import type { Conflict, ConflictBeat, ConflictParticipant } from './types';
 
@@ -9,13 +9,7 @@ import type { Conflict, ConflictBeat, ConflictParticipant } from './types';
  * V1: Uses OpenAI to extract structured conflict information
  */
 export class ConflictParser {
-  private openai: OpenAI;
 
-  constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-  }
 
   /**
    * Parse text into structured conflict
@@ -60,7 +54,7 @@ Focus on:
 Text:
 ${text}`;
 
-      const response = await this.openai.chat.completions.create({
+      const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {

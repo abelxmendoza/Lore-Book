@@ -30,6 +30,11 @@ export type MemoryEntry = {
   metadata?: Record<string, unknown>;
   embedding?: number[] | null;
   similarity?: number;
+  // Autobiographical memory salience primitives (populated after migration 20260529000004)
+  accessibility_score?: number | null;
+  emotional_intensity?: number | null;
+  retrieval_count?: number | null;
+  last_retrieved_at?: string | null;
   created_at?: string;
   updated_at?: string;
 };

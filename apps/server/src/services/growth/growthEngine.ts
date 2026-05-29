@@ -8,6 +8,7 @@ import { GrowthSignals } from './growthSignals';
 import { GrowthTimeline } from './growthTimeline';
 import { GrowthVelocity } from './growthVelocity';
 import { PlateauDetector } from './plateauDetector';
+import { essenceProfileService } from '../essenceProfileService';
 import type {
   GrowthSignal,
   GrowthInsight,
@@ -209,14 +210,7 @@ export class GrowthEngine {
 
       context.entries = entries || [];
 
-      // Get identity pulse data if available
-      // TODO: Fetch from identity pulse service if needed
-
-      // Get chronology data if available
-      // TODO: Fetch from chronology engine if needed
-
-      // Get relationships data if available
-      // TODO: Fetch from relationship analytics if needed
+      context.identity_pulse = await essenceProfileService.getProfile(userId).catch(() => undefined);
 
     } catch (error) {
       logger.error({ error }, 'Failed to build growth context');

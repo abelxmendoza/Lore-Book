@@ -1,14 +1,10 @@
 import crypto from 'crypto';
 
-import OpenAI from 'openai';
-
-import { config } from '../config';
 import { logger } from '../logger';
+import { openai } from '../lib/openai';
 
 import { memoryService } from './memoryService';
 import { ruleBasedTagExtractionService } from './ruleBasedTagExtraction';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 // Simple in-memory cache for tag suggestions
 const tagCache = new Map<string, string[]>();

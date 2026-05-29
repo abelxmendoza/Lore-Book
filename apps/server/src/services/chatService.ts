@@ -1,15 +1,25 @@
-import OpenAI from 'openai';
+/**
+ * chatService — legacy non-streaming chat handler.
+ *
+ * Used by: controllers/chaptersController (summary generation for chapters),
+ * routes/summary (chapter/entry summarisation endpoint).
+ * omegaChatService handles the main streaming chat pipeline.
+ * This service handles batch summarisation tasks that don't need streaming.
+ *
+ * Do NOT retire — chaptersController and the summary route depend on it.
+ * Long-term: migrate summarisation into a dedicated summaryService and
+ * have both consumers call that instead.
+ */
 
 import { config } from '../config';
 import { logger } from '../logger';
 import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
 import { extractTags, shouldPersistMessage } from '../utils/keywordDetector';
 import { detectContentType } from '../utils/contentTypeDetection';
+import { openai } from '../lib/openai';
 
 import { correctionService } from './correctionService';
 import { memoryService } from './memoryService';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 class ChatService {
   async askLoreKeeper(userId: string, message: string, persona?: string) {

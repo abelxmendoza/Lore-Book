@@ -1,6 +1,6 @@
-import OpenAI from 'openai';
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 
 import type { Scene, SceneBeat, SceneCharacter, SceneInteraction } from './types';
 
@@ -9,13 +9,7 @@ import type { Scene, SceneBeat, SceneCharacter, SceneInteraction } from './types
  * V1: Uses OpenAI to extract structured scene information
  */
 export class SceneParser {
-  private openai: OpenAI;
 
-  constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-  }
 
   /**
    * Parse text into structured scene
@@ -43,7 +37,7 @@ Return JSON only, no markdown:
 Text:
 ${text}`;
 
-      const response = await this.openai.chat.completions.create({
+      const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {

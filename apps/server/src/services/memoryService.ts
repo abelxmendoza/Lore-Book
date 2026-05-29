@@ -12,6 +12,8 @@ import type {
   ResolvedMemoryEntry
 } from '../types';
 
+import { deriveEmotionalIntensity } from '../utils/emotionalIntensity';
+
 import { chapterService } from './chapterService';
 import { correctionService } from './correctionService';
 import { embeddingService } from './embeddingService';
@@ -90,6 +92,8 @@ class MemoryService {
     const insertRow: Record<string, unknown> = { ...entry };
     if (payload.narrativeOrder != null) insertRow.narrative_order = payload.narrativeOrder;
     if (payload.derivedFromEntryId != null) insertRow.derived_from_entry_id = payload.derivedFromEntryId;
+    // Derive emotional intensity at ingestion — high-emotion entries decay slower (see migration 20260529000007)
+    insertRow.emotional_intensity = deriveEmotionalIntensity(payload.content, payload.mood);
 
     const { error } = await supabaseAdmin.from('journal_entries').insert(insertRow);
     if (error) {

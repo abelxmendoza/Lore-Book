@@ -225,10 +225,11 @@ export const OrganizationsBook: React.FC = () => {
             id: e.entity_id,
             name: e.primary_name,
             aliases: e.aliases || [],
-            type: 'organization',
+            type: 'other' as const,
+            status: 'active' as const,
             description: undefined,
             location: undefined,
-            member_count: undefined,
+            member_count: 0,
             related_people: [],
             confidence: e.confidence,
             usage_count: e.usage_count,
@@ -383,6 +384,23 @@ export const OrganizationsBook: React.FC = () => {
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedOrganizations = filteredOrganizations.slice(startIndex, endIndex);
+
+  // Auto-open modal when navigated here from an entity chip (chat → organizations).
+  useEffect(() => {
+    if (organizations.length === 0) return;
+    const id = sessionStorage.getItem('highlightItem');
+    if (!id) return;
+    sessionStorage.removeItem('highlightItem');
+    const match = organizations.find(o => o.id === id);
+    if (match) setSelectedOrganization(match);
+  }, [organizations]);
+
+  // Refresh when chat pipeline creates/updates organizations.
+  useEffect(() => {
+    const handler = () => { void loadOrganizations(); };
+    window.addEventListener('lk:organizations-updated', handler);
+    return () => window.removeEventListener('lk:organizations-updated', handler);
+  }, []);
 
   // Arrow key navigation
   useEffect(() => {

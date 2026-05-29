@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
 import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 
 import { memoryService } from './memoryService';
@@ -262,9 +262,9 @@ ${context}
 Generate a journal entry:`;
 
       // Use OpenAI to generate entry from photo metadata
-      const openaiClient = new OpenAI({ apiKey: config.openAiKey });
+
       
-      const completion = await openaiClient.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: config.defaultModel,
         temperature: 0.7,
         messages: [

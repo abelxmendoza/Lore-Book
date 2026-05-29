@@ -14,6 +14,7 @@ import type {
   SymptomType,
 } from './types';
 import { WellnessScoreService } from './wellnessScore';
+import { essenceProfileService } from '../essenceProfileService';
 
 /**
  * Main Health & Wellness Engine
@@ -291,14 +292,7 @@ export class HealthEngine {
 
       context.entries = entries || [];
 
-      // Get identity pulse data if available (for mood/stress)
-      // TODO: Fetch from identity pulse service if needed
-
-      // Get resilience data if available
-      // TODO: Fetch from resilience engine if needed
-
-      // Get emotional intelligence data if available
-      // TODO: Fetch from EQ engine if needed
+      context.identity_pulse = await essenceProfileService.getProfile(userId).catch(() => undefined);
 
     } catch (error) {
       logger.error({ error }, 'Failed to build health context');

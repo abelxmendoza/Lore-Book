@@ -237,6 +237,35 @@ router.get(
 );
 
 /**
+ * GET /api/chronology/summary
+ * Returns the latest persisted chronology snapshot (fast, no recompute)
+ */
+router.get(
+  '/summary',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    const { data, error } = await supabaseAdmin
+      .from('chronology_snapshots')
+      .select('node_count, edge_count, gap_count, chain_count, pattern_count, gaps, causal_chains, patterns, updated_at')
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) {
+      return res.json({
+        node_count: 0, edge_count: 0, gap_count: 0,
+        chain_count: 0, pattern_count: 0,
+        gaps: [], causal_chains: [], patterns: [],
+        updated_at: null,
+      });
+    }
+
+    res.json(data);
+  })
+);
+
+/**
  * GET /api/chronology/overlaps
  * Detect overlapping periods
  */

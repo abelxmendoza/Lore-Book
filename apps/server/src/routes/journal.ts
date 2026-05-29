@@ -3,6 +3,8 @@ import { z } from 'zod';
 
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { memoryService } from '../services/memoryService';
+import { epiphanySessionManager } from '../services/epiphanyEngine/epiphanySessionManager';
+import { logger } from '../logger';
 
 const router = Router();
 
@@ -37,6 +39,12 @@ router.post('/create', requireAuth, async (req: AuthenticatedRequest, res) => {
       mood: payload.mood
     }
   });
+
+  epiphanySessionManager.feedEntry(req.user!.id, {
+    id: entry.id,
+    content: payload.text,
+    date: entry.date ?? new Date().toISOString(),
+  }).catch(err => logger.warn({ err }, 'epiphany feed failed (journal)'));
 
   res.status(201).json({ entry });
 });

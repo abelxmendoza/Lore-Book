@@ -6,9 +6,9 @@
  * Generates biographies from precomputed NarrativeAtoms, not raw journal text.
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import { chapterService } from '../chapterService';
 import { supabaseAdmin } from '../supabaseClient';
@@ -35,7 +35,6 @@ import type {
   Domain
 } from './types';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export class BiographyGenerationEngine {
   /**

@@ -4,9 +4,9 @@
  * based on their content and story context
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 
 import { memoryService } from './memoryService';
@@ -14,7 +14,6 @@ import { ruleBasedTitleGenerationService } from './ruleBasedTitleGeneration';
 import { supabaseAdmin } from './supabaseClient';
 import { timelineManager } from './timelineManager';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type TitleGenerationOptions = {
   type: 'arc' | 'saga' | 'era' | 'memory' | 'chapter' | 'scene';

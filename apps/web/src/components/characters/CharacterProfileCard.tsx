@@ -1,4 +1,4 @@
-import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff, Briefcase, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Heart, TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react';
+import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff, Briefcase, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Heart, TrendingUp, TrendingDown, Minus, Zap, Flame, Wind, Moon } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -15,6 +15,10 @@ export type SocialMedia = {
   website?: string;
   email?: string;
   phone?: string;
+  spotify?: string;
+  discord?: string;
+  tiktok?: string;
+  youtube?: string;
 };
 
 export type Character = {
@@ -235,7 +239,27 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
         return 'Unknown';
     }
   };
-  
+
+  type RelPhase = 'CORE' | 'ACTIVE' | 'WEAK' | 'DORMANT';
+  const getRelationshipPhase = (): RelPhase | null => {
+    if (!character.analytics) return null;
+    const c = character.analytics.closeness_score ?? 0;
+    const r = character.analytics.recency_score ?? 0;
+    if (c >= 70 && r >= 0.6) return 'CORE';
+    if (c >= 45 || r >= 0.4) return 'ACTIVE';
+    if (c >= 20 || r >= 0.2) return 'WEAK';
+    return 'DORMANT';
+  };
+
+  const phaseConfig: Record<RelPhase, { label: string; classes: string; icon: React.ReactNode; glow?: string }> = {
+    CORE:    { label: 'Core',    icon: <Flame className="h-2.5 w-2.5" />, classes: 'bg-purple-500/20 text-purple-300 border-purple-500/60', glow: 'shadow-[0_0_8px_rgba(168,85,247,0.5)]' },
+    ACTIVE:  { label: 'Active',  icon: <Zap   className="h-2.5 w-2.5" />, classes: 'bg-cyan-500/20   text-cyan-300   border-cyan-500/50' },
+    WEAK:    { label: 'Weak',    icon: <Wind  className="h-2.5 w-2.5" />, classes: 'bg-amber-500/20  text-amber-300  border-amber-500/40' },
+    DORMANT: { label: 'Dormant', icon: <Moon  className="h-2.5 w-2.5" />, classes: 'bg-gray-500/10   text-gray-400   border-gray-500/30' },
+  };
+
+  const phase = getRelationshipPhase();
+
   return (
     <Card 
       className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden h-full ${
@@ -341,13 +365,13 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
             )}
             {/* Trend Indicator */}
             {character.analytics?.trend === 'deepening' && (
-              <TrendingUp className="h-3 w-3 text-green-400" title="Relationship deepening" />
+              <span title="Relationship deepening"><TrendingUp className="h-3 w-3 text-green-400" /></span>
             )}
             {character.analytics?.trend === 'weakening' && (
-              <TrendingDown className="h-3 w-3 text-red-400" title="Relationship weakening" />
+              <span title="Relationship weakening"><TrendingDown className="h-3 w-3 text-red-400" /></span>
             )}
             {character.analytics?.trend === 'stable' && (
-              <Minus className="h-3 w-3 text-gray-400" title="Stable relationship" />
+              <span title="Stable relationship"><Minus className="h-3 w-3 text-gray-400" /></span>
             )}
           </div>
         </div>
@@ -686,19 +710,31 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
           </div>
         )}
 
-        {(character.memory_count !== undefined || character.relationship_count !== undefined) && (
+        {(character.memory_count !== undefined || character.relationship_count !== undefined || phase) && (
           <div className="flex items-center justify-between pt-1.5 border-t border-border/30 text-[10px]">
-            {character.memory_count !== undefined && (
-              <div className="flex items-center gap-1 text-white/50">
-                <Sparkles className="h-2.5 w-2.5" />
-                <span>{character.memory_count} {character.memory_count === 1 ? 'memory' : 'memories'}</span>
-              </div>
-            )}
-            {character.relationship_count !== undefined && (
-              <div className="flex items-center gap-1 text-white/50">
-                <Users className="h-2.5 w-2.5" />
-                <span>{character.relationship_count} {character.relationship_count === 1 ? 'connection' : 'connections'}</span>
-              </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {character.memory_count !== undefined && (
+                <div className="flex items-center gap-1 text-white/50">
+                  <Sparkles className="h-2.5 w-2.5" />
+                  <span>{character.memory_count} {character.memory_count === 1 ? 'memory' : 'memories'}</span>
+                </div>
+              )}
+              {character.relationship_count !== undefined && (
+                <div className="flex items-center gap-1 text-white/50">
+                  <Users className="h-2.5 w-2.5" />
+                  <span>{character.relationship_count} {character.relationship_count === 1 ? 'connection' : 'connections'}</span>
+                </div>
+              )}
+            </div>
+            {phase && (
+              <Badge
+                variant="outline"
+                className={`${phaseConfig[phase].classes} ${phaseConfig[phase].glow ?? ''} text-[10px] px-1.5 py-0.5 flex items-center gap-1 flex-shrink-0`}
+                title={`Relationship phase: ${phaseConfig[phase].label}`}
+              >
+                {phaseConfig[phase].icon}
+                <span className="hidden sm:inline">{phaseConfig[phase].label}</span>
+              </Badge>
             )}
           </div>
         )}

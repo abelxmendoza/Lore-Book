@@ -3,13 +3,12 @@
 // Purpose: Detect how events affect the user even if they're not direct participants
 // =====================================================
 
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type ImpactType =
   | 'direct_participant'

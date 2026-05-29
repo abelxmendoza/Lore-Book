@@ -67,3 +67,16 @@ export function jaroWinkler(s1: string, s2: string): number {
 export function namesSimilar(a: string, b: string, threshold = 0.88): boolean {
   return jaroWinkler(a.toLowerCase(), b.toLowerCase()) >= threshold;
 }
+
+/**
+ * Extended name match: substring containment OR Jaro-Winkler similarity.
+ * Use when "Alex" should match "Alexander" (substring) in addition to
+ * close spelling variants. Preserves full-name/nickname continuity.
+ */
+export function namesSimilarOrContains(a: string, b: string, threshold = 0.88): boolean {
+  const q = a.toLowerCase().trim();
+  const c = b.toLowerCase().trim();
+  if (q === c) return true;
+  if (q.includes(c) || c.includes(q)) return true;
+  return jaroWinkler(q, c) >= threshold;
+}

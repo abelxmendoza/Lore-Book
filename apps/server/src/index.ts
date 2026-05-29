@@ -290,7 +290,11 @@ app.use(errorHandler);
     memoryExtractionWorker.start();
     const { continuityEngineJob } = await import('./jobs/continuityEngineJob');
     continuityEngineJob.register();
-    logger.info('Core background jobs registered: sync, memoryExtraction, continuityEngine');
+    const { accessibilityDecayJob } = await import('./jobs/accessibilityDecayJob');
+    accessibilityDecayJob.register();
+    const { arcStabilityDecayJob } = await import('./jobs/arcStabilityDecayJob');
+    arcStabilityDecayJob.register();
+    logger.info('Core background jobs registered: sync, memoryExtraction, continuityEngine, accessibilityDecay, arcStabilityDecay');
 
     // EXPERIMENTAL jobs — gated behind ENABLE_EXPERIMENTAL_RUNTIME
     if (process.env.ENABLE_EXPERIMENTAL_RUNTIME === 'true') {
@@ -300,13 +304,14 @@ app.use(errorHandler);
       const { evolveRelationshipsJob } = await import('./jobs/evolveRelationshipsJob');
       const { episodicClosureJob } = await import('./jobs/episodicClosureJob');
       const { registerPersonalStrategyTrainingJob } = await import('./jobs/personalStrategyTrainingJob');
-
+      const { registerEnrichmentJob } = await import('./jobs/enrichmentJob');
       insightGenerationJob.register();
       graphUpdateJob.register();
       valueEvolutionJob.register();
       evolveRelationshipsJob.register();
       episodicClosureJob.register();
       registerPersonalStrategyTrainingJob();
+      registerEnrichmentJob();
       logger.info('Experimental background jobs registered (ENABLE_EXPERIMENTAL_RUNTIME=true)');
     } else {
       logger.info('Experimental jobs skipped (ENABLE_EXPERIMENTAL_RUNTIME not set)');
@@ -315,11 +320,8 @@ app.use(errorHandler);
     logger.warn({ error }, 'Failed to register background jobs, continuing anyway');
   }
 
-  // Engine scheduler — experimental, gated
-  if (
-    process.env.ENABLE_EXPERIMENTAL_RUNTIME === 'true' &&
-    process.env.DISABLE_ENGINE_SCHEDULER !== 'true'
-  ) {
+  // Engine scheduler — always runs (identity/archetype results feed live retrieval scoring)
+  if (process.env.DISABLE_ENGINE_SCHEDULER !== 'true') {
     try {
       const { startEngineScheduler } = await import('./engineRuntime/scheduler');
       startEngineScheduler();
@@ -327,8 +329,6 @@ app.use(errorHandler);
     } catch (error) {
       logger.warn({ error }, 'Failed to start engine scheduler, continuing anyway');
     }
-  } else {
-    logger.info('Engine scheduler disabled (set ENABLE_EXPERIMENTAL_RUNTIME=true to enable)');
   }
 
   const server = app.listen(config.port, () => {

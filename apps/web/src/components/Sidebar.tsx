@@ -11,6 +11,7 @@ import { cn } from '../lib/cn';
 import { UserAvatarButton } from './UserAvatarButton';
 
 import { surfaceToRoute, type SurfaceKey } from '../utils/routeMapping';
+import { useEntityCounts } from '../hooks/useEntityCounts';
 
 interface SidebarProps {
   activeSurface?: SurfaceKey;
@@ -31,6 +32,7 @@ const SidebarContent = ({
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const counts = useEntityCounts();
 
   const handleSurfaceChange = (surface: SurfaceKey) => {
     const route = surfaceToRoute[surface];
@@ -83,6 +85,7 @@ const SidebarContent = ({
           {/* 2. Focus on… / Story entities */}
           <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Focus on…</p>
           <button
+            type="button"
             onClick={() => handleSurfaceChange('characters')}
             aria-label="Open characters view"
             aria-current={activeSurface === 'characters' ? 'page' : undefined}
@@ -93,10 +96,14 @@ const SidebarContent = ({
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <Users className="h-4 w-4 text-primary" aria-hidden="true" />
-            Characters
+            <Users className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Characters</span>
+            {counts && counts.characters > 0 && (
+              <span className="ml-auto text-[10px] text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.characters}</span>
+            )}
           </button>
           <button
+            type="button"
             onClick={() => handleSurfaceChange('locations')}
             aria-label="Open locations view"
             aria-current={activeSurface === 'locations' ? 'page' : undefined}
@@ -107,10 +114,14 @@ const SidebarContent = ({
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <MapPin className="h-4 w-4 text-primary" aria-hidden="true" />
-            Locations
+            <MapPin className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Locations</span>
+            {counts && counts.locations > 0 && (
+              <span className="ml-auto text-[10px] text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.locations}</span>
+            )}
           </button>
           <button
+            type="button"
             onClick={() => handleSurfaceChange('events')}
             aria-label="Open events view"
             aria-current={activeSurface === 'events' ? 'page' : undefined}
@@ -121,10 +132,14 @@ const SidebarContent = ({
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <Calendar className="h-4 w-4 text-primary" aria-hidden="true" />
-            Events
+            <Calendar className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Events</span>
+            {counts && counts.events > 0 && (
+              <span className="ml-auto text-[10px] text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
+            )}
           </button>
           <button
+            type="button"
             onClick={() => handleSurfaceChange('organizations')}
             aria-label="Open groups view"
             aria-current={activeSurface === 'organizations' ? 'page' : undefined}
@@ -135,10 +150,14 @@ const SidebarContent = ({
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <Building2 className="h-4 w-4 text-primary" aria-hidden="true" />
-            Groups
+            <Building2 className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Groups</span>
+            {counts && counts.organizations > 0 && (
+              <span className="ml-auto text-[10px] text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.organizations}</span>
+            )}
           </button>
           <button
+            type="button"
             onClick={() => handleSurfaceChange('skills')}
             aria-label="Open skills view"
             aria-current={activeSurface === 'skills' ? 'page' : undefined}
@@ -149,8 +168,11 @@ const SidebarContent = ({
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <Zap className="h-4 w-4 text-primary" aria-hidden="true" />
-            Skills
+            <Zap className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Skills</span>
+            {counts && counts.skills > 0 && (
+              <span className="ml-auto text-[10px] text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.skills}</span>
+            )}
           </button>
           <button
             onClick={() => handleSurfaceChange('love')}
@@ -199,6 +221,34 @@ const SidebarContent = ({
           >
             <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
             Omni Timeline
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('saga')}
+            aria-label="Open life saga"
+            aria-current={activeSurface === 'saga' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'saga'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+            Life Saga
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('continuity')}
+            aria-label="Open continuity engine"
+            aria-current={activeSurface === 'continuity' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              activeSurface === 'continuity'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
+            Continuity
           </button>
           <button
             onClick={() => handleSurfaceChange('discovery')}

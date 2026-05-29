@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+import { trainingSignalLogger } from '../neural/trainingSignalLogger';
 
 import { DuplicateDetector } from './duplicateDetector';
 import { EntityExtractor } from './entityExtractor';
@@ -42,6 +43,7 @@ export class EntityResolver {
 
       // Step 4: Resolve entities
       const resolved: ResolvedEntity[] = [];
+      const mentionedEntities: Array<{ entityId: string; memoryId: string; userId: string }> = [];
 
       for (const m of matches) {
         if (m.match) {
@@ -51,7 +53,7 @@ export class EntityResolver {
           // Check if we should add as alias
           const normalized = this.normalizer.normalize(m.extracted.raw);
           const canonicalNormalized = this.normalizer.normalize(m.match.canonical);
-          
+
           if (normalized !== canonicalNormalized && !m.match.aliases.includes(m.extracted.raw)) {
             const newAliases = [...m.match.aliases, m.extracted.raw];
             await this.storage.updateAliases(m.match.id, newAliases);
@@ -59,6 +61,9 @@ export class EntityResolver {
           }
 
           resolved.push(m.match);
+          if (m.extracted.memoryId && m.extracted.userId) {
+            mentionedEntities.push({ entityId: m.match.id, memoryId: m.extracted.memoryId, userId: m.extracted.userId });
+          }
         } else {
           // New entity - create it
           const normalized = this.normalizer.normalize(m.extracted.raw);
@@ -71,6 +76,33 @@ export class EntityResolver {
 
           await this.storage.linkEntity(created.id, m.extracted);
           resolved.push(created);
+          if (m.extracted.memoryId && m.extracted.userId) {
+            mentionedEntities.push({ entityId: created.id, memoryId: m.extracted.memoryId, userId: m.extracted.userId });
+          }
+        }
+      }
+
+      // Log entity co-occurrence pairs for KGE training (fire-and-forget)
+      const byMemory = new Map<string, typeof mentionedEntities>();
+      for (const me of mentionedEntities) {
+        if (!byMemory.has(me.memoryId)) byMemory.set(me.memoryId, []);
+        byMemory.get(me.memoryId)!.push(me);
+      }
+      for (const [memId, group] of byMemory) {
+        if (group.length < 2) continue;
+        const userId = group[0].userId;
+        for (let i = 0; i < group.length; i++) {
+          for (let j = i + 1; j < group.length; j++) {
+            trainingSignalLogger.logCoOccurrence({
+              userId,
+              entityA: group[i].entityId,
+              entityB: group[j].entityId,
+              memoryId: memId,
+              coOccurrenceType: 'same_entry',
+              confidence: 1.0,
+              timestamp: new Date().toISOString(),
+            });
+          }
         }
       }
 

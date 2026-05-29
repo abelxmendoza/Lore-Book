@@ -40,6 +40,7 @@ export const SOURCE_TYPE_LABELS: Record<string, string> = {
 
 import type { RecallChatPayload } from './recallTypes';
 import { EntityClarificationChip, type EntityAmbiguity } from './EntityClarificationChip';
+import { EntityChipsRow } from './EntityChipsRow';
 import { SilenceMessage } from './SilenceMessage';
 import { RecallMessage } from './RecallMessage';
 
@@ -100,6 +101,7 @@ export type Message = {
   activePersona?: string;
   cognitionFeedback?: import('../../../hooks/useChatStream').MemoryFeedbackEvent;
   continuityAcknowledged?: { signals: string[]; entityHints: string[]; timelineSignificant: boolean };
+  mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' }>;
 };
 
 type ChatMessageProps = {
@@ -595,6 +597,13 @@ export const ChatMessage = ({
           </div>
         </div>
       </div>
+
+      {/* Entity chips — shown below assistant messages when entities were matched */}
+      {!isUser && message.mentionedEntities && message.mentionedEntities.length > 0 && (
+        <div className="ml-8 sm:ml-10 lg:ml-12">
+          <EntityChipsRow entities={message.mentionedEntities} />
+        </div>
+      )}
 
       {/* Entity Ambiguity Clarification Chips - shown below user messages */}
       {isUser && (message.ambiguities || message.disambiguation_prompt) && (

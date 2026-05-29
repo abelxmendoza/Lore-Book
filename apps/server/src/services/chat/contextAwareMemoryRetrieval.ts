@@ -77,7 +77,14 @@ export async function retrieveMemoriesByThread(
       logger.warn({ error: entErr, userId, threadId }, 'Failed to fetch entries by thread');
       return [];
     }
-    return (entries ?? []) as MemoryEntry[];
+    const fetched = (entries ?? []) as MemoryEntry[];
+    // Fire-and-forget retrieval reinforcement
+    const ids = fetched.map(e => e.id).filter(Boolean);
+    if (ids.length > 0) {
+      Promise.resolve(supabaseAdmin.rpc('bump_retrieval_count', { entry_ids: ids }))
+        .catch(() => {});
+    }
+    return fetched;
   } catch (err) {
     logger.warn({ err, userId, threadId }, 'retrieveMemoriesByThread failed');
     return [];
@@ -171,7 +178,14 @@ export async function retrieveMemoriesUnderNode(
       logger.warn({ error, userId, timelineNodeId, timelineLayer }, 'Failed to fetch entries under node');
       return [];
     }
-    return (entries ?? []) as MemoryEntry[];
+    const fetched = (entries ?? []) as MemoryEntry[];
+    // Fire-and-forget retrieval reinforcement
+    const ids = fetched.map(e => e.id).filter(Boolean);
+    if (ids.length > 0) {
+      Promise.resolve(supabaseAdmin.rpc('bump_retrieval_count', { entry_ids: ids }))
+        .catch(() => {});
+    }
+    return fetched;
   } catch (err) {
     logger.warn({ err, userId, timelineNodeId, timelineLayer }, 'retrieveMemoriesUnderNode failed');
     return [];

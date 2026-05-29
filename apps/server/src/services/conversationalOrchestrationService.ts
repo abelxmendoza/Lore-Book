@@ -3,9 +3,9 @@
  * Service for orchestrating chatbot responses with memory awareness
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import type {
   ChatContext,
@@ -35,7 +35,6 @@ import { privacyScopeService } from './privacyScopeService';
 import { responseShapingService } from './responseShapingService';
 import { supabaseAdmin } from './supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 const MIN_CONFIDENCE_THRESHOLD = 0.5;
 
 export class ConversationalOrchestrationService {

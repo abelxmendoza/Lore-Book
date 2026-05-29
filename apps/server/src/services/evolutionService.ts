@@ -1,13 +1,11 @@
 import { format, parseISO } from 'date-fns';
-import OpenAI from 'openai';
 
 import { config } from '../config';
 import { logger } from '../logger';
 import type { EvolutionInsights, MemoryEntry } from '../types';
+import { openai } from '../lib/openai';
 
 import { memoryService } from './memoryService';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 const defaultInsights: EvolutionInsights = {
   personaTitle: 'The Archivist',

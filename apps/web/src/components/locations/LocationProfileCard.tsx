@@ -77,22 +77,24 @@ export const LocationProfileCard = ({ location, onClick }: LocationProfileCardPr
                 {location.analytics.importance_score}
               </Badge>
               {location.analytics.trend === 'increasing' && (
-                <TrendingUp className="h-3 w-3 text-green-400" title="Increasing visits" />
+                <span title="Increasing visits"><TrendingUp className="h-3 w-3 text-green-400" /></span>
               )}
               {location.analytics.trend === 'decreasing' && (
-                <TrendingDown className="h-3 w-3 text-red-400" title="Decreasing visits" />
+                <span title="Decreasing visits"><TrendingDown className="h-3 w-3 text-red-400" /></span>
               )}
               {location.analytics.trend === 'stable' && (
-                <Minus className="h-3 w-3 text-gray-400" title="Stable visits" />
+                <span title="Stable visits"><Minus className="h-3 w-3 text-gray-400" /></span>
               )}
             </>
           )}
           {location.coordinates && (
-            <Badge 
+            <Badge
               variant="outline"
-              className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs"
+              className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[10px] px-1.5 py-0.5 flex items-center gap-1"
+              title={`${location.coordinates.lat.toFixed(4)}, ${location.coordinates.lng.toFixed(4)}`}
             >
-              📍 GPS
+              <MapPin className="h-2.5 w-2.5" />
+              GPS
             </Badge>
           )}
         </div>

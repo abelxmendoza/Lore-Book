@@ -125,7 +125,7 @@ export interface SkillProgress {
   xp_gained: number;
   level_before: number;
   level_after: number;
-  source_type: 'memory' | 'achievement' | 'manual';
+  source_type: 'memory' | 'achievement' | 'manual' | 'practice';
   source_id: string | null;
   notes: string | null;
   timestamp: string;

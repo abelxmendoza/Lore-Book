@@ -8,136 +8,194 @@ import { CTASection } from '../components/landing/CTASection';
 import {
   Brain,
   BookOpen,
-  Shield,
-  Sparkles,
   Users,
   TrendingUp,
-  Zap,
   Database,
   Lock,
   Layers,
+  MapPin,
+  FolderOpen,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function Landing() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black">
       <LandingHeader />
-      
+
       <main>
+        {/* 1. Hero — grounded continuity promise */}
         <HeroSection />
 
-        {/* Key Features Preview */}
+        {/* 2. What carries forward — concrete, immediate value */}
         <section className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-8 sm:mb-12">
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 sm:mb-4 px-2 sm:px-0">
-                Your Life Story, <span className="text-primary">Automatically</span>
+                What <span className="text-primary">carries forward</span>
               </h2>
               <p className="text-base sm:text-lg md:text-xl text-white/70 max-w-2xl mx-auto px-4 sm:px-0">
-                Just journal naturally. LoreBook transforms your entries into a complete, organized life story.
+                Every conversation adds to a running record. No categories, no tags — just context that builds.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <FeatureCard
-                icon={Brain}
-                title="Continuity Intelligence"
-                highlight="The Jarvis of your life"
-                description="Automatically detects contradictions, emotional changes, identity drift, and repeating patterns. Your life's continuity engine runs after every entry."
-              />
-              <FeatureCard
-                icon={BookOpen}
-                title="Automatic Biography"
-                highlight="Your biography writes itself"
-                description="Transform journal entries into polished biographies automatically. No writing skills required—just chat and your story compiles."
-              />
-              <FeatureCard
-                icon={Sparkles}
-                title="9-Layer Timeline"
-                highlight="Automatic organization"
-                description="Your timeline builds itself with a hierarchical structure: Mythos → Eras → Sagas → Arcs → Chapters → Scenes → Actions."
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <FeatureCard
                 icon={Users}
-                title="AI Companions"
-                highlight="Multiple personas"
-                description="Gossip Buddy, Therapist, Historian, Strategist, and Memory Bank. Your AI adapts to be exactly what you need."
+                title="Recurring People"
+                highlight="No re-introducing"
+                description="Next time you mention someone from your life, LoreBook already knows who they are. No backstory required."
               />
               <FeatureCard
-                icon={Shield}
-                title="Privacy First"
-                highlight="Enterprise security"
-                description="GDPR compliant, encrypted by default. Your data is never sold, never shared, and accessible only to you."
+                icon={MapPin}
+                title="Familiar Places"
+                highlight="Context that sticks"
+                description="The places that keep coming up stop being just names. They become part of your world — with history."
               />
               <FeatureCard
-                icon={TrendingUp}
-                title="Cost Optimized"
-                highlight="Free operations"
-                description="Rule-based extraction, aggressive caching, and efficient algorithms ensure fast, cost-effective operations."
+                icon={FolderOpen}
+                title="Ongoing Projects"
+                highlight="History intact"
+                description="Your work-in-progress carries its full record. Every update layers on what came before — nothing gets lost."
+              />
+              <FeatureCard
+                icon={RefreshCw}
+                title="Recurring Situations"
+                highlight="Patterns noticed"
+                description="When the same situation keeps repeating, LoreBook begins to see it — not just remember it happened."
               />
             </div>
           </div>
         </section>
 
-        {/* Social Proof Section */}
+        {/* 3. How it works — grounded, step-by-step */}
         <section className="py-12 sm:py-16 px-4 sm:px-6 lg:px-8 bg-black/20">
           <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 px-2 sm:px-0">
-              Trusted by People Who Value Their Story
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3 px-2 sm:px-0">
+              How it builds
             </h2>
+            <p className="text-white/60 text-sm sm:text-base mb-8 px-4 sm:px-0">
+              Every conversation adds to your record. Here's what happens.
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-              <div className="rounded-lg border border-border/60 bg-black/40 p-6">
-                <p className="text-white/80 mb-4 italic">
-                  "Finally, a journal that actually understands my life story."
+              <div className="rounded-lg border border-border/60 bg-black/40 p-6 text-left">
+                <div className="text-3xl font-bold text-primary mb-3">01</div>
+                <h3 className="text-white font-semibold text-lg mb-2">Talk naturally</h3>
+                <p className="text-white/70 text-sm leading-relaxed">
+                  No tags, no categories, no format. Write the way you'd text a close friend. LoreBook listens for what matters.
                 </p>
-                <p className="text-sm text-white/60">— Early User</p>
               </div>
-              <div className="rounded-lg border border-border/60 bg-black/40 p-6">
-                <p className="text-white/80 mb-4 italic">
-                  "The continuity engine caught patterns I never noticed. It's like having a life coach that never forgets."
+              <div className="rounded-lg border border-border/60 bg-black/40 p-6 text-left">
+                <div className="text-3xl font-bold text-primary mb-3">02</div>
+                <h3 className="text-white font-semibold text-lg mb-2">It extracts what matters</h3>
+                <p className="text-white/70 text-sm leading-relaxed">
+                  After every conversation, LoreBook identifies the people, decisions, and recurring situations you mentioned — and adds them to your record.
                 </p>
-                <p className="text-sm text-white/60">— Beta Tester</p>
               </div>
-              <div className="rounded-lg border border-border/60 bg-black/40 p-6">
-                <p className="text-white/80 mb-4 italic">
-                  "My biography wrote itself. This is the future of personal memory systems."
+              <div className="rounded-lg border border-border/60 bg-black/40 p-6 text-left">
+                <div className="text-3xl font-bold text-primary mb-3">03</div>
+                <h3 className="text-white font-semibold text-lg mb-2">Context carries forward</h3>
+                <p className="text-white/70 text-sm leading-relaxed">
+                  Next time you mention someone, LoreBook already knows who they are. No re-explaining. No starting over. The record grows with you.
                 </p>
-                <p className="text-sm text-white/60">— Writer & Creator</p>
               </div>
             </div>
           </div>
         </section>
 
-        {/* How We're Different Section */}
+        {/* 4. The longer arc — vision, honestly framed */}
         <section className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4">
-                Not Just Another <span className="text-primary">Chatbot</span>
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-8 sm:mb-12">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-4">
+                The longer arc
               </h2>
-              <p className="text-lg text-white/70 max-w-3xl mx-auto">
-                LoreBook is a structured system for long-term personal evolution, not ad-hoc conversations
+              <p className="text-base sm:text-lg text-white/60 max-w-2xl mx-auto">
+                LoreBook is early. But the direction is clear: a system that accumulates
+                the full texture of a life — not just facts, but the threads that run through years.
               </p>
             </div>
 
-            <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="rounded-lg border border-border/40 bg-black/40 p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="rounded-lg bg-purple-500/20 p-2">
+                    <BookOpen className="h-5 w-5 text-purple-400" />
+                  </div>
+                  <h3 className="text-white font-semibold">Autobiographical continuity</h3>
+                </div>
+                <p className="text-white/60 text-sm leading-relaxed">
+                  A living record that fills in as you talk. Not a static journal — an evolving picture of where you've been and where you're going.
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border/40 bg-black/40 p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="rounded-lg bg-pink-500/20 p-2">
+                    <RefreshCw className="h-5 w-5 text-pink-400" />
+                  </div>
+                  <h3 className="text-white font-semibold">Recurring scenes</h3>
+                </div>
+                <p className="text-white/60 text-sm leading-relaxed">
+                  The same argument. The same kind of problem. The same person, different chapter. LoreBook maps the recurring arcs of your life.
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border/40 bg-black/40 p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="rounded-lg bg-cyan-500/20 p-2">
+                    <TrendingUp className="h-5 w-5 text-cyan-400" />
+                  </div>
+                  <h3 className="text-white font-semibold">Timeline formation</h3>
+                </div>
+                <p className="text-white/60 text-sm leading-relaxed">
+                  Over time, your conversations layer into a timeline — not manually organized, just accumulated. You don't maintain it. It builds.
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border/40 bg-black/40 p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="rounded-lg bg-green-500/20 p-2">
+                    <Layers className="h-5 w-5 text-green-400" />
+                  </div>
+                  <h3 className="text-white font-semibold">Connected life context</h3>
+                </div>
+                <p className="text-white/60 text-sm leading-relaxed">
+                  People, places, decisions, and situations that aren't isolated — they start to relate to each other across years of conversation.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-center text-white/35 text-xs mt-8 max-w-xl mx-auto">
+              Some of this is live. All of it is the direction. We'd rather earn your trust slowly than promise everything at once.
+            </p>
+          </div>
+        </section>
+
+        {/* 5. Built differently — clean differentiation, no comparison table */}
+        <section className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8 bg-black/20">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-10 sm:mb-14">
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4">
+                Built <span className="text-primary">differently</span>
+              </h2>
+              <p className="text-base sm:text-lg text-white/70 max-w-2xl mx-auto">
+                Most AI tools reset when the conversation ends. LoreBook is built from the ground up around continuity — not queries.
+              </p>
+            </div>
+
+            <div className="space-y-5">
               <div className="rounded-lg border border-border/60 bg-black/40 p-6 sm:p-8">
                 <div className="flex items-start gap-4">
-                  <div className="rounded-lg bg-purple-500/20 p-3">
+                  <div className="rounded-lg bg-purple-500/20 p-3 flex-shrink-0">
                     <Database className="h-6 w-6 text-purple-400" />
                   </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-white mb-2">
-                      1. Specialization vs. Generality
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      Persistent, not transient
                     </h3>
-                    <p className="text-white/80 mb-3">
-                      <strong className="text-primary">ChatGPT/Grok:</strong> One-off queries, conversations reset, no persistent personal database
-                    </p>
-                    <p className="text-white/80 mb-3">
-                      <strong className="text-primary">LoreBook:</strong> Continuity intelligence that auto-tracks arcs over years, generates timelines/biographies without manual prompting
-                    </p>
-                    <p className="text-sm text-white/60 italic">
-                      Analogy: Personal CRM for your life vs. blank-slate bot
+                    <p className="text-white/70 text-sm leading-relaxed">
+                      General AI tools are built for one-off queries. Every conversation starts blank. LoreBook is built around accumulation — your record grows every session, without you doing anything extra.
                     </p>
                   </div>
                 </div>
@@ -145,21 +203,15 @@ export default function Landing() {
 
               <div className="rounded-lg border border-border/60 bg-black/40 p-6 sm:p-8">
                 <div className="flex items-start gap-4">
-                  <div className="rounded-lg bg-pink-500/20 p-3">
+                  <div className="rounded-lg bg-pink-500/20 p-3 flex-shrink-0">
                     <Brain className="h-6 w-6 text-pink-400" />
                   </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-white mb-2">
-                      2. Depth in Personal Analytics
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      Purpose-built for personal continuity
                     </h3>
-                    <p className="text-white/80 mb-3">
-                      <strong className="text-primary">ChatGPT/Grok:</strong> You'd need to paste journals manually for analysis
-                    </p>
-                    <p className="text-white/80 mb-3">
-                      <strong className="text-primary">LoreBook:</strong> 20+ engines (Toxicity Detection, Belief Challenger, Continuity Engine) are purpose-built and proactive
-                    </p>
-                    <p className="text-sm text-white/60 italic">
-                      Analogy: Therapist/coach hybrid vs. reactive Q&A tool
+                    <p className="text-white/70 text-sm leading-relaxed">
+                      You could paste your journal into ChatGPT and ask for analysis. But it wouldn't remember next time. LoreBook is built specifically to hold your context — and do something with it over time.
                     </p>
                   </div>
                 </div>
@@ -167,115 +219,38 @@ export default function Landing() {
 
               <div className="rounded-lg border border-border/60 bg-black/40 p-6 sm:p-8">
                 <div className="flex items-start gap-4">
-                  <div className="rounded-lg bg-cyan-500/20 p-3">
+                  <div className="rounded-lg bg-cyan-500/20 p-3 flex-shrink-0">
                     <Lock className="h-6 w-6 text-cyan-400" />
                   </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-white mb-2">
-                      3. Privacy and Ownership
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      Your record, yours alone
                     </h3>
-                    <p className="text-white/80 mb-3">
-                      <strong className="text-primary">ChatGPT/Grok:</strong> Data stored on corporate servers
-                    </p>
-                    <p className="text-white/80 mb-3">
-                      <strong className="text-primary">LoreBook:</strong> E2E encryption, GDPR exports, user-owned data
-                    </p>
-                    <p className="text-sm text-white/60 italic">
-                      Analogy: Your "digital self" vs. corporate data
+                    <p className="text-white/70 text-sm leading-relaxed">
+                      GDPR compliant, encrypted by default. Your data is never sold, never shared, and never used to train models. What you tell LoreBook stays in your record — not a corporate database.
                     </p>
                   </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-border/60 bg-black/40 p-6 sm:p-8">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-lg bg-green-500/20 p-3">
-                    <Layers className="h-6 w-6 text-green-400" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-white mb-2">
-                      4. Structured Output
-                    </h3>
-                    <p className="text-white/80 mb-3">
-                      <strong className="text-primary">ChatGPT/Grok:</strong> Unstructured conversations
-                    </p>
-                    <p className="text-white/80 mb-3">
-                      <strong className="text-primary">LoreBook:</strong> 9-layer hierarchy (Mythos → MicroActions), structured for future AI systems
-                    </p>
-                    <p className="text-sm text-white/60 italic">
-                      Analogy: Organized library vs. random notes
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-border/60 bg-black/40 p-6 sm:p-8">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-lg bg-yellow-500/20 p-3">
-                    <Zap className="h-6 w-6 text-yellow-400" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-white mb-2">
-                      5. Proactive Intelligence
-                    </h3>
-                    <p className="text-white/80 mb-3">
-                      <strong className="text-primary">ChatGPT/Grok:</strong> You ask, it answers
-                    </p>
-                    <p className="text-white/80 mb-3">
-                      <strong className="text-primary">LoreBook:</strong> Continuity Engine automatically detects contradictions, identity drift, abandoned goals, repeating loops
-                    </p>
-                    <p className="text-sm text-white/60 italic">
-                      Analogy: Active life coach vs. passive assistant
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-12 rounded-xl border border-primary/30 bg-gradient-to-br from-purple-950/50 to-black/60 p-6 sm:p-8 max-w-4xl mx-auto text-center">
-              <h3 className="text-2xl font-bold text-white mb-4">
-                Positioning: "The Notion for Your Soul"
-              </h3>
-              <p className="text-white/80 mb-6">
-                Don't position as "another chatbot." Position as structured, evolving, personal—your life's Jarvis with proactive continuity intelligence.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div className="rounded-lg bg-black/40 p-4">
-                  <p className="font-semibold text-primary mb-1">Writers</p>
-                  <p className="text-white/70">Character development, memoir generation</p>
-                </div>
-                <div className="rounded-lg bg-black/40 p-4">
-                  <p className="font-semibold text-primary mb-1">Professionals</p>
-                  <p className="text-white/70">Goal tracking, career journey</p>
-                </div>
-                <div className="rounded-lg bg-black/40 p-4">
-                  <p className="font-semibold text-primary mb-1">Families</p>
-                  <p className="text-white/70">Legacy building, shared memories</p>
-                </div>
-                <div className="rounded-lg bg-black/40 p-4">
-                  <p className="font-semibold text-primary mb-1">Self-Improvers</p>
-                  <p className="text-white/70">Pattern recognition, growth tracking</p>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* CTA Section */}
+        {/* 6. CTA */}
         <CTASection
-          title="Ready to Start Your Story?"
-          description="Join LoreBook and let your biography write itself. Start free, then $15/month for full AI features."
+          title="Ready to stop starting over?"
+          description="Join LoreBook and let context carry forward. Start free."
           primaryAction={{
             label: 'Get Started Free',
             path: '/login',
           }}
           secondaryAction={{
-            label: 'Learn More',
+            label: 'Explore Features',
             path: '/features',
           }}
         />
 
-        {/* Team / Founder */}
+        {/* 7. Founder */}
         <section className="py-12 sm:py-16 px-4 sm:px-6 lg:px-8 bg-black/20">
           <div className="max-w-4xl mx-auto">
             <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center px-2 sm:px-0">Team</h2>
@@ -289,15 +264,13 @@ export default function Landing() {
                 <div className="flex-1 text-center sm:text-left">
                   <h3 className="text-xl sm:text-2xl font-semibold text-white mb-2">Abel Mendoza</h3>
                   <p className="text-sm sm:text-base text-white/70 leading-relaxed">
-                    Founder & Lead Developer. Crafting AI-first storytelling infrastructure with care for privacy and agency.
-                    Building LoreBook as a lifelong digital companion that understands complete life stories.
+                    Founder & Lead Developer. Building LoreBook as a long-term personal continuity system — one that earns trust through what it actually holds onto, not what it promises to be.
                   </p>
                 </div>
               </div>
             </div>
           </div>
         </section>
-
       </main>
 
       <LandingFooter />

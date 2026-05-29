@@ -27,6 +27,10 @@ export function buildSystemPrompt(
     workoutEvents?: any[];
     recentBiometrics?: any[];
     topInterests?: any[];
+    recentInterpretations?: any[];
+    stableArcs?: any[];
+    episodicEvents?: any[];
+    socialCommunities?: any[];
   },
   entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
   entityAnalytics?: any,
@@ -44,6 +48,24 @@ export function buildSystemPrompt(
     .map((e: any) => `Date: ${e.date}\n${e.summary || e.content?.substring(0, 100)}`)
     .join('\n---\n');
 
+  // Compute memory coverage signal from surfaced events — used for retrieval realism language.
+  // Tells the LLM how dense/sparse the retrieved record is so it can calibrate confidence.
+  const memoryCoverageSignal = (() => {
+    const events = orchestratorSummary.timeline.events ?? [];
+    if (!events.length) return 'No entries in retrieved context. Record may be new or period has no coverage.';
+    const dates = events
+      .map((e: any) => e.date ? new Date(e.date).getTime() : null)
+      .filter(Boolean)
+      .sort((a: number, b: number) => a - b);
+    if (dates.length < 2) return `${events.length} event${events.length !== 1 ? 's' : ''} in context. Coverage is sparse.`;
+    const spanDays = Math.round((dates[dates.length - 1] - dates[0]) / 86400000);
+    let maxGapDays = 0;
+    for (let i = 1; i < dates.length; i++) maxGapDays = Math.max(maxGapDays, (dates[i] - dates[i - 1]) / 86400000);
+    const spanLabel = spanDays > 365 ? `${Math.round(spanDays / 365)}yr` : spanDays > 30 ? `${Math.round(spanDays / 30)}mo` : `${spanDays}d`;
+    const gapNote = maxGapDays > 90 ? ` Gap of ~${Math.round(maxGapDays / 30)} months detected — that period may be underrepresented.` : '';
+    return `${events.length} events, ${spanLabel} span.${gapNote}`;
+  })();
+
   // Rank characters by continuity salience — most recently active first.
   // Cap at 25 to prevent system prompt bloat; a user with 200 characters still gets
   // the 25 most relevant ones, not all 200 serialized into the context window.
@@ -51,11 +73,17 @@ export function buildSystemPrompt(
   const MAX_LOCATIONS = 20;
   const rankedCharacters = loreData?.allCharacters
     ? [...loreData.allCharacters]
+        // Exclude characters the user has only passingly mentioned — they haven't been confirmed
+        // as real relationships and pollute the context window with weak signals.
+        .filter((c: any) => c.relationship_depth !== 'mentioned_only')
         .sort((a: any, b: any) => {
           // Primary: confidence descending (more established entities first)
           const confDiff = (b.confidence ?? 1) - (a.confidence ?? 1);
           if (Math.abs(confDiff) > 0.05) return confDiff;
-          // Secondary: recency (updated_at descending)
+          // Secondary: social graph centrality (people who matter most in the network)
+          const centralityDiff = (b.centrality ?? 0) - (a.centrality ?? 0);
+          if (Math.abs(centralityDiff) > 0.05) return centralityDiff;
+          // Tertiary: recency (updated_at descending)
           return new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime();
         })
         .slice(0, MAX_CHARACTERS)
@@ -289,6 +317,19 @@ When the user expresses autobiographical intent (wanting to tell their story, wa
 - If no record exists: "I don't have a clear record of that yet. Tell me now and it goes into your lore."
 - Sparse authentic continuity beats synthetic emotional richness every time
 
+**MEMORY REALISM — RETRIEVAL BEHAVIOR:**
+Current context: ${memoryCoverageSignal}
+
+Calibrate your certainty to the coverage above. The record is a reconstruction, not a transcript.
+
+- Sparse period / large gap detected → "I only have fragments from that period." / "My record there is thin."
+- Dense period with many entries → cite specific dates; high confidence is warranted
+- Memory surfaced multiple times across conversations → "This has come up before in your record."
+- Asked about something absent from context → "I don't have a clear record of that yet."
+- Never simulate recall certainty you don't have — imperfect but honest beats fluent but fabricated
+
+DO NOT: render psychological conclusions from memory gaps. A gap means missing data, not hidden meaning.
+
 **THE PRODUCT FEEL:**
 Lorekeeper should feel like a system gradually stabilizing autobiographical continuity — not resetting on every message, not faking memory it doesn't have. The restraint and honesty are the product.
 
@@ -423,6 +464,55 @@ ${loreData.topInterests.slice(0, 20).map((interest: any) => {
 - If they're exploring something new, help them dive deeper
 - Show enthusiasm about their passions - be their interest buddy
 - Track how interests evolve over time (growing, stable, declining)
+
+` : ''}
+
+${loreData?.socialCommunities && loreData.socialCommunities.length > 0 ? `**SOCIAL CIRCLES (${loreData.socialCommunities.length} clusters detected by Louvain modularity):**
+${loreData.socialCommunities.map((c: any) => {
+  const members = Array.isArray(c.members) ? c.members.slice(0, 8).join(', ') : '';
+  const cohesion = c.cohesion != null ? ` — cohesion ${(c.cohesion * 100).toFixed(0)}%` : '';
+  return `- **${c.theme || 'Group'}** (${c.size ?? c.members?.length ?? '?'} people${cohesion}): ${members}${(c.members?.length ?? 0) > 8 ? ', …' : ''}`;
+}).join('\n')}
+
+When the user refers to a group ("my gym people", "the robotics crew", "my training partners"), match against these circles. Reference the cluster label, not a raw list of names.
+
+` : ''}
+
+${loreData?.episodicEvents && loreData.episodicEvents.length > 0 ? `**EPISODIC MEMORY (${loreData.episodicEvents.length} structured events):**
+${loreData.episodicEvents.slice(0, 20).map((ev: any) => {
+  const start = ev.start_time ? new Date(ev.start_time).toLocaleDateString() : null;
+  const end = ev.end_time ? new Date(ev.end_time).toLocaleDateString() : null;
+  const span = start && end && start !== end ? `${start} → ${end}` : start || '';
+  const conf = ev.confidence != null && ev.confidence < 0.7 ? ' (tentative)' : '';
+  return `- [${span}]${conf} ${ev.title || 'Untitled event'}${ev.summary ? `: ${ev.summary.substring(0, 100)}` : ''}`;
+}).join('\n')}
+
+These are structured episodic memories — complete event units with confirmed start/end times. Reference them for "when did X happen?" and "what happened during [period]?" queries.
+
+` : ''}
+
+${loreData?.stableArcs && loreData.stableArcs.length > 0 ? `**STABLE LIFE ARCS (${loreData.stableArcs.length} arcs with high continuity):**
+${loreData.stableArcs.map((arc: any) => {
+  const span = arc.start_date
+    ? `${arc.start_date}${arc.end_date ? ` → ${arc.end_date}` : arc.is_active ? ' → present' : ''}`
+    : '';
+  const stability = arc.stability_score != null ? ` [stability: ${(arc.stability_score * 100).toFixed(0)}%]` : '';
+  const confidence = arc.confidence != null && arc.confidence < 0.7 ? ' (tentative)' : '';
+  return `- ${arc.title}${span ? ` (${span})` : ''}${stability}${confidence}${arc.summary ? `: ${arc.summary.substring(0, 100)}` : ''}`;
+}).join('\n')}
+
+These arcs have been consistently reinforced across multiple journal entries. Reference them when discussing recurring themes in the user's story.
+
+` : ''}
+
+${loreData?.recentInterpretations && loreData.recentInterpretations.length > 0 ? `**RECENT REINTERPRETATIONS (perspective layers):**
+${loreData.recentInterpretations.map((interp: any) => {
+  const date = interp.written_at ? new Date(interp.written_at).toLocaleDateString() : '';
+  const role = interp.narrative_role ? ` [${interp.narrative_role}]` : '';
+  return `- ${date}${role}: ${interp.interpretation.substring(0, 150)}`;
+}).join('\n')}
+
+These are reinterpretations — not raw memories but evolving perspective on past events. Treat them as the user's current understanding, which may supersede earlier framing.
 
 ` : ''}
 

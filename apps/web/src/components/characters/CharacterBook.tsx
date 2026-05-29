@@ -2189,6 +2189,16 @@ export const CharacterBook = () => {
     void loadRelationships();
   }, [isMockDataEnabled]);
 
+  // Auto-open modal when navigated here from an entity chip (chat → characters).
+  useEffect(() => {
+    if (loading || characters.length === 0) return;
+    const id = sessionStorage.getItem('highlightItem');
+    if (!id) return;
+    sessionStorage.removeItem('highlightItem');
+    const match = characters.find(c => c.id === id);
+    if (match) setSelectedCharacter(match);
+  }, [loading, characters]);
+
   // Refresh + briefly highlight cards when the chat pipeline updates characters.
   const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Set<string>>(new Set());
   useEffect(() => {

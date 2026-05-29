@@ -5,14 +5,13 @@
  * Core Principle: Chat negotiates meaning. Engines never assert truth.
  */
 
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import { essenceProfileService, type EssenceProfile, type EssenceInsight, type SkillInsight } from '../essenceProfileService';
 import { supabaseAdmin } from '../supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type RefinementIntent =
   | 'affirm'

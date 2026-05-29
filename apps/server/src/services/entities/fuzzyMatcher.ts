@@ -1,3 +1,5 @@
+import { AI_THRESHOLDS } from '../../config/aiThresholds';
+
 /**
  * Fuzzy matching using Levenshtein distance
  * Simple implementation for V1
@@ -21,7 +23,7 @@ export class FuzzyMatcher {
    * Check if two strings are duplicates
    */
   isDuplicate(a: string, b: string): boolean {
-    return this.similarity(a, b) >= 0.88; // Good threshold
+    return this.similarity(a, b) >= AI_THRESHOLDS.JW_ENTITY_MATCH;
   }
 
   /**

@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import OpenAI from 'openai';
 import { z } from 'zod';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { supabaseAdmin } from '../lib/supabase';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
@@ -47,8 +47,6 @@ const completeSchema = z.object({
   personas: z.array(z.enum(['journaler', 'developer', 'writer', 'explorer'])).optional(),
   completedAt: z.string().optional(),
 });
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 /**
  * POST /api/onboarding/analyze-user

@@ -287,6 +287,41 @@ Respond with JSON:
       return { themes: [], dominant_themes: [] };
     }
   }
+
+  /**
+   * Lightweight signal ratio check — heuristics only, no LLM.
+   * Returns a 0–1 score representing the fraction of recent entries that are
+   * meaningfully significant. Used as a cheap gate before running expensive
+   * analytics modules.
+   *
+   * Returns 1.0 (assume full signal) when fewer than MIN_ENTRIES are present,
+   * so new users always get their first analytics run.
+   */
+  async getSignalRatio(userId: string, days: number = 30): Promise<number> {
+    const MIN_ENTRIES = 5;
+    try {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+
+      const { data: entries, error } = await supabaseAdmin
+        .from('journal_entries')
+        .select('id, content, created_at, mood, tags')
+        .eq('user_id', userId)
+        .gte('created_at', cutoff.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (error || !entries || entries.length < MIN_ENTRIES) return 1.0;
+
+      let signalCount = 0;
+      for (const entry of entries) {
+        if ((await this.calculateSignificance(entry)) >= 0.5) signalCount++;
+      }
+      return signalCount / entries.length;
+    } catch {
+      return 1.0; // Fail open — run analytics if signal check fails
+    }
+  }
 }
 
 export const signalNoiseAnalysisService = new SignalNoiseAnalysisService();

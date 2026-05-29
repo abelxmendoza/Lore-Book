@@ -1,6 +1,6 @@
-import OpenAI from 'openai';
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 
 import type { ToxicityEvent } from './types';
 
@@ -9,13 +9,7 @@ import type { ToxicityEvent } from './types';
  * V1: Uses OpenAI to extract structured toxicity information
  */
 export class ToxicityParser {
-  private openai: OpenAI;
 
-  constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-  }
 
   /**
    * Parse text into structured toxicity event
@@ -56,7 +50,7 @@ Focus on:
 Text:
 ${text}`;
 
-      const response = await this.openai.chat.completions.create({
+      const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {

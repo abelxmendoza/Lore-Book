@@ -3,13 +3,12 @@
 // Purpose: Extract EXPERIENCE, FEELING, THOUGHT, etc. from normalized text
 // =====================================================
 
-import OpenAI from 'openai';
 
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import type { ExtractedUnitType, ExtractionResult } from '../../types/conversationCentered';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 /**
  * Extracts semantic units from normalized text

@@ -20,14 +20,20 @@ export class EventAssemblyService {
    * Assemble events from extracted units
    * Groups EXPERIENCE units by WHO/WHERE/WHEN
    */
-  async assembleEvents(userId: string): Promise<EventAssemblyResult[]> {
+  async assembleEvents(userId: string, threadId?: string): Promise<EventAssemblyResult[]> {
     try {
-      // Get all EXPERIENCE units (excluding deprecated and pruned units)
+      // Load only recent EXPERIENCE units — units older than this window were already
+      // assembled in a prior run. Loading all history is O(n_lifetime) per message,
+      // which becomes catastrophic for long-term users.
+      const ASSEMBLY_WINDOW_DAYS = 30;
+      const windowStart = new Date(Date.now() - ASSEMBLY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
       const { data: allUnits, error } = await supabaseAdmin
         .from('extracted_units')
         .select('*')
         .eq('user_id', userId)
         .eq('type', 'EXPERIENCE')
+        .gte('created_at', windowStart)
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -58,7 +64,7 @@ export class EventAssemblyService {
       // Create or update events
       const results: EventAssemblyResult[] = [];
       for (const group of eventGroups) {
-        const event = await this.createOrUpdateEvent(userId, group);
+        const event = await this.createOrUpdateEvent(userId, group, threadId);
         results.push(event);
       }
 
@@ -125,7 +131,8 @@ export class EventAssemblyService {
    */
   private async createOrUpdateEvent(
     userId: string,
-    unitGroup: ExtractedUnit[]
+    unitGroup: ExtractedUnit[],
+    threadId?: string
   ): Promise<EventAssemblyResult> {
     // Check if any units are already linked to an event
     const linkedEventIds = new Set<string>();
@@ -180,6 +187,7 @@ export class EventAssemblyService {
         confidence: 0.8,
         metadata: {
           assembled_from_units: unitGroup.map(u => u.id),
+          ...(threadId ? { thread_id: threadId } : {}),
           knowledge_types: {
             experiences: experienceUnits.length,
             facts: factUnits.length,

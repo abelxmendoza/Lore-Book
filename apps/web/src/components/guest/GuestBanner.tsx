@@ -2,15 +2,17 @@ import { User, X, LogIn } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useGuest } from '../../contexts/GuestContext';
 import { useAuth } from '../../lib/supabase';
+import { useMockData } from '../../contexts/MockDataContext';
 import { Button } from '../ui/button';
 
 export const GuestBanner = () => {
   const { isGuest, guestState, endGuestSession } = useGuest();
   const { user } = useAuth();
+  const { runtimeDataMode } = useMockData();
   const navigate = useNavigate();
 
-  // Don't show if user is authenticated or not a guest
-  if (user || !isGuest || !guestState) return null;
+  // Don't show if user is authenticated, not a guest, or in Demo mode (DemoModeBanner handles that)
+  if (user || !isGuest || !guestState || runtimeDataMode === 'DEMO') return null;
 
   const messagesRemaining = guestState.chatLimit - guestState.chatMessagesUsed;
   const limitReached = messagesRemaining <= 0;

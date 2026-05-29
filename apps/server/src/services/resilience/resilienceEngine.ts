@@ -14,6 +14,7 @@ import { SetbackDetector } from './setbackDetector';
 import { SetbackExtractor } from './setbackExtractor';
 import { StressPatternDetector } from './stressPatternDetector';
 import type { Setback, ResilienceInsight, ResilienceContext, ResilienceOutput, SetbackSignal, RecoverySignal } from './types';
+import { essenceProfileService } from '../essenceProfileService';
 
 /**
  * Main Resilience Engine
@@ -306,9 +307,7 @@ export class ResilienceEngine {
 
       context.entries = entries || [];
 
-      // Get identity pulse data if available
-      // TODO: Fetch from identity pulse service if needed
-      // For now, we'll extract sentiment from entries if available
+      context.identity_pulse = await essenceProfileService.getProfile(userId).catch(() => undefined);
 
       // Get chronology data if available
       // TODO: Fetch from chronology engine if needed

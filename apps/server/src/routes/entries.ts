@@ -3,6 +3,7 @@ import multer from 'multer';
 import { z } from 'zod';
 
 import { logger } from '../logger';
+import { supabaseAdmin } from '../services/supabaseClient';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { rateLimitMiddleware } from '../middleware/rateLimit';
 import { checkEntryLimit } from '../middleware/subscription';
@@ -289,6 +290,25 @@ router.post('/', rateLimitMiddleware, requireAuth, checkEntryLimit, validateBody
   } catch (error) {
     logger.error({ error }, 'Error creating entry');
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create entry' });
+  }
+});
+
+router.get('/fading', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    const { data, error } = await supabaseAdmin
+      .from('journal_entries')
+      .select('id, date, content, accessibility_score, tags, summary')
+      .eq('user_id', req.user!.id)
+      .not('accessibility_score', 'is', null)
+      .lt('accessibility_score', 0.7)
+      .order('accessibility_score', { ascending: true })
+      .limit(limit);
+    if (error) throw error;
+    res.json({ entries: data || [] });
+  } catch (error) {
+    logger.error({ error }, 'Error fetching fading memories');
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to fetch fading memories' });
   }
 });
 

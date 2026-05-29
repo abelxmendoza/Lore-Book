@@ -5,8 +5,8 @@
  * chapters and positions based on narrative relevance rather than temporal accuracy.
  */
 
-import OpenAI from 'openai';
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import type { ContentType } from '../../types';
 import type {
@@ -16,7 +16,6 @@ import type {
   BiographySpec
 } from './types';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 /**
  * Placement rules by content type

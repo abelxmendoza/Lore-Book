@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
 
 import { affectionCalculator } from './affectionCalculator';
@@ -173,7 +174,6 @@ export class RomanticRelationshipAnalytics {
     try {
       const { config } = await import('../../config');
       const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: config.openAiKey });
 
       const recentMentions = mentions.slice(-20).map(m => `[${m.created_at}] ${m.content}`).join('\n');
       const dateSummary = dates.map(d => `${d.date_type}: ${d.date_time}`).join('\n');

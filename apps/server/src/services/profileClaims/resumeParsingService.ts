@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
+import { openai } from '../openaiClient';
 
 import mammoth from 'mammoth';
-import OpenAI from 'openai';
 import * as pdfParseModule from 'pdf-parse';
 const pdfParse = (pdfParseModule as unknown as { default: (buf: Buffer, opts?: Record<string, unknown>) => Promise<{ text: string }> }).default ?? pdfParseModule;
 
@@ -12,7 +12,6 @@ import { supabaseAdmin } from '../supabaseClient';
 import { profileClaimsService, type CreateClaimInput, type ClaimType } from './profileClaimsService';
 
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export interface ResumeDocument {
   id: string;

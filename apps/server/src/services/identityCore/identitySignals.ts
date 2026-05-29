@@ -1,12 +1,11 @@
 import { randomUUID } from 'crypto';
-import OpenAI from 'openai';
+import { openai } from '../openaiClient';
 
 import { config } from '../../config';
 import { logger } from '../../logger';
 
 import type { IdentitySignal, IdentitySignalType } from './identityTypes';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 /**
  * Extracts identity signals from journal entries

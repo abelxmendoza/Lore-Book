@@ -152,6 +152,31 @@ export async function buildRAGPacket(
     });
   }
 
+  // ── Social centrality → character salience boost ────────────────────────
+  // Load top social-graph centrality scores and merge onto allCharacters by name.
+  // This lets systemPromptBuilder rank characters by their actual network importance
+  // rather than just recency/confidence.
+  if (allCharacters.length > 0) {
+    try {
+      const { data: centralityRows } = await supabaseAdmin
+        .from('social_nodes')
+        .select('person_name, centrality')
+        .eq('user_id', userId)
+        .order('centrality', { ascending: false })
+        .limit(50);
+
+      if (centralityRows && centralityRows.length > 0) {
+        const centralityMap = new Map<string, number>(
+          centralityRows.map((r: any) => [r.person_name?.toLowerCase(), r.centrality ?? 0])
+        );
+        allCharacters = allCharacters.map((c: any) => ({
+          ...c,
+          centrality: centralityMap.get(c.name?.toLowerCase()) ?? 0,
+        }));
+      }
+    } catch (e) { logger.debug({ e }, 'RAGBuilder: centrality merge failed'); }
+  }
+
   // ── HQI semantic search ──────────────────────────────────────────────────
   let hqiResults: any[] = [];
   try {
@@ -249,6 +274,56 @@ export async function buildRAGPacket(
     ...fabricNeighbors,
   ];
 
+  // ── Social communities (Louvain clusters) ────────────────────────────────
+  // Fetch persisted community output from the social network engine.
+  // These drive the "YOUR SOCIAL CIRCLES" system prompt block so the LLM can
+  // answer questions like "who are my gym people?" by cluster, not enumeration.
+  let socialCommunities: any[] = [];
+  try {
+    const { data: commData } = await supabaseAdmin
+      .from('social_communities')
+      .select('id, theme, members, cohesion, size')
+      .eq('user_id', userId)
+      .order('size', { ascending: false })
+      .limit(8);
+    socialCommunities = (commData as any[]) ?? [];
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: social communities fetch failed'); }
+
+  // ── Episodic events (resolved_events, structured) ───────────────────────
+  // These are the most semantically clean temporal units: structured events with
+  // start_time/end_time, people[] UUIDs, and confidence scores. Previously orphaned.
+  let episodicEvents: any[] = [];
+  try {
+    const { data: evData } = await supabaseAdmin
+      .from('resolved_events')
+      .select('id, title, summary, type, start_time, end_time, confidence, people, locations, activities, metadata')
+      .eq('user_id', userId)
+      .gte('confidence', 0.35)
+      .order('start_time', { ascending: false })
+      .limit(40);
+    episodicEvents = (evData as any[]) ?? [];
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: episodic events fetch failed'); }
+
+  // ── Recent interpretations (reconsolidation layer) ───────────────────────
+  let recentInterpretations: any[] = [];
+  try {
+    const { interpretationService } = await import('../interpretationService');
+    recentInterpretations = await interpretationService.getRecentInterpretations(userId, 5);
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: interpretations fetch failed'); }
+
+  // ── Stable life arcs (stability_score >= 0.5) ────────────────────────────
+  let stableArcs: any[] = [];
+  try {
+    const { data } = await supabaseAdmin
+      .from('life_arcs')
+      .select('id, title, arc_type, start_date, end_date, summary, confidence, stability_score, is_active')
+      .eq('user_id', userId)
+      .gte('stability_score', 0.5)
+      .order('stability_score', { ascending: false })
+      .limit(8);
+    stableArcs = (data as any[]) ?? [];
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: stable arcs fetch failed'); }
+
   const packet = {
     orchestratorSummary, hqiResults, relatedEntries, fabricNeighbors,
     extractedDates, sources,
@@ -256,6 +331,7 @@ export async function buildRAGPacket(
     characterAttributesMap: Object.fromEntries(characterAttributesMap),
     romanticRelationships, corrections, deprecatedUnits,
     workoutEvents, recentBiometrics, topInterests,
+    recentInterpretations, stableArcs, episodicEvents, socialCommunities,
   };
 
   ragPacketCacheService.cachePacket(userId, message, packet);

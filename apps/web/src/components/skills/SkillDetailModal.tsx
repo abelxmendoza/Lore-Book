@@ -5,11 +5,10 @@
 // =====================================================
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, Zap, TrendingUp, Calendar, MessageSquare, Clock, FileText, Award, Star, Sparkles, TrendingDown, Plus, Edit2, Trash2, Users, Building2, MapPin, Image as ImageIcon, ChevronRight, Loader2, UserCircle, Target, MapPin as MapPinIcon, Trophy, GitBranch, BookOpen } from 'lucide-react';
+import { X, TrendingUp, Calendar, MessageSquare, Clock, FileText, Star, Sparkles, Users, Building2, MapPin, Image as ImageIcon, ChevronRight, Loader2, UserCircle, Target, MapPin as MapPinIcon, Trophy, GitBranch } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Modal } from '../ui/modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
@@ -22,7 +21,7 @@ import { useEntityModal } from '../../contexts/EntityModalContext';
 import { fetchJson } from '../../lib/api';
 import { LazyImage } from '../ui/LazyImage';
 import { useNavigate } from 'react-router-dom';
-import type { Skill, SkillProgress, SkillCategory, SkillMetadata } from '../../types/skill';
+import type { Skill, SkillProgress, SkillMetadata } from '../../types/skill';
 import type { Achievement } from '../../types/achievement';
 
 type SkillDetailModalProps = {
@@ -53,13 +52,6 @@ type RelatedOrganization = {
   name: string;
   type?: string;
   member_count?: number;
-};
-
-type RelatedLocation = {
-  id: string;
-  name: string;
-  visit_count?: number;
-  last_visited?: string;
 };
 
 type RelatedPhoto = {
@@ -98,10 +90,8 @@ const CATEGORY_COLORS: Record<string, string> = {
 export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: SkillDetailModalProps) => {
   const [skill, setSkill] = useState<Skill>(initialSkill);
   const [activeTab, setActiveTab] = useState<TabKey>('info');
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [skillDetails, setSkillDetails] = useState<SkillMetadata | null>(null);
-  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [, setLoadingDetails] = useState(false);
   
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -110,7 +100,7 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
-  const { streamChat, isStreaming, cancel } = useChatStream();
+  const { streamChat, isStreaming } = useChatStream();
 
   // Progress state
   const [progressHistory, setProgressHistory] = useState<SkillProgress[]>([]);
@@ -159,13 +149,12 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
       void loadConnections();
     } else if (activeTab === 'milestones') {
       void loadMilestones();
-    } else if (activeTab === 'locations') {
-      // Locations are already in skillDetails
     } else if (activeTab === 'photos') {
       void loadPhotos();
     } else if (activeTab === 'timeline') {
       void loadTimelineEvents();
     }
+    void loadProgressHistory();
   }, [activeTab, skill.id]);
 
   const loadSkillDetails = async () => {
@@ -508,11 +497,7 @@ Active: ${skill.is_active ? 'Yes' : 'No'}
 ${detailsContext ? `\n\nAdditional Details:\n${detailsContext}` : ''}
       `.trim();
 
-      await streamChat({
-        messages: [
-          {
-            role: 'system',
-            content: `You are helping the user manage their skill "${skill.skill_name}". You can help them:
+      const systemPrompt = `You are helping the user manage their skill "${skill.skill_name}". You can help them:
 - Update skill information
 - Track progress and XP
 - Answer questions about the skill details (who they learned from, where they practiced, timeline context, etc.)
@@ -523,18 +508,15 @@ ${detailsContext ? `\n\nAdditional Details:\n${detailsContext}` : ''}
 Current skill details:
 ${skillContext}
 
-When the user provides information about who they learned from, where they practiced, why they started, or other details, acknowledge it and note that the information will be saved. Be helpful and encouraging.`
-          },
-          ...chatMessages.map(m => ({
-            role: m.role,
-            content: m.content
-          })),
-          {
-            role: 'user',
-            content: `Context:\n${skillContext}\n\nUser question: ${userMessage.content}`
-          }
+When the user provides information about who they learned from, where they practiced, why they started, or other details, acknowledge it and note that the information will be saved. Be helpful and encouraging.`;
+
+      await streamChat(
+        `Context:\n${skillContext}\n\nUser question: ${userMessage.content}`,
+        [
+          { role: 'user' as const, content: systemPrompt },
+          ...chatMessages.map(m => ({ role: m.role, content: m.content }))
         ],
-        onChunk: (chunk) => {
+        (chunk: string) => {
           setChatMessages(prev => {
             const existing = prev.find(m => m.id === assistantMessageId);
             if (existing) {
@@ -553,11 +535,10 @@ When the user provides information about who they learned from, where they pract
             }
           });
         },
-        onComplete: async () => {
+        () => {},
+        async () => {
           setStreamingMessageId(null);
           setChatLoading(false);
-          
-          // Try to extract updates from the last user message and assistant response
           try {
             const lastUserMessage = chatMessages[chatMessages.length - 1];
             const lastAssistantMessage = chatMessages.find(m => m.id === assistantMessageId);
@@ -569,7 +550,7 @@ When the user provides information about who they learned from, where they pract
             console.error('Failed to extract updates:', error);
           }
         },
-        onError: (error) => {
+        (error: string) => {
           console.error('Chat error:', error);
           setChatMessages(prev => [...prev, {
             id: assistantMessageId,
@@ -580,29 +561,11 @@ When the user provides information about who they learned from, where they pract
           setStreamingMessageId(null);
           setChatLoading(false);
         }
-      });
+      );
     } catch (error) {
       console.error('Failed to send message:', error);
       setChatLoading(false);
       setStreamingMessageId(null);
-    }
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const updated = await skillsApi.updateSkill(skill.id, {
-        skill_name: skill.skill_name,
-        skill_category: skill.skill_category,
-        description: skill.description || undefined,
-        is_active: skill.is_active
-      });
-      setSkill(updated);
-      onUpdate?.();
-    } catch (error) {
-      console.error('Failed to save skill:', error);
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -1462,7 +1425,7 @@ When the user provides information about who they learned from, where they pract
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {progressHistory.map((progress, idx) => {
+                      {progressHistory.map((progress) => {
                         const isLevelUp = progress.level_after > progress.level_before;
                         const sourceColors: Record<string, string> = {
                           memory: 'bg-blue-500/20 text-blue-400 border-blue-500/40',

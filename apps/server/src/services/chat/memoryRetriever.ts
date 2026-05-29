@@ -13,7 +13,13 @@ import { queryRewriter } from '../rag/queryRewriter';
 import { reranker } from '../rag/reranker';
 import { temporalWeighting } from '../rag/temporalWeighting';
 import { applyEpistemicWeights } from '../rag/epistemicWeighting';
+import { computeIdentityWeight } from './identityWeighting';
+import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
+import { isOnsetQuery, scoreEntryForTopic, resolveOnset } from '../../utils/onsetDetector';
+import { computePPR, buildMentionGraph, topEntryIds } from '../graph/personalizedPageRank';
+import { trainingSignalLogger } from '../neural/trainingSignalLogger';
 
+import type { IdentityCoreProfile } from '../identityCore/identityTypes';
 import type { MemoryContext } from './chatTypes';
 
 
@@ -33,7 +39,8 @@ export class MemoryRetriever {
     userId: string,
     max = 20,
     query?: string,
-    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    identityProfile?: IdentityCoreProfile | null
   ): Promise<MemoryContext> {
     try {
       logger.debug({ userId, max, hasQuery: !!query }, 'Retrieving memory context (enhanced RAG)');
@@ -42,7 +49,7 @@ export class MemoryRetriever {
 
       // STEP 1: Enhanced retrieval with RAG optimizations
       if (query && query.trim().length > 0) {
-        entries = await this.enhancedRetrieve(userId, query, max, conversationHistory);
+        entries = await this.enhancedRetrieve(userId, query, max, conversationHistory, identityProfile);
       } else {
         // Fallback to recent entries
         const { data: entriesData, error: entriesError } = await supabaseAdmin
@@ -167,11 +174,113 @@ export class MemoryRetriever {
     userId: string,
     query: string,
     limit: number,
-    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+    identityProfile?: IdentityCoreProfile | null
   ): Promise<MemoryEntry[]> {
     try {
       // Step 1: Rewrite and expand query
       const rewritten = await queryRewriter.rewriteQuery(query, conversationHistory);
+
+      // Spreading activation: 2-hop entity association via structured entity_mentions graph.
+      // Hop-1 (+0.15): entries directly mentioning any query entity
+      // Hop-2 (+0.07): entries that share entities with hop-1 entries (second-order association)
+      // Example: "Abuela" → hop-1 finds all Abuela scenes → hop-2 finds scenes sharing
+      //          entities (family members, locations) with those Abuela scenes.
+      const entityAssociatedIds = new Set<string>();   // hop-1
+      const hop2AssociatedIds = new Set<string>();     // hop-2 (attenuated)
+      if (rewritten.entities.length > 0) {
+        try {
+          const nameFilters = rewritten.entities.map(n => `primary_name.ilike.${n}`).join(',');
+          const { data: matchedEntities } = await supabaseAdmin
+            .from('omega_entities')
+            .select('id')
+            .eq('user_id', userId)
+            .neq('mention_status', 'mentioned_only')
+            .or(nameFilters);
+          if (matchedEntities?.length) {
+            const entityIds = matchedEntities.map((e: { id: string }) => e.id);
+            // Hop-1
+            const { data: mentions } = await supabaseAdmin
+              .from('entity_mentions')
+              .select('memory_id')
+              .in('entity_id', entityIds);
+            (mentions ?? []).forEach((m: { memory_id: string }) => entityAssociatedIds.add(m.memory_id));
+
+            // Hop-2: from hop-1 entries, find co-occurring entities, then their entries
+            const hop1Ids = [...entityAssociatedIds].slice(0, 25);
+            if (hop1Ids.length > 0) {
+              const { data: hop2Ents } = await supabaseAdmin
+                .from('entity_mentions')
+                .select('entity_id')
+                .in('memory_id', hop1Ids);
+              if (hop2Ents?.length) {
+                const hop2EntityIds = [...new Set(hop2Ents.map((m: { entity_id: string }) => m.entity_id))].slice(0, 40);
+                const { data: hop2Mentions } = await supabaseAdmin
+                  .from('entity_mentions')
+                  .select('memory_id')
+                  .in('entity_id', hop2EntityIds);
+                (hop2Mentions ?? []).forEach((m: { memory_id: string }) => {
+                  if (!entityAssociatedIds.has(m.memory_id)) hop2AssociatedIds.add(m.memory_id);
+                });
+              }
+            }
+          }
+        } catch (err) {
+          logger.debug({ err }, 'entity association spreading failed (non-fatal)');
+        }
+      }
+
+      // Personalized PageRank: query-conditioned importance over the entity-mention bipartite graph.
+      // Seeds the random walk on matched omega entity IDs so we get structurally proximate entries,
+      // not just direct co-mentions. PPR top-k entries receive an additional +0.10 scoring boost.
+      const pprBoostedIds = new Set<string>();
+      let pprEntityIds = new Set<string>();
+      if (rewritten.entities.length > 0) {
+        try {
+          const nameFilters = rewritten.entities.map((n: string) => `primary_name.ilike.${n}`).join(',');
+          const { data: seedEntities } = await supabaseAdmin
+            .from('omega_entities')
+            .select('id')
+            .eq('user_id', userId)
+            .or(nameFilters);
+          if (seedEntities?.length) {
+            const seedIds = seedEntities.map((e: { id: string }) => e.id);
+            pprEntityIds = new Set(seedIds);
+            // Fetch entity_mentions for the graph (bounded to avoid unbounded queries)
+            const { data: allMentions } = await supabaseAdmin
+              .from('entity_mentions')
+              .select('memory_id, entity_id, canonical_entity_id')
+              .eq('user_id', userId)
+              .limit(2000);
+            if (allMentions?.length) {
+              const graph = buildMentionGraph(allMentions as Array<{ memory_id: string; entity_id: string; canonical_entity_id?: string | null }>);
+              const pprResult = computePPR(graph, seedIds, 0.85, 30);
+              const topIds = topEntryIds(pprResult, pprEntityIds, 20);
+              topIds.forEach(id => pprBoostedIds.add(id));
+            }
+          }
+        } catch (err) {
+          logger.debug({ err }, 'PPR boosting failed (non-fatal)');
+        }
+      }
+
+      // Identity self-load: when no profile is injected by the caller, load from engine results.
+      // getEngineResults is cached — if ragBuilderService already called it this turn, this is free.
+      let resolvedIdentityProfile = identityProfile;
+      if (!resolvedIdentityProfile) {
+        try {
+          const eng = await getEngineResults(userId);
+          resolvedIdentityProfile = (eng?.identityCore?.data as IdentityCoreProfile | null) ?? null;
+        } catch {
+          // non-fatal — identity weighting simply won't apply
+        }
+      }
+
+      // Temporal anchor resolution: detect natural-language time expressions and resolve
+      // to a concrete calendar window. Entries within the window get a scoring boost.
+      const temporalWindow = resolveAllTemporalAnchors(query);
+      const onsetQuery = isOnsetQuery(query);
+
       // Step 2: Route to optimal strategy
       const strategy = await intentRouter.routeQuery(query, conversationHistory);
       const temporalType = temporalWeighting.detectTemporalType(query);
@@ -291,11 +400,35 @@ export class MemoryRetriever {
           // Epistemic multiplier: governed truth-state and knowledge-type quality gate.
           // Disputed/revised entries are scored lower; canonical/fact entries rank higher.
           const epistemicWeight = (entry as any)._epistemicWeight ?? 0.85;
+          // Accessibility multiplier: memories retrieved more often stay accessible;
+          // entries that haven't been surfaced in a while decay toward 0.1 floor.
+          const accessibilityScore = (entry as any).accessibility_score ?? 1.0;
+          // Identity-congruence weight: entries matching stable identity dimensions score higher.
+          const identityWeight = computeIdentityWeight(entry as MemoryEntry, resolvedIdentityProfile);
+          // Spreading activation: hop-1 = direct entity co-mention (+0.15), hop-2 = second-order (+0.07)
+          const entryId = (entry as any).id as string;
+          const entityAssociation = entityAssociatedIds.has(entryId)
+            ? 0.15
+            : hop2AssociatedIds.has(entryId)
+              ? 0.07
+              : 0;
+          // Temporal anchor boost: entries within the resolved calendar window score higher.
+          // Confidence-scaled so a fuzzy "the other day" (0.75) adds less than "yesterday" (1.0).
+          const entryDate = (entry as any).date ? new Date((entry as any).date) : null;
+          const temporalWindowBoost = (temporalWindow && entryDate &&
+            entryDate >= temporalWindow.start && entryDate <= temporalWindow.end)
+            ? 0.15 * temporalWindow.confidence
+            : 0;
+          // PPR boost: entries in the top-k of query-seeded Personalized PageRank (+0.10)
+          const pprBoost = pprBoostedIds.has(entryId) ? 0.10 : 0;
           const finalScore =
             (semanticScore * strategy.weights!.semantic +
              temporalWeight * strategy.weights!.temporal +
              entityBoost * strategy.weights!.entity +
-             rerankScore * 0.3) * epistemicWeight;
+             rerankScore * 0.3 +
+             entityAssociation +
+             temporalWindowBoost +
+             pprBoost) * epistemicWeight * accessibilityScore * identityWeight;
           return { ...entry, _finalScore: finalScore };
         })
         .sort((a, b) => (b as any)._finalScore - (a as any)._finalScore);
@@ -340,6 +473,63 @@ export class MemoryRetriever {
       }
 
       finalEntries = S.slice(0, limit);
+
+      // Onset query override: "when did I first / start X?"
+      // CUSUM detects the phase-transition date; we re-sort chronologically so the
+      // LLM sees the earliest relevant entries rather than the most semantically similar.
+      if (onsetQuery && finalEntries.length > 0) {
+        const keywords = [
+          ...rewritten.entities,
+          ...rewritten.original.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3),
+        ];
+        const observations = finalEntries.map(e => ({
+          date: new Date((e as any).date || (e as any).created_at || Date.now()),
+          score: scoreEntryForTopic((e as any).content || '', keywords),
+          entryId: e.id,
+        }));
+        const onset = resolveOnset(observations);
+        if (onset) {
+          // Sort chronologically (oldest-first) so the LLM reads the origin story in order
+          finalEntries = [...finalEntries].sort((a, b) =>
+            new Date((a as any).date || 0).getTime() - new Date((b as any).date || 0).getTime()
+          );
+          // Tag the onset entry so the context builder can surface it
+          const onsetIdx = finalEntries.findIndex(e => e.id === onset.onsetEntryId);
+          if (onsetIdx > 0) {
+            // Move onset entry to front
+            const [onsetEntry] = finalEntries.splice(onsetIdx, 1);
+            finalEntries.unshift(onsetEntry);
+          }
+          logger.debug({ userId, onset: onset.onsetDate, confidence: onset.confidence }, 'Onset detected');
+        }
+      }
+
+      // Fire-and-forget: reinforce accessibility for retrieved entries
+      const retrievedIds = finalEntries.map(e => e.id).filter(Boolean);
+      if (retrievedIds.length > 0) {
+        Promise.resolve(supabaseAdmin.rpc('bump_retrieval_count', { entry_ids: retrievedIds }))
+          .catch((err: unknown) => logger.debug({ err }, 'retrieval reinforcement failed (non-fatal)'));
+
+        // Fire-and-forget: bump stability of life arcs whose entries were just retrieved
+        import('../arcStabilityService').then(({ arcStabilityService }) => {
+          arcStabilityService.bumpArcsForEntries(userId, retrievedIds).catch(() => {});
+        }).catch(() => {});
+
+        // Log retrieval feedback for future KGE/GNN training (only if enabled via env flag)
+        // positiveIds = entries that get bump_retrieval_count on the *next* turn (lagged signal).
+        // For now we log all retrieved as candidates; bump_retrieval_count provides the positive label.
+        trainingSignalLogger.logRetrieval({
+          userId,
+          query,
+          retrievedIds,
+          positiveIds: [...pprBoostedIds].filter(id => retrievedIds.includes(id)),
+          strategy: strategy.method ?? 'hybrid',
+          temporalWindow: temporalWindow
+            ? { start: temporalWindow.start.toISOString(), end: temporalWindow.end.toISOString() }
+            : null,
+          pprSeeds: [...pprEntityIds].slice(0, 10),
+        });
+      }
 
       logger.debug(
         { userId, query, strategy: strategy.method, retrieved: finalEntries.length, intent: rewritten.intent },

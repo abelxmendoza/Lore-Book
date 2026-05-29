@@ -12,7 +12,18 @@ export class MemoryContextBuilder {
     const entriesText =
       ctx.entries.length > 0
         ? ctx.entries
-            .map((e) => `• ${e.date || e.timestamp || 'Unknown'}: ${e.content || e.text || ''}`)
+            .map((e) => {
+              const acc = (e.accessibility_score ?? 1.0) as number;
+              const rc = (e.retrieval_count ?? 0) as number;
+              const signal = acc < 0.3
+                ? ' [fragment]'
+                : rc > 5
+                  ? ` [revisited ×${rc}]`
+                  : rc > 2
+                    ? ' [recurring]'
+                    : '';
+              return `• ${e.date || (e as any).timestamp || 'Unknown'}${signal}: ${e.content || (e as any).text || ''}`;
+            })
             .join('\n')
         : 'No recent memories yet.';
 

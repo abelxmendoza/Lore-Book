@@ -1,10 +1,9 @@
-import OpenAI from 'openai';
 
 import { config } from '../config';
+import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import type { ConversationMessage, MemoryComponent } from '../types';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 /**
  * LLM-based memory extraction (fallback when rule-based insufficient)
