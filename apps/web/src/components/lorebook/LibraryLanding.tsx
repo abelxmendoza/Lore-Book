@@ -112,7 +112,7 @@ export const LibraryLanding = ({
   };
 
   return (
-    <div className="min-h-full flex flex-col bg-gradient-to-br from-black via-[#0d0814] to-black overflow-y-auto">
+    <div className="h-full flex flex-col bg-gradient-to-br from-black via-[#0d0814] to-black overflow-y-auto">
       {/* Atmospheric background layers */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_10%,rgba(139,92,246,0.08),transparent_55%)]" />
@@ -120,24 +120,24 @@ export const LibraryLanding = ({
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_50%,rgba(88,28,135,0.04),transparent_70%)]" />
       </div>
 
-      <div className="relative z-10 flex flex-col flex-1 px-4 sm:px-8 lg:px-16 py-10 sm:py-16 max-w-5xl mx-auto w-full">
+      <div className="relative z-10 flex flex-col flex-1 px-4 sm:px-8 lg:px-16 py-6 sm:py-12 max-w-5xl mx-auto w-full">
 
         {/* Header */}
-        <div className="text-center mb-10 sm:mb-14">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 mb-5">
+        <div className="text-center mb-7 sm:mb-12">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 mb-4">
             <BookMarked className="h-3.5 w-3.5 text-primary/70" />
             <span className="text-xs text-primary/70 font-mono tracking-wider uppercase">Personal Library</span>
           </div>
-          <h1 className="text-3xl sm:text-5xl font-bold text-white mb-3" style={{ fontFamily: 'Georgia, serif' }}>
+          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-white mb-2" style={{ fontFamily: 'Georgia, serif' }}>
             Your Library
           </h1>
-          <p className="text-white/50 text-base sm:text-lg max-w-md mx-auto">
+          <p className="text-white/50 text-sm sm:text-base max-w-sm mx-auto">
             Generate a book from your life, or open one you've made.
           </p>
         </div>
 
         {/* Generation search bar */}
-        <div className="mb-8 sm:mb-10">
+        <div className="mb-6 sm:mb-8">
           <div className="relative flex items-center gap-2 sm:gap-3">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-white/25 pointer-events-none" />
@@ -147,21 +147,21 @@ export const LibraryLanding = ({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                placeholder="e.g. 'my 2020 turning point', 'my story with Sarah', 'my music journey'..."
-                className="w-full h-14 sm:h-16 pl-12 pr-4 rounded-2xl bg-white/5 border border-white/10 text-white text-base sm:text-lg placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-white/8 transition-all"
+                placeholder="e.g. 'my 2020 story', 'Sarah', 'my music journey'…"
+                className="w-full h-14 pl-12 pr-4 rounded-2xl bg-white/5 border border-white/10 text-white text-base placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-white/8 transition-all"
                 style={{ fontFamily: 'Georgia, serif' }}
               />
             </div>
             <Button
               onClick={handleSubmit}
               disabled={!query.trim() || generating}
-              className="h-14 sm:h-16 px-6 sm:px-8 rounded-2xl bg-primary hover:bg-primary/90 text-white font-semibold text-base shrink-0 disabled:opacity-40"
+              className="h-14 w-14 sm:w-auto sm:px-6 rounded-2xl bg-primary hover:bg-primary/90 text-white font-semibold shrink-0 disabled:opacity-40"
             >
               {generating ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
                 <>
-                  <Sparkles className="h-4 w-4 mr-2 shrink-0" />
+                  <Sparkles className="h-5 w-5 sm:mr-2 shrink-0" />
                   <span className="hidden sm:inline">Generate</span>
                 </>
               )}
@@ -170,9 +170,9 @@ export const LibraryLanding = ({
         </div>
 
         {/* Category chips */}
-        <div className="mb-10 sm:mb-14">
-          <p className="text-xs text-white/35 uppercase tracking-widest font-mono mb-4">Or choose a focus</p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        <div className="mb-8 sm:mb-12">
+          <p className="text-xs text-white/35 uppercase tracking-widest font-mono mb-3">Or choose a focus</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {CATEGORIES.map((cat) => {
               const Icon = cat.icon;
               const isActive = activeCategory === cat.id;
@@ -180,18 +180,18 @@ export const LibraryLanding = ({
                 <button
                   key={cat.id}
                   onClick={() => handleCategoryClick(cat)}
-                  className={`group flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all ${
+                  className={`group flex items-center gap-2.5 px-3 py-3 min-h-[56px] rounded-xl border text-left transition-all active:scale-[0.97] ${
                     isActive
                       ? 'border-primary/50 bg-primary/10 text-white'
                       : 'border-white/8 bg-white/3 text-white/60 hover:border-white/20 hover:bg-white/6 hover:text-white'
                   }`}
                 >
-                  <div className={`rounded-lg p-1.5 bg-gradient-to-br ${cat.gradient} shrink-0`}>
-                    <Icon className="h-3.5 w-3.5 text-white" />
+                  <div className={`rounded-lg p-2 bg-gradient-to-br ${cat.gradient} shrink-0`}>
+                    <Icon className="h-4 w-4 text-white" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-sm font-medium truncate">{cat.label}</div>
-                    <div className="text-xs text-white/35 truncate">{cat.description}</div>
+                    <div className="text-xs text-white/35 truncate hidden sm:block">{cat.description}</div>
                   </div>
                 </button>
               );

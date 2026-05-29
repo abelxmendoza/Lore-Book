@@ -205,14 +205,18 @@ const dummyChapters: Chapter[] = [
   }
 ];
 
-export const LoreBook = () => {
+interface LoreBookProps {
+  onOpenAppSidebar?: () => void;
+}
+
+export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   const shouldUseMock = useShouldUseMockData();
   const { chapters: loreChapters } = useLoreKeeper();
   const [outline, setOutline] = useState<MemoirOutline | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
-  const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('xl');
+  const [fontSize, setFontSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('lg');
   const [lineHeight, setLineHeight] = useState<'normal' | 'relaxed' | 'loose'>('relaxed');
   const [showChat, setShowChat] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -234,6 +238,14 @@ export const LoreBook = () => {
   const [showLibrary, setShowLibrary] = useState(true);
   const [isCoverVisible, setIsCoverVisible] = useState(false);
   const [theme, setTheme] = useState<ReadingTheme>('lore');
+
+  const cycleFontSize = () => {
+    const order: Array<typeof fontSize> = ['sm', 'base', 'lg', 'xl'];
+    setFontSize(order[(order.indexOf(fontSize) + 1) % order.length]);
+  };
+  const cycleTheme = () => {
+    setTheme(t => t === 'lore' ? 'parchment' : t === 'parchment' ? 'daylight' : 'lore');
+  };
 
   // Stable key so we don't re-run when useLoreKeeper returns a new array reference every render
   const loreChaptersKey = loreChapters.length > 0 ? loreChapters.map((c) => c.id).join(',') : '';
@@ -850,10 +862,75 @@ export const LoreBook = () => {
   }
 
   return (
-    <div className={`h-screen w-full flex flex-col overflow-hidden theme-${theme}`} style={{ minHeight: '100vh', height: '100vh', background: theme === 'daylight' ? '#f5f0e8' : '#1a1a1a' }} data-testid="lorebook">
+    <div className={`h-full w-full flex flex-col overflow-hidden theme-${theme}`} style={{ background: theme === 'daylight' ? '#f5f0e8' : '#111' }} data-testid="lorebook">
 
-      {/* Compact top bar: library back + theme switcher */}
-      <div className="border-b border-white/10 bg-black/40 px-4 py-2 flex items-center justify-between flex-shrink-0">
+      {/* ── Mobile unified top bar (single bar on phones/tablets) ── */}
+      <div
+        className="lg:hidden flex items-center justify-between px-3 border-b flex-shrink-0"
+        style={{
+          paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)',
+          paddingBottom: '10px',
+          background: theme === 'daylight' ? '#ece6d8' : theme === 'parchment' ? '#1a1208' : 'rgba(0,0,0,0.85)',
+          borderColor: theme === 'daylight' ? 'rgba(100,80,40,0.15)' : theme === 'parchment' ? 'rgba(200,160,80,0.12)' : 'rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(12px)',
+        }}
+      >
+        {/* Left: app menu + library back */}
+        <div className="flex items-center gap-0.5">
+          {onOpenAppSidebar && (
+            <button type="button" onClick={onOpenAppSidebar} className="p-2.5 rounded-lg active:bg-white/10" aria-label="Open app menu">
+              <Menu className={`h-5 w-5 ${theme === 'daylight' ? 'text-[#3a2e1a]/60' : 'text-white/50'}`} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowLibrary(true)}
+            className={`flex items-center gap-0.5 px-2 py-2 rounded-lg text-sm font-mono active:bg-white/10 ${theme === 'daylight' ? 'text-[#3a2e1a]/60' : 'text-white/50'}`}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            <span>Library</span>
+          </button>
+        </div>
+
+        {/* Center: book title */}
+        <span
+          className={`text-sm font-semibold truncate max-w-[30%] ${theme === 'daylight' ? 'text-[#1a1208]' : theme === 'parchment' ? 'text-[#e8d5a0]' : 'text-white/90'}`}
+          style={{ fontFamily: 'Georgia, serif' }}
+        >
+          {outline?.title || 'Lore Book'}
+        </span>
+
+        {/* Right: font cycle + theme cycle + chapter list */}
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={cycleFontSize}
+            className={`p-2.5 rounded-lg text-xs font-bold active:bg-white/10 ${theme === 'daylight' ? 'text-[#3a2e1a]/60' : 'text-white/50'}`}
+            aria-label={`Font size: ${fontSize}`}
+          >
+            Aa
+          </button>
+          <button
+            type="button"
+            onClick={cycleTheme}
+            className={`p-2.5 rounded-lg text-sm active:bg-white/10 ${theme === 'daylight' ? 'text-[#3a2e1a]/60' : 'text-white/50'}`}
+            aria-label={`Theme: ${theme}`}
+          >
+            {theme === 'lore' ? '◑' : theme === 'parchment' ? '◕' : '○'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSidebar(!showSidebar)}
+            className={`p-2.5 rounded-lg active:bg-white/10 ${theme === 'daylight' ? 'text-[#3a2e1a]/60' : 'text-white/50'}`}
+            aria-label="Chapter list"
+          >
+            <BookMarked className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Desktop compact top bar: library back + theme switcher ── */}
+      <div className="hidden lg:flex border-b border-white/10 bg-black/40 px-4 py-2 items-center justify-between flex-shrink-0">
         <button
           type="button"
           onClick={() => setShowLibrary(true)}
@@ -880,8 +957,8 @@ export const LoreBook = () => {
         </div>
       </div>
 
-      {/* Header - Kindle Style */}
-      <div className="border-b border-white/10 bg-[#1a1a1a] backdrop-blur-sm px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between flex-shrink-0">
+      {/* Header - Kindle Style (desktop only) */}
+      <div className="hidden lg:flex border-b border-white/10 bg-[#1a1a1a] backdrop-blur-sm px-4 sm:px-8 py-3 sm:py-4 items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3 sm:gap-4">
           {/* Mobile Menu Button */}
           <Button
@@ -1090,15 +1167,23 @@ export const LoreBook = () => {
         </div>
       </div>
 
-      {/* Navigation Footer - Kindle Style */}
-      <div className="border-t border-white/10 bg-[#1a1a1a] backdrop-blur-sm px-4 sm:px-8 py-3 sm:py-4 flex items-center justify-between flex-shrink-0">
+      {/* Navigation Footer */}
+      <div
+        className="border-t flex items-center justify-between flex-shrink-0 px-3 sm:px-8"
+        style={{
+          paddingTop: '10px',
+          paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 10px)',
+          background: theme === 'daylight' ? '#ece6d8' : theme === 'parchment' ? '#1a1208' : '#111',
+          borderColor: theme === 'daylight' ? 'rgba(100,80,40,0.15)' : theme === 'parchment' ? 'rgba(200,160,80,0.12)' : 'rgba(255,255,255,0.08)',
+        }}
+      >
         <Button
           variant="ghost"
           size="sm"
           onClick={goToPreviousPage}
           disabled={currentPageIndex === 0 || isAnimating}
-          className="text-white/70 hover:text-white disabled:opacity-30"
-          leftIcon={<ChevronLeft className="h-4 w-4" />}
+          className={`disabled:opacity-30 min-w-[44px] min-h-[44px] ${theme === 'daylight' ? 'text-[#3a2e1a]/60 hover:text-[#1a1208]' : 'text-white/70 hover:text-white'}`}
+          leftIcon={<ChevronLeft className="h-5 w-5" />}
           aria-label="Previous page"
         >
           <span className="hidden sm:inline">Previous</span>
@@ -1106,17 +1191,17 @@ export const LoreBook = () => {
 
         {/* Page Progress Indicator */}
         <div className="flex flex-col items-center gap-1 flex-1 max-w-[60%]">
-          <div className="text-xs sm:text-sm text-white/60">
+          <div className={`text-xs sm:text-sm ${theme === 'daylight' ? 'text-[#6b5a3a]' : 'text-white/60'}`}>
             Page {currentPageIndex + 1} of {allPages.length}
             {allPages.length > 0 && (
-              <span className="ml-2 text-white/40">
+              <span className={`ml-2 ${theme === 'daylight' ? 'text-[#6b5a3a]/60' : 'text-white/40'}`}>
                 ({Math.round(((currentPageIndex + 1) / allPages.length) * 100)}%)
               </span>
             )}
           </div>
           {/* Progress Bar */}
           {allPages.length > 0 && (
-            <div className="w-full max-w-xs h-1 bg-white/10 rounded-full overflow-hidden">
+            <div className={`w-full max-w-xs h-1 rounded-full overflow-hidden ${theme === 'daylight' ? 'bg-[#6b5a3a]/15' : 'bg-white/10'}`}>
               <div
                 className="h-full bg-primary transition-all duration-300"
                 style={{ width: `${((currentPageIndex + 1) / allPages.length) * 100}%` }}
@@ -1124,10 +1209,8 @@ export const LoreBook = () => {
             </div>
           )}
           {/* Section Dots (Mobile) */}
-          <div className="flex items-center gap-1 sm:hidden px-2 py-1 bg-black/60 rounded-full border border-white/10 overflow-x-auto max-w-full">
+          <div className={`flex items-center gap-1.5 sm:hidden px-3 py-1.5 rounded-full border overflow-x-auto max-w-full ${theme === 'daylight' ? 'bg-[#6b5a3a]/8 border-[#6b5a3a]/15' : 'bg-black/60 border-white/10'}`}>
             {flatSections.map((section, index) => {
-              const sectionPages = allPages.filter(p => p.sectionIndex === index);
-              const firstPageIndex = allPages.findIndex(p => p.sectionIndex === index);
               const isCurrentSection = allPages[currentPageIndex]?.sectionIndex === index;
               
               return (
@@ -1172,16 +1255,16 @@ export const LoreBook = () => {
           size="sm"
           onClick={goToNextPage}
           disabled={currentPageIndex >= allPages.length - 1 || isAnimating}
-          className="text-white/70 hover:text-white disabled:opacity-30"
-          rightIcon={<ChevronRight className="h-4 w-4" />}
+          className={`disabled:opacity-30 min-w-[44px] min-h-[44px] ${theme === 'daylight' ? 'text-[#3a2e1a]/60 hover:text-[#1a1208]' : 'text-white/70 hover:text-white'}`}
+          rightIcon={<ChevronRight className="h-5 w-5" />}
           aria-label="Next page"
         >
           <span className="hidden sm:inline">Next</span>
         </Button>
       </div>
 
-      {/* Download Section */}
-      <div className="border-t border-border/60 bg-black/50 backdrop-blur-sm px-8 py-4 flex items-center justify-center flex-shrink-0">
+      {/* Download Section — desktop only */}
+      <div className="hidden lg:flex border-t border-border/60 bg-black/50 backdrop-blur-sm px-8 py-4 items-center justify-center flex-shrink-0">
         <Button
           onClick={handleDownload}
           disabled={downloading}
@@ -1220,8 +1303,8 @@ export const LoreBook = () => {
         )}
       </div>
 
-      {/* Horizontal Timeline - At the bottom */}
-      <div className="flex-shrink-0 border-t border-border/60 bg-black/50">
+      {/* Horizontal Timeline — desktop only */}
+      <div className="hidden lg:block flex-shrink-0 border-t border-border/60 bg-black/50">
         <ColorCodedTimeline
           chapters={chapters}
           sections={flatSections.map(s => ({

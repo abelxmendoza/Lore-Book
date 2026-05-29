@@ -247,8 +247,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <SkipLink />
       <DemoModeBootstrap />
 
-      {/* Mobile Header — hidden in chat (chat has its own header with thread list + app menu) */}
-      <header className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden${activeSurface === 'chat' ? ' hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
+      {/* Mobile Header — hidden in chat and lorebook (both have their own top bars) */}
+      <header className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden${(activeSurface === 'chat' || activeSurface === 'lorebook') ? ' hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -276,9 +276,9 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <DemoModeBanner />
       <main
         id="main-content"
-        className={`flex-1 text-white overflow-x-hidden flex flex-col ${activeSurface === 'chat' ? 'p-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
+        className={`flex-1 text-white overflow-x-hidden flex flex-col ${(activeSurface === 'chat' || activeSurface === 'lorebook') ? 'p-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
         role="main"
-        style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : activeSurface === 'chat' ? { height: '100vh', overflow: 'hidden' } : {}}
+        style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : (activeSurface === 'chat' || activeSurface === 'lorebook') ? { height: '100vh', overflow: 'hidden' } : {}}
       >
         {activeSurface !== 'chat' && (
           <>
@@ -310,8 +310,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
                         {activeSurface === 'lorebook' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] h-full">
-                            <LoreBook />
+                          <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
+                            <LoreBook onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
                           </div>
                         )}
                         {activeSurface === 'photos' && (

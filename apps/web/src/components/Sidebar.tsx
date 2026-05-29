@@ -78,19 +78,19 @@ const SidebarContent = ({
             <MessageSquareText className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
             <div className="flex-1 min-w-0">
               <span className="block text-sm font-medium">Chat</span>
-              <span className="block text-[10px] text-primary/80 mt-0.5">Your story starts here</span>
+              <span className="block text-xs text-primary/80 mt-0.5">Your story starts here</span>
             </div>
           </button>
 
           {/* 2. Focus on… / Story entities */}
-          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Focus on…</p>
+          <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Focus on…</p>
           <button
             type="button"
             onClick={() => handleSurfaceChange('characters')}
             aria-label="Open characters view"
             aria-current={activeSurface === 'characters' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'characters'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -99,7 +99,7 @@ const SidebarContent = ({
             <Users className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
             <span className="flex-1 text-left">Characters</span>
             {counts && counts.characters > 0 && (
-              <span className="ml-auto text-[10px] text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.characters}</span>
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.characters}</span>
             )}
           </button>
           <button
@@ -108,7 +108,7 @@ const SidebarContent = ({
             aria-label="Open locations view"
             aria-current={activeSurface === 'locations' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'locations'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -117,7 +117,7 @@ const SidebarContent = ({
             <MapPin className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
             <span className="flex-1 text-left">Locations</span>
             {counts && counts.locations > 0 && (
-              <span className="ml-auto text-[10px] text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.locations}</span>
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.locations}</span>
             )}
           </button>
           <button
@@ -126,7 +126,7 @@ const SidebarContent = ({
             aria-label="Open events view"
             aria-current={activeSurface === 'events' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'events'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -135,7 +135,7 @@ const SidebarContent = ({
             <Calendar className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
             <span className="flex-1 text-left">Events</span>
             {counts && counts.events > 0 && (
-              <span className="ml-auto text-[10px] text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
             )}
           </button>
           <button
@@ -144,7 +144,7 @@ const SidebarContent = ({
             aria-label="Open groups view"
             aria-current={activeSurface === 'organizations' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'organizations'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -153,7 +153,7 @@ const SidebarContent = ({
             <Building2 className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
             <span className="flex-1 text-left">Groups</span>
             {counts && counts.organizations > 0 && (
-              <span className="ml-auto text-[10px] text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.organizations}</span>
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.organizations}</span>
             )}
           </button>
           <button
@@ -162,7 +162,7 @@ const SidebarContent = ({
             aria-label="Open skills view"
             aria-current={activeSurface === 'skills' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'skills'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -171,7 +171,7 @@ const SidebarContent = ({
             <Zap className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
             <span className="flex-1 text-left">Skills</span>
             {counts && counts.skills > 0 && (
-              <span className="ml-auto text-[10px] text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.skills}</span>
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.skills}</span>
             )}
           </button>
           <button
@@ -179,7 +179,7 @@ const SidebarContent = ({
             aria-label="Open love and relationships"
             aria-current={activeSurface === 'love' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'love'
                 ? 'border-pink-500 bg-pink-500/10 text-white'
                 : 'border-transparent text-white/70 hover:border-pink-500 hover:bg-pink-500/10'
@@ -190,13 +190,13 @@ const SidebarContent = ({
           </button>
 
           {/* 3. Gossip & claims */}
-          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Gossip & claims</p>
+          <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Gossip & claims</p>
           <button
             onClick={() => handleSurfaceChange('perceptions')}
             aria-label="Open gossip and claims"
             aria-current={activeSurface === 'perceptions' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'perceptions'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -207,13 +207,13 @@ const SidebarContent = ({
           </button>
 
           {/* 4. Explore your story */}
-          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Explore your story</p>
+          <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Explore your story</p>
           <button
             onClick={() => handleSurfaceChange('timeline')}
             aria-label="Open timeline view"
             aria-current={activeSurface === 'timeline' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'timeline'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -227,7 +227,7 @@ const SidebarContent = ({
             aria-label="Open life saga"
             aria-current={activeSurface === 'saga' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'saga'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -241,7 +241,7 @@ const SidebarContent = ({
             aria-label="Open continuity engine"
             aria-current={activeSurface === 'continuity' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'continuity'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -255,7 +255,7 @@ const SidebarContent = ({
             aria-label="Open discovery hub"
             aria-current={activeSurface === 'discovery' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'discovery'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -269,7 +269,7 @@ const SidebarContent = ({
             aria-label="Open memory explorer"
             aria-current={activeSurface === 'search' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'search'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -283,7 +283,7 @@ const SidebarContent = ({
             aria-label="Open quests"
             aria-current={activeSurface === 'quests' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'quests'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -294,13 +294,13 @@ const SidebarContent = ({
           </button>
 
           {/* 5. Your content */}
-          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Your content</p>
+          <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Your content</p>
           <button
             onClick={() => handleSurfaceChange('memoir')}
             aria-label="Open biography editor"
             aria-current={activeSurface === 'memoir' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'memoir'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -328,7 +328,7 @@ const SidebarContent = ({
             aria-label="Open photo album"
             aria-current={activeSurface === 'photos' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'photos'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -339,13 +339,13 @@ const SidebarContent = ({
           </button>
 
           {/* 6. Data */}
-          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Data</p>
+          <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Data</p>
           <button
             onClick={() => handleSurfaceChange('entities')}
             aria-label="Open entity resolution"
             aria-current={activeSurface === 'entities' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'entities'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -356,13 +356,13 @@ const SidebarContent = ({
           </button>
 
           {/* 7. Account & help */}
-          <p className="mt-4 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 px-1">Account & help</p>
+          <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Account & help</p>
           <button
             onClick={() => handleSurfaceChange('subscription')}
             aria-label="Open subscription management"
             aria-current={activeSurface === 'subscription' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'subscription'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -376,7 +376,7 @@ const SidebarContent = ({
             aria-label="Open privacy and security settings"
             aria-current={activeSurface === 'security' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'security'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -390,7 +390,7 @@ const SidebarContent = ({
             aria-label="What the AI knows about you"
             aria-current={isActiveRoute('/what-ai-knows') ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               isActiveRoute('/what-ai-knows')
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -404,7 +404,7 @@ const SidebarContent = ({
             aria-label="Open user guide"
             aria-current={activeSurface === 'guide' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
               activeSurface === 'guide'
                 ? 'border-primary bg-primary/10 text-white'
                 : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -425,7 +425,7 @@ const SidebarContent = ({
               aria-label="Open dev console"
               aria-current={isActiveRoute('/dev-console') ? 'page' : undefined}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+                "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
                 isActiveRoute('/dev-console')
                   ? 'border-primary bg-primary/10 text-white'
                   : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
@@ -439,7 +439,7 @@ const SidebarContent = ({
                 onClick={onToggleDevMode}
                 aria-label={devModeEnabled ? 'Hide dev mode' : 'Show dev mode'}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+                  "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
                   devModeEnabled
                     ? 'border-primary bg-primary/10 text-white'
                     : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
