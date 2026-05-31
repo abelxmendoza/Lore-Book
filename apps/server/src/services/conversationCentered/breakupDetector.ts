@@ -6,6 +6,7 @@
 import { logger } from '../../logger';
 import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
+import { onRelationshipEnded } from '../knowledgeCrystallization/relationshipEndedTrigger';
 
 export type BreakupType =
   | 'mutual'
@@ -155,6 +156,12 @@ Only return isBreakup: true if confidence >= 0.7.`,
           updated_at: new Date().toISOString(),
         })
         .eq('id', relationshipId);
+
+      // Fire the relationship-ended trigger — arc creation + knowledge crystallization.
+      // Fire-and-forget: never block breakup detection on downstream processing.
+      onRelationshipEnded(userId, relationshipId).catch(err =>
+        logger.debug({ err, userId, relationshipId }, 'relationship_ended trigger failed (non-blocking)')
+      );
 
       return breakup;
     } catch (error) {

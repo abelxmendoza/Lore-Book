@@ -1,7 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
-import { useState, useEffect } from 'react';
-import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -89,10 +89,47 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [drift, setDrift] = useState<any | null>(null);
+  const [cycles, setCycles] = useState<any[]>([]);
+  const [patternsLoading, setPatternsLoading] = useState(false);
+  const [patternsLoaded, setPatternsLoaded] = useState(false);
 
   useEffect(() => {
     loadData();
   }, [relationshipId, shouldUseMockData]);
+
+  // Load drift and cycles on-demand when Analytics tab is opened
+  const loadPatterns = useCallback(async () => {
+    if (patternsLoaded || shouldUseMockData) return;
+    setPatternsLoading(true);
+    try {
+      const [driftData, cyclesData] = await Promise.all([
+        fetchJson<{ success: boolean; currentDrift: any; driftHistory: any[] }>(
+          `/api/conversation/romantic-relationships/${relationshipId}/drift`
+        ).catch(() => null),
+        fetchJson<{ success: boolean; cycles: any[]; cycleHistory: any[] }>(
+          `/api/conversation/romantic-relationships/${relationshipId}/cycles`
+        ).catch(() => null),
+      ]);
+      if (driftData?.success) setDrift(driftData.currentDrift ?? null);
+      if (cyclesData?.success) {
+        // Prefer live detected cycles, fall back to stored history
+        const activeCycles = cyclesData.cycles?.length > 0
+          ? cyclesData.cycles
+          : (cyclesData.cycleHistory || []).filter((c: any) => c.is_active);
+        setCycles(activeCycles);
+      }
+      setPatternsLoaded(true);
+    } catch {
+      // Non-fatal — Patterns section shows empty state
+    } finally {
+      setPatternsLoading(false);
+    }
+  }, [relationshipId, patternsLoaded, shouldUseMockData]);
+
+  useEffect(() => {
+    if (activeTab === 'analytics') loadPatterns();
+  }, [activeTab, loadPatterns]);
 
   const loadData = async () => {
     setLoading(true);
@@ -478,20 +515,140 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
           </TabsContent>
 
           {/* Analytics Tab */}
-          <TabsContent value="analytics" className="mt-6">
+          <TabsContent value="analytics" className="mt-6 space-y-6">
             <RelationshipAnalytics
               relationshipId={relationshipId}
               analytics={currentAnalytics}
             />
+
+            {/* Patterns Section — drift + active cycles */}
+            <div className="border border-purple-500/20 rounded-lg bg-purple-950/10 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-white/80 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-purple-400" />
+                  Relationship Patterns
+                </h3>
+                {patternsLoading && (
+                  <RefreshCw className="w-3 h-3 text-white/40 animate-spin" />
+                )}
+              </div>
+
+              {!patternsLoaded && !patternsLoading && (
+                <p className="text-xs text-white/40">Loading pattern analysis…</p>
+              )}
+
+              {patternsLoaded && !drift && cycles.length === 0 && (
+                <p className="text-xs text-white/40">No patterns detected yet. Keep logging interactions and the system will identify recurring dynamics.</p>
+              )}
+
+              {/* Drift signal */}
+              {drift && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-white/60 uppercase tracking-wider">Drift Signal</p>
+                  <div className="flex items-center gap-3">
+                    {drift.driftType === 'growing_closer' || drift.driftType === 'reconnecting' ? (
+                      <TrendingUp className="w-4 h-4 text-green-400 flex-shrink-0" />
+                    ) : drift.driftType === 'drifting_apart' || drift.driftType === 'breaking_up' ? (
+                      <TrendingDown className="w-4 h-4 text-red-400 flex-shrink-0" />
+                    ) : (
+                      <Activity className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className="text-sm text-white/80 capitalize">
+                        {(drift.driftType as string).replace(/_/g, ' ')}
+                        {drift.driftStrength != null && (
+                          <span className="text-white/50 ml-1">— {Math.round(drift.driftStrength * 100)}% strength</span>
+                        )}
+                      </p>
+                      {drift.timeSinceLastMentionDays != null && drift.timeSinceLastMentionDays < 999 && (
+                        <p className="text-xs text-white/40">{drift.timeSinceLastMentionDays} days since last mention</p>
+                      )}
+                    </div>
+                    {(drift.driftType === 'breaking_up') && (
+                      <AlertTriangle className="w-4 h-4 text-red-400 ml-auto flex-shrink-0" />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Active cycles */}
+              {cycles.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-white/60 uppercase tracking-wider">Active Cycles</p>
+                  {cycles.map((cycle: any, i: number) => {
+                    const isNegative = ['toxic_pattern', 'negative_loop', 'on_again_off_again', 'push_pull', 'hot_cold'].includes(cycle.cycleType ?? cycle.cycle_type);
+                    return (
+                      <div key={i} className={`rounded-md p-3 border ${isNegative ? 'border-red-500/20 bg-red-950/20' : 'border-green-500/20 bg-green-950/10'}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          {isNegative
+                            ? <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
+                            : <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" />
+                          }
+                          <span className="text-xs font-medium text-white/80 capitalize">
+                            {((cycle.cycleType ?? cycle.cycle_type) as string).replace(/_/g, '-')}
+                          </span>
+                          <span className="text-xs text-white/40 ml-auto">
+                            {Math.round((cycle.cycleStrength ?? cycle.cycle_strength ?? 0) * 100)}% · {cycle.cycleFrequency ?? cycle.cycle_frequency ?? 'irregular'}
+                          </span>
+                        </div>
+                        {(cycle.patternDescription ?? cycle.pattern_description) && (
+                          <p className="text-xs text-white/60 pl-5">
+                            {(cycle.patternDescription ?? cycle.pattern_description) as string}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </TabsContent>
 
-          {/* Chat Tab */}
+          {/* Chat Tab — directs to main chat with full relationship context */}
           <TabsContent value="chat" className="mt-6">
             <div className="space-y-4">
-              <div className="p-4 rounded-lg border border-primary/30 bg-primary/10">
-                <p className="text-sm text-white/80">
-                  Chat with me about this relationship! I can help you update pros/cons, rankings, or just talk about how things are going.
+              <div className="p-5 rounded-lg border border-pink-500/20 bg-pink-950/10 space-y-4">
+                <p className="text-sm text-white/70">
+                  The main chat already knows everything about{' '}
+                  <span className="text-pink-300 font-medium">{displayName}</span> — their history,
+                  patterns, drift direction, and what's happened recently. Open it to get a real
+                  conversation, not a mini window.
                 </p>
+                <div className="grid grid-cols-1 gap-2">
+                  {[
+                    `How are things going with ${displayName}?`,
+                    `What patterns do you see in my relationship with ${displayName}?`,
+                    `I need to talk about what happened with ${displayName}.`,
+                    `What should I know before my next interaction with ${displayName}?`,
+                  ].map((starter) => (
+                    <button
+                      type="button"
+                      key={starter}
+                      onClick={() => {
+                        onClose();
+                        window.dispatchEvent(new CustomEvent('navigate-surface', {
+                          detail: { surface: 'chat', context: starter }
+                        }));
+                      }}
+                      className="text-left px-4 py-3 rounded-lg border border-pink-500/20 bg-black/40 hover:bg-pink-950/20 hover:border-pink-500/40 transition-colors text-sm text-white/70 hover:text-white/90"
+                    >
+                      "{starter}"
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    window.dispatchEvent(new CustomEvent('navigate-surface', {
+                      detail: { surface: 'chat' }
+                    }));
+                  }}
+                  className="w-full py-3 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/30 text-pink-300 hover:text-pink-200 text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Open main chat →
+                </button>
               </div>
 
               {/* Chat Messages */}

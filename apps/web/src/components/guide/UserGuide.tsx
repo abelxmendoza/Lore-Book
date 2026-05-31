@@ -1,654 +1,693 @@
-import React, { useState } from 'react';
+// © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
+
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  BookOpen, MessageSquareText, CalendarDays, Search, Users, MapPin, 
-  BookMarked, Compass, Sparkles, Layers, GitBranch, Clock, Target,
-  ChevronRight, ChevronDown, Zap, Info, HelpCircle, ArrowLeft, Heart, Lock, Shield
+import {
+  BookOpen, MessageSquare, CalendarDays, Search, Users, MapPin,
+  BookMarked, Sparkles, Heart, Shield, Lock,
+  ArrowLeft, ChevronDown, ChevronRight, Brain, Info, Zap, Eye,
 } from 'lucide-react';
 
-interface GuideSection {
+// ─── Accordion section ────────────────────────────────────────────────────────
+
+interface Section {
   id: string;
-  title: string;
   icon: React.ReactNode;
+  title: string;
+  badge?: string;
   content: React.ReactNode;
 }
 
+const AccordionSection = ({
+  section,
+  isOpen,
+  onToggle,
+}: {
+  section: Section;
+  isOpen: boolean;
+  onToggle: () => void;
+}) => (
+  <div className="rounded-xl border border-border/60 bg-black/40 overflow-hidden">
+    <button
+      type="button"
+      onClick={onToggle}
+      className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors"
+    >
+      <div className="flex items-center gap-3">
+        <span className="text-primary">{section.icon}</span>
+        <span className="text-white font-semibold">{section.title}</span>
+        {section.badge && (
+          <span className="text-xs bg-primary/20 text-primary border border-primary/30 px-2 py-0.5 rounded-full">
+            {section.badge}
+          </span>
+        )}
+      </div>
+      {isOpen
+        ? <ChevronDown className="w-4 h-4 text-white/40 flex-shrink-0" />
+        : <ChevronRight className="w-4 h-4 text-white/40 flex-shrink-0" />
+      }
+    </button>
+    {isOpen && (
+      <div className="px-5 pb-6 border-t border-border/60 bg-black/20 space-y-4 pt-5">
+        {section.content}
+      </div>
+    )}
+  </div>
+);
+
+// ─── Small helpers ────────────────────────────────────────────────────────────
+
+const Note = ({ children }: { children: React.ReactNode }) => (
+  <div className="flex items-start gap-3 bg-primary/10 border border-primary/20 rounded-lg p-4">
+    <Info className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+    <p className="text-sm text-white/80 leading-relaxed">{children}</p>
+  </div>
+);
+
+const Example = ({ label, children }: { label?: string; children: React.ReactNode }) => (
+  <div className="rounded-lg border border-white/10 bg-black/40 p-4">
+    {label && <p className="text-xs font-semibold uppercase tracking-widest text-white/30 mb-2">{label}</p>}
+    <p className="text-sm text-white/70 leading-relaxed italic">"{children}"</p>
+  </div>
+);
+
+const Kv = ({ k, v }: { k: string; v: string }) => (
+  <div className="flex gap-3 text-sm">
+    <span className="text-white/40 w-28 flex-shrink-0">{k}</span>
+    <span className="text-white/70">{v}</span>
+  </div>
+);
+
+// ─── Journey phase card ───────────────────────────────────────────────────────
+
+const Phase = ({
+  n, label, title, body, items,
+}: {
+  n: string; label: string; title: string; body: string; items: string[];
+}) => (
+  <div className="rounded-xl border border-border/60 bg-black/40 p-6 space-y-4">
+    <div className="flex items-center gap-3">
+      <span className="text-3xl font-bold text-primary">{n}</span>
+      <span className="text-xs font-semibold uppercase tracking-widest text-white/30">{label}</span>
+    </div>
+    <h3 className="text-white font-bold text-lg leading-snug">{title}</h3>
+    <p className="text-white/60 text-sm leading-relaxed">{body}</p>
+    <ul className="space-y-2">
+      {items.map(item => (
+        <li key={item} className="flex items-start gap-2 text-sm text-white/60">
+          <span className="text-primary mt-1">→</span>
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 const UserGuide: React.FC = () => {
   const navigate = useNavigate();
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['getting-started']));
+  const [open, setOpen] = useState<Set<string>>(new Set(['chat']));
 
-  const toggleSection = (id: string) => {
-    setExpandedSections(prev => {
+  const toggle = (id: string) =>
+    setOpen(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  };
 
-  const sections: GuideSection[] = [
-    {
-      id: 'getting-started',
-      title: 'Getting Started',
-      icon: <Sparkles className="w-5 h-5" />,
-      content: (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Welcome to Lore Book</h3>
-            <p className="text-white/70 mb-4">
-              Lore Book is your AI-powered journal that automatically organizes your life story into a comprehensive digital memoir. 
-              Just write naturally—we handle the rest.
-            </p>
-          </div>
-          
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-2">Quick Start Steps</h4>
-            <ol className="list-decimal list-inside space-y-2 text-white/70">
-              <li>Start journaling in the <strong className="text-white">Chat</strong> section—just write naturally about your day</li>
-              <li>Explore your <strong className="text-white">Omni Timeline</strong> to see your memories organized chronologically</li>
-              <li>Check out <strong className="text-white">Characters</strong> and <strong className="text-white">Locations</strong> to see people and places automatically tracked</li>
-              <li>Visit your <strong className="text-white">Lore Book</strong> to see your auto-generated biography</li>
-            </ol>
-          </div>
-
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-primary mb-2 flex items-center gap-2">
-              <Info className="w-4 h-4" />
-              Pro Tip
-            </h4>
-            <p className="text-white/80">
-              The more you journal, the better Lore Book understands your story. Your AI companion learns your writing style, 
-              relationships, and life patterns to provide better insights and organization.
-            </p>
-          </div>
-        </div>
-      )
-    },
+  const sections: Section[] = [
     {
       id: 'chat',
-      title: 'Chat - Your AI Companion',
-      icon: <MessageSquareText className="w-5 h-5" />,
+      icon: <MessageSquare className="w-5 h-5" />,
+      title: 'Chat — where everything starts',
       content: (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Multi-Persona AI Chat</h3>
-            <p className="text-white/70 mb-4">
-              Chat with your AI companion that adapts to your needs. The system automatically switches between personas 
-              based on what you're discussing.
-            </p>
-          </div>
+        <div className="space-y-5">
+          <p className="text-white/60 text-sm leading-relaxed">
+            Chat is the primary interface. Everything else in the app — your timeline, your characters,
+            your relationship records, your knowledge claims — gets populated from what you say here.
+            Write naturally. Don't try to organize anything. The system does that.
+          </p>
+          <Example label="How it sounds in practice">
+            I went on a date with Jordan last night. It went really well actually — we laughed a lot and they
+            stayed later than they said they would. Still not sure what they are looking for though.
+          </Example>
+          <p className="text-white/50 text-xs">
+            From this: a romantic interaction is logged, Jordan's relationship status is updated, sentiment is
+            captured as positive, and a pattern check runs to see if this matches prior dynamics.
+          </p>
 
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-              <h4 className="text-base font-semibold text-white mb-2">Available Personas</h4>
-              <ul className="space-y-2 text-sm text-white/70">
-                <li><strong className="text-white">Gossip Buddy</strong> - For relationship talk</li>
-                <li><strong className="text-white">Therapist</strong> - Emotional support</li>
-                <li><strong className="text-white">Biography Writer</strong> - Story editing</li>
-                <li><strong className="text-white">Soul Capturer</strong> - Identity tracking</li>
-                <li><strong className="text-white">Strategist</strong> - Goal planning</li>
-                <li><strong className="text-white">Memory Bank</strong> - Never forgets</li>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+              <h4 className="text-white font-semibold text-sm mb-3">The AI adapts to what you need</h4>
+              <ul className="space-y-2 text-xs text-white/60">
+                {[
+                  ['Relationship Advisor', 'When you talk about love, dating, or people'],
+                  ['Life Historian', 'When you reflect or look back'],
+                  ['Strategist', 'When you are planning or deciding'],
+                  ['Processing Partner', 'When you need to work something through'],
+                  ['Gossip Buddy', 'When you want to talk about someone'],
+                ].map(([name, ctx]) => (
+                  <li key={name} className="flex gap-2">
+                    <span className="text-primary font-medium w-36 flex-shrink-0">{name}</span>
+                    <span>{ctx}</span>
+                  </li>
+                ))}
               </ul>
             </div>
-
-            <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-              <h4 className="text-base font-semibold text-white mb-2">Slash Commands</h4>
-              <ul className="space-y-2 text-sm text-white/70 font-mono">
-                <li><code className="text-primary">/recent</code> - Show recent entries</li>
-                <li><code className="text-primary">/characters</code> - List all characters</li>
-                <li><code className="text-primary">/locations</code> - List all locations</li>
-                <li><code className="text-primary">/arcs</code> - Show story arcs</li>
-                <li><code className="text-primary">/soul</code> - View soul profile</li>
-                <li><code className="text-primary">/search &lt;query&gt;</code> - Search memories</li>
-                <li><code className="text-primary">/help</code> - Show all commands</li>
+            <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+              <h4 className="text-white font-semibold text-sm mb-3">Slash commands</h4>
+              <ul className="space-y-2 text-xs font-mono text-white/60">
+                {[
+                  ['/recent', 'Your latest entries'],
+                  ['/characters', 'Everyone in your life'],
+                  ['/search <query>', 'Find anything'],
+                  ['/arcs', 'Your life arcs'],
+                  ['/help', 'Full command list'],
+                ].map(([cmd, desc]) => (
+                  <li key={cmd} className="flex gap-3">
+                    <span className="text-primary">{cmd}</span>
+                    <span>{desc}</span>
+                  </li>
+                ))}
               </ul>
             </div>
           </div>
-
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-2">Features</h4>
-            <ul className="space-y-2 text-white/70">
-              <li>✨ <strong className="text-white">Streaming Responses</strong> - Watch responses appear word-by-word</li>
-              <li>📋 <strong className="text-white">Message Actions</strong> - Copy, regenerate, edit, or delete messages</li>
-              <li>🔗 <strong className="text-white">Clickable Sources</strong> - Click citations to view entries/chapters</li>
-              <li>🔍 <strong className="text-white">Search History</strong> - Search through your conversation history</li>
-              <li>📥 <strong className="text-white">Export</strong> - Download conversations as Markdown or JSON</li>
-            </ul>
-          </div>
+          <Note>
+            Threads are persistent conversations. Start a new thread when you're shifting to a
+            different topic or life area. The AI will always know where you left off.
+          </Note>
         </div>
-      )
+      ),
     },
     {
       id: 'timeline',
-      title: 'Omni Timeline - Your Life Story',
       icon: <CalendarDays className="w-5 h-5" />,
+      title: 'Timeline & Life Arcs',
       content: (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-2">9-Layer Timeline Hierarchy</h3>
-            <p className="text-white/70 mb-4">
-              Your memories are automatically organized into a 9-layer hierarchy, from the grand narrative (Mythos) 
-              down to the smallest moments (MicroActions).
-            </p>
-          </div>
+        <div className="space-y-5">
+          <p className="text-white/60 text-sm leading-relaxed">
+            Your timeline builds automatically from everything you share. Entries cluster into eras,
+            arcs, and chapters — named life periods that reflect the structure of your actual history.
+          </p>
 
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-primary" />
-              Timeline Layers
-            </h4>
-            <div className="grid md:grid-cols-3 gap-3 text-sm">
-              <div>
-                <p className="text-purple-400 font-semibold mb-1">1. Mythos</p>
-                <p className="text-white/60 text-xs">Life-defining narrative (decades)</p>
-              </div>
-              <div>
-                <p className="text-blue-400 font-semibold mb-1">2. Epoch</p>
-                <p className="text-white/60 text-xs">Major life phases (years)</p>
-              </div>
-              <div>
-                <p className="text-cyan-400 font-semibold mb-1">3. Era</p>
-                <p className="text-white/60 text-xs">Significant periods (months-years)</p>
-              </div>
-              <div>
-                <p className="text-pink-400 font-semibold mb-1">4. Saga</p>
-                <p className="text-white/60 text-xs">Long narrative arcs (months-years)</p>
-              </div>
-              <div>
-                <p className="text-orange-400 font-semibold mb-1">5. Arc</p>
-                <p className="text-white/60 text-xs">Story arcs (weeks-months)</p>
-              </div>
-              <div>
-                <p className="text-yellow-400 font-semibold mb-1">6. Chapter</p>
-                <p className="text-white/60 text-xs">Discrete chapters (days-weeks)</p>
-              </div>
-              <div>
-                <p className="text-green-400 font-semibold mb-1">7. Scene</p>
-                <p className="text-white/60 text-xs">Specific events (hours-days)</p>
-              </div>
-              <div>
-                <p className="text-emerald-400 font-semibold mb-1">8. Action</p>
-                <p className="text-white/60 text-xs">Single actions (minutes-hours)</p>
-              </div>
-              <div>
-                <p className="text-teal-400 font-semibold mb-1">9. MicroAction</p>
-                <p className="text-white/60 text-xs">Smallest moments (seconds-minutes)</p>
-              </div>
+          <div className="rounded-lg border border-border/60 bg-black/30 p-4 space-y-2">
+            <h4 className="text-white font-semibold text-sm mb-3">The 9 layers</h4>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              {[
+                ['Mythos', 'Your complete life narrative', 'text-purple-400'],
+                ['Epoch', 'Broad historical phases', 'text-indigo-400'],
+                ['Era', 'Defined time periods', 'text-blue-400'],
+                ['Saga', 'Major story arcs', 'text-cyan-400'],
+                ['Arc', 'Character and life arcs', 'text-teal-400'],
+                ['Chapter', 'Discrete chapters', 'text-green-400'],
+                ['Scene', 'Specific events', 'text-yellow-400'],
+                ['Action', 'Individual actions', 'text-orange-400'],
+                ['MicroAction', 'Smallest moments', 'text-red-400'],
+              ].map(([name, desc, color]) => (
+                <div key={name}>
+                  <p className={`font-semibold ${color} mb-0.5`}>{name}</p>
+                  <p className="text-white/40">{desc}</p>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-2">View Modes</h4>
-            <ul className="space-y-2 text-white/70">
-              <li><strong className="text-white">Vertical</strong> - Default timeline view with most recent at top</li>
-              <li><strong className="text-white">Chronology</strong> - Interactive horizontal timeline with zoom/pan</li>
-              <li><strong className="text-white">Hierarchy</strong> - Nested tree view showing parent-child relationships</li>
-              <li><strong className="text-white">Graph</strong> - Visual relationship graph between timelines</li>
-              <li><strong className="text-white">List</strong> - Sortable list view of all memories</li>
-            </ul>
+          <div className="space-y-3">
+            <h4 className="text-white font-semibold text-sm">Life Arcs</h4>
+            <p className="text-white/60 text-sm">
+              Life arcs are named periods the system infers from your behavioral patterns — not just time ranges.
+              "The NYC Years." "Learning to Code." "The Startup Period." They open and close, and they connect
+              causally: the breakup arc can spawn a recovery arc. The college arc can precede the career arc.
+            </p>
+            <Example label="How arcs appear">
+              The 'Building Lorekeeper' arc is currently active (Feb 2026 → present). It overlaps with
+              two relationship arcs and one inner arc from the same period.
+            </Example>
           </div>
 
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-2">Search & Filter</h4>
-            <ul className="space-y-2 text-white/70">
-              <li>🔍 <strong className="text-white">Search Timelines</strong> - Find specific timelines by name or description</li>
-              <li>🏷️ <strong className="text-white">Filter by Layer</strong> - Filter by Mythos, Era, Saga, Arc, Chapter, etc.</li>
-              <li>⭐ <strong className="text-white">Recommended Timelines</strong> - See ongoing or recently active timelines</li>
-              <li>📅 <strong className="text-white">Date Range</strong> - Filter memories by time period</li>
-            </ul>
-          </div>
+          <Note>
+            Gaps between your entries are detected and typed automatically: Recovery Period, Transition Period,
+            or simply Undocumented Period. Gaps are part of the record, not missing data.
+          </Note>
         </div>
-      )
+      ),
     },
     {
-      id: 'characters-locations',
-      title: 'Characters & Locations',
-      icon: <Users className="w-5 h-5" />,
-      content: (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Automatic Entity Tracking</h3>
-            <p className="text-white/70 mb-4">
-              Lore Book automatically detects and tracks people and places mentioned in your journal entries. 
-              No manual tagging required!
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-              <h4 className="text-base font-semibold text-white mb-2 flex items-center gap-2">
-                <Users className="w-4 h-4 text-primary" />
-                Characters
-              </h4>
-              <ul className="space-y-2 text-sm text-white/70">
-                <li>• Automatically detected from entries</li>
-                <li>• Relationship tracking</li>
-                <li>• Timeline integration</li>
-                <li>• Character profiles with stories</li>
-                <li>• AI-generated insights</li>
-              </ul>
-            </div>
-
-            <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-              <h4 className="text-base font-semibold text-white mb-2 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-primary" />
-                Locations
-              </h4>
-              <ul className="space-y-2 text-sm text-white/70">
-                <li>• Place detection from entries</li>
-                <li>• Location-based memories</li>
-                <li>• Geographic context</li>
-                <li>• Location book organization</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-primary mb-2">Entity Modal</h4>
-            <p className="text-white/80 text-sm">
-              Click any character, location, or memory throughout the app to open a unified modal where you can:
-            </p>
-            <ul className="mt-2 space-y-1 text-sm text-white/70 list-disc list-inside">
-              <li>Chat about the entity</li>
-              <li>View key details and connections</li>
-              <li>Update information</li>
-              <li>See related memories and timelines</li>
-            </ul>
-          </div>
-        </div>
-      )
-    },
-    {
-      id: 'love-relationships',
-      title: 'Love & Relationships',
+      id: 'love',
       icon: <Heart className="w-5 h-5" />,
+      title: 'Love & Relationships',
+      badge: 'Most used',
       content: (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Automatic Relationship Tracking</h3>
-            <p className="text-white/70 mb-4">
-              Lore Book automatically detects and tracks your romantic relationships, crushes, and situationships 
-              from your conversations. No manual forms—just chat naturally and we'll organize everything for you.
-            </p>
-          </div>
+        <div className="space-y-5">
+          <p className="text-white/60 text-sm leading-relaxed">
+            This is the place to come for relationship introspection and advice. Describe your dates,
+            process confusing situations, work through patterns. The system tracks everything automatically
+            from your natural conversation — no forms, no tagging.
+          </p>
 
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-              <h4 className="text-base font-semibold text-white mb-2 flex items-center gap-2">
-                <Heart className="w-4 h-4 text-pink-400" />
-                Relationship Types
-              </h4>
-              <ul className="space-y-2 text-sm text-white/70">
-                <li>• Active relationships (boyfriend, girlfriend, etc.)</li>
-                <li>• Past relationships (ex-partners)</li>
-                <li>• Situationships</li>
-                <li>• Crushes and infatuations</li>
-                <li>• All tracked automatically from chat</li>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-pink-500/20 bg-pink-950/10 p-4">
+              <h4 className="text-pink-300 font-semibold text-sm mb-3">What gets tracked automatically</h4>
+              <ul className="space-y-1.5 text-xs text-white/60">
+                {[
+                  'Every date, call, text, fight, and support moment',
+                  'Drift direction: growing closer or pulling away',
+                  'Active cycles: push-pull, hot-cold, on-again-off-again',
+                  'Red flags, green flags, pros, cons',
+                  'Key milestones: first kiss, first fight, breakup',
+                  'Recovery status after a relationship ends',
+                ].map(i => <li key={i} className="flex gap-2"><span className="text-pink-400">·</span>{i}</li>)}
               </ul>
             </div>
-
-            <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-              <h4 className="text-base font-semibold text-white mb-2 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-pink-400" />
-                Key Features
-              </h4>
-              <ul className="space-y-2 text-sm text-white/70">
-                <li>• Relationship rankings and comparisons</li>
-                <li>• Pros, cons, red flags, green flags</li>
-                <li>• Timeline of dates and milestones</li>
-                <li>• Analytics and insights</li>
-                <li>• Chat-based editing (no forms!)</li>
-              </ul>
+            <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+              <h4 className="text-white font-semibold text-sm mb-3">The advisor knows your history</h4>
+              <p className="text-xs text-white/60 leading-relaxed mb-3">
+                When you ask about a relationship, the AI has full context: who they are, what's happened,
+                the pattern you're in, and what drift looks like right now.
+              </p>
+              <Example>
+                Based on what's been logged: the last three times communication slowed after a strong
+                connection, things drifted. That's a pattern worth naming.
+              </Example>
             </div>
           </div>
 
-          <div className="bg-pink-950/20 border border-pink-500/30 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-pink-300 mb-2">How It Works</h4>
-            <ol className="list-decimal list-inside space-y-2 text-sm text-white/70">
-              <li><strong className="text-white">Just Chat</strong> - Mention relationships naturally in conversation</li>
-              <li><strong className="text-white">Auto-Detection</strong> - AI identifies romantic relationships automatically</li>
-              <li><strong className="text-white">View & Explore</strong> - Check the Love & Relationships section to see all tracked relationships</li>
-              <li><strong className="text-white">Get Insights</strong> - See rankings, analytics, and recommendations</li>
-              <li><strong className="text-white">Edit via Chat</strong> - Update relationship details by chatting about them</li>
-            </ol>
-          </div>
-
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-2">Relationship Rankings</h4>
-            <p className="text-white/70 text-sm mb-3">
-              Compare your relationships across different metrics:
-            </p>
-            <ul className="space-y-2 text-sm text-white/70">
-              <li>🏆 <strong className="text-white">Overall</strong> - Ranked by overall compatibility and health</li>
-              <li>💚 <strong className="text-white">Active</strong> - Rankings among current relationships</li>
-              <li>📊 <strong className="text-white">Compatibility</strong> - Sorted by compatibility score</li>
-              <li>⚡ <strong className="text-white">Intensity</strong> - Ranked by emotional intensity</li>
-              <li>❤️ <strong className="text-white">Health</strong> - Sorted by relationship health score</li>
-            </ul>
-          </div>
-
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-primary mb-2 flex items-center gap-2">
-              <Info className="w-4 h-4" />
-              Pro Tip
-            </h4>
-            <p className="text-white/80 text-sm">
-              Click on any relationship to see detailed analytics, timeline of dates, pros and cons, and chat 
-              directly about that relationship. All updates happen through conversation—no manual forms required!
+          <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+            <h4 className="text-white font-semibold text-sm mb-3">Cross-relationship patterns</h4>
+            <p className="text-xs text-white/60 leading-relaxed">
+              After enough relationship history, the system detects what keeps showing up across
+              everyone you've dated — not to judge, but to show you your own experience clearly.
+              Push-pull dynamics appearing in 3 relationships. The same red flag theme across 4.
+              High-intensity starts that cool within 90 days. These become knowledge claims, with evidence.
             </p>
           </div>
+
+          <Note>
+            Open the Love & Relationships section to see all tracked relationships, rankings, analytics,
+            and the Patterns tab inside each relationship's detail view.
+          </Note>
         </div>
-      )
+      ),
+    },
+    {
+      id: 'knowledge',
+      icon: <Brain className="w-5 h-5" />,
+      title: 'Knowledge & What LoreBook Believes',
+      badge: 'New',
+      content: (
+        <div className="space-y-5">
+          <p className="text-white/60 text-sm leading-relaxed">
+            Over time, LoreBook moves from recording what you say to understanding who you are. It earns
+            conclusions from behavioral evidence — what you repeatedly do — not from self-description.
+            And it can show you exactly why it believes what it believes.
+          </p>
+
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/30">Example knowledge claim</p>
+            <div className="space-y-1">
+              <Kv k="Type" v="behavioral_pattern" />
+              <Kv k="Claim" v="You commit to long technical projects under pressure." />
+              <Kv k="Confidence" v="84%" />
+              <Kv k="Evidence" v="8 recurring scenes across 26 months, 3 life arcs" />
+              <Kv k="Status" v="ACTIVE — reinforced 11 days ago" />
+            </div>
+          </div>
+
+          <div className="space-y-3 text-sm text-white/60">
+            <p>Knowledge claims come in several types:</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {[
+                ['behavioral_pattern', 'What you repeatedly do in observable contexts'],
+                ['value', 'What you consistently need or prioritize'],
+                ['lesson', 'What specific experience taught you'],
+                ['belief', 'How you understand yourself or the world'],
+                ['relationship', 'A significant documented relationship'],
+              ].map(([type, desc]) => (
+                <div key={type} className="rounded border border-border/60 bg-black/30 p-3">
+                  <code className="text-primary text-xs">{type}</code>
+                  <p className="text-white/50 text-xs mt-1">{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Note>
+            Claims are never based on AI inference alone. They require behavioral evidence — recurring
+            events and patterns — to crystallize. AI-generated summaries do not count as evidence.
+          </Note>
+        </div>
+      ),
+    },
+    {
+      id: 'people-places',
+      icon: <Users className="w-5 h-5" />,
+      title: 'People & Places',
+      content: (
+        <div className="space-y-5">
+          <p className="text-white/60 text-sm leading-relaxed">
+            Anyone you mention regularly gets a profile. Any place you reference gets tracked. You don't
+            need to do anything — just write naturally and the system builds the roster automatically.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Users className="w-4 h-4 text-primary" />
+                <h4 className="text-white font-semibold text-sm">Characters</h4>
+              </div>
+              <ul className="space-y-1.5 text-xs text-white/60">
+                {['Auto-detected from entries', 'Relationship tracking and history', 'Timeline integration', 'AI-generated insights', 'Click any name to open their profile'].map(i => (
+                  <li key={i} className="flex gap-2"><span className="text-primary">·</span>{i}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <MapPin className="w-4 h-4 text-primary" />
+                <h4 className="text-white font-semibold text-sm">Locations</h4>
+              </div>
+              <ul className="space-y-1.5 text-xs text-white/60">
+                {['Place detection from entries', 'Visit history and timeline', 'Location-based memory search', 'Geographic narrative context'].map(i => (
+                  <li key={i} className="flex gap-2"><span className="text-primary">·</span>{i}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <Note>
+            Click any person, place, or memory anywhere in the app to open a unified detail view.
+            You can chat directly about that entity, see their connections, and review their full history.
+          </Note>
+        </div>
+      ),
     },
     {
       id: 'lorebook',
-      title: 'Lore Book - Your Biography',
       icon: <BookMarked className="w-5 h-5" />,
+      title: 'LoreBook — Your Biography',
       content: (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Auto-Generated Biography</h3>
-            <p className="text-white/70 mb-4">
-              Your Lore Book is automatically generated from your journal entries. It organizes your life story 
-              into a readable, book-like format that you can refine and edit.
-            </p>
-          </div>
-
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-2">Features</h4>
-            <ul className="space-y-2 text-white/70">
-              <li>📖 <strong className="text-white">Automatic Generation</strong> - Built from your journal entries</li>
-              <li>✏️ <strong className="text-white">Editable</strong> - Refine and customize your story</li>
-              <li>📚 <strong className="text-white">Book-Like Reading</strong> - Clean, readable interface</li>
-              <li>🔍 <strong className="text-white">Navigation</strong> - Easy section browsing</li>
-              <li>🎨 <strong className="text-white">Customization</strong> - Adjust font size and spacing</li>
-            </ul>
+        <div className="space-y-5">
+          <p className="text-white/60 text-sm leading-relaxed">
+            Your LoreBook is a generated biography built from your entries — not a summary of what you wrote,
+            but a narrative constructed from events, milestones, patterns, arcs, and lessons. Read it like a book.
+          </p>
+          <Example label="What a chapter might look like">
+            2022–2024 was shaped significantly by the relationship with Jordan. You were building your first company
+            and falling in love at the same time — two arcs that overlapped and shaped each other. The relationship
+            left behind more than memory: a clarified sense of what you need from a partner, and what creative
+            partnership costs.
+          </Example>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+              <h4 className="text-white font-semibold text-sm mb-3">Reading experience</h4>
+              <ul className="space-y-1.5 text-xs text-white/60">
+                {['Kindle-style reader with multiple themes', 'Chapter navigation by life period', 'Adjustable font size and spacing', 'Progress tracking through your story'].map(i => (
+                  <li key={i} className="flex gap-2"><span className="text-primary">·</span>{i}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+              <h4 className="text-white font-semibold text-sm mb-3">Generation options</h4>
+              <ul className="space-y-1.5 text-xs text-white/60">
+                {['Full life or specific time range', 'Tone: neutral, reflective, dramatic, mythic', 'Depth: summary, detailed, or epic', 'Export to PDF or Markdown'].map(i => (
+                  <li key={i} className="flex gap-2"><span className="text-primary">·</span>{i}</li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
-      )
-    },
-    {
-      id: 'memory-explorer',
-      title: 'Memory Explorer',
-      icon: <Search className="w-5 h-5" />,
-      content: (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Semantic Search</h3>
-            <p className="text-white/70 mb-4">
-              Search through all your memories using natural language. The system understands context, relationships, 
-              and meaning—not just keywords.
-            </p>
-          </div>
-
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-2">Smart Query Parsing</h4>
-            <p className="text-white/70 mb-2">Try queries like:</p>
-            <ul className="space-y-1 text-sm text-white/60 font-mono list-disc list-inside ml-4">
-              <li>"entries about Sarah last month"</li>
-              <li>"memories at the coffee shop"</li>
-              <li>"when did I start learning guitar"</li>
-              <li>"memories with happy mood"</li>
-            </ul>
-          </div>
-
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-2">Automatic Filter Detection</h4>
-            <ul className="space-y-2 text-white/70">
-              <li>📅 <strong className="text-white">Dates</strong> - Automatically detects time references</li>
-              <li>👤 <strong className="text-white">Characters</strong> - Finds entries mentioning people</li>
-              <li>📍 <strong className="text-white">Locations</strong> - Searches by place</li>
-              <li>🏷️ <strong className="text-white">Tags</strong> - Filters by tags and motifs</li>
-              <li>😊 <strong className="text-white">Emotions</strong> - Searches by mood</li>
-            </ul>
-          </div>
-        </div>
-      )
+      ),
     },
     {
       id: 'discovery',
+      icon: <Sparkles className="w-5 h-5" />,
       title: 'Discovery Hub',
-      icon: <Compass className="w-5 h-5" />,
       content: (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Analytical Insights</h3>
-            <p className="text-white/70 mb-4">
-              Discover patterns, insights, and connections in your life story through 8 analytical panels.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-              <h4 className="text-base font-semibold text-white mb-2">Panels</h4>
-              <ul className="space-y-2 text-sm text-white/70">
-                <li>🔍 <strong className="text-white">Identity</strong> - Core identity elements</li>
-                <li>👥 <strong className="text-white">Characters</strong> - Relationship insights</li>
-                <li>📖 <strong className="text-white">Saga</strong> - Story arc analysis</li>
-                <li>🕸️ <strong className="text-white">Fabric</strong> - Memory connections</li>
-                <li>💡 <strong className="text-white">Insights</strong> - Pattern detection</li>
-                <li>🤖 <strong className="text-white">Autopilot</strong> - Strategic guidance</li>
-                <li>✨ <strong className="text-white">Soul Profile</strong> - Essence tracking</li>
-                <li>✅ <strong className="text-white">Truth</strong> - Fact checking</li>
-              </ul>
-            </div>
-
-            <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
-              <h4 className="text-base font-semibold text-primary mb-2">Soul Profile</h4>
-              <p className="text-white/80 text-sm mb-2">
-                Automatically tracks your:
-              </p>
-              <ul className="space-y-1 text-sm text-white/70 list-disc list-inside">
-                <li>Hopes & Dreams</li>
-                <li>Fears & Concerns</li>
-                <li>Strengths & Weaknesses</li>
-                <li>Skills & Talents</li>
-                <li>Values & Beliefs</li>
-                <li>Relationship Patterns</li>
-              </ul>
-            </div>
+        <div className="space-y-5">
+          <p className="text-white/60 text-sm leading-relaxed">
+            The Discovery Hub is where analytical insights live — patterns, identity, relationship analytics,
+            soul profile. It processes everything you've shared and surfaces what it found.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {[
+              ['Identity', 'Core identity elements derived from your history'],
+              ['Soul Profile', 'Hopes, fears, strengths, values, and patterns'],
+              ['Relationship Analytics', 'Affection scores, compatibility, health trends'],
+              ['Insights', 'Pattern detection across all your data'],
+              ['Autopilot', 'Strategic guidance based on your arc history'],
+              ['Truth Seeker', 'Fact-checking and contradiction detection'],
+            ].map(([name, desc]) => (
+              <div key={name} className="rounded-lg border border-border/60 bg-black/30 p-3">
+                <p className="text-white font-semibold text-xs mb-1">{name}</p>
+                <p className="text-white/50 text-xs">{desc}</p>
+              </div>
+            ))}
           </div>
         </div>
-      )
+      ),
+    },
+    {
+      id: 'search',
+      icon: <Search className="w-5 h-5" />,
+      title: 'Memory Search',
+      content: (
+        <div className="space-y-5">
+          <p className="text-white/60 text-sm leading-relaxed">
+            Search your memories by meaning, not just keywords. The system understands context,
+            relationships, and time references naturally.
+          </p>
+          <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+            <h4 className="text-white font-semibold text-sm mb-3">What you can search for</h4>
+            <ul className="space-y-2 text-xs font-mono text-white/60">
+              {[
+                'entries about Sarah last month',
+                'when did I feel most hopeful',
+                'memories at the coffee shop in 2023',
+                'fights I had with anyone',
+                'when I was working on the startup',
+                'everything I said about wanting to leave',
+              ].map(q => (
+                <li key={q} className="flex gap-2 items-start">
+                  <span className="text-primary mt-0.5">"</span>
+                  <span>{q}"</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <Note>
+            The search understands people, places, dates, emotions, topics, and life periods.
+            No special syntax required.
+          </Note>
+        </div>
+      ),
     },
     {
       id: 'privacy',
-      title: 'Privacy & Security',
       icon: <Shield className="w-5 h-5" />,
+      title: 'Privacy & Your Data',
       content: (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-2">Your Data is Private by Design</h3>
-            <p className="text-white/70 mb-4">
-              Lore Book is built with privacy as a core principle. Everything you share is encrypted, secure, and accessible only to you.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+        <div className="space-y-5">
+          <p className="text-white/60 text-sm leading-relaxed">
+            You're trusting LoreBook with the most personal thing you have — your actual life. Everything is
+            private until you choose otherwise. No human ever sees your entries.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-green-500/20 bg-green-950/10 p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Lock className="h-5 w-5 text-green-400" />
-                <h4 className="text-base font-semibold text-white">End-to-End Encryption</h4>
+                <Lock className="w-4 h-4 text-green-400" />
+                <h4 className="text-white font-semibold text-sm">What's encrypted</h4>
               </div>
-              <p className="text-sm text-white/70">
-                Your journal entries, memories, and personal data are encrypted both in transit and at rest. 
-                Only you can decrypt and read your data.
-              </p>
+              <ul className="space-y-1.5 text-xs text-white/60">
+                {['Journal entries in transit and at rest', 'Conversations with the AI', 'Character and relationship data', 'All personal metadata'].map(i => (
+                  <li key={i} className="flex gap-2"><span className="text-green-400">·</span>{i}</li>
+                ))}
+              </ul>
             </div>
-
-            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+            <div className="rounded-lg border border-green-500/20 bg-green-950/10 p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Shield className="h-5 w-5 text-green-400" />
-                <h4 className="text-base font-semibold text-white">We Never Sell Your Data</h4>
+                <Shield className="w-4 h-4 text-green-400" />
+                <h4 className="text-white font-semibold text-sm">Your control</h4>
               </div>
-              <p className="text-sm text-white/70">
-                Your personal information, journal entries, and usage data are never sold, shared, or used for advertising purposes.
-              </p>
-            </div>
-
-            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Lock className="h-5 w-5 text-green-400" />
-                <h4 className="text-base font-semibold text-white">Private by Default</h4>
-              </div>
-              <p className="text-sm text-white/70">
-                Your Lore Book is completely private. No one else can see your entries, characters, timeline, or memories unless you explicitly choose to publish them.
-              </p>
-            </div>
-
-            <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Shield className="h-5 w-5 text-green-400" />
-                <h4 className="text-base font-semibold text-white">You Control Your Data</h4>
-              </div>
-              <p className="text-sm text-white/70">
-                Export your data anytime, delete your account and all data permanently, or adjust privacy settings to your comfort level.
-              </p>
+              <ul className="space-y-1.5 text-xs text-white/60">
+                {['Export all data anytime', 'Delete account and all data permanently', 'Biography publishing is opt-in only', 'No advertising, no data selling'].map(i => (
+                  <li key={i} className="flex gap-2"><span className="text-green-400">·</span>{i}</li>
+                ))}
+              </ul>
             </div>
           </div>
-
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-2">Trust & Confidentiality</h4>
-            <p className="text-white/70 text-sm mb-3">
-              We understand that your life story is deeply personal. You can confide in Lore Book knowing that:
-            </p>
-            <ul className="space-y-2 text-sm text-white/70 list-disc list-inside">
-              <li>Your conversations with the AI are private and encrypted</li>
-              <li>No human reviews your entries or data</li>
-              <li>Your data is isolated and cannot be accessed by other users</li>
-              <li>Future social features will be opt-in only</li>
-              <li>You can publish your Lore Book only if you choose to</li>
-            </ul>
-          </div>
-
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-primary mb-2 flex items-center gap-2">
-              <Info className="w-4 h-4" />
-              Privacy Settings
-            </h4>
-            <p className="text-white/80 text-sm">
-              Visit <strong className="text-white">Account Center → Privacy & Security</strong> to manage your privacy settings, 
-              export your data, or delete your account.
-            </p>
-          </div>
+          <p className="text-xs text-white/40">
+            Manage privacy settings in Account Center → Privacy & Security.
+          </p>
         </div>
-      )
+      ),
     },
     {
       id: 'tips',
-      title: 'Tips & Best Practices',
-      icon: <HelpCircle className="w-5 h-5" />,
+      icon: <Zap className="w-5 h-5" />,
+      title: 'Tips & Quick Reference',
       content: (
-        <div className="space-y-4">
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-3">Writing Tips</h4>
-            <ul className="space-y-3 text-white/70">
-              <li>
-                <strong className="text-white">Write Naturally</strong> - Don't worry about structure or organization. 
-                Just write as you would in a traditional journal. Lore Book handles the rest.
-              </li>
-              <li>
-                <strong className="text-white">Include Details</strong> - The more context you provide (who, what, where, when, why), 
-                the better the system can organize and connect your memories.
-              </li>
-              <li>
-                <strong className="text-white">Be Consistent</strong> - Regular journaling helps build a richer, more connected story.
-              </li>
-              <li>
-                <strong className="text-white">Use Natural Language</strong> - Write conversationally. The AI understands context 
-                and can extract meaning from casual writing.
-              </li>
-            </ul>
+        <div className="space-y-5">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+              <h4 className="text-white font-semibold text-sm mb-3">Writing tips</h4>
+              <ul className="space-y-2 text-xs text-white/60">
+                {[
+                  ['Write naturally', 'No structure needed. The system extracts the structure.'],
+                  ['Include detail', 'The more context (who, where, what happened), the better.'],
+                  ['Use real names', 'The system tracks people by name — be consistent.'],
+                  ['Journal regularly', 'The picture gets clearer the more you contribute.'],
+                  ['Revisit and reflect', 'Looking back on old events generates the richest insights.'],
+                ].map(([k, v]) => (
+                  <li key={k}>
+                    <span className="text-white font-medium">{k}</span>
+                    <span className="text-white/40"> — {v}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+              <h4 className="text-white font-semibold text-sm mb-3">Keyboard shortcuts</h4>
+              <ul className="space-y-2 text-xs text-white/60 font-mono">
+                {[
+                  ['/help', 'Show all slash commands'],
+                  ['Esc', 'Close modals'],
+                  ['Enter', 'Send message'],
+                  ['Shift + Enter', 'New line in message'],
+                ].map(([key, desc]) => (
+                  <li key={key} className="flex gap-3 items-center">
+                    <kbd className="px-2 py-0.5 bg-black/60 border border-border/60 rounded text-primary">{key}</kbd>
+                    <span className="font-sans">{desc}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
 
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-primary mb-3">Keyboard Shortcuts</h4>
-            <ul className="space-y-2 text-sm text-white/80">
-              <li><kbd className="px-2 py-1 bg-black/40 rounded text-xs">/</kbd> - Open slash commands in chat</li>
-              <li><kbd className="px-2 py-1 bg-black/40 rounded text-xs">Esc</kbd> - Close modals</li>
-              <li><kbd className="px-2 py-1 bg-black/40 rounded text-xs">Ctrl/Cmd + K</kbd> - Quick search (where available)</li>
-            </ul>
-          </div>
-
-          <div className="bg-black/40 border border-border/60 rounded-lg p-4">
-            <h4 className="text-base font-semibold text-white mb-3">Getting the Most Out of Lore Book</h4>
-            <ul className="space-y-2 text-white/70">
-              <li>💬 <strong className="text-white">Chat Regularly</strong> - The more you interact, the better the AI understands you</li>
-              <li>📝 <strong className="text-white">Journal Daily</strong> - Build a comprehensive memory bank</li>
-              <li>🔍 <strong className="text-white">Explore Your Timeline</strong> - Discover patterns and connections</li>
-              <li>📚 <strong className="text-white">Review Your Lore Book</strong> - See how your story is being told</li>
-              <li>🎯 <strong className="text-white">Use Discovery Hub</strong> - Gain insights about yourself</li>
-            </ul>
+          <div className="rounded-lg border border-border/60 bg-black/30 p-4">
+            <h4 className="text-white font-semibold text-sm mb-3">The compound effect</h4>
+            <p className="text-xs text-white/60 leading-relaxed">
+              LoreBook improves meaningfully with time. At one month, it knows your main characters and recent history.
+              At six months, patterns emerge and knowledge claims start forming. At a year, the system knows things
+              about you that are genuinely hard to articulate yourself — because they come from behavioral evidence
+              across hundreds of conversations, not from how you describe yourself.
+            </p>
           </div>
         </div>
-      )
-    }
+      ),
+    },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <button
-            onClick={() => navigate('/chat')}
-            className="flex items-center gap-2 text-white/70 hover:text-white transition-colors mb-4 group"
-          >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            <span className="text-sm">Back to App</span>
-          </button>
+    <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+
+        {/* Back */}
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-white/50 hover:text-white transition-colors mb-8 group text-sm"
+        >
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+          Back
+        </button>
+
+        {/* Header */}
+        <div className="mb-12">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-primary/20 rounded-lg">
-              <BookOpen className="w-8 h-8 text-primary" />
+            <div className="p-3 bg-primary/20 rounded-xl">
+              <BookOpen className="w-7 h-7 text-primary" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-white">User Guide</h1>
-              <p className="text-white/60 mt-1">Everything you need to know about Lore Book</p>
+              <h1 className="text-3xl font-bold text-white">LoreBook Guide</h1>
+              <p className="text-white/50 mt-1 text-sm">How to get the most out of it</p>
             </div>
           </div>
         </div>
 
-        <div className="space-y-3">
-          {sections.map((section) => {
-            const isExpanded = expandedSections.has(section.id);
-            return (
-              <div
-                key={section.id}
-                className="bg-black/40 border border-border/60 rounded-lg overflow-hidden backdrop-blur-sm"
-              >
-                <button
-                  onClick={() => toggleSection(section.id)}
-                  className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="text-primary">{section.icon}</div>
-                    <h2 className="text-lg font-semibold text-white">{section.title}</h2>
-                  </div>
-                  {isExpanded ? (
-                    <ChevronDown className="w-5 h-5 text-white/60" />
-                  ) : (
-                    <ChevronRight className="w-5 h-5 text-white/60" />
-                  )}
-                </button>
-                {isExpanded && (
-                  <div className="p-6 border-t border-border/60 bg-black/20">
-                    {section.content}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        {/* Journey section */}
+        <div className="mb-12">
+          <h2 className="text-lg font-bold text-white mb-2">What to expect, and when</h2>
+          <p className="text-white/50 text-sm mb-6">
+            LoreBook compounds. It gets genuinely smarter the longer you use it.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <Phase
+              n="01"
+              label="First session"
+              title="Just start talking"
+              body="Write anything — your day, something that happened, how you're feeling. Don't try to structure it. The system listens."
+              items={[
+                'Open Chat and type naturally',
+                'Mention people by name',
+                'Your first characters and timeline entries appear',
+              ]}
+            />
+            <Phase
+              n="02"
+              label="First week"
+              title="Your world takes shape"
+              body="The more you share, the more characters, locations, and timeline entries populate automatically. Your recent history starts becoming visible."
+              items={[
+                'Explore your Characters section',
+                'Check your Timeline — see what organized itself',
+                'Open Love & Relationships if relevant',
+              ]}
+            />
+            <Phase
+              n="03"
+              label="First month"
+              title="Patterns emerge"
+              body="Behavioral patterns become recognizable. The AI starts offering more specific, contextualized responses. First knowledge claims may form."
+              items={[
+                'Check Discovery Hub for early insights',
+                'Notice when the AI references your history unprompted',
+                'Generate your first biography section',
+              ]}
+            />
+            <Phase
+              n="04"
+              label="Long term"
+              title="The system knows things"
+              body="After sustained use, LoreBook holds a genuine model of who you are — behavioral patterns, life arcs, cross-relationship dynamics. It knows things about you that are hard to articulate yourself."
+              items={[
+                'Knowledge claims show up with full evidence traces',
+                'Life arcs open and close as your life does',
+                'Your biography reads like a real chapter of a real life',
+              ]}
+            />
+          </div>
         </div>
 
-        <div className="mt-8 p-6 bg-primary/10 border border-primary/30 rounded-lg">
-          <h3 className="text-lg font-semibold text-primary mb-2">Need More Help?</h3>
-          <p className="text-white/80 text-sm">
-            If you have questions or need assistance, you can always ask your AI companion in the Chat section. 
-            It's designed to help you navigate and make the most of Lore Book.
-          </p>
+        {/* Divider */}
+        <div className="border-t border-border/40 mb-8" />
+        <h2 className="text-lg font-bold text-white mb-4">Feature Reference</h2>
+
+        {/* Accordion */}
+        <div className="space-y-2">
+          {sections.map(section => (
+            <AccordionSection
+              key={section.id}
+              section={section}
+              isOpen={open.has(section.id)}
+              onToggle={() => toggle(section.id)}
+            />
+          ))}
         </div>
+
+        {/* Footer note */}
+        <div className="mt-10 rounded-xl border border-primary/20 bg-primary/10 p-5">
+          <div className="flex items-start gap-3">
+            <Eye className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-white font-semibold text-sm mb-1">One thing to remember</h3>
+              <p className="text-white/60 text-sm leading-relaxed">
+                LoreBook never asks you to trust a black box. Every conclusion it draws — every knowledge claim,
+                every pattern it names — comes with traceable evidence. You can always ask "why do you believe that?"
+                and get a real answer with real receipts.
+              </p>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );

@@ -3,12 +3,17 @@ import { supabaseAdmin } from '../../supabaseClient';
 
 export type ArcType = 'life_era' | 'skill' | 'location' | 'work' | 'custom';
 export type ArcSource = 'inferred' | 'user_created';
+export type ArcTrack = 'career' | 'relationships' | 'creative' | 'health' | 'inner' | 'mixed' | 'custom';
+export type EmotionalArc = 'building' | 'climax' | 'resolution' | 'grief' | 'recovery' | 'neutral';
 
 export interface LifeArc {
   id: string;
   user_id: string;
   title: string;
   arc_type: ArcType;
+  track: ArcTrack | null;
+  dominant_emotion: string | null;
+  emotional_arc: EmotionalArc | null;
   parent_id: string | null;
   start_date: string | null;
   end_date: string | null;
@@ -26,6 +31,9 @@ export interface LifeArc {
 export interface UpsertArcPayload {
   title: string;
   arc_type: ArcType;
+  track?: ArcTrack | null;
+  dominant_emotion?: string | null;
+  emotional_arc?: EmotionalArc | null;
   parent_id?: string | null;
   start_date?: string | null;
   end_date?: string | null;
@@ -46,6 +54,9 @@ export class ArcService {
           user_id: userId,
           title: payload.title,
           arc_type: payload.arc_type,
+          track: payload.track ?? null,
+          dominant_emotion: payload.dominant_emotion ?? null,
+          emotional_arc: payload.emotional_arc ?? null,
           parent_id: payload.parent_id ?? null,
           start_date: payload.start_date ?? null,
           end_date: payload.end_date ?? null,
@@ -177,6 +188,9 @@ export class ArcService {
       user_id: row.user_id as string,
       title: row.title as string,
       arc_type: row.arc_type as ArcType,
+      track: (row.track as ArcTrack | null) ?? null,
+      dominant_emotion: (row.dominant_emotion as string | null) ?? null,
+      emotional_arc: (row.emotional_arc as EmotionalArc | null) ?? null,
       parent_id: (row.parent_id as string | null) ?? null,
       start_date: (row.start_date as string | null) ?? null,
       end_date: (row.end_date as string | null) ?? null,

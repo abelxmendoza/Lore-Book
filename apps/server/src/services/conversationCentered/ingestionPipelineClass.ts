@@ -35,6 +35,7 @@ import { romanticRelationshipDetector } from './romanticRelationshipDetector';
 import { relationshipDriftDetector } from './relationshipDriftDetector';
 import { relationshipCycleDetector } from './relationshipCycleDetector';
 import { breakupDetector } from './breakupDetector';
+import { extractAndLogInteraction } from './romanticInteractionExtractor';
 import { characterTimelineBuilder } from './characterTimelineBuilder';
 import { workoutEventDetector } from './workoutEventDetector';
 import { biometricExtractor } from './biometricExtractor';
@@ -333,6 +334,20 @@ export class ConversationIngestionPipeline {
                   logger.debug({ err }, 'Cycle detection failed');
                 });
               }
+
+              // Chat-native interaction logging — fire-and-forget, never blocks.
+              // When the user describes a date, call, fight, or meetup in chat,
+              // this writes to romantic_interactions (and romantic_dates for milestones)
+              // without any form or prompt. The AI responds naturally; the record
+              // is captured silently in the background.
+              void extractAndLogInteraction(
+                userId,
+                relationship.id,
+                rawText,
+                messageId
+              ).catch(err => {
+                logger.debug({ err }, 'Interaction extraction failed (non-blocking)');
+              });
             }
           }
         }

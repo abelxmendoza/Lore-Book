@@ -21,6 +21,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { evaluatePatternThreshold } from '../knowledgeCrystallization';
 
 // Activity keywords to extract from event titles/summaries
 const ACTIVITY_KEYWORDS = [
@@ -73,11 +74,34 @@ function extractActivityWords(text: string): string[] {
   return ACTIVITY_KEYWORDS.filter(kw => lower.includes(kw));
 }
 
-function computeContinuityStrength(occurrenceCount: number): number {
-  if (occurrenceCount <= 1) return 0.25;
-  if (occurrenceCount === 2) return 0.50;
-  if (occurrenceCount === 3) return 0.72;
-  return Math.min(0.92, 0.72 + (occurrenceCount - 3) * 0.05);
+/**
+ * Continuity strength: logistic curve over occurrence count, dampened by recency.
+ *
+ * Count-only model (used when dates unavailable):
+ *   σ(k*(n - n₀)) where k=1.5 steepness, n₀=2.5 midpoint
+ *   → n=1: 0.18  n=2: 0.40  n=3: 0.62  n=5: 0.87  n=8: 0.96
+ *
+ * With temporal decay (used when lastSeenAt is provided):
+ *   decay = e^(-daysSinceLast / HALF_LIFE_DAYS)
+ *   strength = logistic * (0.5 + 0.5 * decay)
+ *   → a pattern unseen for 6 months loses ~30% of its strength;
+ *     unseen for 18 months loses ~60%.
+ */
+const HALF_LIFE_DAYS = 180; // ~6 months
+
+function logisticStrength(n: number): number {
+  // Steepness=1.5, midpoint=2.5; clamp to [0.10, 0.96]
+  return Math.min(0.96, Math.max(0.10, 1 / (1 + Math.exp(-1.5 * (n - 2.5)))));
+}
+
+function computeContinuityStrength(occurrenceCount: number, lastSeenAt?: string | null): number {
+  const base = logisticStrength(occurrenceCount);
+  if (!lastSeenAt) return base;
+
+  const daysSince = (Date.now() - new Date(lastSeenAt).getTime()) / 86_400_000;
+  const decay = Math.exp(-daysSince / HALF_LIFE_DAYS);
+  // Decay dampens toward 50% of base strength; recent activity restores it fully.
+  return Math.min(0.96, base * (0.5 + 0.5 * decay));
 }
 
 
@@ -181,7 +205,7 @@ async function processResolvedEvent(userId: string, eventId: string): Promise<vo
     if (bestMatch) {
       // Reinforce existing candidate
       const newCount = bestMatch.occurrence_count + 1;
-      const newStrength = computeContinuityStrength(newCount);
+      const newStrength = computeContinuityStrength(newCount, event.start_time);
       const threadId = getThreadIdFromMetadata(event);
 
       const updatedEntities = Array.from(
@@ -206,8 +230,8 @@ async function processResolvedEvent(userId: string, eventId: string): Promise<vo
           source_thread_ids: threadId
             ? Array.from(new Set([...bestMatch.source_thread_ids, threadId]))
             : bestMatch.source_thread_ids,
-          timeline_candidate: newStrength >= 0.60,
-          confidence: Math.min(0.90, bestMatch.confidence + 0.10),
+          timeline_candidate: newStrength >= 0.55,
+          confidence: newStrength,
         })
         .eq('id', bestMatch.id)
         .eq('user_id', userId);
@@ -222,6 +246,22 @@ async function processResolvedEvent(userId: string, eventId: string): Promise<vo
         },
         'Event candidate reinforced'
       );
+
+      // Knowledge crystallization hook — fire-and-forget.
+      // Triggered when a candidate crosses the pattern threshold (strength >= 0.80, count >= 4).
+      // Never awaited — must never block the ingestion pipeline.
+      if (newStrength >= 0.80 && newCount >= 4) {
+        evaluatePatternThreshold({
+          userId,
+          eventCandidateId: bestMatch.id,
+          continuityStrength: newStrength,
+          occurrenceCount: newCount,
+          firstSeenAt: bestMatch.first_seen_at ?? null,
+          lastSeenAt: event.start_time,
+        }).catch(err =>
+          logger.error({ err, userId, candidateId: bestMatch.id }, 'crystallization hook failed (non-blocking)')
+        );
+      }
     } else {
       // Create new candidate — first occurrence, low confidence
       const entityNames = await getEntityNames(allEntities, userId);

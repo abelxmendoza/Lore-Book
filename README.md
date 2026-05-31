@@ -2,9 +2,9 @@
 
 <!-- © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved. -->
 
-**A system that gradually remembers your life.**
+**A system that gradually understands your life.**
 
-Lorekeeper is a conversational runtime that accumulates biographical context over time. Every conversation you have adds to a growing record — people, places, recurring situations, decisions, emotional patterns. Future conversations draw on that record, so the longer you use it, the more it knows about you without being told.
+Lorekeeper is a conversational runtime that accumulates biographical context over time. Every conversation adds to a growing record — people, places, recurring situations, decisions, emotional patterns, behavioral evidence. Future conversations draw on that record, and over time the system earns genuine knowledge about who you are and how you live.
 
 This is not a chatbot with memory bolted on. The continuity loop is the product.
 
@@ -20,9 +20,88 @@ This is not a chatbot with memory bolted on. The continuity loop is the product.
 When you send a message, two things happen simultaneously:
 
 1. You get a response from the assistant
-2. The message passes through an ingestion pipeline that extracts people, events, decisions, and recurring themes — and persists them to your record
+2. The message passes through an ingestion pipeline that extracts people, events, decisions, patterns, and recurring themes — and persists them to your record
 
-The record is yours. It accumulates across threads and sessions. The assistant reads from it on every response, so mentions of "my sister" eventually resolve to a specific person with a history rather than an anonymous noun.
+The record accumulates across threads and sessions. The assistant reads from it on every response, so mentions of "my sister" eventually resolve to a specific person with a history rather than an anonymous noun. Over time, behavioral patterns crystallize into durable knowledge claims — explainable conclusions drawn from evidence, not inference.
+
+---
+
+## Architecture Overview
+
+### The Intelligence Stack
+
+```text
+Raw messages
+   ↓
+Ingestion pipeline (entity extraction, event detection, relationship tracking)
+   ↓
+Event candidates (recurring behavioral scenes)
+   ↓
+Life arcs (named temporal containers: "The Startup Years", "With Jordan")
+   ↓
+Knowledge crystallization (behavioral patterns → durable claims with evidence)
+   ↓
+WHAT LOREBOOK KNOWS block in every system prompt
+```
+
+### Knowledge Crystallization
+
+The system earns knowledge from behavioral evidence — what you repeatedly do, not just what you say about yourself. Every knowledge claim is:
+
+- **Evidence-backed** — built from recurring `event_candidates`, life arcs, user reflections
+- **Confidence-scored** — 5-factor formula: base evidence × temporal stability × cross-context × recency × contradiction penalty
+- **Explainable** — every claim traces to specific source rows via `knowledge_evidence_links`
+- **Lifecycle-managed** — ACTIVE → DORMANT → HISTORICAL → SUPERSEDED; nothing is silently deleted
+
+AI-generated claims never count as evidence. Only behavioral observation does.
+
+### Relationship Intelligence
+
+Romantic relationships are tracked at full depth: drift direction, active cycles (push-pull, hot-cold, toxic patterns), recent interactions logged from natural conversation (no forms), cross-relationship pattern analysis across your full history, and a relationship influence view showing which relationships shaped your life and how.
+
+The system prompt for relationship conversations reads like a trusted advisor who has read your journals — because it has.
+
+### Temporal Intelligence
+
+Five systems handle time, each answering a different question:
+
+| System | Question |
+| ------ | -------- |
+| ChronologyEngine V1 | What caused what? What patterns exist? What's missing? |
+| ChronologyService V2 | Give me events in order. Find overlaps. Bucket by year. |
+| Timeline Hierarchy | What is the narrative structure? (9-layer: Mythos → MicroAction) |
+| TimelineInsight | What gaps exist? What was happening in parallel? |
+| Life Arcs | What named life periods exist, and how do they connect causally? |
+
+Allen's interval algebra (all 13 relations) powers temporal relationship detection. Chronology findings are bridged into `arc_relationships` rather than orphaned. Gaps are typed and persisted as hierarchy nodes.
+
+See [`TEMPORAL_ARCHITECTURE.md`](TEMPORAL_ARCHITECTURE.md) for the full reference.
+
+### Mode Router
+
+Every message is classified before processing:
+
+| Mode | What It Does |
+| ---- | ------------ |
+| `EXPERIENCE_INGESTION` | Lived experience → full ingestion pipeline |
+| `ACTION_LOG` | Atomic event → lighter extraction path |
+| `MEMORY_RECALL` | Retrieval request → RAG without ingestion |
+| `NARRATIVE_STORY` | Synthesize narrative from existing record |
+| `EMOTIONAL_EXISTENTIAL` | Support mode — no memory writes |
+
+Pattern matching runs first (<50ms). LLM classification fires only when confidence < 0.8.
+
+### Ingestion Pipeline
+
+12-step pipeline orchestrating ~30 parallel extractors: entity resolution, relationship detection, event extraction, romantic interaction logging, interest tracking, belief challenge detection, and more. Each extraction writes to the appropriate domain table. Every pipeline run is tracked in `pipeline_runs`.
+
+### Entity System
+
+Single `EntityRegistry` façade over four entity tables. Priority resolution: `characters` → `omega_entities` → `people_places` → `entities`. Jaro-Winkler similarity for near-duplicate detection. Entity confidence grows with repeated mentions.
+
+### Retrieval (RAG)
+
+Hybrid: pgvector similarity + BM25 keyword + entity boosting + temporal scoring + MMR diversity reranking. Entities in your record are weighted higher in retrieval. Embedding cache: TinyLFU in-memory + Supabase upsert.
 
 ---
 
@@ -32,37 +111,21 @@ The record is yours. It accumulates across threads and sessions. The assistant r
 
 Lorekeeper only asserts what it has actually seen you share. It doesn't fabricate memory. It doesn't hallucinate prior conversations. When it doesn't know something, it says so and invites you to share it.
 
-The design principle: one genuinely remembered fact is worth more than ten inferred ones. The system grows slowly and honestly.
-
----
-
-## How the Continuity Loop Works
-
-```text
-you send a message
-       ↓
-assistant responds (using your record)
-       ↓  
-ingestion pipeline fires (async, 8–15s)
-       ↓
-extracts: people · events · decisions · themes
-       ↓
-persists to your record
-       ↓
-available in every future conversation
-```
-
-The pipeline runs asynchronously after every message. Thread entity chips (the small tags next to conversation titles) update as the pipeline completes — showing who and what Lorekeeper has recognized as recurring in that thread.
+The design principle: one genuinely earned fact is worth more than ten inferred ones. Knowledge builds slowly and honestly.
 
 ---
 
 ## What Gets Remembered
 
-**People** — Anyone you mention regularly becomes a tracked character. "My mom," "Abuela," "my coworker James" accumulate their own histories. Aliases and near-duplicate names are resolved via Jaro-Winkler similarity matching.
+**People** — Anyone you mention regularly becomes a tracked character with their own history, alias resolution, and relationship arc.
 
 **Events** — Things that happened with a beginning and end: a trip, a job change, a difficult conversation, a decision made.
 
-**Recurring situations** — When the same people or themes appear across multiple sessions, they get recognized as patterns and weighted higher in retrieval.
+**Recurring situations** — When the same people or themes appear across multiple sessions, they become `event_candidates` — named behavioral scenes that accumulate into life arcs.
+
+**Relationships** — Romantic relationships tracked in depth: type, status, drift direction, behavioral cycles, key milestones, red/green flags, influence on the broader life arc graph.
+
+**Knowledge claims** — Behavioral patterns, values, lessons, and beliefs that crystallize from evidence over time. Each claim carries a confidence score and a full evidence trace.
 
 **Decisions and beliefs** — Major choices and held positions, with the ability to revise them later.
 
@@ -76,44 +139,9 @@ The pipeline runs asynchronously after every message. Thread entity chips (the s
 - Does not import from external apps or services
 - Does not watch behavior outside of conversations
 - Does not share your record with third parties
+- Does not treat AI-generated summaries as evidence for knowledge claims
 
 Everything Lorekeeper knows about you comes from what you explicitly shared.
-
----
-
-## Architecture Overview
-
-### Mode Router
-
-Every message is classified before processing. The mode determines what downstream work fires:
-
-| Mode | What It Does |
-| ---- | ------------ |
-| `EXPERIENCE_INGESTION` | Lived experience → full ingestion pipeline |
-| `ACTION_LOG` | Atomic event → lighter extraction path |
-| `MEMORY_RECALL` | Retrieval request → RAG without ingestion |
-| `NARRATIVE_STORY` | Synthesize narrative from existing record |
-| `EMOTIONAL_EXISTENTIAL` | Support mode — no memory writes |
-
-Pattern matching runs first (<50ms). LLM classification fires only when confidence < 0.8. Mode and confidence surface as attribution in the UI.
-
-### Ingestion Pipeline
-
-12-step pipeline orchestrating ~30 parallel extractors: entity resolution, relationship detection, event extraction, interest tracking, belief challenge detection, and more. Each extraction writes to the appropriate domain table.
-
-Tracking: every pipeline run writes to `pipeline_runs` (start, complete, fail). After completion, a production summary records what was actually created — entities, events, knowledge units — queryable directly.
-
-### Entity System
-
-Single `EntityRegistry` façade over four entity tables. Priority resolution: `characters` → `omega_entities` → `people_places` → `entities`. Jaro-Winkler similarity for near-duplicate detection. Entity confidence grows with repeated mentions.
-
-### Retrieval (RAG)
-
-Hybrid: pgvector similarity + BM25 keyword + entity boosting + temporal scoring + MMR diversity reranking. Entities in your record are weighted higher in retrieval than anonymous mentions. Embedding cache: TinyLFU in-memory + Supabase upsert.
-
-### Thread Persistence
-
-Threads are stored in Supabase with full message history, entity chips, and metadata. Saves are debounced 1.5s with keepalive flush on tab close. Every thread has a persistence state: persisting → persisted → failed.
 
 ---
 
@@ -121,7 +149,7 @@ Threads are stored in Supabase with full message history, entity chips, and meta
 
 - **Backend:** Node.js / Express, TypeScript, Supabase PostgreSQL + pgvector
 - **Frontend:** React + Vite, TypeScript, React Router
-- **Database:** 283 tables, 160+ migrations, Row Level Security on all user data
+- **Database:** 283+ tables, 160+ migrations, Row Level Security on all user data
 - **Auth:** Supabase JWT, Bearer token, dev bypass available locally
 
 ---
@@ -152,22 +180,24 @@ lorekeeper/
 ├── apps/
 │   ├── server/src/
 │   │   ├── services/
-│   │   │   ├── ingestion/          # pipeline, queue, entity extraction
-│   │   │   ├── chat/               # systemPromptBuilder, ragBuilderService
-│   │   │   ├── modeRouter/         # classification, mode handlers
-│   │   │   └── rag/                # retrieval, reranking, embedding cache
-│   │   ├── routes/                 # conversationCentered, diagnostics, identity
-│   │   └── middleware/auth.ts
+│   │   │   ├── knowledgeCrystallization/   # claims, confidence engine, lifecycle
+│   │   │   ├── chronology/                 # V1 engine, arc bridge, gap nodes
+│   │   │   ├── chat/                       # systemPromptBuilder, ragBuilder, relationship context
+│   │   │   ├── continuityRuntime/arcs/     # arc inference, memberships, relationships
+│   │   │   ├── conversationCentered/       # relationship detection, interaction extractor
+│   │   │   ├── biographyGeneration/        # biography engine, relationship atom builder
+│   │   │   └── timelineInsight/            # gap detection, parallel context (Allen relations)
+│   │   └── routes/
+│   │       ├── chronology.ts               # V1 + V2 endpoints + narrative endpoint
+│   │       ├── knowledge.ts                # claims viewer + evidence inspector
+│   │       └── conversationCentered.ts     # relationship + influence view endpoints
 │   └── web/src/
 │       ├── features/chat/
-│       │   ├── hooks/              # useConversationRuntime, useChatThreads, useChat
-│       │   └── components/         # thread list, entity chips, mode attribution
-│       └── routes/
+│       ├── components/love/                # relationship advisor, patterns, detail modal
+│       └── routes/                         # About, Features, Guide (all rewritten)
 ├── supabase/migrations/
+├── TEMPORAL_ARCHITECTURE.md               # canonical reference for all temporal systems
 └── docs/
-    ├── runtime/                    # validation docs, continuity audits
-    ├── architecture/               # deep technical architecture
-    └── guides/                     # developer and user guides
 ```
 
 ---
@@ -176,12 +206,11 @@ lorekeeper/
 
 | Doc | Contents |
 | --- | -------- |
-| [docs/guides/using-lorekeeper.md](docs/guides/using-lorekeeper.md) | User guide — how to use Lorekeeper as a continuity system |
-| [docs/runtime/runtime-truth-validation.md](docs/runtime/runtime-truth-validation.md) | Validation test plan, known failures, observability gaps |
-| [docs/runtime/assistant-continuity-identity-audit.md](docs/runtime/assistant-continuity-identity-audit.md) | Language audit — continuity-breaking vs. continuity-reinforcing patterns |
+| [TEMPORAL_ARCHITECTURE.md](TEMPORAL_ARCHITECTURE.md) | All six temporal systems, data flows, integration points, orphan registry |
+| [docs/guides/LOCAL_DEVELOPMENT.md](docs/guides/LOCAL_DEVELOPMENT.md) | Local setup, migrations, dev flags |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Full system architecture, request lifecycle |
 | [docs/architecture/COGNITION_RUNTIME.md](docs/architecture/COGNITION_RUNTIME.md) | Pipeline, mode router, extraction types |
-| [docs/guides/LOCAL_DEVELOPMENT.md](docs/guides/LOCAL_DEVELOPMENT.md) | Local setup, migrations, dev flags |
+| [docs/runtime/runtime-truth-validation.md](docs/runtime/runtime-truth-validation.md) | Validation test plan, known failures |
 
 ---
 

@@ -1893,6 +1893,184 @@ router.post(
 );
 
 /**
+ * GET /api/conversation/romantic-relationships/:id/influence
+ *
+ * Relationship influence view — the explainability endpoint.
+ * Answers: "How did this relationship shape my life?"
+ *
+ * Returns:
+ *   - Impact score (autobiographical weight)
+ *   - Life arcs spawned or influenced by this relationship
+ *   - Knowledge crystallized from this relationship
+ *   - Social context (partner centrality, shared communities)
+ *   - Aftermath / recovery data
+ *   - Cross-relationship patterns this relationship contributed to
+ */
+router.get(
+  '/romantic-relationships/:id/influence',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { id: relationshipId } = req.params;
+
+    // Load the relationship
+    const { data: rel, error: relError } = await supabaseAdmin
+      .from('romantic_relationships')
+      .select('*')
+      .eq('id', relationshipId)
+      .eq('user_id', userId)
+      .single();
+
+    if (relError || !rel) {
+      return res.status(404).json({ success: false, error: 'Relationship not found' });
+    }
+
+    // Resolve partner name
+    let partnerName = rel.partner_name ?? 'Unknown';
+    if (partnerName === 'Unknown' || !partnerName) {
+      if (rel.person_type === 'character') {
+        const { data: char } = await supabaseAdmin
+          .from('characters').select('name').eq('id', rel.person_id).single();
+        partnerName = char?.name ?? 'Unknown';
+      } else {
+        const { data: entity } = await supabaseAdmin
+          .from('omega_entities').select('primary_name').eq('id', rel.person_id).single();
+        partnerName = entity?.primary_name ?? 'Unknown';
+      }
+    }
+
+    // Run all data fetches in parallel
+    const [
+      arcRelResult,
+      knowledgeResult,
+      breakupResult,
+      patternsResult,
+      socialResult,
+    ] = await Promise.all([
+      // Life arcs spawned or influenced (via relationship arc in life_arcs)
+      supabaseAdmin
+        .from('life_arcs')
+        .select('id, title, arc_type, track, start_date, end_date, emotional_arc, confidence')
+        .eq('user_id', userId)
+        .contains('metadata', { romantic_relationship_id: relationshipId }),
+
+      // Knowledge crystallized from this relationship
+      supabaseAdmin
+        .from('knowledge_evidence_links')
+        .select(`
+          knowledge_id,
+          evidence_weight,
+          crystallized_knowledge:knowledge_id (
+            id, machine_claim, human_readable_claim, knowledge_type,
+            status, confidence, created_at, last_reinforced_at
+          )
+        `)
+        .eq('user_id', userId)
+        .eq('evidence_type', 'romantic_relationship')
+        .eq('evidence_id', relationshipId),
+
+      // Breakup / aftermath data
+      supabaseAdmin
+        .from('relationship_breakups')
+        .select('breakup_type, breakup_date, closure_level, recovery_status, time_to_move_on_days, reason')
+        .eq('relationship_id', relationshipId)
+        .eq('user_id', userId)
+        .order('breakup_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+
+      // Cross-relationship patterns this relationship contributed to
+      supabaseAdmin
+        .from('relationship_patterns')
+        .select('pattern_type, description, pattern_value, occurrence_count, confidence')
+        .eq('user_id', userId)
+        .contains('relationship_ids', [relationshipId]),
+
+      // Social context (partner in social graph by name)
+      partnerName !== 'Unknown'
+        ? supabaseAdmin
+            .from('social_graph_nodes')
+            .select('centrality, communities')
+            .eq('user_id', userId)
+            .ilike('person', `%${partnerName}%`)
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    // Compute autobiographical impact score
+    const durationMonths = (() => {
+      if (!rel.start_date) return 0;
+      const start = new Date(rel.start_date);
+      const end   = rel.end_date ? new Date(rel.end_date) : new Date();
+      return Math.round((end.getTime() - start.getTime()) / (30 * 24 * 60 * 60 * 1000));
+    })();
+
+    const arcsSpawnedCount     = arcRelResult.data?.length ?? 0;
+    const knowledgeClaimsCount = knowledgeResult.data?.length ?? 0;
+    const closureLevel         = breakupResult.data?.closure_level ?? 0.5;
+    const recoveryMonths       = (breakupResult.data?.time_to_move_on_days ?? 0) / 30;
+    const socialCentrality     = (socialResult.data as any)?.centrality ?? 0;
+
+    const autobiographicalImpact = Math.min(1.0,
+      (Math.min(knowledgeClaimsCount, 5) / 5) * 0.25
+      + (Math.min(arcsSpawnedCount, 5) / 5) * 0.35
+      + (Math.min(durationMonths / 24, 1)) * (rel.emotional_intensity ?? 0.5) * 0.15
+      + (Math.min(recoveryMonths / 18, 1)) * 0.10
+      + socialCentrality * 0.05
+      + (1 - closureLevel) * 0.10
+    );
+
+    const impactLabel = autobiographicalImpact >= 0.70 ? 'High'
+                      : autobiographicalImpact >= 0.40 ? 'Moderate'
+                      : 'Low';
+
+    // Check if active knowledge claims from this relationship are still reinforced
+    const now = Date.now();
+    const activeKnowledge = (knowledgeResult.data ?? [])
+      .filter((link: any) => link.crystallized_knowledge?.status === 'ACTIVE')
+      .map((link: any) => {
+        const ck = link.crystallized_knowledge;
+        const daysSince = ck?.last_reinforced_at
+          ? Math.round((now - new Date(ck.last_reinforced_at).getTime()) / 86400000)
+          : null;
+        return {
+          ...ck,
+          still_active_days_since_reinforced: daysSince,
+        };
+      });
+
+    return res.json({
+      success: true,
+      influence: {
+        relationship: {
+          id:               rel.id,
+          partner_name:     partnerName,
+          relationship_type: rel.relationship_type,
+          status:           rel.status,
+          start_date:       rel.start_date,
+          end_date:         rel.end_date,
+          duration_months:  durationMonths,
+        },
+        autobiographical_impact: {
+          score: Math.round(autobiographicalImpact * 100) / 100,
+          label: impactLabel,
+        },
+        life_arcs_connected:   arcRelResult.data ?? [],
+        knowledge_crystallized: knowledgeResult.data?.map((link: any) => link.crystallized_knowledge).filter(Boolean) ?? [],
+        active_knowledge:      activeKnowledge,
+        aftermath:             breakupResult.data ?? null,
+        cross_relationship_patterns: patternsResult.data ?? [],
+        social_context: {
+          partner_centrality: (socialResult.data as any)?.centrality ?? null,
+          shared_communities: (socialResult.data as any)?.communities ?? [],
+        },
+      },
+    });
+  })
+);
+
+/**
  * POST /api/conversation/threads/:id/title
  * Auto-generate a semantic title from the first few messages.
  * Called once by the client after the first AI response completes.

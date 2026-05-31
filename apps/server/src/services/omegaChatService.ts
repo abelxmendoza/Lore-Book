@@ -30,6 +30,7 @@ import { peoplePlacesService } from './peoplePlacesService';
 import { perceptionService } from './perceptionService';
 import { ragPacketCacheService } from './ragPacketCacheService';
 import { buildRAGPacket as _buildRAGPacket } from './chat/ragBuilderService';
+import { scoreContext, logScoringDecisions } from './chat/contextScoringService';
 import {
   buildSystemPrompt as _buildSystemPrompt,
   buildEssenceContext as _buildEssenceContext,
@@ -336,6 +337,8 @@ class OmegaChatService {
       stableArcs?: any[];
       episodicEvents?: any[];
       socialCommunities?: any[];
+      crystallizedKnowledge?: Array<{ knowledge_type: string; human_readable_claim: string; confidence: number }>;
+      romanticContext?: any[];
     },
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     entityAnalytics?: any,
@@ -755,10 +758,18 @@ class OmegaChatService {
     }
 
     // =====================================================
-    // PERSONA DETECTION (Archivist mode)
+    // PERSONA DETECTION (Archivist mode + manual @mention override)
     // =====================================================
     const isArchivistQuery = this.detectArchivistIntent(message);
-    const activePersona = isArchivistQuery ? 'ARCHIVIST' : 'AUTO_BLEND';
+
+    // Allow users to pin a persona by prefixing with @name, e.g. "@therapist how am I doing?"
+    // Strip the prefix so the underlying message is clean before passing to the LLM.
+    const PERSONA_MENTION_RE = /^@(therapist|strategist|gossip_buddy|archivist|soul_capturer|biography_writer)\s*/i;
+    const mentionMatch = message.match(PERSONA_MENTION_RE);
+    const requestedPersona = mentionMatch ? mentionMatch[1].toLowerCase() : null;
+    const cleanMessage = requestedPersona ? message.replace(PERSONA_MENTION_RE, '').trim() : message;
+
+    let activePersona = isArchivistQuery || requestedPersona === 'archivist' ? 'archivist' : 'therapist';
 
     // =====================================================
     // INLINE ENTITY AMBIGUITY DETECTION (IADE)
@@ -816,24 +827,29 @@ class OmegaChatService {
     let personaBlend;
     let rlContext;
     try {
+      // Use the cleaned message (@ prefix stripped) so RL context features are accurate
       personaBlend = await this.personaRL.selectPersonaBlend(
         userId,
-        message,
+        cleanMessage,
         conversationHistory
       );
+      // If user explicitly requested a persona, override RL selection entirely
+      if (requestedPersona) {
+        personaBlend = { primary: requestedPersona, secondary: [], weights: { [requestedPersona]: 1.0 } };
+      }
+      // Archivist intent overrides everything; otherwise surface the actual selected persona
+      if (!isArchivistQuery) {
+        activePersona = personaBlend.primary;
+      }
       // Build context for saving (needed for reward updates)
-      rlContext = await this.personaRL.buildContext(userId, message, conversationHistory);
+      rlContext = await this.personaRL.buildContext(userId, cleanMessage, conversationHistory);
     } catch (error) {
       logger.warn({ error }, 'RL: Failed to select persona, using default');
-      personaBlend = {
-        primary: 'therapist',
-        secondary: [],
-        weights: { therapist: 1.0 },
-      };
-      rlContext = {
-        type: 'chat_persona',
-        features: {},
-      };
+      personaBlend = requestedPersona
+        ? { primary: requestedPersona, secondary: [], weights: { [requestedPersona]: 1.0 } }
+        : { primary: 'therapist', secondary: [], weights: { therapist: 1.0 } };
+      if (!isArchivistQuery) activePersona = personaBlend.primary;
+      rlContext = { type: 'chat_persona', features: {} };
     }
 
     // RESPONSE SAFETY: Analyze message for stress signals and generate safety guidance
@@ -916,6 +932,49 @@ class OmegaChatService {
       }
     }
 
+    // ── Context Selection Layer ───────────────────────────────────────────────
+    // Score and filter loreData before prompt assembly.
+    // Conservative first pass: 30–40% token reduction target.
+    // Falls back to the raw loreData if the scorer throws.
+    const rawLoreData = {
+      allCharacters: ragPacket.allCharacters,
+      allLocations: ragPacket.allLocations,
+      allChapters: ragPacket.allChapters,
+      timelineHierarchy: ragPacket.timelineHierarchy,
+      allPeoplePlaces: ragPacket.allPeoplePlaces,
+      essenceProfile: essenceProfile,
+      identityCoreProfile: identityCoreProfile,
+      characterAttributesMap: ragPacket.characterAttributesMap,
+      romanticRelationships: ragPacket.romanticRelationships,
+      romanticContext: ragPacket.romanticContext ?? [],
+      corrections: ragPacket.corrections,
+      deprecatedUnits: ragPacket.deprecatedUnits,
+      workoutEvents: ragPacket.workoutEvents,
+      recentBiometrics: ragPacket.recentBiometrics,
+      topInterests: ragPacket.topInterests,
+      recentInterpretations: ragPacket.recentInterpretations,
+      stableArcs: ragPacket.stableArcs,
+      episodicEvents: ragPacket.episodicEvents,
+      socialCommunities: ragPacket.socialCommunities,
+      crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
+      entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,
+    };
+
+    let scoredLoreData: Record<string, unknown> = rawLoreData;
+    try {
+      const scoringResult = scoreContext(
+        rawLoreData as Record<string, unknown>,
+        message,
+        ragPacket.allCharacters ?? [],
+        ragPacket.allLocations ?? []
+      );
+      logScoringDecisions(scoringResult, userId);
+      scoredLoreData = scoringResult.filteredLoreData;
+    } catch (scoringErr) {
+      logger.warn({ err: scoringErr, userId }, '[ContextScoring] Scorer failed — falling back to raw loreData');
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Build system prompt with comprehensive lore and essence profile
     let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -923,26 +982,7 @@ class OmegaChatService {
       continuityWarnings,
       strategicGuidance,
       sources,
-      {
-        allCharacters: ragPacket.allCharacters,
-        allLocations: ragPacket.allLocations,
-        allChapters: ragPacket.allChapters,
-        timelineHierarchy: ragPacket.timelineHierarchy,
-        allPeoplePlaces: ragPacket.allPeoplePlaces,
-        essenceProfile: essenceProfile,
-        identityCoreProfile: identityCoreProfile,
-        characterAttributesMap: ragPacket.characterAttributesMap,
-        romanticRelationships: ragPacket.romanticRelationships,
-        corrections: ragPacket.corrections,
-        deprecatedUnits: ragPacket.deprecatedUnits,
-        workoutEvents: ragPacket.workoutEvents,
-        recentBiometrics: ragPacket.recentBiometrics,
-        topInterests: ragPacket.topInterests,
-        recentInterpretations: ragPacket.recentInterpretations,
-        stableArcs: ragPacket.stableArcs,
-        episodicEvents: ragPacket.episodicEvents,
-        socialCommunities: ragPacket.socialCommunities,
-      },
+      scoredLoreData as any,
       entityContext,
       entityAnalytics,
       entityConfidence,
@@ -964,7 +1004,7 @@ class OmegaChatService {
     }
 
     // NEW: Enforce Archivist persona if detected
-    if (activePersona === 'ARCHIVIST') {
+    if (activePersona === 'archivist') {
       systemPrompt += `
 
 **ACTIVE PERSONA: ARCHIVIST**
@@ -1606,6 +1646,46 @@ class OmegaChatService {
       }
     }
 
+    // ── Context Selection Layer ───────────────────────────────────────────────
+    const rawLoreDataChat = {
+      allCharacters: ragPacket.allCharacters,
+      allLocations: ragPacket.allLocations,
+      allChapters: ragPacket.allChapters,
+      timelineHierarchy: ragPacket.timelineHierarchy,
+      allPeoplePlaces: ragPacket.allPeoplePlaces,
+      essenceProfile: essenceProfile,
+      identityCoreProfile: identityCoreProfile,
+      characterAttributesMap: ragPacket.characterAttributesMap,
+      romanticRelationships: ragPacket.romanticRelationships,
+      romanticContext: ragPacket.romanticContext ?? [],
+      corrections: ragPacket.corrections,
+      deprecatedUnits: ragPacket.deprecatedUnits,
+      workoutEvents: ragPacket.workoutEvents,
+      recentBiometrics: ragPacket.recentBiometrics,
+      topInterests: ragPacket.topInterests,
+      recentInterpretations: ragPacket.recentInterpretations,
+      stableArcs: ragPacket.stableArcs,
+      episodicEvents: ragPacket.episodicEvents,
+      socialCommunities: ragPacket.socialCommunities,
+      crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
+      entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,
+    };
+
+    let scoredLoreDataChat: Record<string, unknown> = rawLoreDataChat;
+    try {
+      const scoringResultChat = scoreContext(
+        rawLoreDataChat as Record<string, unknown>,
+        message,
+        ragPacket.allCharacters ?? [],
+        ragPacket.allLocations ?? []
+      );
+      logScoringDecisions(scoringResultChat, userId);
+      scoredLoreDataChat = scoringResultChat.filteredLoreData;
+    } catch (scoringErr) {
+      logger.warn({ err: scoringErr, userId }, '[ContextScoring] Scorer failed — falling back to raw loreData');
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Build system prompt with comprehensive lore and essence profile
     let systemPrompt = this.buildSystemPrompt(
       orchestratorSummary,
@@ -1613,26 +1693,7 @@ class OmegaChatService {
       continuityWarnings,
       strategicGuidance,
       sources,
-      {
-        allCharacters: ragPacket.allCharacters,
-        allLocations: ragPacket.allLocations,
-        allChapters: ragPacket.allChapters,
-        timelineHierarchy: ragPacket.timelineHierarchy,
-        allPeoplePlaces: ragPacket.allPeoplePlaces,
-        essenceProfile: essenceProfile,
-        identityCoreProfile: identityCoreProfile,
-        characterAttributesMap: ragPacket.characterAttributesMap,
-        romanticRelationships: ragPacket.romanticRelationships,
-        corrections: ragPacket.corrections,
-        deprecatedUnits: ragPacket.deprecatedUnits,
-        workoutEvents: ragPacket.workoutEvents,
-        recentBiometrics: ragPacket.recentBiometrics,
-        topInterests: ragPacket.topInterests,
-        recentInterpretations: ragPacket.recentInterpretations,
-        stableArcs: ragPacket.stableArcs,
-        episodicEvents: ragPacket.episodicEvents,
-        socialCommunities: ragPacket.socialCommunities,
-      },
+      scoredLoreDataChat as any,
       entityContext,
       entityAnalytics,
       entityConfidence,
@@ -1996,9 +2057,10 @@ class OmegaChatService {
     return {
       answer,
       entryId,
-      messageId, // Include messageId for feedback
-      sessionId, // Include sessionId for action tracking
+      messageId,
+      sessionId,
       characterIds,
+      activePersona: personaBlend?.primary || 'therapist',
       mentionedEntities: mentionedEntities.length > 0 ? mentionedEntities : undefined,
       connections,
       continuityWarnings,

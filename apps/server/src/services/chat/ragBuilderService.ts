@@ -2,6 +2,12 @@ import { logger } from '../../logger';
 import type { ResolvedMemoryEntry } from '../../types';
 import type { CurrentContext } from '../../types/currentContext';
 
+import { loadPromptClaims } from '../knowledgeCrystallization';
+import {
+  resolveRelationshipNames,
+  buildRelationshipContext,
+  type RelationshipContinuitySummary,
+} from './relationshipContextBuilder';
 import { chapterService } from '../chapterService';
 import { hqiService } from '../hqiService';
 import { locationService } from '../locationService';
@@ -11,6 +17,12 @@ import { peoplePlacesService } from '../peoplePlacesService';
 import { ragPacketCacheService } from '../ragPacketCacheService';
 import { supabaseAdmin } from '../supabaseClient';
 import type { ChatSource } from '../omegaChatService';
+import {
+  isEntityQuery,
+  detectMentionedEntities,
+  loadEntityArc,
+  arcToMemoryEntries,
+} from './entityScopedRetriever';
 
 // ─── Fitness keyword gate ────────────────────────────────────────────────────
 const FITNESS_RE = /\b(workout|exercise|gym|ran|run|lifted|bench|squat|deadlift|calories|weight|lbs|kg|miles|steps|cardio|biometric|body fat|muscle)\b/i;
@@ -109,12 +121,13 @@ export async function buildRAGPacket(
       } catch (e) { logger.debug({ e }, 'RAGBuilder: character attributes fetch failed'); }
     }
 
-    // Romantic relationships
+    // Romantic relationships — fetch + resolve partner names (batched, not N+1)
     try {
       const { data } = await supabaseAdmin
         .from('romantic_relationships').select('*').eq('user_id', userId)
         .order('created_at', { ascending: false }).limit(20);
-      romanticRelationships = (data as any[]) || [];
+      const raw = (data as any[]) || [];
+      romanticRelationships = await resolveRelationshipNames(raw);
     } catch (e) { logger.debug({ e }, 'RAGBuilder: romantic relationships fetch failed'); }
 
     // Corrections + deprecated units
@@ -183,17 +196,71 @@ export async function buildRAGPacket(
     hqiResults = hqiService.search(message, {}).slice(0, 5);
   } catch (e) { logger.warn({ e }, 'RAGBuilder: HQI search failed'); }
 
-  // ── Related entries (context-aware or enhanced retrieval) ────────────────
+  // ── Related entries — entity-scoped or generic retrieval ────────────────
+  //
+  // Entity-scoped path (Phase 2 — highest retrieval quality for entity queries):
+  //   When the message is a query about a specific person or place, bypass
+  //   generic semantic search and load that entity's complete arc from the DB.
+  //   This gives the model an ordered, structured, confidence-weighted history
+  //   instead of a random sample of semantically-similar diary excerpts.
+  //
+  //   Trigger conditions (both must be true):
+  //     1. Message matches ENTITY_QUERY_PATTERNS ("tell me about X", "who is X"…)
+  //     2. At least one character/location name appears in the message
+  //
+  //   Fallback: if entity detection or DB queries fail, or if the entity has
+  //   fewer than 2 events on record, falls through to generic retrieval.
+  //
+  // Generic path (unchanged — context-aware or MemoryRetriever):
+  //   Thread context → retrieveMemoriesByThread
+  //   Timeline context → retrieveMemoriesUnderNode
+  //   Default → MemoryRetriever (semantic vector search)
+
   let relatedEntries: ResolvedMemoryEntry[] = [];
+  let entityArcNarrativeBlock: string | null = null; // injected into system prompt later
+
   try {
     const { retrieveMemoriesByThread, retrieveMemoriesUnderNode } = await import('../chat/contextAwareMemoryRetrieval');
     const { MemoryRetriever } = await import('../chat/memoryRetriever');
 
     if (currentContext?.kind === 'thread' && currentContext.threadId) {
+      // Thread context always wins — user is focused on a specific conversation
       relatedEntries = (await retrieveMemoriesByThread(userId, currentContext.threadId, 30)) as ResolvedMemoryEntry[];
+
     } else if (currentContext?.kind === 'timeline' && currentContext.timelineNodeId && currentContext.timelineLayer) {
       relatedEntries = (await retrieveMemoriesUnderNode(userId, currentContext.timelineNodeId, currentContext.timelineLayer, 30)) as ResolvedMemoryEntry[];
+
+    } else if (isEntityQuery(message) && (allCharacters.length > 0 || allLocations.length > 0)) {
+      // Entity-scoped retrieval path
+      const mentionedEntities = detectMentionedEntities(message, allCharacters, allLocations);
+
+      if (mentionedEntities.length > 0) {
+        // Try the highest-confidence match first
+        const primary = mentionedEntities[0];
+        try {
+          const arc = await loadEntityArc(userId, primary);
+          if (arc) {
+            relatedEntries = arcToMemoryEntries(arc) as unknown as ResolvedMemoryEntry[];
+            entityArcNarrativeBlock = arc.narrativeBlock;
+            logger.debug(
+              { userId, entityId: primary.id, entityName: primary.name, events: arc.events.length },
+              '[EntityScopedRetriever] Loaded entity arc — bypassing generic retrieval'
+            );
+          }
+        } catch (arcErr) {
+          logger.warn({ arcErr, userId, entity: primary.name }, '[EntityScopedRetriever] Arc load failed');
+        }
+      }
+
+      // Fall through to generic if entity arc is empty
+      if (relatedEntries.length === 0) {
+        const retriever = new MemoryRetriever();
+        const ctx = await retriever.retrieve(userId, 20, message, []);
+        relatedEntries = ctx.entries as ResolvedMemoryEntry[];
+      }
+
     } else {
+      // Generic semantic retrieval
       const retriever = new MemoryRetriever();
       const ctx = await retriever.retrieve(userId, 20, message, []);
       relatedEntries = ctx.entries as ResolvedMemoryEntry[];
@@ -324,14 +391,39 @@ export async function buildRAGPacket(
     stableArcs = (data as any[]) ?? [];
   } catch (e) { logger.debug({ e }, 'RAGBuilder: stable arcs fetch failed'); }
 
+  // ── Crystallized knowledge (confidence >= 0.70, ACTIVE only) ────────────
+  // Fetched here so the system prompt builder receives pre-ranked claims.
+  // loadPromptClaims applies the 6-claim cap and per-type limits internally.
+  // Failure is non-fatal — the WHAT LOREBOOK KNOWS block is simply omitted.
+  let crystallizedKnowledge: Array<{ knowledge_type: string; human_readable_claim: string; confidence: number }> = [];
+  try {
+    crystallizedKnowledge = await loadPromptClaims(userId);
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: crystallized knowledge fetch failed'); }
+
+  // ── Relationship context — per-request, NOT cached ────────────────────────
+  // Drift direction, active cycles, and recent interactions are time-sensitive
+  // signals that must be fresh per chat turn. Names are already resolved in the
+  // cached romanticRelationships above.
+  // Only enriches current/active relationships (past ones don't need live signals).
+  let romanticContext: RelationshipContinuitySummary[] = [];
+  try {
+    const activeRels = romanticRelationships.filter((r: any) => r.is_current);
+    if (activeRels.length > 0) {
+      romanticContext = await buildRelationshipContext(activeRels, userId);
+    }
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: relationship context build failed'); }
+
   const packet = {
     orchestratorSummary, hqiResults, relatedEntries, fabricNeighbors,
     extractedDates, sources,
     allCharacters, allLocations, allChapters, timelineHierarchy, allPeoplePlaces,
     characterAttributesMap: Object.fromEntries(characterAttributesMap),
-    romanticRelationships, corrections, deprecatedUnits,
+    romanticRelationships, romanticContext, corrections, deprecatedUnits,
     workoutEvents, recentBiometrics, topInterests,
     recentInterpretations, stableArcs, episodicEvents, socialCommunities,
+    crystallizedKnowledge,
+    // Phase 2: entity arc narrative block (null when generic retrieval was used)
+    entityArcNarrativeBlock,
   };
 
   ragPacketCacheService.cachePacket(userId, message, packet);

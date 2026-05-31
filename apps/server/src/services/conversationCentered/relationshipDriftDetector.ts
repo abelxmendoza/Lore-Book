@@ -1,6 +1,14 @@
 // =====================================================
 // RELATIONSHIP DRIFT DETECTOR
-// Purpose: Detect when relationships are drifting apart, breaking up, or reconnecting
+//
+// Detects when relationships are drifting apart, breaking up, or reconnecting.
+//
+// Primary signal: romantic_interactions (relationship-scoped, immune to
+// nickname/pronoun ambiguity — works whether the user says "Maya", "she",
+// "my girlfriend", or "babe").
+//
+// Old approach: 4 ILIKE name searches across journal_entries + omega_messages.
+// New approach: structured interaction recency + sentiment from romantic_interactions.
 // =====================================================
 
 import { logger } from '../../logger';
@@ -17,7 +25,7 @@ export type DriftType =
 export interface DriftDetection {
   relationshipId: string;
   driftType: DriftType;
-  driftStrength: number; // 0-1
+  driftStrength: number;
   mentionFrequencyChange: number;
   sentimentChange: number;
   interactionFrequencyChange: number;
@@ -26,32 +34,24 @@ export interface DriftDetection {
 }
 
 export class RelationshipDriftDetector {
-  /**
-   * Detect drift for all relationships
-   */
   async detectDriftForAll(userId: string): Promise<DriftDetection[]> {
     try {
-      // Get all active relationships
       const { data: relationships } = await supabaseAdmin
         .from('romantic_relationships')
-        .select('*')
+        .select('id, person_id, person_type')
         .eq('user_id', userId)
         .eq('status', 'active')
         .eq('is_current', true);
 
-      if (!relationships || relationships.length === 0) {
-        return [];
-      }
+      if (!relationships || relationships.length === 0) return [];
 
       const detections: DriftDetection[] = [];
-
       for (const rel of relationships) {
-        const detection = await this.detectDrift(userId, rel.id, rel.person_id, rel.person_type);
-        if (detection) {
-          detections.push(detection);
-        }
+        const detection = await this.detectDrift(
+          userId, rel.id, rel.person_id, rel.person_type
+        );
+        if (detection) detections.push(detection);
       }
-
       return detections;
     } catch (error) {
       logger.error({ error, userId }, 'Failed to detect drift for all relationships');
@@ -59,198 +59,117 @@ export class RelationshipDriftDetector {
     }
   }
 
-  /**
-   * Detect drift for a specific relationship
-   */
   async detectDrift(
     userId: string,
     relationshipId: string,
-    personId: string,
-    personType: 'character' | 'omega_entity'
+    _personId: string,
+    _personType: 'character' | 'omega_entity'
   ): Promise<DriftDetection | null> {
     try {
-      // Get person name
-      let personName = 'Unknown';
-      if (personType === 'character') {
-        const { data: character } = await supabaseAdmin
-          .from('characters')
-          .select('name')
-          .eq('id', personId)
-          .eq('user_id', userId)
-          .single();
-        personName = character?.name || 'Unknown';
-      } else {
-        const { data: entity } = await supabaseAdmin
-          .from('omega_entities')
-          .select('primary_name')
-          .eq('id', personId)
-          .eq('user_id', userId)
-          .single();
-        personName = entity?.primary_name || 'Unknown';
-      }
-
-      // Get mentions in last 30 days vs previous 30 days
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+      const sixtyDaysAgo  = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
-      // Recent period (last 30 days)
-      const { data: recentMentions } = await supabaseAdmin
-        .from('journal_entries')
-        .select('id, created_at, content')
-        .eq('user_id', userId)
-        .gte('created_at', thirtyDaysAgo.toISOString())
-        .ilike('content', `%${personName}%`);
+      // Load up to 40 most recent interactions — relationship-scoped, no name dependency
+      const { data: raw } = await supabaseAdmin
+        .from('romantic_interactions')
+        .select('id, interaction_date, sentiment, was_positive, description')
+        .eq('relationship_id', relationshipId)
+        .order('interaction_date', { ascending: false })
+        .limit(40);
 
-      const { data: recentMessages } = await supabaseAdmin
-        .from('omega_messages')
-        .select('id, created_at, content')
-        .eq('user_id', userId)
-        .gte('created_at', thirtyDaysAgo.toISOString())
-        .ilike('content', `%${personName}%`);
+      const all      = raw ?? [];
+      const recent   = all.filter(i => new Date(i.interaction_date) >= thirtyDaysAgo);
+      const previous = all.filter(i => {
+        const d = new Date(i.interaction_date);
+        return d >= sixtyDaysAgo && d < thirtyDaysAgo;
+      });
 
-      // Previous period (30-60 days ago)
-      const { data: previousMentions } = await supabaseAdmin
-        .from('journal_entries')
-        .select('id, created_at, content')
-        .eq('user_id', userId)
-        .gte('created_at', sixtyDaysAgo.toISOString())
-        .lt('created_at', thirtyDaysAgo.toISOString())
-        .ilike('content', `%${personName}%`);
+      // Recency
+      const lastDate = all.length > 0 ? new Date(all[0].interaction_date) : null;
+      const timeSinceLastMentionDays = lastDate
+        ? Math.floor((now.getTime() - lastDate.getTime()) / 86400000)
+        : 999;
 
-      const { data: previousMessages } = await supabaseAdmin
-        .from('omega_messages')
-        .select('id, created_at, content')
-        .eq('user_id', userId)
-        .gte('created_at', sixtyDaysAgo.toISOString())
-        .lt('created_at', thirtyDaysAgo.toISOString())
-        .ilike('content', `%${personName}%`);
-
-      const recentCount = (recentMentions?.length || 0) + (recentMessages?.length || 0);
-      const previousCount = (previousMentions?.length || 0) + (previousMessages?.length || 0);
-
-      // Calculate changes
+      // Interaction frequency change
+      const recentCount   = recent.length;
+      const previousCount = previous.length;
       const mentionFrequencyChange = previousCount > 0
         ? (recentCount - previousCount) / previousCount
         : recentCount > 0 ? 1 : 0;
 
-      // Calculate sentiment changes
-      const recentSentiment = this.calculateSentiment([
-        ...(recentMentions || []),
-        ...(recentMessages || []),
-      ]);
-      const previousSentiment = this.calculateSentiment([
-        ...(previousMentions || []),
-        ...(previousMessages || []),
-      ]);
-      const sentimentChange = recentSentiment - previousSentiment;
+      // Sentiment change (uses structured field, not keyword heuristic)
+      const avgSentiment = (rows: typeof all) =>
+        rows.length === 0 ? 0 : rows.reduce((s, r) => s + (r.sentiment ?? 0), 0) / rows.length;
 
-      // Time since last mention
-      const allRecent = [
-        ...(recentMentions || []),
-        ...(recentMessages || []),
-      ];
-      const lastMention = allRecent.length > 0
-        ? new Date(Math.max(...allRecent.map(m => new Date(m.created_at).getTime())))
-        : null;
-      const timeSinceLastMentionDays = lastMention
-        ? Math.floor((now.getTime() - lastMention.getTime()) / (1000 * 60 * 60 * 24))
-        : 999;
+      const recentSentiment   = avgSentiment(recent);
+      const previousSentiment = avgSentiment(previous);
+      const sentimentChange   = recentSentiment - previousSentiment;
 
-      // Determine drift type
-      let driftType: DriftType = 'stable';
-      let driftStrength = 0.5;
-
-      // Check for breaking up signals
-      const hasBreakupKeywords = allRecent.some(m =>
-        ['broke up', 'breakup', 'ended', 'over', 'done', 'finished'].some(kw =>
-          m.content.toLowerCase().includes(kw)
+      // Breakup keyword check from interaction descriptions
+      const hasBreakupKeywords = recent.some(r =>
+        ['broke up', 'breakup', 'it\'s over', 'we\'re done', 'we broke', 'ended things'].some(kw =>
+          (r.description ?? '').toLowerCase().includes(kw)
         )
       );
 
+      // Classify drift
+      let driftType: DriftType = 'stable';
+      let driftStrength = 0.5;
+
       if (hasBreakupKeywords || (mentionFrequencyChange < -0.8 && timeSinceLastMentionDays > 14)) {
-        driftType = 'breaking_up';
+        driftType     = 'breaking_up';
         driftStrength = 0.9;
       } else if (mentionFrequencyChange < -0.5 && sentimentChange < -0.3) {
-        driftType = 'drifting_apart';
+        driftType     = 'drifting_apart';
         driftStrength = Math.min(1, Math.abs(mentionFrequencyChange) + Math.abs(sentimentChange));
       } else if (mentionFrequencyChange > 0.5 && sentimentChange > 0.3) {
-        driftType = 'growing_closer';
+        driftType     = 'growing_closer';
         driftStrength = Math.min(1, mentionFrequencyChange + sentimentChange);
-      } else if (timeSinceLastMentionDays > 7 && recentCount === 0) {
-        driftType = 'drifting_apart';
+      } else if (timeSinceLastMentionDays > 14 && recentCount === 0) {
+        driftType     = 'drifting_apart';
         driftStrength = Math.min(1, timeSinceLastMentionDays / 30);
       } else if (Math.abs(sentimentChange) > 0.5) {
-        driftType = 'volatile';
+        driftType     = 'volatile';
         driftStrength = Math.abs(sentimentChange);
       } else if (mentionFrequencyChange > 0.2 && sentimentChange > 0.1) {
-        driftType = 'reconnecting';
+        driftType     = 'reconnecting';
         driftStrength = Math.min(1, mentionFrequencyChange + sentimentChange);
       }
 
-      // Only save if drift is significant
-      if (driftStrength > 0.4 || driftType === 'breaking_up') {
-        const evidence = allRecent.length > 0
-          ? allRecent[allRecent.length - 1].content.substring(0, 200)
-          : 'No recent mentions';
+      if (driftStrength <= 0.4 && driftType !== 'breaking_up') return null;
 
-        await supabaseAdmin.from('relationship_drift').insert({
-          user_id: userId,
-          relationship_id: relationshipId,
-          drift_type: driftType,
-          drift_strength: driftStrength,
-          mention_frequency_change: mentionFrequencyChange,
-          sentiment_change: sentimentChange,
-          interaction_frequency_change: mentionFrequencyChange, // Simplified
-          time_since_last_mention_days: timeSinceLastMentionDays,
-          evidence,
-          source_entry_ids: allRecent.map(m => m.id),
-        });
+      const evidence = recentCount > 0
+        ? `${recentCount} interactions in last 30 days (avg sentiment: ${recentSentiment.toFixed(2)})`
+        : 'No logged interactions in last 30 days';
 
-        return {
-          relationshipId,
-          driftType,
-          driftStrength,
-          mentionFrequencyChange,
-          sentimentChange,
-          interactionFrequencyChange: mentionFrequencyChange,
-          timeSinceLastMentionDays,
-          evidence,
-        };
-      }
+      await supabaseAdmin.from('relationship_drift').insert({
+        user_id:                    userId,
+        relationship_id:            relationshipId,
+        drift_type:                 driftType,
+        drift_strength:             driftStrength,
+        mention_frequency_change:   mentionFrequencyChange,
+        sentiment_change:           sentimentChange,
+        interaction_frequency_change: mentionFrequencyChange,
+        time_since_last_mention_days: timeSinceLastMentionDays,
+        evidence,
+        source_entry_ids:           recent.map(i => i.id),
+      });
 
-      return null;
+      return {
+        relationshipId,
+        driftType,
+        driftStrength,
+        mentionFrequencyChange,
+        sentimentChange,
+        interactionFrequencyChange: mentionFrequencyChange,
+        timeSinceLastMentionDays,
+        evidence,
+      };
     } catch (error) {
       logger.error({ error, relationshipId }, 'Failed to detect drift');
       return null;
     }
-  }
-
-  /**
-   * Calculate sentiment (-1 to 1)
-   */
-  private calculateSentiment(mentions: Array<{ content: string }>): number {
-    if (mentions.length === 0) {
-      return 0;
-    }
-
-    const positiveWords = ['love', 'amazing', 'great', 'wonderful', 'happy', 'excited', 'miss', 'care'];
-    const negativeWords = ['hate', 'terrible', 'awful', 'sad', 'angry', 'frustrated', 'disappointed', 'hurt'];
-
-    let sentimentSum = 0;
-    for (const mention of mentions) {
-      const content = mention.content.toLowerCase();
-      const positiveCount = positiveWords.filter(word => content.includes(word)).length;
-      const negativeCount = negativeWords.filter(word => content.includes(word)).length;
-
-      if (positiveCount > negativeCount) {
-        sentimentSum += 0.5;
-      } else if (negativeCount > positiveCount) {
-        sentimentSum -= 0.5;
-      }
-    }
-
-    return sentimentSum / mentions.length;
   }
 }
 

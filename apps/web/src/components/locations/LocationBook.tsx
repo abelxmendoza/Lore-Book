@@ -256,7 +256,7 @@ export const dummyLocations: LocationProfile[] = [
     lastVisited: '2024-03-20T17:00:00Z',
     coordinates: { lat: 37.7949, lng: -122.4194 },
     relatedPeople: [
-      { id: 'person-7', name: 'Dr. Maya Patel', total_mentions: 12, entryCount: 4 }
+      { id: 'person-7', name: 'Dr. Amara Wells', total_mentions: 12, entryCount: 4 }
     ],
     tagCounts: [
       { tag: 'education', count: 18 },

@@ -776,7 +776,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         updated_at: new Date().toISOString(),
         members: [
           { id: '1', character_name: editedCharacter.name, role: 'Member', status: 'active' },
-          { id: '2', character_name: 'Maya Patel', role: 'Instructor', status: 'active' },
+          { id: '2', character_name: 'Dr. Amara Wells', role: 'Instructor', status: 'active' },
           { id: '3', character_name: 'Tom Harris', role: 'Member', status: 'active' },
           { id: '4', character_name: 'Sophie Green', role: 'Member', status: 'active' },
         ]

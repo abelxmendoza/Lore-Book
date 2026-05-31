@@ -1,6 +1,69 @@
-import { Bot, Paperclip, FileText, MessageSquare, Image as ImageIcon, Lock } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { Bot, Heart, Paperclip, FileText, MessageSquare, Image as ImageIcon, Lock } from 'lucide-react';
+
+const LOVE_STARTERS = [
+  'I went on a date last night…',
+  'I need to decode a text they sent me.',
+  "There's someone I've been thinking about.",
+  'Something happened with [Name] and I need to process it.',
+  'I want to talk through a pattern I keep seeing in my relationships.',
+  'I just got out of something and I need to think.',
+];
+
+const LoveEmptyState = () => (
+  <div className="text-center py-16 sm:py-20 text-white/60 px-4 sm:px-6 max-w-2xl mx-auto">
+    <Heart className="h-16 w-16 mx-auto mb-6 text-pink-400/50" />
+    <h2 className="text-2xl sm:text-3xl font-semibold mb-3 text-white">Your Relationship Advisor</h2>
+    <p className="text-sm sm:text-base text-pink-300/80 mb-2 max-w-md mx-auto">
+      I know your full love life — who you've been with, what happened, the patterns, the drift.
+    </p>
+    <p className="text-base sm:text-lg mb-10 text-white/60 leading-relaxed">
+      Tell me about a date. Decode a situation. Talk through what keeps happening.<br />
+      Everything you share is tracked quietly in the background.
+    </p>
+
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-10 text-left">
+      {LOVE_STARTERS.map(starter => (
+        <button
+          key={starter}
+          type="button"
+          onClick={() => {
+            const input = document.querySelector<HTMLTextAreaElement>('textarea[placeholder]');
+            if (input) {
+              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+              nativeInputValueSetter?.call(input, starter);
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.focus();
+            }
+          }}
+          className="px-4 py-3 rounded-lg border border-pink-500/20 bg-black/40 hover:bg-pink-950/20 hover:border-pink-500/40 transition-colors text-sm text-white/60 hover:text-white/80 text-left"
+        >
+          "{starter}"
+        </button>
+      ))}
+    </div>
+
+    <div className="flex items-center justify-center mb-8">
+      <div className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3">
+        <Lock className="h-4 w-4 text-green-400 flex-shrink-0" />
+        <p className="text-xs text-green-400">
+          <strong>Private:</strong> Your conversations are encrypted and never shared.
+        </p>
+      </div>
+    </div>
+
+    <p className="text-xs text-white/30">
+      What you tell me automatically updates your relationship timeline, patterns, and history.
+    </p>
+  </div>
+);
 
 export const ChatEmptyState = () => {
+  const location = useLocation();
+  const isLoveSurface = location.pathname === '/love';
+
+  if (isLoveSurface) return <LoveEmptyState />;
+
   return (
     <div className="text-center py-16 sm:py-20 lg:py-24 text-white/60 px-4 sm:px-6 lg:px-8 max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto">
       <Bot className="h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 mx-auto mb-6 sm:mb-8 text-primary/50" />

@@ -1,6 +1,11 @@
 /**
  * Parallel-structure resolution: explicit parallel_to relations + date-based overlaps.
  * Scope: saga and arc only (matching timeline_node_relations).
+ *
+ * Upgraded: uses Allen's interval algebra to produce typed temporal relations
+ * (overlaps, contains, during, meets, starts, finishes, equals) instead of
+ * a simple boolean. This lets the chat context and biography engine know not
+ * just that two periods overlapped, but HOW they overlapped.
  */
 
 import { supabaseAdmin } from '../supabaseClient';
@@ -18,19 +23,61 @@ export type NodeForParallels = {
   end_date: string | null;
 };
 
+// ─── Allen's interval algebra for hierarchy nodes ─────────────────────────────
+//
+// Returns the typed Allen relation between [aStart, aEnd] and [bStart, bEnd].
+// All 13 relations are covered; for parallel display we surface the 6 that
+// imply genuine co-occurrence:
+//   overlaps  — A starts before B ends and B starts before A ends (partial overlap)
+//   contains  — A wholly contains B
+//   during    — B wholly contains A
+//   starts    — A and B share a start, A ends first
+//   finishes  — A and B share an end, A starts later
+//   equals    — identical date ranges
+// The remaining 7 (before, after, meets, met-by, etc.) are non-overlapping
+// and should never appear in a parallel context result.
+
+export type AllenRelation =
+  | 'overlaps' | 'contains' | 'during'
+  | 'starts'   | 'finishes'  | 'equals'
+  | 'meets'    | 'before'    | 'after';
+
+export function computeAllenRelation(
+  aStart: string,
+  aEnd:   string | null,
+  bStart: string,
+  bEnd:   string | null
+): AllenRelation {
+  const aS = new Date(aStart).getTime();
+  const aE = new Date(aEnd ?? ONGOING_END).getTime();
+  const bS = new Date(bStart).getTime();
+  const bE = new Date(bEnd ?? ONGOING_END).getTime();
+
+  if (aS === bS && aE === bE) return 'equals';
+  if (aE < bS)                return 'before';
+  if (bE < aS)                return 'after';
+  if (aE === bS)              return 'meets';
+  if (aS === bS && aE < bE)   return 'starts';
+  if (aE === bE && aS > bS)   return 'finishes';
+  if (aS <= bS && aE >= bE)   return 'contains';
+  if (aS >= bS && aE <= bE)   return 'during';
+  return 'overlaps';
+}
+
 function overlaps(
   aStart: string,
   aEnd: string | null,
   bStart: string,
   bEnd: string | null
 ): boolean {
-  const aE = aEnd ?? ONGOING_END;
-  const bE = bEnd ?? ONGOING_END;
-  return aStart < bE && aE > bStart;
+  const rel = computeAllenRelation(aStart, aEnd, bStart, bEnd);
+  return !['before', 'after', 'meets'].includes(rel);
 }
 
 /**
  * Find saga/arc nodes whose date range overlaps this node's range, excluding self.
+ * Returns typed Allen relations instead of a plain boolean — consumers now know
+ * whether node B is 'during' A, 'overlaps' A, 'contains' A, etc.
  */
 export async function findOverlappingNodes(
   userId: string,
@@ -43,26 +90,34 @@ export async function findOverlappingNodes(
     const typ: 'saga' | 'arc' = table === 'timeline_sagas' ? 'saga' : 'arc';
     const { data: rows } = await supabaseAdmin
       .from(table)
-      .select('id, start_date, end_date')
+      .select('id, start_date, end_date, title')
       .eq('user_id', userId)
       .lt('start_date', nodeEnd)
       .or(`end_date.gte.${node.start_date},end_date.is.null`);
 
-    const list = (rows ?? []) as Array<{ id: string; start_date: string; end_date: string | null }>;
+    const list = (rows ?? []) as Array<{
+      id: string; start_date: string; end_date: string | null; title?: string;
+    }>;
+
     for (const r of list) {
       if (r.id === node.id && typ === node.layer) continue;
-      if (!overlaps(node.start_date, node.end_date, r.start_date, r.end_date)) continue;
+      const relation = computeAllenRelation(node.start_date, node.end_date, r.start_date, r.end_date);
+      if (['before', 'after', 'meets'].includes(relation)) continue; // truly non-overlapping
+
       const overlapStart =
         new Date(node.start_date) > new Date(r.start_date) ? node.start_date : r.start_date;
       const e1 = node.end_date ?? ONGOING_END;
-      const e2 = r.end_date ?? ONGOING_END;
+      const e2 = r.end_date   ?? ONGOING_END;
       const overlapEnd = new Date(e1) < new Date(e2) ? e1 : e2;
+
       results.push({
-        node_id: r.id,
-        node_layer: typ,
+        node_id:       r.id,
+        node_layer:    typ,
         overlap_start: overlapStart,
-        overlap_end: overlapEnd,
-      });
+        overlap_end:   overlapEnd,
+        // Enriched: precise Allen relation type
+        allen_relation: relation,
+      } as ParallelNode & { allen_relation: AllenRelation });
     }
   }
 

@@ -150,6 +150,7 @@ import knowledgeTypeEngineRouter from './knowledgeTypeEngine';
 import narrativeDiffRouter from './narrativeDiff';
 import continuityProfileRouter from './continuityProfile';
 import contradictionAlertsRouter from './contradictionAlerts';
+import knowledgeRouter from './knowledge';
 import diagnosticsRouter from './diagnostics';
 import { personalStrategyRouter } from './personalStrategy';
 import { photosRouter } from './photos';
@@ -578,6 +579,14 @@ export const routeRegistry: RouteEntry[] = [
     requiresAuth: false,
     classification: 'EXPERIMENTAL',
     description: 'People and places extraction',
+  },
+
+  // ---- KNOWLEDGE CRYSTALLIZATION ------------------------------------------
+  {
+    path: '/api/knowledge',
+    router: knowledgeRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Knowledge crystallization — durable claims with evidence traceability',
   },
 
   // ---- KNOWLEDGE GRAPH ----------------------------------------------------

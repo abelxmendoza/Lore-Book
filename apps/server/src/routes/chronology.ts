@@ -5,6 +5,12 @@ import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
 import { ChronologyEngine, EventMapper } from '../services/chronology';
+import { bridgeChronologyToArcs } from '../services/chronology/chronologyArcBridge';
+import { persistGapNodes } from '../services/chronology/gapNodeService';
+import {
+  loadHierarchyConstraints,
+  applyHierarchyConstraints,
+} from '../services/chronology/hierarchyContextProvider';
 import { chronologyService } from '../services/chronologyV2';
 import { supabaseAdmin } from '../services/supabaseClient';
 
@@ -86,7 +92,20 @@ router.post(
       eventsToProcess = eventMapper.mapMemoryEntriesToEvents(entries || []);
     }
 
-    const result = await chronologyEngine.process(eventsToProcess);
+    // Apply hierarchy context before V1 runs: annotates events with which
+    // era/saga/arc/chapter they belong to, and anchors undated events to
+    // the nearest hierarchy period rather than embedding-median guessing.
+    const hierarchyConstraints = await loadHierarchyConstraints(userId);
+    const contextualEvents = applyHierarchyConstraints(eventsToProcess, hierarchyConstraints);
+
+    const result = await chronologyEngine.process(contextualEvents);
+
+    // Bridge V1 findings → arc_relationships + gap nodes (fire-and-forget)
+    const eventTimestamps = new Map(eventsToProcess.map((e: any) => [e.id, e.timestamp ?? null]));
+    Promise.all([
+      bridgeChronologyToArcs(userId, result, eventTimestamps),
+      persistGapNodes(userId, result.gaps),
+    ]).catch(() => {});
 
     res.json(result);
   })
@@ -262,6 +281,78 @@ router.get(
     }
 
     res.json(data);
+  })
+);
+
+/**
+ * GET /api/chronology/narrative
+ * Generate a first-person narrative summary from the user's chronological events.
+ * Uses NarrativeBuilder (previously built but never surfaced).
+ *
+ * Query params:
+ *   start_date  — ISO date string, inclusive lower bound (default: 6 months ago)
+ *   end_date    — ISO date string, inclusive upper bound (default: now)
+ *   limit       — max events to include (default: 50, max: 100)
+ */
+router.get(
+  '/narrative',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const limit  = Math.min(parseInt((req.query.limit as string) || '50', 10), 100);
+
+    const defaultStart = new Date();
+    defaultStart.setMonth(defaultStart.getMonth() - 6);
+    const startDate = (req.query.start_date as string) || defaultStart.toISOString();
+    const endDate   = (req.query.end_date as string)   || new Date().toISOString();
+
+    const { data: entries, error } = await supabaseAdmin
+      .from('journal_entries')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: true })
+      .limit(limit);
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to fetch entries for narrative' });
+    }
+
+    if (!entries || entries.length === 0) {
+      return res.json({
+        narrative: { summary: 'No entries found in the specified time range.', sequence: [] },
+        eventCount: 0,
+        timeRange: { start: startDate, end: endDate },
+      });
+    }
+
+    const events = eventMapper.mapMemoryEntriesToEvents(entries);
+
+    // Sort by timestamp and use earliest as narrative root
+    const sorted = events
+      .filter(e => e.timestamp)
+      .sort((a, b) => new Date(a.timestamp!).getTime() - new Date(b.timestamp!).getTime());
+
+    if (sorted.length === 0) {
+      return res.json({
+        narrative: { summary: 'No timestamped events found.', sequence: [] },
+        eventCount: events.length,
+        timeRange: { start: startDate, end: endDate },
+      });
+    }
+
+    const root = sorted[0];
+    const result = await chronologyEngine.buildNarrative(root, sorted);
+
+    res.json({
+      narrative:  result.narrative,
+      eventCount: sorted.length,
+      timeRange:  { start: startDate, end: endDate },
+      gaps:       result.gaps,
+      patterns:   result.patterns,
+      metadata:   result.metadata,
+    });
   })
 );
 

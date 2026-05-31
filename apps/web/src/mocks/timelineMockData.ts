@@ -1,4 +1,5 @@
 import type { ChronologyEntry, Timeline, TimePrecision } from '../types/timelineV2';
+import type { LifeArc, ArcTrack } from '../hooks/useLifeArcs';
 
 /**
  * Generate realistic mock timeline data for UI development
@@ -15,7 +16,9 @@ export const generateMockTimelines = (): Timeline[] => {
   const oneYearAgo = new Date(now);
   oneYearAgo.setFullYear(now.getFullYear() - 1);
 
-  const timelines: Timeline[] = [
+  // Use a loosely-typed intermediate so we can fill in `updated_at` once at the end
+  // instead of repeating it on every object.
+  const raw = [
     // ============================================
     // LEVEL 1: MYTHOS - "The Quest for Self-Discovery"
     // ============================================
@@ -31,7 +34,6 @@ export const generateMockTimelines = (): Timeline[] => {
       tags: ['mythos', 'life-journey', 'self-discovery', 'transformation', 'growth'],
       metadata: { layer: 'mythos', layer_order: 1 },
       created_at: fiveYearsAgo.toISOString(),
-      updated_at: now.toISOString(),
       children: []
     },
 
@@ -50,7 +52,6 @@ export const generateMockTimelines = (): Timeline[] => {
       tags: ['epoch', 'transformation', 'growth', 'career', 'relationships'],
       metadata: { layer: 'epoch', layer_order: 2 },
       created_at: threeYearsAgo.toISOString(),
-      updated_at: now.toISOString(),
       children: []
     },
 
@@ -69,7 +70,6 @@ export const generateMockTimelines = (): Timeline[] => {
       tags: ['era', 'creative', 'art', 'music', 'renaissance', 'self-expression'],
       metadata: { layer: 'era', layer_order: 3 },
       created_at: twoYearsAgo.toISOString(),
-      updated_at: now.toISOString(),
       children: []
     },
 
@@ -88,7 +88,6 @@ export const generateMockTimelines = (): Timeline[] => {
       tags: ['saga', 'music', 'production', 'audio', 'creative', 'learning'],
       metadata: { layer: 'saga', layer_order: 4 },
       created_at: new Date(twoYearsAgo.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: now.toISOString(),
       children: []
     },
 
@@ -107,7 +106,6 @@ export const generateMockTimelines = (): Timeline[] => {
       tags: ['arc', 'album', 'music', 'production', 'creative-project'],
       metadata: { layer: 'arc', layer_order: 5 },
       created_at: new Date(oneYearAgo.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: now.toISOString(),
       children: []
     },
 
@@ -238,7 +236,6 @@ export const generateMockTimelines = (): Timeline[] => {
       tags: ['era', 'photography', 'creative', 'art', 'visual'],
       metadata: { layer: 'era', layer_order: 3 },
       created_at: new Date(twoYearsAgo.getTime() + 45 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: now.toISOString(),
       children: []
     },
 
@@ -289,7 +286,6 @@ export const generateMockTimelines = (): Timeline[] => {
       tags: ['saga', 'writing', 'creative', 'literature', 'storytelling'],
       metadata: { layer: 'saga', layer_order: 4 },
       created_at: new Date(twoYearsAgo.getTime() + 100 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: now.toISOString(),
       children: []
     },
 
@@ -340,7 +336,6 @@ export const generateMockTimelines = (): Timeline[] => {
       tags: ['arc', 'live', 'performance', 'music', 'stage'],
       metadata: { layer: 'arc', layer_order: 5 },
       created_at: new Date(oneYearAgo.getTime() + 20 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: now.toISOString(),
       children: []
     },
 
@@ -429,7 +424,6 @@ export const generateMockTimelines = (): Timeline[] => {
       tags: ['fitness', 'health', 'wellness', 'transformation', 'gym', 'workout'],
       metadata: {},
       created_at: new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString(),
-      updated_at: now.toISOString(),
       children: []
     },
     // Web Development Journey Timeline
@@ -445,10 +439,15 @@ export const generateMockTimelines = (): Timeline[] => {
       tags: ['coding', 'javascript', 'react', 'web-development', 'programming'],
       metadata: {},
       created_at: twoYearsAgo.toISOString(),
-      updated_at: now.toISOString(),
       children: []
     }
   ];
+
+  // Inject `updated_at` for any items that lost it (all Timeline objects require it)
+  const timelines: Timeline[] = (raw as any[]).map(t => ({
+    updated_at: t.updated_at ?? now.toISOString(),
+    ...t,
+  })) as Timeline[];
 
   return timelines;
 };
@@ -765,9 +764,272 @@ export const generateMockChronologyEntries = (timelines: Timeline[]): Chronology
   }
 
   // Sort by start_time
-  entries.sort((a, b) => 
+  entries.sort((a, b) =>
     new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
   );
 
   return entries;
+};
+
+/**
+ * Generate mock LifeArc[] for demo mode.
+ * Spans 5 years across 5 parallel tracks so the Swimlanes view looks rich.
+ * Dates are relative to NOW so they're always current.
+ */
+export const generateMockLifeArcs = (): LifeArc[] => {
+  const now   = new Date();
+  const ago = (years: number, months = 0, days = 0) => {
+    const d = new Date(now);
+    d.setFullYear(d.getFullYear() - years);
+    d.setMonth(d.getMonth() - months);
+    d.setDate(d.getDate() - days);
+    return d.toISOString().slice(0, 10);
+  };
+
+  type ArcSeed = Omit<LifeArc, 'children'>;
+
+  const arcs: ArcSeed[] = [
+    // ── CAREER ─────────────────────────────────────────────────────
+    {
+      id: 'mock-arc-agency',
+      title: 'The Agency Years',
+      arc_type: 'work',
+      track: 'career' as ArcTrack,
+      dominant_emotion: 'focused',
+      emotional_arc: 'building',
+      parent_id: null,
+      start_date: ago(5),
+      end_date: ago(3),
+      is_active: false,
+      summary: 'Three years at a digital agency. Shipped real products, built technical depth, and learned what kind of work actually matters to me. Left feeling skilled but restless.',
+      confidence: 0.92,
+      source: 'inferred',
+      tags: ['agency', 'career', 'tech', 'design'],
+    },
+    {
+      id: 'mock-arc-startup',
+      title: 'The Startup Era',
+      arc_type: 'work',
+      track: 'career' as ArcTrack,
+      dominant_emotion: 'excited',
+      emotional_arc: 'climax',
+      parent_id: null,
+      start_date: ago(3, 0, 15),
+      end_date: ago(1, 2),
+      is_active: false,
+      summary: 'Joined as an early engineer, grew to team lead, shipped the first major product. High pressure, high growth. The most professionally defining period so far.',
+      confidence: 0.89,
+      source: 'inferred',
+      tags: ['startup', 'leadership', 'product', 'growth'],
+    },
+    {
+      id: 'mock-arc-lorebook',
+      title: 'Building LoreBook',
+      arc_type: 'work',
+      track: 'career' as ArcTrack,
+      dominant_emotion: 'driven',
+      emotional_arc: 'building',
+      parent_id: null,
+      start_date: ago(0, 9),
+      end_date: null,
+      is_active: true,
+      summary: 'Building the thing I\'ve always wanted to exist. Slower than a startup but more intentional. Every decision feels meaningful.',
+      confidence: 0.78,
+      source: 'inferred',
+      tags: ['lorebook', 'indie', 'building', 'creative-tech'],
+    },
+
+    // ── RELATIONSHIPS ───────────────────────────────────────────────
+    {
+      id: 'mock-arc-sarah',
+      title: 'Sarah',
+      arc_type: 'life_era',
+      track: 'relationships' as ArcTrack,
+      dominant_emotion: 'loved',
+      emotional_arc: 'resolution',
+      parent_id: null,
+      start_date: ago(4, 6),
+      end_date: ago(2, 3),
+      is_active: false,
+      summary: 'Two years together. The most sustained relationship I\'d had. We wanted different things geographically, and eventually that was honest enough to end it cleanly.',
+      confidence: 0.87,
+      source: 'inferred',
+      tags: ['relationship', 'sarah', 'love', 'connection'],
+    },
+    {
+      id: 'mock-arc-friends',
+      title: 'The Inner Circle',
+      arc_type: 'life_era',
+      track: 'relationships' as ArcTrack,
+      dominant_emotion: 'grateful',
+      emotional_arc: 'building',
+      parent_id: null,
+      start_date: ago(3, 6),
+      end_date: null,
+      is_active: true,
+      summary: 'Marcus, Emma, and Alex Rivera. These three have been constants. Built around shared late nights, creative projects, and the kind of honesty that\'s rare.',
+      confidence: 0.84,
+      source: 'inferred',
+      tags: ['friendship', 'community', 'support'],
+    },
+    {
+      id: 'mock-arc-alex',
+      title: 'Alex',
+      arc_type: 'life_era',
+      track: 'relationships' as ArcTrack,
+      dominant_emotion: 'happy',
+      emotional_arc: 'building',
+      parent_id: null,
+      start_date: ago(1, 1),
+      end_date: null,
+      is_active: true,
+      summary: 'Met during the creative renaissance. She came to a small show I played. The relationship developed slowly and intentionally, which feels right.',
+      confidence: 0.76,
+      source: 'inferred',
+      tags: ['relationship', 'alex', 'romance', 'love'],
+    },
+
+    // ── CREATIVE ────────────────────────────────────────────────────
+    {
+      id: 'mock-arc-music',
+      title: 'The Music Production Journey',
+      arc_type: 'skill',
+      track: 'creative' as ArcTrack,
+      dominant_emotion: 'excited',
+      emotional_arc: 'building',
+      parent_id: null,
+      start_date: ago(2, 3),
+      end_date: null,
+      is_active: true,
+      summary: 'Started with a MIDI controller and YouTube tutorials. Now recording an EP with Alex Rivera in my home studio. The growth has been slow, real, and deeply satisfying.',
+      confidence: 0.83,
+      source: 'inferred',
+      tags: ['music', 'production', 'creative', 'EP', 'learning'],
+    },
+    {
+      id: 'mock-arc-writing',
+      title: 'The Writing Revival',
+      arc_type: 'skill',
+      track: 'creative' as ArcTrack,
+      dominant_emotion: 'reflective',
+      emotional_arc: 'building',
+      parent_id: null,
+      start_date: ago(1, 8),
+      end_date: null,
+      is_active: true,
+      summary: 'Picked up journaling seriously, then started writing essays. LoreBook itself was partly an excuse to think more carefully about narrative. The writing and the tool have grown together.',
+      confidence: 0.71,
+      source: 'inferred',
+      tags: ['writing', 'essays', 'journaling', 'narrative'],
+    },
+
+    // ── HEALTH ──────────────────────────────────────────────────────
+    {
+      id: 'mock-arc-fitness',
+      title: 'The Fitness Transformation',
+      arc_type: 'life_era',
+      track: 'health' as ArcTrack,
+      dominant_emotion: 'focused',
+      emotional_arc: 'building',
+      parent_id: null,
+      start_date: ago(1, 0, 20),
+      end_date: null,
+      is_active: true,
+      summary: 'Training three times a week for the first time consistently. Started for energy, stayed because of the mental clarity. Weight isn\'t the point anymore.',
+      confidence: 0.80,
+      source: 'inferred',
+      tags: ['fitness', 'health', 'gym', 'training', 'discipline'],
+    },
+
+    // ── INNER LIFE ──────────────────────────────────────────────────
+    {
+      id: 'mock-arc-drift',
+      title: 'The Drift',
+      arc_type: 'life_era',
+      track: 'inner' as ArcTrack,
+      dominant_emotion: 'anxious',
+      emotional_arc: 'resolution',
+      parent_id: null,
+      start_date: ago(3, 8),
+      end_date: ago(2),
+      is_active: false,
+      summary: 'A period of real uncertainty. Not depressed, just directionless. Left the agency without knowing what came next. The startup offer arrived at the right moment.',
+      confidence: 0.88,
+      source: 'inferred',
+      tags: ['uncertainty', 'transition', 'identity', 'drift'],
+    },
+    {
+      id: 'mock-arc-renaissance',
+      title: 'The Creative Renaissance',
+      arc_type: 'life_era',
+      track: 'inner' as ArcTrack,
+      dominant_emotion: 'joyful',
+      emotional_arc: 'climax',
+      parent_id: null,
+      start_date: ago(2, 1),
+      end_date: null,
+      is_active: true,
+      summary: 'The overarching personal shift. Stopped optimizing for career metrics and started building a life that actually felt like mine. Music, writing, LoreBook, Alex — all grew from this.',
+      confidence: 0.91,
+      source: 'user_created',
+      tags: ['renaissance', 'creativity', 'identity', 'transformation', 'self-discovery'],
+    },
+
+    // ── OVERLAPPING ARCS — demonstrates concurrent life tracks ──────
+    // Two jobs running simultaneously during the startup era
+    {
+      id: 'mock-arc-consulting',
+      title: 'Consulting Work',
+      arc_type: 'work',
+      track: 'career' as ArcTrack,
+      dominant_emotion: 'focused',
+      emotional_arc: 'neutral',
+      parent_id: null,
+      start_date: ago(2, 6),
+      end_date: ago(1, 4),
+      is_active: false,
+      summary: 'Took on a handful of consulting clients while at the startup. Two days a week, different domain. Kept the skills sharp and added financial runway while equity vested.',
+      confidence: 0.77,
+      source: 'inferred',
+      tags: ['consulting', 'freelance', 'side-work', 'career'],
+    },
+
+    // Two relationships overlapping — messy transition period
+    {
+      id: 'mock-arc-jordan',
+      title: 'Jordan',
+      arc_type: 'life_era',
+      track: 'relationships' as ArcTrack,
+      dominant_emotion: 'confused',
+      emotional_arc: 'resolution',
+      parent_id: null,
+      start_date: ago(2, 8),
+      end_date: ago(1, 10),
+      is_active: false,
+      summary: 'A short and complicated overlap with the tail end of Sarah. Both connections were real; neither was fair. The clarity that came after was worth the mess.',
+      confidence: 0.72,
+      source: 'inferred',
+      tags: ['relationship', 'maya', 'transition', 'complicated'],
+    },
+
+    // Two creative projects at once
+    {
+      id: 'mock-arc-photography',
+      title: 'Street Photography',
+      arc_type: 'skill',
+      track: 'creative' as ArcTrack,
+      dominant_emotion: 'curious',
+      emotional_arc: 'building',
+      parent_id: null,
+      start_date: ago(1, 6),
+      end_date: ago(0, 3),
+      is_active: false,
+      summary: 'Shot street photography seriously for about a year, overlapping with music. The two disciplines cross-pollinated — timing, composition, waiting for the moment. Eventually the music took over.',
+      confidence: 0.69,
+      source: 'inferred',
+      tags: ['photography', 'creative', 'street', 'visual'],
+    },
+  ];
+
+  return arcs as LifeArc[];
 };
