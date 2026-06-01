@@ -1,11 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, MapPin, RefreshCw, ChevronLeft, ChevronRight, BookOpen, LayoutGrid, Home, Briefcase, Plane, Coffee, Heart, Building2 } from 'lucide-react';
+import { MapPin, RefreshCw, ChevronLeft, ChevronRight, Home, Briefcase, Plane, Coffee, Leaf } from 'lucide-react';
 import { LocationProfileCard, type LocationProfile } from './LocationProfileCard';
 import { LocationDetailModal } from './LocationDetailModal';
 import { Button } from '../ui/button';
 import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
-import { Card, CardContent } from '../ui/card';
-import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
@@ -370,9 +368,8 @@ export const LocationBook = () => {
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [viewMode, setViewMode] = useState<'grid' | 'book'>('book');
   const [selectedTab, setSelectedTab] = useState('all');
-  const { entries = [], chapters = [], refreshEntries } = useLoreKeeper();
+  const { entries = [] } = useLoreKeeper();
 
   const loadLocations = async () => {
     setLoading(true);
@@ -471,7 +468,7 @@ export const LocationBook = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, viewMode, selectedTab]);
+  }, [searchTerm, selectedTab]);
 
   const totalPages = Math.ceil(filteredLocations.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -532,204 +529,150 @@ export const LocationBook = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentPage, totalPages]);
 
+  const FILTERS = [
+    { value: 'all',    label: 'All',    icon: MapPin },
+    { value: 'work',   label: 'Work',   icon: Briefcase },
+    { value: 'home',   label: 'Home',   icon: Home },
+    { value: 'travel', label: 'Travel', icon: Plane },
+    { value: 'social', label: 'Social', icon: Coffee },
+    { value: 'nature', label: 'Nature', icon: Leaf },
+  ] as const;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <ChatFirstViewHint />
-      {/* Location Search Bar and Controls */}
-      <div className="space-y-4">
-        <SearchWithAutocomplete<LocationProfile>
-          value={searchTerm}
-          onChange={setSearchTerm}
-          placeholder="Search locations by name, people, tags, or chapters..."
-          items={locations}
-          getSearchableText={(loc) =>
-            [
-              loc.name,
-              ...(loc.relatedPeople?.map((p) => p.name) ?? []),
-              ...(loc.tagCounts?.map((t) => t.tag) ?? []),
-              ...(loc.chapters?.map((c) => c.title).filter(Boolean) ?? []),
-            ].filter(Boolean).join(' ')
-          }
-          getDisplayLabel={(loc) => loc.name}
-          maxSuggestions={8}
-          className="w-full"
-          inputClassName="bg-black/40 border-border/50 text-white placeholder:text-white/40 text-sm sm:text-base"
-          emptyHint="No matching locations"
-        />
-        
-        {/* Navigation Tabs */}
-        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1">
-            <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <MapPin className="h-3 w-3 sm:h-4 sm:w-4" /> <span>All</span>
-            </TabsTrigger>
-            <TabsTrigger value="work" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Briefcase className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Work</span>
-            </TabsTrigger>
-            <TabsTrigger value="home" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Home className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Home</span>
-            </TabsTrigger>
-            <TabsTrigger value="travel" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Plane className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Travel</span>
-            </TabsTrigger>
-            <TabsTrigger value="social" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Coffee className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Social</span>
-            </TabsTrigger>
-            <TabsTrigger value="nature" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Heart className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Nature</span>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-        
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
-          <div>
-            <h2 className="text-lg sm:text-xl font-semibold text-white">Location Book</h2>
-            <p className="text-xs sm:text-sm text-white/60 mt-1">
-              {locations.length} locations · {filteredLocations.length} shown
-              {totalPages > 1 && ` · Page ${currentPage}/${totalPages}`}
-              {loading && ' · Loading...'}
-            </p>
-          </div>
-          <Button 
-            leftIcon={<RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />} 
-            onClick={() => void loadLocations()}
-            disabled={loading}
-            size="sm"
-            className="w-full sm:w-auto text-xs sm:text-sm"
-          >
-            {loading ? 'Loading...' : 'Refresh'}
-          </Button>
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-white">Places</h2>
+          <p className="text-xs text-white/40 mt-0.5">
+            {filteredLocations.length} of {locations.length} locations
+            {totalPages > 1 && ` · page ${currentPage}/${totalPages}`}
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={() => void loadLocations()}
+          disabled={loading}
+          className="flex items-center gap-1.5 text-xs text-white/40 hover:text-teal-400 transition-colors disabled:opacity-40"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          {loading ? 'Loading…' : 'Refresh'}
+        </button>
       </div>
 
+      {/* Search */}
+      <SearchWithAutocomplete<LocationProfile>
+        value={searchTerm}
+        onChange={setSearchTerm}
+        placeholder="Search by name, people, or tags…"
+        items={locations}
+        getSearchableText={loc =>
+          [loc.name, ...loc.relatedPeople.map(p => p.name), ...loc.tagCounts.map(t => t.tag)].join(' ')
+        }
+        getDisplayLabel={loc => loc.name}
+        maxSuggestions={8}
+        className="w-full"
+        inputClassName="bg-black/40 border-white/10 text-white placeholder:text-white/30 text-sm"
+        emptyHint="No matching locations"
+      />
+
+      {/* Filter pills */}
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setSelectedTab(value)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+              selectedTab === value
+                ? 'bg-teal-500/15 border-teal-500/40 text-teal-300'
+                : 'bg-white/4 border-white/10 text-white/50 hover:border-white/25 hover:text-white/70'
+            }`}
+          >
+            <Icon className="h-3 w-3" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Grid */}
       {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Card key={i} className="bg-black/40 border-border/50 aspect-square sm:aspect-auto sm:h-48 animate-pulse" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-28 rounded-xl bg-white/5 border border-white/8 animate-pulse" />
           ))}
         </div>
       ) : filteredLocations.length === 0 ? (
-        <div className="text-center py-8 sm:py-12 text-white/60 px-4">
-          <MapPin className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 text-white/20" />
-          <p className="text-base sm:text-lg font-medium mb-2">No locations found</p>
-          <p className="text-xs sm:text-sm">Try a different search term or mention locations in chat to auto-create them</p>
+        <div className="text-center py-16">
+          <MapPin className="h-10 w-10 mx-auto mb-3 text-white/15" />
+          <p className="text-sm font-medium text-white/50 mb-1">No locations found</p>
+          <p className="text-xs text-white/30">Mention places in chat and LoreBook will track them</p>
         </div>
       ) : (
-        <>
-          {/* Book Page Container with Grid Inside */}
-          <div className="relative w-full min-h-[400px] sm:min-h-[500px] lg:min-h-[600px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden">
-            {/* Page Content */}
-            <div className="p-4 sm:p-6 lg:p-8 flex flex-col">
-              {/* Page Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-amber-800/20">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600/60 flex-shrink-0" />
-                  <div className="min-w-0">
-                    <h3 className="text-xs sm:text-sm font-semibold text-amber-900/40 uppercase tracking-wider">
-                      Location Book
-                    </h3>
-                    <p className="text-[10px] sm:text-xs text-amber-700/50 mt-0.5">
-                      Page {currentPage}/{totalPages} · {filteredLocations.length} locations
-                    </p>
-                  </div>
-                </div>
-                <div className="text-[10px] sm:text-xs text-amber-700/40 font-mono flex-shrink-0">
-                  {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </div>
-              </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {paginatedLocations.map((location, index) => (
+            <LocationProfileCard
+              key={location.id || `loc-${index}`}
+              location={location}
+              onClick={() => setSelectedLocation(location)}
+            />
+          ))}
+        </div>
+      )}
 
-              {/* Location Grid - 2 cols on mobile for square cards */}
-              <div className="flex-1 grid grid-cols-2 sm:grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {paginatedLocations.map((location, index) => {
-                  try {
-                    return (
-                      <LocationProfileCard
-                        key={location.id || `loc-${index}`}
-                        location={location}
-                        onClick={() => setSelectedLocation(location)}
-                      />
-                    );
-                  } catch {
-                    return null;
-                  }
-                })}
-              </div>
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <button
+            type="button"
+            onClick={goToPrevious}
+            disabled={currentPage === 1}
+            className="flex items-center gap-1 text-sm text-white/40 hover:text-teal-400 disabled:opacity-25 transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" /> Prev
+          </button>
 
-              {/* Page Footer with Navigation */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-amber-800/20">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={goToPrevious}
-                  disabled={currentPage === 1}
-                  className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
+          <div className="flex items-center gap-1">
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              let p: number;
+              if (totalPages <= 7)             p = i + 1;
+              else if (currentPage <= 4)       p = i + 1;
+              else if (currentPage >= totalPages - 3) p = totalPages - 6 + i;
+              else                             p = currentPage - 3 + i;
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => goToPage(p)}
+                  className={`w-7 h-7 rounded-lg text-xs font-medium transition-all ${
+                    currentPage === p
+                      ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
+                      : 'text-white/35 hover:text-white/60 hover:bg-white/5'
+                  }`}
                 >
-                  <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                  Previous
-                </Button>
-
-                <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-1 sm:gap-2 flex-wrap justify-center">
-                  {/* Page indicators */}
-                  <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 bg-black/40 rounded-lg border border-amber-800/30 overflow-x-auto">
-                    {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-                      let pageNum: number;
-                      if (totalPages <= 7) {
-                        pageNum = i + 1;
-                      } else if (currentPage <= 4) {
-                        pageNum = i + 1;
-                      } else if (currentPage >= totalPages - 3) {
-                        pageNum = totalPages - 6 + i;
-                      } else {
-                        pageNum = currentPage - 3 + i;
-                      }
-
-                      return (
-                        <button
-                          key={pageNum}
-                          onClick={() => goToPage(pageNum)}
-                          className={`px-1.5 sm:px-2 py-1 rounded text-xs sm:text-sm transition touch-manipulation ${
-                            currentPage === pageNum
-                              ? 'bg-amber-600 text-white'
-                              : 'text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10'
-                          }`}
-                        >
-                          {pageNum}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <span className="text-xs sm:text-sm text-amber-700/50 whitespace-nowrap">
-                    {startIndex + 1}-{Math.min(endIndex, filteredLocations.length)} of {filteredLocations.length}
-                  </span>
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={goToNext}
-                  disabled={currentPage === totalPages}
-                  className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
-                >
-                  Next
-                  <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 ml-1" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Book Binding Effect */}
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-900/40 via-amber-800/30 to-amber-900/40" />
-            <div className="absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-900/40 via-amber-800/30 to-amber-900/40" />
+                  {p}
+                </button>
+              );
+            })}
           </div>
-        </>
+
+          <button
+            type="button"
+            onClick={goToNext}
+            disabled={currentPage === totalPages}
+            className="flex items-center gap-1 text-sm text-white/40 hover:text-teal-400 disabled:opacity-25 transition-colors"
+          >
+            Next <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
       )}
 
       {selectedLocation && (
         <LocationDetailModal
           location={selectedLocation}
-          onClose={() => {
-            setSelectedLocation(null);
-            void loadLocations();
-          }}
+          onClose={() => { setSelectedLocation(null); void loadLocations(); }}
         />
       )}
 
@@ -737,11 +680,9 @@ export const LocationBook = () => {
         <MemoryDetailModal
           memory={selectedMemory}
           onClose={() => setSelectedMemory(null)}
-          onNavigate={(memoryId) => {
-            const memory = allMemories.find(m => m.id === memoryId);
-            if (memory) {
-              setSelectedMemory(memory);
-            }
+          onNavigate={memoryId => {
+            const m = allMemories.find(x => x.id === memoryId);
+            if (m) setSelectedMemory(m);
           }}
           allMemories={allMemories}
         />
