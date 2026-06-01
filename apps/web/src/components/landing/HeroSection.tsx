@@ -35,7 +35,7 @@ const AppPreview = () => (
           {/* User message */}
           <div className="flex justify-end">
             <div className="rounded-xl rounded-tr-none bg-purple-500/20 border border-purple-500/20 px-3 py-2 text-white/90 max-w-[80%] leading-relaxed">
-              I feel like I've changed a lot in the last two years. I just can't explain how.
+              I got the job. The one I've been working toward for two years.
             </div>
           </div>
 
@@ -43,21 +43,29 @@ const AppPreview = () => (
           <div className="flex gap-2 items-start">
             <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex-shrink-0 mt-0.5" />
             <div className="rounded-xl rounded-tl-none bg-white/5 border border-white/5 px-3 py-2 text-white/80 max-w-[85%] leading-relaxed">
-              I can. Two years ago, almost everything you wrote circled back to what someone else thought of you. Now it almost never comes up. You stopped explaining yourself to people who didn't ask — and your writing shifted at exactly the same time.
+              You almost talked yourself out of applying. Twice. The version of you from two years ago would've found a reason the timing wasn't right. Something changed.
             </div>
           </div>
 
           {/* User message 2 */}
           <div className="flex justify-end">
-            <div className="rounded-xl rounded-tr-none bg-purple-500/20 border border-purple-500/20 px-3 py-2 text-white/90 max-w-[70%] leading-relaxed">
-              Huh. I never noticed that.
+            <div className="rounded-xl rounded-tr-none bg-purple-500/20 border border-purple-500/20 px-3 py-2 text-white/90 max-w-[75%] leading-relaxed">
+              I think I stopped waiting to feel ready.
+            </div>
+          </div>
+
+          {/* AI message 2 */}
+          <div className="flex gap-2 items-start">
+            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex-shrink-0 mt-0.5" />
+            <div className="rounded-xl rounded-tl-none bg-white/5 border border-white/5 px-3 py-2 text-white/80 max-w-[75%] leading-relaxed">
+              That's exactly what changed.
             </div>
           </div>
 
           {/* Insight pills */}
           <div className="flex flex-wrap gap-1 pt-1">
-            <span className="px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/20 text-purple-300 text-[10px]">Identity · Shift</span>
-            <span className="px-2 py-0.5 rounded-full bg-pink-500/15 border border-pink-500/20 text-pink-300 text-[10px]">Pattern · 2 years</span>
+            <span className="px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/20 text-purple-300 text-[10px]">Goal · Achieved</span>
+            <span className="px-2 py-0.5 rounded-full bg-pink-500/15 border border-pink-500/20 text-pink-300 text-[10px]">Character · Grown</span>
           </div>
 
           {/* Input bar */}
