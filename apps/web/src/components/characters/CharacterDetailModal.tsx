@@ -10,6 +10,7 @@ import { Tooltip } from '../ui/tooltip';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { RelationshipTreeView } from '../relationshipTree/RelationshipTreeView';
+import { FamilyTreeView, createMockFamilyTreeForCharacter, createMockUserFamilyTree } from '../family/FamilyTreeView';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
 import { OrganizationDetailModal } from '../organizations/OrganizationDetailModal';
@@ -103,17 +104,19 @@ type CharacterDetailModalProps = {
   relationship?: RomanticRelationship;
 };
 
-type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'chat' | 'insights' | 'metadata';
+type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'intelligence';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
-  { key: 'info', label: 'Info', icon: FileText },
-  { key: 'chat', label: 'Chat', icon: MessageSquare },
-  { key: 'social', label: 'Social Media', icon: Globe },
-  { key: 'relationships', label: 'Connections', icon: Network },
-  { key: 'perceptions', label: 'Perceptions', icon: Eye },
-  { key: 'history', label: 'History', icon: Calendar },
-  { key: 'insights', label: 'Insights', icon: Brain },
-  { key: 'metadata', label: 'Metadata', icon: Database }
+  { key: 'info',         label: 'Info',            icon: FileText },
+  { key: 'intelligence', label: 'Intelligence',    icon: Zap },
+  { key: 'knowledge',    label: 'What I Know',     icon: Brain },
+  { key: 'chat',         label: 'Chat',            icon: MessageSquare },
+  { key: 'relationships', label: 'Connections',   icon: Network },
+  { key: 'history',      label: 'History',         icon: Calendar },
+  { key: 'insights',     label: 'Insights',        icon: BarChart3 },
+  { key: 'perceptions',  label: 'Perceptions',     icon: Eye },
+  { key: 'social',       label: 'Social',          icon: Globe },
+  { key: 'metadata',     label: 'Metadata',        icon: Database },
 ];
 
 export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship }: CharacterDetailModalProps) => {
@@ -694,144 +697,98 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     endTime?: string;
   }>>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
+  const [knowledgeClaims, setKnowledgeClaims] = useState<any[]>([]);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
+  const [knowledgeLoaded, setKnowledgeLoaded] = useState(false);
 
-  // Generate mock organization data
-  const getMockOrganizations = (): Organization[] => {
-    return [
-      {
-        id: '1',
-        name: 'Tech Startup Community',
-        aliases: [],
-        type: 'friend_group',
-        description: 'Professional network of tech entrepreneurs and startup founders',
-        status: 'active',
-        member_count: 5,
-        usage_count: 12,
-        confidence: 0.9,
-        last_seen: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        members: [
-          { id: '1', character_name: editedCharacter.name, role: 'Member', status: 'active' },
-          { id: '2', character_name: 'Sarah Chen', role: 'Founder', status: 'active' },
-          { id: '3', character_name: 'Marcus Johnson', role: 'Member', status: 'active' },
-          { id: '4', character_name: 'Emily Rodriguez', role: 'Organizer', status: 'active' },
-          { id: '5', character_name: 'David Kim', role: 'Member', status: 'active' },
-        ]
-      },
-      {
-        id: '2',
-        name: 'Local Book Club',
-        aliases: [],
-        type: 'club',
-        description: 'Monthly book discussion group',
-        status: 'active',
-        member_count: 4,
-        usage_count: 8,
-        confidence: 0.85,
-        last_seen: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        members: [
-          { id: '1', character_name: editedCharacter.name, role: 'Member', status: 'active' },
-          { id: '2', character_name: 'Alex Thompson', role: 'Coordinator', status: 'active' },
-          { id: '3', character_name: 'Jessica Martinez', role: 'Member', status: 'active' },
-          { id: '4', character_name: 'Ryan O\'Connor', role: 'Member', status: 'active' },
-        ]
-      },
-      {
-        id: '3',
-        name: 'University Alumni Association',
-        aliases: [],
-        type: 'affiliation',
-        description: 'Educational organization for university graduates',
-        status: 'active',
-        member_count: 6,
-        usage_count: 5,
-        confidence: 0.75,
-        last_seen: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        members: [
-          { id: '1', character_name: editedCharacter.name, role: 'Alumnus', status: 'active' },
-          { id: '2', character_name: 'Michael Brown', role: 'President', status: 'active' },
-          { id: '3', character_name: 'Lisa Anderson', role: 'Secretary', status: 'active' },
-          { id: '4', character_name: 'James Wilson', role: 'Member', status: 'active' },
-          { id: '5', character_name: 'Amanda Lee', role: 'Treasurer', status: 'active' },
-          { id: '6', character_name: 'Chris Taylor', role: 'Member', status: 'active' },
-        ]
-      },
-      {
-        id: '4',
-        name: 'Yoga Studio Members',
-        aliases: [],
-        type: 'club',
-        description: 'Fitness community at local yoga studio',
-        status: 'active',
-        member_count: 4,
-        usage_count: 3,
-        confidence: 0.7,
-        last_seen: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        members: [
-          { id: '1', character_name: editedCharacter.name, role: 'Member', status: 'active' },
-          { id: '2', character_name: 'Dr. Amara Wells', role: 'Instructor', status: 'active' },
-          { id: '3', character_name: 'Tom Harris', role: 'Member', status: 'active' },
-          { id: '4', character_name: 'Sophie Green', role: 'Member', status: 'active' },
-        ]
-      }
+  // ── Relationship Intelligence (dynamics + influence) ────────────────────────
+  const [dynamics, setDynamics] = useState<any | null>(null);
+  const [dynamicsLoading, setDynamicsLoading] = useState(false);
+  const [dynamicsLoaded, setDynamicsLoaded] = useState(false);
+  const [influenceProfile, setInfluenceProfile] = useState<any | null>(null);
+  const [influenceInsights, setInfluenceInsights] = useState<any[]>([]);
+  const [influenceLoading, setInfluenceLoading] = useState(false);
+  const [influenceLoaded, setInfluenceLoaded] = useState(false);
+
+  // ── Provenance ──────────────────────────────────────────────────────────────
+  const [provenance, setProvenance] = useState<any | null>(null);
+  const [provenanceLoaded, setProvenanceLoaded] = useState(false);
+
+  // ── Temporal attributes (all historical, not just current) ─────────────────
+  const [allAttributes, setAllAttributes] = useState<any[]>([]);
+  const [allAttributesLoaded, setAllAttributesLoaded] = useState(false);
+
+  // Character-specific mock organizations — shared (user is also a member) vs theirs only
+  const getMockOrganizations = (): Array<Organization & { user_is_member: boolean; character_role?: string }> => {
+    const SHARED: Record<string, Array<Organization & { user_is_member: boolean; character_role?: string }>> = {
+      'Sarah Chen': [
+        { id: 'org-sc-1', name: 'Creative Writing Circle', aliases: [], type: 'club', description: 'Weekly writing sessions and story feedback', status: 'active', member_count: 6, usage_count: 18, confidence: 0.91, last_seen: new Date(Date.now() - 7*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Co-Founder', members: [{ id: '1', character_name: 'Sarah Chen', role: 'Co-Founder', status: 'active' }, { id: '2', character_name: 'You', role: 'Member', status: 'active' }, { id: '3', character_name: 'Emma Thompson', role: 'Member', status: 'active' }] },
+        { id: 'org-sc-2', name: 'Tech Alumni Network', aliases: [], type: 'affiliation', description: 'Former colleagues from tech careers', status: 'active', member_count: 12, usage_count: 7, confidence: 0.78, last_seen: new Date(Date.now() - 30*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Member', members: [{ id: '1', character_name: 'Sarah Chen', role: 'Member', status: 'active' }] },
+        { id: 'org-sc-3', name: 'Women in Product', aliases: [], type: 'affiliation', description: 'Professional community for women in product roles', status: 'active', member_count: 45, usage_count: 5, confidence: 0.82, last_seen: new Date(Date.now() - 14*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: false, character_role: 'Member', members: [{ id: '1', character_name: 'Sarah Chen', role: 'Member', status: 'active' }] },
+      ],
+      'Marcus Johnson': [
+        { id: 'org-mj-1', name: 'Creative Entrepreneurs Network', aliases: [], type: 'friend_group', description: 'Founders and creatives building outside of corporate paths', status: 'active', member_count: 9, usage_count: 14, confidence: 0.88, last_seen: new Date(Date.now() - 14*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Organizer', members: [{ id: '1', character_name: 'Marcus Johnson', role: 'Organizer', status: 'active' }, { id: '2', character_name: 'You', role: 'Member', status: 'active' }] },
+        { id: 'org-mj-2', name: 'Executive Coaching Association', aliases: [], type: 'affiliation', description: 'Professional body for certified executive coaches', status: 'active', member_count: 220, usage_count: 2, confidence: 0.93, last_seen: new Date(Date.now() - 45*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: false, character_role: 'Certified Member', members: [{ id: '1', character_name: 'Marcus Johnson', role: 'Certified Member', status: 'active' }] },
+        { id: 'org-mj-3', name: 'Venture Capital Advisory Board', aliases: [], type: 'affiliation', description: 'Advisory network for early-stage startups', status: 'active', member_count: 18, usage_count: 3, confidence: 0.79, last_seen: new Date(Date.now() - 60*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: false, character_role: 'Advisor', members: [{ id: '1', character_name: 'Marcus Johnson', role: 'Advisor', status: 'active' }] },
+      ],
+      'Alex Rivera': [
+        { id: 'org-ar-1', name: 'Indie Music Collective', aliases: [], type: 'club', description: 'Independent artists collaborating outside the label system', status: 'active', member_count: 14, usage_count: 22, confidence: 0.89, last_seen: new Date(Date.now() - 7*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Producer', members: [{ id: '1', character_name: 'Alex Rivera', role: 'Producer', status: 'active' }, { id: '2', character_name: 'You', role: 'Artist', status: 'active' }] },
+        { id: 'org-ar-2', name: 'Audio Engineers Guild', aliases: [], type: 'affiliation', description: 'Professional society for audio engineering practitioners', status: 'active', member_count: 85, usage_count: 4, confidence: 0.91, last_seen: new Date(Date.now() - 30*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: false, character_role: 'Member', members: [{ id: '1', character_name: 'Alex Rivera', role: 'Member', status: 'active' }] },
+      ],
+      'Alex': [
+        { id: 'org-alex-1', name: 'Hiking Enthusiasts Club', aliases: [], type: 'club', description: 'Weekend trail hikes and outdoor adventures', status: 'active', member_count: 22, usage_count: 11, confidence: 0.85, last_seen: new Date(Date.now() - 20*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Member', members: [{ id: '1', character_name: 'Alex', role: 'Member', status: 'active' }, { id: '2', character_name: 'You', role: 'Member', status: 'active' }] },
+        { id: 'org-alex-2', name: 'Environmental Science Society', aliases: [], type: 'affiliation', description: 'Graduate-level research community focused on sustainability', status: 'active', member_count: 38, usage_count: 3, confidence: 0.87, last_seen: new Date(Date.now() - 45*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: false, character_role: 'Researcher', members: [{ id: '1', character_name: 'Alex', role: 'Researcher', status: 'active' }] },
+      ],
+      'Jordan Kim': [
+        { id: 'org-jk-1', name: 'Kim Family Circle', aliases: [], type: 'friend_group', description: 'The family group and extended network', status: 'active', member_count: 8, usage_count: 25, confidence: 0.98, last_seen: new Date(Date.now() - 5*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Member', members: [{ id: '1', character_name: 'Jordan Kim', role: 'Member', status: 'active' }, { id: '2', character_name: 'You', role: 'Member', status: 'active' }] },
+        { id: 'org-jk-2', name: 'University Alumni Association', aliases: [], type: 'affiliation', description: 'Alumni network from their university program', status: 'active', member_count: 120, usage_count: 4, confidence: 0.74, last_seen: new Date(Date.now() - 90*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: false, character_role: 'Alumnus', members: [{ id: '1', character_name: 'Jordan Kim', role: 'Alumnus', status: 'active' }] },
+      ],
+    };
+    // Default orgs for characters not explicitly mapped
+    return SHARED[editedCharacter.name] ?? [
+      { id: 'org-default-1', name: 'Creative Community', aliases: [], type: 'friend_group', description: 'Shared creative network', status: 'active', member_count: 8, usage_count: 6, confidence: 0.72, last_seen: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Member', members: [{ id: '1', character_name: editedCharacter.name, role: 'Member', status: 'active' }] },
     ];
   };
 
   // Create mock shared memories for display
   const createMockMemories = (characterName: string): MemoryCard[] => {
-    const now = new Date();
+    const d = (daysAgo: number) => new Date(Date.now() - daysAgo * 86400000).toISOString();
+    const profiles: Record<string, MemoryCard[]> = {
+      'Sarah Chen': [
+        { id: 'sm-sc-1', title: 'Told Sarah about leaving tech', content: `Sat with Sarah at Blue Bottle for three hours. Told her I was thinking about leaving software to focus on music and writing. She didn't try to talk me out of it. She just said "what's stopping you?" That question changed something.`, date: d(2280), tags: ['turning point', 'career'], mood: 'nervous', source: 'journal', sourceIcon: '📖', characters: ['Sarah Chen'], chapterTitle: 'The Decision Year' },
+        { id: 'sm-sc-2', title: 'Sarah got the PM promotion', content: `Sarah called to tell me she made the transition to PM. I remember how scared she was to make that move a year ago. Now she sounds lighter. We celebrated at our usual spot.`, date: d(1820), tags: ['milestone', 'celebration'], mood: 'proud', source: 'journal', sourceIcon: '📖', characters: ['Sarah Chen'], chapterTitle: 'Parallel Transitions' },
+        { id: 'sm-sc-3', title: 'Writing sprint at the coffee shop', content: `First writing session with Sarah since she started the new role. She brought her laptop and we both worked in silence for two hours, then talked about what we were each building. It felt like the old days but better.`, date: d(1240), tags: ['creative', 'writing', 'coffee'], mood: 'focused', source: 'journal', sourceIcon: '📖', characters: ['Sarah Chen'], chapterTitle: 'Creative Renaissance' },
+        { id: 'sm-sc-4', title: 'Talked about the breakup', content: `Sarah was the first person I told about things ending with Taylor. She sat with it for a while before saying anything. When she did, she said exactly the right thing.`, date: d(900), tags: ['support', 'vulnerability'], mood: 'sad', source: 'journal', sourceIcon: '📖', characters: ['Sarah Chen'], chapterTitle: 'The Hard Season' },
+        { id: 'sm-sc-5', title: 'Introduced to Alex (girlfriend)', content: `Sarah introduced me to her friend Alex at the coffee shop. I wasn't expecting anything — just a quick hi. We talked for three hours. Sarah kept smiling in the background.`, date: d(365), tags: ['introduction', 'new beginnings'], mood: 'curious', source: 'journal', sourceIcon: '📖', characters: ['Sarah Chen', 'Alex'], chapterTitle: 'New Connections' },
+        { id: 'sm-sc-6', title: 'Late night coffee, talked about the EP', content: `Sarah listened to the first full rough mix of the EP. She had notes, sharp ones. But she started by saying she was proud of me. I needed to hear that.`, date: d(80), tags: ['music', 'creative feedback'], mood: 'grateful', source: 'journal', sourceIcon: '📖', characters: ['Sarah Chen'], chapterTitle: 'First Album' },
+      ],
+      'Marcus Johnson': [
+        { id: 'sm-mj-1', title: 'First meeting at the entrepreneurship event', content: `Marcus spent an hour with me at the event when he didn't have to. He asked about my work, really listened, then told me something I've thought about every week since: "most people protect their dreams by never starting them."`, date: d(1826), tags: ['mentor', 'turning point'], mood: 'inspired', source: 'journal', sourceIcon: '📖', characters: ['Marcus Johnson'], chapterTitle: 'Finding Direction' },
+        { id: 'sm-mj-2', title: 'Marcus introduced me to Alex Rivera', content: `Marcus introduced me to Alex Rivera at the coffee shop, said we should work together. He has a sense for these things. The introduction took five minutes but it changed everything.`, date: d(1460), tags: ['introduction', 'music', 'creative'], mood: 'excited', source: 'journal', sourceIcon: '📖', characters: ['Marcus Johnson', 'Alex Rivera'], chapterTitle: 'Creative Expansion' },
+        { id: 'sm-mj-3', title: 'Coaching session: the fear conversation', content: `Marcus asked me what I was most afraid of. I said failing publicly. He said that was the wrong fear to have — the real one was succeeding and still feeling empty. That reframe was everything.`, date: d(1100), tags: ['coaching', 'growth', 'fear'], mood: 'uncomfortable but needed', source: 'journal', sourceIcon: '📖', characters: ['Marcus Johnson'], chapterTitle: 'The Inner Work' },
+        { id: 'sm-mj-4', title: 'Told Marcus about the EP decision', content: `Told Marcus I was committing to releasing the EP. He didn't celebrate immediately — he asked if I was ready for what comes after it. Good question. The right question.`, date: d(400), tags: ['creative', 'music', 'decision'], mood: 'determined', source: 'journal', sourceIcon: '📖', characters: ['Marcus Johnson'], chapterTitle: 'First Album' },
+      ],
+      'Alex': [
+        { id: 'sm-alex-1', title: 'First conversation at the coffee shop', content: `Sarah introduced us. We ended up staying two hours past when we planned to leave. She asked me to play one of my songs. I actually did — on my phone, embarrassingly — and she listened like it mattered. It did.`, date: d(365), tags: ['first meeting', 'music', 'connection'], mood: 'surprised', source: 'journal', sourceIcon: '📖', characters: ['Alex'], chapterTitle: 'New Connection' },
+        { id: 'sm-alex-2', title: 'First hike together', content: `Went up the trail behind the reservoir. We barely talked the first hour — just walked. On the way back she said it was her favorite kind of date. I didn't know it was a date. Guess it was.`, date: d(290), tags: ['outdoors', 'connection', 'nature'], mood: 'warm', source: 'journal', sourceIcon: '📖', characters: ['Alex'], chapterTitle: 'Building Something' },
+        { id: 'sm-alex-3', title: 'She listened to the album demos', content: `Played her the raw demos of the EP. She didn't say much. Then she said one of the songs made her think of something she hadn't thought about in years. That's all I needed to hear.`, date: d(180), tags: ['music', 'creative', 'intimacy'], mood: 'vulnerable', source: 'journal', sourceIcon: '📖', characters: ['Alex'], chapterTitle: 'First Album' },
+        { id: 'sm-alex-4', title: 'She stayed over the first time', content: `She brought wildflowers. Said she found them on the trail this morning and thought of me. I realized I\'ve been thinking about her every single day. I think she knows.`, date: d(120), tags: ['relationship', 'milestone'], mood: 'joyful', source: 'journal', sourceIcon: '📖', characters: ['Alex'], chapterTitle: 'Deepening' },
+      ],
+      'Jordan Kim': [
+        { id: 'sm-jk-1', title: 'Running in the park after the layoff news', content: `Jordan showed up at my door at 7am, said let\'s run. I was still processing the shock. We ran for an hour without talking about it. On the bench afterward Jordan said "you\'ll figure it out." I believed it only because it was Jordan.`, date: d(1100), tags: ['support', 'family', 'hard time'], mood: 'supported', source: 'journal', sourceIcon: '📖', characters: ['Jordan Kim'], chapterTitle: 'The Hard Season' },
+        { id: 'sm-jk-2', title: 'Jordan met Alex for the first time', content: `Brought Alex to Jordan\'s place for dinner. Jordan asked all the right questions — not interrogation, just genuine. When we left Alex said "I like them a lot." That meant everything.`, date: d(300), tags: ['family', 'relationship', 'approval'], mood: 'proud', source: 'journal', sourceIcon: '📖', characters: ['Jordan Kim', 'Alex'], chapterTitle: 'Expanding Circles' },
+        { id: 'sm-jk-3', title: 'Sunday morning call', content: `Jordan called just to check in — didn\'t need anything, just called. We talked for 45 minutes about nothing in particular. Some conversations you hold onto.`, date: d(60), tags: ['family', 'connection'], mood: 'warm', source: 'journal', sourceIcon: '📖', characters: ['Jordan Kim'], chapterTitle: 'Present' },
+      ],
+    };
+    const specific = profiles[characterName];
+    if (specific) return specific;
+    // Generic fallback with time-spanning dates
+    const d2 = (daysAgo: number) => d(daysAgo);
     return [
-      {
-        id: `mock-memory-1-${characterName}`,
-        title: `Coffee catch-up with ${characterName}`,
-        content: `Had a great coffee catch-up with ${characterName} today. We talked about our recent projects and shared some laughs. It's always refreshing to spend time with them.`,
-        date: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        tags: ['friendship', 'coffee', 'conversation'],
-        mood: 'happy',
-        source: 'journal',
-        sourceIcon: '📖',
-        characters: [characterName]
-      },
-      {
-        id: `mock-memory-2-${characterName}`,
-        title: `${characterName} helped me with my project`,
-        content: `${characterName} gave me some really valuable feedback on my project. Their perspective is always insightful and they have a way of asking the right questions that help me think deeper.`,
-        date: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-        tags: ['collaboration', 'support', 'feedback'],
-        mood: 'grateful',
-        source: 'journal',
-        sourceIcon: '📖',
-        characters: [characterName]
-      },
-      {
-        id: `mock-memory-3-${characterName}`,
-        title: `Birthday celebration for ${characterName}`,
-        content: `Celebrated ${characterName}'s birthday today! We went to their favorite restaurant and had an amazing time. They seemed really happy and it was wonderful to be part of their special day.`,
-        date: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-        tags: ['celebration', 'birthday', 'friendship'],
-        mood: 'joyful',
-        source: 'journal',
-        sourceIcon: '📖',
-        characters: [characterName]
-      },
-      {
-        id: `mock-memory-4-${characterName}`,
-        title: `Deep conversation with ${characterName}`,
-        content: `Had one of those deep, meaningful conversations with ${characterName} that I always treasure. We talked about life, dreams, and what we're working towards. Their wisdom always inspires me.`,
-        date: new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000).toISOString(),
-        tags: ['deep-talk', 'philosophy', 'friendship'],
-        mood: 'reflective',
-        source: 'journal',
-        sourceIcon: '📖',
-        characters: [characterName]
-      }
+      { id: `mm-1-${characterName}`, title: `First real conversation with ${characterName}`, content: `Something about that first conversation stayed with me. ${characterName} had a way of listening that made me want to say more than I usually do.`, date: d2(540), tags: ['connection', 'first meeting'], mood: 'curious', source: 'journal', sourceIcon: '📖', characters: [characterName] },
+      { id: `mm-2-${characterName}`, title: `${characterName} showed up when it mattered`, content: `I didn't ask for help. ${characterName} just showed up. That kind of thing is rare and I try not to take it for granted.`, date: d2(360), tags: ['support', 'friendship'], mood: 'grateful', source: 'journal', sourceIcon: '📖', characters: [characterName] },
+      { id: `mm-3-${characterName}`, title: `Working on something together`, content: `Spent the afternoon working alongside ${characterName}. Not even on the same project — just in the same space, both building something. Good energy.`, date: d2(180), tags: ['collaboration', 'work'], mood: 'focused', source: 'journal', sourceIcon: '📖', characters: [characterName] },
+      { id: `mm-4-${characterName}`, title: `Catching up after a while apart`, content: `Hadn't seen ${characterName} in a few months. Picked up exactly where we left off. Some relationships don't need maintenance — they just hold.`, date: d2(30), tags: ['reconnection', 'friendship'], mood: 'warm', source: 'journal', sourceIcon: '📖', characters: [characterName] },
     ];
   };
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
@@ -1005,100 +962,107 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     startTime?: string;
     endTime?: string;
   }> => {
-    const mockAttributes = [
-      // Employment & Financial
-      {
-        attributeType: 'employment_status',
-        attributeValue: 'Employed',
-        confidence: 0.85,
-        isCurrent: true,
-        evidence: `Mentioned working at a tech company in recent conversations about ${characterName}`,
-        startTime: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        attributeType: 'occupation',
-        attributeValue: 'Software Engineer',
-        confidence: 0.90,
-        isCurrent: true,
-        evidence: `Described as a software engineer working on web applications`,
-        startTime: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        attributeType: 'workplace',
-        attributeValue: 'Tech Startup Inc.',
-        confidence: 0.75,
-        isCurrent: true,
-        evidence: `Mentioned working at a startup company`,
-        startTime: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        attributeType: 'financial_status',
-        attributeValue: 'Stable',
-        confidence: 0.70,
-        isCurrent: true,
-        evidence: `Seems financially stable based on lifestyle and spending patterns`,
-      },
-      // Lifestyle Patterns
-      {
-        attributeType: 'lifestyle_pattern',
-        attributeValue: 'Active Social Life',
-        confidence: 0.80,
-        isCurrent: true,
-        evidence: `Frequently mentioned going out, attending events, and socializing`,
-      },
-      {
-        attributeType: 'lifestyle_pattern',
-        attributeValue: 'Fitness Enthusiast',
-        confidence: 0.75,
-        isCurrent: true,
-        evidence: `Regularly goes to the gym and talks about fitness goals`,
-      },
-      {
-        attributeType: 'lifestyle_pattern',
-        attributeValue: 'Night Owl',
-        confidence: 0.65,
-        isCurrent: true,
-        evidence: `Often active late at night and prefers evening activities`,
-      },
-      // Personality Traits
-      {
-        attributeType: 'personality_trait',
-        attributeValue: 'Outgoing',
-        confidence: 0.85,
-        isCurrent: true,
-        evidence: `Described as friendly, sociable, and easy to talk to`,
-      },
-      {
-        attributeType: 'personality_trait',
-        attributeValue: 'Ambitious',
-        confidence: 0.80,
-        isCurrent: true,
-        evidence: `Shows drive and motivation in career and personal goals`,
-      },
-      {
-        attributeType: 'personality_trait',
-        attributeValue: 'Supportive',
-        confidence: 0.75,
-        isCurrent: true,
-        evidence: `Often provides encouragement and help to others`,
-      },
-      // Relationship & Living
-      {
-        attributeType: 'relationship_status',
-        attributeValue: 'Single',
-        confidence: 0.70,
-        isCurrent: true,
-        evidence: `Not currently in a relationship based on recent conversations`,
-      },
-      {
-        attributeType: 'living_situation',
-        attributeValue: 'Renting Apartment',
-        confidence: 0.75,
-        isCurrent: true,
-        evidence: `Mentioned living in an apartment in the city`,
-      },
+    type AttrEntry = { attributeType: string; attributeValue: string; confidence: number; isCurrent: boolean; evidence?: string; startTime?: string; endTime?: string };
+    // Character-specific attribute profiles — each person has a distinct life
+    const profiles: Record<string, AttrEntry[]> = {
+      'Sarah Chen': [
+        { attributeType: 'occupation',         attributeValue: 'Product Manager',         confidence: 0.92, isCurrent: true,  evidence: 'Mentioned transitioning from engineering to product management at her tech company', startTime: '2022-06-01' },
+        { attributeType: 'employment_status',  attributeValue: 'Full-time employed',       confidence: 0.95, isCurrent: true  },
+        { attributeType: 'workplace',          attributeValue: 'Mid-size Tech Company',    confidence: 0.80, isCurrent: true,  evidence: 'Works at a mid-size tech company in the city' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Coffee shop regular',      confidence: 0.91, isCurrent: true,  evidence: `Meets you at coffee shops for writing sessions frequently` },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Evening socializer',       confidence: 0.78, isCurrent: true  },
+        { attributeType: 'personality_trait',  attributeValue: 'Honest and direct',        confidence: 0.88, isCurrent: true,  evidence: 'Described as someone who says what she thinks, even when it is hard to hear' },
+        { attributeType: 'personality_trait',  attributeValue: 'Loyal',                    confidence: 0.93, isCurrent: true,  evidence: 'Has been a consistent presence since college' },
+        { attributeType: 'relationship_status',attributeValue: 'In a relationship',        confidence: 0.85, isCurrent: true,  evidence: 'Mentioned her partner in recent conversations', startTime: '2023-01-01' },
+        { attributeType: 'living_situation',   attributeValue: 'City apartment',           confidence: 0.76, isCurrent: true  },
+      ],
+      'Marcus Johnson': [
+        { attributeType: 'employment_status',  attributeValue: 'Self-employed',            confidence: 0.95, isCurrent: true  },
+        { attributeType: 'occupation',         attributeValue: 'Executive Coach',          confidence: 0.97, isCurrent: true,  evidence: 'Runs his own executive coaching practice — has been doing this for over a decade' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Early riser',              confidence: 0.82, isCurrent: true,  evidence: 'Often references morning routines and starting the day early' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Meditation practitioner',  confidence: 0.78, isCurrent: true,  evidence: 'Frequently mentions mindfulness practices in your conversations' },
+        { attributeType: 'personality_trait',  attributeValue: 'Patient and deliberate',   confidence: 0.90, isCurrent: true,  evidence: 'Never rushes advice — always listens fully before responding' },
+        { attributeType: 'personality_trait',  attributeValue: 'Wise and experienced',     confidence: 0.94, isCurrent: true  },
+        { attributeType: 'relationship_status',attributeValue: 'Married',                  confidence: 0.88, isCurrent: true,  evidence: 'Has mentioned his wife in passing during conversations' },
+        { attributeType: 'living_situation',   attributeValue: 'Homeowner',                confidence: 0.72, isCurrent: true  },
+      ],
+      'Alex Rivera': [
+        { attributeType: 'employment_status',  attributeValue: 'Freelance / Independent',  confidence: 0.89, isCurrent: true  },
+        { attributeType: 'occupation',         attributeValue: 'Music Producer',           confidence: 0.96, isCurrent: true,  evidence: `Has produced numerous tracks with you in your home studio` },
+        { attributeType: 'occupation',         attributeValue: 'Audio Engineer',           confidence: 0.88, isCurrent: true,  evidence: 'Also works as an audio engineer — how you both met through Marcus' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Night studio sessions',    confidence: 0.85, isCurrent: true,  evidence: 'Most of your studio sessions together run late into the night' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Tech-savvy creator',       confidence: 0.80, isCurrent: true  },
+        { attributeType: 'personality_trait',  attributeValue: 'Detail-oriented',          confidence: 0.87, isCurrent: true,  evidence: 'Spends hours perfecting a single track element — very meticulous' },
+        { attributeType: 'personality_trait',  attributeValue: 'Collaborative',            confidence: 0.91, isCurrent: true,  evidence: 'Described as someone who brings out the best in creative partners' },
+        { attributeType: 'relationship_status',attributeValue: 'Single',                   confidence: 0.65, isCurrent: true  },
+        { attributeType: 'living_situation',   attributeValue: 'Home studio setup',        confidence: 0.84, isCurrent: true,  evidence: 'Has their own home studio in addition to your sessions together' },
+      ],
+      'Alex': [
+        { attributeType: 'occupation',         attributeValue: 'Environmental Scientist',  confidence: 0.88, isCurrent: true,  evidence: 'Works in environmental research — you have talked about her work on sustainability projects' },
+        { attributeType: 'employment_status',  attributeValue: 'Full-time employed',       confidence: 0.91, isCurrent: true  },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Outdoor enthusiast',       confidence: 0.94, isCurrent: true,  evidence: 'Hiking, trail running, and nature trips are a regular part of her life' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Early riser',              confidence: 0.81, isCurrent: true,  evidence: 'Frequently up before dawn for trail runs' },
+        { attributeType: 'personality_trait',  attributeValue: 'Grounded and present',     confidence: 0.89, isCurrent: true,  evidence: 'Described as someone who makes you feel calm just by being in the room' },
+        { attributeType: 'personality_trait',  attributeValue: 'Adventurous',              confidence: 0.92, isCurrent: true  },
+        { attributeType: 'personality_trait',  attributeValue: 'Deeply caring',            confidence: 0.90, isCurrent: true,  evidence: 'Remembers the small details — what you said weeks ago, what you need without being asked' },
+        { attributeType: 'relationship_status',attributeValue: 'In a relationship with you', confidence: 0.99, isCurrent: true, startTime: new Date(Date.now() - 180 * 86400000).toISOString() },
+        { attributeType: 'living_situation',   attributeValue: 'Own apartment',            confidence: 0.82, isCurrent: true  },
+      ],
+      'Jordan Kim': [
+        { attributeType: 'occupation',         attributeValue: 'Healthcare Professional',  confidence: 0.84, isCurrent: true,  evidence: 'Works in the healthcare sector — exact role not specified but clearly meaningful to them' },
+        { attributeType: 'employment_status',  attributeValue: 'Full-time employed',       confidence: 0.90, isCurrent: true  },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Regular runner',           confidence: 0.88, isCurrent: true,  evidence: 'You run together in Golden Gate Park — it is a recurring ritual' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Health-conscious',         confidence: 0.82, isCurrent: true  },
+        { attributeType: 'personality_trait',  attributeValue: 'Dependable',               confidence: 0.96, isCurrent: true,  evidence: 'Has been there for every major moment without being asked' },
+        { attributeType: 'personality_trait',  attributeValue: 'Empathetic',               confidence: 0.91, isCurrent: true  },
+        { attributeType: 'personality_trait',  attributeValue: 'Quietly strong',           confidence: 0.87, isCurrent: true,  evidence: 'Does not make noise about it — just shows up' },
+        { attributeType: 'relationship_status',attributeValue: 'In a relationship',        confidence: 0.73, isCurrent: true  },
+        { attributeType: 'living_situation',   attributeValue: 'Lives in the city',        confidence: 0.79, isCurrent: true  },
+      ],
+      'Dr. Amara Wells': [
+        { attributeType: 'employment_status',  attributeValue: 'Self-employed',            confidence: 0.92, isCurrent: true  },
+        { attributeType: 'occupation',         attributeValue: 'Life & Wellness Coach',    confidence: 0.95, isCurrent: true,  evidence: 'Licensed life coach with a gentle, question-based approach' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Mindfulness-based',        confidence: 0.86, isCurrent: true  },
+        { attributeType: 'personality_trait',  attributeValue: 'Empowering',               confidence: 0.91, isCurrent: true,  evidence: 'Creates space for you to find your own answers rather than giving them' },
+        { attributeType: 'personality_trait',  attributeValue: 'Calm and steady',          confidence: 0.88, isCurrent: true  },
+      ],
+      'Dr. James Mitchell': [
+        { attributeType: 'employment_status',  attributeValue: 'Private practice',         confidence: 0.94, isCurrent: true  },
+        { attributeType: 'occupation',         attributeValue: 'Licensed Therapist',       confidence: 0.97, isCurrent: true,  evidence: 'Your therapist — uses evidence-based approaches, primarily CBT and ACT' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Structured and consistent', confidence: 0.80, isCurrent: true },
+        { attributeType: 'personality_trait',  attributeValue: 'Compassionate',            confidence: 0.89, isCurrent: true  },
+        { attributeType: 'personality_trait',  attributeValue: 'Non-judgmental',           confidence: 0.93, isCurrent: true,  evidence: 'Has never made you feel judged, even when sharing difficult things' },
+      ],
+      'Luna Martinez': [
+        { attributeType: 'employment_status',  attributeValue: 'Freelance',                confidence: 0.78, isCurrent: true  },
+        { attributeType: 'occupation',         attributeValue: 'Travel Blogger',           confidence: 0.82, isCurrent: true,  evidence: 'Documents her adventures online — has a following' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Spontaneous traveler',     confidence: 0.93, isCurrent: true,  evidence: 'Plans trips on 24-hour notice — somehow they always work out' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Adventure-seeker',         confidence: 0.90, isCurrent: true  },
+        { attributeType: 'personality_trait',  attributeValue: 'Free-spirited',            confidence: 0.88, isCurrent: true  },
+        { attributeType: 'personality_trait',  attributeValue: 'Infectious energy',        confidence: 0.85, isCurrent: true,  evidence: 'Being around Luna makes you want to say yes to things' },
+        { attributeType: 'relationship_status',attributeValue: 'Single',                   confidence: 0.70, isCurrent: true  },
+      ],
+      'Sophia Anderson': [
+        { attributeType: 'employment_status',  attributeValue: 'Self-employed',            confidence: 0.88, isCurrent: true  },
+        { attributeType: 'occupation',         attributeValue: 'Author & Writing Instructor', confidence: 0.94, isCurrent: true, evidence: 'Has published two novels and teaches writing workshops' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Early morning writer',     confidence: 0.89, isCurrent: true,  evidence: 'Writes for 3 hours every morning before anything else' },
+        { attributeType: 'personality_trait',  attributeValue: 'Precise with language',    confidence: 0.87, isCurrent: true,  evidence: 'Her feedback always zeros in on the exact word or sentence that is not working' },
+        { attributeType: 'personality_trait',  attributeValue: 'Encouraging but honest',   confidence: 0.83, isCurrent: true  },
+      ],
+      'Emma Thompson': [
+        { attributeType: 'occupation',         attributeValue: 'Fiction Writer',           confidence: 0.79, isCurrent: true,  evidence: 'Working on her first novel — you exchange drafts regularly' },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Cafe writer',              confidence: 0.82, isCurrent: true  },
+        { attributeType: 'lifestyle_pattern',  attributeValue: 'Avid reader',              confidence: 0.88, isCurrent: true,  evidence: 'Always has a book recommendation ready' },
+        { attributeType: 'personality_trait',  attributeValue: 'Thoughtful listener',      confidence: 0.84, isCurrent: true  },
+        { attributeType: 'personality_trait',  attributeValue: 'Quietly creative',         confidence: 0.80, isCurrent: true  },
+      ],
+    };
+
+    return profiles[characterName] ?? [
+      { attributeType: 'personality_trait',  attributeValue: 'Supportive',              confidence: 0.78, isCurrent: true, evidence: `Based on how ${characterName} appears in your journal entries` },
+      { attributeType: 'lifestyle_pattern',  attributeValue: 'Social',                  confidence: 0.72, isCurrent: true },
+      { attributeType: 'relationship_status',attributeValue: 'Status unknown',          confidence: 0.45, isCurrent: true, evidence: 'Not enough data to determine with confidence' },
     ];
-    return mockAttributes;
   };
 
   // Load character attributes
@@ -1188,6 +1152,121 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       }
     }
   }, [activeTab, insights, loadingInsights, editedCharacter]);
+
+  // ── Load intelligence (dynamics + influence) when Intelligence tab opens ────
+  useEffect(() => {
+    if (activeTab !== 'intelligence' || dynamicsLoaded) return;
+    const name = encodeURIComponent(character.name);
+
+    if (isMockDataEnabled) {
+      // Mock dynamics
+      const mockDynamicsMap: Record<string, any> = {
+        'Sarah Chen':    { person_name: 'Sarah Chen',    metrics: { interaction_frequency: 8.2, average_sentiment: 0.82, positive_ratio: 0.91, conflict_frequency: 0.1, support_frequency: 3.1, last_interaction_days_ago: 7, interaction_consistency: 0.88 }, health: { overall_health: 'excellent', health_score: 91, factors: { sentiment: 94, frequency: 88, consistency: 90, conflict_level: 97, support_level: 85 }, trends: { health_trend: 'improving', sentiment_trend: 'improving', frequency_trend: 'stable' }, strengths: ['Consistent support', 'High mutual trust', 'Deep conversation quality'] }, lifecycle: { current_stage: 'deepening', stage_confidence: 0.93, stage_history: [{ stage: 'forming', start_date: '2018-09-15', duration_days: 90 }, { stage: 'developing', start_date: '2018-12-15', duration_days: 365 }, { stage: 'established', start_date: '2019-12-15', duration_days: 730 }, { stage: 'deepening', start_date: '2021-12-15', duration_days: 900 }] }, common_topics: ['creative work', 'relationships', 'career growth'], total_interactions: 156 },
+        'Alex':          { person_name: 'Alex',          metrics: { interaction_frequency: 12.5, average_sentiment: 0.89, positive_ratio: 0.95, conflict_frequency: 0.05, support_frequency: 5.2, last_interaction_days_ago: 2, interaction_consistency: 0.94 }, health: { overall_health: 'excellent', health_score: 96, factors: { sentiment: 97, frequency: 95, consistency: 94, conflict_level: 99, support_level: 96 }, trends: { health_trend: 'improving', sentiment_trend: 'improving', frequency_trend: 'increasing' }, strengths: ['Emotional intimacy', 'Frequent contact', 'Shared growth'] }, lifecycle: { current_stage: 'deepening', stage_confidence: 0.97, stage_history: [{ stage: 'forming', start_date: '2023-06-01', duration_days: 60 }, { stage: 'developing', start_date: '2023-08-01', duration_days: 120 }, { stage: 'deepening', start_date: '2023-12-01', duration_days: 180 }] }, common_topics: ['creativity', 'future', 'nature', 'music'], total_interactions: 210 },
+        'Marcus Johnson': { person_name: 'Marcus Johnson', metrics: { interaction_frequency: 4.1, average_sentiment: 0.76, positive_ratio: 0.88, conflict_frequency: 0.05, support_frequency: 2.8, last_interaction_days_ago: 14, interaction_consistency: 0.72 }, health: { overall_health: 'good', health_score: 82, factors: { sentiment: 84, frequency: 72, consistency: 74, conflict_level: 96, support_level: 88 }, trends: { health_trend: 'stable', sentiment_trend: 'stable', frequency_trend: 'stable' }, strengths: ['Trusted guidance', 'Career impact', 'Long-term consistency'] }, lifecycle: { current_stage: 'established', stage_confidence: 0.88, stage_history: [{ stage: 'forming', start_date: '2020-03-10', duration_days: 120 }, { stage: 'developing', start_date: '2020-07-10', duration_days: 365 }, { stage: 'established', start_date: '2021-07-10', duration_days: 1100 }] }, common_topics: ['career', 'creativity', 'self-improvement'], total_interactions: 98 },
+        'Jordan Kim':     { person_name: 'Jordan Kim', metrics: { interaction_frequency: 6.8, average_sentiment: 0.85, positive_ratio: 0.93, conflict_frequency: 0.02, support_frequency: 4.1, last_interaction_days_ago: 5, interaction_consistency: 0.85 }, health: { overall_health: 'excellent', health_score: 93, factors: { sentiment: 93, frequency: 86, consistency: 87, conflict_level: 99, support_level: 94 }, trends: { health_trend: 'stable', sentiment_trend: 'stable', frequency_trend: 'stable' }, strengths: ['Unconditional support', 'Lifelong bond', 'Emotional safety'] }, lifecycle: { current_stage: 'established', stage_confidence: 0.98, stage_history: [{ stage: 'forming', start_date: '1995-01-01', duration_days: 3650 }, { stage: 'established', start_date: '2005-01-01', duration_days: 7300 }] }, common_topics: ['family', 'life goals', 'support', 'health'], total_interactions: 312 },
+      };
+      const mockInfluenceMap: Record<string, any> = {
+        'Sarah Chen':    { person: 'Sarah Chen',    emotional_impact: 0.78, behavioral_impact: 0.65, toxicity_score: 0.04, uplift_score: 0.88, net_influence: 0.82, interaction_count: 156 },
+        'Alex':          { person: 'Alex',          emotional_impact: 0.91, behavioral_impact: 0.72, toxicity_score: 0.02, uplift_score: 0.94, net_influence: 0.91, interaction_count: 210 },
+        'Marcus Johnson': { person: 'Marcus Johnson', emotional_impact: 0.62, behavioral_impact: 0.81, toxicity_score: 0.06, uplift_score: 0.79, net_influence: 0.74, interaction_count: 98 },
+        'Jordan Kim':     { person: 'Jordan Kim',    emotional_impact: 0.84, behavioral_impact: 0.55, toxicity_score: 0.01, uplift_score: 0.93, net_influence: 0.88, interaction_count: 312 },
+      };
+      const mockInsightsMap: Record<string, any[]> = {
+        'Sarah Chen':    [{ type: 'positive_influence', message: 'Sarah consistently brings out your creative confidence', confidence: 0.89 }, { type: 'uplifting_person', message: 'Interactions with Sarah correlate with increased journaling output', confidence: 0.82 }],
+        'Alex':          [{ type: 'positive_influence', message: 'Alex has been the most stabilizing presence during your creative transition', confidence: 0.95 }, { type: 'uplifting_person', message: 'Your emotional wellbeing scores are consistently higher after time with Alex', confidence: 0.93 }],
+        'Marcus Johnson': [{ type: 'positive_influence', message: 'Marcus shaped your decision to pursue creative work full-time', confidence: 0.87 }, { type: 'behavior_shift_detected', message: 'Your risk tolerance for career decisions increased after mentorship sessions', confidence: 0.78 }],
+        'Jordan Kim':     [{ type: 'positive_influence', message: 'Jordan provides your most consistent source of unconditional support', confidence: 0.94 }, { type: 'uplifting_person', message: 'Interactions with Jordan correlate with improved emotional regulation', confidence: 0.86 }],
+      };
+      const dyn = mockDynamicsMap[character.name] ?? null;
+      const inf = mockInfluenceMap[character.name] ?? { person: character.name, emotional_impact: 0.5, behavioral_impact: 0.4, toxicity_score: 0.1, uplift_score: 0.6, net_influence: 0.55, interaction_count: 20 };
+      const ins = mockInsightsMap[character.name] ?? [{ type: 'influence_score', message: `LoreBook is still building intelligence about your relationship with ${character.name}`, confidence: 0.5 }];
+      setDynamics(dyn);
+      setInfluenceProfile(inf);
+      setInfluenceInsights(ins);
+      setDynamicsLoaded(true);
+      setInfluenceLoaded(true);
+      return;
+    }
+
+    setDynamicsLoading(true);
+    setInfluenceLoading(true);
+
+    Promise.all([
+      fetchJson<any>(`/api/relationship-dynamics/${name}`).catch(() => null),
+      fetchJson<{ profiles: any[] }>(`/api/influence/profiles`).catch(() => null),
+      fetchJson<{ insights: any[] }>(`/api/influence/insights?person=${name}`).catch(() => null),
+    ]).then(([dyn, infProfiles, infInsights]) => {
+      if (dyn) setDynamics(dyn);
+      if (infProfiles?.profiles) {
+        const match = infProfiles.profiles.find((p: any) =>
+          p.person?.toLowerCase() === character.name.toLowerCase()
+        );
+        if (match) setInfluenceProfile(match);
+      }
+      if (infInsights?.insights) setInfluenceInsights(infInsights.insights);
+    }).finally(() => {
+      setDynamicsLoading(false);
+      setInfluenceLoading(false);
+      setDynamicsLoaded(true);
+      setInfluenceLoaded(true);
+    });
+  }, [activeTab, character.name, character.id, dynamicsLoaded, isMockDataEnabled]);
+
+  // ── Load provenance ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (provenanceLoaded || isMockDataEnabled) return;
+    if (!character.id || character.id.startsWith('dummy-') || character.id.startsWith('char-')) return;
+    fetchJson<any>(`/api/characters/${character.id}/provenance`)
+      .then(r => setProvenance(r))
+      .catch(() => {})
+      .finally(() => setProvenanceLoaded(true));
+  }, [character.id, provenanceLoaded, isMockDataEnabled]);
+
+  // ── Load ALL attributes (including historical) ───────────────────────────────
+  useEffect(() => {
+    if (allAttributesLoaded) return;
+    if (isMockDataEnabled) {
+      const mockAllAttrsMap: Record<string, any[]> = {
+        'Sarah Chen': [
+          { attributeType: 'occupation', attributeValue: 'Software Engineer', confidence: 0.92, isCurrent: false, startTime: '2018-09-01', endTime: '2022-06-01' },
+          { attributeType: 'occupation', attributeValue: 'Product Manager', confidence: 0.88, isCurrent: true, startTime: '2022-06-01' },
+          { attributeType: 'lifestyle_pattern', attributeValue: 'Coffee shop writer', confidence: 0.85, isCurrent: true },
+          { attributeType: 'relationship_status', attributeValue: 'Single', confidence: 0.9, isCurrent: false, endTime: '2023-01-01' },
+          { attributeType: 'relationship_status', attributeValue: 'In a relationship', confidence: 0.91, isCurrent: true, startTime: '2023-01-01' },
+        ],
+        'Marcus Johnson': [
+          { attributeType: 'occupation', attributeValue: 'Executive Coach', confidence: 0.95, isCurrent: true },
+          { attributeType: 'lifestyle_pattern', attributeValue: 'Meditation practitioner', confidence: 0.82, isCurrent: true },
+        ],
+        'Alex': [
+          { attributeType: 'lifestyle_pattern', attributeValue: 'Outdoor enthusiast', confidence: 0.93, isCurrent: true },
+          { attributeType: 'personality_trait', attributeValue: 'Emotionally supportive', confidence: 0.91, isCurrent: true },
+        ],
+      };
+      setAllAttributes(mockAllAttrsMap[character.name] ?? characterAttributes);
+      setAllAttributesLoaded(true);
+      return;
+    }
+    if (!character.id || character.id.startsWith('dummy-')) return;
+    fetchJson<{ attributes: any[] }>(`/api/characters/${character.id}/attributes`)
+      .then(r => { if (r.attributes) setAllAttributes(r.attributes); })
+      .catch(() => {})
+      .finally(() => setAllAttributesLoaded(true));
+  }, [character.id, character.name, allAttributesLoaded, isMockDataEnabled, characterAttributes]);
+
+  // Load knowledge claims when Knowledge tab opens
+  useEffect(() => {
+    if (activeTab !== 'knowledge' || knowledgeLoaded || isMockDataEnabled) return;
+    setKnowledgeLoading(true);
+    const encodedName = encodeURIComponent(character.name);
+    fetchJson<{ success: boolean; claims: any[] }>(
+      `/api/knowledge/character-context/${encodedName}`
+    )
+      .then(r => { if (r.success) setKnowledgeClaims(r.claims); })
+      .catch(() => {})
+      .finally(() => { setKnowledgeLoading(false); setKnowledgeLoaded(true); });
+  }, [activeTab, character.name, knowledgeLoaded, isMockDataEnabled]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -1477,18 +1556,32 @@ User's message: ${message}`;
           <div className="flex items-start justify-between gap-2 sm:gap-4">
             <div className="flex items-start gap-2 sm:gap-4 flex-1 min-w-0">
               <div className="relative flex-shrink-0">
-                <CharacterAvatar 
-                  url={editedCharacter.avatar_url} 
-                  name={editedCharacter.name} 
-                  size={48}
-                  className="sm:w-16 sm:h-16"
-                />
+                {/* Phase ring around avatar */}
+                {(() => {
+                  const c = editedCharacter.analytics?.closeness_score ?? 0;
+                  const r = editedCharacter.analytics?.recency_score ?? 0;
+                  const ringColor =
+                    c >= 70 && r >= 0.6 ? 'ring-purple-500/70 shadow-[0_0_10px_rgba(168,85,247,0.6)]' :
+                    c >= 45 || r >= 0.4  ? 'ring-cyan-500/60' :
+                    c >= 20 || r >= 0.2  ? 'ring-amber-500/50' :
+                    'ring-white/10';
+                  return (
+                    <div className={`ring-2 ${ringColor} rounded-full`}>
+                      <CharacterAvatar
+                        url={editedCharacter.avatar_url}
+                        name={editedCharacter.name}
+                        size={48}
+                        className="sm:w-16 sm:h-16"
+                      />
+                    </div>
+                  );
+                })()}
                 {editedCharacter.status && (
                   <div className="absolute -bottom-0.5 -right-0.5 sm:-bottom-1 sm:-right-1">
                     <Tooltip content={getStatusTooltip(editedCharacter.status)}>
-                    <Badge 
+                    <Badge
                       className={`${
-                        editedCharacter.status === 'active' 
+                        editedCharacter.status === 'active'
                           ? 'bg-green-500/20 text-green-400 border-green-500/30'
                           : editedCharacter.status === 'unmet'
                           ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 border-dashed'
@@ -1583,6 +1676,52 @@ User's message: ${message}`;
                         <span className="truncate max-w-[100px] sm:max-w-none">{editedCharacter.archetype}</span>
                       </Badge>
                     </Tooltip>
+                  </div>
+                )}
+
+                {/* ── Intelligence quick-stats bar ── */}
+                {(dynamics || editedCharacter.analytics) && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 pt-2 border-t border-white/8">
+                    {/* Health score */}
+                    {dynamics?.health?.health_score != null && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-16 h-1 bg-white/10 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              dynamics.health.health_score >= 80 ? 'bg-emerald-400' :
+                              dynamics.health.health_score >= 60 ? 'bg-yellow-400' : 'bg-red-400'
+                            }`}
+                            style={{ width: `${dynamics.health.health_score}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-white/45">
+                          {dynamics.health.health_score} health
+                        </span>
+                      </div>
+                    )}
+                    {/* Trend */}
+                    {dynamics?.health?.trends?.health_trend && (
+                      <span className={`text-[10px] ${
+                        dynamics.health.trends.health_trend === 'improving' ? 'text-emerald-400' :
+                        dynamics.health.trends.health_trend === 'declining' ? 'text-red-400' : 'text-white/40'
+                      }`}>
+                        {dynamics.health.trends.health_trend === 'improving' ? '↑' :
+                         dynamics.health.trends.health_trend === 'declining' ? '↓' : '→'}
+                        {' '}{dynamics.health.trends.health_trend}
+                      </span>
+                    )}
+                    {/* Stage */}
+                    {dynamics?.lifecycle?.current_stage && (
+                      <span className="text-[10px] text-white/35 capitalize">
+                        {dynamics.lifecycle.current_stage}
+                      </span>
+                    )}
+                    {/* Memory count */}
+                    {(editedCharacter.memory_count ?? 0) > 0 && (
+                      <span className="text-[10px] text-white/35">
+                        {editedCharacter.memory_count} memories
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -1814,200 +1953,189 @@ User's message: ${message}`;
                   </Card>
                 )}
 
-                {/* Read-Only Notice - After About and Relationship so narrative is first */}
-                <Card className="bg-gradient-to-r from-blue-500/20 via-blue-600/15 to-blue-500/20 border-2 border-blue-500/40 shadow-lg shadow-blue-500/10">
-                  <CardContent className="p-5">
-                    <div className="flex items-start gap-4">
-                      <div className="p-2 rounded-lg bg-blue-500/20 border border-blue-500/40">
-                        <Info className="h-6 w-6 text-blue-300 flex-shrink-0" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-base font-bold text-blue-200 mb-2">Character Information is Read-Only</p>
-                        <p className="text-sm text-blue-100/90 leading-relaxed">
-                          Character information is automatically updated through conversations. To update this character&apos;s information, use the Chat tab to tell the system about them.
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                {/* Subtle auto-update note */}
+                <p className="text-[11px] text-white/30 flex items-center gap-1.5">
+                  <Info className="h-3 w-3 flex-shrink-0" />
+                  Attributes are auto-detected from your conversations. Use the Chat tab to update them.
+                </p>
 
-                {/* Detected Attributes - Employment, lifestyle, etc. */}
-                <Card className="bg-gradient-to-br from-blue-500/20 via-blue-600/15 to-blue-500/20 border-2 border-blue-500/40 shadow-lg">
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 rounded-lg bg-blue-500/20 border border-blue-500/40">
-                        <UserCircle className="h-5 w-5 text-blue-300" />
-                      </div>
-                      <h3 className="text-xl font-bold text-white">Detected Attributes</h3>
-                  </div>
-                  
-                    {loadingAttributes ? (
-                      <div className="text-center py-8 text-white/60">
-                        <Clock className="h-6 w-6 mx-auto mb-2 animate-spin" />
-                        <p>Loading attributes...</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-6">
-                        {/* Employment & Financial */}
-                        {(characterAttributes.some(a => a.attributeType === 'employment_status' || a.attributeType === 'occupation' || a.attributeType === 'workplace' || a.attributeType === 'financial_status')) && (
-                    <div>
-                            <div className="flex items-center gap-2 mb-4">
-                              <Briefcase className="h-4 w-4 text-blue-300" />
-                              <h4 className="text-sm font-bold text-white/90 uppercase tracking-wide">Employment & Financial</h4>
-                    </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {characterAttributes
-                                .filter(a => ['employment_status', 'occupation', 'workplace', 'financial_status'].includes(a.attributeType))
-                                .map((attr, idx) => (
-                                  <div key={idx} className="bg-black/60 border border-blue-500/30 rounded-lg p-3">
-                                    <div className="flex items-center justify-between mb-2">
-                                      <span className="text-xs font-semibold text-blue-300 uppercase tracking-wide">
-                                        {attr.attributeType === 'employment_status' ? 'Employment' :
-                                         attr.attributeType === 'occupation' ? 'Occupation' :
-                                         attr.attributeType === 'workplace' ? 'Workplace' :
-                                         'Financial Status'}
-                                      </span>
-                                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 bg-blue-500/20 text-blue-300 border-blue-500/40">
-                                        {Math.round(attr.confidence * 100)}%
-                                      </Badge>
-                                    </div>
-                                    <p className="text-sm font-medium text-white">{attr.attributeValue}</p>
-                                    {attr.evidence && (
-                                      <p className="text-xs text-white/60 mt-1 italic">"{attr.evidence.substring(0, 80)}..."</p>
-                                    )}
-                                  </div>
-                                ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Lifestyle Patterns */}
-                        {characterAttributes.some(a => a.attributeType === 'lifestyle_pattern') && (
-                    <div>
-                            <div className="flex items-center gap-2 mb-4">
-                              <Activity className="h-4 w-4 text-blue-300" />
-                              <h4 className="text-sm font-bold text-white/90 uppercase tracking-wide">Lifestyle Patterns</h4>
-                    </div>
-                            <div className="flex flex-wrap gap-3">
-                              {characterAttributes
-                                .filter(a => a.attributeType === 'lifestyle_pattern')
-                                .map((attr, idx) => (
-                                  <Tooltip key={idx} content={attr.evidence ? `Evidence: ${attr.evidence}` : `Confidence: ${Math.round(attr.confidence * 100)}%`}>
-                                    <Badge variant="outline" className="px-3 py-1.5 text-sm bg-blue-500/20 text-blue-300 border-blue-500/50 font-semibold shadow-md cursor-help">
-                                      {attr.attributeValue}
-                                      <span className="ml-2 text-[10px] opacity-70">({Math.round(attr.confidence * 100)}%)</span>
-                                    </Badge>
-                                  </Tooltip>
-                                ))}
-                  </div>
-                          </div>
-                        )}
-
-                        {/* Personality Traits */}
-                        {characterAttributes.some(a => a.attributeType === 'personality_trait') && (
-                  <div>
-                            <div className="flex items-center gap-2 mb-4">
-                              <Smile className="h-4 w-4 text-blue-300" />
-                              <h4 className="text-sm font-bold text-white/90 uppercase tracking-wide">Personality Traits</h4>
-                            </div>
-                            <div className="flex flex-wrap gap-3">
-                              {characterAttributes
-                                .filter(a => a.attributeType === 'personality_trait')
-                                .map((attr, idx) => (
-                                  <Tooltip key={idx} content={attr.evidence ? `Evidence: ${attr.evidence}` : `Confidence: ${Math.round(attr.confidence * 100)}%`}>
-                                    <Badge variant="outline" className="px-3 py-1.5 text-sm bg-blue-500/20 text-blue-300 border-blue-500/50 font-semibold shadow-md cursor-help">
-                                      {attr.attributeValue}
-                                    </Badge>
-                                  </Tooltip>
-                                ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Health Conditions */}
-                        {characterAttributes.some(a => a.attributeType === 'health_condition') && (
-                          <div>
-                            <div className="flex items-center gap-2 mb-4">
-                              <AlertCircle className="h-4 w-4 text-blue-300" />
-                              <h4 className="text-sm font-bold text-white/90 uppercase tracking-wide">Health Conditions</h4>
-                            </div>
-                            <div className="flex flex-wrap gap-3">
-                              {characterAttributes
-                                .filter(a => a.attributeType === 'health_condition')
-                                .map((attr, idx) => (
-                                  <Tooltip key={idx} content={attr.evidence ? `Evidence: ${attr.evidence}` : `Confidence: ${Math.round(attr.confidence * 100)}%`}>
-                                    <Badge variant="outline" className="px-3 py-1.5 text-sm bg-blue-500/20 text-blue-300 border-blue-500/50 font-semibold shadow-md cursor-help">
-                                      {attr.attributeValue}
-                                    </Badge>
-                                  </Tooltip>
-                                ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Relationship & Living Situation */}
-                        {(characterAttributes.some(a => a.attributeType === 'relationship_status' || a.attributeType === 'living_situation')) && (
-                          <div>
-                            <div className="flex items-center gap-2 mb-4">
-                              <HeartIcon className="h-4 w-4 text-blue-300" />
-                              <h4 className="text-sm font-bold text-white/90 uppercase tracking-wide">Relationship & Living</h4>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {characterAttributes
-                                .filter(a => ['relationship_status', 'living_situation'].includes(a.attributeType))
-                                .map((attr, idx) => (
-                                  <div key={idx} className="bg-black/60 border border-blue-500/30 rounded-lg p-3">
-                                    <div className="flex items-center justify-between mb-2">
-                                      <span className="text-xs font-semibold text-blue-300 uppercase tracking-wide">
-                                        {attr.attributeType === 'relationship_status' ? 'Relationship' : 'Living Situation'}
-                                      </span>
-                                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 bg-blue-500/20 text-blue-300 border-blue-500/40">
-                                        {Math.round(attr.confidence * 100)}%
-                                      </Badge>
-                                    </div>
-                                    <p className="text-sm font-medium text-white">{attr.attributeValue}</p>
-                                    {attr.evidence && (
-                                      <p className="text-xs text-white/60 mt-1 italic">"{attr.evidence.substring(0, 80)}..."</p>
-                                    )}
-                                  </div>
-                                ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Other Attributes */}
-                        {characterAttributes.some(a => !['employment_status', 'occupation', 'workplace', 'financial_status', 'lifestyle_pattern', 'personality_trait', 'health_condition', 'relationship_status', 'living_situation'].includes(a.attributeType)) && (
-                          <div>
-                            <div className="flex items-center gap-2 mb-4">
-                              <Tag className="h-4 w-4 text-blue-300" />
-                              <h4 className="text-sm font-bold text-white/90 uppercase tracking-wide">Other Attributes</h4>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {characterAttributes
-                                .filter(a => !['employment_status', 'occupation', 'workplace', 'financial_status', 'lifestyle_pattern', 'personality_trait', 'health_condition', 'relationship_status', 'living_situation'].includes(a.attributeType))
-                                .map((attr, idx) => (
-                                  <div key={idx} className="bg-black/60 border border-blue-500/30 rounded-lg p-3">
-                                    <div className="flex items-center justify-between mb-2">
-                                      <span className="text-xs font-semibold text-blue-300 uppercase tracking-wide">
-                                        {attr.attributeType.replace(/_/g, ' ')}
-                                      </span>
-                                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 bg-blue-500/20 text-blue-300 border-blue-500/40">
-                                        {Math.round(attr.confidence * 100)}%
-                                      </Badge>
-                                    </div>
-                                    <p className="text-sm font-medium text-white">{attr.attributeValue}</p>
-                                    {attr.evidence && (
-                                      <p className="text-xs text-white/60 mt-1 italic">"{attr.evidence.substring(0, 80)}..."</p>
-                                    )}
-                                  </div>
-                                ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                {/* Detected Attributes — clean grouped rows */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-white/50 flex items-center gap-1.5 uppercase tracking-widest">
+                      <UserCircle className="h-3.5 w-3.5" />
+                      Detected Attributes
+                    </h3>
+                    {characterAttributes.length > 0 && (
+                      <span className="text-[10px] text-white/25">{characterAttributes.length} detected</span>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
+
+                  {loadingAttributes && (
+                    <div className="flex items-center gap-2 py-4 text-white/40 text-sm">
+                      <Clock className="h-4 w-4 animate-spin" />
+                      <span>Loading...</span>
+                    </div>
+                  )}
+
+                  {!loadingAttributes && characterAttributes.length === 0 && (
+                    <p className="text-sm text-white/30 py-3">
+                      No attributes detected yet — keep journaling about {editedCharacter.name.split(' ')[0]}.
+                    </p>
+                  )}
+
+                  {!loadingAttributes && characterAttributes.length > 0 && (
+                    <div className="space-y-3">
+                      {[
+                        {
+                          label: 'Work',
+                          types: ['employment_status','occupation','workplace','financial_status'],
+                          icon: <Briefcase className="h-3.5 w-3.5" />,
+                          color: { label: 'text-amber-400', icon: 'text-amber-400', border: 'border-amber-500/25', bg: 'bg-amber-950/20', divider: 'divide-amber-500/10', rowHover: 'hover:bg-amber-500/8', typePill: 'bg-amber-500/15 text-amber-300 border-amber-500/25' },
+                        },
+                        {
+                          label: 'Life',
+                          types: ['relationship_status','living_situation'],
+                          icon: <HeartIcon className="h-3.5 w-3.5" />,
+                          color: { label: 'text-rose-400', icon: 'text-rose-400', border: 'border-rose-500/25', bg: 'bg-rose-950/20', divider: 'divide-rose-500/10', rowHover: 'hover:bg-rose-500/8', typePill: 'bg-rose-500/15 text-rose-300 border-rose-500/25' },
+                        },
+                        {
+                          label: 'Lifestyle',
+                          types: ['lifestyle_pattern','health_condition'],
+                          icon: <Activity className="h-3.5 w-3.5" />,
+                          color: { label: 'text-teal-400', icon: 'text-teal-400', border: 'border-teal-500/25', bg: 'bg-teal-950/20', divider: 'divide-teal-500/10', rowHover: 'hover:bg-teal-500/8', typePill: 'bg-teal-500/15 text-teal-300 border-teal-500/25' },
+                        },
+                        {
+                          label: 'Personality',
+                          types: ['personality_trait'],
+                          icon: <Smile className="h-3.5 w-3.5" />,
+                          color: { label: 'text-violet-400', icon: 'text-violet-400', border: 'border-violet-500/25', bg: 'bg-violet-950/20', divider: 'divide-violet-500/10', rowHover: 'hover:bg-violet-500/8', typePill: 'bg-violet-500/15 text-violet-300 border-violet-500/25' },
+                        },
+                      ].concat(
+                        (() => {
+                          const known = ['employment_status','occupation','workplace','financial_status','relationship_status','living_situation','lifestyle_pattern','health_condition','personality_trait'];
+                          const extra = characterAttributes.filter(a => !known.includes(a.attributeType));
+                          return extra.length ? [{
+                            label: 'Other', types: extra.map(a => a.attributeType), icon: <Tag className="h-3.5 w-3.5" />,
+                            color: { label: 'text-sky-400', icon: 'text-sky-400', border: 'border-sky-500/25', bg: 'bg-sky-950/20', divider: 'divide-sky-500/10', rowHover: 'hover:bg-sky-500/8', typePill: 'bg-sky-500/15 text-sky-300 border-sky-500/25' },
+                          }] : [];
+                        })()
+                      )
+                      .map(group => {
+                        const attrs = characterAttributes.filter(a => group.types.includes(a.attributeType));
+                        if (!attrs.length) return null;
+                        const c = group.color;
+                        const confDot = (v: number) => v >= 0.8 ? 'bg-emerald-400' : v >= 0.6 ? 'bg-yellow-400' : 'bg-orange-400';
+                        const TYPE_LABELS: Record<string, string> = { employment_status: 'Status', occupation: 'Role', workplace: 'Where', financial_status: 'Finances', relationship_status: 'Relationship', living_situation: 'Living', lifestyle_pattern: 'Habit', personality_trait: 'Trait', health_condition: 'Health' };
+                        return (
+                          <div key={group.label}>
+                            {/* Colored group header */}
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <span className={c.icon}>{group.icon}</span>
+                              <span className={`text-[10px] font-semibold uppercase tracking-widest ${c.label}`}>{group.label}</span>
+                            </div>
+                            {/* Colored card */}
+                            <div className={`rounded-xl border ${c.border} ${c.bg} overflow-hidden divide-y ${c.divider}`}>
+                              {attrs.map((attr, idx) => (
+                                <div key={idx} className={`flex items-start gap-3 px-3 py-2.5 transition-colors ${c.rowHover}`}>
+                                  {/* Colored type pill */}
+                                  <span className={`text-[9px] font-semibold border rounded px-1.5 py-0.5 mt-0.5 flex-shrink-0 uppercase tracking-wider ${c.typePill}`}>
+                                    {TYPE_LABELS[attr.attributeType] ?? attr.attributeType.replace(/_/g, ' ')}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm text-white/90 font-medium leading-snug">{attr.attributeValue}</p>
+                                    {attr.evidence && (
+                                      <p className="text-[10px] text-white/40 mt-0.5 leading-snug line-clamp-2 italic">
+                                        {attr.evidence.length > 100 ? attr.evidence.substring(0, 100) + '…' : attr.evidence}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <Tooltip content={`${Math.round(attr.confidence * 100)}% confidence`}>
+                                    <div className={`h-2 w-2 rounded-full mt-2 flex-shrink-0 ${confDot(attr.confidence)}`} />
+                                  </Tooltip>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Provenance — origin story ── */}
+                {(provenance || isMockDataEnabled) && (() => {
+                  const mockProvenanceMap: Record<string, any> = {
+                    'Sarah Chen':    { mentionCount: 156, firstMentionedAt: '2018-09-20T00:00:00Z', lastMentionedAt: new Date(Date.now() - 7 * 86400000).toISOString(), sourceUtterances: [{ content: `I had coffee with Sarah today — she was the first person I told about wanting to leave tech for creative work. She just listened, then said "what's stopping you?"`, created_at: '2018-09-20T00:00:00Z' }] },
+                    'Marcus Johnson': { mentionCount: 98,  firstMentionedAt: '2020-03-12T00:00:00Z', lastMentionedAt: new Date(Date.now() - 14 * 86400000).toISOString(), sourceUtterances: [{ content: `Met Marcus at that entrepreneurship event. He spent an hour talking to me about creative courage. Something he said stuck: "most people protect their dreams by never starting them."`, created_at: '2020-03-12T00:00:00Z' }] },
+                    'Alex':           { mentionCount: 210, firstMentionedAt: '2023-06-03T00:00:00Z', lastMentionedAt: new Date(Date.now() - 2 * 86400000).toISOString(),  sourceUtterances: [{ content: `Sarah introduced me to her friend Alex at the coffee shop today. We ended up talking for three hours. She asked me to play her one of my songs and I actually did.`, created_at: '2023-06-03T00:00:00Z' }] },
+                    'Jordan Kim':     { mentionCount: 312, firstMentionedAt: '1995-06-15T00:00:00Z', lastMentionedAt: new Date(Date.now() - 5 * 86400000).toISOString(),   sourceUtterances: [{ content: `Jordan and I ran in the park this morning. We didn't talk much. That's the thing about Jordan — sometimes you don't need to.`, created_at: '2022-03-01T00:00:00Z' }] },
+                  };
+                  const p = isMockDataEnabled ? mockProvenanceMap[editedCharacter.name] : provenance;
+                  if (!p) return null;
+                  return (
+                    <div className="p-4 rounded-xl border border-white/10 bg-white/4 space-y-3">
+                      <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider flex items-center gap-2">
+                        <Clock className="h-3.5 w-3.5" />
+                        How LoreBook learned about {editedCharacter.name.split(' ')[0]}
+                      </h4>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/50">
+                        {p.mentionCount > 0 && <span><span className="text-white/75 font-semibold">{p.mentionCount}</span> mentions</span>}
+                        {p.firstMentionedAt && <span>First: <span className="text-white/65">{new Date(p.firstMentionedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></span>}
+                        {p.lastMentionedAt && <span>Last: <span className="text-white/65">{new Date(p.lastMentionedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></span>}
+                      </div>
+                      {p.sourceUtterances?.[0] && (
+                        <blockquote className="pl-3 border-l-2 border-white/15">
+                          <p className="text-xs text-white/55 italic leading-relaxed line-clamp-3">
+                            "{p.sourceUtterances[0].content}"
+                          </p>
+                          <p className="text-[10px] text-white/25 mt-1">
+                            — {new Date(p.sourceUtterances[0].created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                          </p>
+                        </blockquote>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ── Temporal Attribute History ── */}
+                {allAttributes.length > 0 && (() => {
+                  const historical = allAttributes.filter(a => !a.isCurrent);
+                  const current = allAttributes.filter(a => a.isCurrent);
+                  if (historical.length === 0) return null;
+                  const grouped: Record<string, any[]> = {};
+                  for (const a of [...current, ...historical]) {
+                    if (!grouped[a.attributeType]) grouped[a.attributeType] = [];
+                    grouped[a.attributeType].push(a);
+                  }
+                  const typesWithHistory = Object.entries(grouped).filter(([, items]) => items.length > 1);
+                  if (typesWithHistory.length === 0) return null;
+                  return (
+                    <div className="p-4 rounded-xl border border-white/10 bg-white/4 space-y-3">
+                      <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider">Attribute Evolution</h4>
+                      <div className="space-y-3">
+                        {typesWithHistory.map(([type, items]) => (
+                          <div key={type}>
+                            <p className="text-[10px] text-white/30 mb-1.5 capitalize">{type.replace(/_/g, ' ')}</p>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {items.sort((a, b) => (a.isCurrent ? 1 : -1) - (b.isCurrent ? 1 : -1)).map((a, i) => (
+                                <div key={i} className="flex items-center gap-1">
+                                  <span className={`text-xs px-2 py-0.5 rounded-full border ${a.isCurrent ? 'border-primary/30 bg-primary/10 text-primary' : 'border-white/10 bg-white/5 text-white/40 line-through'}`}>
+                                    {a.attributeValue}
+                                  </span>
+                                  {!a.isCurrent && a.endTime && (
+                                    <span className="text-[9px] text-white/25">until {new Date(a.endTime).getFullYear()}</span>
+                                  )}
+                                  {i < items.length - 1 && <span className="text-white/20 text-xs">→</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Name Section */}
                 <Card className="bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-2 border-primary/30 shadow-lg">
@@ -2453,11 +2581,30 @@ User's message: ${message}`;
                   </h3>
                   <Card className="bg-black/40 border-border/50">
                     <CardContent className="p-4">
-                      <RelationshipTreeView 
-                        entityId={editedCharacter.id} 
-                        entityType="character"
-                        defaultCategory="family"
-                      />
+                      {isMockDataEnabled ? (() => {
+                        const mockTree =
+                          createMockFamilyTreeForCharacter(editedCharacter.name) ??
+                          createMockUserFamilyTree();
+                        return (
+                          <FamilyTreeView
+                            tree={mockTree}
+                            onMemberClick={(member) => {
+                              if (!member.is_self) {
+                                setSelectedCharacterForModal({
+                                  id: member.id,
+                                  name: member.name,
+                                } as Character);
+                              }
+                            }}
+                          />
+                        );
+                      })() : (
+                        <RelationshipTreeView
+                          entityId={editedCharacter.id}
+                          entityType="character"
+                          defaultCategory="family"
+                        />
+                      )}
                     </CardContent>
                   </Card>
                 </div>
@@ -2526,81 +2673,78 @@ User's message: ${message}`;
                 )}
 
                 {/* Groups & Organizations */}
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                    <Building2 className="h-5 w-5 text-primary" />
-                    Groups & Organizations
-                  </h3>
-                  <Card className="bg-black/40 border-border/50">
-                    <CardContent className="p-4">
-                      <div className="space-y-4">
-                        {/* Shared Groups */}
-                        <div>
-                          <h4 className="text-sm font-medium text-white/80 mb-2 flex items-center gap-2">
-                            <Users className="h-4 w-4 text-green-400" />
-                            Shared Groups (You're both in)
-                          </h4>
-                          <div className="space-y-2">
-                            {isMockDataEnabled ? (
-                              getMockOrganizations().filter(org => org.id === '1' || org.id === '2').map((org) => (
-                                <div
-                                  key={org.id}
-                                  onClick={() => setSelectedOrganization(org)}
-                                  className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 cursor-pointer hover:bg-green-500/20 hover:border-green-500/50 transition-all"
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <p className="font-medium text-white">{org.name}</p>
-                                      <p className="text-xs text-white/60 mt-1">{org.description || 'Group'}</p>
-                                    </div>
-                                    <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/30">
-                                      Shared
-                                    </Badge>
-                                  </div>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-xs text-white/40 italic">No shared groups recorded yet.</p>
-                            )}
-                          </div>
+                {(() => {
+                  const orgs = getMockOrganizations();
+                  const shared = orgs.filter((o: any) => o.user_is_member);
+                  const theirs = orgs.filter((o: any) => !o.user_is_member);
+                  const OrgCard = ({ org, isShared }: { org: any; isShared: boolean }) => (
+                    <div
+                      key={org.id}
+                      onClick={() => setSelectedOrganization(org)}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start gap-3 ${
+                        isShared
+                          ? 'bg-green-500/8 border-green-500/25 hover:bg-green-500/15 hover:border-green-500/40'
+                          : 'bg-white/4 border-white/10 hover:bg-white/8 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-white/90 truncate">{org.name}</p>
+                          <Badge variant="outline" className={`text-[10px] py-0 ${
+                            org.type === 'club' ? 'border-blue-500/25 text-blue-300' :
+                            org.type === 'affiliation' ? 'border-purple-500/25 text-purple-300' :
+                            org.type === 'company' ? 'border-orange-500/25 text-orange-300' :
+                            org.type === 'sports_team' ? 'border-cyan-500/25 text-cyan-300' :
+                            'border-white/15 text-white/45'
+                          }`}>{org.type?.replace(/_/g, ' ')}</Badge>
                         </div>
-
-                        {/* Their Groups (Not Shared) */}
-                        <div>
-                          <h4 className="text-sm font-medium text-white/80 mb-2 flex items-center gap-2">
-                            <Building2 className="h-4 w-4 text-orange-400" />
-                            Their Groups (You're not in)
-                          </h4>
-                          <div className="space-y-2">
-                            {isMockDataEnabled ? (
-                              getMockOrganizations().filter(org => org.id === '3' || org.id === '4').map((org) => (
-                                <div
-                                  key={org.id}
-                                  onClick={() => setSelectedOrganization(org)}
-                                  className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30 cursor-pointer hover:bg-orange-500/20 hover:border-orange-500/50 transition-all"
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <p className="font-medium text-white">{org.name}</p>
-                                      <p className="text-xs text-white/60 mt-1">{org.description || 'Group'}</p>
-                                    </div>
-                                    <Tooltip content={getNotSharedBadgeTooltip()}>
-                                      <Badge variant="outline" className="bg-orange-500/20 text-orange-300 border-orange-500/30 cursor-help">
-                                        Not Shared
-                                      </Badge>
-                                    </Tooltip>
-                                  </div>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-xs text-white/40 italic">No group memberships recorded yet.</p>
-                            )}
-                          </div>
+                        {org.description && <p className="text-xs text-white/45 mt-0.5 truncate">{org.description}</p>}
+                        <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/30">
+                          {org.character_role && <span className="text-white/50">{org.character_role}</span>}
+                          {org.member_count > 0 && <span>{org.member_count} members</span>}
+                          {org.confidence != null && <span>{Math.round(org.confidence * 100)}% confidence</span>}
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                      <Badge variant="outline" className={`flex-shrink-0 text-[10px] py-0 mt-0.5 ${
+                        isShared
+                          ? 'bg-green-500/15 text-green-300 border-green-500/30'
+                          : 'bg-white/5 text-white/35 border-white/15'
+                      }`}>
+                        {isShared ? 'Shared' : 'Theirs'}
+                      </Badge>
+                    </div>
+                  );
+                  return (
+                    <div>
+                      <h3 className="text-sm font-semibold text-white/70 mb-3 flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-primary" />
+                        Groups &amp; Organizations
+                        <span className="ml-auto text-[10px] text-white/30">{orgs.length} total</span>
+                      </h3>
+                      {orgs.length === 0 && (
+                        <p className="text-xs text-white/30 italic text-center py-4">No group memberships detected yet.</p>
+                      )}
+                      {shared.length > 0 && (
+                        <div className="mb-3">
+                          <p className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5">You are both in</p>
+                          <div className="space-y-2">
+                            {shared.map((org: any) => <OrgCard key={org.id} org={org} isShared={true} />)}
+                          </div>
+                        </div>
+                      )}
+                      {theirs.length > 0 && (
+                        <div>
+                          <p className="text-[10px] text-white/30 uppercase tracking-wider mb-1.5">
+                            {editedCharacter.name.split(' ')[0]}&apos;s groups
+                          </p>
+                          <div className="space-y-2">
+                            {theirs.map((org: any) => <OrgCard key={org.id} org={org} isShared={false} />)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Associated Characters (for indirect/third-party characters) */}
                 {(editedCharacter.proximity_level === 'indirect' || editedCharacter.proximity_level === 'third_party' || editedCharacter.associated_with_character_ids) && (
@@ -2663,57 +2807,159 @@ User's message: ${message}`;
             )}
 
             {!loadingDetails && activeTab === 'history' && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                      <Calendar className="h-5 w-5 text-primary" />
-                      Shared Memories
-                    </h3>
-                    <p className="text-sm text-white/60 mt-1">
-                      Stories and moments you've shared with {editedCharacter.name}
-                    </p>
-                  </div>
-                  {editedCharacter.shared_memories && editedCharacter.shared_memories.length > 0 && (
-                    <span className="text-sm text-white/50">
-                      {editedCharacter.shared_memories.length} {editedCharacter.shared_memories.length === 1 ? 'memory' : 'memories'}
-                    </span>
-                  )}
-                </div>
-
-                {/* Memory Cards */}
-                {loadingMemories ? (
-                  <div className="text-center py-12 text-white/60">
-                    <p>Loading shared memories...</p>
-                  </div>
-                ) : sharedMemoryCards.length > 0 ? (
-                  <div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {sharedMemoryCards.map((memory) => (
-                        <div key={memory.id} data-memory-id={memory.id}>
-                          <MemoryCardComponent
-                            memory={memory}
-                            showLinked={true}
-                            expanded={expandedCardId === memory.id}
-                            onToggleExpand={() => setExpandedCardId(expandedCardId === memory.id ? null : memory.id)}
-                            onSelect={() => setSelectedMemory(memory)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : editedCharacter.shared_memories && editedCharacter.shared_memories.length > 0 ? (
-                  <div className="text-center py-12 text-white/40">
-                    <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-lg font-medium mb-1">Loading memory details...</p>
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-white/40">
-                    <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-lg font-medium mb-1">No shared memories yet</p>
-                    <p className="text-sm">Memories will appear here as you mention {editedCharacter.name} in your journal entries</p>
+              <div className="space-y-5">
+                {loadingMemories && (
+                  <div className="flex items-center gap-2 py-6 text-white/40 text-sm justify-center">
+                    <Clock className="h-4 w-4 animate-spin" /><span>Loading memories...</span>
                   </div>
                 )}
+
+                {!loadingMemories && sharedMemoryCards.length === 0 && (
+                  <div className="text-center py-12 text-white/40">
+                    <Calendar className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm font-medium mb-1">No shared memories yet</p>
+                    <p className="text-xs">Memories appear here as you mention {editedCharacter.name.split(' ')[0]} in your journal entries</p>
+                  </div>
+                )}
+
+                {!loadingMemories && sharedMemoryCards.length > 0 && (() => {
+                  const memories = [...sharedMemoryCards].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                  const firstName = editedCharacter.name.split(' ')[0];
+
+                  // ── 6. Relationship arc header (uses dynamics if loaded) ────
+                  const stageHistory: Array<{ stage: string; start_date: string }> = dynamics?.lifecycle?.stage_history ?? [];
+
+                  // ── 4. First memory + most significant ─────────────────────
+                  const firstMemory = memories[0];
+                  const mostSignificant = [...memories].sort((a, b) =>
+                    (b.content?.length ?? 0) - (a.content?.length ?? 0)
+                  )[0];
+                  const hasBothHighlights = firstMemory && mostSignificant && firstMemory.id !== mostSignificant.id;
+
+                  // ── 3. Group by era (chapter title or year) ────────────────
+                  const grouped: Record<string, MemoryCard[]> = {};
+                  memories.forEach(m => {
+                    const era = m.chapterTitle || String(new Date(m.date).getFullYear());
+                    if (!grouped[era]) grouped[era] = [];
+                    grouped[era].push(m);
+                  });
+                  const eras = Object.entries(grouped).sort((a, b) => {
+                    const dateA = new Date(a[1][0].date).getTime();
+                    const dateB = new Date(b[1][0].date).getTime();
+                    return dateA - dateB;
+                  });
+
+                  // ── MemoryRow component ────────────────────────────────────
+                  const MemoryRow = ({ memory, highlight }: { memory: MemoryCard; highlight?: string }) => (
+                    <div
+                      key={memory.id}
+                      className={`group rounded-xl border transition-colors cursor-pointer ${
+                        highlight
+                          ? 'border-primary/30 bg-primary/5 hover:bg-primary/8'
+                          : 'border-white/8 bg-white/3 hover:bg-white/6'
+                      }`}
+                      onClick={() => setSelectedMemory(memory)}
+                    >
+                      <div className="p-3 flex items-start gap-3">
+                        <div className="flex-shrink-0 w-10 text-center pt-0.5">
+                          <p className="text-[9px] text-white/30 leading-tight">
+                            {new Date(memory.date).toLocaleDateString('en-US', { month: 'short' })}
+                          </p>
+                          <p className="text-xs font-semibold text-white/50">
+                            {new Date(memory.date).getFullYear().toString().slice(2)}
+                          </p>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          {highlight && (
+                            <span className="text-[9px] font-semibold text-primary/70 uppercase tracking-widest block mb-0.5">{highlight}</span>
+                          )}
+                          <p className="text-sm font-medium text-white/85 leading-snug">{memory.title}</p>
+                          {memory.content && (
+                            <p className="text-xs text-white/50 mt-1 leading-snug line-clamp-2">
+                              {memory.content.length > 120 ? memory.content.substring(0, 120) + '…' : memory.content}
+                            </p>
+                          )}
+                          {memory.mood && (
+                            <span className="text-[9px] text-white/30 mt-1 block">{memory.mood}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+
+                  return (
+                    <>
+                      {/* ── 6. Relationship Arc Header ─────────────────────── */}
+                      {stageHistory.length > 0 && (
+                        <div className="mb-1">
+                          <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2">Relationship Arc</p>
+                          <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                            {stageHistory.map((s, i) => (
+                              <div key={i} className="flex items-center gap-1 flex-shrink-0">
+                                <div className={`px-2 py-1 rounded text-[10px] font-medium ${
+                                  i === stageHistory.length - 1
+                                    ? 'bg-primary/20 text-primary border border-primary/30'
+                                    : 'bg-white/5 text-white/35'
+                                }`}>
+                                  <span className="capitalize">{s.stage}</span>
+                                  {s.start_date && (
+                                    <span className="ml-1 opacity-50">{new Date(s.start_date).getFullYear()}</span>
+                                  )}
+                                </div>
+                                {i < stageHistory.length - 1 && <span className="text-white/20">→</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── 4. Pinned highlights ───────────────────────────── */}
+                      {(firstMemory || mostSignificant) && (
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">Highlights</p>
+                          <MemoryRow memory={firstMemory} highlight="First memory" />
+                          {hasBothHighlights && <MemoryRow memory={mostSignificant} highlight="Most significant" />}
+                        </div>
+                      )}
+
+                      {/* ── 3. Memories grouped by era ────────────────────── */}
+                      <div className="space-y-5">
+                        <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">Full Story</p>
+                        {eras.map(([era, eraMemories]) => (
+                          <div key={era}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="h-px flex-1 bg-white/8" />
+                              <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest px-1">{era}</span>
+                              <div className="h-px flex-1 bg-white/8" />
+                            </div>
+                            <div className="space-y-2">
+                              {eraMemories.map(m => <MemoryRow key={m.id} memory={m} />)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* ── 5. Perception events integrated ──────────────── */}
+                      <div className="pt-3 border-t border-white/8">
+                        <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2">
+                          Beliefs About {firstName}
+                        </p>
+                        <p className="text-xs text-white/35 mb-3">
+                          How your understanding of {firstName} has evolved over time.
+                          Open the Perceptions tab for the full picture.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('perceptions')}
+                          className="text-xs text-primary/60 hover:text-primary transition-colors flex items-center gap-1"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          View perceptions about {firstName}
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
@@ -2775,243 +3021,280 @@ User's message: ${message}`;
                   )}
                   <div ref={chatEndRef} />
                 </div>
+
+                {/* Composer — only shown in Chat tab */}
+                <div className="pt-3 border-t border-white/10">
+                  <ChatComposer
+                    onSubmit={handleChatSubmit}
+                    loading={chatLoading}
+                  />
+                </div>
               </div>
             )}
 
-            {/* Insights Tab - Analytics Dashboard */}
+            {/* Insights Tab */}
             {!loadingDetails && activeTab === 'insights' && (
-              <div className="space-y-8">
+              <div className="space-y-6">
                 {(() => {
                   const analytics = editedCharacter.analytics ?? (isMockDataEnabled ? generateMockAnalytics(editedCharacter) : null);
-                  return analytics ? (
-                  <>
-                    {/* Analytics Dashboard Header */}
-                    <Card className="bg-gradient-to-br from-purple-500/20 via-purple-600/15 to-purple-500/20 border-2 border-purple-500/40 shadow-xl">
-                      <CardHeader className="pb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-purple-500/20 border border-purple-500/40">
-                            <TrendingUp className="h-6 w-6 text-purple-300" />
+                  if (!analytics) return (
+                    <div className="text-center py-12 text-white/40">
+                      <BarChart3 className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm">No analytics data yet — keep journaling about {editedCharacter.name.split(' ')[0]}.</p>
+                    </div>
+                  );
+                  const firstName = editedCharacter.name.split(' ')[0];
+
+                  // ── 1. Relationship Sentence ────────────────────────────────
+                  const phaseLabel = (() => {
+                    const c = analytics.closeness_score ?? 0;
+                    const r = analytics.recency_score ?? 0;
+                    if (c >= 70 && r >= 0.6) return 'a Core relationship';
+                    if (c >= 45 || r >= 0.4) return 'an Active relationship';
+                    if (c >= 20 || r >= 0.2) return 'a Fading relationship';
+                    return 'a Dormant relationship';
+                  })();
+                  const trendPhrase = analytics.trend === 'deepening' ? 'currently deepening' : analytics.trend === 'weakening' ? 'showing signs of distance' : 'holding steady';
+                  const influencePhrase = (() => {
+                    const inf = analytics.character_influence_on_user ?? 0;
+                    if (inf >= 75) return `${firstName}'s influence on your decisions and outlook is significant`;
+                    if (inf >= 50) return `${firstName} has a meaningful influence on how you think and act`;
+                    return `${firstName}'s presence in your story is noted but not dominant`;
+                  })();
+                  const durationPhrase = (() => {
+                    const days = analytics.relationship_duration_days ?? 0;
+                    if (days >= 1095) return `over ${Math.floor(days / 365)} years`;
+                    if (days >= 365) return 'over a year';
+                    if (days >= 90) return 'several months';
+                    return 'a few months';
+                  })();
+                  const relationshipSentence = `${firstName} is ${phaseLabel} — ${trendPhrase} after ${durationPhrase} together. ${influencePhrase}.`;
+
+                  // ── 2. Why This Person Matters ────────────────────────────
+                  const whyMatters: string[] = [];
+                  if ((analytics.character_influence_on_user ?? 0) >= 70) whyMatters.push(`High influence — ${firstName} consistently shapes how you think and the decisions you make`);
+                  if ((analytics.closeness_score ?? 0) >= 75) whyMatters.push(`Deep closeness — this is one of your most connected relationships`);
+                  if ((analytics.shared_experiences ?? 0) >= 10) whyMatters.push(`${analytics.shared_experiences} shared experiences — a relationship built through real moments`);
+                  if (analytics.trend === 'deepening') whyMatters.push(`This relationship is actively growing stronger`);
+                  if ((analytics.support_score ?? 0) >= 70) whyMatters.push(`High support score — ${firstName} shows up when it matters`);
+                  if ((analytics.trust_score ?? 0) >= 80) whyMatters.push(`Exceptional trust — rare at this level`);
+                  if (dynamics?.lifecycle?.current_stage === 'deepening') whyMatters.push(`Currently in the deepening stage of relationship development`);
+                  // Add influence insights if loaded
+                  if (influenceInsights?.length) {
+                    influenceInsights.slice(0, 2).forEach(i => {
+                      if (i.type === 'positive_influence' || i.type === 'uplifting_person') whyMatters.push(i.message);
+                    });
+                  }
+
+                  // ── Score → plain-language reason helpers ──────────────
+                  const closenessWhy = analytics.closeness_score >= 80
+                    ? `${analytics.shared_experiences ?? 0} shared experiences + consistently high emotional depth in conversations`
+                    : analytics.closeness_score >= 55
+                    ? `Regular contact and moderate emotional engagement across ${analytics.shared_experiences ?? 0} memories`
+                    : `Still building — fewer shared moments recorded so far`;
+                  const importanceWhy = analytics.importance_score >= 80
+                    ? `${firstName} appears during pivotal moments — career decisions, personal milestones, and major transitions`
+                    : analytics.importance_score >= 55
+                    ? `Steady presence across multiple areas of your life over time`
+                    : `Mentioned occasionally — not yet a central figure in your story`;
+                  const priorityWhy = analytics.priority_score >= 70
+                    ? `High closeness + recent activity signals this relationship deserves active attention now`
+                    : analytics.priority_score >= 45
+                    ? `Moderate engagement — worth maintaining but not urgent`
+                    : `Low recent activity — this relationship may need re-engagement`;
+                  const engagementWhy = analytics.engagement_score >= 70
+                    ? `Frequent, consistent interactions over the last 90 days`
+                    : analytics.engagement_score >= 45
+                    ? `Moderate interaction — you stay in touch but not constantly`
+                    : `Infrequent contact recently — engagement has tapered off`;
+                  const trustWhy = analytics.trust_score >= 80
+                    ? `High trust — you share personal information and rely on ${firstName} for important decisions`
+                    : analytics.trust_score >= 55
+                    ? `Moderate trust — you confide in ${firstName} on some things but not everything`
+                    : `Trust is still developing with ${firstName}`;
+                  const supportWhy = analytics.support_score >= 70
+                    ? `${firstName} shows up for you — emotionally present during difficult periods`
+                    : analytics.support_score >= 45
+                    ? `${firstName} is supportive when needed, though not always available`
+                    : `Limited support patterns recorded between you`;
+                  const conflictWhy = analytics.conflict_score >= 50
+                    ? `Conflict is notable — disagreements or tension appear regularly in your entries`
+                    : analytics.conflict_score >= 25
+                    ? `Occasional friction, but generally manageable`
+                    : `Low conflict — this relationship is largely harmonious`;
+
+                  // ── "Why this matters" bullet colors by content type ────
+                  const whyColors = [
+                    'border-violet-500/30 bg-violet-950/20 text-violet-300',
+                    'border-emerald-500/30 bg-emerald-950/20 text-emerald-300',
+                    'border-amber-500/30 bg-amber-950/20 text-amber-300',
+                    'border-cyan-500/30 bg-cyan-950/20 text-cyan-300',
+                    'border-rose-500/30 bg-rose-950/20 text-rose-300',
+                  ];
+
+                  return (
+                    <>
+                      {/* ── Relationship sentence — hero card ── */}
+                      <div className="relative p-5 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/12 via-purple-900/15 to-primary/8 overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+                        <p className="text-[10px] font-semibold text-primary/60 uppercase tracking-widest mb-2">Relationship Summary</p>
+                        <p className="text-sm sm:text-base text-white/90 leading-relaxed relative z-10">{relationshipSentence}</p>
+                      </div>
+
+                      {/* ── Why this person matters — color-coded bullets ── */}
+                      {whyMatters.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-white/35 uppercase tracking-widest mb-2.5">Why {firstName} Matters</p>
+                          <div className="space-y-1.5">
+                            {whyMatters.slice(0, 5).map((reason, i) => (
+                              <div key={i} className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border ${whyColors[i % whyColors.length]}`}>
+                                <div className="h-1.5 w-1.5 rounded-full bg-current mt-1.5 flex-shrink-0 opacity-80" />
+                                <p className="text-xs sm:text-sm text-white/85 leading-snug">{reason}</p>
+                              </div>
+                            ))}
                           </div>
-                          <h3 className="text-2xl font-bold text-white">Relationship Analytics & Insights</h3>
                         </div>
-                        <p className="text-sm text-white/70 mt-2">
-                          Comprehensive analysis of your relationship with {editedCharacter.name}
-                        </p>
-                      </CardHeader>
-                      <CardContent className="space-y-8">
-                        {/* Key Metrics Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                          <Tooltip content={getClosenessScoreTooltip(analytics.closeness_score, editedCharacter)}>
-                            <Card className="bg-gradient-to-br from-pink-500/20 via-pink-600/15 to-pink-500/20 border-2 border-pink-500/40 shadow-lg cursor-help hover:border-pink-500/60 transition-colors">
-                              <CardContent className="p-5">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Closeness</div>
-                                <div className="text-4xl font-bold text-pink-300 mb-1">{analytics.closeness_score}%</div>
-                                <div className="text-xs text-white/60 mt-2">relationship depth</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                          <Tooltip content={getImportanceScoreTooltip(analytics.importance_score, editedCharacter)}>
-                            <Card className="bg-gradient-to-br from-amber-500/20 via-amber-600/15 to-amber-500/20 border-2 border-amber-500/40 shadow-lg cursor-help hover:border-amber-500/60 transition-colors">
-                              <CardContent className="p-5">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Importance</div>
-                                <div className="text-4xl font-bold text-amber-300 mb-1">{analytics.importance_score}%</div>
-                                <div className="text-xs text-white/60 mt-2">to you</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                          <Tooltip content={getPriorityScoreTooltip(analytics.priority_score, editedCharacter)}>
-                            <Card className="bg-gradient-to-br from-green-500/20 via-green-600/15 to-green-500/20 border-2 border-green-500/40 shadow-lg cursor-help hover:border-green-500/60 transition-colors">
-                              <CardContent className="p-5">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Priority</div>
-                                <div className="text-4xl font-bold text-green-300 mb-1">{analytics.priority_score}%</div>
-                                <div className="text-xs text-white/60 mt-2">urgency level</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                          <Tooltip content={getEngagementScoreTooltip(analytics.engagement_score, editedCharacter)}>
-                            <Card className="bg-gradient-to-br from-blue-500/20 via-blue-600/15 to-blue-500/20 border-2 border-blue-500/40 shadow-lg cursor-help hover:border-blue-500/60 transition-colors">
-                              <CardContent className="p-5">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Engagement</div>
-                                <div className="text-4xl font-bold text-blue-300 mb-1">{analytics.engagement_score}%</div>
-                                <div className="text-xs text-white/60 mt-2">interaction level</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
+                      )}
+
+                      {/* ── Full analytics ── */}
+                      <div className="pt-1">
+                        <p className="text-[10px] font-semibold text-white/25 uppercase tracking-widest mb-3">Signal Breakdown</p>
+
+                      <Card className="bg-black/20 border border-white/8">
+                      <CardContent className="space-y-6 p-4 sm:p-5">
+                        {/* Key Metrics Grid — 4 colored cards with "why" */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { label: 'Closeness', value: analytics.closeness_score, unit: '%', color: 'from-pink-500/25 to-pink-900/20', border: 'border-pink-500/35', text: 'text-pink-300', why: closenessWhy },
+                            { label: 'Importance', value: analytics.importance_score, unit: '%', color: 'from-amber-500/25 to-amber-900/20', border: 'border-amber-500/35', text: 'text-amber-300', why: importanceWhy },
+                            { label: 'Priority', value: analytics.priority_score, unit: '%', color: 'from-emerald-500/25 to-emerald-900/20', border: 'border-emerald-500/35', text: 'text-emerald-300', why: priorityWhy },
+                            { label: 'Engagement', value: analytics.engagement_score, unit: '%', color: 'from-sky-500/25 to-sky-900/20', border: 'border-sky-500/35', text: 'text-sky-300', why: engagementWhy },
+                          ].map(m => (
+                            <div key={m.label} className={`rounded-xl border ${m.border} bg-gradient-to-br ${m.color} p-3 sm:p-4`}>
+                              <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider mb-1">{m.label}</p>
+                              <p className={`text-2xl sm:text-3xl font-bold ${m.text} mb-1.5`}>{m.value}{m.unit}</p>
+                              <p className="text-[10px] text-white/45 leading-snug">{m.why}</p>
+                            </div>
+                          ))}
                         </div>
 
-                        {/* Relationship Depth & Frequency */}
-                        <div className="grid grid-cols-2 gap-6">
-                          <Tooltip content={getAnalyticsRelationshipDepthTooltip(analytics.relationship_depth, analytics.shared_experiences)}>
-                            <Card className="bg-gradient-to-br from-purple-500/20 via-purple-600/15 to-purple-500/20 border-2 border-purple-500/40 shadow-lg cursor-help hover:border-purple-500/60 transition-colors">
-                              <CardContent className="p-5">
-                                <div className="text-sm font-bold text-white/80 mb-3 uppercase tracking-wide">Relationship Depth</div>
-                                <div className="flex items-center gap-3 mb-3">
-                                  <div className="flex-1 h-3 bg-black/60 rounded-full overflow-hidden shadow-inner">
-                                    <div 
-                                      className="h-full bg-gradient-to-r from-purple-500 to-purple-600 transition-all shadow-lg"
-                                      style={{ width: `${analytics.relationship_depth}%` }}
-                                />
+                        {/* Depth + Frequency compact bars */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { label: 'Depth', value: analytics.relationship_depth, color: 'bg-purple-500', text: 'text-purple-300', bg: 'bg-purple-950/20 border-purple-500/25', why: `${analytics.shared_experiences} shared experiences recorded — emotional depth derived from conversation patterns` },
+                            { label: 'Frequency', value: analytics.interaction_frequency, color: 'bg-sky-500', text: 'text-sky-300', bg: 'bg-sky-950/20 border-sky-500/25', why: `Based on mentions and contact events in the last 90 days` },
+                          ].map(m => (
+                            <div key={m.label} className={`rounded-xl border p-3 sm:p-4 ${m.bg}`}>
+                              <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider mb-2">{m.label}</p>
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                  <div className={`h-full ${m.color} rounded-full`} style={{ width: `${m.value}%` }} />
+                                </div>
+                                <span className={`text-sm font-bold tabular-nums ${m.text}`}>{m.value}%</span>
                               </div>
-                                  <span className="text-xl font-bold text-purple-300 min-w-[60px] text-right">{analytics.relationship_depth}%</span>
+                              <p className="text-[10px] text-white/40 leading-snug">{m.why}</p>
                             </div>
-                                <div className="text-sm text-white/70 font-medium">{analytics.shared_experiences} shared experiences</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                          <Tooltip content={getInteractionFrequencyTooltip(analytics.interaction_frequency)}>
-                            <Card className="bg-gradient-to-br from-blue-500/20 via-blue-600/15 to-blue-500/20 border-2 border-blue-500/40 shadow-lg cursor-help hover:border-blue-500/60 transition-colors">
-                              <CardContent className="p-5">
-                                <div className="text-sm font-bold text-white/80 mb-3 uppercase tracking-wide">Interaction Frequency</div>
-                                <div className="flex items-center gap-3 mb-3">
-                                  <div className="flex-1 h-3 bg-black/60 rounded-full overflow-hidden shadow-inner">
-                                    <div 
-                                      className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all shadow-lg"
-                                      style={{ width: `${analytics.interaction_frequency}%` }}
-                                />
-                              </div>
-                                  <span className="text-xl font-bold text-blue-300 min-w-[60px] text-right">{analytics.interaction_frequency}%</span>
-                            </div>
-                                <div className="text-sm text-white/70 font-medium">Based on last 90 days</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
+                          ))}
                         </div>
 
-                        {/* Influence Metrics */}
-                        <div className="grid grid-cols-2 gap-6">
-                          <Tooltip content={getInfluenceTooltip(analytics.character_influence_on_user, 'their', editedCharacter.name)}>
-                            <Card className="bg-gradient-to-br from-purple-500/20 via-purple-600/15 to-purple-500/20 border-2 border-purple-500/40 shadow-lg cursor-help hover:border-purple-500/60 transition-colors">
-                              <CardContent className="p-5">
-                                <div className="text-sm font-bold text-white/80 mb-3 uppercase tracking-wide">Their Influence on You</div>
-                                <div className="flex items-center gap-3">
-                                  <div className="flex-1 h-3 bg-black/60 rounded-full overflow-hidden shadow-inner">
-                                    <div 
-                                      className="h-full bg-gradient-to-r from-purple-500 to-purple-600 transition-all shadow-lg"
-                                      style={{ width: `${analytics.character_influence_on_user}%` }}
-                                />
+                        {/* ── 7. Bidirectional Influence Bar ───────────── */}
+                        <div className="p-4 rounded-xl border border-white/10 bg-white/4 space-y-3">
+                          <p className="text-xs font-semibold text-white/40 uppercase tracking-widest">Influence Dynamic</p>
+                          <div className="space-y-3">
+                            {/* Their influence on you */}
+                            <div>
+                              <div className="flex justify-between text-xs text-white/45 mb-1">
+                                <span>{editedCharacter.name.split(' ')[0]}&apos;s influence on you</span>
+                                <span className="font-semibold text-white/70">{analytics.character_influence_on_user}%</span>
                               </div>
-                                  <span className="text-xl font-bold text-purple-300 min-w-[60px] text-right">{analytics.character_influence_on_user}%</span>
-                            </div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                          <Tooltip content={getInfluenceTooltip(analytics.user_influence_over_character, 'yours', editedCharacter.name)}>
-                            <Card className="bg-gradient-to-br from-blue-500/20 via-blue-600/15 to-blue-500/20 border-2 border-blue-500/40 shadow-lg cursor-help hover:border-blue-500/60 transition-colors">
-                              <CardContent className="p-5">
-                                <div className="text-sm font-bold text-white/80 mb-3 uppercase tracking-wide">Your Influence Over Them</div>
-                                <div className="flex items-center gap-3">
-                                  <div className="flex-1 h-3 bg-black/60 rounded-full overflow-hidden shadow-inner">
-                                    <div 
-                                      className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all shadow-lg"
-                                      style={{ width: `${analytics.user_influence_over_character}%` }}
-                                />
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-white/8 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-violet-500 rounded-full"
+                                    style={{ width: `${analytics.character_influence_on_user}%` }}
+                                  />
+                                </div>
+                                <span className="text-[9px] text-white/30 w-6">←</span>
                               </div>
-                                  <span className="text-xl font-bold text-blue-300 min-w-[60px] text-right">{analytics.user_influence_over_character}%</span>
                             </div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
+                            {/* Your influence on them */}
+                            <div>
+                              <div className="flex justify-between text-xs text-white/45 mb-1">
+                                <span>Your influence on {editedCharacter.name.split(' ')[0]}</span>
+                                <span className="font-semibold text-white/70">{analytics.user_influence_over_character}%</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-white/8 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-cyan-500 rounded-full"
+                                    style={{ width: `${analytics.user_influence_over_character}%` }}
+                                  />
+                                </div>
+                                <span className="text-[9px] text-white/30 w-6">→</span>
+                              </div>
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-white/25 leading-snug">
+                            {analytics.character_influence_on_user > analytics.user_influence_over_character + 15
+                              ? `${editedCharacter.name.split(' ')[0]} has more influence over you than you have over them — this relationship shapes you significantly.`
+                              : analytics.user_influence_over_character > analytics.character_influence_on_user + 15
+                              ? `You have more influence in this relationship than ${editedCharacter.name.split(' ')[0]} does.`
+                              : 'Balanced influence — this relationship is roughly reciprocal.'}
+                          </p>
                         </div>
 
-                        {/* Social Metrics */}
-                        <div className="grid grid-cols-4 gap-4">
-                          <Tooltip content={getSentimentScoreTooltip(analytics.sentiment_score)}>
-                            <Card className="bg-gradient-to-br from-green-500/20 via-green-600/15 to-green-500/20 border-2 border-green-500/40 shadow-lg cursor-help hover:border-green-500/60 transition-colors">
-                              <CardContent className="p-4">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Sentiment</div>
-                                <div className={`text-3xl font-bold ${analytics.sentiment_score >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                                  {analytics.sentiment_score > 0 ? '+' : ''}{analytics.sentiment_score}
-                            </div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                          <Tooltip content={getTrustScoreTooltip(analytics.trust_score)}>
-                            <Card className="bg-gradient-to-br from-blue-500/20 via-blue-600/15 to-blue-500/20 border-2 border-blue-500/40 shadow-lg cursor-help hover:border-blue-500/60 transition-colors">
-                              <CardContent className="p-4">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Trust</div>
-                                <div className="text-3xl font-bold text-blue-300">{analytics.trust_score}%</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                          <Tooltip content={getSupportScoreTooltip(analytics.support_score)}>
-                            <Card className="bg-gradient-to-br from-green-500/20 via-green-600/15 to-green-500/20 border-2 border-green-500/40 shadow-lg cursor-help hover:border-green-500/60 transition-colors">
-                              <CardContent className="p-4">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Support</div>
-                                <div className="text-3xl font-bold text-green-300">{analytics.support_score}%</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                          <Tooltip content={getConflictScoreTooltip(analytics.conflict_score)}>
-                            <Card className="bg-gradient-to-br from-red-500/20 via-red-600/15 to-red-500/20 border-2 border-red-500/40 shadow-lg cursor-help hover:border-red-500/60 transition-colors">
-                              <CardContent className="p-4">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Conflict</div>
-                                <div className="text-3xl font-bold text-red-300">{analytics.conflict_score}%</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                        </div>
-
-                        {/* Additional Metrics */}
-                        <div className="grid grid-cols-3 gap-4">
-                          <Tooltip content={getValueScoreTooltip(analytics.value_score)}>
-                            <Card className="bg-gradient-to-br from-yellow-500/20 via-yellow-600/15 to-yellow-500/20 border-2 border-yellow-500/40 shadow-lg cursor-help hover:border-yellow-500/60 transition-colors">
-                              <CardContent className="p-4">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Value</div>
-                                <div className="text-3xl font-bold text-yellow-300">{analytics.value_score}%</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                          <Tooltip content={getRelevanceScoreTooltip(analytics.relevance_score)}>
-                            <Card className="bg-gradient-to-br from-cyan-500/20 via-cyan-600/15 to-cyan-500/20 border-2 border-cyan-500/40 shadow-lg cursor-help hover:border-cyan-500/60 transition-colors">
-                              <CardContent className="p-4">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Relevance</div>
-                                <div className="text-3xl font-bold text-cyan-300">{analytics.relevance_score}%</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                          <Tooltip content={getActivityLevelTooltip(analytics.activity_level)}>
-                            <Card className="bg-gradient-to-br from-purple-500/20 via-purple-600/15 to-purple-500/20 border-2 border-purple-500/40 shadow-lg cursor-help hover:border-purple-500/60 transition-colors">
-                              <CardContent className="p-4">
-                                <div className="text-xs font-bold text-white/70 mb-2 uppercase tracking-wide">Activity</div>
-                                <div className="text-3xl font-bold text-purple-300">{analytics.activity_level}%</div>
-                              </CardContent>
-                            </Card>
-                          </Tooltip>
-                        </div>
-
-                        {/* Trend */}
-                        <Tooltip content={getRelationshipTrendTooltip(analytics.trend)}>
-                          <Card className="bg-gradient-to-br from-indigo-500/20 via-indigo-600/15 to-indigo-500/20 border-2 border-indigo-500/40 shadow-lg cursor-help hover:border-indigo-500/60 transition-colors">
-                            <CardContent className="p-5">
-                              <div className="flex items-center gap-4 flex-wrap">
-                                <span className="text-base font-bold text-white/80 uppercase tracking-wide">Relationship Trend:</span>
-                                {analytics.trend === 'deepening' && (
-                                  <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/50 text-sm px-4 py-2 font-bold shadow-md">
-                                    <TrendingUp className="h-4 w-4 mr-2" />
-                              Deepening
-                            </Badge>
-                          )}
-                                {analytics.trend === 'weakening' && (
-                                  <Badge variant="outline" className="bg-red-500/20 text-red-300 border-red-500/50 text-sm px-4 py-2 font-bold shadow-md">
-                                    <TrendingDown className="h-4 w-4 mr-2" />
-                              Weakening
-                            </Badge>
-                          )}
-                                {analytics.trend === 'stable' && (
-                                  <Badge variant="outline" className="bg-gray-500/20 text-gray-300 border-gray-500/50 text-sm px-4 py-2 font-bold shadow-md">
-                                    <Minus className="h-4 w-4 mr-2" />
-                              Stable
-                            </Badge>
-                          )}
-                                <div className="ml-auto flex items-center gap-2 bg-black/40 rounded-lg px-4 py-2 border border-indigo-500/30">
-                                  <span className="text-sm font-semibold text-white/70">Known for</span>
-                                  <span className="text-xl font-bold text-indigo-300">{analytics.relationship_duration_days}</span>
-                                  <span className="text-sm font-semibold text-white/70">days</span>
-                        </div>
+                        {/* Social + Additional signals — compact 2-col grid with "why" */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { label: 'Sentiment',  value: `${analytics.sentiment_score > 0 ? '+' : ''}${analytics.sentiment_score}`, pct: Math.max(0, Math.min(100, analytics.sentiment_score + 50)), color: 'from-green-500/20 to-green-900/15', border: 'border-green-500/30', text: analytics.sentiment_score >= 0 ? 'text-green-300' : 'text-red-300', bar: analytics.sentiment_score >= 0 ? 'bg-green-500' : 'bg-red-500', why: trustWhy },
+                            { label: 'Trust',      value: `${analytics.trust_score}%`,  pct: analytics.trust_score,    color: 'from-blue-500/20 to-blue-900/15',    border: 'border-blue-500/30',    text: 'text-blue-300',    bar: 'bg-blue-500',    why: trustWhy },
+                            { label: 'Support',    value: `${analytics.support_score}%`, pct: analytics.support_score,  color: 'from-teal-500/20 to-teal-900/15',    border: 'border-teal-500/30',    text: 'text-teal-300',    bar: 'bg-teal-500',    why: supportWhy },
+                            { label: 'Conflict',   value: `${analytics.conflict_score}%`, pct: analytics.conflict_score, color: 'from-red-500/20 to-red-900/15',      border: 'border-red-500/30',     text: 'text-red-300',     bar: 'bg-red-500',     why: conflictWhy },
+                            { label: 'Value',      value: `${analytics.value_score}%`,   pct: analytics.value_score,    color: 'from-amber-500/20 to-amber-900/15',  border: 'border-amber-500/30',   text: 'text-amber-300',   bar: 'bg-amber-500',   why: `How much ${firstName} enriches your life beyond just frequency of contact` },
+                            { label: 'Activity',   value: `${analytics.activity_level}%`, pct: analytics.activity_level, color: 'from-violet-500/20 to-violet-900/15', border: 'border-violet-500/30', text: 'text-violet-300',  bar: 'bg-violet-500',  why: `How active this relationship has been recently across conversations and entries` },
+                          ].map(m => (
+                            <div key={m.label} className={`rounded-xl border ${m.border} bg-gradient-to-br ${m.color} p-3`}>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider">{m.label}</p>
+                                <p className={`text-sm font-bold tabular-nums ${m.text}`}>{m.value}</p>
                               </div>
-                            </CardContent>
-                          </Card>
-                        </Tooltip>
+                              <div className="h-1 bg-white/10 rounded-full overflow-hidden mb-1.5">
+                                <div className={`h-full ${m.bar} rounded-full`} style={{ width: `${m.pct}%` }} />
+                              </div>
+                              <p className="text-[9px] text-white/35 leading-snug line-clamp-2">{m.why}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Trend — compact pill */}
+                        <div className={`rounded-xl border p-3 flex items-center gap-3 ${
+                          analytics.trend === 'deepening' ? 'border-emerald-500/30 bg-emerald-950/20' :
+                          analytics.trend === 'weakening' ? 'border-red-500/30 bg-red-950/20' :
+                          'border-white/10 bg-white/5'
+                        }`}>
+                          <div className={`flex items-center gap-1.5 text-sm font-semibold ${
+                            analytics.trend === 'deepening' ? 'text-emerald-300' :
+                            analytics.trend === 'weakening' ? 'text-red-300' : 'text-white/60'
+                          }`}>
+                            {analytics.trend === 'deepening' && <TrendingUp className="h-4 w-4" />}
+                            {analytics.trend === 'weakening' && <TrendingDown className="h-4 w-4" />}
+                            {analytics.trend === 'stable' && <Minus className="h-4 w-4" />}
+                            <span className="capitalize">{analytics.trend}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-white/50 leading-snug">
+                              {analytics.trend === 'deepening'
+                                ? `This relationship is growing stronger — interaction quality and frequency are both increasing`
+                                : analytics.trend === 'weakening'
+                                ? `Signs of distance — contact has reduced and emotional intensity is lower than historical average`
+                                : `This relationship has held consistent — no major shifts in either direction`}
+                            </p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-[10px] text-white/30">Known for</p>
+                            <p className="text-sm font-bold text-indigo-300">{analytics.relationship_duration_days}d</p>
+                          </div>
+                        </div>
 
                         {/* SWOT Analysis */}
                         {((analytics.strengths?.length ?? 0) > 0 ||
@@ -3101,29 +3384,362 @@ User's message: ${message}`;
                         )}
                       </CardContent>
                     </Card>
+                  </div>
                   </>
-                  ) : (
-                    <>
-                      <EntityProvenancePanel entityId={editedCharacter.id} entityName={editedCharacter.name} />
-                      <ContradictionResolutionPanel entityId={editedCharacter.id} entityName={editedCharacter.name} />
-                      {isMockDataEnabled && (
-                        <div className="flex flex-col items-center justify-center py-16 text-center px-8">
-                          <div className="h-12 w-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
-                            <TrendingUp className="h-6 w-6 text-white/20" />
-                          </div>
-                          <p className="text-white/60 font-medium mb-1">Analytics not yet available</p>
-                          <p className="text-white/30 text-sm max-w-xs">
-                            Relationship analytics build up over time as you mention {editedCharacter.name} in conversations. Keep sharing — Lore Book is listening.
-                          </p>
-                        </div>
-                      )}
-                    </>
                   );
                 })()}
               </div>
             )}
 
             {/* Metadata Tab */}
+            {/* ── Intelligence Tab ── */}
+            {!loadingDetails && activeTab === 'intelligence' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-yellow-400" />
+                    Relationship Intelligence
+                  </h3>
+                  <p className="text-xs text-white/45 mt-1">
+                    Why does {editedCharacter.name.split(' ')[0]} matter? How have they shaped you?
+                  </p>
+                </div>
+
+                {(dynamicsLoading || influenceLoading) && (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="h-6 w-6 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+
+                {!dynamicsLoading && !influenceLoading && (
+                  <>
+                    {/* ── Influence Profile ── */}
+                    {influenceProfile && (
+                      <div className="space-y-3">
+                        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Influence on Your Life</h4>
+                        <div className="p-4 rounded-xl border border-yellow-500/20 bg-yellow-950/10 space-y-4">
+                          {/* Net influence gauge */}
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex justify-between text-xs text-white/50 mb-1">
+                                <span>Net Influence</span>
+                                <span className="font-semibold text-yellow-300">{Math.round((influenceProfile.net_influence ?? 0) * 100)}%</span>
+                              </div>
+                              <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                                <div className="h-full bg-gradient-to-r from-yellow-500 to-yellow-300 rounded-full" style={{ width: `${Math.round((influenceProfile.net_influence ?? 0) * 100)}%` }} />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Impact grid */}
+                          <div className="grid grid-cols-2 gap-3">
+                            {[
+                              { label: 'Emotional Impact', val: influenceProfile.emotional_impact, color: 'text-pink-300', bg: 'bg-pink-500' },
+                              { label: 'Behavioral Impact', val: influenceProfile.behavioral_impact, color: 'text-blue-300', bg: 'bg-blue-500' },
+                              { label: 'Uplift Score', val: influenceProfile.uplift_score, color: 'text-emerald-300', bg: 'bg-emerald-500' },
+                              { label: 'Toxicity Score', val: influenceProfile.toxicity_score, color: 'text-red-300', bg: 'bg-red-500', invert: true },
+                            ].map(({ label, val, color, bg, invert }) => {
+                              const pct = Math.round(Math.abs(val ?? 0) * 100);
+                              const display = invert ? 100 - pct : pct;
+                              return (
+                                <div key={label} className="p-2.5 rounded-lg bg-white/5 border border-white/8">
+                                  <p className="text-[10px] text-white/40 mb-1">{label}</p>
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-1.5 bg-white/8 rounded-full overflow-hidden">
+                                      <div className={`h-full ${bg}/60 rounded-full`} style={{ width: `${display}%` }} />
+                                    </div>
+                                    <span className={`text-xs font-semibold ${color}`}>{pct}%</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Interaction count */}
+                          {influenceProfile.interaction_count > 0 && (
+                            <p className="text-[10px] text-white/30 pt-1 border-t border-white/8">
+                              Based on {influenceProfile.interaction_count} recorded interactions
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Influence insights */}
+                        {influenceInsights.length > 0 && (
+                          <div className="space-y-2">
+                            {influenceInsights.slice(0, 4).map((insight: any, i: number) => {
+                              const insightColors: Record<string, string> = {
+                                positive_influence:      'border-emerald-500/25 bg-emerald-950/15 text-emerald-300',
+                                uplifting_person:        'border-emerald-500/20 bg-emerald-950/10 text-emerald-200',
+                                toxic_pattern:           'border-red-500/25 bg-red-950/15 text-red-300',
+                                behavior_shift_detected: 'border-blue-500/25 bg-blue-950/15 text-blue-300',
+                                dominant_influence:      'border-yellow-500/25 bg-yellow-950/15 text-yellow-300',
+                                high_risk_person:        'border-orange-500/25 bg-orange-950/15 text-orange-300',
+                              };
+                              const cls = insightColors[insight.type] ?? 'border-white/10 bg-white/5 text-white/70';
+                              return (
+                                <div key={i} className={`p-3 rounded-lg border ${cls}`}>
+                                  <p className="text-xs leading-relaxed">{insight.message}</p>
+                                  {insight.confidence && (
+                                    <p className="text-[10px] opacity-50 mt-1">{Math.round(insight.confidence * 100)}% confidence</p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── Relationship Dynamics ── */}
+                    {dynamics && (
+                      <div className="space-y-3">
+                        <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Relationship Dynamics</h4>
+
+                        {/* Health score */}
+                        <div className="p-4 rounded-xl border border-white/10 bg-white/5 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs text-white/40">Relationship Health</p>
+                              <p className="text-xl font-bold text-white mt-0.5">
+                                {dynamics.health?.health_score ?? 0}
+                                <span className="text-xs text-white/40 font-normal ml-1">/100</span>
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-sm font-semibold capitalize ${
+                                dynamics.health?.overall_health === 'excellent' ? 'text-emerald-400' :
+                                dynamics.health?.overall_health === 'good' ? 'text-green-400' :
+                                dynamics.health?.overall_health === 'fair' ? 'text-yellow-400' :
+                                'text-red-400'
+                              }`}>{dynamics.health?.overall_health ?? 'unknown'}</p>
+                              {dynamics.health?.trends?.health_trend && (
+                                <p className="text-[10px] text-white/40 mt-0.5 capitalize">{dynamics.health.trends.health_trend}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Health factor bars */}
+                          {dynamics.health?.factors && (
+                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/8">
+                              {Object.entries(dynamics.health.factors as Record<string, number>).map(([key, val]) => (
+                                <div key={key}>
+                                  <div className="flex justify-between text-[10px] text-white/35 mb-0.5">
+                                    <span className="capitalize">{key.replace(/_/g, ' ')}</span>
+                                    <span>{Math.round(val)}</span>
+                                  </div>
+                                  <div className="h-1 bg-white/8 rounded-full overflow-hidden">
+                                    <div className="h-full bg-primary/60 rounded-full" style={{ width: `${val}%` }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Stage progression */}
+                        {dynamics.lifecycle?.stage_history?.length > 0 && (
+                          <div className="p-3 rounded-xl border border-white/10 bg-white/5">
+                            <p className="text-[10px] font-semibold text-white/40 uppercase tracking-wider mb-2">Stage Progression</p>
+                            <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                              {(dynamics.lifecycle.stage_history as any[]).map((s: any, i: number) => (
+                                <div key={i} className="flex items-center gap-1 flex-shrink-0">
+                                  <div className={`px-2 py-1 rounded text-[10px] font-medium ${
+                                    i === dynamics.lifecycle.stage_history.length - 1
+                                      ? 'bg-primary/20 text-primary border border-primary/30'
+                                      : 'bg-white/5 text-white/40'
+                                  }`}>
+                                    <span className="capitalize">{s.stage}</span>
+                                    {s.start_date && (
+                                      <span className="ml-1 opacity-50 hidden sm:inline">
+                                        {new Date(s.start_date).getFullYear()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {i < dynamics.lifecycle.stage_history.length - 1 && (
+                                    <span className="text-white/20 text-xs">→</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Metrics row */}
+                        {dynamics.metrics && (
+                          <div className="grid grid-cols-3 gap-2">
+                            {[
+                              { label: 'Freq / mo', val: dynamics.metrics.interaction_frequency?.toFixed(1) },
+                              { label: 'Sentiment', val: `${Math.round((dynamics.metrics.average_sentiment ?? 0) * 100)}%` },
+                              { label: 'Positive', val: `${Math.round((dynamics.metrics.positive_ratio ?? 0) * 100)}%` },
+                            ].map(({ label, val }) => (
+                              <div key={label} className="p-2 rounded-lg bg-white/5 border border-white/8 text-center">
+                                <p className="text-[10px] text-white/35">{label}</p>
+                                <p className="text-sm font-semibold text-white/85 mt-0.5">{val ?? '—'}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Strengths + concerns */}
+                        {(dynamics.health?.strengths?.length > 0 || dynamics.health?.concerns?.length > 0) && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {dynamics.health.strengths?.length > 0 && (
+                              <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-950/10">
+                                <p className="text-[10px] font-semibold text-emerald-400/70 uppercase tracking-wider mb-1.5">Strengths</p>
+                                <ul className="space-y-1">
+                                  {dynamics.health.strengths.map((s: string, i: number) => (
+                                    <li key={i} className="text-xs text-white/70 flex items-start gap-1.5">
+                                      <span className="text-emerald-400 mt-0.5">•</span>{s}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {dynamics.health?.concerns?.length > 0 && (
+                              <div className="p-3 rounded-lg border border-orange-500/20 bg-orange-950/10">
+                                <p className="text-[10px] font-semibold text-orange-400/70 uppercase tracking-wider mb-1.5">Concerns</p>
+                                <ul className="space-y-1">
+                                  {dynamics.health.concerns.map((c: string, i: number) => (
+                                    <li key={i} className="text-xs text-white/70 flex items-start gap-1.5">
+                                      <span className="text-orange-400 mt-0.5">•</span>{c}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Common topics */}
+                        {dynamics.common_topics?.length > 0 && (
+                          <div>
+                            <p className="text-[10px] text-white/35 mb-1.5">Topics you discuss together</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {dynamics.common_topics.map((t: string) => (
+                                <span key={t} className="text-[10px] px-2 py-0.5 rounded-full border border-white/10 text-white/50 bg-white/5">
+                                  {t}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!influenceProfile && !dynamics && (
+                      <div className="text-center py-12 text-white/30">
+                        <Zap className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                        <p className="text-sm font-medium mb-1">No intelligence data yet</p>
+                        <p className="text-xs max-w-xs mx-auto">
+                          Keep journaling about {editedCharacter.name.split(' ')[0]} — LoreBook builds relationship intelligence from your entries over time.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── What LoreBook Knows ── */}
+            {!loadingDetails && activeTab === 'knowledge' && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
+                    <Brain className="h-4 w-4 text-indigo-400" />
+                    What LoreBook Knows About {editedCharacter.name.split(' ')[0]}
+                  </h3>
+                  <p className="text-xs text-white/45">
+                    Knowledge crystallized from your entries, arcs, and interactions involving this person.
+                  </p>
+                </div>
+
+                {knowledgeLoading && (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="h-6 w-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+
+                {!knowledgeLoading && knowledgeClaims.length === 0 && (
+                  <div className="text-center py-12 text-white/35">
+                    <Brain className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                    <p className="text-sm font-medium mb-1">No knowledge claims yet</p>
+                    <p className="text-xs max-w-xs mx-auto">
+                      As you journal about {editedCharacter.name.split(' ')[0]}, LoreBook will crystallize
+                      patterns into verified knowledge claims that appear here.
+                    </p>
+                  </div>
+                )}
+
+                {!knowledgeLoading && knowledgeClaims.length > 0 && (
+                  <div className="space-y-3">
+                    {knowledgeClaims.map((claim: any) => {
+                      const pct = Math.round((claim.confidence ?? 0) * 100);
+                      const confColor = pct >= 75 ? 'text-green-400' : pct >= 50 ? 'text-yellow-400' : 'text-orange-400';
+                      const evidenceCount = claim.evidence_count ?? claim.evidence_links?.length ?? 0;
+
+                      return (
+                        <div key={claim.id} className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-950/15 space-y-3">
+                          {/* Claim text */}
+                          <p className="text-sm text-white/90 leading-relaxed">
+                            {claim.human_readable_claim}
+                          </p>
+
+                          {/* Confidence + evidence row */}
+                          <div className="flex items-center gap-4 flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-20 h-1.5 bg-white/8 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-orange-500'}`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span className={`text-xs font-semibold tabular-nums ${confColor}`}>{pct}%</span>
+                              <span className="text-xs text-white/30">confidence</span>
+                            </div>
+                            {evidenceCount > 0 && (
+                              <span className="text-xs text-white/35">
+                                {evidenceCount} evidence item{evidenceCount !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {claim.knowledge_type && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full border border-indigo-500/25 text-indigo-300/70 bg-indigo-950/30">
+                                {claim.knowledge_type.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Evidence summaries */}
+                          {claim.evidence_links?.length > 0 && (
+                            <div className="space-y-1.5 pt-1 border-t border-white/8">
+                              <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">Supporting evidence</p>
+                              {(claim.evidence_links as any[]).slice(0, 3).map((link: any, i: number) => (
+                                <div key={i} className="flex items-start gap-2">
+                                  <div className="h-1.5 w-1.5 rounded-full bg-indigo-400/40 flex-shrink-0 mt-1.5" />
+                                  <p className="text-xs text-white/55 leading-snug">{link.evidence_summary}</p>
+                                </div>
+                              ))}
+                              {claim.evidence_links.length > 3 && (
+                                <p className="text-[10px] text-white/25 pl-3.5">
+                                  +{claim.evidence_links.length - 3} more evidence items
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Last reinforced */}
+                          {claim.last_reinforced_at && (
+                            <p className="text-[10px] text-white/25">
+                              Last reinforced {new Date(claim.last_reinforced_at).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {!loadingDetails && activeTab === 'metadata' && (
               <div className="space-y-6">
                 <div>
@@ -3201,13 +3817,6 @@ User's message: ${message}`;
           </div>
         </div>
 
-        {/* Sticky Chatbox - Always visible at bottom */}
-        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-black/90 border-t border-primary/30 p-4 z-10 backdrop-blur-sm shadow-lg shadow-black/50">
-          <ChatComposer
-            onSubmit={handleChatSubmit}
-            loading={chatLoading}
-          />
-        </div>
 
       </div>
 
