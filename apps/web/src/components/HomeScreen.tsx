@@ -167,7 +167,12 @@ export const HomeScreen = () => {
       <div className="max-w-4xl mx-auto p-6 md:p-8 space-y-8">
 
         {/* ── Greeting header ───────────────────────────────────────────── */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-6">
+          <img
+            src="/images/LoreBookLogo.jpg"
+            alt="LoreKeeper"
+            className="h-24 w-24 md:h-32 md:w-32 rounded-2xl object-cover shadow-2xl shadow-purple-900/40 ring-2 ring-purple-500/30 shrink-0"
+          />
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Sparkles className="h-5 w-5 text-purple-400" />
