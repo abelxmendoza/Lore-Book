@@ -64,8 +64,8 @@ router.get('/cors', (req: Request, res: Response) => {
   const allowedOrigins = [
     process.env.FRONTEND_URL,
     process.env.VITE_API_URL?.replace('/api', ''),
-    'https://lorekeeper.app',
-    'https://www.lorekeeper.app',
+    'https://lorebook.app',
+    'https://www.lorebook.app',
   ].filter(Boolean);
 
   res.json({
@@ -195,6 +195,232 @@ router.get('/continuity-trace/:userId', requireAuth, async (req: Request, res: R
     });
   } catch (err) {
     return res.status(500).json({ error: 'Continuity trace failed', detail: String(err) });
+  }
+});
+
+/**
+ * GET /api/diagnostics/intelligence-health
+ *
+ * Phase 4 — Observe Reality.
+ * Returns real production metrics for the full event intelligence pipeline.
+ * Admin/builder facing. Requires auth. Used to detect where intelligence dies.
+ *
+ * Response: event pipeline funnel, meaning layer depth, story layer,
+ * knowledge layer, bottleneck warnings, and observation timestamp.
+ */
+router.get('/intelligence-health', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const h24 = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const d7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000).toISOString();
+
+    // Helper: count with optional time window
+    const count = async (table: string, extra = '') => {
+      const { count: c } = await supabaseAdmin
+        .from(table).select('*', { count: 'exact', head: true })
+        .gte('created_at', extra || '2020-01-01');
+      return c ?? 0;
+    };
+    const countWhere = async (table: string, col: string, val: string | boolean, since?: string) => {
+      let q = supabaseAdmin.from(table).select('*', { count: 'exact', head: true })
+        .eq(col, val);
+      if (since) q = q.gte('created_at', since);
+      const { count: c } = await q;
+      return c ?? 0;
+    };
+
+    // ── Event Pipeline ───────────────────────────────────────────────────────
+    const [
+      msgTotal, msgUser24h, msgUser7d, msgUserTotal,
+      expUnitsTotal, expUnits24h, expUnits7d,
+      resolvedTotal, resolved24h, resolved7d,
+      recordsTotal, records24h, records7d,
+      recordsLinked,
+    ] = await Promise.all([
+      count('conversation_messages'),
+      countWhere('conversation_messages', 'role', 'user', h24),
+      countWhere('conversation_messages', 'role', 'user', d7),
+      countWhere('conversation_messages', 'role', 'user'),
+      count('extracted_units'),
+      countWhere('extracted_units', 'type', 'EXPERIENCE', h24),
+      countWhere('extracted_units', 'type', 'EXPERIENCE', d7),
+      count('resolved_events'),
+      count('resolved_events', h24),
+      count('resolved_events', d7),
+      count('event_records'),
+      count('event_records', h24),
+      count('event_records', d7),
+      (async () => {
+        const { count: c } = await supabaseAdmin
+          .from('event_records').select('*', { count: 'exact', head: true })
+          .not('resolved_event_id', 'is', null);
+        return c ?? 0;
+      })(),
+    ]);
+
+    const expUnitsTotal_ = await countWhere('extracted_units', 'type', 'EXPERIENCE');
+    const ingestionCoveragePct = msgUserTotal > 0
+      ? Math.round((expUnitsTotal_ / msgUserTotal) * 100 * 10) / 10
+      : 0;
+    const linkagePct = recordsTotal > 0
+      ? Math.round((recordsLinked / recordsTotal) * 100 * 10) / 10
+      : 0;
+
+    // ── Meaning Layer ─────────────────────────────────────────────────────────
+    const [
+      emotionsTotal, emotions24h, emotions7d,
+      cognitionsTotal, cognitions24h, cognitions7d,
+      identityTotal, identity24h, identity7d,
+      narrativesTotal, narratives24h, narratives7d,
+      atTheTime, laterInterp,
+      recordsWithEmotions,
+    ] = await Promise.all([
+      count('event_emotions'), count('event_emotions', h24), count('event_emotions', d7),
+      count('event_cognitions'), count('event_cognitions', h24), count('event_cognitions', d7),
+      count('event_identity_impacts'), count('event_identity_impacts', h24), count('event_identity_impacts', d7),
+      count('narrative_accounts'), count('narrative_accounts', h24), count('narrative_accounts', d7),
+      countWhere('narrative_accounts', 'account_type', 'at_the_time'),
+      countWhere('narrative_accounts', 'account_type', 'later_interpretation'),
+      (async () => {
+        const { data } = await supabaseAdmin
+          .from('event_emotions')
+          .select('event_record_id');
+        return new Set((data || []).map((r: any) => r.event_record_id)).size;
+      })(),
+    ]);
+
+    const meaningDensityPct = recordsTotal > 0
+      ? Math.round((recordsWithEmotions / recordsTotal) * 100 * 10) / 10
+      : 0;
+
+    // ── Story Layer ───────────────────────────────────────────────────────────
+    const [
+      causalTotal, causal24h, causal7d,
+      continuityTotal, continuity24h, continuity7d,
+      candidatesTotal, candidatesSurfaceable,
+      confidenceTotal, confidence24h, confidence7d,
+      impactsTotal, impacts24h,
+    ] = await Promise.all([
+      count('event_causal_links'), count('event_causal_links', h24), count('event_causal_links', d7),
+      count('event_continuity_links'), count('event_continuity_links', h24), count('event_continuity_links', d7),
+      count('event_candidates'),
+      (async () => {
+        const { count: c } = await supabaseAdmin
+          .from('event_candidates').select('*', { count: 'exact', head: true })
+          .gte('occurrence_count', 2);
+        return c ?? 0;
+      })(),
+      count('event_confidence_snapshots'), count('event_confidence_snapshots', h24), count('event_confidence_snapshots', d7),
+      count('event_impacts'), count('event_impacts', h24),
+    ]);
+
+    const continuityExpected = resolvedTotal >= 3 ? Math.max(1, Math.floor(resolvedTotal / 3)) : 0;
+    const continuityHealthPct = continuityExpected > 0
+      ? Math.min(100, Math.round((continuityTotal / continuityExpected) * 100))
+      : 0;
+
+    // ── Knowledge Layer ───────────────────────────────────────────────────────
+    const [claimsTotal, claimsActive, claimsInactive, omegaEntities] = await Promise.all([
+      count('omega_claims'),
+      countWhere('omega_claims', 'is_active', true),
+      countWhere('omega_claims', 'is_active', false),
+      count('omega_entities'),
+    ]);
+
+    // crystallized_knowledge may not exist yet
+    let crystallizedTotal = 0;
+    try {
+      const { count: c } = await supabaseAdmin
+        .from('crystallized_knowledge').select('*', { count: 'exact', head: true });
+      crystallizedTotal = c ?? 0;
+    } catch { /* table may not exist */ }
+
+    // ── Pipeline Funnel ───────────────────────────────────────────────────────
+    const funnel = [
+      { stage: 'Messages (user)',       count: msgUserTotal,    pct: 100 },
+      { stage: 'EXPERIENCE_INGESTION',  count: expUnitsTotal_,  pct: ingestionCoveragePct },
+      { stage: 'Resolved Events',       count: resolvedTotal,   pct: msgUserTotal > 0 ? Math.round(resolvedTotal / msgUserTotal * 100 * 10) / 10 : 0 },
+      { stage: 'Event Records',         count: recordsTotal,    pct: msgUserTotal > 0 ? Math.round(recordsTotal / msgUserTotal * 100 * 10) / 10 : 0 },
+      { stage: 'Linked Records',        count: recordsLinked,   pct: linkagePct > 0 ? Math.round(recordsLinked / (msgUserTotal || 1) * 100 * 10) / 10 : 0 },
+      { stage: 'Meaning Extraction',    count: emotionsTotal,   pct: recordsTotal > 0 ? meaningDensityPct : 0 },
+      { stage: 'Continuity Detection',  count: continuityTotal, pct: resolvedTotal > 0 ? continuityHealthPct : 0 },
+      { stage: 'Knowledge Claims',      count: claimsTotal,     pct: msgUserTotal > 0 ? Math.round(claimsTotal / msgUserTotal * 100 * 10) / 10 : 0 },
+    ];
+
+    // ── Bottleneck Detection ──────────────────────────────────────────────────
+    const THRESHOLDS = {
+      ingestionCoverage: 30,
+      linkageCoverage: 60,
+      meaningDensity: 40,
+      continuityHealth: 50,
+    };
+    const warnings: Array<{ level: 'critical' | 'warning' | 'info'; system: string; message: string; actual: number; threshold: number }> = [];
+
+    if (msgUserTotal === 0) {
+      warnings.push({ level: 'info', system: 'Event Pipeline', message: 'No user messages yet. Intelligence pipeline has not been exercised.', actual: 0, threshold: 1 });
+    } else {
+      if (ingestionCoveragePct < THRESHOLDS.ingestionCoverage) {
+        warnings.push({ level: 'critical', system: 'EXPERIENCE_INGESTION', message: `Only ${ingestionCoveragePct}% of user messages triggered event extraction. Mode Router thresholds may be too strict for real conversational patterns.`, actual: ingestionCoveragePct, threshold: THRESHOLDS.ingestionCoverage });
+      }
+      if (recordsTotal > 0 && linkagePct < THRESHOLDS.linkageCoverage) {
+        warnings.push({ level: 'warning', system: 'Event Linkage', message: `${linkagePct}% linkage — ${recordsTotal - recordsLinked} event_records are unlinked to resolved_events. Phase C1 assembly linking may not be firing.`, actual: linkagePct, threshold: THRESHOLDS.linkageCoverage });
+      }
+      if (recordsTotal > 0 && meaningDensityPct < THRESHOLDS.meaningDensity) {
+        warnings.push({ level: 'warning', system: 'Meaning Layer', message: `Only ${meaningDensityPct}% of event_records have emotion data. Event records are being created but feelings rarely extracted.`, actual: meaningDensityPct, threshold: THRESHOLDS.meaningDensity });
+      }
+      if (resolvedTotal >= 5 && continuityHealthPct < THRESHOLDS.continuityHealth) {
+        warnings.push({ level: 'warning', system: 'Continuity Engine', message: `${continuityTotal} continuity links against ${continuityExpected} expected (${continuityHealthPct}%). Shared-entity overlap may be low or events lack people/location data.`, actual: continuityHealthPct, threshold: THRESHOLDS.continuityHealth });
+      }
+    }
+
+    if (warnings.length === 0 && msgUserTotal > 0) {
+      warnings.push({ level: 'info', system: 'All Systems', message: 'All pipeline metrics are within healthy thresholds.', actual: 100, threshold: 100 });
+    }
+
+    res.json({
+      success: true,
+      observed_at: now.toISOString(),
+      summary: {
+        total_messages: msgTotal,
+        total_resolved_events: resolvedTotal,
+        linkage_pct: linkagePct,
+        ingestion_coverage_pct: ingestionCoveragePct,
+        meaning_density_pct: meaningDensityPct,
+        overall_health: warnings.some(w => w.level === 'critical') ? 'critical'
+          : warnings.some(w => w.level === 'warning') ? 'degraded' : 'healthy',
+      },
+      event_pipeline: {
+        conversation_messages: { total: msgTotal, last_24h: msgUser24h, last_7d: msgUser7d, user_only_total: msgUserTotal },
+        experience_ingestion:  { total: expUnitsTotal_, last_24h: expUnits24h, last_7d: expUnits7d, coverage_pct: ingestionCoveragePct },
+        resolved_events:       { total: resolvedTotal, last_24h: resolved24h, last_7d: resolved7d },
+        event_records:         { total: recordsTotal, last_24h: records24h, last_7d: records7d, linked: recordsLinked, linkage_pct: linkagePct },
+      },
+      meaning_layer: {
+        event_emotions:        { total: emotionsTotal, last_24h: emotions24h, last_7d: emotions7d },
+        event_cognitions:      { total: cognitionsTotal, last_24h: cognitions24h, last_7d: cognitions7d },
+        event_identity_impacts:{ total: identityTotal, last_24h: identity24h, last_7d: identity7d },
+        narrative_accounts:    { total: narrativesTotal, last_24h: narratives24h, last_7d: narratives7d, at_the_time: atTheTime, looking_back: laterInterp },
+        records_with_meaning:  recordsWithEmotions,
+        meaning_density_pct:   meaningDensityPct,
+      },
+      story_layer: {
+        causal_links:     { total: causalTotal, last_24h: causal24h, last_7d: causal7d },
+        continuity_links: { total: continuityTotal, last_24h: continuity24h, last_7d: continuity7d, expected: continuityExpected, health_pct: continuityHealthPct },
+        recurring_scenes: { total: candidatesTotal, surfaceable_at_2plus: candidatesSurfaceable },
+        confidence_snaps: { total: confidenceTotal, last_24h: confidence24h, last_7d: confidence7d },
+        event_impacts:    { total: impactsTotal, last_24h: impacts24h },
+      },
+      knowledge_layer: {
+        omega_claims:      { total: claimsTotal, active: claimsActive, inactive: claimsInactive },
+        omega_entities:    { total: omegaEntities },
+        crystallized:      { total: crystallizedTotal },
+      },
+      funnel,
+      warnings,
+      thresholds: THRESHOLDS,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Intelligence health check failed', detail: String(err) });
   }
 });
 

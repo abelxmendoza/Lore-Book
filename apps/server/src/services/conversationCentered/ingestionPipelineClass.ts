@@ -48,6 +48,7 @@ import { questExtractor } from '../quests/questExtractor';
 import { questService } from '../quests/questService';
 import { ingestConversationER } from '../unifiedErIngestion';
 import { eventCandidateService } from '../eventCandidates/eventCandidateService';
+import { narrativeContinuityService } from '../narrativeContinuityService';
 
 /**
  * Main ingestion pipeline for conversation messages
@@ -1491,6 +1492,64 @@ export class ConversationIngestionPipeline {
                       .catch(err => {
                         logger.debug({ err }, 'Event candidate processing failed (non-blocking)');
                       });
+
+                    // Step 12.8.6: Narrative continuity detection — non-blocking
+                    // detectContinuity() is rule-based (no LLM), fully implemented,
+                    // but was never wired into the pipeline. This activates "Part of a
+                    // Bigger Picture" for all future events.
+                    ;(async () => {
+                      try {
+                        const { data: pastEvents } = await supabaseAdmin
+                          .from('resolved_events')
+                          .select('id, title, summary, confidence, people, locations, activities, start_time, end_time, metadata')
+                          .eq('user_id', userId)
+                          .lt('start_time', fullEvent.start_time)
+                          .order('start_time', { ascending: false })
+                          .limit(30);
+
+                        if (pastEvents && pastEvents.length > 0) {
+                          const currentEventForContinuity = {
+                            id: fullEvent.id,
+                            title: fullEvent.title,
+                            summary: fullEvent.summary,
+                            confidence: (fullEvent as any).confidence || 0.7,
+                            people: fullEvent.people || [],
+                            locations: fullEvent.locations || [],
+                            activities: fullEvent.activities || [],
+                            start_time: fullEvent.start_time,
+                            end_time: (fullEvent as any).end_time ?? null,
+                            metadata: (fullEvent as any).metadata,
+                          };
+                          const pastEventsForContinuity = pastEvents.map((e: any) => ({
+                            id: e.id,
+                            title: e.title,
+                            summary: e.summary,
+                            confidence: e.confidence || 0.7,
+                            people: e.people || [],
+                            locations: e.locations || [],
+                            activities: e.activities || [],
+                            start_time: e.start_time,
+                            end_time: e.end_time ?? null,
+                            metadata: e.metadata,
+                          }));
+
+                          const links = await narrativeContinuityService.detectContinuity(
+                            userId,
+                            [currentEventForContinuity],
+                            pastEventsForContinuity
+                          );
+
+                          if (links.length > 0) {
+                            logger.debug(
+                              { userId, eventId: fullEvent.id, linksFound: links.length },
+                              'Detected narrative continuity links'
+                            );
+                          }
+                        }
+                      } catch (err) {
+                        logger.debug({ err, eventId: fullEvent.id }, 'Narrative continuity detection failed (non-blocking)');
+                      }
+                    })();
 
                     // Step 12.9: Detect workout events and extract biometrics
                     // Check if this event is workout-related

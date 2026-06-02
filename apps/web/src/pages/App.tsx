@@ -28,7 +28,7 @@ import { LocationBook } from '../components/locations/LocationBook';
 import { PhotoAlbum } from '../components/photos/PhotoAlbum';
 import { BiographyEditor } from '../components/biography/BiographyEditor';
 import { LoreBook } from '../components/lorebook/LoreBook';
-import { OmniTimelinePanel } from '../components/timeline/OmniTimelinePanel';
+import { OmniTimeline } from '../components/timeline/OmniTimeline';
 import UserGuide from '../components/guide/UserGuide';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
 import { PerceptionsView } from '../components/perceptions/PerceptionsView';
@@ -38,6 +38,7 @@ import { ConnectionStatus } from '../components/ConnectionStatus';
 import { ModeBadge } from '../components/ModeBadge';
 import { PrivacySecurityPage } from '../components/security/PrivacySecurityPage';
 import { EventsBook } from '../components/events/EventsBook';
+import { IntelligenceDashboard } from '../components/diagnostics/IntelligenceDashboard';
 import { EntityResolutionBook } from '../components/entities/EntityResolutionBook';
 import { OrganizationsBook } from '../components/organizations/OrganizationsBook';
 import { SkillsBook } from '../components/skills/SkillsBook';
@@ -232,6 +233,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       quests: 'Quests',
       gaps: 'Knowledge Gaps',
       saga: 'Life Saga',
+      intelligence: 'Intelligence Health',
     };
     return names[surface] || 'Lore Book';
   };
@@ -303,7 +305,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             <ChatFirstInterface onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
           </div>
         )}
-        {activeSurface === 'timeline' && <OmniTimelinePanel />}
+        {activeSurface === 'timeline' && <OmniTimeline />}
         {activeSurface === 'search' && renderSearchSurface()}
         {activeSurface === 'characters' && <CharacterBook />}
         {activeSurface === 'locations' && <LocationBook />}
@@ -330,6 +332,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                         )}
 
                         {activeSurface === 'events' && <EventsBook />}
+                        {activeSurface === 'intelligence' && <IntelligenceDashboard />}
                         {activeSurface === 'entities' && <EntityResolutionBook />}
                         {activeSurface === 'organizations' && <OrganizationsBook />}
                         {activeSurface === 'skills' && <SkillsBook />}

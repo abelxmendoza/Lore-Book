@@ -1,116 +1,52 @@
 // =====================================================
 // EVENTS BOOK
-// Purpose: Full-page book component listing all events
-// Enhanced with advanced filters and optimized for large datasets
+// Purpose: Full-page chronicle of important life events
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
-import { Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search, BookOpen, RefreshCw, ChevronLeft, ChevronRight, Star, TrendingUp, Filter, X, HelpCircle, Cake, PartyPopper, Music2, Building2, Briefcase, Plane, Heart } from 'lucide-react';
+import {
+  Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
+  RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
+  Music2, Building2, Briefcase, Plane, Heart, LayoutGrid, List,
+  CalendarDays, Repeat2, Star, TrendingUp,
+} from 'lucide-react';
+import { formatDistanceToNow, parseISO as dfParseISO } from 'date-fns';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { parseISO, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { EventDetailModal } from './EventDetailModal';
 import { EventProfileCard, type Event } from './EventProfileCard';
-import { EventCardExample } from './EventCardExample';
-import { EventCardExampleModal } from './EventCardExampleModal';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 
-const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
+const ITEMS_PER_PAGE = 18;
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type RecurringScene = {
+  id: string;
+  canonical_title: string;
+  dominant_entity_names?: string[];
+  recurring_activities?: string[];
+  emotional_tone?: string;
+  occurrence_count: number;
+  continuity_strength: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  source_event_ids?: string[];
+  timeline_candidate?: boolean;
+};
+
+type ViewMode = 'moments' | 'timeline' | 'calendar' | 'recurring';
 type EventCategory = 'all' | 'recent' | 'birthdays' | 'parties' | 'concerts_shows' | 'conventions' | 'work' | 'travel' | 'family' | 'festivals' | 'with_people' | 'with_locations';
-type SortOption = 'date_desc' | 'date_asc' | 'confidence_desc' | 'confidence_asc' | 'title_asc' | 'title_desc' | 'people_desc';
-
-// Sub-tabs per category (keyword match within that category). 'all' = no extra filter.
-const CATEGORY_SUB_TABS: Partial<Record<EventCategory, { value: string; label: string }[]>> = {
-  birthdays: [{ value: 'all', label: 'All' }, { value: 'mine', label: 'Mine' }, { value: 'others', label: "Others'" }, { value: 'kids', label: "Kids'" }],
-  parties: [{ value: 'all', label: 'All' }, { value: 'raves', label: 'Raves' }, { value: 'afters', label: 'Afters' }, { value: 'celebrations', label: 'Celebrations' }, { value: 'game_nights', label: 'Game Nights' }, { value: 'house_parties', label: 'House Parties' }],
-  concerts_shows: [{ value: 'all', label: 'All' }, { value: 'concerts', label: 'Concerts' }, { value: 'theater', label: 'Theater' }, { value: 'comedy', label: 'Comedy' }, { value: 'open_mics', label: 'Open Mics' }, { value: 'local_scene', label: 'Local Scene' }],
-  conventions: [{ value: 'all', label: 'All' }, { value: 'conferences', label: 'Conferences' }, { value: 'expos', label: 'Expos' }, { value: 'meetups', label: 'Meetups' }, { value: 'fan_cons', label: 'Fan Cons' }],
-  work: [{ value: 'all', label: 'All' }, { value: 'meetings', label: 'Meetings' }, { value: 'conferences', label: 'Conferences' }, { value: 'trips', label: 'Trips' }, { value: 'offsites', label: 'Offsites' }],
-  travel: [{ value: 'all', label: 'All' }, { value: 'vacations', label: 'Vacations' }, { value: 'weekends', label: 'Weekends' }, { value: 'business', label: 'Business' }],
-  family: [{ value: 'all', label: 'All' }, { value: 'dinners', label: 'Dinners' }, { value: 'reunions', label: 'Reunions' }, { value: 'holidays', label: 'Holidays' }],
-  festivals: [{ value: 'all', label: 'All' }, { value: 'music', label: 'Music' }, { value: 'arts', label: 'Arts' }, { value: 'food', label: 'Food' }],
-};
-
-// Keywords for category match (title, summary, type, activities). At least one must match.
-const CATEGORY_KEYWORDS: Partial<Record<EventCategory, string[]>> = {
-  birthdays: ['birthday', 'birthdays', 'bday'],
-  parties: ['party', 'parties', 'rave', 'raves', 'celebration', 'gathering', 'game night', 'house party', 'afters', 'afterparty', 'after-party', 'after party', 'underground'],
-  concerts_shows: ['concert', 'concerts', 'show', 'shows', 'performance', 'theater', 'theatre', 'comedy', 'gig', 'open mic', 'festival', 'local scene', 'underground scene'],
-  conventions: ['convention', 'conventions', 'conference', 'conferences', 'expo', 'expos', 'meetup', 'meetups', 'summit', 'summits', 'con'],
-  work: ['work', 'meeting', 'meetings', 'presentation', 'client', 'office', 'conference', 'business trip', 'offsite', 'interview'],
-  travel: ['travel', 'trip', 'trips', 'vacation', 'vacations', 'getaway', 'weekend getaway', 'road trip', 'family visit'],
-  family: ['family', 'family dinner', 'reunion', 'reunions', 'holiday', 'holidays', 'anniversary'],
-  festivals: ['festival', 'festivals', 'fair', 'multi-day'],
-};
-
-// Sub-category keywords (narrow within parent category)
-const SUB_KEYWORDS: Record<string, string[]> = {
-  afters: ['afters', 'afterparty', 'after-party', 'after party', 'underground rave', 'rave afters'],
-  raves: ['rave', 'raves', 'edm', 'underground'],
-  celebrations: ['celebration', 'celebrations', 'birthday party', 'anniversary'],
-  game_nights: ['game night', 'game nights', 'board game', 'game night'],
-  house_parties: ['house party', 'house parties', 'house party'],
-  local_scene: ['local scene', 'local scene show', 'underground scene', 'scenes'],
-  concerts: ['concert', 'concerts', 'gig', 'live music'],
-  theater: ['theater', 'theatre', 'play', 'musical'],
-  comedy: ['comedy', 'stand-up', 'standup', 'open mic comedy'],
-  open_mics: ['open mic', 'open mics', 'open mic night'],
-  conferences: ['conference', 'conferences', 'summit', 'summit'],
-  expos: ['expo', 'expos', 'exhibition', 'trade show'],
-  meetups: ['meetup', 'meetups', 'meet up'],
-  fan_cons: ['con', 'convention', 'comic con', 'fan con', 'anime con', 'fan convention'],
-  meetings: ['meeting', 'meetings', 'sync', 'standup', 'stand-up'],
-  trips: ['trip', 'business trip', 'work trip', 'travel'],
-  offsites: ['offsite', 'offsites', 'off-site', 'retreat'],
-  vacations: ['vacation', 'vacations', 'holiday', 'getaway'],
-  weekends: ['weekend', 'weekend getaway', 'weekend trip'],
-  business: ['business', 'business trip', 'work travel'],
-  dinners: ['dinner', 'family dinner', 'dinners'],
-  reunions: ['reunion', 'reunions', 'family reunion'],
-  holidays: ['holiday', 'holidays', 'christmas', 'thanksgiving', 'easter'],
-  music: ['music festival', 'music fest', 'festival'],
-  arts: ['arts festival', 'art fair', 'art festival'],
-  food: ['food festival', 'food fair', 'food fest'],
-  mine: ['my birthday', 'my bday', 'turned today', 'celebrated my'],
-  others: ['birthday party', 'birthday for', "friend's birthday", 'surprise party'],
-  kids: ['kid birthday', "kid's birthday", 'child birthday', 'children\'s party', 'kids party'],
-};
-
-function eventText(event: Event): string {
-  const parts = [event.title, event.summary, event.type, ...(event.activities || [])].filter(Boolean) as string[];
-  return parts.join(' ').toLowerCase();
-}
-
-function eventMatchesCategory(event: Event, category: EventCategory, subCategory: string): boolean {
-  if (category === 'all') return true;
-  if (category === 'recent') {
-    const thirtyDaysAgo = subDays(new Date(), 30);
-    return parseISO(event.start_time) >= thirtyDaysAgo;
-  }
-  if (category === 'with_people') return event.people.length > 0;
-  if (category === 'with_locations') return event.locations.length > 0;
-
-  const text = eventText(event);
-  const kw = CATEGORY_KEYWORDS[category];
-  if (!kw || !kw.some(k => text.includes(k))) return false;
-  if (subCategory === 'all') return true;
-
-  const subKw = SUB_KEYWORDS[subCategory];
-  if (subKw && subKw.some(k => text.includes(k))) return true;
-  // Fallback: sub labels that are single words we can match
-  if (text.includes(subCategory.replace(/_/g, ' '))) return true;
-  return false;
-}
 type ImpactFilter = 'all' | 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
+type SortOption = 'date_desc' | 'date_asc' | 'confidence_desc' | 'confidence_asc' | 'title_asc' | 'title_desc' | 'people_desc';
 type DateRange = 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
 
 interface FilterState {
@@ -127,110 +63,400 @@ interface FilterState {
   hasPeople: boolean | null;
 }
 
-// Generate comprehensive mock events data (50+ events)
+// ─── Category config ─────────────────────────────────────────────────────────
+
+const CATEGORY_CHIPS: { value: EventCategory; label: string; icon: React.ElementType; shortLabel?: string }[] = [
+  { value: 'all', label: 'All', icon: Calendar },
+  { value: 'recent', label: 'Recent', icon: Clock },
+  { value: 'birthdays', label: 'Birthdays', icon: Cake, shortLabel: 'Bdays' },
+  { value: 'parties', label: 'Parties', icon: PartyPopper },
+  { value: 'concerts_shows', label: 'Concerts & Shows', icon: Music2, shortLabel: 'Shows' },
+  { value: 'conventions', label: 'Conventions', icon: Building2, shortLabel: 'Cons' },
+  { value: 'work', label: 'Work', icon: Briefcase },
+  { value: 'travel', label: 'Travel', icon: Plane },
+  { value: 'family', label: 'Family', icon: Heart },
+  { value: 'festivals', label: 'Festivals', icon: Sparkles },
+  { value: 'with_people', label: 'With People', icon: Users },
+  { value: 'with_locations', label: 'With Location', icon: MapPin },
+];
+
+const IMPACT_CHIPS: { value: ImpactFilter; label: string; activeClass: string }[] = [
+  { value: 'all', label: 'All', activeClass: 'bg-primary/20 text-primary border-primary/40' },
+  { value: 'direct_participant', label: 'I Was There', activeClass: 'bg-blue-500/20 text-blue-300 border-blue-500/40' },
+  { value: 'indirect_affected', label: 'Affects Me', activeClass: 'bg-purple-500/20 text-purple-300 border-purple-500/40' },
+  { value: 'related_person_affected', label: 'Affects Someone Close', activeClass: 'bg-orange-500/20 text-orange-300 border-orange-500/40' },
+  { value: 'observer', label: 'I Observed', activeClass: 'bg-gray-500/20 text-gray-300 border-gray-500/40' },
+  { value: 'ripple_effect', label: 'Ripple Effects', activeClass: 'bg-pink-500/20 text-pink-300 border-pink-500/40' },
+];
+
+const VIEWS: { value: ViewMode; label: string; icon: React.ElementType; soon?: boolean }[] = [
+  { value: 'moments', label: 'Moments', icon: LayoutGrid },
+  { value: 'timeline', label: 'Timeline', icon: List },
+  { value: 'calendar', label: 'Calendar', icon: CalendarDays, soon: true },
+  { value: 'recurring', label: 'Recurring Scenes', icon: Repeat2 },
+];
+
+// ─── Keyword matching ─────────────────────────────────────────────────────────
+
+const CATEGORY_KEYWORDS: Partial<Record<EventCategory, string[]>> = {
+  birthdays: ['birthday', 'birthdays', 'bday'],
+  parties: ['party', 'parties', 'rave', 'raves', 'celebration', 'gathering', 'game night', 'house party', 'afters', 'afterparty', 'after-party', 'after party', 'underground'],
+  concerts_shows: ['concert', 'concerts', 'show', 'shows', 'performance', 'theater', 'theatre', 'comedy', 'gig', 'open mic', 'festival', 'local scene', 'underground scene'],
+  conventions: ['convention', 'conventions', 'conference', 'conferences', 'expo', 'expos', 'meetup', 'meetups', 'summit', 'con'],
+  work: ['work', 'meeting', 'meetings', 'presentation', 'client', 'office', 'conference', 'business trip', 'offsite', 'interview'],
+  travel: ['travel', 'trip', 'trips', 'vacation', 'vacations', 'getaway', 'weekend getaway', 'road trip', 'family visit'],
+  family: ['family', 'family dinner', 'reunion', 'reunions', 'holiday', 'holidays', 'anniversary'],
+  festivals: ['festival', 'festivals', 'fair', 'multi-day'],
+};
+
+function eventText(event: Event): string {
+  return [event.title, event.summary, event.type, ...(event.activities || [])].filter(Boolean).join(' ').toLowerCase();
+}
+
+function eventMatchesCategory(event: Event, category: EventCategory): boolean {
+  if (category === 'all') return true;
+  if (category === 'recent') return parseISO(event.start_time) >= subDays(new Date(), 30);
+  if (category === 'with_people') return event.people.length > 0;
+  if (category === 'with_locations') return event.locations.length > 0;
+  const kw = CATEGORY_KEYWORDS[category];
+  return kw ? kw.some(k => eventText(event).includes(k)) : false;
+}
+
+// ─── Mock data ────────────────────────────────────────────────────────────────
+
+type ImpactType = 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
+
+// 20-slot cycle → precise distribution across all 5 impact types for 60 events
+const IMPACT_CYCLE: ImpactType[] = [
+  'direct_participant', 'direct_participant', 'direct_participant', 'direct_participant', 'direct_participant',
+  'direct_participant', 'direct_participant',
+  'indirect_affected', 'indirect_affected', 'indirect_affected', 'indirect_affected',
+  'related_person_affected', 'related_person_affected', 'related_person_affected', 'related_person_affected',
+  'observer', 'observer', 'observer',
+  'ripple_effect', 'ripple_effect',
+];
+
+const IMPACT_DESCRIPTIONS: Record<ImpactType, string[]> = {
+  direct_participant: [
+    'You were actively there — this is a first-hand memory.',
+    'You participated directly and shaped how this unfolded.',
+    'This is yours. You were in the room when it happened.',
+    'You showed up and this became part of your story.',
+  ],
+  indirect_affected: [
+    'This event changed your situation even though you weren\'t physically there.',
+    'The outcome reached you indirectly but it landed hard.',
+    'This affected your life through the circumstances it set in motion.',
+    'You felt the effects of this without being at the center of it.',
+  ],
+  related_person_affected: [
+    'Someone close to you was at the center of this. You cared because they did.',
+    'This mattered to you because of your relationship with the person involved.',
+    'You weren\'t the subject — but someone who matters to you was.',
+    'This shaped someone in your life, and by extension, shaped you.',
+  ],
+  observer: [
+    'You witnessed this and noted it, even as a bystander.',
+    'This entered your awareness from the outside — you heard or saw it happen.',
+    'You observed this without being involved, but it stayed with you.',
+    'You mentioned this in passing but something about it registered.',
+  ],
+  ripple_effect: [
+    'The downstream effects of this moment reached you later.',
+    'This set off a chain of events that eventually touched your life.',
+    'The consequences rippled out — you weren\'t the target, but you felt the wave.',
+    'This happened elsewhere, but its effects eventually found you.',
+  ],
+};
+
+const CONNECTION_TYPES = ['close friend', 'family member', 'partner', 'colleague', 'roommate', 'mentor'];
+
 const generateMockEvents = (): Event[] => {
   const eventTypes = ['work', 'social', 'health', 'recreation', 'travel', 'education', 'family', 'personal'];
-  const locations = ['Home', 'Office', 'Café', 'Park', 'Gym', 'Cinema', 'Restaurant', 'Library', 'Beach', 'Mountain Trail', 'Airport', 'Hotel', 'School', 'Hospital', 'Museum'];
-  const peopleNames = ['Alex', 'Sarah', 'John', 'Maria', 'David', 'Emma', 'Mike', 'Lisa', 'Tom', 'Anna', 'Chris', 'Sophie', 'Mom', 'Dad', 'Sister', 'Brother', 'Dr. Smith', 'Dr. Johnson'];
-  const activities = ['meeting', 'coffee', 'hiking', 'workout', 'dinner', 'movie', 'reading', 'coding', 'traveling', 'learning', 'celebrating', 'shopping', 'cooking', 'exercising', 'studying', 'planning'];
-  
+  const locations = ['Home', 'The Office', 'Corner Café', 'Riverside Park', 'The Gym', 'Cinema', 'Italian Place', 'Library', 'The Beach', 'Mountain Trail', 'Airport', 'Hotel Bar', 'Campus', 'Hospital', 'Museum of Art'];
+  const peopleNames = ['Maya', 'Jordan', 'Sarah', 'Marcus', 'Elena', 'Tom', 'Priya', 'Chris', 'Nadia', 'Sam', 'Alex', 'Lena', 'Mom', 'Dad', 'my sister', 'my brother'];
+  const activities = ['meeting', 'coffee', 'hiking', 'workout', 'dinner', 'movie', 'talking', 'coding', 'traveling', 'learning', 'celebrating', 'cooking', 'drinking', 'dancing', 'running'];
   const events: Event[] = [];
   const now = Date.now();
-  
-  // Generate events over the past year
+
+  const titles: Record<string, string[]> = {
+    work: [
+      'Performance Review', 'Client Presentation Panic', 'Sprint Planning', 'Late Night Crunch Session',
+      'Promotion Discussion', 'New Manager First Meeting', 'Project Deadline Push', 'Team Standup That Went Sideways',
+    ],
+    social: [
+      "Maya's Birthday Rooftop Party", 'Impromptu Dive Bar Night', 'First Date at The Observatory',
+      'Concert at The Venue', 'Reconnecting With an Old Friend', 'Group Dinner That Went Long',
+      'Game Night at Jordan\'s', 'House Party Into the Next Morning',
+    ],
+    health: [
+      'Therapy Session Breakthrough', 'First Day Back at the Gym', 'ER Visit at 2am',
+      'Anxiety Spike During Work Call', 'Running Personal Record', 'Skipped Doctor Visit Again',
+      'Sleep Clinic Consultation', 'Burnout Day',
+    ],
+    recreation: [
+      'BJJ Competition', 'Open Mic Night', 'Gallery Opening', 'Pickup Soccer at the Park',
+      'Sunrise Hike', 'Punk Show at the Basement', 'First Time Surfing', 'Spontaneous Road Trip',
+    ],
+    travel: [
+      'Weekend in Portland', 'Conference in Austin', 'Surprise Road Trip With Friends',
+      'First International Solo Trip', 'Camping Weekend', 'Train Ride Across the State',
+      'Flight Delay That Turned Into a Story', 'Wrong Turn That Led Somewhere Good',
+    ],
+    education: [
+      'Accepted to the Program', 'Failed the Exam', 'Study Group Breakthrough',
+      'Graduation Day', 'Dropped the Course', 'First Day of Class',
+      'Research Presentation', 'Mentor Conversation That Changed Things',
+    ],
+    family: [
+      "Mom's Health Scare", 'Holiday Tension at Dinner', 'Family Reunion After 3 Years',
+      "Dad's Retirement Party", "Sibling's Big Announcement", 'Family Video Call That Ran Long',
+      'Grandma Visit', 'Anniversary Dinner Nobody Enjoyed',
+    ],
+    personal: [
+      'Moved Into New Apartment', 'Cleared Out Old Storage Unit', 'Big Decision Made Alone at Night',
+      'Quiet Day That Changed Something', 'Reconnected With an Old Hobby', 'Wrote the Letter',
+      'That Walk Where Everything Clicked', 'Deleted the App Finally',
+    ],
+  };
+
+  const summaries: Record<string, string[]> = {
+    work: [
+      'The meeting went sideways — someone finally said what everyone was thinking.',
+      'Harder conversation than expected but something important got clarified.',
+      'The kind of day that reminds you why this job is complicated.',
+      'Stayed late again. Made progress but the pressure is real.',
+      'Left the room not sure if that went well or terribly.',
+    ],
+    social: [
+      'Good energy all night. Stayed longer than anyone planned.',
+      'One of those nights where you feel like yourself again.',
+      'A bit awkward at first, then something clicked and it was great.',
+      "Didn't want it to end. Didn't sleep much after either.",
+      'Ended up somewhere unexpected. The best kind of night.',
+    ],
+    health: [
+      'Harder than expected but you went. That matters.',
+      'The thing you\'d been avoiding for months finally happened.',
+      "Didn't break any records but showed up. That's the win.",
+      'The kind of session where something shifts in how you see yourself.',
+      "Not the news you wanted but you're dealing with it.",
+    ],
+    recreation: [
+      'Lost track of time in the best way.',
+      'Exactly what you needed. No agenda, just the thing itself.',
+      'One of those rare moments where you were fully present.',
+      'Messy but alive. Wouldn\'t have skipped it.',
+    ],
+    travel: [
+      'New place, new version of yourself for a few days.',
+      'The delays and wrong turns were part of it.',
+      'Left feeling like you needed to do this more often.',
+      "The trip that made you realize what you'd been missing.",
+    ],
+    education: [
+      'Walked out with more questions than answers. Good ones.',
+      'The kind of learning that makes you rethink something older.',
+      'Slower going than expected but real ground was covered.',
+      "Something clicked that hadn't clicked before.",
+    ],
+    family: [
+      "Quality time that reminded you why it's complicated and worth it.",
+      'Old patterns showing up but this time you handled it differently.',
+      "It's never just a dinner with family.",
+      'More said between the lines than out loud.',
+    ],
+    personal: [
+      'Small moment that had more weight than expected.',
+      'The kind of thing nobody else would understand but you know what it meant.',
+      'A decision made quietly that will matter later.',
+      'Alone but not lonely. Something resolved.',
+    ],
+  };
+
+  // Emotional tone by type — guides card accent color
+  const emotionalTone: Record<string, Array<'positive' | 'negative' | 'mixed' | 'neutral'>> = {
+    work: ['mixed', 'mixed', 'negative', 'neutral'],
+    social: ['positive', 'positive', 'mixed', 'positive'],
+    health: ['mixed', 'negative', 'positive', 'neutral'],
+    recreation: ['positive', 'positive', 'mixed', 'positive'],
+    travel: ['positive', 'mixed', 'positive', 'positive'],
+    education: ['neutral', 'positive', 'mixed', 'neutral'],
+    family: ['mixed', 'negative', 'positive', 'mixed'],
+    personal: ['neutral', 'positive', 'mixed', 'neutral'],
+  };
+
   for (let i = 0; i < 60; i++) {
     const daysAgo = Math.floor(Math.random() * 365);
-    const hoursAgo = Math.floor(Math.random() * 24);
-    const startTime = new Date(now - daysAgo * 24 * 60 * 60 * 1000 - hoursAgo * 60 * 60 * 1000);
-    const duration = Math.floor(Math.random() * 8) + 1; // 1-8 hours
-    const endTime = new Date(startTime.getTime() + duration * 60 * 60 * 1000);
-    
-    const type = eventTypes[Math.floor(Math.random() * eventTypes.length)];
-    const peopleCount = Math.random() > 0.3 ? Math.floor(Math.random() * 5) : 0;
-    const locationCount = Math.random() > 0.2 ? Math.floor(Math.random() * 2) + 1 : 0;
-    const confidence = Math.random() * 0.4 + 0.5; // 0.5-0.9
-    
-    const eventPeople = peopleCount > 0 
-      ? Array.from({ length: peopleCount }, () => peopleNames[Math.floor(Math.random() * peopleNames.length)])
+    const startTime = new Date(now - daysAgo * 86400000);
+    const endTime = new Date(startTime.getTime() + (Math.floor(Math.random() * 8) + 1) * 3600000);
+    const typeIdx = (i * 7 + 3) % eventTypes.length; // pseudo-random but stable
+    const type = eventTypes[typeIdx];
+    const peopleCount = Math.random() > 0.25 ? Math.floor(Math.random() * 4) + 1 : 0;
+    const locationCount = Math.random() > 0.2 ? 1 : 0;
+
+    const typeTitles = titles[type] || ['Event'];
+    const typeSummaries = summaries[type] || ['Something happened.'];
+    const tones = emotionalTone[type] || ['neutral'];
+
+    const impactType = IMPACT_CYCLE[i % IMPACT_CYCLE.length];
+    const toneValue = tones[i % tones.length];
+    const impactDescs = IMPACT_DESCRIPTIONS[impactType];
+    const impactDesc = impactDescs[i % impactDescs.length];
+    const eventPeople = peopleCount > 0
+      ? Array.from({ length: peopleCount }, (_, k) => peopleNames[(i + k * 3) % peopleNames.length])
       : [];
-    
-    const eventLocations = locationCount > 0
-      ? Array.from({ length: locationCount }, () => locations[Math.floor(Math.random() * locations.length)])
-      : [];
-    
-    const eventActivities = Array.from(
-      { length: Math.floor(Math.random() * 3) + 1 },
-      () => activities[Math.floor(Math.random() * activities.length)]
-    );
-    
-    const titles = {
-      work: ['Team Meeting', 'Project Review', 'Client Presentation', 'Strategy Session', 'Code Review', 'Sprint Planning'],
-      social: ['Coffee with Friend', 'Birthday Party', 'Dinner Out', 'Game Night', 'Concert', 'Festival'],
-      health: ['Gym Session', 'Doctor Appointment', 'Yoga Class', 'Running', 'Meditation', 'Therapy Session'],
-      recreation: ['Weekend Hiking', 'Movie Night', 'Beach Day', 'Camping Trip', 'Concert', 'Art Gallery'],
-      travel: ['Business Trip', 'Vacation', 'Weekend Getaway', 'Conference', 'Family Visit', 'Road Trip'],
-      education: ['Workshop', 'Online Course', 'Study Group', 'Seminar', 'Lecture', 'Training'],
-      family: ['Family Dinner', 'Birthday Celebration', 'Holiday Gathering', 'Family Outing', 'Anniversary', 'Reunion'],
-      personal: ['Shopping', 'Reading', 'Cooking', 'Gardening', 'Photography', 'Writing']
+
+    // For related_person_affected and ripple_effect, pick a connection character
+    const connectionCharacter = (impactType === 'related_person_affected' || impactType === 'ripple_effect') && eventPeople.length > 0
+      ? eventPeople[0]
+      : undefined;
+    const connectionType = connectionCharacter
+      ? CONNECTION_TYPES[i % CONNECTION_TYPES.length]
+      : undefined;
+
+    // Impact intensity: direct > related > indirect > ripple > observer
+    const intensityBase: Record<ImpactType, number> = {
+      direct_participant: 0.75,
+      indirect_affected: 0.55,
+      related_person_affected: 0.65,
+      observer: 0.35,
+      ripple_effect: 0.50,
     };
-    
-    const summaries = {
-      work: ['Productive session', 'Great collaboration', 'Important decisions made', 'Progress update', 'Planning ahead'],
-      social: ['Great time with friends', 'Caught up on life', 'Fun evening', 'Memorable gathering', 'Enjoyed the company'],
-      health: ['Good workout', 'Regular checkup', 'Feeling refreshed', 'Healthy routine', 'Wellness focus'],
-      recreation: ['Relaxing day', 'Fun activity', 'Enjoyed the outdoors', 'Creative time', 'Entertainment'],
-      travel: ['New experiences', 'Explored new places', 'Business networking', 'Cultural immersion', 'Adventure'],
-      education: ['Learned something new', 'Skill development', 'Knowledge sharing', 'Professional growth', 'Academic progress'],
-      family: ['Quality time', 'Family bonding', 'Celebrated together', 'Shared memories', 'Love and connection'],
-      personal: ['Me time', 'Personal growth', 'Creative expression', 'Self-care', 'Hobby time']
-    };
-    
-    const typeTitles = titles[type as keyof typeof titles] || ['Event'];
-    const typeSummaries = summaries[type as keyof typeof summaries] || ['Event occurred'];
-    
+    const impactIntensity = Math.min(1, intensityBase[impactType] + (Math.random() * 0.2 - 0.1));
+
     events.push({
       id: `event-${i + 1}`,
-      title: typeTitles[Math.floor(Math.random() * typeTitles.length)],
-      summary: typeSummaries[Math.floor(Math.random() * typeSummaries.length)],
+      title: typeTitles[i % typeTitles.length],
+      summary: typeSummaries[i % typeSummaries.length],
       type,
       start_time: startTime.toISOString(),
       end_time: endTime.toISOString(),
-      confidence,
+      confidence: 0.55 + Math.random() * 0.42,
       people: eventPeople,
-      locations: eventLocations,
-      activities: eventActivities,
-      source_count: Math.floor(Math.random() * 5) + 1,
+      locations: locationCount > 0 ? [locations[(i * 3 + 1) % locations.length]] : [],
+      activities: Array.from({ length: Math.floor(Math.random() * 3) + 1 }, (_, k) => activities[(i + k * 5) % activities.length]),
+      source_count: Math.floor(Math.random() * 6) + 1,
       created_at: startTime.toISOString(),
-      updated_at: startTime.toISOString()
+      updated_at: startTime.toISOString(),
+      impact: {
+        type: impactType,
+        emotionalImpact: toneValue,
+        impactIntensity,
+        impactDescription: impactDesc,
+        connectionCharacter,
+        connectionType,
+      },
     });
   }
-  
   return events;
 };
 
 const MOCK_EVENTS = generateMockEvents();
 
+// ─── Mock recurring scenes ───────────────────────────────────────────────────
+
+const msNow = Date.now();
+const msDaysAgo = (n: number) => new Date(msNow - n * 86_400_000).toISOString();
+
+const MOCK_SCENES: RecurringScene[] = [
+  {
+    id: 'scene-1',
+    canonical_title: 'Punk Shows',
+    dominant_entity_names: ['Maya', 'Jordan', 'Marcus'],
+    recurring_activities: ['music', 'dancing', 'celebrating'],
+    emotional_tone: 'positive',
+    occurrence_count: 6,
+    continuity_strength: 0.91,
+    first_seen_at: msDaysAgo(280),
+    last_seen_at: msDaysAgo(12),
+    source_event_ids: ['event-4', 'event-11', 'event-22', 'event-35', 'event-44', 'event-58'],
+    timeline_candidate: true,
+  },
+  {
+    id: 'scene-2',
+    canonical_title: 'Therapy Sessions',
+    dominant_entity_names: [],
+    recurring_activities: ['talking', 'learning'],
+    emotional_tone: 'mixed',
+    occurrence_count: 8,
+    continuity_strength: 0.94,
+    first_seen_at: msDaysAgo(310),
+    last_seen_at: msDaysAgo(7),
+    source_event_ids: ['event-3', 'event-8', 'event-17', 'event-24', 'event-33', 'event-41', 'event-52', 'event-57'],
+    timeline_candidate: true,
+  },
+  {
+    id: 'scene-3',
+    canonical_title: 'Family Dinners',
+    dominant_entity_names: ['Mom', 'Dad', 'my sister'],
+    recurring_activities: ['dinner', 'cooking', 'talking'],
+    emotional_tone: 'mixed',
+    occurrence_count: 5,
+    continuity_strength: 0.83,
+    first_seen_at: msDaysAgo(250),
+    last_seen_at: msDaysAgo(21),
+    source_event_ids: ['event-6', 'event-19', 'event-29', 'event-43', 'event-55'],
+    timeline_candidate: true,
+  },
+  {
+    id: 'scene-4',
+    canonical_title: 'BJJ Competitions',
+    dominant_entity_names: ['Marcus', 'Chris'],
+    recurring_activities: ['workout', 'celebrating', 'learning'],
+    emotional_tone: 'positive',
+    occurrence_count: 4,
+    continuity_strength: 0.72,
+    first_seen_at: msDaysAgo(200),
+    last_seen_at: msDaysAgo(38),
+    source_event_ids: ['event-9', 'event-27', 'event-46', 'event-60'],
+    timeline_candidate: true,
+  },
+  {
+    id: 'scene-5',
+    canonical_title: 'Late Night Crunch Sessions',
+    dominant_entity_names: ['Elena', 'Sam'],
+    recurring_activities: ['coding', 'coffee', 'meeting'],
+    emotional_tone: 'mixed',
+    occurrence_count: 3,
+    continuity_strength: 0.58,
+    first_seen_at: msDaysAgo(130),
+    last_seen_at: msDaysAgo(14),
+    source_event_ids: ['event-15', 'event-36', 'event-54'],
+    timeline_candidate: false,
+  },
+  {
+    id: 'scene-6',
+    canonical_title: 'First Dates',
+    dominant_entity_names: [],
+    recurring_activities: ['coffee', 'dinner', 'talking'],
+    emotional_tone: 'mixed',
+    occurrence_count: 2,
+    continuity_strength: 0.42,
+    first_seen_at: msDaysAgo(180),
+    last_seen_at: msDaysAgo(65),
+    source_event_ids: ['event-20', 'event-48'],
+    timeline_candidate: false,
+  },
+];
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
 export const EventsBook: React.FC = () => {
+  const [viewMode, setViewMode] = useState<ViewMode>('moments');
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [recurringScenes, setRecurringScenes] = useState<RecurringScene[]>([]);
+  const [scenesLoading, setScenesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<EventCategory>('all');
-  const [activeSubCategory, setActiveSubCategory] = useState<string>('all');
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>('all');
-
-  // Reset sub-tab when top-level category changes
-  useEffect(() => {
-    setActiveSubCategory('all');
-  }, [activeCategory]);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(ITEMS_PER_PAGE);
-  const [sortBy, setSortBy] = useState<SortOption>('date_desc'); // Default: newest first
+  const [sortBy, setSortBy] = useState<SortOption>('date_desc');
   const [showFilters, setShowFilters] = useState(false);
-  const [showExample, setShowExample] = useState(false);
-  const [showExampleModal, setShowExampleModal] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     dateRange: 'all',
     types: [],
@@ -240,38 +466,30 @@ export const EventsBook: React.FC = () => {
     peopleCountMax: 10,
     locations: [],
     hasLocation: null,
-    hasPeople: null
+    hasPeople: null,
   });
-  
+
   const isMockDataEnabled = useShouldUseMockData();
 
-  useEffect(() => {
-    void loadEvents();
-  }, [isMockDataEnabled]);
-
+  useEffect(() => { void loadEvents(); }, [isMockDataEnabled]);
 
   const loadEvents = async () => {
     setLoading(true);
     setError(null);
-    
-    // If mock data is enabled, use it directly
     if (isMockDataEnabled) {
       setEvents(MOCK_EVENTS);
-      setError(null);
       setLoading(false);
       return;
     }
-    
     try {
       const result = await fetchJson<{ success: boolean; events: Event[] }>('/api/conversation/events');
       if (result.success && result.events && result.events.length > 0) {
         setEvents(result.events);
       } else {
         setEvents([]);
-        setError(result.success ? 'No events found' : 'Failed to load events');
+        setError(result.success ? 'No events found yet' : 'Failed to load events');
       }
     } catch (err: any) {
-      console.error('Failed to load events:', err);
       setEvents([]);
       setError(err.message || 'Failed to load events');
     } finally {
@@ -279,242 +497,142 @@ export const EventsBook: React.FC = () => {
     }
   };
 
-  // Get unique values for filter options
-  const uniqueTypes = useMemo(() => {
-    const types = new Set(events.map(e => e.type).filter((t): t is string => Boolean(t)));
-    return Array.from(types).sort();
-  }, [events]);
-
-  const uniqueLocations = useMemo(() => {
-    const locs = new Set(events.flatMap(e => e.locations));
-    return Array.from(locs).sort();
-  }, [events]);
-
-  // Advanced filtering
-  const filteredEvents = useMemo(() => {
-    let filtered = [...events];
-
-    // Date range filter
-    if (filters.dateRange !== 'all') {
-      const now = new Date();
-      let startDate: Date;
-      let endDate: Date = endOfDay(now);
-
-      switch (filters.dateRange) {
-        case 'today':
-          startDate = startOfDay(now);
-          break;
-        case 'week':
-          startDate = startOfDay(subDays(now, 7));
-          break;
-        case 'month':
-          startDate = startOfDay(subDays(now, 30));
-          break;
-        case 'year':
-          startDate = startOfDay(subDays(now, 365));
-          break;
-        case 'custom':
-          if (filters.customStartDate && filters.customEndDate) {
-            startDate = startOfDay(parseISO(filters.customStartDate));
-            endDate = endOfDay(parseISO(filters.customEndDate));
-          } else {
-            return filtered;
-          }
-          break;
-        default:
-          return filtered;
-      }
-
-      filtered = filtered.filter(event => {
-        const eventDate = parseISO(event.start_time);
-        return isWithinInterval(eventDate, { start: startDate, end: endDate });
-      });
-    }
-
-    // Type filter
-    if (filters.types.length > 0) {
-      filtered = filtered.filter(event => 
-        event.type && filters.types.includes(event.type)
-      );
-    }
-
-    // Confidence filter
-    filtered = filtered.filter(event => 
-      event.confidence >= filters.confidenceMin && 
-      event.confidence <= filters.confidenceMax
-    );
-
-    // People count filter
-    filtered = filtered.filter(event => 
-      event.people.length >= filters.peopleCountMin && 
-      event.people.length <= filters.peopleCountMax
-    );
-
-    // Location filter
-    if (filters.locations.length > 0) {
-      filtered = filtered.filter(event =>
-        event.locations.some(loc => filters.locations.includes(loc))
-      );
-    }
-
-    // Has location filter
-    if (filters.hasLocation !== null) {
-      filtered = filtered.filter(event =>
-        filters.hasLocation ? event.locations.length > 0 : event.locations.length === 0
-      );
-    }
-
-    // Has people filter
-    if (filters.hasPeople !== null) {
-      filtered = filtered.filter(event =>
-        filters.hasPeople ? event.people.length > 0 : event.people.length === 0
-      );
-    }
-
-    // Impact type filter
-    if (impactFilter !== 'all') {
-      filtered = filtered.filter(event => {
-        if (!event.impact) return false;
-        return event.impact.type === impactFilter;
-      });
-    }
-
-    // Category + nested sub-category filter (keyword match on title/summary/type/activities)
-    if (activeCategory !== 'all') {
-      filtered = filtered.filter(event => eventMatchesCategory(event, activeCategory, activeSubCategory));
-    }
-
-    // Search filter
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (event) =>
-          event.title.toLowerCase().includes(term) ||
-          (event.summary && event.summary.toLowerCase().includes(term)) ||
-          (event.type && event.type.toLowerCase().includes(term)) ||
-          event.people.some(p => p.toLowerCase().includes(term)) ||
-          event.locations.some(l => l.toLowerCase().includes(term)) ||
-          event.activities.some(a => a.toLowerCase().includes(term))
-      );
-    }
-
-    // Sorting
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'date_desc':
-          return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
-        case 'date_asc':
-          return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
-        case 'confidence_desc':
-          return b.confidence - a.confidence;
-        case 'confidence_asc':
-          return a.confidence - b.confidence;
-        case 'title_asc':
-          return a.title.localeCompare(b.title);
-        case 'title_desc':
-          return b.title.localeCompare(a.title);
-        case 'people_desc':
-          return b.people.length - a.people.length;
-        default:
-          return 0;
-      }
-    });
-
-    return filtered;
-  }, [events, searchTerm, activeCategory, activeSubCategory, filters, sortBy, impactFilter]);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, activeCategory, activeSubCategory, filters, sortBy]);
-
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredEvents.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedEvents = filteredEvents.slice(startIndex, endIndex);
-
-  // Arrow key navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      if (e.key === 'ArrowLeft' && currentPage > 1) {
-        e.preventDefault();
-        setCurrentPage(prev => prev - 1);
-      } else if (e.key === 'ArrowRight' && currentPage < totalPages) {
-        e.preventDefault();
-        setCurrentPage(prev => prev + 1);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentPage, totalPages]);
-
-  // Refresh when chat pipeline creates/updates events.
   useEffect(() => {
     const handler = () => { void loadEvents(); };
     window.addEventListener('lk:events-updated', handler);
     return () => window.removeEventListener('lk:events-updated', handler);
   }, []);
 
-  const goToPage = (page: number) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
+  // Load recurring scenes when that view is activated
+  useEffect(() => {
+    if (viewMode === 'recurring' && recurringScenes.length === 0) {
+      void loadRecurringScenes();
+    }
+  }, [viewMode]);
+
+  const loadRecurringScenes = async () => {
+    setScenesLoading(true);
+    try {
+      if (isMockDataEnabled) {
+        // Slight delay so the skeleton is visible for demo effect
+        await new Promise(r => setTimeout(r, 600));
+        setRecurringScenes(MOCK_SCENES);
+        return;
+      }
+      const result = await fetchJson<{ success: boolean; scenes: RecurringScene[] }>(
+        '/api/conversation/event-candidates'
+      );
+      if (result.success) setRecurringScenes(result.scenes);
+    } catch {
+      setRecurringScenes([]);
+    } finally {
+      setScenesLoading(false);
     }
   };
 
-  const goToPrevious = () => {
-    if (currentPage > 1) {
-      setCurrentPage(prev => prev - 1);
-    }
-  };
+  const uniqueTypes = useMemo(() => Array.from(new Set(events.map(e => e.type).filter(Boolean) as string[])).sort(), [events]);
+  const uniqueLocations = useMemo(() => Array.from(new Set(events.flatMap(e => e.locations))).sort(), [events]);
 
-  const goToNext = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(prev => prev + 1);
+  const filteredEvents = useMemo(() => {
+    let filtered = [...events];
+
+    if (filters.dateRange !== 'all') {
+      const now = new Date();
+      let startDate: Date;
+      let endDate = endOfDay(now);
+      switch (filters.dateRange) {
+        case 'today': startDate = startOfDay(now); break;
+        case 'week': startDate = startOfDay(subDays(now, 7)); break;
+        case 'month': startDate = startOfDay(subDays(now, 30)); break;
+        case 'year': startDate = startOfDay(subDays(now, 365)); break;
+        case 'custom':
+          if (filters.customStartDate && filters.customEndDate) {
+            startDate = startOfDay(parseISO(filters.customStartDate));
+            endDate = endOfDay(parseISO(filters.customEndDate));
+          } else { return filtered; }
+          break;
+        default: return filtered;
+      }
+      filtered = filtered.filter(e => isWithinInterval(parseISO(e.start_time), { start: startDate, end: endDate }));
     }
-  };
+
+    if (filters.types.length > 0) filtered = filtered.filter(e => e.type && filters.types.includes(e.type));
+    filtered = filtered.filter(e => e.confidence >= filters.confidenceMin && e.confidence <= filters.confidenceMax);
+    filtered = filtered.filter(e => e.people.length >= filters.peopleCountMin && e.people.length <= filters.peopleCountMax);
+    if (filters.locations.length > 0) filtered = filtered.filter(e => e.locations.some(l => filters.locations.includes(l)));
+    if (filters.hasLocation !== null) filtered = filtered.filter(e => filters.hasLocation ? e.locations.length > 0 : e.locations.length === 0);
+    if (filters.hasPeople !== null) filtered = filtered.filter(e => filters.hasPeople ? e.people.length > 0 : e.people.length === 0);
+    if (impactFilter !== 'all') filtered = filtered.filter(e => e.impact?.type === impactFilter);
+    if (activeCategory !== 'all') filtered = filtered.filter(e => eventMatchesCategory(e, activeCategory));
+
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(e =>
+        e.title.toLowerCase().includes(term) ||
+        (e.summary?.toLowerCase().includes(term)) ||
+        (e.type?.toLowerCase().includes(term)) ||
+        e.people.some(p => p.toLowerCase().includes(term)) ||
+        e.locations.some(l => l.toLowerCase().includes(term)) ||
+        e.activities.some(a => a.toLowerCase().includes(term))
+      );
+    }
+
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'date_desc': return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
+        case 'date_asc': return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
+        case 'confidence_desc': return b.confidence - a.confidence;
+        case 'confidence_asc': return a.confidence - b.confidence;
+        case 'title_asc': return a.title.localeCompare(b.title);
+        case 'title_desc': return b.title.localeCompare(a.title);
+        case 'people_desc': return b.people.length - a.people.length;
+        default: return 0;
+      }
+    });
+    return filtered;
+  }, [events, searchTerm, activeCategory, filters, sortBy, impactFilter]);
+
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, activeCategory, filters, sortBy, impactFilter]);
+
+  const totalPages = Math.ceil(filteredEvents.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedEvents = filteredEvents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'ArrowLeft' && currentPage > 1) { e.preventDefault(); setCurrentPage(p => p - 1); }
+      else if (e.key === 'ArrowRight' && currentPage < totalPages) { e.preventDefault(); setCurrentPage(p => p + 1); }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentPage, totalPages]);
+
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (filters.dateRange !== 'all') n++;
+    if (filters.types.length > 0) n++;
+    if (filters.confidenceMin > 0 || filters.confidenceMax < 1) n++;
+    if (filters.peopleCountMin > 0 || filters.peopleCountMax < 10) n++;
+    if (filters.locations.length > 0) n++;
+    if (filters.hasLocation !== null) n++;
+    if (filters.hasPeople !== null) n++;
+    return n;
+  }, [filters]);
 
   const clearFilters = () => {
-    setFilters({
-      dateRange: 'all',
-      types: [],
-      confidenceMin: 0,
-      confidenceMax: 1,
-      peopleCountMin: 0,
-      peopleCountMax: 10,
-      locations: [],
-      hasLocation: null,
-      hasPeople: null
-    });
+    setFilters({ dateRange: 'all', types: [], confidenceMin: 0, confidenceMax: 1, peopleCountMin: 0, peopleCountMax: 10, locations: [], hasLocation: null, hasPeople: null });
     setSearchTerm('');
     setActiveCategory('all');
     setImpactFilter('all');
   };
 
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (filters.dateRange !== 'all') count++;
-    if (filters.types.length > 0) count++;
-    if (filters.confidenceMin > 0 || filters.confidenceMax < 1) count++;
-    if (filters.peopleCountMin > 0 || filters.peopleCountMax < 10) count++;
-    if (filters.locations.length > 0) count++;
-    if (filters.hasLocation !== null) count++;
-    if (filters.hasPeople !== null) count++;
-    if (searchTerm.trim()) count++;
-    if (activeCategory !== 'all') count++;
-    if (activeSubCategory !== 'all' && CATEGORY_SUB_TABS[activeCategory]) count++;
-    if (impactFilter !== 'all') count++;
-    return count;
-  }, [filters, searchTerm, activeCategory, activeSubCategory, impactFilter]);
+  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4">
       <ChatFirstViewHint />
+
       {error && (
         <Card className="border-amber-500/50 bg-amber-500/10">
           <CardContent className="py-3 px-4 flex flex-wrap items-center justify-between gap-2">
@@ -522,750 +640,548 @@ export const EventsBook: React.FC = () => {
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <p className="text-sm">{error}</p>
             </div>
-            <Button onClick={() => void loadEvents()} variant="outline" size="sm" disabled={loading}>
-              {loading ? 'Loading...' : 'Retry'}
+            <Button type="button" onClick={() => void loadEvents()} variant="outline" size="sm" disabled={loading}>
+              {loading ? 'Loading…' : 'Retry'}
             </Button>
           </CardContent>
         </Card>
       )}
-      {/* Header with Search and Controls - stacks on mobile for fit */}
-      <div className="space-y-3 sm:space-y-4">
-        <div className="flex flex-col gap-2 sm:gap-4 sm:flex-row sm:items-center">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
-            <Input
-              type="text"
-              placeholder="Search events by title, summary, type, people, locations, or activities..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/40 text-sm sm:text-base"
-            />
-          </div>
-          
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Sort Dropdown */}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="h-9 px-2 sm:px-3 bg-black/40 border border-border/50 rounded-lg text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 flex-shrink-0"
-            >
-              <option value="date_desc">Newest First</option>
-              <option value="date_asc">Oldest First</option>
-              <option value="confidence_desc">High Confidence</option>
-              <option value="confidence_asc">Low Confidence</option>
-              <option value="title_asc">Title A-Z</option>
-              <option value="title_desc">Title Z-A</option>
-              <option value="people_desc">Most People</option>
-            </select>
 
-            {/* Show Example Button - Hidden on mobile */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowExample(!showExample)}
-              className={`hidden sm:flex ${showExample ? 'border-primary/50 bg-primary/10' : ''}`}
-              title="Show example card with labels"
-            >
-              <HelpCircle className="h-4 w-4 mr-2" />
-              {showExample ? 'Hide Example' : 'Show Example'}
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              leftIcon={<RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />} 
-              onClick={() => void loadEvents()}
-              disabled={loading}
-              className="text-xs sm:text-sm"
-            >
-              {loading ? 'Loading...' : 'Refresh'}
-            </Button>
-          </div>
-        </div>
-
-        {/* Impact Type Filter - wraps on mobile */}
-        <div className="mb-3 sm:mb-4">
-          <label className="text-xs sm:text-sm font-medium text-white/80 mb-1.5 sm:mb-2 block">Filter by Impact</label>
-          <div className="flex flex-wrap gap-1.5 sm:gap-2">
-            <Button
-              variant={impactFilter === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setImpactFilter('all')}
-              className={impactFilter === 'all' ? 'bg-primary/20 text-primary border-primary/30' : ''}
-            >
-              All Events
-            </Button>
-            <Button
-              variant={impactFilter === 'direct_participant' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setImpactFilter('direct_participant')}
-              className={impactFilter === 'direct_participant' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' : ''}
-            >
-              I Was There
-            </Button>
-            <Button
-              variant={impactFilter === 'indirect_affected' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setImpactFilter('indirect_affected')}
-              className={impactFilter === 'indirect_affected' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : ''}
-            >
-              Affects Me
-            </Button>
-            <Button
-              variant={impactFilter === 'related_person_affected' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setImpactFilter('related_person_affected')}
-              className={impactFilter === 'related_person_affected' ? 'bg-orange-500/20 text-orange-300 border-orange-500/30' : ''}
-            >
-              Affects Someone Close
-            </Button>
-            <Button
-              variant={impactFilter === 'observer' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setImpactFilter('observer')}
-              className={impactFilter === 'observer' ? 'bg-gray-500/20 text-gray-300 border-gray-500/30' : ''}
-            >
-              I Observed/Mentioned
-            </Button>
-            <Button
-              variant={impactFilter === 'ripple_effect' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setImpactFilter('ripple_effect')}
-              className={impactFilter === 'ripple_effect' ? 'bg-pink-500/20 text-pink-300 border-pink-500/30' : ''}
-            >
-              Ripple Effects
-            </Button>
-          </div>
-        </div>
-
-        {/* Row 1: Top-level event categories */}
-        <Tabs value={activeCategory} onValueChange={(v) => setActiveCategory(v as EventCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto grid grid-cols-3 sm:flex sm:flex-wrap gap-1">
-            <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Calendar className="h-3 w-3 sm:h-4 sm:w-4" /> <span>All</span>
-            </TabsTrigger>
-            <TabsTrigger value="recent" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Clock className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Recent</span>
-            </TabsTrigger>
-            <TabsTrigger value="birthdays" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Cake className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Birthdays</span><span className="sm:hidden">Bdays</span>
-            </TabsTrigger>
-            <TabsTrigger value="parties" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <PartyPopper className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Parties</span>
-            </TabsTrigger>
-            <TabsTrigger value="concerts_shows" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Music2 className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Concerts & Shows</span><span className="sm:hidden">Shows</span>
-            </TabsTrigger>
-            <TabsTrigger value="conventions" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Building2 className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">Conventions</span><span className="sm:hidden">Cons</span>
-            </TabsTrigger>
-            <TabsTrigger value="work" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Briefcase className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Work</span>
-            </TabsTrigger>
-            <TabsTrigger value="travel" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Plane className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Travel</span>
-            </TabsTrigger>
-            <TabsTrigger value="family" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Heart className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Family</span>
-            </TabsTrigger>
-            <TabsTrigger value="festivals" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Sparkles className="h-3 w-3 sm:h-4 sm:w-4" /> <span>Festivals</span>
-            </TabsTrigger>
-            <TabsTrigger value="with_people" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <Users className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">With People</span><span className="sm:hidden">People</span>
-            </TabsTrigger>
-            <TabsTrigger value="with_locations" className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
-              <MapPin className="h-3 w-3 sm:h-4 sm:w-4" /> <span className="hidden sm:inline">With Location</span><span className="sm:hidden">Location</span>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        {/* Row 2: Nested sub-tabs when category has them (e.g. Parties → Afters, Shows → Local Scene) */}
-        {CATEGORY_SUB_TABS[activeCategory] && (
-          <Tabs value={activeSubCategory} onValueChange={setActiveSubCategory}>
-            <TabsList className="w-full bg-black/30 border border-border/40 p-1 h-auto flex flex-wrap gap-1 text-xs">
-              {(CATEGORY_SUB_TABS[activeCategory] ?? []).map(({ value, label }) => (
-                <TabsTrigger
-                  key={value}
-                  value={value}
-                  className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary px-2 py-1 text-[10px] sm:text-xs flex-shrink-0"
-                >
-                  {label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        )}
-
-        {/* Advanced Filters Panel */}
-        {showFilters && (
-          <Card className="bg-gradient-to-br from-black/80 via-black/60 to-black/80 border-2 border-primary/30 shadow-xl">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/30">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-primary/10 border border-primary/30">
-                    <Filter className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                      Advanced Filters
-                    </h3>
-                    {activeFilterCount > 0 && (
-                      <p className="text-xs text-white/50 mt-0.5">
-                        {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'} active
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {activeFilterCount > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={clearFilters}
-                      className="text-xs border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-500/70"
-                    >
-                      <X className="h-3 w-3 mr-1.5" />
-                      Clear All
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowFilters(false)}
-                    className="h-8 w-8 p-0 hover:bg-white/10"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Active Filter Badges */}
-              {activeFilterCount > 0 && (
-                <div className="mb-6 flex flex-wrap gap-2">
-                  {filters.dateRange !== 'all' && (
-                    <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary text-xs px-2 py-1">
-                      Date: {filters.dateRange === 'custom' 
-                        ? `${filters.customStartDate || '...'} to ${filters.customEndDate || '...'}`
-                        : filters.dateRange.replace('_', ' ')}
-                      <button
-                        onClick={() => setFilters({ ...filters, dateRange: 'all', customStartDate: undefined, customEndDate: undefined })}
-                        className="ml-2 hover:text-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {filters.types.length > 0 && (
-                    <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary text-xs px-2 py-1">
-                      Types: {filters.types.length}
-                      <button
-                        onClick={() => setFilters({ ...filters, types: [] })}
-                        className="ml-2 hover:text-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {(filters.confidenceMin > 0 || filters.confidenceMax < 1) && (
-                    <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary text-xs px-2 py-1">
-                      Confidence: {Math.round(filters.confidenceMin * 100)}%-{Math.round(filters.confidenceMax * 100)}%
-                      <button
-                        onClick={() => setFilters({ ...filters, confidenceMin: 0, confidenceMax: 1 })}
-                        className="ml-2 hover:text-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {(filters.peopleCountMin > 0 || filters.peopleCountMax < 10) && (
-                    <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary text-xs px-2 py-1">
-                      People: {filters.peopleCountMin}-{filters.peopleCountMax}
-                      <button
-                        onClick={() => setFilters({ ...filters, peopleCountMin: 0, peopleCountMax: 10 })}
-                        className="ml-2 hover:text-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {filters.locations.length > 0 && (
-                    <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary text-xs px-2 py-1">
-                      Locations: {filters.locations.length}
-                      <button
-                        onClick={() => setFilters({ ...filters, locations: [] })}
-                        className="ml-2 hover:text-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {filters.hasPeople !== null && (
-                    <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary text-xs px-2 py-1">
-                      {filters.hasPeople ? 'Has People' : 'No People'}
-                      <button
-                        onClick={() => setFilters({ ...filters, hasPeople: null })}
-                        className="ml-2 hover:text-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {filters.hasLocation !== null && (
-                    <Badge variant="outline" className="bg-primary/10 border-primary/30 text-primary text-xs px-2 py-1">
-                      {filters.hasLocation ? 'Has Location' : 'No Location'}
-                      <button
-                        onClick={() => setFilters({ ...filters, hasLocation: null })}
-                        className="ml-2 hover:text-primary/70"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Date Range */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-primary" />
-                    Date Range
-                  </label>
-                  <select
-                    value={filters.dateRange}
-                    onChange={(e) => setFilters({ ...filters, dateRange: e.target.value as DateRange })}
-                    className="w-full h-10 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors"
-                  >
-                    <option value="all">All Time</option>
-                    <option value="today">Today</option>
-                    <option value="week">Last 7 Days</option>
-                    <option value="month">Last 30 Days</option>
-                    <option value="year">Last Year</option>
-                    <option value="custom">Custom Range</option>
-                  </select>
-                  {filters.dateRange === 'custom' && (
-                    <div className="mt-2 space-y-2">
-                      <input
-                        type="date"
-                        value={filters.customStartDate || ''}
-                        onChange={(e) => setFilters({ ...filters, customStartDate: e.target.value })}
-                        className="w-full h-10 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors"
-                        placeholder="Start date"
-                      />
-                      <input
-                        type="date"
-                        value={filters.customEndDate || ''}
-                        onChange={(e) => setFilters({ ...filters, customEndDate: e.target.value })}
-                        className="w-full h-10 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors"
-                        placeholder="End date"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Type Filter */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
-                    <Star className="h-4 w-4 text-primary" />
-                    Event Type
-                  </label>
-                  <div className="max-h-40 overflow-y-auto p-2 bg-black/40 rounded-lg border border-border/30 space-y-2">
-                    {uniqueTypes.length === 0 ? (
-                      <p className="text-xs text-white/40 text-center py-2">No types available</p>
-                    ) : (
-                      uniqueTypes.map(type => (
-                        <label key={type} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-white/5 transition-colors group">
-                          <input
-                            type="checkbox"
-                            checked={filters.types.includes(type)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFilters({ ...filters, types: [...filters.types, type] });
-                              } else {
-                                setFilters({ ...filters, types: filters.types.filter(t => t !== type) });
-                              }
-                            }}
-                            className="w-4 h-4 rounded border-border/50 bg-black/40 text-primary focus:ring-primary/50 focus:ring-2 checked:bg-primary checked:border-primary transition-colors"
-                          />
-                          <span className="text-sm text-white/80 capitalize group-hover:text-white transition-colors">{type}</span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Confidence Range */}
-                <div className="space-y-3">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-primary" />
-                    Confidence Level
-                  </label>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-white/60">Min: {Math.round(filters.confidenceMin * 100)}%</span>
-                        <span className="text-xs text-white/60">Max: {Math.round(filters.confidenceMax * 100)}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={filters.confidenceMin}
-                        onChange={(e) => setFilters({ ...filters, confidenceMin: parseFloat(e.target.value) })}
-                        className="w-full h-2 bg-black/60 rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                    </div>
-                    <div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={filters.confidenceMax}
-                        onChange={(e) => setFilters({ ...filters, confidenceMax: parseFloat(e.target.value) })}
-                        className="w-full h-2 bg-black/60 rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-white/50">
-                      <span className="flex-1 text-left">Low</span>
-                      <span className="flex-1 text-center">Medium</span>
-                      <span className="flex-1 text-right">High</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* People Count */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
-                    <Users className="h-4 w-4 text-primary" />
-                    People Count
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <label className="text-xs text-white/60 mb-1 block">Min</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="10"
-                        value={filters.peopleCountMin}
-                        onChange={(e) => setFilters({ ...filters, peopleCountMin: parseInt(e.target.value) || 0 })}
-                        className="w-full h-10 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors"
-                      />
-                    </div>
-                    <span className="text-white/40 pt-6">-</span>
-                    <div className="flex-1">
-                      <label className="text-xs text-white/60 mb-1 block">Max</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="10"
-                        value={filters.peopleCountMax}
-                        onChange={(e) => setFilters({ ...filters, peopleCountMax: parseInt(e.target.value) || 10 })}
-                        className="w-full h-10 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Location Filter */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-primary" />
-                    Locations
-                  </label>
-                  <div className="max-h-40 overflow-y-auto p-2 bg-black/40 rounded-lg border border-border/30 space-y-2">
-                    {uniqueLocations.length === 0 ? (
-                      <p className="text-xs text-white/40 text-center py-2">No locations available</p>
-                    ) : (
-                      uniqueLocations.slice(0, 15).map(location => (
-                        <label key={location} className="flex items-center gap-2 cursor-pointer p-1.5 rounded hover:bg-white/5 transition-colors group">
-                          <input
-                            type="checkbox"
-                            checked={filters.locations.includes(location)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFilters({ ...filters, locations: [...filters.locations, location] });
-                              } else {
-                                setFilters({ ...filters, locations: filters.locations.filter(l => l !== location) });
-                              }
-                            }}
-                            className="w-4 h-4 rounded border-border/50 bg-black/40 text-primary focus:ring-primary/50 focus:ring-2 checked:bg-primary checked:border-primary transition-colors"
-                          />
-                          <span className="text-sm text-white/80 group-hover:text-white transition-colors">{location}</span>
-                        </label>
-                      ))
-                    )}
-                    {uniqueLocations.length > 15 && (
-                      <p className="text-xs text-white/40 text-center py-1">+{uniqueLocations.length - 15} more locations</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Boolean Filters */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-primary" />
-                    Presence Filters
-                  </label>
-                  <div className="space-y-3 p-3 bg-black/40 rounded-lg border border-border/30">
-                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-white/5 transition-colors group">
-                      <input
-                        type="checkbox"
-                        checked={filters.hasPeople === true}
-                        onChange={(e) => setFilters({ ...filters, hasPeople: e.target.checked ? true : null })}
-                        className="w-4 h-4 rounded border-border/50 bg-black/40 text-primary focus:ring-primary/50 focus:ring-2 checked:bg-primary checked:border-primary transition-colors"
-                      />
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-white/40 group-hover:text-primary transition-colors" />
-                        <span className="text-sm text-white/80 group-hover:text-white transition-colors">Has People</span>
-                      </div>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-white/5 transition-colors group">
-                      <input
-                        type="checkbox"
-                        checked={filters.hasLocation === true}
-                        onChange={(e) => setFilters({ ...filters, hasLocation: e.target.checked ? true : null })}
-                        className="w-4 h-4 rounded border-border/50 bg-black/40 text-primary focus:ring-primary/50 focus:ring-2 checked:bg-primary checked:border-primary transition-colors"
-                      />
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-white/40 group-hover:text-primary transition-colors" />
-                        <span className="text-sm text-white/80 group-hover:text-white transition-colors">Has Location</span>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+      {/* ── Views nav ── */}
+      <div className="flex items-center gap-1 p-1 bg-black/40 border border-border/50 rounded-lg w-full sm:w-auto sm:inline-flex">
+        {VIEWS.map(({ value, label, icon: Icon, soon }) => (
+          <button
+            key={value}
+            onClick={() => !soon && setViewMode(value)}
+            disabled={soon}
+            className={`
+              flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors flex-1 sm:flex-none justify-center
+              ${viewMode === value
+                ? 'bg-primary/20 text-primary'
+                : soon
+                ? 'text-white/25 cursor-not-allowed'
+                : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+              }
+            `}
+          >
+            <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="hidden sm:inline">{label}</span>
+            {soon && <span className="text-[9px] text-white/20 ml-0.5 hidden sm:inline">soon</span>}
+          </button>
+        ))}
       </div>
 
-      {/* Example Card with Labels */}
-      {showExample && (
-        <div className="mb-8 p-6 bg-black/40 border border-primary/30 rounded-lg">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
-                <HelpCircle className="h-5 w-5 text-primary" />
-                Understanding Event Cards
-              </h3>
-              <p className="text-sm text-white/60">
-                Each element on an event card tells you something about the event. Hover over elements to see tooltips, or click any card to see full details.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowExampleModal(true)}
-                className="text-xs"
-              >
-                View Full Example
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowExample(false)}
-                className="h-6 w-6 p-0"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-          <div className="overflow-x-auto pb-4">
-            <div className="flex justify-center px-8">
-              <EventCardExample />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <EventCardExampleModal 
-        isOpen={showExampleModal} 
-        onClose={() => setShowExampleModal(false)} 
-      />
-
-      {/* Results Summary */}
-      <div className="flex items-center justify-between text-sm text-white/60">
-        <div>
-          Showing {startIndex + 1}-{Math.min(endIndex, filteredEvents.length)} of {filteredEvents.length} events
-          {filteredEvents.length !== events.length && (
-            <span className="ml-2 text-primary">({events.length} total)</span>
-          )}
+      {/* ── Search + Sort + Filters button ── */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+          <Input
+            type="text"
+            placeholder="Search by title, person, place, or activity…"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/35 text-sm"
+          />
         </div>
         <div className="flex items-center gap-2">
-          {totalPages > 1 && (
-            <span className="text-xs">
-              Page {currentPage} of {totalPages}
-            </span>
-          )}
+          <select
+            value={sortBy}
+            title="Sort events"
+            onChange={e => setSortBy(e.target.value as SortOption)}
+            className="h-9 px-2 sm:px-3 bg-black/40 border border-border/50 rounded-lg text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 flex-shrink-0"
+          >
+            <option value="date_desc">Newest First</option>
+            <option value="date_asc">Oldest First</option>
+            <option value="confidence_desc">High Confidence</option>
+            <option value="confidence_asc">Low Confidence</option>
+            <option value="title_asc">Title A–Z</option>
+            <option value="title_desc">Title Z–A</option>
+            <option value="people_desc">Most People</option>
+          </select>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters(v => !v)}
+            className={`flex-shrink-0 ${showFilters ? 'border-primary/50 bg-primary/10' : ''}`}
+          >
+            <Filter className="h-4 w-4 mr-1.5" />
+            Filters
+            {activeFilterCount > 0 && (
+              <Badge variant="outline" className="ml-1.5 text-[10px] bg-primary/20 text-primary border-primary/30 px-1">
+                {activeFilterCount}
+              </Badge>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void loadEvents()}
+            disabled={loading}
+            className="flex-shrink-0"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
       </div>
 
-      {/* Events Display */}
-      {loading ? (
-        <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: itemsPerPage }).map((_, i) => (
-            <Card key={i} className="bg-black/40 border-border/50 h-64 animate-pulse" />
-          ))}
-        </div>
-      ) : filteredEvents.length === 0 ? (
-        <div className="text-center py-8 sm:py-12 text-white/60 px-4">
-          <Sparkles className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 text-white/20" />
-          <p className="text-base sm:text-lg font-medium mb-2">No events found</p>
-          <p className="text-xs sm:text-sm">Try adjusting your filters or search term</p>
-          {activeFilterCount > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={clearFilters}
-              className="mt-4 text-xs sm:text-sm"
-            >
-              Clear All Filters
-            </Button>
-          )}
-        </div>
-      ) : (
-        <>
-          {/* Book Page Container with Grid Inside */}
-          <div className="relative w-full min-h-[400px] sm:min-h-[500px] lg:min-h-[600px] bg-gradient-to-br from-blue-50/5 via-purple-100/5 to-pink-50/5 rounded-lg border-2 border-blue-800/30 shadow-2xl overflow-hidden">
-            {/* Page Content */}
-            <div className="p-4 sm:p-6 lg:p-8 flex flex-col">
-              {/* Page Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-blue-800/20">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600/60 flex-shrink-0" />
-                  <div className="min-w-0">
-                    <h3 className="text-xs sm:text-sm font-semibold text-blue-900/40 uppercase tracking-wider">
-                      Events Book
-                    </h3>
-                    <p className="text-[10px] sm:text-xs text-blue-700/50 mt-0.5">
-                      Page {currentPage}/{totalPages} · {filteredEvents.length} events
-                    </p>
-                  </div>
-                </div>
-                <div className="text-[10px] sm:text-xs text-blue-700/40 font-mono flex-shrink-0">
-                  {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </div>
-              </div>
+      {/* ── Category filter chips ── */}
+      <div className="flex flex-wrap gap-1.5">
+        {CATEGORY_CHIPS.map(({ value, label, icon: Icon, shortLabel }) => (
+          <button
+            key={value}
+            onClick={() => setActiveCategory(value)}
+            className={`
+              inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border
+              ${activeCategory === value
+                ? 'bg-primary/20 text-primary border-primary/40'
+                : 'bg-black/40 text-white/55 border-border/40 hover:border-primary/30 hover:text-white/80'
+              }
+            `}
+          >
+            <Icon className="h-3 w-3 flex-shrink-0" />
+            <span className="hidden sm:inline">{label}</span>
+            <span className="sm:hidden">{shortLabel || label}</span>
+          </button>
+        ))}
+      </div>
 
-              {/* Event Grid - 2 columns on mobile, squarer cards */}
-              <div className="flex-1 grid grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {paginatedEvents.length > 0 ? (
-                  paginatedEvents.map((event, index) => {
-                    try {
-                      return (
-                        <EventProfileCard
-                          key={event.id || `event-${index}`}
-                          event={event}
-                          onClick={() => {
-                            setSelectedEvent(event);
-                          }}
-                        />
-                      );
-                    } catch (error) {
-                      console.error('Error rendering event card:', error, event);
-                      return null;
-                    }
-                  })
-                ) : (
-                  <div className="col-span-full text-center py-8 text-white/60">
-                    <p>No events to display</p>
+      {/* ── Impact filter chips ── */}
+      <div className="flex flex-wrap gap-1.5">
+        {IMPACT_CHIPS.map(({ value, label, activeClass }) => (
+          <button
+            key={value}
+            onClick={() => setImpactFilter(value)}
+            className={`
+              inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors border
+              ${impactFilter === value
+                ? activeClass
+                : 'bg-black/30 text-white/40 border-border/30 hover:border-border/50 hover:text-white/60'
+              }
+            `}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Advanced filters panel ── */}
+      {showFilters && (
+        <Card className="bg-black/80 border border-primary/25">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Advanced Filters</span>
+                {activeFilterCount > 0 && (
+                  <span className="text-xs text-white/40">{activeFilterCount} active</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {activeFilterCount > 0 && (
+                  <Button type="button" variant="outline" size="sm" onClick={clearFilters} className="text-xs border-red-500/40 text-red-400 hover:bg-red-500/10">
+                    <X className="h-3 w-3 mr-1" /> Clear All
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => setShowFilters(false)} className="h-7 w-7 p-0">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {/* Date range */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5" /> Date Range
+                </label>
+                <select
+                  value={filters.dateRange}
+                  title="Date range filter"
+                  onChange={e => setFilters({ ...filters, dateRange: e.target.value as DateRange })}
+                  className="w-full h-9 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                >
+                  <option value="all">All Time</option>
+                  <option value="today">Today</option>
+                  <option value="week">Last 7 Days</option>
+                  <option value="month">Last 30 Days</option>
+                  <option value="year">Last Year</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+                {filters.dateRange === 'custom' && (
+                  <div className="space-y-1.5 mt-1.5">
+                    <input type="date" title="Start date" value={filters.customStartDate || ''} onChange={e => setFilters({ ...filters, customStartDate: e.target.value })}
+                      className="w-full h-9 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary/50" />
+                    <input type="date" title="End date" value={filters.customEndDate || ''} onChange={e => setFilters({ ...filters, customEndDate: e.target.value })}
+                      className="w-full h-9 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary/50" />
                   </div>
                 )}
               </div>
 
-              {/* Page Footer with Navigation */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-blue-800/20">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={goToPrevious}
-                  disabled={currentPage === 1}
-                  className="text-blue-700/60 hover:text-blue-600 hover:bg-blue-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
-                >
-                  <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                  Previous
-                </Button>
-
-                <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-1 sm:gap-2 flex-wrap justify-center">
-                  {/* Page indicators */}
-                  <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 bg-black/40 rounded-lg border border-blue-800/30 overflow-x-auto">
-                    {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-                      let pageNum: number;
-                      if (totalPages <= 7) {
-                        pageNum = i + 1;
-                      } else if (currentPage <= 4) {
-                        pageNum = i + 1;
-                      } else if (currentPage >= totalPages - 3) {
-                        pageNum = totalPages - 6 + i;
-                      } else {
-                        pageNum = currentPage - 3 + i;
-                      }
-
-                      return (
-                        <button
-                          key={pageNum}
-                          onClick={() => goToPage(pageNum)}
-                          className={`px-1.5 sm:px-2 py-1 rounded text-xs sm:text-sm transition touch-manipulation ${
-                            currentPage === pageNum
-                              ? 'bg-blue-600 text-white'
-                              : 'text-blue-700/60 hover:text-blue-600 hover:bg-blue-500/10'
-                          }`}
-                        >
-                          {pageNum}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <span className="text-xs sm:text-sm text-blue-700/50 whitespace-nowrap">
-                    {startIndex + 1}-{Math.min(endIndex, filteredEvents.length)} of {filteredEvents.length}
-                  </span>
+              {/* Event type */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                  <Star className="h-3.5 w-3.5" /> Event Type
+                </label>
+                <div className="max-h-36 overflow-y-auto p-2 bg-black/40 rounded-lg border border-border/30 space-y-1">
+                  {uniqueTypes.length === 0 ? (
+                    <p className="text-xs text-white/30 text-center py-2">No types available</p>
+                  ) : uniqueTypes.map(type => (
+                    <label key={type} className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-white/5">
+                      <input type="checkbox" checked={filters.types.includes(type)}
+                        onChange={e => setFilters({ ...filters, types: e.target.checked ? [...filters.types, type] : filters.types.filter(t => t !== type) })}
+                        className="w-3.5 h-3.5 rounded border-border/50 bg-black/40 text-primary accent-primary"
+                      />
+                      <span className="text-sm text-white/75 capitalize">{type}</span>
+                    </label>
+                  ))}
                 </div>
+              </div>
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={goToNext}
-                  disabled={currentPage === totalPages}
-                  className="text-blue-700/60 hover:text-blue-600 hover:bg-blue-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
-                >
-                  Next
-                  <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 ml-1" />
-                </Button>
+              {/* Confidence */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                  <TrendingUp className="h-3.5 w-3.5" /> Confidence
+                </label>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[10px] text-white/40">
+                    <span>Min {Math.round(filters.confidenceMin * 100)}%</span>
+                    <span>Max {Math.round(filters.confidenceMax * 100)}%</span>
+                  </div>
+                  <input type="range" title="Minimum confidence" min="0" max="1" step="0.05" value={filters.confidenceMin}
+                    onChange={e => setFilters({ ...filters, confidenceMin: parseFloat(e.target.value) })}
+                    className="w-full h-1.5 rounded-full accent-primary" />
+                  <input type="range" title="Maximum confidence" min="0" max="1" step="0.05" value={filters.confidenceMax}
+                    onChange={e => setFilters({ ...filters, confidenceMax: parseFloat(e.target.value) })}
+                    className="w-full h-1.5 rounded-full accent-primary" />
+                </div>
+              </div>
+
+              {/* People count */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5" /> People Count
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <span className="text-[10px] text-white/40">Min</span>
+                    <input type="number" title="Minimum people count" min="0" max="10" value={filters.peopleCountMin}
+                      onChange={e => setFilters({ ...filters, peopleCountMin: parseInt(e.target.value) || 0 })}
+                      className="w-full h-9 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 mt-0.5" />
+                  </div>
+                  <span className="text-white/30 mt-4">–</span>
+                  <div className="flex-1">
+                    <span className="text-[10px] text-white/40">Max</span>
+                    <input type="number" title="Maximum people count" min="0" max="10" value={filters.peopleCountMax}
+                      onChange={e => setFilters({ ...filters, peopleCountMax: parseInt(e.target.value) || 10 })}
+                      className="w-full h-9 px-3 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 mt-0.5" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Locations */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" /> Locations
+                </label>
+                <div className="max-h-36 overflow-y-auto p-2 bg-black/40 rounded-lg border border-border/30 space-y-1">
+                  {uniqueLocations.length === 0 ? (
+                    <p className="text-xs text-white/30 text-center py-2">No locations available</p>
+                  ) : uniqueLocations.slice(0, 15).map(loc => (
+                    <label key={loc} className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-white/5">
+                      <input type="checkbox" checked={filters.locations.includes(loc)}
+                        onChange={e => setFilters({ ...filters, locations: e.target.checked ? [...filters.locations, loc] : filters.locations.filter(l => l !== loc) })}
+                        className="w-3.5 h-3.5 rounded border-border/50 bg-black/40 text-primary accent-primary"
+                      />
+                      <span className="text-sm text-white/75">{loc}</span>
+                    </label>
+                  ))}
+                  {uniqueLocations.length > 15 && <p className="text-[10px] text-white/30 text-center">+{uniqueLocations.length - 15} more</p>}
+                </div>
+              </div>
+
+              {/* Presence */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-white/60">Presence</label>
+                <div className="space-y-2 p-3 bg-black/40 rounded-lg border border-border/30">
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={filters.hasPeople === true}
+                      onChange={e => setFilters({ ...filters, hasPeople: e.target.checked ? true : null })}
+                      className="w-3.5 h-3.5 rounded accent-primary" />
+                    <span className="text-sm text-white/70">Has people</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={filters.hasLocation === true}
+                      onChange={e => setFilters({ ...filters, hasLocation: e.target.checked ? true : null })}
+                      className="w-3.5 h-3.5 rounded accent-primary" />
+                    <span className="text-sm text-white/70">Has location</span>
+                  </label>
+                </div>
               </div>
             </div>
-
-            {/* Book Binding Effect */}
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-900/40 via-blue-800/30 to-blue-900/40" />
-            <div className="absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-900/40 via-blue-800/30 to-blue-900/40" />
-          </div>
-        </>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Timeline Integration */}
-      {filteredEvents.length > 0 && (
-        <div className="mt-8">
+      {/* ── Results summary ── */}
+      <div className="flex items-center justify-between text-xs text-white/40">
+        <span>
+          {filteredEvents.length === 0 ? 'No events' : `${startIndex + 1}–${Math.min(startIndex + ITEMS_PER_PAGE, filteredEvents.length)} of ${filteredEvents.length}`}
+          {filteredEvents.length !== events.length && <span className="ml-1 text-primary/60">({events.length} total)</span>}
+        </span>
+        {totalPages > 1 && <span>Page {currentPage} of {totalPages}</span>}
+      </div>
+
+      {/* ══ MOMENTS VIEW ══ */}
+      {viewMode === 'moments' && (
+        loading ? (
+          <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
+              <div key={i} className="bg-black/40 border border-border/30 rounded-lg h-56 animate-pulse" />
+            ))}
+          </div>
+        ) : filteredEvents.length === 0 ? (
+          <div className="text-center py-12 text-white/50">
+            <Sparkles className="h-10 w-10 mx-auto mb-3 text-white/15" />
+            <p className="text-base font-medium mb-1">No moments found</p>
+            <p className="text-sm text-white/35">Try adjusting your filters or search</p>
+            {(activeFilterCount > 0 || searchTerm || activeCategory !== 'all' || impactFilter !== 'all') && (
+              <Button variant="outline" size="sm" onClick={clearFilters} className="mt-4 text-xs">
+                Clear All Filters
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+              {paginatedEvents.map((event, index) => (
+                <EventProfileCard
+                  key={event.id || `event-${index}`}
+                  event={event}
+                  onClick={() => setSelectedEvent(event)}
+                />
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="text-white/50">
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                    let pageNum: number;
+                    if (totalPages <= 7) pageNum = i + 1;
+                    else if (currentPage <= 4) pageNum = i + 1;
+                    else if (currentPage >= totalPages - 3) pageNum = totalPages - 6 + i;
+                    else pageNum = currentPage - 3 + i;
+                    return (
+                      <button key={pageNum} onClick={() => setCurrentPage(pageNum)}
+                        className={`w-7 h-7 rounded text-xs transition ${currentPage === pageNum ? 'bg-primary/30 text-primary' : 'text-white/40 hover:text-white/70 hover:bg-white/5'}`}>
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="text-white/50">
+                  Next <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            )}
+          </div>
+        )
+      )}
+
+      {/* ══ TIMELINE VIEW ══ */}
+      {viewMode === 'timeline' && (
+        <div className="mt-2">
           <ColorCodedTimeline />
         </div>
       )}
 
-      {/* Event Detail Modal */}
-      {selectedEvent && (
-        <EventDetailModal
-          event={selectedEvent}
-          onClose={() => setSelectedEvent(null)}
-        />
+      {/* ══ CALENDAR — still coming ══ */}
+      {viewMode === 'calendar' && (
+        <div className="text-center py-16 text-white/40">
+          <CalendarDays className="h-10 w-10 mx-auto mb-3 text-white/15" />
+          <p className="text-base font-medium text-white/50">Calendar View</p>
+          <p className="text-sm text-white/30 mt-1">See your moments on a monthly calendar grid</p>
+          <Badge variant="outline" className="mt-3 text-xs text-white/25 border-border/25">Coming Soon</Badge>
+        </div>
       )}
 
-      {/* Memory Detail Modal */}
+      {/* ══ RECURRING SCENES ══ */}
+      {viewMode === 'recurring' && (
+        <div className="space-y-5">
+          {/* Header */}
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Repeat2 className="h-5 w-5 text-primary/70" />
+                Recurring Scenes
+              </h2>
+              <p className="text-xs text-white/40 mt-1">
+                Patterns LoreBook has noticed repeating across your life
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void loadRecurringScenes()}
+              disabled={scenesLoading}
+              className="flex-shrink-0"
+            >
+              <RefreshCw className={`h-4 w-4 ${scenesLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+
+          {/* Skeleton */}
+          {scenesLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-44 rounded-xl bg-black/40 border border-border/30 animate-pulse" />
+              ))}
+            </div>
+          )}
+
+          {/* Empty */}
+          {!scenesLoading && recurringScenes.length === 0 && (
+            <div className="text-center py-16 text-white/40">
+              <Repeat2 className="h-10 w-10 mx-auto mb-3 text-white/15" />
+              <p className="text-base font-medium text-white/50">No patterns detected yet</p>
+              <p className="text-sm text-white/30 mt-1 max-w-xs mx-auto">
+                LoreBook watches for moments that repeat. Keep having conversations and patterns will surface.
+              </p>
+            </div>
+          )}
+
+          {/* Scene cards */}
+          {!scenesLoading && recurringScenes.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {recurringScenes.map(scene => {
+                const s = scene.continuity_strength;
+                const strengthLabel =
+                  s >= 0.85 ? 'Autobiographical' :
+                  s >= 0.60 ? 'Recurring' :
+                  s >= 0.40 ? 'Emerging' : 'Forming';
+                const labelColor =
+                  s >= 0.85 ? 'text-emerald-300 border-emerald-500/40' :
+                  s >= 0.60 ? 'text-blue-300 border-blue-500/40' :
+                  s >= 0.40 ? 'text-amber-300 border-amber-500/40' :
+                             'text-white/40 border-border/30';
+                const barColor =
+                  s >= 0.85 ? 'bg-emerald-400' :
+                  s >= 0.60 ? 'bg-blue-400' :
+                  s >= 0.40 ? 'bg-amber-400' : 'bg-white/25';
+
+                let lastSeen = '';
+                try {
+                  lastSeen = formatDistanceToNow(dfParseISO(scene.last_seen_at), { addSuffix: true });
+                } catch { /* noop */ }
+
+                return (
+                  <Card
+                    key={scene.id}
+                    className="group bg-gradient-to-br from-slate-900/90 via-slate-800/60 to-slate-900/90 border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 cursor-pointer"
+                    onClick={() => {
+                      // Filter Moments view to show only events in this pattern
+                      setViewMode('moments');
+                      setSearchTerm(scene.canonical_title.split(' ')[0]);
+                    }}
+                  >
+                    <CardContent className="p-5">
+                      {/* Title + badge */}
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Repeat2 className="h-4 w-4 text-primary/50 flex-shrink-0" />
+                          <h3 className="text-sm font-bold text-white group-hover:text-primary transition-colors truncate">
+                            {scene.canonical_title}
+                          </h3>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] flex-shrink-0 ${labelColor}`}
+                        >
+                          {strengthLabel}
+                        </Badge>
+                      </div>
+
+                      {/* Count + last seen */}
+                      <p className="text-xs text-white/45 mb-3">
+                        {scene.occurrence_count} {scene.occurrence_count === 1 ? 'time' : 'times'}
+                        {lastSeen ? ` · last ${lastSeen}` : ''}
+                      </p>
+
+                      {/* Continuity strength bar */}
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="flex-1 h-1 rounded-full bg-white/8 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+                            style={{ width: `${Math.round(s * 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-white/35 shrink-0 tabular-nums">
+                          {Math.round(s * 100)}%
+                        </span>
+                      </div>
+
+                      {/* Entity names */}
+                      {scene.dominant_entity_names && scene.dominant_entity_names.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {scene.dominant_entity_names.slice(0, 3).map(name => (
+                            <span
+                              key={name}
+                              className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300/80 border border-blue-500/20"
+                            >
+                              {name}
+                            </span>
+                          ))}
+                          {scene.dominant_entity_names.length > 3 && (
+                            <span className="text-[10px] text-white/30 self-center">
+                              +{scene.dominant_entity_names.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Activities */}
+                      {scene.recurring_activities && scene.recurring_activities.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {scene.recurring_activities.slice(0, 4).map(a => (
+                            <Badge
+                              key={a}
+                              variant="outline"
+                              className="text-[10px] bg-primary/8 text-primary/70 border-primary/20 capitalize"
+                            >
+                              {a}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Footer */}
+                      <p className="text-[10px] text-white/20 mt-3 pt-3 border-t border-white/6">
+                        {scene.source_event_ids?.length ?? scene.occurrence_count} moments in this pattern
+                        {scene.timeline_candidate && (
+                          <span className="ml-2 text-primary/40">· timeline candidate</span>
+                        )}
+                      </p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modals */}
+      {selectedEvent && (
+        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      )}
       {selectedMemory && (
-        <MemoryDetailModal
-          memory={selectedMemory}
-          onClose={() => setSelectedMemory(null)}
-        />
+        <MemoryDetailModal memory={selectedMemory} onClose={() => setSelectedMemory(null)} />
       )}
     </div>
   );

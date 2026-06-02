@@ -282,6 +282,49 @@ export class EventAssemblyService {
         .ignore();
     }
 
+    // ── Phase C1: Link nearby event_records to this resolved_event ─────────────
+    // This is the primary mechanism for establishing the explicit FK between the
+    // Mode Router system (event_records) and the Temporal Assembler system
+    // (resolved_events). Previously these were connected only by date approximation.
+    //
+    // Window: ±1 day around the event's start_time. The ±1 catches:
+    //   - Next-day journaling ("let me tell you about yesterday")
+    //   - Timezone edge cases where UTC date differs from local date
+    //   - Events that span midnight
+    //
+    // IS NULL guard: never overwrite an existing explicit link. Application-layer
+    // links (set by Phase C2 or Phase D once implemented) are always preserved.
+    //
+    // Non-blocking: fires and does not throw — assembly behavior is unchanged
+    // if this step fails.
+    ;(async () => {
+      try {
+        const eventStartDate = new Date(event.start_time);
+        const windowStart = new Date(eventStartDate);
+        windowStart.setDate(windowStart.getDate() - 1);
+        windowStart.setHours(0, 0, 0, 0);
+        const windowEnd = new Date(eventStartDate);
+        windowEnd.setDate(windowEnd.getDate() + 1);
+        windowEnd.setHours(23, 59, 59, 999);
+
+        await supabaseAdmin
+          .from('event_records')
+          .update({ resolved_event_id: event.id })
+          .eq('user_id', userId)
+          .is('resolved_event_id', null)              // never overwrite explicit links
+          .gte('event_date', windowStart.toISOString())
+          .lte('event_date', windowEnd.toISOString())
+          .select('id');
+
+        logger.debug(
+          { userId, eventId: event.id, mechanism: 'assembly' },
+          'Attempted event_records linkage after assembly'
+        );
+      } catch (err) {
+        logger.debug({ err, eventId: event.id, userId }, 'event_records linking failed (non-blocking)');
+      }
+    })();
+
     return {
       event_id: event.id,
       title,
@@ -405,6 +448,38 @@ export class EventAssemblyService {
         .onConflict('event_id,unit_id')
         .ignore();
     }
+
+    // ── Phase C1: Link nearby event_records to this resolved_event ─────────────
+    // Same logic as in createOrUpdateEvent — applied on refinement/update so that
+    // new event_records created between the original assembly and this refinement
+    // also get linked. IS NULL guard ensures no explicit links are overwritten.
+    ;(async () => {
+      try {
+        const eventStartDate = new Date(updatedEvent.start_time);
+        const windowStart = new Date(eventStartDate);
+        windowStart.setDate(windowStart.getDate() - 1);
+        windowStart.setHours(0, 0, 0, 0);
+        const windowEnd = new Date(eventStartDate);
+        windowEnd.setDate(windowEnd.getDate() + 1);
+        windowEnd.setHours(23, 59, 59, 999);
+
+        await supabaseAdmin
+          .from('event_records')
+          .update({ resolved_event_id: updatedEvent.id })
+          .eq('user_id', userId)
+          .is('resolved_event_id', null)
+          .gte('event_date', windowStart.toISOString())
+          .lte('event_date', windowEnd.toISOString())
+          .select('id');
+
+        logger.debug(
+          { userId, eventId: updatedEvent.id, mechanism: 'assembly_refinement' },
+          'Attempted event_records linkage after refinement'
+        );
+      } catch (err) {
+        logger.debug({ err, eventId: updatedEvent.id, userId }, 'event_records linking failed on refinement (non-blocking)');
+      }
+    })();
 
     return {
       event_id: updatedEvent.id,

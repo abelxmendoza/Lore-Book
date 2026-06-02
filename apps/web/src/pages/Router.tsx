@@ -13,6 +13,7 @@ const DevConsolePage = lazy(() => import('./dev-console'));
 // Lazy load user routes
 const Onboarding = lazy(() => import('../routes/Onboarding'));
 const AccountCenter = lazy(() => import('../routes/AccountCenter'));
+const UpgradePage = lazy(() => import('./upgrade'));
 
 // Lazy load demo runtime (auth-free, synthetic cognition showcase)
 const Demo = lazy(() => import('../routes/Demo'));
@@ -197,13 +198,21 @@ export const Router = () => {
           </LazyRoute>
         }
       />
-      <Route 
-        path="/events" 
+      <Route
+        path="/events"
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="events" /></AuthGate>
           </LazyRoute>
-        } 
+        }
+      />
+      <Route
+        path="/intelligence"
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="intelligence" /></AuthGate>
+          </LazyRoute>
+        }
       />
       <Route 
         path="/entities" 
@@ -277,13 +286,21 @@ export const Router = () => {
           </LazyRoute>
         } 
       />
-      <Route 
-        path="/pricing" 
+      <Route
+        path="/pricing"
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="pricing" /></AuthGate>
           </LazyRoute>
-        } 
+        }
+      />
+      <Route
+        path="/upgrade"
+        element={
+          <LazyRoute>
+            <AuthGate><UpgradePage /></AuthGate>
+          </LazyRoute>
+        }
       />
       <Route 
         path="/security" 

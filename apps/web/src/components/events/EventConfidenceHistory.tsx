@@ -10,7 +10,7 @@ import { format, parseISO } from 'date-fns';
 
 interface ConfidenceSnapshot {
   id: string;
-  event_id: string;
+  event_id?: string;
   confidence: number;
   reason: string;
   recorded_at: string;
@@ -84,6 +84,7 @@ export const EventConfidenceHistory: React.FC<EventConfidenceHistoryProps> = ({
       confidence: currentConfidence,
       reason: 'Current confidence',
       recorded_at: new Date().toISOString(),
+      metadata: undefined,
     },
   ].sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime());
 

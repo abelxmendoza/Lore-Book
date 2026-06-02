@@ -33,16 +33,50 @@ The record accumulates across threads and sessions. The assistant reads from it 
 ```text
 Raw messages
    ↓
-Ingestion pipeline (entity extraction, event detection, relationship tracking)
+Mode Router (classify: EXPERIENCE_INGESTION, ACTION_LOG, MEMORY_RECALL, ...)
+   ↓
+Ingestion pipeline (~30 parallel extractors)
+   ↓
+Event Assembly (resolved_events + 4-layer meaning extraction)
+   ├── event_emotions, event_cognitions, event_identity_impacts, narrative_accounts
+   ├── event_impacts (how events affect the user)
+   ├── event_causal_links (what caused what)
+   ├── event_continuity_links (CONTINUATION, CONTRAST, RETURN, CLOSURE...)
+   └── event_confidence_snapshots (how certainty evolved)
    ↓
 Event candidates (recurring behavioral scenes)
    ↓
-Life arcs (named temporal containers: "The Startup Years", "With Jordan")
+Life arcs + chapters (named temporal containers)
    ↓
 Knowledge crystallization (behavioral patterns → durable claims with evidence)
    ↓
 WHAT LOREBOOK KNOWS block in every system prompt
 ```
+
+### Event Intelligence (EventsBook)
+
+Events are the core biographical unit. Each event is a living memory page — not a static record.
+
+**What an event holds:**
+
+- Core: title, summary, type, start/end time, people, locations, activities
+- Emotional layer: emotions with intensity and timestamp offset
+- Cognitive layer: beliefs, realizations, doubts, questions expressed at the time
+- Identity layer: how the event reinforced, challenged, shifted, or clarified self-perception
+- Narrative layer: `at_the_time` (original description) + `later_interpretation` (subsequent reflections)
+- Causal layer: what caused this event and what it caused
+- Continuity layer: entity-named connections to past events ("Sarah appeared in 'Performance Review' 19 days ago")
+- Confidence history: how certainty in the event evolved over time
+
+**Event modal** (`/events` → click any event) surfaces all seven layers in four tabs: Overview, Meaning, Connections, Sources. The Meaning tab is the product differentiator — no other app shows you what you felt and thought at the moment of an event, and how your understanding of it evolved over subsequent conversations.
+
+**Reflection Timeline:** Every message sent in the event modal chat is saved as a `later_interpretation` narrative account. Open an event in October and say "looking back, this changed everything" in December — both entries appear in chronological sequence. The evolution of interpretation becomes visible.
+
+**Persistent event conversations:** Event chat history is stored per-event in `conversation_sessions` (keyed by `metadata.event_id`) and loaded when the modal opens. Lorekeeper primes the conversation with a generated opener from the event's data.
+
+**Recurring Scenes:** The `event_candidates` system detects recurring behavioral patterns across events using a logistic continuity-strength curve with temporal decay. Patterns with 2+ occurrences surface in the Recurring Scenes view. Examples: "Punk Shows", "Performance Reviews", "Family Dinners".
+
+**Story Position:** If the user has defined life arcs and chapters, each event modal header shows which arc and chapter the event belongs to (queried by date range). If no arc is defined, the position is synthesized from causal connections.
 
 ### Knowledge Crystallization
 
@@ -59,8 +93,6 @@ AI-generated claims never count as evidence. Only behavioral observation does.
 
 Romantic relationships are tracked at full depth: drift direction, active cycles (push-pull, hot-cold, toxic patterns), recent interactions logged from natural conversation (no forms), cross-relationship pattern analysis across your full history, and a relationship influence view showing which relationships shaped your life and how.
 
-The system prompt for relationship conversations reads like a trusted advisor who has read your journals — because it has.
-
 ### Temporal Intelligence
 
 Five systems handle time, each answering a different question:
@@ -73,9 +105,7 @@ Five systems handle time, each answering a different question:
 | TimelineInsight | What gaps exist? What was happening in parallel? |
 | Life Arcs | What named life periods exist, and how do they connect causally? |
 
-Allen's interval algebra (all 13 relations) powers temporal relationship detection. Chronology findings are bridged into `arc_relationships` rather than orphaned. Gaps are typed and persisted as hierarchy nodes.
-
-See [`TEMPORAL_ARCHITECTURE.md`](TEMPORAL_ARCHITECTURE.md) for the full reference.
+Allen's interval algebra (all 13 relations) powers temporal relationship detection.
 
 ### Mode Router
 
@@ -93,11 +123,13 @@ Pattern matching runs first (<50ms). LLM classification fires only when confiden
 
 ### Ingestion Pipeline
 
-12-step pipeline orchestrating ~30 parallel extractors: entity resolution, relationship detection, event extraction, romantic interaction logging, interest tracking, belief challenge detection, and more. Each extraction writes to the appropriate domain table. Every pipeline run is tracked in `pipeline_runs`.
+12-step pipeline orchestrating ~30 parallel extractors: entity resolution, relationship detection, event extraction, romantic interaction logging, interest tracking, belief challenge detection, and more. Each extraction writes to the appropriate domain table.
+
+**Event linkage:** After every event assembly, `event_records` (Mode Router system — emotional/cognitive data) are linked to `resolved_events` (Temporal Assembler system — what happened) via an explicit FK (`resolved_event_id`). This ensures the Meaning Tab has a reliable data path regardless of when the user documented the event. Date-join fallback preserved for backward compatibility.
 
 ### Entity System
 
-Single `EntityRegistry` façade over four entity tables. Priority resolution: `characters` → `omega_entities` → `people_places` → `entities`. Jaro-Winkler similarity for near-duplicate detection. Entity confidence grows with repeated mentions.
+Single `EntityRegistry` façade over four entity tables. Priority resolution: `characters` → `omega_entities` → `people_places` → `entities`. Jaro-Winkler similarity for near-duplicate detection. Character deduplication at all creation paths.
 
 ### Retrieval (RAG)
 
@@ -119,9 +151,9 @@ The design principle: one genuinely earned fact is worth more than ten inferred 
 
 **People** — Anyone you mention regularly becomes a tracked character with their own history, alias resolution, and relationship arc.
 
-**Events** — Things that happened with a beginning and end: a trip, a job change, a difficult conversation, a decision made.
+**Events** — Things that happened with a beginning and end: a trip, a job change, a difficult conversation, a decision made. Each event accumulates emotional, cognitive, and identity data over time as you revisit it in conversation.
 
-**Recurring situations** — When the same people or themes appear across multiple sessions, they become `event_candidates` — named behavioral scenes that accumulate into life arcs.
+**Recurring situations** — When the same people or themes appear across multiple sessions, they become `event_candidates` — named behavioral scenes (BJJ Competitions, Punk Shows, Performance Reviews) that accumulate continuity strength over time.
 
 **Relationships** — Romantic relationships tracked in depth: type, status, drift direction, behavioral cycles, key milestones, red/green flags, influence on the broader life arc graph.
 
@@ -149,8 +181,26 @@ Everything Lorekeeper knows about you comes from what you explicitly shared.
 
 - **Backend:** Node.js / Express, TypeScript, Supabase PostgreSQL + pgvector
 - **Frontend:** React + Vite, TypeScript, React Router
-- **Database:** 283+ tables, 160+ migrations, Row Level Security on all user data
+- **Database:** 13 event intelligence tables, 160+ migrations, Row Level Security on all user data
 - **Auth:** Supabase JWT, Bearer token, dev bypass available locally
+
+### Production Intelligence Tables
+
+| Table | Purpose |
+| ----- | ------- |
+| `resolved_events` | Core event records (what happened, who, where, when) |
+| `event_records` | Mode Router extraction anchor — links to resolved_events via FK |
+| `narrative_accounts` | At-the-time descriptions + later reflections (Reflection Timeline) |
+| `event_emotions` | Emotions with intensity, extracted per event |
+| `event_cognitions` | Beliefs, realizations, doubts, questions |
+| `event_identity_impacts` | How events reinforced, challenged, or shifted self-perception |
+| `event_causal_links` | Causal chain between events (10 relationship types) |
+| `event_continuity_links` | Entity-named continuity connections (CONTINUATION, CONTRAST, RETURN...) |
+| `event_impacts` | How events affect the user (direct, indirect, observer, ripple) |
+| `event_confidence_snapshots` | Confidence evolution history per event |
+| `event_candidates` | Recurring behavioral scene patterns with continuity strength |
+| `event_unit_links` | Links extracted_units to resolved_events |
+| `character_timeline_events` | Events linked to specific characters (shared_experience, lore, mentioned) |
 
 ---
 
@@ -171,6 +221,18 @@ Environment: copy `.env.example` → `.env`. Key dev flags:
 - `DISABLE_AUTH_FOR_DEV=true` — skip JWT (never in production)
 - `DEV_AI_FALLBACK=true` — stub AI responses on rate limits
 
+### Intelligence Health Dashboard
+
+Navigate to `/intelligence` (requires auth) to see the real-time pipeline health dashboard:
+
+- **Pipeline Funnel:** conversion at each stage from messages → EXPERIENCE_INGESTION → resolved events → meaning extraction → continuity
+- **Meaning Layer:** emotions, cognitions, identity impacts, narratives (at-the-time vs looking-back)
+- **Story Layer:** causal links, continuity links, recurring scenes, confidence snapshots
+- **Knowledge Layer:** omega claims, entities, crystallized knowledge
+- **Bottleneck detection:** automatic warnings when any metric falls below threshold
+
+API: `GET /api/diagnostics/intelligence-health` (requires auth)
+
 ---
 
 ## Project Structure
@@ -180,22 +242,33 @@ lorekeeper/
 ├── apps/
 │   ├── server/src/
 │   │   ├── services/
+│   │   │   ├── conversationCentered/       # event assembly, causal detection, impact detection
+│   │   │   │   ├── eventAssemblyService.ts # assembles resolved_events + links event_records
+│   │   │   │   ├── eventCausalDetector.ts  # LLM-based causal chain detection
+│   │   │   │   ├── eventImpactDetector.ts  # how events affect the user
+│   │   │   │   └── ingestionPipelineClass.ts # 12-step pipeline with continuity detection
+│   │   │   ├── narrativeContinuityService.ts # entity-named continuity link generation
+│   │   │   ├── eventCandidates/            # recurring scene pattern detection
+│   │   │   ├── eventExtraction/            # 4-layer mode-router extraction (emotions/cognitions/identity)
 │   │   │   ├── knowledgeCrystallization/   # claims, confidence engine, lifecycle
 │   │   │   ├── chronology/                 # V1 engine, arc bridge, gap nodes
-│   │   │   ├── chat/                       # systemPromptBuilder, ragBuilder, relationship context
-│   │   │   ├── continuityRuntime/arcs/     # arc inference, memberships, relationships
-│   │   │   ├── conversationCentered/       # relationship detection, interaction extractor
-│   │   │   ├── biographyGeneration/        # biography engine, relationship atom builder
-│   │   │   └── timelineInsight/            # gap detection, parallel context (Allen relations)
+│   │   │   └── chat/                       # systemPromptBuilder, ragBuilder, relationship context
 │   │   └── routes/
-│   │       ├── chronology.ts               # V1 + V2 endpoints + narrative endpoint
+│   │       ├── conversationCentered.ts     # event endpoints + intelligence-health stats
+│   │       ├── diagnostics.ts              # /intelligence-health dashboard endpoint
 │   │       ├── knowledge.ts                # claims viewer + evidence inspector
-│   │       └── conversationCentered.ts     # relationship + influence view endpoints
+│   │       └── characters.ts               # character management + deduplication
 │   └── web/src/
-│       ├── features/chat/
-│       ├── components/love/                # relationship advisor, patterns, detail modal
-│       └── routes/                         # About, Features, Guide (all rewritten)
-├── supabase/migrations/
+│       ├── components/
+│       │   ├── events/
+│       │   │   ├── EventsBook.tsx          # chronicle grid with Recurring Scenes view
+│       │   │   ├── EventDetailModal.tsx    # 4-tab modal: Overview/Meaning/Connections/Sources
+│       │   │   └── EventProfileCard.tsx    # card with tone accent, names, type icons, tooltips
+│       │   └── diagnostics/
+│       │       └── IntelligenceDashboard.tsx # /intelligence health dashboard
+│       └── pages/
+│           └── Router.tsx                  # all surface routes including /intelligence
+├── supabase/migrations/                    # 160+ migrations, event tables fully deployed
 ├── TEMPORAL_ARCHITECTURE.md               # canonical reference for all temporal systems
 └── docs/
 ```
@@ -206,11 +279,10 @@ lorekeeper/
 
 | Doc | Contents |
 | --- | -------- |
-| [TEMPORAL_ARCHITECTURE.md](TEMPORAL_ARCHITECTURE.md) | All six temporal systems, data flows, integration points, orphan registry |
+| [TEMPORAL_ARCHITECTURE.md](TEMPORAL_ARCHITECTURE.md) | All six temporal systems, data flows, integration points |
 | [docs/guides/LOCAL_DEVELOPMENT.md](docs/guides/LOCAL_DEVELOPMENT.md) | Local setup, migrations, dev flags |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Full system architecture, request lifecycle |
 | [docs/architecture/COGNITION_RUNTIME.md](docs/architecture/COGNITION_RUNTIME.md) | Pipeline, mode router, extraction types |
-| [docs/runtime/runtime-truth-validation.md](docs/runtime/runtime-truth-validation.md) | Validation test plan, known failures |
 
 ---
 
