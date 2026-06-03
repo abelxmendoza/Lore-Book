@@ -21,6 +21,8 @@ type RawCandidate = {
 type CandidateCluster = {
   candidates: RawCandidate[];
   arc_type: ArcType;
+  track: TrackType;
+  dominant_emotion: string | null;
   earliest: Date;
   latest: Date;
 };
@@ -38,6 +40,18 @@ const WORK_ACTIVITIES = new Set([
   'managing', 'reviewing', 'deploying', 'shipping', 'launching',
 ]);
 
+const RELATIONSHIP_ENTITIES = new Set([
+  'girlfriend', 'boyfriend', 'wife', 'husband', 'partner', 'date',
+  'friend', 'best friend', 'family', 'mom', 'dad', 'sister', 'brother',
+]);
+
+const HEALTH_ACTIVITIES = new Set([
+  'gym', 'running', 'exercising', 'workout', 'training', 'fighting',
+  'boxing', 'mma', 'yoga', 'meditating', 'therapy', 'doctor', 'hospital',
+]);
+
+type TrackType = 'career' | 'relationships' | 'creative' | 'health' | 'inner' | 'mixed';
+
 // Max days between two candidates' date ranges to be considered the same cluster
 const CLUSTER_GAP_DAYS = 180;
 
@@ -46,7 +60,6 @@ function inferArcType(candidate: RawCandidate): ArcType {
   const hasSkill = activities.some(a => SKILL_ACTIVITIES.has(a));
   const hasWork = activities.some(a => WORK_ACTIVITIES.has(a));
 
-  // Location arcs: dominant entity names that look like places
   const names = candidate.dominant_entity_names.map(n => n.toLowerCase());
   const looksLikeLocation = names.some(n =>
     /\b(city|street|avenue|park|university|college|campus|building|district|neighborhood|country|state)\b/.test(n)
@@ -56,6 +69,53 @@ function inferArcType(candidate: RawCandidate): ArcType {
   if (hasWork) return 'work';
   if (hasSkill) return 'skill';
   return 'life_era';
+}
+
+/**
+ * Maps arc_type + activity signals to a parallel track label.
+ * Track is the *thematic lane* a life arc belongs to, orthogonal to arc_type.
+ */
+function inferTrack(candidate: RawCandidate, arcType: ArcType): TrackType {
+  const activities = new Set(candidate.recurring_activities.map(a => a.toLowerCase()));
+  const names = candidate.dominant_entity_names.map(n => n.toLowerCase()).join(' ');
+
+  if (arcType === 'work') return 'career';
+  if (arcType === 'skill') {
+    // Creative skills vs. analytical skills
+    const isCreative = ['photography', 'drawing', 'painting', 'music', 'recording', 'writing']
+      .some(a => activities.has(a));
+    return isCreative ? 'creative' : 'career';
+  }
+  if (arcType === 'location') return 'inner';
+
+  // life_era / custom: infer from activities and entity names
+  const hasHealth = [...HEALTH_ACTIVITIES].some(a => activities.has(a));
+  const hasRelationship = [...RELATIONSHIP_ENTITIES].some(r => names.includes(r));
+  const hasCreative = ['writing', 'music', 'photography', 'drawing', 'painting'].some(a => activities.has(a));
+  const hasCareer = [...WORK_ACTIVITIES].some(a => activities.has(a));
+
+  const signals = [hasHealth, hasRelationship, hasCreative, hasCareer].filter(Boolean).length;
+  if (signals > 1) return 'mixed';
+  if (hasHealth) return 'health';
+  if (hasRelationship) return 'relationships';
+  if (hasCreative) return 'creative';
+  if (hasCareer) return 'career';
+  return 'inner';
+}
+
+/**
+ * Dominant emotion: most frequent emotional_tone across cluster candidates.
+ * Falls back to 'neutral' when no emotional signal exists.
+ */
+function inferDominantEmotion(candidates: RawCandidate[]): string | null {
+  const freq: Record<string, number> = {};
+  for (const c of candidates) {
+    const tone = (c as any).emotional_tone as string | undefined;
+    if (tone) freq[tone] = (freq[tone] ?? 0) + c.occurrence_count;
+  }
+  const entries = Object.entries(freq);
+  if (entries.length === 0) return null;
+  return entries.reduce((best, cur) => (cur[1] > best[1] ? cur : best))[0];
 }
 
 function candidateDate(c: RawCandidate): Date | null {
@@ -81,11 +141,31 @@ function clusterCandidates(candidates: RawCandidate[]): CandidateCluster[] {
 
     const arcType = inferArcType(candidate);
 
-    // Find an existing cluster of the same type within the gap window
+    // Find an existing cluster to merge into.
+    // Rules:
+    //   1. Same arc_type and within the temporal gap window.
+    //   2. Must share at least one entity name — events involving completely different
+    //      people/places belong to separate arcs even when temporally close.
+    //      (E.g., two concurrent jobs, two overlapping relationships → separate arcs.)
+    //   3. Exception: if neither the candidate nor the cluster has named entities,
+    //      fall back to proximity-only (generic life_era events).
+    const candidateNames = new Set(candidate.dominant_entity_names.map(n => n.toLowerCase()));
     const match = clusters.find(cl => {
       if (cl.arc_type !== arcType) return false;
       const gapDays = (date.getTime() - cl.latest.getTime()) / (1000 * 60 * 60 * 24);
-      return gapDays <= CLUSTER_GAP_DAYS && gapDays >= -CLUSTER_GAP_DAYS;
+      if (gapDays > CLUSTER_GAP_DAYS || gapDays < -CLUSTER_GAP_DAYS) return false;
+
+      // Entity-overlap check — separates concurrent but distinct arcs
+      if (candidateNames.size > 0) {
+        const clusterNames = cl.candidates.flatMap(c =>
+          c.dominant_entity_names.map(n => n.toLowerCase())
+        );
+        const clusterHasNames = clusterNames.length > 0;
+        const hasSharedEntity = clusterNames.some(n => candidateNames.has(n));
+        if (clusterHasNames && !hasSharedEntity) return false; // different context → separate arc
+      }
+
+      return true;
     });
 
     if (match) {
@@ -96,16 +176,24 @@ function clusterCandidates(candidates: RawCandidate[]): CandidateCluster[] {
       clusters.push({
         candidates: [candidate],
         arc_type: arcType,
+        track: inferTrack(candidate, arcType),
+        dominant_emotion: null, // populated after all candidates are assigned
         earliest: date,
         latest: new Date(Math.max(date.getTime(), new Date(candidate.last_seen_at ?? date).getTime())),
       });
     }
   }
 
+  // Populate track + dominant_emotion now that each cluster has all its candidates
+  for (const cl of clusters) {
+    cl.track = inferTrack(cl.candidates[0], cl.arc_type);
+    cl.dominant_emotion = inferDominantEmotion(cl.candidates);
+  }
+
   // Require at least 2 candidates or high continuity to form an arc
   return clusters.filter(cl =>
     cl.candidates.length >= 2 ||
-    cl.candidates.some(c => c.continuity_strength >= 0.72)
+    cl.candidates.some(c => c.continuity_strength >= 0.55)
   );
 }
 
@@ -232,6 +320,8 @@ export class ArcInferenceService {
         const arc = await arcService.upsert(userId, {
           title: proposal.title,
           arc_type: cluster.arc_type,
+          track: cluster.track,
+          dominant_emotion: cluster.dominant_emotion,
           start_date: cluster.earliest.toISOString().slice(0, 10),
           end_date: cluster.candidates.every(c => c.last_seen_at)
             ? cluster.latest.toISOString().slice(0, 10)

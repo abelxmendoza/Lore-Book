@@ -1,7 +1,7 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-/// <reference types="vitest" />
 
 // Validate environment variables at build time (production only)
 // Note: For frontend-only demo, Supabase vars are optional (mock data will be used)
@@ -46,52 +46,59 @@ if (process.env.NODE_ENV === 'production') {
 console.log(`📦 Node version: ${process.version}`);
 console.log(`📁 Working directory: ${process.cwd()}`);
 
-// Shared ref: when proxy errors (backend down), set true so we answer /api without proxying (avoids log spam).
+// Shared ref: when proxy errors (backend down), set true so middleware short-circuits /api calls.
 const backendUnreachable = { current: false };
-// Allow only one /api request through at a time until we know backend is up/down (avoids initial burst of proxy errors).
+// Only used while backend is DOWN — serialises recovery probes so we don't flood a dead server.
 let apiProbeInFlight = false;
 
-/** When backend is down (or we're probing), answer /api without proxying so Vite doesn't log "http proxy error" for every request. */
+/**
+ * Vite dev-server middleware that handles a down backend gracefully.
+ *
+ * When backend is UP   (flag.current = false): every /api request passes through normally.
+ * When backend is DOWN (flag.current = true):  only one recovery probe is forwarded at a
+ *   time; all other /api requests get an immediate 503 to avoid log spam.
+ *
+ * The key fix: apiProbeInFlight previously blocked ALL concurrent requests, even when the
+ * backend was healthy. That meant admin dashboard (4 parallel fetches) got 3x 503s on every
+ * load. Now it only serialises probes during actual outages.
+ */
 function backendDownMiddlewarePlugin(flag: { current: boolean }) {
   return {
     name: 'backend-down-middleware',
-    configureServer(server: { middlewares: { stack: Array<{ route: string; handle: (req: unknown, res: unknown, next: () => void) => void }> } }) {
+    configureServer(server: any) {
       return () => {
-        const middleware = (req: { url?: string }, res: { statusCode: number; setHeader: (n: string, v: string) => void; end: (s: string) => void }, next: () => void) => {
+        const middleware = (req: any, res: any, next: () => void) => {
           if (!req.url?.startsWith('/api')) return next();
-          const isHealth = req.url === '/api/health' || req.url?.startsWith('/api/health?');
-          // Always proxy /api/health so the app can recover when the backend comes back (and so initial health check isn't blocked)
-          if (isHealth) {
-            next();
-            return;
+
+          // Always let health checks through so the app can detect recovery.
+          if (req.url === '/api/health' || req.url.startsWith('/api/health?')) {
+            return next();
           }
+
           if (flag.current) {
-            // Backend was down: 503 other /api to avoid proxy error spam
-            res.statusCode = 503;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: 'Backend unavailable' }));
-            return;
+            // Backend is DOWN — serialise recovery probes.
+            if (apiProbeInFlight) {
+              res.statusCode = 503;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Backend unavailable' }));
+              return;
+            }
+            apiProbeInFlight = true;
+            const origEnd = (res.end as Function).bind(res);
+            res.end = (...args: unknown[]) => {
+              apiProbeInFlight = false;
+              return origEnd(...args);
+            };
           }
-          // When backend status unknown, allow only one non-health /api request at a time so we get at most one proxy error on first load
-          if (apiProbeInFlight) {
-            res.statusCode = 503;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: 'Backend unavailable' }));
-            return;
-          }
-          apiProbeInFlight = true;
-          const origEnd = res.end.bind(res);
-          res.end = ((chunk?: unknown, encoding?: unknown) => {
-            apiProbeInFlight = false;
-            return origEnd(chunk as any, encoding as any);
-          }) as typeof res.end;
+
+          // Backend UP — pass through immediately, no throttling.
           next();
         };
+
         server.middlewares.stack.unshift({ route: '', handle: middleware });
-        // Periodically clear flag so next request tries backend again (recover within 30s when backend starts)
-        setInterval(() => {
-          flag.current = false;
-        }, 30_000);
+
+        // Every 30 s, clear the down-flag so the next request acts as a fresh probe.
+        setInterval(() => { flag.current = false; }, 30_000);
       };
     },
   };
@@ -102,7 +109,7 @@ export default defineConfig({
   base: '/',
   plugins: [
     backendDownMiddlewarePlugin(backendUnreachable),
-    react({ typescript: { ignoreBuildErrors: true } }),
+    react(),
   ],
   resolve: {
     dedupe: ['react', 'react-dom'],
@@ -122,11 +129,9 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:4000',
         changeOrigin: true,
-        configure(proxy: {
-          on: (event: string, fn: (err?: Error, req?: unknown, res?: { req?: unknown; headersSent?: boolean; writableEnded?: boolean; writeHead?: (code: number, headers?: Record<string, string>) => void; end?: (body?: string) => void }) => void) => void;
-        }) {
+        configure(proxy: any) {
           // When proxy errors (e.g. ECONNREFUSED), respond with 503 so client sees "unavailable" not 500
-          proxy.on('error', (_err, _req, res) => {
+          proxy.on('error', (_err: any, _req: any, res: any) => {
             backendUnreachable.current = true;
             apiProbeInFlight = false;
             if (res && typeof res === 'object' && 'req' in res && !(res as { headersSent?: boolean }).headersSent && !(res as { writableEnded?: boolean }).writableEnded) {

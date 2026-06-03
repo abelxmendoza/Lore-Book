@@ -1,5 +1,5 @@
 /**
- * LORE-KEEPER DECISION MEMORY ENGINE (DME)
+ * LOREBOOK DECISION MEMORY ENGINE (DME)
  * Service for capturing and retrieving decision memory
  */
 

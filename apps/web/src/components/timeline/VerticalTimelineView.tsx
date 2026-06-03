@@ -1,5 +1,7 @@
-import React, { useMemo } from 'react';
-import { Calendar, ExternalLink, Tag } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Calendar, ExternalLink, Tag, ChevronDown } from 'lucide-react';
+
+const PAGE_SIZE = 50;
 import { useChronology } from '../../hooks/useChronology';
 import { useTimelineV2 } from '../../hooks/useTimelineV2';
 import { useEntityModal } from '../../contexts/EntityModalContext';
@@ -32,14 +34,18 @@ export const VerticalTimelineView: React.FC<VerticalTimelineViewProps> = ({
   // Use filtered entries if provided, otherwise use all entries
   const entriesToDisplay = filteredEntries || chronologyEntries;
 
-  // Sort entries by date (newest first - most recent at top)
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  // Sort entries by date (newest first)
   const sortedEntries = useMemo(() => {
-    const sorted = [...entriesToDisplay].sort((a, b) => {
-      return new Date(b.start_time).getTime() - new Date(a.start_time).getTime();
-    });
-    // Most recent memories at the top
-    return sorted;
+    return [...entriesToDisplay].sort(
+      (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
+    );
   }, [entriesToDisplay]);
+
+  const visibleEntries = sortedEntries.slice(0, visibleCount);
+  const hasMore = visibleCount < sortedEntries.length;
+  const remaining = sortedEntries.length - visibleCount;
 
   const loading = chronologyLoading || timelinesLoading;
 
@@ -96,7 +102,7 @@ export const VerticalTimelineView: React.FC<VerticalTimelineViewProps> = ({
 
         {/* Timeline Entries */}
         <div className="relative space-y-12">
-          {sortedEntries.map((entry, index) => {
+          {visibleEntries.map((entry, index) => {
             const isLeft = index % 2 === 0; // Alternate left/right
             const timelineName = entry.timeline_names?.[0] || 'Ungrouped';
             const timelineId = entry.timeline_memberships?.[0];
@@ -162,6 +168,27 @@ export const VerticalTimelineView: React.FC<VerticalTimelineViewProps> = ({
             );
           })}
         </div>
+
+        {/* Load more / pagination footer */}
+        {hasMore ? (
+          <div className="flex flex-col items-center gap-2 pt-8 pb-4">
+            <p className="text-xs text-white/30">
+              Showing {visibleCount} of {sortedEntries.length} memories
+            </p>
+            <button
+              type="button"
+              onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border/60 bg-black/40 text-sm text-white/60 hover:text-white hover:border-primary/40 hover:bg-black/60 transition-all"
+            >
+              <ChevronDown className="w-4 h-4" />
+              Load {Math.min(remaining, PAGE_SIZE)} more
+            </button>
+          </div>
+        ) : sortedEntries.length > PAGE_SIZE ? (
+          <p className="text-center text-xs text-white/25 pt-6 pb-2">
+            All {sortedEntries.length} memories loaded
+          </p>
+        ) : null}
       </div>
     </div>
   );

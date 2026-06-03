@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { fetchJson } from '../../lib/api';
+import { PersonaChip } from '../../features/chat/message/PersonaChip';
 
 const humanizeExpressionMode = (mode: string): string => {
   const modeMap: Record<string, string> = {
@@ -332,6 +333,9 @@ export const ChatMessage = ({
                 onApprove={onApproveMemorySuggestion ? async () => { await onApproveMemorySuggestion(message.memorySuggestion!.proposal_id); } : undefined}
                 onDismiss={onDismissMemorySuggestion ? () => onDismissMemorySuggestion(message.memorySuggestion!.proposal_id) : undefined}
               />
+            )}
+            {!isUser && message.activePersona && (
+              <PersonaChip persona={message.activePersona} />
             )}
             {!isUser && (
               <CognitionMetaPanel

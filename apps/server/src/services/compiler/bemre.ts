@@ -1,5 +1,5 @@
 // =====================================================
-// LOREKEEPER CORE BLUEPRINT
+// LOREBOOK CORE BLUEPRINT
 // Belief Evolution & Meaning Resolution (BEMRE)
 // =====================================================
 

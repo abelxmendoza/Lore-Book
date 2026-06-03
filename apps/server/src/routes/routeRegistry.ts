@@ -106,6 +106,7 @@ import interventionRouter from './intervention';
 import habitsRouter from './habits';
 import resilienceRouter from './resilience';
 import influenceRouter from './influence';
+import relationshipsRouter from './relationships';
 import growthRouter from './growth';
 import legacyRouter from './legacy';
 import valuesRouter from './values';
@@ -696,6 +697,12 @@ export const routeRegistry: RouteEntry[] = [
     router: influenceRouter,
     classification: 'EXPERIMENTAL',
     description: 'Influence network analysis',
+  },
+  {
+    path: '/api/relationships',
+    router: relationshipsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Relationship role inference — infers social hierarchy from natural language',
   },
   {
     path: '/api/growth',

@@ -1,6 +1,6 @@
 /**
  * Personal Strategy Engine Types
- * Maps blueprint concepts to LoreKeeper architecture
+ * Maps blueprint concepts to LoreBook architecture
  */
 
 export type ActionType = 

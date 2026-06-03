@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Eye, Plus, Filter, AlertTriangle, ChevronLeft, ChevronRight, BookOpen, MessageSquare } from 'lucide-react';
+import { Eye, Plus, Filter, AlertTriangle, ChevronLeft, ChevronRight, BookOpen, MessageSquare, Brain } from 'lucide-react';
+import { SelfKnowledgeView } from './SelfKnowledgeView';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { PerceptionEntryCard } from './PerceptionEntryCard';
@@ -786,8 +787,49 @@ export const PerceptionsView = ({ personId, personName, showCreateButton = true 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentPage, totalPages]);
 
+  const [activeTab, setActiveTab] = useState<'about-others' | 'about-me'>('about-others');
+
+  const tabToggle = !personId ? (
+    <div className="flex gap-1 p-1 rounded-xl bg-white/5 border border-white/10 w-fit">
+      <button
+        type="button"
+        onClick={() => setActiveTab('about-others')}
+        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+          activeTab === 'about-others'
+            ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+            : 'text-white/50 hover:text-white/80'
+        }`}
+      >
+        <Eye className="h-4 w-4" />
+        About Others
+      </button>
+      <button
+        type="button"
+        onClick={() => setActiveTab('about-me')}
+        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+          activeTab === 'about-me'
+            ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+            : 'text-white/50 hover:text-white/80'
+        }`}
+      >
+        <Brain className="h-4 w-4" />
+        About Me
+      </button>
+    </div>
+  ) : null;
+
+  if (activeTab === 'about-me' && !personId) {
+    return (
+      <div className="space-y-4">
+        {tabToggle}
+        <SelfKnowledgeView />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {tabToggle}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

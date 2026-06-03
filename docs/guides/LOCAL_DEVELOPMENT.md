@@ -170,7 +170,7 @@ npm run check:supabase   # Supabase connectivity check
 ## Supabase: Local vs Cloud
 
 ### Cloud (current setup)
-The `.env` has real Supabase credentials pointing to `jawzxiiwfagliloxnnkc.supabase.co`. This is the easiest setup — data persists, Supabase dashboard is available.
+The `.env` has real Supabase credentials pointing to `cshtthzpgkmrbcsfghyq.supabase.co`. This is the easiest setup — data persists, Supabase dashboard is available.
 
 ### Local Supabase (optional)
 If you want a fully local setup:

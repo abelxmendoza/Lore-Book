@@ -1,16 +1,18 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
-import { Search, Sparkles, Calendar, X, Loader2, Layers, Network, List, Info } from 'lucide-react';
+import { Search, Sparkles, Calendar, X, Loader2, Layers, Network, List, Info, ChevronRight } from 'lucide-react';
 import { useChronology } from '../../hooks/useChronology';
 import { useTimelineV2 } from '../../hooks/useTimelineV2';
+import { useLifeArcs, TRACK_COLORS, TRACK_LABELS, type ArcTrack } from '../../hooks/useLifeArcs';
 import { searchTimelines } from '../../api/timelineV2';
 import { ChronologyTimelineView } from './ChronologyTimelineView';
 import { HierarchyTimelineView } from './HierarchyTimelineView';
 import { GraphTimelineView } from './GraphTimelineView';
 import { ListTimelineView } from './ListTimelineView';
 import { VerticalTimelineView } from './VerticalTimelineView';
+import { TimelineHierarchyPanel } from '../timeline-hierarchy/TimelineHierarchyPanel';
 import { useEntityModal } from '../../contexts/EntityModalContext';
 import { useCurrentContext } from '../../contexts/CurrentContextContext';
-import { LayerDefinitions, type TimelineLayer } from './LayerDefinitions';
+import { LayerDefinitions, LAYER_DEFINITIONS, type TimelineLayer } from './LayerDefinitions';
 import { useMockData } from '../../contexts/MockDataContext';
 import { MockDataIndicator } from '../MockDataIndicator';
 import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
@@ -20,7 +22,38 @@ import { ThreadTimelineView } from '../threads/ThreadTimelineView';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { GitBranch } from 'lucide-react';
 
-type ViewMode = 'chronology' | 'hierarchy' | 'graph' | 'list' | 'vertical' | 'threads';
+type ViewMode = 'chronology' | 'hierarchy' | 'graph' | 'list' | 'vertical' | 'threads' | '9layers';
+
+// Compact horizontal layer ladder shown at the top of the 9-layer view
+const LayerLadder = () => {
+  const layers: TimelineLayer[] = ['mythos', 'epoch', 'era', 'saga', 'arc', 'chapter', 'scene', 'action', 'microaction'];
+  const scopes = ['Lifetime', '5–10 yrs', '1–3 yrs', '3–24 mo', '2 wk–6 mo', '3 d–4 wk', '2 hr–3 d', '15 min–2 hr', '< 15 min'];
+
+  return (
+    <div className="px-4 pt-3 pb-2">
+      <div className="flex items-start gap-0 overflow-x-auto pb-1 scrollbar-hide">
+        {layers.map((layer, i) => {
+          const def = LAYER_DEFINITIONS[layer];
+          return (
+            <div key={layer} className="flex items-start shrink-0">
+              <div className="flex flex-col items-center gap-1 min-w-[80px]">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-black border-2 ${def.color.replace('text-', 'border-')} ${def.color}`}>
+                  {i + 1}
+                </div>
+                <span className={`text-[11px] font-semibold ${def.color}`}>{def.name}</span>
+                <span className="text-[9px] text-white/30 text-center leading-tight">{scopes[i]}</span>
+              </div>
+              {i < layers.length - 1 && (
+                <ChevronRight className="h-3.5 w-3.5 text-white/20 mt-1.5 shrink-0" />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-white/25 mt-1">Your life, compiled — from the grand myth down to the micro-moment.</p>
+    </div>
+  );
+};
 
 // Smart AI suggestions based on data
 const getAISuggestions = (entries: ChronologyEntry[], timelines: Timeline[]) => {
@@ -85,6 +118,9 @@ export const OmniTimelinePanel = () => {
   const [threads, setThreads] = useState<ThreadItem[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [threadsLoading, setThreadsLoading] = useState(false);
+
+  // Life arcs — AI-inferred autobiographical arcs, the primary organisational layer
+  const { activeArcs, arcsByTrack, loading: arcsLoading } = useLifeArcs({ minConfidence: 0.5 });
 
   // Fetch timelines and chronology
   const { timelines, loading: timelinesLoading } = useTimelineV2();
@@ -244,6 +280,47 @@ export const OmniTimelinePanel = () => {
   return (
     <div className="space-y-6" data-testid="timeline">
       <ChatFirstViewHint />
+
+      {/* Active arcs banner — "you are here" across all parallel tracks */}
+      {!arcsLoading && activeArcs.length > 0 && (
+        <div className="px-4 pt-3 pb-1">
+          <p className="text-[10px] text-white/30 uppercase tracking-widest font-mono mb-2">Active arcs</p>
+          <div className="flex flex-wrap gap-2">
+            {activeArcs.map(arc => {
+              const track = (arc.track ?? 'inner') as ArcTrack;
+              const c = TRACK_COLORS[track];
+              return (
+                <div
+                  key={arc.id}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${c.bg} ${c.border} ${c.text}`}
+                  title={arc.summary ?? arc.title}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.dotBg}`} />
+                  <span>{arc.title}</span>
+                  <span className="opacity-50">· {TRACK_LABELS[track]}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Parallel-tracks summary — one dot per track with arc count */}
+      {!arcsLoading && Object.keys(arcsByTrack).length > 0 && (
+        <div className="px-4 flex gap-3 flex-wrap">
+          {(Object.entries(arcsByTrack) as [ArcTrack, typeof activeArcs][]).map(([track, arcs]) => {
+            const c = TRACK_COLORS[track];
+            return (
+              <div key={track} className={`flex items-center gap-1 text-[10px] ${c.text}`}>
+                <span className={`w-2 h-2 rounded-full ${c.dotBg}`} />
+                <span>{TRACK_LABELS[track]}</span>
+                <span className="opacity-40">({arcs.length})</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Clean Header - Minimal */}
       <div className="border-b border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] sticky top-0 z-10 flex-shrink-0 backdrop-blur-sm rounded-t-2xl"
       >
@@ -338,6 +415,18 @@ export const OmniTimelinePanel = () => {
               >
                 <GitBranch className="w-3.5 h-3.5" />
                 By thread
+              </button>
+              <button
+                onClick={() => setViewMode('9layers')}
+                className={`px-3 py-1.5 text-xs rounded transition-colors flex items-center gap-1.5 ${
+                  viewMode === '9layers'
+                    ? 'bg-gradient-to-r from-purple-500/30 to-pink-500/20 text-white border border-purple-500/50 shadow-neon'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+                title="9-Layer Hierarchy — Mythos to MicroAction"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                9 Layers
               </button>
             </div>
           </div>
@@ -676,6 +765,13 @@ export const OmniTimelinePanel = () => {
               filteredEntries={filteredEntries}
               selectedTimelineId={selectedTimelineId}
             />
+          ) : viewMode === '9layers' ? (
+            <div className="flex flex-col h-full min-h-0">
+              <LayerLadder />
+              <div className="flex-1 overflow-auto min-h-0">
+                <TimelineHierarchyPanel />
+              </div>
+            </div>
           ) : viewMode === 'threads' ? (
             <div className="flex h-full gap-4 p-4">
               <div className="w-56 flex-shrink-0 space-y-2">

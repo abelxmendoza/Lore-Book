@@ -1,5 +1,5 @@
 // =====================================================
-// LORE-KEEPER NARRATIVE COMPILER (LNC)
+// LOREBOOK NARRATIVE COMPILER (LNC)
 // Dependency Graph - Tracks entry dependencies
 // =====================================================
 

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, LayoutGrid, LayoutList, Flame, Wind, Moon, GitBranch } from 'lucide-react';
+import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
@@ -23,6 +24,55 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 
+// ── Demo analytics normalization ─────────────────────────────────────────────
+// Derives a full analytics object from metadata fields so demo cards render
+// correctly without touching every mock character object individually.
+function withDemoAnalytics(char: Character): Character {
+  if (char.analytics) return char;
+  const closeness  = Number((char.metadata?.closeness_score as number | undefined) ?? (char.importance_score ?? 0));
+  const importance = char.importance_score ?? 0;
+  // Spread recency across characters so "Recently Active" row shows variety
+  const recencyMap: Record<string, number> = {
+    'dummy-1':          0.95, // Sarah  — seen last week
+    'char-alex-boyfriend': 0.90, // Alex GF
+    'dummy-2':          0.75, // Marcus
+    'dummy-4':          0.80, // Jordan (sibling)
+    'dummy-10':         0.70, // Luna
+    'dummy-7':          0.65, // Sophia
+    'dummy-3':          0.60, // Alex Rivera
+    'dummy-12':         0.55, // Noah
+    'dummy-5':          0.45, // Dr. Amara
+    'dummy-9':          0.50, // Dr. Mitchell
+  };
+  const recency = recencyMap[char.id] ?? Math.max(0.1, (closeness / 100) * 0.5);
+  const trend: 'deepening' | 'stable' | 'weakening' =
+    importance > 80 ? 'deepening' : importance > 55 ? 'stable' : 'weakening';
+  return {
+    ...char,
+    analytics: {
+      closeness_score:              closeness,
+      recency_score:                recency,
+      importance_score:             importance,
+      trend,
+      character_influence_on_user:  importance,
+      user_influence_over_character: importance * 0.8,
+      relationship_depth:           closeness,
+      interaction_frequency:        recency,
+      priority_score:               importance,
+      value_score:                  importance * 0.9,
+      sentiment_score:              closeness / 100,
+      trust_score:                  closeness / 100,
+      support_score:                closeness / 100,
+      conflict_score:               0,
+      engagement_score:             recency,
+      activity_level:               recency,
+      shared_experiences:           char.memory_count ?? 0,
+      relationship_duration_days:   365,
+      relevance_score:              importance / 100,
+    },
+  };
+}
+
 // Comprehensive mock character data showcasing all app capabilities
 // Export for use in mock data service
 export const dummyCharacters: Character[] = [
@@ -38,6 +88,9 @@ export const dummyCharacters: Character[] = [
     status: 'active',
     importance_level: 'major',
     importance_score: 87,
+    proximity_level: 'direct',
+    relationship_depth: 'close',
+    has_met: true,
     is_nickname: false,
     summary: 'My closest friend and confidante since college. Sarah works in tech and was one of the first people I told about my decision to transition from software development to creative work. She\'s been incredibly supportive throughout my creative renaissance, often meeting me at coffee shops to work on our respective projects. We\'ve had 24 writing sessions together at the coffee shop. She knows Alex (my girlfriend) and Marcus (my mentor), and we all sometimes hang out together. Sarah is honest, loyal, and always knows how to make me laugh when I\'m stressed about my creative projects.',
     tags: ['friendship', 'support', 'honesty', 'loyalty'],
@@ -78,6 +131,9 @@ export const dummyCharacters: Character[] = [
     status: 'active',
     importance_level: 'major',
     importance_score: 82,
+    proximity_level: 'direct',
+    relationship_depth: 'moderate',
+    has_met: true,
     is_nickname: false,
     summary: 'A wise mentor who has guided me through my career transition from tech to creative work. Marcus was the one who encouraged me to pursue my passion for music production and writing when I was stuck in my corporate job. He introduced me to Alex Rivera for music collaboration 1.5 years ago and has been a constant source of support. We\'ve had 20 mentorship meetings at the coffee shop. Marcus knows Sarah (my best friend) and we often discuss my creative projects and relationship journey. His decades of experience and thoughtful advice have been invaluable during this period of self-discovery.',
     tags: ['mentorship', 'wisdom', 'career', 'guidance'],
@@ -113,6 +169,9 @@ export const dummyCharacters: Character[] = [
     status: 'active',
     importance_level: 'major',
     importance_score: 78,
+    proximity_level: 'direct',
+    relationship_depth: 'moderate',
+    has_met: true,
     is_nickname: false,
     summary: 'A talented music producer and creative collaborator. Alex Rivera and I work together on music production projects in my home studio. Marcus introduced us 1.5 years ago, and we\'ve been collaborating ever since. They\'ve been instrumental in helping me learn music production during my creative renaissance. We\'ve had 45 studio sessions together, and they helped me produce my first EP. Alex knows about my relationship with Alex (my girlfriend) and is supportive of my creative journey.',
     tags: ['collaboration', 'creativity', 'professional', 'innovation'],
@@ -152,6 +211,9 @@ export const dummyCharacters: Character[] = [
     status: 'active',
     importance_level: 'protagonist',
     importance_score: 95,
+    proximity_level: 'direct',
+    relationship_depth: 'close',
+    has_met: true,
     is_nickname: false,
     summary: 'My girlfriend of 6 months. We met through Sarah at a coffee shop a year ago. She\'s incredibly supportive of my creative journey, often visiting my home studio to listen to my music. She makes me laugh, remembers the little things, and we share a love for hiking and nature. Our relationship has been growing stronger, and she was the first person I called when I had the EP concept breakthrough.',
     tags: ['romantic', 'supportive', 'relationship', 'creative'],
@@ -186,6 +248,9 @@ export const dummyCharacters: Character[] = [
     status: 'active',
     importance_level: 'protagonist',
     importance_score: 95,
+    proximity_level: 'direct',
+    relationship_depth: 'close',
+    has_met: true,
     is_nickname: false,
     summary: 'My sibling and one of the most important people in my life. Jordan has been incredibly supportive of my transition from tech to creative work, often going on runs with me in Golden Gate Park when I need to clear my head. They know Sarah (my best friend) and have met Alex (my girlfriend) a few times. Jordan was there for me when my relationship with Taylor ended and has been a constant source of wisdom and support throughout my creative renaissance journey.',
     tags: ['family', 'sibling', 'support', 'connection'],
@@ -2145,12 +2210,15 @@ export const CharacterBook = () => {
         characterList.length > 0 ? characterList : null,
         isMockDataEnabled
       );
-      
-      setCharacters(result.data);
+      // Normalize analytics for demo characters so cards render correctly
+      const normalized = isMockDataEnabled
+        ? result.data.map(withDemoAnalytics)
+        : result.data;
+      setCharacters(normalized);
     } catch {
-      // On error, use mock data if enabled, otherwise empty array
       const result = mockDataService.getWithFallback.characters(null, isMockDataEnabled);
-      setCharacters(result.data);
+      const normalized = isMockDataEnabled ? result.data.map(withDemoAnalytics) : result.data;
+      setCharacters(normalized);
     } finally {
       setLoading(false);
     }
@@ -2209,6 +2277,10 @@ export const CharacterBook = () => {
 
   // Refresh + briefly highlight cards when the chat pipeline updates characters.
   const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    try { return (localStorage.getItem('lk_char_view') as 'grid' | 'list') || 'grid'; } catch { return 'grid'; }
+  });
+  const [showFamilyTree, setShowFamilyTree] = useState(false);
   useEffect(() => {
     const handler = (e: Event) => {
       const ids: string[] = (e as CustomEvent<{ ids: string[] }>).detail?.ids ?? [];
@@ -2387,10 +2459,56 @@ export const CharacterBook = () => {
   return (
     <div className="space-y-4 sm:space-y-6" data-testid="character-book">
       <ChatFirstViewHint />
-      {/* User Profile & Insights - Displayed first */}
+      {/* User Profile */}
       <div className="space-y-3 sm:space-y-4">
         <UserProfile characters={characters} />
       </div>
+
+      {/* People On Your Mind Lately */}
+      {(() => {
+        const recent = [...characters]
+          .filter(c => (c.analytics?.recency_score ?? 0) > 0)
+          .sort((a, b) => (b.analytics?.recency_score ?? 0) - (a.analytics?.recency_score ?? 0))
+          .slice(0, 6);
+        if (recent.length === 0) return null;
+        return (
+          <div>
+            <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-2.5">
+              People On Your Mind Lately
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {recent.map(c => {
+                const closeness = c.analytics?.closeness_score ?? 0;
+                const phase = (() => {
+                  const r = c.analytics?.recency_score ?? 0;
+                  if (closeness >= 70 && r >= 0.6) return { label: 'Core',    cls: 'text-purple-300', icon: <Flame className="h-2.5 w-2.5" /> };
+                  if (closeness >= 45 || r >= 0.4) return { label: 'Active',  cls: 'text-cyan-300',   icon: <Zap className="h-2.5 w-2.5" /> };
+                  if (closeness >= 20 || r >= 0.2) return { label: 'Fading',  cls: 'text-amber-300',  icon: <Wind className="h-2.5 w-2.5" /> };
+                  return                            { label: 'Dormant', cls: 'text-gray-400',   icon: <Moon className="h-2.5 w-2.5" /> };
+                })();
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelectedCharacter(c)}
+                    className="flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 hover:border-white/20 transition-all w-20 text-center"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-xs font-bold text-primary overflow-hidden">
+                      {c.avatar_url
+                        ? <img src={c.avatar_url} alt={c.name} className="w-full h-full object-cover" />
+                        : c.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                    </div>
+                    <span className="text-[10px] text-white/80 leading-tight truncate w-full">{c.name.split(' ')[0]}</span>
+                    <span className={`flex items-center gap-0.5 text-[9px] ${phase.cls}`}>
+                      {phase.icon}{phase.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Character Search Bar and Navigation Tabs */}
       <div className="space-y-3 sm:space-y-4">
@@ -2532,22 +2650,52 @@ export const CharacterBook = () => {
           <div>
             <h2 className="text-lg sm:text-xl font-semibold text-white">Character Book</h2>
             <p className="text-xs sm:text-sm text-white/60 mt-1">
-              {characters.length} total characters · {filteredCharacters.length} shown
-              {Object.entries(groupedByImportance).map(([level, chars]) => (
-                <span key={level}> · {levelLabels[level] || level}: {chars.length}</span>
-              ))}
+              {characters.length} total · {filteredCharacters.length} shown
               {loading && ' · Loading...'}
             </p>
           </div>
-          <Button 
-            leftIcon={<RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />} 
-            onClick={() => void loadCharacters()}
-            disabled={loading}
-            size="sm"
-            className="w-full sm:w-auto text-xs sm:text-sm"
-          >
-            {loading ? 'Loading...' : 'Refresh'}
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Family Tree toggle — only shown in family category */}
+            {activeCategory === 'family' && (
+              <button
+                type="button"
+                onClick={() => setShowFamilyTree(f => !f)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${showFamilyTree ? 'bg-pink-500/20 border-pink-500/40 text-pink-300' : 'bg-white/5 border-white/10 text-white/50 hover:text-white/70'}`}
+                title={showFamilyTree ? 'Switch to character grid' : 'View family tree'}
+              >
+                <GitBranch className="h-3.5 w-3.5" />
+                {showFamilyTree ? 'Grid' : 'Family Tree'}
+              </button>
+            )}
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-white/10 bg-white/5 p-0.5">
+              <button
+                type="button"
+                onClick={() => { setViewMode('grid'); try { localStorage.setItem('lk_char_view', 'grid'); } catch {} }}
+                className={`flex items-center justify-center h-7 w-7 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'}`}
+                title="Grid view"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => { setViewMode('list'); try { localStorage.setItem('lk_char_view', 'list'); } catch {} }}
+                className={`flex items-center justify-center h-7 w-7 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/60'}`}
+                title="List view"
+              >
+                <LayoutList className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <Button
+              leftIcon={<RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />}
+              onClick={() => void loadCharacters()}
+              disabled={loading}
+              size="sm"
+              className="text-xs sm:text-sm"
+            >
+              {loading ? 'Loading...' : 'Refresh'}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -2571,6 +2719,101 @@ export const CharacterBook = () => {
               <p className="text-xs sm:text-sm">Try a different search term or filter</p>
             </>
           )}
+        </div>
+      ) : activeCategory === 'family' && showFamilyTree ? (
+        /* ── Family Tree View ── */
+        <div className="space-y-4">
+          {/* User's own family tree */}
+          <div className="rounded-xl border border-pink-500/20 bg-pink-950/10 p-5">
+            <p className="text-[10px] font-semibold text-pink-400/70 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Heart className="h-3.5 w-3.5" /> Your Family Tree
+            </p>
+            <FamilyTreeView
+              tree={isMockDataEnabled ? createMockUserFamilyTree() : createMockUserFamilyTree()}
+              onMemberClick={(member) => {
+                const match = characters.find(c =>
+                  c.name.toLowerCase().includes(member.first_name?.toLowerCase() ?? member.name.toLowerCase()) ||
+                  member.name.toLowerCase().includes(c.name.toLowerCase())
+                );
+                if (match) setSelectedCharacter(match);
+              }}
+            />
+          </div>
+
+          {/* Individual trees for family members with their own data */}
+          {filteredCharacters
+            .filter(c => isMockDataEnabled && createMockFamilyTreeForCharacter(c.name) !== null)
+            .map(c => {
+              const tree = createMockFamilyTreeForCharacter(c.name);
+              if (!tree) return null;
+              return (
+                <div key={c.id} className="rounded-xl border border-white/10 bg-white/4 p-5">
+                  <p className="text-[10px] font-semibold text-white/40 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <GitBranch className="h-3.5 w-3.5" /> {c.name}&apos;s Family Tree
+                  </p>
+                  <FamilyTreeView
+                    tree={tree}
+                    compact={true}
+                    onMemberClick={(member) => {
+                      const match = characters.find(ch =>
+                        ch.name.toLowerCase().includes(member.first_name?.toLowerCase() ?? member.name.toLowerCase())
+                      );
+                      if (match) setSelectedCharacter(match);
+                    }}
+                  />
+                </div>
+              );
+            })}
+        </div>
+      ) : viewMode === 'list' ? (
+        /* ── List View ── */
+        <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+          {filteredCharacters.map(c => {
+            const closeness = c.analytics?.closeness_score ?? 0;
+            const recency   = c.analytics?.recency_score   ?? 0;
+            const phase = closeness >= 70 && recency >= 0.6 ? { label: 'Core',    cls: 'text-purple-300 bg-purple-500/10', icon: <Flame className="h-2.5 w-2.5" /> }
+                        : closeness >= 45 || recency >= 0.4 ? { label: 'Active',  cls: 'text-cyan-300   bg-cyan-500/10',   icon: <Zap   className="h-2.5 w-2.5" /> }
+                        : closeness >= 20 || recency >= 0.2 ? { label: 'Fading',  cls: 'text-amber-300 bg-amber-500/10',   icon: <Wind  className="h-2.5 w-2.5" /> }
+                        :                                      { label: 'Dormant', cls: 'text-gray-400   bg-gray-500/10',   icon: <Moon  className="h-2.5 w-2.5" /> };
+            const closenessWidth = Math.min(100, closeness);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setSelectedCharacter(c)}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
+              >
+                {/* Avatar */}
+                <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/25 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0 overflow-hidden">
+                  {c.avatar_url
+                    ? <img src={c.avatar_url} alt={c.name} className="w-full h-full object-cover" />
+                    : c.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                </div>
+
+                {/* Name + role */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white/90 truncate">{c.name}</p>
+                  {c.role && <p className="text-xs text-white/45 truncate">{c.role}</p>}
+                </div>
+
+                {/* Closeness bar */}
+                <div className="hidden sm:flex flex-col items-end gap-1 w-24 flex-shrink-0">
+                  <div className="w-full h-1 bg-white/8 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary/60 rounded-full"
+                      style={{ width: `${closenessWidth}%` }}
+                    />
+                  </div>
+                  <span className="text-[9px] text-white/30 tabular-nums">{Math.round(closeness)} closeness</span>
+                </div>
+
+                {/* Phase badge */}
+                <span className={`hidden sm:flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${phase.cls} flex-shrink-0`}>
+                  {phase.icon}{phase.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       ) : (
         <>

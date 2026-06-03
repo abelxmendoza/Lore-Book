@@ -15,9 +15,9 @@
  * Convergence: when ||r_new - r|| < tolerance (L1 norm), or maxIter reached.
  * Typical: 20-30 iterations on sparse graphs.
  *
- * Time complexity: O(|E| × iterations) — fast for the social/entity graph sizes in LoreKeeper.
+ * Time complexity: O(|E| × iterations) — fast for the social/entity graph sizes in LoreBook.
  *
- * Usage in LoreKeeper:
+ * Usage in LoreBook:
  *   - Seed on entities extracted from the user's current query (Sol, Genni, etc.)
  *   - All nodes connected to those entities (via entity_mentions adjacency) get scored
  *   - Top-k PPR nodes identify the most contextually relevant memory entries to surface

@@ -1,5 +1,5 @@
 /**
- * Lore-Keeper Database Sync Blueprint
+ * LoreBook Database Sync Blueprint
  * Ensures backend expectations, Supabase schema, and PostgREST cache stay in lockstep.
  * Prevents PGRST205 cascade by verifying required tables at boot and gating requests when degraded.
  */

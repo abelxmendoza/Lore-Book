@@ -1,5 +1,5 @@
 /**
- * LORE-KEEPER GOAL TRACKING & VALUE ALIGNMENT ENGINE (GVAE)
+ * LOREBOOK GOAL TRACKING & VALUE ALIGNMENT ENGINE (GVAE)
  * Service for tracking values, goals, and alignment
  */
 

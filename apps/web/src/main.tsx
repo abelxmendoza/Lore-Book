@@ -1,6 +1,6 @@
 // Global error handlers — must be first, before any imports, to catch early errors
 window.addEventListener('error', (event) => {
-  console.error('[Lorekeeper] Uncaught error', event.error ?? event.message, {
+  console.error('[LoreBook] Uncaught error', event.error ?? event.message, {
     filename: event.filename,
     lineno: event.lineno,
   });
@@ -31,7 +31,7 @@ window.addEventListener('unhandledrejection', (event) => {
     // Expected in dev with no backend running — already surfaced via BackendUnavailableBanner
     return;
   }
-  console.error('[Lorekeeper] Unhandled promise rejection', event.reason);
+  console.error('[LoreBook] Unhandled promise rejection', event.reason);
   const root = document.getElementById('root');
   if (root && !root.hasChildNodes()) {
     root.innerHTML = `
@@ -49,7 +49,7 @@ setTimeout(() => {
   const root = document.getElementById('root');
   if (!root) return;
   if (!root.hasChildNodes()) {
-    console.error('[Lorekeeper] React did not render within 3s — check for JS errors above');
+    console.error('[LoreBook] React did not render within 3s — check for JS errors above');
     root.innerHTML = `
       <div style="padding:20px;color:white;text-align:center;background:black;min-height:100vh;font-family:monospace;">
         <h1 style="color:#ef4444;">Render Timeout</h1>
@@ -84,11 +84,11 @@ import { runEnvironmentCheck } from './services/environmentIntegrity';
 try {
   initMonitoring();
 } catch (error) {
-  console.error('[Lorekeeper] Monitoring init failed:', error);
+  console.error('[LoreBook] Monitoring init failed:', error);
 }
 
 if (config.env.isDevelopment) {
-  console.debug('[Lorekeeper] Starting in development mode', {
+  console.debug('[LoreBook] Starting in development mode', {
     apiUrl: config.api.url || '(Vite proxy)',
     allowMockData: config.dev.allowMockData,
   });
@@ -97,14 +97,14 @@ if (config.env.isDevelopment) {
 runEnvironmentCheck();
 
 mockDataService.initialize().catch((error) => {
-  console.error('[Lorekeeper] Mock data service init failed:', error);
+  console.error('[LoreBook] Mock data service init failed:', error);
 });
 
 import './utils/enableMockData';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
-  console.error('[Lorekeeper] #root element not found');
+  console.error('[LoreBook] #root element not found');
 } else {
   try {
     createRoot(rootElement).render(
@@ -128,7 +128,7 @@ if (!rootElement) {
       </ErrorBoundary>
     );
   } catch (error) {
-    console.error('[Lorekeeper] React mount failed:', error);
+    console.error('[LoreBook] React mount failed:', error);
     rootElement.innerHTML = `
       <div style="padding:20px;color:white;text-align:center;background:black;min-height:100vh;font-family:monospace;">
         <h1 style="color:#ef4444;">Application Failed to Mount</h1>

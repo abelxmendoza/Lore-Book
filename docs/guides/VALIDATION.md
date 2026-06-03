@@ -139,7 +139,7 @@ npm run check:supabase
 ```
 🗄️   Supabase Connectivity Check
 
-  ✅  SUPABASE_URL  (https://jawzxiiwfagliloxnnkc.supabase.co)
+  ✅  SUPABASE_URL  (https://cshtthzpgkmrbcsfghyq.supabase.co)
   ✅  SUPABASE_ANON_KEY  (eyJhbGciOiJIUzI1NiIsInR5...)
   ✅  SUPABASE_SERVICE_ROLE_KEY  (eyJhbGciOiJIUzI1NiIsInR5...)
   ✅  Supabase REST reachable  HTTP 200

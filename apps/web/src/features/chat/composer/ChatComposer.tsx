@@ -1,4 +1,4 @@
-import { Send, Loader2, Upload, Paperclip, MessageSquare } from 'lucide-react';
+import { Send, Loader2, Paperclip, MessageSquare } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Textarea } from '../../../components/ui/textarea';
 import { Card } from '../../../components/ui/card';
@@ -58,6 +58,9 @@ export const ChatComposer = ({
   const [showUpload, setShowUpload] = useState(false);
   const [showChatGPTImport, setShowChatGPTImport] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
+
+  const isExpanded = isFocused || input.length > 0;
 
   const handleUploadClick = () => {
     setShowUpload(!showUpload);
@@ -131,7 +134,7 @@ export const ChatComposer = ({
 
       {/* Input Form - ChatGPT style */}
       <form onSubmit={handleSubmit} className="mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-3 sm:px-4 lg:px-10 xl:px-12 py-2 sm:py-3 lg:py-4 xl:py-5">
-        <div className="flex items-center gap-2 sm:gap-2.5">
+        <div className={`flex gap-2 sm:gap-2.5 transition-all duration-200 ${isExpanded ? 'items-end' : 'items-center'}`}>
           {/* Upload Icons - Outside textarea, left side */}
           <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
             <button
@@ -162,7 +165,7 @@ export const ChatComposer = ({
             </button>
           </div>
 
-          {/* Textarea Container - Long oval shape */}
+          {/* Textarea Container */}
           <div className="flex-1 relative min-w-0">
             <Textarea
               ref={textareaRef}
@@ -170,13 +173,30 @@ export const ChatComposer = ({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={loading || disabled}
-              className="w-full bg-white/5 border border-white/10 rounded-full text-white placeholder:text-white/50 resize-none min-h-[44px] sm:min-h-[48px] lg:min-h-[52px] max-h-[120px] sm:max-h-[150px] overflow-y-auto text-sm sm:text-base px-4 sm:px-5 lg:px-6 py-2.5 sm:py-3 lg:py-3.5 pr-11 sm:pr-12 lg:pr-14 leading-normal focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent"
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => { if (!input.trim()) setIsFocused(false); }}
+              className={[
+                'w-full bg-white/5 border border-white/10 text-white placeholder:text-white/50',
+                'resize-none overflow-y-auto text-sm sm:text-base leading-relaxed',
+                'focus:border-white/20 focus:outline-none focus:ring-2 focus:ring-primary/20',
+                'scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent',
+                'transition-all duration-200',
+                isExpanded
+                  ? 'rounded-2xl min-h-[100px] sm:min-h-[120px] max-h-[320px] sm:max-h-[400px] px-4 sm:px-5 py-3 sm:py-4 pr-4'
+                  : 'rounded-full min-h-[44px] sm:min-h-[48px] lg:min-h-[52px] max-h-[120px] px-4 sm:px-5 lg:px-6 py-2.5 sm:py-3 pr-11 sm:pr-12 lg:pr-14',
+              ].join(' ')}
               style={{
                 borderColor: showHints ? `${moodColor}66` : undefined,
-                boxShadow: showHints ? `0 0 10px ${moodColor}22` : undefined
+                boxShadow: showHints ? `0 0 10px ${moodColor}22` : undefined,
               }}
               onKeyDown={handleKeyDown}
             />
+            {/* Character count — appears when writing a longer message */}
+            {isExpanded && input.length > 80 && (
+              <div className="absolute bottom-2 right-3 text-[10px] text-white/25 tabular-nums pointer-events-none select-none">
+                {input.length}
+              </div>
+            )}
             {showHints && moodEngine.mood.score !== 0 && (
               <MoodIndicator
                 color={moodColor}
@@ -186,11 +206,11 @@ export const ChatComposer = ({
             )}
           </div>
 
-          {/* Send Button - Right side */}
+          {/* Send Button - stays at bottom of flex row when expanded */}
           <button
             type="submit"
             disabled={!input.trim() || loading || disabled}
-            className="group relative flex-shrink-0 h-[44px] sm:h-[48px] lg:h-[52px] w-[44px] sm:w-[48px] lg:w-[52px] flex items-center justify-center rounded-full bg-primary/20 hover:bg-primary/30 active:bg-primary/40 border border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all touch-manipulation disabled:hover:bg-primary/20"
+            className="group relative flex-shrink-0 h-[44px] sm:h-[48px] w-[44px] sm:w-[48px] flex items-center justify-center rounded-full bg-primary/20 hover:bg-primary/30 active:bg-primary/40 border border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all touch-manipulation disabled:hover:bg-primary/20"
             aria-label="Send message"
           >
             {loading ? (

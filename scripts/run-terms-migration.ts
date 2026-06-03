@@ -95,9 +95,9 @@ async function runMigration() {
   if (error && error.code === '42P01') {
     console.log('\n❌ Table was not created. Using psql method...');
     console.log('\n📋 Please run this manually:');
-    console.log(`   psql "postgresql://postgres.jawzxiiwfagliloxnnkc:[YOUR_PASSWORD]@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -f migrations/20250120_terms_acceptance.sql`);
+    console.log(`   psql "postgresql://postgres.cshtthzpgkmrbcsfghyq:[YOUR_PASSWORD]@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -f migrations/20250120_terms_acceptance.sql`);
     console.log('\nOr use the Supabase SQL Editor:');
-    console.log('   https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql');
+    console.log('   https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql');
     process.exit(1);
   } else if (error) {
     console.log(`\n⚠️  Verification check: ${error.message}`);

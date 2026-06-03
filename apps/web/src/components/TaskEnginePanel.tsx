@@ -77,7 +77,7 @@ export const TaskEnginePanel = ({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs uppercase text-white/50">Task Engine</p>
-          <h3 className="text-lg font-semibold text-white">LoreKeeper Tasks</h3>
+          <h3 className="text-lg font-semibold text-white">LoreBook Tasks</h3>
           <p className="text-xs text-white/40">Auto-capture tasks from chat, MS To Do, and priority rules.</p>
         </div>
         <div className="flex items-center gap-2">

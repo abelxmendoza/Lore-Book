@@ -79,14 +79,44 @@ router.get('/users', async (req: AuthenticatedRequest, res) => {
         return { data: Array.from(counts.entries()).map(([user_id, count]) => ({ user_id, count })) };
       });
 
-    const usersWithMetrics = users.users.map(user => ({
-      id: user.id,
-      email: user.email,
-      createdAt: user.created_at,
-      lastSignInAt: user.last_sign_in_at,
-      memoryCount: memoryCounts.find((m: any) => m.user_id === user.id)?.count || 0,
-      role: user.user_metadata?.role || user.app_metadata?.role || 'standard_user'
-    }));
+    // Get subscription status per user
+    const { data: subscriptions } = await supabaseAdmin
+      .from('subscriptions')
+      .select('user_id, status, plan_type')
+      .in('user_id', users.users.map(u => u.id))
+      .then(r => r.error ? { data: [] } : r);
+
+    // Get current-month usage per user
+    const now = new Date();
+    const monthStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const { data: usageRows } = await supabaseAdmin
+      .from('subscription_usage')
+      .select('user_id, ai_requests_count, entry_count')
+      .in('user_id', users.users.map(u => u.id))
+      .eq('month', monthStr)
+      .then(r => r.error ? { data: [] } : r);
+
+    const usersWithMetrics = users.users.map(user => {
+      const providers = (user.identities || []).map((id: any) => id.provider as string);
+      const uniqueProviders = [...new Set(providers)];
+      const sub = (subscriptions || []).find((s: any) => s.user_id === user.id);
+      const usage = (usageRows || []).find((u: any) => u.user_id === user.id);
+
+      return {
+        id: user.id,
+        email: user.email,
+        createdAt: user.created_at,
+        lastSignInAt: user.last_sign_in_at,
+        memoryCount: memoryCounts.find((m: any) => m.user_id === user.id)?.count || 0,
+        role: user.user_metadata?.role || user.app_metadata?.role || 'standard_user',
+        providers: uniqueProviders,
+        hasLinkedAccounts: uniqueProviders.length > 1,
+        subscriptionStatus: sub?.status || 'free',
+        subscriptionTier: sub?.plan_type || 'free',
+        aiRequestsThisMonth: usage?.ai_requests_count || 0,
+        entriesThisMonth: usage?.entry_count || 0,
+      };
+    });
 
     res.json({ users: usersWithMetrics, total: usersWithMetrics.length });
   } catch (error) {

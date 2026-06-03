@@ -32,7 +32,7 @@ if [ -z "$DB_PASSWORD" ]; then
 fi
 
 # Use the exact format you provided
-CONNECTION_STRING="postgresql://postgres:${DB_PASSWORD}@db.jawzxiiwfagliloxnnkc.supabase.co:5432/postgres"
+CONNECTION_STRING="postgresql://postgres:${DB_PASSWORD}@db.cshtthzpgkmrbcsfghyq.supabase.co:5432/postgres"
 
 echo -e "${GREEN}🚀 Running migration: $MIGRATION_FILE${NC}"
 echo ""
@@ -45,7 +45,7 @@ else
     echo -e "${RED}❌ Migration failed${NC}"
     echo ""
     echo "If connection fails, you can:"
-    echo "1. Use SQL Editor: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql/new"
+    echo "1. Use SQL Editor: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql/new"
     echo "2. Get exact connection string from dashboard and set:"
     echo "   export SUPABASE_CONNECTION_STRING='your-exact-string'"
     exit 1

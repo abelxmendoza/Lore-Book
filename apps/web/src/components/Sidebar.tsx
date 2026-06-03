@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, Brain } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, Brain, ExternalLink } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -534,6 +534,17 @@ const SidebarContent = ({
             <Shield className="h-3.5 w-3.5 text-white/20" aria-hidden="true" />
           </button>
         )}
+
+        {/* Back to landing page */}
+        <button
+          type="button"
+          onClick={() => { navigate('/home'); onMobileDrawerClose?.(); }}
+          aria-label="Back to homepage"
+          className="flex w-full items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-white/30 hover:text-white/60 transition-colors group"
+        >
+          <ExternalLink className="h-3 w-3 shrink-0 group-hover:text-primary/60 transition-colors" aria-hidden="true" />
+          <span>Back to homepage</span>
+        </button>
       </div>
     </div>
   );

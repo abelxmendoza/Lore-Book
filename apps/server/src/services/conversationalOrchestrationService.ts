@@ -1,5 +1,5 @@
 /**
- * LORE-KEEPER CONVERSATIONAL ORCHESTRATION LAYER (COL)
+ * LOREBOOK CONVERSATIONAL ORCHESTRATION LAYER (COL)
  * Service for orchestrating chatbot responses with memory awareness
  */
 

@@ -1,5 +1,5 @@
 // =====================================================
-// LORE-KEEPER NARRATIVE COMPILER (LNC)
+// LOREBOOK NARRATIVE COMPILER (LNC)
 // Memory Consolidation Service
 //
 // Closes the ingestion loop:

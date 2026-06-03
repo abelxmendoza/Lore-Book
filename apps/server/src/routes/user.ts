@@ -274,6 +274,47 @@ router.put('/privacy-settings', requireAuth, async (req: AuthenticatedRequest, r
 });
 
 /**
+ * POST /api/user/activity
+ * Log a user activity event (called from the frontend on login, key actions, etc.)
+ */
+router.post('/activity', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { action, metadata } = req.body as { action?: string; metadata?: Record<string, unknown> };
+
+    if (!action) {
+      return res.status(400).json({ error: 'action is required' });
+    }
+
+    const rawIp = req.headers['x-forwarded-for'] || req.ip || 'unknown';
+    const ipAddress = Array.isArray(rawIp) ? rawIp[0] : String(rawIp).split(',')[0].trim();
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    const { error } = await supabaseAdmin
+      .from('user_activity_logs')
+      .insert({
+        user_id: userId,
+        action,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        device: userAgent,
+        metadata: metadata ?? {},
+        timestamp: new Date().toISOString(),
+      });
+
+    if (error && error.code !== '42P01' && error.code !== 'PGRST205') {
+      throw error;
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error }, 'Failed to log activity');
+    // Never fail the caller — activity logging is best-effort
+    res.json({ success: false });
+  }
+});
+
+/**
  * GET /api/user/activity
  * Get user activity logs
  */
@@ -416,13 +457,13 @@ router.get('/export', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (format === 'csv') {
       // Convert to CSV (simplified - just return JSON as CSV for now)
       res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="lorekeeper-export-${new Date().toISOString().split('T')[0]}.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="lorebook-export-${new Date().toISOString().split('T')[0]}.csv"`);
       return res.send(JSON.stringify(exportData, null, 2));
     }
 
     // Return as JSON blob
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename="lorekeeper-export-${new Date().toISOString().split('T')[0]}.json"`);
+    res.setHeader('Content-Disposition', `attachment; filename="lorebook-export-${new Date().toISOString().split('T')[0]}.json"`);
     res.send(JSON.stringify(exportData, null, 2));
   } catch (error) {
     logger.error({ error }, 'Failed to export user data');
@@ -609,7 +650,7 @@ router.post('/accept-terms', requireAuth, async (req: AuthenticatedRequest, res)
           error: 'Dev user not found',
           message: 'The dev user does not exist in auth.users. Please run this SQL in Supabase SQL Editor:\n\n' +
                    'See: scripts/create-dev-user.sql\n\n' +
-                   'Or go to: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql/new',
+                   'Or go to: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql/new',
           code: error.code,
           hint: 'Run the SQL from scripts/create-dev-user.sql to create the dev user'
         });

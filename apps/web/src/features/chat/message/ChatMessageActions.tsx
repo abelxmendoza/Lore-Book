@@ -1,4 +1,4 @@
-import { Copy, RotateCw, Edit2, Trash2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Copy, RotateCw, Edit2, Trash2, ThumbsUp, ThumbsDown, GitBranch } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import type { Message } from './ChatMessage';
 
@@ -11,6 +11,7 @@ type ChatMessageActionsProps = {
   onEdit?: () => void;
   onDelete?: () => void;
   onFeedback?: (feedback: 'positive' | 'negative') => void;
+  onFork?: () => void;
 };
 
 export const ChatMessageActions = ({
@@ -21,7 +22,8 @@ export const ChatMessageActions = ({
   onRegenerate,
   onEdit,
   onDelete,
-  onFeedback
+  onFeedback,
+  onFork,
 }: ChatMessageActionsProps) => {
   return (
     <div className={`absolute ${isUser ? 'left-0' : 'right-0'} -top-8 flex gap-1 bg-black/90 border border-border/60 rounded-lg p-1 z-10 shadow-lg`}>
@@ -78,6 +80,17 @@ export const ChatMessageActions = ({
           title="Edit message"
         >
           <Edit2 className="h-3 w-3" />
+        </Button>
+      )}
+      {onFork && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onFork}
+          className="h-7 px-2 text-xs text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10"
+          title="Fork conversation from here"
+        >
+          <GitBranch className="h-3 w-3" />
         </Button>
       )}
       {onDelete && (

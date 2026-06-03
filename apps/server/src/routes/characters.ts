@@ -989,7 +989,7 @@ router.get('/:id/attributes', requireAuth, async (req: AuthenticatedRequest, res
 //   - Mutation history (truth-state changes)
 //   - Derived statistics (mention count, first/last seen)
 //
-// Powers: "Why does Lorekeeper know about this person?"
+// Powers: "Why does LoreBook know about this person?"
 
 router.get('/:id/provenance', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;

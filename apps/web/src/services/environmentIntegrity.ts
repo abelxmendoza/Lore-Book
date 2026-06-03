@@ -164,19 +164,19 @@ function logReport(report: IntegrityReport): void {
   const isDev = import.meta.env.DEV === true;
 
   if (report.errors.length > 0) {
-    console.group('❌ [Lorekeeper] Environment configuration errors');
+    console.group('❌ [LoreBook] Environment configuration errors');
     report.errors.forEach((e) => console.error(' ', e));
     console.groupEnd();
   }
 
   if (report.warnings.length > 0) {
-    console.group('⚠️  [Lorekeeper] Environment warnings');
+    console.group('⚠️  [LoreBook] Environment warnings');
     report.warnings.forEach((w) => console.warn(' ', w));
     console.groupEnd();
   }
 
   if (isDev) {
-    console.groupCollapsed('[Lorekeeper] Environment check');
+    console.groupCollapsed('[LoreBook] Environment check');
     console.table(
       report.checks.map((c) => ({
         Variable: c.variable,

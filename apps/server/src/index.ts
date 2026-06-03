@@ -107,8 +107,8 @@ app.use(cors({
         const allowedOrigins = [
           process.env.FRONTEND_URL,
           process.env.VITE_API_URL?.replace(/\/api\/?$/, ''), // Base URL without /api
-          'https://lorekeeper.app',
-          'https://www.lorekeeper.app',
+          'https://lorebook.app',
+          'https://www.lorebook.app',
           'https://lore-keeper-web.vercel.app' // Deployed Vercel frontend
         ].filter(Boolean) as string[];
 

@@ -23,7 +23,7 @@ import type { SocialEdge, Community } from './types';
  *              weights as sums of internal edges. Repeat Phase 1 on super-graph.
  *
  * Complexity: O(n log n) empirically on sparse graphs.
- * For LoreKeeper's social graph (typically <500 nodes), this is trivially fast.
+ * For LoreBook's social graph (typically <500 nodes), this is trivially fast.
  */
 export class CommunityDetector {
   detect(edges: SocialEdge[]): Community[] {

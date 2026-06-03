@@ -185,7 +185,7 @@ router.get('/export', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
 
   res.setHeader('Content-Type', 'application/x-ndjson');
-  res.setHeader('Content-Disposition', 'attachment; filename="lorekeeper-identity-export.ndjson"');
+  res.setHeader('Content-Disposition', 'attachment; filename="lorebook-identity-export.ndjson"');
 
   const write = (type: string, data: object[]) => {
     for (const row of data) {

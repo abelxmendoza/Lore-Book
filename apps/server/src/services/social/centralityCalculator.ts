@@ -10,7 +10,7 @@ import type { SocialEdge } from './types';
  * transitively: a node connected to highly-connected nodes scores higher than a
  * node with the same degree but connected to peripheral nodes.
  *
- * For LoreKeeper's social graph this means:
+ * For LoreBook's social graph this means:
  *   - Someone who bridges multiple social circles (connector) scores higher
  *   - Someone mentioned by already-central people scores higher
  *   - Pure mention frequency (degree) no longer dominates

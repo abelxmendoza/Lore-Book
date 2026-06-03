@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BookOpen, TrendingUp, Sparkles, AlertCircle } from 'lucide-react';
+import { BookOpen, TrendingUp, Sparkles, AlertCircle, GitBranch, Brain, Activity, ChevronRight } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { useAuth } from '../../lib/supabase';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
@@ -19,89 +19,71 @@ type CharacterAttribute = {
   isCurrent: boolean;
 };
 
-// ─── Insight chips ────────────────────────────────────────────────────────────
-
-const INSIGHT_CHIPS = [
-  {
-    key: 'storyOfSelf',
-    label: 'Story',
-    icon: BookOpen,
-    getValue: (d: any) => d?.mode?.mode ?? null,
-    color: 'text-primary border-primary/30 bg-primary/8',
-  },
-  {
-    key: 'archetype',
-    label: 'Archetype',
-    icon: Sparkles,
-    getValue: (d: any) => d?.profile?.dominant ?? null,
-    color: 'text-violet-400 border-violet-400/30 bg-violet-400/8',
-  },
-  {
-    key: 'growth',
-    label: 'Growth',
-    icon: TrendingUp,
-    getValue: (d: any) => d?.trajectory ?? null,
-    color: 'text-emerald-400 border-emerald-400/30 bg-emerald-400/8',
-  },
-  {
-    key: 'shadow',
-    label: 'Shadow',
-    icon: AlertCircle,
-    getValue: (d: any) => d?.dominant_shadow ?? null,
-    color: 'text-rose-400 border-rose-400/30 bg-rose-400/8',
-  },
-] as const;
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const MOCK_ENGINE: Record<string, any> = {
-  storyOfSelf: { mode: { mode: 'Reflective' }, themes: [{ theme: 'Self-Discovery' }] },
-  archetype:   { profile: { dominant: 'The Seeker', secondary: ['The Sage'] } },
-  growth:      { trajectory: 'Ascending', velocity: 0.73 },
-  shadow:      { dominant_shadow: 'The Perfectionist', projection: { recommended_focus: 'Self-compassion' } },
+type LifeArc = {
+  id: string;
+  title: string;
+  arc_type: string;
+  track?: string;
+  confidence: number;
+  is_active: boolean;
+  emotional_arc?: string;
+  dominant_emotion?: string;
 };
 
-const MOCK_ATTRIBUTES: CharacterAttribute[] = [
-  { id: 'a1', attributeType: 'occupation',          attributeValue: 'Creative professional', confidence: 0.89, isCurrent: true },
-  { id: 'a2', attributeType: 'relationship_status',  attributeValue: 'In a relationship',    confidence: 0.92, isCurrent: true },
-  { id: 'a3', attributeType: 'lifestyle_pattern',   attributeValue: 'Journaling',           confidence: 0.88, isCurrent: true },
+const INSIGHT_CHIPS = [
+  { key: 'storyOfSelf', label: 'Story',     icon: BookOpen,     getValue: (d: any) => d?.mode?.mode ?? null,         color: 'text-primary border-primary/30 bg-primary/8' },
+  { key: 'archetype',   label: 'Archetype', icon: Sparkles,     getValue: (d: any) => d?.profile?.dominant ?? null,  color: 'text-violet-400 border-violet-400/30 bg-violet-400/8' },
+  { key: 'growth',      label: 'Growth',    icon: TrendingUp,   getValue: (d: any) => d?.trajectory ?? null,         color: 'text-emerald-400 border-emerald-400/30 bg-emerald-400/8' },
+  { key: 'shadow',      label: 'Shadow',    icon: AlertCircle,  getValue: (d: any) => d?.dominant_shadow ?? null,    color: 'text-rose-400 border-rose-400/30 bg-rose-400/8' },
+] as const;
+
+const MOCK_ENGINE: Record<string, any> = {
+  storyOfSelf: { mode: { mode: 'Reflective' } },
+  archetype:   { profile: { dominant: 'The Seeker', secondary: ['The Sage'] } },
+  growth:      { trajectory: 'Ascending', velocity: 0.73 },
+  shadow:      { dominant_shadow: 'The Perfectionist' },
+};
+
+const MOCK_ARCS: LifeArc[] = [
+  { id: 'a1', title: 'Career Transition Arc',    arc_type: 'work',      track: 'career',        confidence: 0.88, is_active: true, emotional_arc: 'building' },
+  { id: 'a2', title: 'Creative Expansion Arc',   arc_type: 'creative',  track: 'creative',      confidence: 0.75, is_active: true, emotional_arc: 'building' },
+  { id: 'a3', title: 'Relationship Recovery Arc', arc_type: 'personal', track: 'relationships', confidence: 0.71, is_active: true, emotional_arc: 'recovery' },
 ];
 
-// ─── Archetype chip colours ───────────────────────────────────────────────────
+const EMOTIONAL_ARC_LABELS: Record<string, string> = {
+  building:   '↑ Building',
+  climax:     '⚡ Peak',
+  resolution: '→ Resolving',
+  grief:      '↓ Grief',
+  recovery:   '↑ Recovery',
+  neutral:    '— Stable',
+};
 
-const ARCHETYPE_COLORS: Record<string, string> = {
-  ally:         'bg-blue-500/20 text-blue-300',
-  family:       'bg-amber-500/20 text-amber-300',
-  mentor:       'bg-purple-500/20 text-purple-300',
-  romantic:     'bg-rose-500/20 text-rose-300',
-  friend:       'bg-teal-500/20 text-teal-300',
-  colleague:    'bg-slate-500/20 text-slate-300',
-  collaborator: 'bg-indigo-500/20 text-indigo-300',
+const TRACK_COLORS: Record<string, string> = {
+  career:        'text-orange-400',
+  relationships: 'text-pink-400',
+  creative:      'text-rose-400',
+  health:        'text-teal-400',
+  inner:         'text-violet-400',
+  mixed:         'text-blue-400',
 };
 
 function initials(name: string): string {
-  return name
-    .split(' ')
-    .map(w => w[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase() || '?';
+  return name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
 }
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export const UserProfile = ({ characters = [] }: UserProfileProps) => {
   const { user: authUser } = useAuth();
   const { useMockData: isMockEnabled } = useMockData();
   const { entries = [] } = useLoreKeeper();
 
-  const [attributes,     setAttributes]     = useState<CharacterAttribute[]>([]);
-  const [engineResults,  setEngineResults]  = useState<Record<string, any> | null>(null);
-  const [userCharId,     setUserCharId]     = useState<string | null>(null);
-  const [insightModal,   setInsightModal]   = useState<{ type: string; data: any } | null>(null);
+  const [attributes,    setAttributes]    = useState<CharacterAttribute[]>([]);
+  const [engineResults, setEngineResults] = useState<Record<string, any> | null>(null);
+  const [userCharId,    setUserCharId]    = useState<string | null>(null);
+  const [activeArcs,    setActiveArcs]    = useState<LifeArc[]>([]);
+  const [knowledgeCount, setKnowledgeCount] = useState<number | null>(null);
+  const [insightModal,  setInsightModal]  = useState<{ type: string; data: any } | null>(null);
 
-  // ── Auth-derived display values ─────────────────────────────────────────────
   const displayName =
     authUser?.user_metadata?.full_name  ||
     authUser?.user_metadata?.name       ||
@@ -114,93 +96,88 @@ export const UserProfile = ({ characters = [] }: UserProfileProps) => {
     null;
 
   // ── Derived stats ───────────────────────────────────────────────────────────
-  const writingStreak = (() => {
-    const uniqueDates = Array.from(
-      new Set(entries.map(e => e.date?.split('T')[0]).filter(Boolean))
-    ).sort().reverse();
-    let streak = 0;
-    let cursor = new Date().toISOString().split('T')[0];
-    for (const date of uniqueDates) {
-      const diff = Math.floor(
-        (new Date(cursor).getTime() - new Date(date).getTime()) / 86_400_000
-      );
-      if (diff === 0 || (streak === 0 && diff <= 1)) {
-        streak++;
-        cursor = new Date(new Date(date).getTime() - 86_400_000).toISOString().split('T')[0];
-      } else break;
-    }
-    return streak;
-  })();
+  const recentEntries = entries.filter(e => {
+    const d = new Date(e.date);
+    return !isNaN(d.getTime()) && d >= new Date(Date.now() - 30 * 86_400_000);
+  }).length;
 
   const activeSince = (() => {
-    const valid = entries
-      .map(e => new Date(e.date))
-      .filter(d => !isNaN(d.getTime()));
+    const valid = entries.map(e => new Date(e.date)).filter(d => !isNaN(d.getTime()));
     if (!valid.length) return null;
     return new Date(Math.min(...valid.map(d => d.getTime())))
       .toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   })();
 
-  // ── Load user character id from passed-in characters ───────────────────────
+  // ── Load user character id ───────────────────────────────────────────────────
   useEffect(() => {
     if (isMockEnabled) { setUserCharId('mock-self'); return; }
     const self = characters.find(c =>
-      c.metadata?.is_self === true  ||
-      c.metadata?.is_user === true  ||
-      c.name?.toLowerCase() === 'me' ||
-      c.name?.toLowerCase() === 'myself'
+      c.metadata?.is_self === true || c.metadata?.is_user === true ||
+      c.name?.toLowerCase() === 'me' || c.name?.toLowerCase() === 'myself'
     );
     if (self) setUserCharId(self.id);
   }, [characters, isMockEnabled]);
 
   // ── Load attributes ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (isMockEnabled) { setAttributes(MOCK_ATTRIBUTES); return; }
+    if (isMockEnabled) {
+      setAttributes([
+        { id: 'a1', attributeType: 'occupation',         attributeValue: 'Creative professional', confidence: 0.89, isCurrent: true },
+        { id: 'a2', attributeType: 'relationship_status', attributeValue: 'In a relationship',    confidence: 0.92, isCurrent: true },
+      ]);
+      return;
+    }
     if (!userCharId || userCharId === 'mock-self') return;
-    fetchJson<{ attributes: CharacterAttribute[] }>(
-      `/api/characters/${userCharId}/attributes?currentOnly=true`
-    )
+    fetchJson<{ attributes: CharacterAttribute[] }>(`/api/characters/${userCharId}/attributes?currentOnly=true`)
       .then(r => setAttributes(r.attributes || []))
-      .catch(() => setAttributes([]));
+      .catch(() => {});
   }, [userCharId, isMockEnabled]);
 
-  // ── Load engine results ─────────────────────────────────────────────────────
+  // ── Load engine summary ─────────────────────────────────────────────────────
   useEffect(() => {
     if (isMockEnabled) { setEngineResults(MOCK_ENGINE); return; }
     fetchJson<Record<string, any>>('/api/engine-runtime/summary/cached')
       .then(r => setEngineResults(r && Object.keys(r).length > 0 ? r : null))
-      .catch(() => setEngineResults(null));
+      .catch(() => {});
   }, [isMockEnabled]);
 
-  // ── Derived display values ──────────────────────────────────────────────────
-  const topPeople = [...characters]
-    .filter(c => c.archetype !== 'place')
-    .sort((a, b) => (b.importance_score ?? 0) - (a.importance_score ?? 0))
-    .slice(0, 8);
+  // ── Load active life arcs ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (isMockEnabled) { setActiveArcs(MOCK_ARCS); return; }
+    fetchJson<{ arcs?: LifeArc[]; life_arcs?: LifeArc[] }>('/api/life-arcs?is_active=true&limit=5')
+      .then(r => setActiveArcs(r.arcs ?? r.life_arcs ?? []))
+      .catch(() => {});
+  }, [isMockEnabled]);
+
+  // ── Load knowledge claims count ─────────────────────────────────────────────
+  useEffect(() => {
+    if (isMockEnabled) { setKnowledgeCount(14); return; }
+    fetchJson<{ success: boolean; summary: { total: number; by_status: Record<string, number> } }>('/api/knowledge/summary')
+      .then(r => { if (r.success) setKnowledgeCount(r.summary.by_status?.ACTIVE ?? r.summary.total ?? 0); })
+      .catch(() => {});
+  }, [isMockEnabled]);
 
   const attributeLine = attributes
     .filter(a => a.isCurrent && a.confidence > 0.7)
     .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 3)
+    .slice(0, 2)
     .map(a => a.attributeValue)
     .join(' · ');
 
-  const activeChips = INSIGHT_CHIPS.filter(
-    chip => engineResults?.[chip.key] && chip.getValue(engineResults[chip.key])
-  );
+  const primaryArc = activeArcs[0] ?? null;
+  const additionalArcCount = Math.max(0, activeArcs.length - 1);
 
-  const hasStats = characters.length > 0 || entries.length > 0 || writingStreak > 0 || activeSince;
+  const archetype = engineResults?.archetype && INSIGHT_CHIPS[1].getValue(engineResults.archetype);
+  const shadow    = engineResults?.shadow    && INSIGHT_CHIPS[3].getValue(engineResults.shadow);
+  const growth    = engineResults?.growth    && INSIGHT_CHIPS[2].getValue(engineResults.growth);
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="bg-gradient-to-br from-primary/8 to-purple-900/15 border border-primary/20 rounded-xl p-5 space-y-5">
+    <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/6 via-black/60 to-purple-900/10 overflow-hidden">
 
-      {/* ── Hero ── */}
-      <div className="flex items-start gap-4">
+      {/* ── Top hero ── */}
+      <div className="px-5 pt-5 pb-4 flex items-start gap-4">
         {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={displayName}
+          <img src={avatarUrl} alt={displayName}
             className="w-14 h-14 rounded-full object-cover border-2 border-primary/40 flex-shrink-0"
             onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
           />
@@ -210,103 +187,103 @@ export const UserProfile = ({ characters = [] }: UserProfileProps) => {
           </div>
         )}
 
-        <div className="flex-1 min-w-0 pt-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-lg font-bold text-white">{displayName}</h2>
+        <div className="flex-1 min-w-0 pt-0.5">
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-lg font-bold text-white leading-tight">{displayName}</h2>
             <span className="text-[10px] text-white/25 font-mono uppercase tracking-widest">you</span>
           </div>
           {attributeLine && (
-            <p className="text-sm text-white/45 mt-0.5">{attributeLine}</p>
+            <p className="text-xs text-white/45 mt-0.5">{attributeLine}</p>
+          )}
+
+          {/* Archetype / Shadow tension */}
+          {(archetype || shadow) && (
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              {archetype && (
+                <button
+                  type="button"
+                  onClick={() => setInsightModal({ type: 'archetype', data: engineResults!.archetype })}
+                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-violet-400/25 bg-violet-400/8 text-violet-300 hover:bg-violet-400/15 transition-colors"
+                >
+                  <Sparkles className="h-2.5 w-2.5" />{archetype}
+                </button>
+              )}
+              {shadow && (
+                <button
+                  type="button"
+                  onClick={() => setInsightModal({ type: 'shadow', data: engineResults!.shadow })}
+                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-rose-400/25 bg-rose-400/8 text-rose-300 hover:bg-rose-400/15 transition-colors"
+                >
+                  <AlertCircle className="h-2.5 w-2.5" />{shadow}
+                </button>
+              )}
+              {growth && (
+                <span className="flex items-center gap-1 text-[10px] text-emerald-400/70">
+                  <TrendingUp className="h-2.5 w-2.5" />{growth}
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
 
+      {/* ── CURRENTLY IN — focal point ── */}
+      {primaryArc && (
+        <div className="mx-4 mb-4 rounded-lg border border-white/10 bg-black/30 p-3">
+          <p className="text-[9px] font-semibold text-white/30 uppercase tracking-widest mb-1.5">Currently In</p>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <GitBranch className={`h-3.5 w-3.5 flex-shrink-0 ${TRACK_COLORS[primaryArc.track ?? ''] ?? 'text-white/50'}`} />
+              <span className="text-sm font-semibold text-white/90 truncate">{primaryArc.title}</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {primaryArc.emotional_arc && (
+                <span className="text-[10px] text-white/40">
+                  {EMOTIONAL_ARC_LABELS[primaryArc.emotional_arc] ?? primaryArc.emotional_arc}
+                </span>
+              )}
+              {additionalArcCount > 0 && (
+                <span className="text-[10px] text-white/30">+{additionalArcCount} more</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Stat strip ── */}
-      {hasStats && (
-        <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-white/45 border-t border-white/6 pt-4">
-          {characters.length > 0 && (
-            <span>
-              <span className="text-white/80 font-medium">{characters.length}</span> people
-            </span>
-          )}
-          {entries.length > 0 && (
-            <span>
-              <span className="text-white/80 font-medium">{entries.length}</span> memories
-            </span>
-          )}
-          {writingStreak > 0 && (
-            <span className="text-primary/80">
-              <span className="font-medium">{writingStreak}</span>-day streak
-            </span>
-          )}
-          {activeSince && (
-            <span>since <span className="text-white/60">{activeSince}</span></span>
-          )}
-        </div>
-      )}
-
-      {/* ── People in your story ── */}
-      {topPeople.length > 0 && (
-        <div className="border-t border-white/6 pt-4">
-          <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-3">
-            People in your story
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {topPeople.map(person => {
-              const chipColor =
-                ARCHETYPE_COLORS[person.archetype?.toLowerCase() ?? ''] ??
-                'bg-white/10 text-white/50';
-              return (
-                <div
-                  key={person.id}
-                  title={person.role ?? person.archetype}
-                  className="flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 rounded-full border border-white/8 bg-black/25"
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${chipColor}`}
-                  >
-                    {initials(person.name)}
-                  </div>
-                  <span className="text-xs text-white/65 truncate max-w-[90px]">
-                    {person.name}
-                  </span>
-                </div>
-              );
-            })}
+      <div className="px-4 pb-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/40 border-t border-white/6 pt-3">
+        {characters.length > 0 && (
+          <div className="flex items-center gap-1">
+            <span className="text-white/70 font-semibold">{characters.length}</span>
+            <span>people</span>
           </div>
-        </div>
-      )}
-
-      {/* ── AI snapshot chips ── */}
-      {activeChips.length > 0 && (
-        <div className="border-t border-white/6 pt-4">
-          <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-3">
-            AI snapshot
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {activeChips.map(chip => {
-              const Icon = chip.icon;
-              const value = chip.getValue(engineResults![chip.key]);
-              return (
-                <button
-                  key={chip.key}
-                  type="button"
-                  onClick={() => setInsightModal({ type: chip.key, data: engineResults![chip.key] })}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-opacity hover:opacity-75 ${chip.color}`}
-                >
-                  <Icon className="h-3 w-3 flex-shrink-0" />
-                  <span>
-                    {chip.label}:{' '}
-                    <span className="font-bold">{value}</span>
-                  </span>
-                </button>
-              );
-            })}
+        )}
+        {activeArcs.length > 0 && (
+          <div className="flex items-center gap-1">
+            <GitBranch className="h-3 w-3 text-white/30" />
+            <span className="text-white/70 font-semibold">{activeArcs.length}</span>
+            <span>active arc{activeArcs.length !== 1 ? 's' : ''}</span>
           </div>
-        </div>
-      )}
+        )}
+        {knowledgeCount !== null && knowledgeCount > 0 && (
+          <div className="flex items-center gap-1">
+            <Brain className="h-3 w-3 text-indigo-400/60" />
+            <span className="text-white/70 font-semibold">{knowledgeCount}</span>
+            <span>knowledge claims</span>
+          </div>
+        )}
+        {recentEntries > 0 && (
+          <div className="flex items-center gap-1">
+            <Activity className="h-3 w-3 text-white/30" />
+            <span className="text-white/70 font-semibold">{recentEntries}</span>
+            <span>entries this month</span>
+          </div>
+        )}
+        {activeSince && (
+          <span>since <span className="text-white/55">{activeSince}</span></span>
+        )}
+      </div>
 
-      {/* ── Modal ── */}
       {insightModal && (
         <AIInsightModal
           isOpen

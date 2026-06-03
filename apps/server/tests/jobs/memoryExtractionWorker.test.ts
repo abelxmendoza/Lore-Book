@@ -36,7 +36,7 @@ describe('Memory Extraction Worker', () => {
         data: null,
         error: {
           message: 'TypeError: fetch failed',
-          details: 'getaddrinfo ENOTFOUND jawzxiiwfagliloxnnkc.supabase.co',
+          details: 'getaddrinfo ENOTFOUND cshtthzpgkmrbcsfghyq.supabase.co',
         },
       }),
     } as any);

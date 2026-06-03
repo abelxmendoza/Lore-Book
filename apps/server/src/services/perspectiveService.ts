@@ -1,5 +1,5 @@
 /**
- * LORE-KEEPER PERSPECTIVE-AWARE MEMORY LAYER
+ * LOREBOOK PERSPECTIVE-AWARE MEMORY LAYER
  * Service for managing multiple viewpoints on the same reality
  */
 

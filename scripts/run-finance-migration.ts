@@ -77,7 +77,7 @@ async function runFinanceMigration() {
   } catch (error: any) {
     console.error('❌ Migration error:', error.message);
     console.log('\n📝 Please run this migration manually in Supabase SQL Editor:');
-    console.log('1. Go to: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql/new');
+    console.log('1. Go to: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql/new');
     console.log('2. Copy the SQL from: migrations/20250130_finance_tables.sql');
     console.log('3. Paste and click "Run"');
     process.exit(1);

@@ -24,7 +24,7 @@ SUPABASE_SERVICE_ROLE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-}"
 if [ -n "$SUPABASE_URL" ]; then
     PROJECT_REF=$(echo "$SUPABASE_URL" | sed -E 's|https?://([^.]+)\..*|\1|')
 else
-    PROJECT_REF="jawzxiiwfagliloxnnkc"
+    PROJECT_REF="cshtthzpgkmrbcsfghyq"
 fi
 
 # Function to show usage

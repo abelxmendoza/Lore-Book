@@ -51,7 +51,7 @@ accountRouter.get('/export', requireAuth, async (req: AuthenticatedRequest, res)
   if (summaryOnly) {
     const archive = zlib.gzipSync(Buffer.from(JSON.stringify(payload, null, 2), 'utf-8'));
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename="lorekeeper-export.json.gz"');
+    res.setHeader('Content-Disposition', 'attachment; filename="lorebook-export.json.gz"');
     return res.send(archive);
   }
 

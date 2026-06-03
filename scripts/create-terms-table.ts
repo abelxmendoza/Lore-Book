@@ -97,7 +97,7 @@ async function createTable() {
 
   console.log('\n❌ Could not create table automatically.');
   console.log('\n📋 Please create it manually in Supabase SQL Editor:');
-  console.log('   1. Go to: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql/new');
+  console.log('   1. Go to: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql/new');
   console.log('   2. Copy the SQL from: migrations/20250120_terms_acceptance.sql');
   console.log('   3. Paste and click "Run"');
 }

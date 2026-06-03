@@ -170,8 +170,8 @@ export default function PrivacyPolicy() {
               <p>If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us:</p>
               <div className="bg-black/40 p-4 rounded-lg border border-white/10">
                 <p className="font-semibold text-white mb-2">Lore Book Privacy Team</p>
-                <p className="text-sm">Email: privacy@lorekeeper.app</p>
-                <p className="text-sm">Support: support@lorekeeper.app</p>
+                <p className="text-sm">Email: privacy@lorebook.app</p>
+                <p className="text-sm">Support: support@lorebook.app</p>
               </div>
             </div>
           </div>

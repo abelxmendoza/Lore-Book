@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  User, Mail, Shield, CreditCard, Activity, Download, Trash2, 
-  Save, Edit2, Camera, Bell, Lock, Eye, EyeOff, Key, FileText,
-  Calendar, HardDrive, AlertTriangle, CheckCircle2, X, Loader2, LogIn, LogOut, Sparkles, ShieldCheck, Phone
+import {
+  User, Mail, Shield, CreditCard, Activity, Download, Trash2,
+  Save, Edit2, Camera, Lock, Key, FileText,
+  Calendar, HardDrive, AlertTriangle, CheckCircle2, X, Loader2, LogIn, LogOut, Sparkles, Phone, Link2, Globe,
 } from 'lucide-react';
 import { useAuth, supabase } from '../lib/supabase';
+import { ActivityTab } from '../components/account/ActivityTab';
 import { useGuest } from '../contexts/GuestContext';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
 import { MockDataToggle } from '../components/settings/MockDataToggle';
@@ -23,6 +24,7 @@ import {
   exportUserData,
   deleteUserAccount,
   changePassword,
+  logActivity,
   type ActivityLog,
   type StorageUsage,
   type PaymentMethod,
@@ -79,6 +81,7 @@ export default function AccountCenter() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [linkingProvider, setLinkingProvider] = useState(false);
 
   // Load initial data
   useEffect(() => {
@@ -232,6 +235,21 @@ export default function AccountCenter() {
       setError(err.message || 'Failed to change password');
     } finally {
       setChangingPassword(false);
+    }
+  };
+
+  const handleLinkGoogle = async () => {
+    setLinkingProvider(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.linkIdentity({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/account` },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setError(err.message || 'Failed to link Google account.');
+      setLinkingProvider(false);
     }
   };
 
@@ -694,6 +712,78 @@ export default function AccountCenter() {
                     </div>
                   </div>
                 )}
+
+                {/* Connected Accounts */}
+                {user && (
+                  <div className="pt-6 border-t border-white/10">
+                    <h3 className="text-lg font-semibold text-white mb-1 flex items-center gap-2">
+                      <Link2 className="h-5 w-5 text-purple-400" />
+                      Connected Accounts
+                    </h3>
+                    <p className="text-sm text-white/50 mb-4">
+                      Link multiple sign-in methods to the same account. If you used the same email with both Email and Google, connecting them here merges them into one account.
+                    </p>
+                    <div className="space-y-3">
+                      {/* Email / Magic Link */}
+                      <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                            <Mail className="h-4 w-4 text-blue-300" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white">Email / Magic Link</p>
+                            <p className="text-xs text-white/40">{displayEmail || '—'}</p>
+                          </div>
+                        </div>
+                        {user.identities?.some((id: { provider: string }) => id.provider === 'email') ? (
+                          <span className="flex items-center gap-1 text-xs text-green-400 font-medium">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+                          </span>
+                        ) : (
+                          <span className="text-xs text-white/30">Not connected</span>
+                        )}
+                      </div>
+
+                      {/* Google OAuth */}
+                      <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/30 px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center">
+                            <Globe className="h-4 w-4 text-red-300" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white">Google</p>
+                            <p className="text-xs text-white/40">Sign in with your Google account</p>
+                          </div>
+                        </div>
+                        {user.identities?.some((id: { provider: string }) => id.provider === 'google') ? (
+                          <span className="flex items-center gap-1 text-xs text-green-400 font-medium">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleLinkGoogle}
+                            disabled={linkingProvider}
+                            className="text-xs px-3 py-1.5 rounded-lg border border-purple-500/40 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 transition disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            {linkingProvider ? (
+                              <><Loader2 className="h-3 w-3 animate-spin" /> Connecting…</>
+                            ) : (
+                              <><Link2 className="h-3 w-3" /> Connect Google</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {user.identities && user.identities.length > 1 && (
+                      <p className="text-xs text-green-400/70 mt-3 flex items-center gap-1.5">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Your accounts are linked — you can sign in with either method.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -977,57 +1067,20 @@ export default function AccountCenter() {
 
             {/* Activity Tab */}
             {activeTab === 'activity' && (
-              <div className="rounded-2xl border border-border/60 bg-black/40 backdrop-blur-sm p-6 space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-white mb-1">Account Activity</h2>
-                  <p className="text-white/60">View your recent account activity and login history</p>
-                </div>
-
-                {loading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                ) : activityLogs.length === 0 ? (
-                  <div className="text-center py-12 text-white/60">
-                    <Activity className="h-12 w-12 mx-auto mb-4 text-white/40" />
-                    <p>No activity logs available</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {activityLogs.map((log) => {
-                      const timeAgo = new Date(log.timestamp);
-                      const now = new Date();
-                      const diffMs = now.getTime() - timeAgo.getTime();
-                      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-                      const diffDays = Math.floor(diffHours / 24);
-                      const diffWeeks = Math.floor(diffDays / 7);
-                      
-                      let timeLabel = '';
-                      if (diffHours < 1) timeLabel = 'Just now';
-                      else if (diffHours < 24) timeLabel = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-                      else if (diffDays < 7) timeLabel = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-                      else timeLabel = `${diffWeeks} week${diffWeeks > 1 ? 's' : ''} ago`;
-
-                      return (
-                        <div key={log.id} className="flex items-center gap-4 p-4 rounded-xl border border-border/60 bg-white/5">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
-                            <Activity className="h-5 w-5 text-primary" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-white font-medium">{log.action}</p>
-                            <p className="text-sm text-white/60">
-                              {log.location || 'Unknown location'} • {log.device || 'Unknown device'}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm text-white/80">{timeLabel}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              <ActivityTab
+                logs={activityLogs}
+                loading={loading}
+                user={user}
+                onRefresh={async () => {
+                  const data = await fetchActivityLogs().catch(() => null);
+                  if (data) setActivityLogs(data);
+                }}
+                onLogEvent={async (action) => {
+                  await logActivity(action);
+                  const data = await fetchActivityLogs().catch(() => null);
+                  if (data) setActivityLogs(data);
+                }}
+              />
             )}
 
             {/* Data & Export Tab */}

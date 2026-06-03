@@ -105,10 +105,10 @@ export class CanonDetectionService {
 
     // META patterns (talking about the system)
     const metaPatterns = [
-      /\b(how does lorekeeper|how does the system|the system does|the bot does)\b/i,
-      /\b(lorekeeper should|lorekeeper can|lorekeeper will)\b/i,
+      /\b(how does lorebook|how does the system|the system does|the bot does)\b/i,
+      /\b(lorebook should|lorebook can|lorebook will)\b/i,
       /\b(update the system|change the system|system behavior)\b/i,
-      /\b(meta|talking about lorekeeper|about this app)\b/i,
+      /\b(meta|talking about lorebook|about this app)\b/i,
     ];
 
     if (metaPatterns.some(pattern => pattern.test(text))) {

@@ -1,6 +1,6 @@
 // ─── Runtime Identity Service ─────────────────────────────────────────────────
 //
-// Canonical runtime classification for Lorekeeper.
+// Canonical runtime classification for LoreBook.
 //
 // Runtime identity is a FIRST-CLASS system concept, not a scattered boolean.
 // Every capability decision — auth gates, persistence writes, provenance edges,

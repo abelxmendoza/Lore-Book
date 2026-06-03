@@ -14,7 +14,7 @@ const CONTINUITY_PHRASES = [
   /\b(add (this|that|it) to (the|my) (timeline|memoir|lore|lorebook|lorekeeper|creation journey|journey))\b/i,
   /\b(save (this|that|it) (to|in|for) (the|my) (timeline|memoir|lore|lorebook|lorekeeper|creation journey|journey))\b/i,
   /\b(want (this|that|it) (saved|stored|remembered|captured|tracked|recorded))\b/i,
-  /\b(want (you|lorekeeper|this) to (remember|save|store|track|capture|record))\b/i,
+  /\b((want (you|lorekeeper|lorebook|this) to) (remember|save|store|track|capture|record))\b/i,
   /\b(creation journey|lorekeeper journey|writing journey|author journey)\b/i,
   /\b(memoir|autobiography|life story|my story)\b/i,
   /\b(this (matters|is important)|mark (this|it) (as )?(important|significant|notable))\b/i,

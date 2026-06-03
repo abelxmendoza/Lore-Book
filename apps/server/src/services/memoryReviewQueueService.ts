@@ -1,5 +1,5 @@
 /**
- * LORE-KEEPER MEMORY REVIEW QUEUE (MRQ)
+ * LOREBOOK MEMORY REVIEW QUEUE (MRQ)
  * Service for managing memory proposals and review queue
  */
 

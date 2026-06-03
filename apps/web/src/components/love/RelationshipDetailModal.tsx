@@ -1,7 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { useState, useEffect, useCallback } from 'react';
-import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw } from 'lucide-react';
+import { X, Heart, Calendar, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, MessageSquare, BarChart3, List, Clock, Activity, RefreshCw, Sparkles, GitBranch, Brain } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -93,6 +93,9 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
   const [cycles, setCycles] = useState<any[]>([]);
   const [patternsLoading, setPatternsLoading] = useState(false);
   const [patternsLoaded, setPatternsLoaded] = useState(false);
+  const [influence, setInfluence] = useState<any | null>(null);
+  const [influenceLoading, setInfluenceLoading] = useState(false);
+  const [influenceLoaded, setInfluenceLoaded] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -130,6 +133,26 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
   useEffect(() => {
     if (activeTab === 'analytics') loadPatterns();
   }, [activeTab, loadPatterns]);
+
+  const loadInfluence = useCallback(async () => {
+    if (influenceLoaded || shouldUseMockData) return;
+    setInfluenceLoading(true);
+    try {
+      const data = await fetchJson<{ success: boolean } & Record<string, any>>(
+        `/api/conversation/romantic-relationships/${relationshipId}/influence`
+      ).catch(() => null);
+      if (data?.success) setInfluence(data);
+      setInfluenceLoaded(true);
+    } catch {
+      // non-fatal
+    } finally {
+      setInfluenceLoading(false);
+    }
+  }, [relationshipId, influenceLoaded, shouldUseMockData]);
+
+  useEffect(() => {
+    if (activeTab === 'life-impact') loadInfluence();
+  }, [activeTab, loadInfluence]);
 
   const loadData = async () => {
     setLoading(true);
@@ -330,7 +353,7 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
           <div className="overflow-x-auto overflow-y-hidden scrollbar-hide [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <TabsList className="inline-flex min-w-max sm:grid sm:w-full sm:grid-cols-5 bg-black/40 border border-border/50 flex-wrap sm:flex-nowrap">
+            <TabsList className="inline-flex min-w-max sm:grid sm:w-full sm:grid-cols-6 bg-black/40 border border-border/50 flex-wrap sm:flex-nowrap">
               <TabsTrigger value="overview" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0">
                 <Heart className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span className="hidden min-[375px]:inline sm:inline">Overview</span>
@@ -355,6 +378,11 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
                 <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span className="hidden min-[375px]:inline sm:inline">Chat</span>
                 <span className="min-[375px]:hidden">Chat</span>
+              </TabsTrigger>
+              <TabsTrigger value="life-impact" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0">
+                <Sparkles className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden min-[375px]:inline sm:inline">Life Impact</span>
+                <span className="min-[375px]:hidden">Impact</span>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -698,6 +726,134 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
                 </Button>
               </div>
             </div>
+          </TabsContent>
+
+          {/* Life Impact Tab */}
+          <TabsContent value="life-impact" className="mt-6 space-y-6">
+            {influenceLoading && (
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="h-6 w-6 text-pink-400 animate-spin" />
+              </div>
+            )}
+
+            {!influenceLoading && !influence && !shouldUseMockData && (
+              <div className="text-center py-12 text-white/40">
+                <Sparkles className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm">No life impact data yet — keep adding entries to build the picture.</p>
+              </div>
+            )}
+
+            {!influenceLoading && influence && (
+              <>
+                {/* Autobiographical Impact Score */}
+                <div className="p-5 rounded-xl border border-pink-500/25 bg-pink-950/15 flex items-center gap-5">
+                  <div className="text-center flex-shrink-0">
+                    <p className="text-4xl font-bold text-pink-300">
+                      {Math.round((influence.autobiographical_impact ?? 0) * 100)}
+                    </p>
+                    <p className="text-xs text-white/50 mt-1">Impact Score</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white mb-1">
+                      {influence.impact_label ?? 'Unknown'} Autobiographical Impact
+                    </p>
+                    <p className="text-xs text-white/60 leading-relaxed">
+                      How significantly this relationship shaped your life arcs, beliefs, and behavioral patterns.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Life Arcs Influenced */}
+                {influence.life_arcs_influenced?.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-white/80 mb-3 flex items-center gap-2">
+                      <GitBranch className="w-4 h-4 text-pink-400" />
+                      Life Arcs Influenced
+                    </h3>
+                    <div className="space-y-2">
+                      {influence.life_arcs_influenced.map((arc: any) => (
+                        <div key={arc.id} className="p-3 rounded-lg bg-white/5 border border-white/10 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-white/85">{arc.title}</p>
+                            {arc.arc_type && <p className="text-xs text-white/40 mt-0.5">{arc.arc_type}</p>}
+                          </div>
+                          {arc.confidence != null && (
+                            <span className="text-xs text-pink-300 font-semibold">
+                              {Math.round(arc.confidence * 100)}%
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Knowledge Crystallized */}
+                {influence.knowledge_claims_crystallized?.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-white/80 mb-3 flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-indigo-400" />
+                      Knowledge Crystallized From This Relationship
+                    </h3>
+                    <div className="space-y-2">
+                      {influence.knowledge_claims_crystallized.map((item: any) => (
+                        <div key={item.id} className="p-3 rounded-lg bg-indigo-950/20 border border-indigo-500/20">
+                          <p className="text-xs text-white/75 leading-snug">{item.evidence_summary}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Breakup Aftermath */}
+                {influence.breakup_aftermath && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-white/80 mb-3 flex items-center gap-2">
+                      <TrendingDown className="w-4 h-4 text-orange-400" />
+                      Aftermath
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {influence.breakup_aftermath.closure_level != null && (
+                        <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                          <p className="text-xs text-white/50 mb-1">Closure</p>
+                          <p className="text-lg font-bold text-orange-300">
+                            {Math.round(influence.breakup_aftermath.closure_level * 100)}%
+                          </p>
+                        </div>
+                      )}
+                      {influence.breakup_aftermath.recovery_status && (
+                        <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+                          <p className="text-xs text-white/50 mb-1">Recovery</p>
+                          <p className="text-sm font-semibold text-white/80 capitalize">
+                            {influence.breakup_aftermath.recovery_status.replace(/_/g, ' ')}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Cross-relationship patterns */}
+                {influence.relationship_patterns?.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-white/80 mb-3 flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-purple-400" />
+                      Cross-Relationship Patterns
+                    </h3>
+                    <div className="space-y-2">
+                      {influence.relationship_patterns.map((p: any, i: number) => (
+                        <div key={i} className="p-3 rounded-lg bg-purple-950/20 border border-purple-500/20">
+                          <p className="text-xs text-white/70">{p.pattern_description ?? p.pattern_type}</p>
+                          {p.frequency && (
+                            <p className="text-[10px] text-purple-400/60 mt-1">Occurred {p.frequency}× across relationships</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </TabsContent>
         </Tabs>
       </DialogContent>

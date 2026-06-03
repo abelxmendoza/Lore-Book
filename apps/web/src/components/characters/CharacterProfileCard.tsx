@@ -278,103 +278,55 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
           <div className="relative z-10">
             <CharacterAvatar url={character.avatar_url} name={character.name} size={28} className="sm:w-9 sm:h-9" />
           </div>
-          <div className="absolute top-0.5 right-0.5 sm:top-1.5 sm:right-1.5 z-10 flex flex-col gap-0.5 items-end">
-          {character.importance_level && (
-            <Badge 
-              variant="outline"
-              className={`${getImportanceColor(character.importance_level)} text-[7px] sm:text-[10px] px-0.5 py-0 sm:px-1 sm:py-0.5 flex items-center gap-0 sm:gap-1`}
-              title={`${getImportanceLabel(character.importance_level)}${character.importance_score !== null && character.importance_score !== undefined ? ` (${Math.round(character.importance_score)})` : ''}`}
-            >
-              {getImportanceIcon(character.importance_level)}
-              <span className="hidden sm:inline">{getImportanceLabel(character.importance_level)}</span>
-            </Badge>
-          )}
-          {/* High impact despite low presence: minor/background but high influence on you */}
+          {/* Consolidated badge — one primary signal + overflow count */}
           {(() => {
-            const lowPresence = character.importance_level === 'minor' || character.importance_level === 'background';
-            const highImpact = (character.analytics?.character_influence_on_user ?? 0) >= 70;
-            if (lowPresence && highImpact) {
-              return (
-                <Badge
-                  variant="outline"
-                  className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[7px] sm:text-[10px] px-0.5 py-0 sm:px-1 sm:py-0.5 flex items-center gap-0 sm:gap-1"
-                  title="Rare in your story, but high impact on you"
-                >
-                  <Zap className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
-                  <span className="hidden sm:inline">High impact</span>
-                </Badge>
-              );
-            }
-            return null;
+            // Primary: relationship phase
+            const primaryBadge = phase ? (
+              <Badge
+                variant="outline"
+                className={`${phaseConfig[phase].classes}${phaseConfig[phase].glow ? ` ${phaseConfig[phase].glow}` : ''} text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 flex items-center gap-0.5`}
+                title={`Relationship phase: ${phaseConfig[phase].label}`}
+              >
+                {phaseConfig[phase].icon}
+                <span className="hidden sm:inline">{phaseConfig[phase].label}</span>
+              </Badge>
+            ) : character.importance_level ? (
+              <Badge
+                variant="outline"
+                className={`${getImportanceColor(character.importance_level)} text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5 flex items-center gap-0.5`}
+                title={getImportanceLabel(character.importance_level)}
+              >
+                {getImportanceIcon(character.importance_level)}
+                <span className="hidden sm:inline">{getImportanceLabel(character.importance_level)}</span>
+              </Badge>
+            ) : null;
+
+            // Count secondary signals for "+N" badge
+            const extras: string[] = [];
+            if (hasMet === false) extras.push('Unmet');
+            if ((character.analytics?.character_influence_on_user ?? 0) >= 70 &&
+                (character.importance_level === 'minor' || character.importance_level === 'background'))
+              extras.push('High impact');
+            if (proximity && proximity !== 'direct') extras.push(getProximityLabel(proximity));
+            if (character.status && character.status !== 'active') extras.push(character.status);
+            if (character.analytics?.trend === 'deepening') extras.push('Deepening');
+            if (character.analytics?.trend === 'weakening') extras.push('Weakening');
+
+            return (
+              <div className="absolute top-1 right-1 z-10 flex flex-col gap-0.5 items-end">
+                {primaryBadge}
+                {extras.length > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="bg-white/5 text-white/35 border-white/10 text-[7px] px-1 py-0"
+                    title={extras.join(', ')}
+                  >
+                    +{extras.length}
+                  </Badge>
+                )}
+              </div>
+            );
           })()}
-          {/* Only show high importance analytics badge on mobile - too cluttered otherwise */}
-          {character.analytics && character.analytics.importance_score >= 70 && (
-            <Badge 
-              variant="outline"
-              className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[7px] sm:text-[10px] px-0.5 py-0 sm:px-1 sm:py-0.5 flex items-center gap-0 sm:gap-1"
-              title={`High Importance: ${character.analytics.importance_score}/100`}
-            >
-              <Star className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
-              <span className="hidden sm:inline">{character.analytics.importance_score}</span>
-            </Badge>
-          )}
-          {/* Hide other badges on mobile - too cluttered */}
-          <div className="hidden sm:flex flex-col gap-0.5 items-end">
-            {hasMet === false && (
-              <Badge
-                variant="outline"
-                className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] px-1 py-0.5 flex items-center gap-0"
-                title="Never met in person"
-              >
-                <UserX className="h-2.5 w-2.5" />
-                <span>Unmet</span>
-              </Badge>
-            )}
-            {proximity !== null && proximity !== 'direct' && (
-              <Badge
-                variant="outline"
-                className={`${getProximityColor(proximity)} text-[10px] px-1 py-0.5 flex items-center gap-0`}
-                title={`Connection: ${getProximityLabel(proximity)}`}
-              >
-                {proximity === 'indirect' && <Link2 className="h-2.5 w-2.5" />}
-                {proximity === 'third_party' && <Eye className="h-2.5 w-2.5" />}
-                <span>{getProximityLabel(proximity)}</span>
-              </Badge>
-            )}
-            {character.status && character.status !== 'active' && (
-              <Badge 
-                variant="outline"
-                className={`${
-                  character.status === 'inactive'
-                    ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                    : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                } text-[10px] px-1 py-0.5`}
-              >
-                {character.status}
-              </Badge>
-            )}
-            {character.analytics && character.analytics.importance_score < 70 && (
-              <Badge 
-                variant="outline"
-                className={`${character.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[10px] px-1 py-0.5 flex items-center gap-1`}
-                title={`Importance: ${character.analytics.importance_score}/100`}
-              >
-                {character.analytics.importance_score >= 40 ? <Award className="h-2.5 w-2.5" /> : null}
-                {character.analytics.importance_score}
-              </Badge>
-            )}
-            {/* Trend Indicator */}
-            {character.analytics?.trend === 'deepening' && (
-              <span title="Relationship deepening"><TrendingUp className="h-3 w-3 text-green-400" /></span>
-            )}
-            {character.analytics?.trend === 'weakening' && (
-              <span title="Relationship weakening"><TrendingDown className="h-3 w-3 text-red-400" /></span>
-            )}
-            {character.analytics?.trend === 'stable' && (
-              <span title="Stable relationship"><Minus className="h-3 w-3 text-gray-400" /></span>
-            )}
-          </div>
-        </div>
       </div>
 
       <CardHeader className="pb-1 pt-1.5 sm:pt-2 px-2 sm:px-4">

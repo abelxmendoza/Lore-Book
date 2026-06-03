@@ -1,5 +1,5 @@
 // =====================================================
-// LOREKEEPER EPISTEMIC INVARIANTS (PHASE 3.5)
+// LOREBOOK EPISTEMIC INVARIANTS (PHASE 3.5)
 // Purpose: Formal invariants asserted system-wide
 // These are testable and must never be violated
 // =====================================================

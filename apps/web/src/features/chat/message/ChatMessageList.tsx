@@ -15,6 +15,7 @@ type ChatMessageListProps = {
   onDelete?: (messageId: string) => void;
   onSourceClick?: (source: ChatSource) => void;
   onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void;
+  onFork?: (messageId: string) => void;
   registerMessageRef?: (messageId: string, element: HTMLDivElement | null) => void;
 };
 
@@ -30,6 +31,7 @@ export const ChatMessageList = ({
   onDelete,
   onSourceClick,
   onFeedback,
+  onFork,
   registerMessageRef
 }: ChatMessageListProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -87,6 +89,7 @@ export const ChatMessageList = ({
                   onRegenerate={message.role === 'assistant' && onRegenerate ? () => onRegenerate(message.id) : undefined}
                   onEdit={message.role === 'user' && onEdit ? () => onEdit(message.id) : undefined}
                   onDelete={onDelete ? () => onDelete(message.id) : undefined}
+                  onFork={onFork ? () => onFork(message.id) : undefined}
                   onSourceClick={onSourceClick}
                   onFeedback={onFeedback}
                 />

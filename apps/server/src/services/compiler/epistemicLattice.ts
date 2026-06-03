@@ -1,5 +1,5 @@
 // =====================================================
-// LOREKEEPER EPISTEMIC LATTICE + PROOF SYSTEM (PHASE 3.5)
+// LOREBOOK EPISTEMIC LATTICE + PROOF SYSTEM (PHASE 3.5)
 // Purpose: Make epistemic safety mathematically explicit
 // =====================================================
 

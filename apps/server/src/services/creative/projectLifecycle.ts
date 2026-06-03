@@ -74,7 +74,7 @@ export class ProjectLifecycleEngine {
       /(omega|omega technologies|omega tech)/i,
       /(hood runner|hoodrunner)/i,
       /(memoir|autobiography|life story)/i,
-      /(lore keeper|lorekeeper)/i,
+      /(lore keeper|lorekeeper|lorebook)/i,
       /(video|youtube|content)/i,
       /(coding|app|application|software|project)/i,
       /(robot|robotics|hardware)/i,

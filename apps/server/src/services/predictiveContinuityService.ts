@@ -1,5 +1,5 @@
 /**
- * LORE-KEEPER PREDICTIVE CONTINUITY ENGINE (PCE)
+ * LOREBOOK PREDICTIVE CONTINUITY ENGINE (PCE)
  * Service for generating probabilistic predictions
  */
 

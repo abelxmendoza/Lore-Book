@@ -32,7 +32,7 @@ class ChatService {
       .join('\n---\n');
 
     const name = persona ?? 'The Archivist';
-    const system = `${name} is a loyal lorekeeper that references the user's journaling history. Answer succinctly while citing dates when possible and keep responses reflective.`;
+    const system = `${name} is LoreBook, a continuity-aware AI that references the user's journaling history. Answer succinctly while citing dates when possible and keep responses reflective.`;
 
     const messages = [
       { role: 'system' as const, content: system },

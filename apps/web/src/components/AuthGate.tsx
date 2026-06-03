@@ -248,11 +248,18 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       console.log('[AuthGate] Auth state changed:', event, newSession ? 'Authenticated' : 'Not authenticated');
       setSession(newSession);
-      
+
       // Exiting demo/guest runtime when a real session is established
       if (newSession?.user) {
         clearDemoSession();
         endGuestSession();
+      }
+
+      // Log login events for account activity history
+      if (event === 'SIGNED_IN' && newSession?.user) {
+        import('../api/user').then(({ logActivity }) => {
+          logActivity('Login').catch(() => {});
+        });
       }
 
       // Identify user for analytics and error tracking

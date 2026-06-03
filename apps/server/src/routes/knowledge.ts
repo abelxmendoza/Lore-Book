@@ -200,4 +200,119 @@ router.get(
   })
 );
 
+// ─── GET /api/knowledge/chat-context ─────────────────────────────────────────
+//
+// Bundles the active context panel payload in one request:
+//   - top ACTIVE knowledge claims (confidence ≥ 0.65)
+//   - active life arcs
+//   - recent emotional context snapshot
+//
+// Designed for the chat Active Context Panel — one call, no waterfalls.
+
+router.get(
+  '/chat-context',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+
+    // Run all queries in parallel
+    const [claimsResult, arcsResult] = await Promise.all([
+      // Top knowledge claims
+      supabaseAdmin
+        .from('crystallized_knowledge')
+        .select('id, human_readable_claim, knowledge_type, confidence, status, last_reinforced_at')
+        .eq('user_id', userId)
+        .eq('status', 'ACTIVE')
+        .gte('confidence', 0.65)
+        .order('confidence', { ascending: false })
+        .limit(6),
+
+      // Active life arcs
+      supabaseAdmin
+        .from('life_arcs')
+        .select('id, title, arc_type, track, confidence, is_active, start_date, end_date, dominant_emotion, emotional_arc')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('confidence', { ascending: false })
+        .limit(5),
+    ]);
+
+    return res.json({
+      success: true,
+      knowledge_claims: claimsResult.data ?? [],
+      life_arcs: arcsResult.data ?? [],
+    });
+  })
+);
+
+// ─── GET /api/knowledge/character-context/:name ──────────────────────────────
+//
+// Returns active knowledge claims where the character name appears in any
+// evidence_summary. Powers the "What LoreBook Knows About This Person" tab.
+//
+// Also accepts ?relationship_id=uuid to fetch claims linked to a specific
+// romantic relationship (more precise than name matching).
+
+router.get(
+  '/character-context/:name',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { name } = req.params;
+    const relationshipId = req.query.relationship_id as string | undefined;
+
+    // Load all ACTIVE claims with evidence for this user
+    const { data: claims, error: claimsErr } = await supabaseAdmin
+      .from('crystallized_knowledge')
+      .select('id, human_readable_claim, machine_claim, knowledge_type, confidence, confidence_breakdown, status, last_reinforced_at, first_evidenced_at, trigger_type')
+      .eq('user_id', userId)
+      .eq('status', 'ACTIVE')
+      .order('confidence', { ascending: false });
+
+    if (claimsErr || !claims?.length) {
+      return res.json({ success: true, claims: [] });
+    }
+
+    const claimIds = claims.map(c => c.id);
+
+    // Load evidence links for these claims
+    const { data: links } = await supabaseAdmin
+      .from('knowledge_evidence_links')
+      .select('knowledge_id, evidence_type, evidence_id, evidence_weight, evidence_summary')
+      .eq('user_id', userId)
+      .in('knowledge_id', claimIds);
+
+    if (!links?.length) {
+      return res.json({ success: true, claims: [] });
+    }
+
+    // Filter claims where any evidence_summary mentions the character name
+    // OR where evidence_id matches a specified relationship_id
+    const nameLower = name.toLowerCase();
+    const matchedIds = new Set<string>();
+    const evidenceByClaimId: Record<string, typeof links> = {};
+
+    for (const link of links) {
+      if (!evidenceByClaimId[link.knowledge_id]) evidenceByClaimId[link.knowledge_id] = [];
+      evidenceByClaimId[link.knowledge_id].push(link);
+
+      const summaryMatch = link.evidence_summary?.toLowerCase().includes(nameLower);
+      const relMatch = relationshipId && link.evidence_id === relationshipId;
+      if (summaryMatch || relMatch) {
+        matchedIds.add(link.knowledge_id);
+      }
+    }
+
+    const result = claims
+      .filter(c => matchedIds.has(c.id))
+      .map(c => ({
+        ...c,
+        evidence_links: evidenceByClaimId[c.id] ?? [],
+        evidence_count: (evidenceByClaimId[c.id] ?? []).length,
+      }));
+
+    return res.json({ success: true, claims: result });
+  })
+);
+
 export default router;

@@ -55,11 +55,14 @@ export interface PaymentEvent {
  */
 export async function getFinanceMetrics(): Promise<FinanceMetrics> {
   try {
-    // Get all active subscriptions (trial, active)
+    // Only count real paid subscriptions — must have a Stripe ID.
+    // Records with stripe_subscription_id = null are placeholder/free-tier rows
+    // that should not appear in finance metrics.
     const { data: subscriptions, error: subError } = await supabaseAdmin
       .from('subscriptions')
       .select('*')
-      .in('status', ['trial', 'active']);
+      .in('status', ['trial', 'active'])
+      .not('stripe_subscription_id', 'is', null);
 
     if (subError) {
       logger.error({ error: subError }, 'Failed to fetch subscriptions for metrics');
@@ -275,11 +278,9 @@ export async function getSubscriptions(filters?: {
       throw error;
     }
 
-    // Get user emails
-    const userIds = subscriptions?.map(s => s.user_id) || [];
     const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
-    const userMap = new Map(
-      usersData?.users.map(u => [u.id, u.email || '']) || []
+    const userMap = new Map<string, string>(
+      usersData?.users.map((u): [string, string] => [u.id, u.email ?? '']) ?? []
     );
 
     // Calculate LTV for each subscription
@@ -369,15 +370,14 @@ export async function getPaymentEvents(filters?: {
     const { data: events, error } = await query;
 
     if (error) {
-      logger.error({ error }, 'Failed to fetch payment events');
-      throw error;
+      // payment_events table may not exist yet (Stripe not configured) — return empty
+      logger.warn({ error }, 'payment_events query failed — table may not exist yet');
+      return [];
     }
 
-    // Get user emails
-    const userIds = [...new Set(events?.map(e => e.user_id) || [])];
     const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
-    const userMap = new Map(
-      usersData?.users.map(u => [u.id, u.email || '']) || []
+    const userMap = new Map<string, string>(
+      usersData?.users.map((u): [string, string] => [u.id, u.email ?? '']) ?? []
     );
 
     return (events || []).map(event => ({

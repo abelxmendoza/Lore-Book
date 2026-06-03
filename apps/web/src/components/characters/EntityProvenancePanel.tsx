@@ -2,7 +2,7 @@
  * EntityProvenancePanel
  *
  * Renders the causal history of a character entity:
- * "Why does Lorekeeper know about this person?"
+ * "Why does LoreBook know about this person?"
  *
  * REAL mode only — never shown in DEMO mode.
  * Displays only evidence-backed, provenance-verified data.
@@ -162,7 +162,7 @@ export function EntityProvenancePanel({ entityId, entityName }: EntityProvenance
         <GitBranch className="h-5 w-5 text-white/20 mx-auto mb-2" />
         <p className="text-xs text-white/40 font-medium">No provenance recorded yet</p>
         <p className="text-xs text-white/25 mt-1 max-w-xs mx-auto">
-          {entityName} will appear here with a causal history once Lorekeeper has processed
+          {entityName} will appear here with a causal history once LoreBook has processed
           conversations that mention them.
         </p>
       </div>

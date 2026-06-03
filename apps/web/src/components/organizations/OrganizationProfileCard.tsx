@@ -1,4 +1,4 @@
-import { Building2, Users, MapPin, Calendar, ChevronRight, Hash, BookOpen, CalendarDays, TrendingUp, TrendingDown, Minus, Star, Award } from 'lucide-react';
+import { Building2, Users, MapPin, Calendar, ChevronRight, Hash, BookOpen, CalendarDays, TrendingUp, TrendingDown, Minus, Star, Award, Heart } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { format, parseISO } from 'date-fns';
@@ -42,7 +42,13 @@ export type Organization = {
   id: string;
   name: string;
   aliases: string[];
-  type: 'friend_group' | 'company' | 'sports_team' | 'club' | 'nonprofit' | 'affiliation' | 'other';
+  type: 'friend_group' | 'company' | 'sports_team' | 'club' | 'nonprofit' | 'affiliation' | 'family' | 'martial_arts' | 'other';
+  // Family-specific fields
+  generations?: number;       // number of generations in family group
+  family_branches?: string[]; // e.g. ["maternal", "paternal"]
+  // Hierarchy-specific fields
+  hierarchy_system_id?: string;  // references a HierarchySystem
+  hierarchy_enabled?: boolean;
   description?: string;
   location?: string;
   founded_date?: string;
@@ -113,15 +119,29 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
     }
   };
 
+  const isFamily  = organization.type === 'family';
+  const isMartial = organization.type === 'martial_arts';
+  const isSports  = organization.type === 'sports_team';
+  const isWork    = organization.type === 'company';
+  const headerGrad = isFamily  ? 'from-rose-500/20 via-pink-600/20 to-rose-500/20'
+                   : isMartial ? 'from-red-500/20 via-orange-600/20 to-red-500/20'
+                   : isSports  ? 'from-cyan-500/20 via-blue-600/20 to-cyan-500/20'
+                   : isWork    ? 'from-amber-500/20 via-yellow-600/20 to-amber-500/20'
+                   : 'from-purple-500/20 via-purple-600/20 to-purple-500/20';
+  const HeaderIcon = isFamily ? Heart : (isMartial || isSports) ? Users : Building2;
+  const iconCls    = isFamily  ? 'text-rose-400/60 group-hover:text-rose-400'
+                   : isMartial ? 'text-orange-400/60 group-hover:text-orange-400'
+                   : 'text-white/40 group-hover:text-primary/60';
+
   return (
-    <Card 
+    <Card
       className="group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden flex flex-col aspect-square sm:aspect-auto min-h-0 sm:min-h-0"
       onClick={onClick}
     >
-      {/* Header with Building Icon - compact on mobile, matches location card style */}
-      <div className="relative h-10 sm:h-16 bg-gradient-to-br from-purple-500/20 via-purple-600/20 to-purple-500/20 flex items-center justify-center flex-shrink-0">
+      {/* Header — color and icon vary by org type */}
+      <div className={`relative h-10 sm:h-16 bg-gradient-to-br ${headerGrad} flex items-center justify-center flex-shrink-0`}>
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-        <Building2 className="h-6 w-6 sm:h-10 sm:w-10 text-white/40 group-hover:text-primary/60 transition-colors relative z-10" />
+        <HeaderIcon className={`h-6 w-6 sm:h-10 sm:w-10 ${iconCls} transition-colors relative z-10`} />
         <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 flex items-center gap-1 hidden sm:flex">
           {organization.analytics && (
             <>
@@ -144,7 +164,7 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
               )}
             </>
           )}
-          <Badge 
+          <Badge
             variant="outline"
             className={`${getConfidenceColor(organization.confidence)} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
             title={`${getConfidenceLabel(organization.confidence)} confidence (${Math.round(organization.confidence * 100)}%)`}
@@ -172,10 +192,22 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
       
       {/* Mobile: two rows — row 1 = members, row 2 = type • mentions. Desktop: full metadata. */}
       <CardContent className="space-y-2 pt-0 px-2 sm:px-4 pb-2 sm:pb-3 flex-shrink-0">
-        {/* Row 1 — members (always) */}
+        {/* Row 1 — members (family shows generations instead) */}
         <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-white/70">
-          <Users className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-primary flex-shrink-0" />
-          <span>{organization.member_count ?? 0} {(organization.member_count ?? 0) === 1 ? 'member' : 'members'}</span>
+          {isFamily ? (
+            <>
+              <Heart className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-rose-400 flex-shrink-0" />
+              <span>{organization.generations ?? '-'} generations</span>
+              {organization.family_branches && organization.family_branches.length > 0 && (
+                <span className="text-white/40 hidden sm:inline">· {organization.family_branches.join(', ')}</span>
+              )}
+            </>
+          ) : (
+            <>
+              <Users className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-primary flex-shrink-0" />
+              <span>{organization.member_count ?? 0} {(organization.member_count ?? 0) === 1 ? 'member' : 'members'}</span>
+            </>
+          )}
           <span className="text-white/40 hidden sm:inline">•</span>
           <span className="hidden sm:inline">
             <Hash className="h-2.5 w-2.5 inline mr-0.5 align-middle" />

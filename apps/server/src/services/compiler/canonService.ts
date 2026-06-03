@@ -1,5 +1,5 @@
 // =====================================================
-// LOREKEEPER PHASE 3.6
+// LOREBOOK PHASE 3.6
 // Canon Service - User override and management
 // =====================================================
 

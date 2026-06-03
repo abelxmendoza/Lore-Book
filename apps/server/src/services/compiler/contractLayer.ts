@@ -1,5 +1,5 @@
 // =====================================================
-// LOREKEEPER CORE BLUEPRINT
+// LOREBOOK CORE BLUEPRINT
 // Sensemaking Contract Layer (SCL) - Phase 3
 // =====================================================
 

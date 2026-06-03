@@ -1,6 +1,6 @@
 /**
  * Decision Memory Panel
- * Where Lore-Keeper stops feeling like "AI" and starts feeling like your past self
+ * Where LoreBook stops feeling like "AI" and starts feeling like your past self
  */
 
 import { useState } from 'react';

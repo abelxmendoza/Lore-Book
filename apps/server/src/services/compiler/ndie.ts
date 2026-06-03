@@ -1,5 +1,5 @@
 // =====================================================
-// LOREKEEPER CORE BLUEPRINT
+// LOREBOOK CORE BLUEPRINT
 // Narrative Diff & Identity Evolution (NDIE)
 // =====================================================
 

@@ -1,5 +1,5 @@
 /**
- * LORE-KEEPER EXPLAINABILITY & META CONTINUITY LAYER
+ * LOREBOOK EXPLAINABILITY & META CONTINUITY LAYER
  * Service for tracking, explaining, and reversing system actions
  */
 

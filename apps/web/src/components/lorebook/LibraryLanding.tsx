@@ -199,33 +199,30 @@ export const LibraryLanding = ({
           </div>
         </div>
 
-        {/* Demo / saved books grid */}
-        {isMockData && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-xs text-white/35 uppercase tracking-widest font-mono">Recently generated</p>
-              <span className="text-xs text-white/25 font-mono">{DEMO_BOOKS.length} books</span>
-            </div>
+        {/* Recently generated section */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs text-white/35 uppercase tracking-widest font-mono">Recently generated</p>
+            {isMockData && <span className="text-xs text-white/25 font-mono">{DEMO_BOOKS.length} books</span>}
+          </div>
+
+          {isMockData ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {DEMO_BOOKS.map((book) => (
                 <button
+                  type="button"
                   key={book.id}
                   onClick={() => onOpenDemoBook?.(book.id)}
                   className={`group relative flex items-stretch gap-0 rounded-2xl border ${book.border} overflow-hidden text-left transition-all hover:scale-[1.015] hover:shadow-xl hover:shadow-black/40 active:scale-[0.99]`}
                 >
-                  {/* Spine / cover color strip */}
                   <div className={`w-14 shrink-0 bg-gradient-to-b ${book.gradient} flex items-center justify-center`}>
-                    <BookOpen className="h-5 w-5 text-white/60 rotate-0" />
+                    <BookOpen className="h-5 w-5 text-white/60" />
                   </div>
-
-                  {/* Book info */}
                   <div className="flex-1 bg-white/3 group-hover:bg-white/5 transition-colors px-4 py-4">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className={`text-xs font-mono uppercase tracking-wider mb-1 ${book.accent}`}>{book.scope}</p>
-                        <h3 className="text-white font-semibold text-base leading-snug mb-1" style={{ fontFamily: 'Georgia, serif' }}>
-                          {book.title}
-                        </h3>
+                        <h3 className="text-white font-semibold text-base leading-snug mb-1 font-serif">{book.title}</h3>
                         <p className="text-xs text-white/40">{book.period}</p>
                       </div>
                       <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-white/50 shrink-0 mt-1 transition-colors" />
@@ -241,8 +238,13 @@ export const LibraryLanding = ({
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 rounded-2xl border border-white/8 bg-white/2 text-center">
+              <BookOpen className="h-10 w-10 text-white/15 mb-3" />
+              <p className="text-sm text-white/35">No books yet — generate your first one above.</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

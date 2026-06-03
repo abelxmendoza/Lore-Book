@@ -45,7 +45,7 @@ async function runMigration() {
   console.log('⚠️  Supabase JS client cannot execute raw SQL directly.');
   console.log('\n📋 Please run this migration using one of these methods:\n');
   console.log('Method 1: Supabase SQL Editor (Recommended)');
-  console.log('1. Go to: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql/new');
+  console.log('1. Go to: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql/new');
   console.log('2. Copy the SQL from: migrations/20250130_finance_tables.sql');
   console.log('3. Paste and click "Run"\n');
   console.log('Method 2: Using psql');

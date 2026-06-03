@@ -90,14 +90,14 @@ async function runMigration() {
 
   console.log('\n❌ Cannot execute SQL directly. Please run this migration manually:');
   console.log('\n📋 Option 1: Use Supabase SQL Editor (Recommended)');
-  console.log('   1. Go to: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql');
+  console.log('   1. Go to: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql');
   console.log('   2. Click "New query"');
   console.log('   3. Paste the contents of: migrations/20250120_terms_acceptance.sql');
   console.log('   4. Click "Run"');
   console.log('\n📋 Option 2: Use psql');
   console.log('   Get your database password from Supabase Dashboard > Settings > Database');
   console.log('   Then run:');
-  console.log(`   psql "postgresql://postgres.jawzxiiwfagliloxnnkc:[PASSWORD]@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -f migrations/20250120_terms_acceptance.sql`);
+  console.log(`   psql "postgresql://postgres.cshtthzpgkmrbcsfghyq:[PASSWORD]@aws-0-us-west-1.pooler.supabase.com:6543/postgres" -f migrations/20250120_terms_acceptance.sql`);
 }
 
 runMigration().catch(console.error);

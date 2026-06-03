@@ -301,8 +301,8 @@ export const PrivacyPolicy = ({ onBack }: PrivacyPolicyProps) => {
           </p>
           <div className="bg-black/40 p-4 rounded-lg border border-white/10">
             <p className="font-semibold text-white mb-2">Lore Book Privacy Team</p>
-            <p className="text-sm">Email: privacy@lorekeeper.app</p>
-            <p className="text-sm">Support: support@lorekeeper.app</p>
+            <p className="text-sm">Email: privacy@lorebook.app</p>
+            <p className="text-sm">Support: support@lorebook.app</p>
           </div>
           <p className="text-sm text-white/60 italic">
             We will respond to your inquiry within 30 days.

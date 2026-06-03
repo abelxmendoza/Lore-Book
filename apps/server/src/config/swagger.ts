@@ -22,7 +22,7 @@ const options: swaggerJsdoc.Options = {
         description: 'Development server',
       },
       {
-        url: 'https://api.lorekeeper.app',
+        url: 'https://api.lorebook.app',
         description: 'Production server',
       },
     ],

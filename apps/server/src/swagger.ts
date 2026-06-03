@@ -13,12 +13,12 @@ const options: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'LoreKeeper API',
+      title: 'LoreBook API',
       version: '1.0.0',
-      description: 'API documentation for LoreKeeper - Your AI-powered life journal',
+      description: 'API documentation for LoreBook - Your AI-powered life story companion',
       contact: {
         name: 'API Support',
-        email: 'support@lorekeeper.app',
+        email: 'support@lorebook.app',
       },
       license: {
         name: 'MIT',
@@ -31,7 +31,7 @@ const options: swaggerJsdoc.Options = {
         description: 'Development server',
       },
       {
-        url: 'https://api.lorekeeper.app',
+        url: 'https://api.lorebook.app',
         description: 'Production server',
       },
     ],
@@ -73,7 +73,7 @@ const swaggerSpec = swaggerJsdoc(options);
 export const setupSwagger = (app: Express) => {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     customCss: '.swagger-ui .topbar { display: none }',
-    customSiteTitle: 'LoreKeeper API Documentation',
+    customSiteTitle: 'LoreBook API Documentation',
   }));
 
   // JSON endpoint for the spec

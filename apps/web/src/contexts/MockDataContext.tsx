@@ -270,8 +270,9 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
 
   const runtimeIdentity = useMemo<RuntimeIdentityType>(() => resolveRuntimeIdentity({
     isAuthenticated:   !!user,
-    isGuest:           false, // unauthenticated non-demo resolves to GUEST_USER regardless
-    isMockDataEnabled: useMockData,
+    isGuest:           false,
+    // Authenticated users are always REAL — never DEMO, even if toggle is on
+    isMockDataEnabled: user ? false : useMockData,
     backendUnavailable,
   }), [useMockData, user, backendUnavailable]);
 
@@ -291,9 +292,13 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
     setGlobalRuntimeDataMode(runtimeDataMode);
   }, [runtimeDataMode]);
 
+  // Authenticated real users must NEVER see mock data, regardless of stored toggle
+  // or a leftover demo session flag. Compute once here so every consumer is safe.
+  const exposedMockData = user ? false : useMockData;
+
   return (
     <MockDataContext.Provider value={{
-      useMockData,
+      useMockData: exposedMockData,
       toggleMockData,
       setUseMockData,
       isMockDataActive,

@@ -7,7 +7,7 @@ The `terms_acceptance` table doesn't exist in your Supabase database, which is w
 
 ### Step 1: Open Supabase SQL Editor
 Click this link to open your SQL Editor:
-**https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql/new**
+**https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql/new**
 
 ### Step 2: Copy and Paste This SQL
 

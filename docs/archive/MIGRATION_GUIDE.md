@@ -3,7 +3,7 @@
 ## Quick Start
 
 ### Option 1: Use SQL Editor (Easiest - Already Working!)
-1. Go to: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql/new
+1. Go to: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql/new
 2. Copy/paste SQL from migration file
 3. Click "Run"
 
@@ -16,7 +16,7 @@
 
 Then set it:
 ```bash
-export SUPABASE_CONNECTION_STRING='postgresql://postgres:password@db.jawzxiiwfagliloxnnkc.supabase.co:5432/postgres'
+export SUPABASE_CONNECTION_STRING='postgresql://postgres:password@db.cshtthzpgkmrbcsfghyq.supabase.co:5432/postgres'
 ```
 
 **Run a Single Migration:**
@@ -45,7 +45,7 @@ Or just run the script without arguments to see a list:
 
 ## Getting Your Database Password
 
-1. Go to: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/settings/database
+1. Go to: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/settings/database
 2. Find "Database password" section
 3. Click "Reveal" or "Reset password" if needed
 4. Copy the password
@@ -76,7 +76,7 @@ This is fine! The migrations use `CREATE TABLE IF NOT EXISTS`, so they're safe t
 ## Alternative: Manual Method
 
 If you prefer the SQL Editor:
-1. Go to: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql/new
+1. Go to: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql/new
 2. Copy/paste the SQL from the migration file
 3. Click "Run"
 

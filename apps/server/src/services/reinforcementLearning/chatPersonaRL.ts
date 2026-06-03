@@ -39,14 +39,20 @@ export class ChatPersonaRL {
   private rlEngine: RLEngine;
   private explorationRate: number = 0.15; // Start with 15% exploration
 
-  // Available personas
+  // Available personas — names must match the YOUR PERSONAS block in systemPromptBuilder.ts
+  // archivist  = factual recall only (read-only mode)
+  // therapist  = emotional support
+  // strategist = goal-oriented planning
+  // biography_writer = narrative shaping
+  // soul_capturer    = core identity elements
+  // gossip_buddy     = relationship/character talk
   private readonly PERSONAS = [
     'therapist',
     'strategist',
     'gossip_buddy',
-    'historian',
+    'archivist',
     'soul_capturer',
-    'memory_bank',
+    'biography_writer',
   ];
 
   constructor() {
@@ -282,133 +288,188 @@ export class ChatPersonaRL {
   }
 
   /**
-   * Build context from message and conversation
+   * Build context from message and conversation.
+   *
+   * Instead of a flat bag of boolean flags, we compute a directional signal
+   * score for each persona (0–1). The RL engine can learn which signals
+   * matter most for *this user* rather than treating every keyword match
+   * as equally meaningful.
    */
   async buildContext(
     userId: string,
     message: string,
     conversationHistory: Array<{ role: string; content: string }>
   ): Promise<RLContext> {
-    const features: Record<string, any> = {
-      // Message features
-      messageLength: message.length,
-      hasQuestion: message.includes('?'),
-      hasEmotion: this.detectEmotionKeywords(message),
-      messageWordCount: message.split(/\s+/).length,
+    const lower = message.toLowerCase();
+    const words = lower.split(/\s+/);
+    const wordCount = words.length;
+    const hour = new Date().getHours();
+    const dow = new Date().getDay(); // 0=Sun … 6=Sat
 
-      // Temporal features
-      timeOfDay: new Date().getHours(),
-      dayOfWeek: new Date().getDay(),
+    // ── Therapist signal ──────────────────────────────────────────────────────
+    // Present-moment distress, venting, first-person emotional language.
+    // Negation guard: "don't feel" / "not sad" should not spike this.
+    const EMOTION_WORDS = [
+      'sad', 'upset', 'hurt', 'angry', 'anxious', 'stressed', 'worried', 'scared',
+      'overwhelmed', 'lonely', 'frustrated', 'disappointed', 'heartbroken', 'depressed',
+      'miserable', 'crying', 'cry', 'exhausted', 'burnt out', 'lost', 'broken',
+      'confused', 'hopeless', 'numb', 'guilty', 'ashamed', 'embarrassed',
+    ];
+    const NEGATIONS = /\b(don't|doesn't|not|never|no longer|didn't)\s+(feel|seem|look|sound|appear)/;
+    const hasNegation = NEGATIONS.test(lower);
+    const emotionHits = EMOTION_WORDS.filter(w => lower.includes(w)).length;
+    const therapistSignal = hasNegation
+      ? Math.max(0, emotionHits - 1) / 5          // dampen negated emotion
+      : Math.min(emotionHits / 3, 1.0);            // cap at 1.0
 
-      // Conversation features
-      conversationLength: conversationHistory.length,
-      conversationSentiment: this.analyzeConversationSentiment(conversationHistory),
-    };
+    // Late night amplifier: emotional topics hit harder at night
+    const isLateNight = hour >= 21 || hour <= 4;
+    const therapistScore = Math.min(therapistSignal * (isLateNight ? 1.3 : 1.0), 1.0);
 
-    // Get recent personas used (last 5 messages)
+    // ── Strategist signal ─────────────────────────────────────────────────────
+    // Future-oriented, goal / planning / decision language.
+    const STRATEGY_WORDS = [
+      'should i', 'what if', 'plan', 'goal', 'decide', 'decision', 'next step',
+      'how do i', 'how should', 'want to', 'trying to', 'need to', 'advice',
+      'strategy', 'improve', 'change', 'achieve', 'move forward', 'next week',
+      'next month', 'career', 'job', 'opportunity', 'focus on',
+    ];
+    const strategyHits = STRATEGY_WORDS.filter(w => lower.includes(w)).length;
+    // Weekday mornings (Mon–Fri, 7–10am) are planning contexts
+    const isWeekdayMorning = dow >= 1 && dow <= 5 && hour >= 7 && hour <= 10;
+    const strategistScore = Math.min((strategyHits / 3) * (isWeekdayMorning ? 1.4 : 1.0), 1.0);
+
+    // ── Archivist signal ──────────────────────────────────────────────────────
+    // Looking something up, factual recall, "when did / what did / do you remember".
+    const RECALL_PATTERNS = [
+      /when did i/, /what did i/, /do you remember/, /last time i/, /have i ever/,
+      /what happened (when|with|to|in|at|on)/, /how long (ago|have|has)/,
+      /can you (find|look up|check|tell me about)/, /search (for|my|through)/,
+      /\b(history|record|log|entry|entries|wrote|mentioned|said)\b/,
+    ];
+    const archivistHits = RECALL_PATTERNS.filter(r => r.test(lower)).length;
+    const archivistScore = Math.min(archivistHits / 2, 1.0);
+
+    // ── Gossip Buddy signal ───────────────────────────────────────────────────
+    // Third-person pronouns, named references, relationship dynamics.
+    const thirdPersonCount = (lower.match(/\b(he|she|they|him|her|them|his|hers|their)\b/g) || []).length;
+    const RELATIONSHIP_WORDS = [
+      'friend', 'boyfriend', 'girlfriend', 'partner', 'ex', 'crush', 'coworker',
+      'boss', 'mom', 'dad', 'sister', 'brother', 'family', 'relationship',
+      'said to me', 'told me', 'texted', 'drama', 'fight', 'argument',
+    ];
+    const relationshipHits = RELATIONSHIP_WORDS.filter(w => lower.includes(w)).length;
+    const gossipScore = Math.min((thirdPersonCount / 4 + relationshipHits / 3) / 2, 1.0);
+
+    // ── Biography Writer signal ───────────────────────────────────────────────
+    // Storytelling: long message, past-tense verbs, narrative markers.
+    const PAST_TENSE = /\b(was|were|had|went|came|did|said|told|felt|thought|knew|saw|heard|realized|started|ended|left|moved|changed)\b/g;
+    const pastVerbCount = (lower.match(PAST_TENSE) || []).length;
+    const NARRATIVE_WORDS = ['story', 'chapter', 'period', 'phase', 'era', 'looking back', 'back then', 'those days', 'at the time'];
+    const narrativeHits = NARRATIVE_WORDS.filter(w => lower.includes(w)).length;
+    const isLongMessage = wordCount > 80; // long = telling a story
+    const biographyScore = Math.min(
+      (pastVerbCount / 8 + narrativeHits / 2 + (isLongMessage ? 0.3 : 0)) / 2,
+      1.0
+    );
+
+    // ── Soul Capturer signal ──────────────────────────────────────────────────
+    // Identity-level questions: who am I, patterns, values, recurring themes.
+    // Distinct from Therapist: this is longitudinal self-reflection, not present-moment distress.
+    const IDENTITY_WORDS = [
+      'who am i', 'what kind of person', 'my values', 'my purpose', 'my identity',
+      'always do this', 'always end up', 'keep doing', 'pattern', 'why do i always',
+      'my nature', 'deep down', 'at my core', 'consistently', 'over and over',
+      'defines me', 'what i believe', 'my character', 'true self',
+    ];
+    const identityHits = IDENTITY_WORDS.filter(w => lower.includes(w)).length;
+    // Long conversation depth (8+ turns) signals someone going deep
+    const isDeepConversation = conversationHistory.length >= 8;
+    const soulScore = Math.min(identityHits / 2 + (isDeepConversation ? 0.2 : 0), 1.0);
+
+    // ── Temporal & depth context ──────────────────────────────────────────────
+    const conversationDepth = Math.min(conversationHistory.length / 10, 1.0); // 0–1
+
     const recentPersonas = await this.getRecentPersonas(userId, 5);
-    features.recentPersonas = recentPersonas;
-
-    // Get user activity level
     const recentActivity = await this.getRecentActivity(userId);
-    features.recentActivity = recentActivity;
 
     return {
       type: 'chat_persona',
-      features,
+      features: {
+        // Directional per-persona scores (0–1) — primary learning signal for RL
+        therapistScore,
+        strategistScore,
+        archivistScore,
+        gossipScore,
+        biographyScore,
+        soulScore,
+
+        // Retained raw features for backward-compat with stored contexts
+        messageLength:        message.length,
+        messageWordCount:     wordCount,
+        hasQuestion:          message.includes('?'),
+        isLateNight,
+        isWeekdayMorning,
+        isLongMessage,
+        isDeepConversation,
+        conversationDepth,
+        timeOfDay:            hour,
+        dayOfWeek:            dow,
+        recentPersonas,
+        recentActivity,
+      },
     };
   }
 
   /**
-   * Build persona blend from selected action and context
+   * Build persona blend from selected action and context.
+   *
+   * Rules:
+   * - Max 2 personas total (1 primary + 1 complementary secondary).
+   * - Secondary is chosen by which compatible partner has the strongest signal.
+   * - Conflicting pairs (Therapist + Strategist) are never blended.
+   * - If primary already has the strongest signal, no secondary is added.
    */
   private buildPersonaBlend(action: PersonaAction, context: RLContext): PersonaBlend {
-    // Start with RL-selected persona as primary
-    const primaryPersona = action.id;
+    const primary = action.id;
+    const f = context.features;
 
     const blend: PersonaBlend = {
-      primary: primaryPersona,
+      primary,
       secondary: [],
-      weights: { [primaryPersona]: 0.7 },
+      weights: { [primary]: 1.0 },
     };
 
-    // Context-based blending rules (can be learned via RL later)
-    const features = context.features;
+    // Compatible secondary candidates per primary persona.
+    // Key insight: pairs that share a direction (both past-facing, both
+    // people-focused) work. Pairs that pull in opposite directions (validate
+    // vs advise) actively hurt response quality.
+    const COMPATIBLE: Record<string, { partner: string; signalKey: string; threshold: number }[]> = {
+      therapist:        [{ partner: 'archivist',        signalKey: 'archivistScore', threshold: 0.4 },
+                         { partner: 'soul_capturer',    signalKey: 'soulScore',      threshold: 0.5 }],
+      strategist:       [{ partner: 'soul_capturer',    signalKey: 'soulScore',      threshold: 0.4 },
+                         { partner: 'archivist',        signalKey: 'archivistScore', threshold: 0.5 }],
+      gossip_buddy:     [{ partner: 'archivist',        signalKey: 'archivistScore', threshold: 0.4 },
+                         { partner: 'therapist',        signalKey: 'therapistScore', threshold: 0.6 }],
+      archivist:        [{ partner: 'gossip_buddy',     signalKey: 'gossipScore',    threshold: 0.4 },
+                         { partner: 'biography_writer', signalKey: 'biographyScore', threshold: 0.4 }],
+      biography_writer: [{ partner: 'therapist',        signalKey: 'therapistScore', threshold: 0.4 },
+                         { partner: 'soul_capturer',    signalKey: 'soulScore',      threshold: 0.4 }],
+      soul_capturer:    [{ partner: 'therapist',        signalKey: 'therapistScore', threshold: 0.4 },
+                         { partner: 'biography_writer', signalKey: 'biographyScore', threshold: 0.4 }],
+    };
 
-    // Add therapist if emotional content detected
-    if (features.hasEmotion) {
-      blend.secondary.push('therapist');
-      blend.weights['therapist'] = 0.2;
-      blend.weights[primaryPersona] = 0.5; // Reduce primary weight
-    }
+    const candidates = COMPATIBLE[primary] || [];
+    // Pick the first candidate whose signal clears the threshold
+    const chosen = candidates.find(c => (f[c.signalKey] || 0) >= c.threshold);
 
-    // Add memory_bank if question and longer message
-    if (features.hasQuestion && features.messageLength > 50) {
-      blend.secondary.push('memory_bank');
-      const memoryWeight = 0.1;
-      blend.weights['memory_bank'] = memoryWeight;
-      // Adjust other weights proportionally
-      const totalOtherWeights = Object.values(blend.weights).reduce((a, b) => a + b, 0) - memoryWeight;
-      if (totalOtherWeights > 0) {
-        Object.keys(blend.weights).forEach(key => {
-          if (key !== 'memory_bank') {
-            blend.weights[key] = (blend.weights[key] / totalOtherWeights) * (1 - memoryWeight);
-          }
-        });
-      }
-    }
-
-    // Normalize weights to sum to 1.0
-    const totalWeight = Object.values(blend.weights).reduce((a, b) => a + b, 0);
-    if (totalWeight > 0) {
-      Object.keys(blend.weights).forEach(key => {
-        blend.weights[key] = blend.weights[key] / totalWeight;
-      });
+    if (chosen) {
+      blend.secondary = [chosen.partner];
+      blend.weights[primary]         = 0.70;
+      blend.weights[chosen.partner]  = 0.30;
     }
 
     return blend;
-  }
-
-  /**
-   * Detect emotion keywords in message
-   */
-  private detectEmotionKeywords(message: string): boolean {
-    const emotionKeywords = [
-      'feel', 'feeling', 'emotion', 'sad', 'happy', 'angry', 'anxious', 'worried',
-      'stressed', 'excited', 'nervous', 'frustrated', 'disappointed', 'proud',
-      'grateful', 'lonely', 'overwhelmed', 'confused', 'hurt', 'betrayed',
-    ];
-    const lowerMessage = message.toLowerCase();
-    return emotionKeywords.some(keyword => lowerMessage.includes(keyword));
-  }
-
-  /**
-   * Analyze conversation sentiment (simple heuristic)
-   */
-  private analyzeConversationSentiment(
-    conversationHistory: Array<{ role: string; content: string }>
-  ): 'positive' | 'neutral' | 'negative' {
-    if (conversationHistory.length === 0) return 'neutral';
-
-    const positiveWords = ['good', 'great', 'happy', 'excited', 'love', 'amazing', 'wonderful'];
-    const negativeWords = ['bad', 'sad', 'angry', 'frustrated', 'hate', 'terrible', 'awful'];
-
-    let positiveCount = 0;
-    let negativeCount = 0;
-
-    conversationHistory.forEach(msg => {
-      const content = msg.content.toLowerCase();
-      positiveWords.forEach(word => {
-        if (content.includes(word)) positiveCount++;
-      });
-      negativeWords.forEach(word => {
-        if (content.includes(word)) negativeCount++;
-      });
-    });
-
-    if (positiveCount > negativeCount) return 'positive';
-    if (negativeCount > positiveCount) return 'negative';
-    return 'neutral';
   }
 
   /**
@@ -454,9 +515,13 @@ export class ChatPersonaRL {
   }
 
   /**
-   * Get chat context for a message ID
+   * Get chat context for a message ID.
+   * Returns both the RLContext (for policy updates) and the stored selectedPersona.
    */
-  private async getChatContext(userId: string, messageId: string): Promise<RLContext | null> {
+  private async getChatContext(
+    userId: string,
+    messageId: string
+  ): Promise<(RLContext & { selectedPersona: string }) | null> {
     try {
       const { data } = await supabaseAdmin
         .from('rl_chat_contexts')
@@ -470,6 +535,7 @@ export class ChatPersonaRL {
       return {
         type: 'chat_persona',
         features: data.context_features || {},
+        selectedPersona: data.selected_persona || 'therapist',
       };
     } catch (error) {
       logger.debug({ error, messageId }, 'RL: Failed to get chat context');
@@ -506,7 +572,7 @@ export class ChatPersonaRL {
         messageCount: messages.length,
         hasFollowUpQuestions,
         context: context || undefined,
-        selectedPersona: context?.features?.selectedPersona || undefined,
+        selectedPersona: context?.selectedPersona || undefined,
       };
     } catch (error) {
       logger.debug({ error, sessionId }, 'RL: Failed to get chat session');

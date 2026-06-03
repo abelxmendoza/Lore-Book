@@ -115,7 +115,7 @@ The `CanonStatus` on `entry_ir` (CANON, ROLEPLAY, HYPOTHETICAL, etc.) prevents n
 
 1. **`optionalAuth` was duplicated in `routes/chat.ts`** — now fixed, but the pattern of duplicating middleware in route files is a recurring risk. Consider a middleware registry.
 
-2. **The dead project reference in `config.ts`** (`jawzxiiwfagliloxnnkc` → `mwtyckyguduigflpnqss`) — now fixed, but suggests the config has not been audited recently. Full config audit recommended.
+2. **The dead project reference in `config.ts`** (`cshtthzpgkmrbcsfghyq` → `mwtyckyguduigflpnqss`) — now fixed, but suggests the config has not been audited recently. Full config audit recommended.
 
 3. **`workout_events` missing from cloud schema** — the universal RLS migration skipped this table because it doesn't exist on the cloud. Either backfill the migration or document the divergence.
 

@@ -223,6 +223,14 @@ export default function Login() {
             )}
           </div>
 
+          {/* Payments coming soon notice */}
+          <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3 text-center">
+            <p className="text-xs text-white/50 leading-relaxed">
+              LoreBook is <span className="text-purple-300 font-medium">free to use</span> while we're in early access.
+              Paid plans are coming soon — no credit card needed now.
+            </p>
+          </div>
+
           {/* Footer */}
           <div className="pt-4 border-t border-white/10">
             <p className="text-xs text-center text-white/40">

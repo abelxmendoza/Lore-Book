@@ -219,7 +219,7 @@ export const fetchActivityLogs = async (limit: number = 50): Promise<ActivityLog
     // Return mock data if API fails (when mock data is enabled)
     const shouldUseMock = shouldUseMockData();
     if (shouldUseMock) {
-      if (config.isDevelopment) {
+      if (config.env.isDevelopment) {
         console.warn('Failed to fetch activity logs, using mock data');
       }
       return mockLogs;
@@ -252,7 +252,7 @@ export const fetchStorageUsage = async (): Promise<StorageUsage> => {
     // Return mock data if API fails (when mock data is enabled)
     const shouldUseMock = shouldUseMockData();
     if (shouldUseMock) {
-      if (config.isDevelopment) {
+      if (config.env.isDevelopment) {
         console.warn('Failed to fetch storage usage, using mock data');
       }
       return mockUsage;
@@ -294,7 +294,7 @@ export const fetchPaymentMethods = async (): Promise<PaymentMethod[]> => {
   } catch (_error) {
     const shouldUseMock = shouldUseMockData();
     if (shouldUseMock) {
-      if (config.isDevelopment) {
+      if (config.env.isDevelopment) {
         console.warn('Failed to fetch payment methods, using mock data');
       }
       return mockPaymentMethods;
@@ -345,7 +345,7 @@ export const fetchBillingHistory = async (limit: number = 50): Promise<BillingIn
   } catch (_error) {
     const shouldUseMock = shouldUseMockData();
     if (shouldUseMock) {
-      if (config.isDevelopment) {
+      if (config.env.isDevelopment) {
         console.warn('Failed to fetch billing history, using mock data:', _error);
       }
       return mockInvoices;
@@ -372,14 +372,20 @@ export const exportUserData = async (format: 'json' | 'csv'): Promise<Blob> => {
 
 // Delete user account
 export const deleteUserAccount = async (): Promise<void> => {
-  const response = await fetchJson('/api/user/delete', {
-    method: 'DELETE',
-  });
-  
-  // Also sign out from Supabase
+  await fetchJson('/api/user/delete', { method: 'DELETE' });
   await supabase.auth.signOut();
-  
-  return response;
+};
+
+// Log an activity event (best-effort — never throws)
+export const logActivity = async (action: string, metadata?: Record<string, unknown>): Promise<void> => {
+  try {
+    await fetchJson('/api/user/activity', {
+      method: 'POST',
+      body: JSON.stringify({ action, metadata }),
+    });
+  } catch {
+    // Silently ignore — activity logging must never block the user
+  }
 };
 
 // Change password

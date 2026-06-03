@@ -4,7 +4,7 @@
 
 echo "📋 To get your exact connection string:"
 echo ""
-echo "1. Go to: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/settings/database"
+echo "1. Go to: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/settings/database"
 echo ""
 echo "2. Scroll to 'Connection string' section"
 echo ""

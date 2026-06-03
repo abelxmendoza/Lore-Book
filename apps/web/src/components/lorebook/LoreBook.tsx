@@ -642,7 +642,25 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     loose: 'leading-loose'
   };
 
-  // Dummy data is always available, so no loading or empty states needed
+  // Library landing — shown on first load or when user returns to library
+  if (showLibrary) {
+    return (
+      <LibraryLanding
+        onGenerate={(query) => {
+          void handleGenerateFromQuery(query);
+        }}
+        onOpenDemoBook={() => {
+          setOutline(dummyBook);
+          setChapters(dummyChapters);
+          setIsCoverVisible(true);
+          setShowLibrary(false);
+        }}
+        generating={generating}
+        isMockData={shouldUseMock}
+      />
+    );
+  }
+
   if (!outline || flatSections.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
@@ -825,25 +843,6 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
       setGenerating(false);
     }
   };
-
-  // Library landing — shown on first load or when user returns to library
-  if (showLibrary) {
-    return (
-      <LibraryLanding
-        onGenerate={(query) => {
-          void handleGenerateFromQuery(query);
-        }}
-        onOpenDemoBook={() => {
-          setOutline(dummyBook);
-          setChapters(dummyChapters);
-          setIsCoverVisible(true);
-          setShowLibrary(false);
-        }}
-        generating={generating}
-        isMockData={shouldUseMock}
-      />
-    );
-  }
 
   // Cover page — full-screen before the reader
   if (isCoverVisible && outline) {

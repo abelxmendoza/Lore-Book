@@ -1,5 +1,5 @@
 -- Simple dev user creation for terms acceptance
--- Run this in Supabase SQL Editor: https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql/new
+-- Run this in Supabase SQL Editor: https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql/new
 
 -- Create dev user (if it doesn't exist)
 INSERT INTO auth.users (

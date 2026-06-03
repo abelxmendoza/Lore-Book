@@ -81,7 +81,7 @@ export default function Investors() {
               <FeatureCard
                 icon={Zap}
                 title="Compiler-Inspired Architecture"
-                description="LoreKeeper Narrative Compiler (LNC) provides epistemic safety, incremental compilation, and deterministic entity resolution. This is not just an app—it's a compiler for life stories."
+                description="LoreBook Narrative Compiler (LNC) provides epistemic safety, incremental compilation, and deterministic entity resolution. This is not just an app—it's a compiler for life stories."
               />
               <FeatureCard
                 icon={Database}

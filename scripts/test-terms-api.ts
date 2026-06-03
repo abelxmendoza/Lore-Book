@@ -25,7 +25,7 @@ async function testTermsAPI() {
     if (tableError.code === '42P01') {
       console.log('   ❌ Table does NOT exist');
       console.log('\n   📋 SOLUTION: Run the SQL migration in Supabase SQL Editor');
-      console.log('      https://supabase.com/dashboard/project/jawzxiiwfagliloxnnkc/sql/new');
+      console.log('      https://supabase.com/dashboard/project/cshtthzpgkmrbcsfghyq/sql/new');
       console.log('      Copy SQL from: migrations/20250120_terms_acceptance.sql');
       return;
     } else {
