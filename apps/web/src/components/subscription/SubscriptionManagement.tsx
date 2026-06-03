@@ -216,7 +216,7 @@ export const SubscriptionManagement = () => {
           <CardContent className="p-5">
             <p className="text-sm font-semibold text-white mb-1">Unlock unlimited threads</p>
             <p className="text-xs text-white/50 mb-4">
-              Pro starts at $12/month — unlimited threads, relationship intelligence, biography generation.
+              Pro is $20/month — unlimited threads, relationship intelligence, biography generation.
             </p>
             <Button
               variant="default"

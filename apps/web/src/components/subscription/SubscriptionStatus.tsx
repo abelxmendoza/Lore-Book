@@ -159,7 +159,7 @@ export const SubscriptionStatus = () => {
           className="w-full rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-left hover:bg-primary/8 transition"
         >
           <p className="text-sm font-semibold text-white mb-0.5">Unlock unlimited threads</p>
-          <p className="text-xs text-white/40">Pro starts at $12/mo — see all plans</p>
+          <p className="text-xs text-white/40">Pro is $20/mo — see all plans</p>
         </button>
       )}
 
