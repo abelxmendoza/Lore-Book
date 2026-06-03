@@ -121,12 +121,14 @@ router.get(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
+    const limit = Math.min(Number(req.query.limit) || 50, 100);
 
     const { data: threads, error } = await supabaseAdmin
       .from('conversation_sessions')
-      .select('*')
+      .select('id, title, subtitle, updated_at, message_count')
       .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+      .order('updated_at', { ascending: false })
+      .limit(limit);
 
     if (error) {
       throw error;
@@ -134,7 +136,13 @@ router.get(
 
     res.json({
       success: true,
-      threads: threads || [],
+      threads: (threads || []).map((t) => ({
+        id: t.id,
+        title: t.title ?? 'Untitled',
+        subtitle: t.subtitle ?? undefined,
+        updatedAt: t.updated_at,
+        messageCount: t.message_count ?? undefined,
+      })),
     });
   })
 );

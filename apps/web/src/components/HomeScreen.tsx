@@ -153,7 +153,7 @@ export const HomeScreen = () => {
     'there';
 
   useEffect(() => {
-    fetchJson<{ threads: RecentThread[] }>('/api/chat/threads?limit=5')
+    fetchJson<{ threads: RecentThread[] }>('/api/conversation/threads?limit=5')
       .then(data => setRecentThreads(data.threads ?? []))
       .catch(() => {});
 
