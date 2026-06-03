@@ -1,11 +1,29 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSubscription } from '../../hooks/useSubscription';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
-import { Loader2, Crown, Calendar, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, Crown, Calendar, AlertTriangle, CheckCircle, XCircle, Sparkles } from 'lucide-react';
 import { SubscriptionStatus } from './SubscriptionStatus';
 
+const StripeComingSoonBanner = () => (
+  <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 flex items-start gap-3">
+    <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center shrink-0 mt-0.5">
+      <Sparkles className="h-4 w-4 text-primary" />
+    </div>
+    <div>
+      <p className="text-white font-semibold text-sm">Payments launching soon</p>
+      <p className="text-white/50 text-xs mt-1 leading-relaxed">
+        The full Free plan is available now — unlimited messages, one thread with real persistent memory.
+        Paid plans unlock unlimited threads, biography generation, and deep relationship intelligence.
+        No credit card needed until launch.
+      </p>
+    </div>
+  </div>
+);
+
 export const SubscriptionManagement = () => {
+  const navigate = useNavigate();
   const { subscription, loading, cancelSubscription, reactivateSubscription, getBillingPortalUrl } = useSubscription();
   const [canceling, setCanceling] = useState(false);
   const [reactivating, setReactivating] = useState(false);
@@ -64,7 +82,8 @@ export const SubscriptionManagement = () => {
     );
   }
 
-  const isPremium = subscription.planType === 'premium' || subscription.isTrial;
+  // Any paid plan (pro / power / premium) or an active trial is considered "paid"
+  const isPremium = ['pro', 'power', 'premium'].includes(subscription.planType ?? '') || subscription.usage.isTrial;
   const isCanceled = subscription.cancelAtPeriodEnd;
 
   return (
@@ -72,6 +91,8 @@ export const SubscriptionManagement = () => {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-white">Subscription Management</h1>
       </div>
+
+      <StripeComingSoonBanner />
 
       <SubscriptionStatus />
 
@@ -191,22 +212,18 @@ export const SubscriptionManagement = () => {
       )}
 
       {!isPremium && (
-        <Card className="bg-gradient-to-r from-purple-900/30 to-fuchsia-900/30 border-purple-500/50">
-          <CardHeader>
-            <CardTitle className="text-white">Upgrade to Premium</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-white/80 mb-4">
-              Unlock unlimited entries, AI requests, and all premium features.
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-5">
+            <p className="text-sm font-semibold text-white mb-1">Unlock unlimited threads</p>
+            <p className="text-xs text-white/50 mb-4">
+              Pro starts at $12/month — unlimited threads, relationship intelligence, biography generation.
             </p>
             <Button
               variant="default"
-              onClick={() => {
-                window.dispatchEvent(new CustomEvent('navigate', { detail: { surface: 'pricing' } }));
-              }}
+              onClick={() => navigate('/upgrade')}
               className="w-full"
             >
-              View Pricing Plans
+              See all plans
             </Button>
           </CardContent>
         </Card>

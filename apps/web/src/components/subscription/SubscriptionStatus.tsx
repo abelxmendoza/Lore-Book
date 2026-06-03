@@ -1,174 +1,168 @@
+import { useNavigate } from 'react-router-dom';
 import { useSubscription } from '../../hooks/useSubscription';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Loader2, Crown, Calendar, TrendingUp, AlertCircle } from 'lucide-react';
-// Note: Using window.location for navigation since app uses surface-based routing
+import { Loader2, Sparkles, Zap, Brain, BookOpen, Calendar, AlertCircle, ArrowUpRight } from 'lucide-react';
+import { cn } from '../../lib/cn';
+
+const PLAN_META: Record<string, { label: string; icon: typeof Zap; color: string; iconColor: string }> = {
+  free:    { label: 'Free',    icon: Zap,        color: 'text-white/50',    iconColor: 'text-white/40' },
+  pro:     { label: 'Pro',     icon: Sparkles,   color: 'text-primary',     iconColor: 'text-primary' },
+  power:   { label: 'Power',   icon: Brain,      color: 'text-violet-300',  iconColor: 'text-violet-300' },
+  premium: { label: 'Premium', icon: BookOpen,   color: 'text-amber-300',   iconColor: 'text-amber-300' },
+};
+
+function UsageBar({ label, used, limit }: { label: string; used: number; limit: number | typeof Infinity }) {
+  const isUnlimited = limit === Infinity;
+  const pct = isUnlimited ? 0 : Math.min((used / limit) * 100, 100);
+  const isHigh = pct >= 80;
+  const isFull = pct >= 100;
+
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-1.5 text-white/50">
+        <span>{label}</span>
+        <span className={cn(isFull ? 'text-red-400' : isHigh ? 'text-amber-400' : 'text-white/60')}>
+          {isUnlimited ? '∞ unlimited' : `${used} / ${limit}`}
+        </span>
+      </div>
+      {!isUnlimited && (
+        <>
+          <div className="w-full bg-white/8 rounded-full h-1.5 overflow-hidden">
+            <div
+              className={cn(
+                'h-1.5 rounded-full transition-all',
+                isFull ? 'bg-red-500' : isHigh ? 'bg-amber-500' : 'bg-primary'
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          {isFull && (
+            <p className="text-[11px] text-red-400 mt-1 flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              Limit reached — upgrade for unlimited access
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 export const SubscriptionStatus = () => {
+  const navigate = useNavigate();
   const { subscription, loading, getBillingPortalUrl } = useSubscription();
 
   if (loading) {
     return (
-      <Card className="bg-black/40 border-border/60">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-center py-10">
+        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+      </div>
     );
   }
 
   if (!subscription) {
     return (
-      <Card className="bg-black/40 border-border/60">
-        <CardContent className="p-6">
-          <p className="text-white/60">Failed to load subscription status</p>
-        </CardContent>
-      </Card>
+      <div className="rounded-xl border border-white/8 bg-black/30 p-4">
+        <p className="text-sm text-white/40">Could not load subscription info.</p>
+      </div>
     );
   }
 
-  const isPremium = subscription.planType === 'premium' || subscription.usage.isTrial;
-  const isTrial = subscription.status === 'trial' || subscription.usage.isTrial;
-  const entryUsagePercent = subscription.usage.entryLimit === Infinity 
-    ? 0 
-    : (subscription.usage.entryCount / subscription.usage.entryLimit) * 100;
-  const aiUsagePercent = subscription.usage.aiLimit === Infinity 
-    ? 0 
-    : (subscription.usage.aiRequestsCount / subscription.usage.aiLimit) * 100;
+  const planId = subscription.planType ?? 'free';
+  const meta = PLAN_META[planId] ?? PLAN_META.free;
+  const Icon = meta.icon;
+  const isFree = planId === 'free';
+  const isTrial = subscription.status === 'trial' || subscription.usage?.isTrial;
+  const cancelSoon = subscription.cancelAtPeriodEnd;
 
   const handleManageBilling = async () => {
     try {
       const url = await getBillingPortalUrl(window.location.href);
       window.location.href = url;
-    } catch (error) {
-      console.error('Failed to open billing portal:', error);
+    } catch {
+      console.error('Failed to open billing portal');
     }
   };
 
   return (
     <div className="space-y-4">
-      <Card className="bg-black/40 border-border/60">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Crown className={`h-5 w-5 ${isPremium ? 'text-yellow-400' : 'text-white/40'}`} />
-            Subscription Status
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
+
+      {/* Plan card */}
+      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <Icon className={cn('h-4.5 w-4.5', meta.iconColor)} />
             <div>
-              <p className="text-lg font-semibold">
-                {isPremium ? 'Premium' : 'Free'} Plan
-              </p>
+              <p className="text-sm font-semibold text-white">{meta.label} plan</p>
               {isTrial && subscription.trialDaysRemaining > 0 && (
-                <p className="text-sm text-yellow-400 mt-1">
+                <p className="text-[11px] text-amber-400">
                   {subscription.trialDaysRemaining} day{subscription.trialDaysRemaining !== 1 ? 's' : ''} left in trial
                 </p>
               )}
-              {subscription.cancelAtPeriodEnd && (
-                <p className="text-sm text-orange-400 mt-1">
-                  Cancels on {subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : 'period end'}
+              {cancelSoon && (
+                <p className="text-[11px] text-orange-400">
+                  Cancels {subscription.currentPeriodEnd
+                    ? new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                    : 'at period end'}
                 </p>
               )}
             </div>
-            {!isPremium && (
-              <Button variant="default" onClick={() => {
-                // Trigger pricing page via custom event
-                window.dispatchEvent(new CustomEvent('navigate', { detail: { surface: 'pricing' } }));
-              }}>
-                Upgrade
-              </Button>
-            )}
           </div>
-
-          {subscription.currentPeriodEnd && (
-            <div className="flex items-center gap-2 text-sm text-white/60">
-              <Calendar className="h-4 w-4" />
-              <span>
-                {subscription.cancelAtPeriodEnd ? 'Access until' : 'Renews on'}{' '}
-                {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
-              </span>
-            </div>
-          )}
-
-          {isPremium && (
-            <Button
-              variant="outline"
-              onClick={handleManageBilling}
-              className="w-full"
+          {isFree ? (
+            <button
+              type="button"
+              onClick={() => navigate('/upgrade')}
+              className="flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition"
             >
-              Manage Billing
-            </Button>
+              Upgrade
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleManageBilling}
+              className="text-xs text-white/40 hover:text-white transition"
+            >
+              Manage billing
+            </button>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      <Card className="bg-black/40 border-border/60">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            Usage This Month
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-white/60">Journal Entries</span>
-              <span className="text-white">
-                {subscription.usage.entryCount} / {subscription.usage.entryLimit === Infinity ? '∞' : subscription.usage.entryLimit}
-              </span>
-            </div>
-            {subscription.usage.entryLimit !== Infinity && (
-              <div className="w-full bg-white/10 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all ${
-                    entryUsagePercent >= 100 ? 'bg-red-500' :
-                    entryUsagePercent >= 80 ? 'bg-yellow-500' :
-                    'bg-primary'
-                  }`}
-                  style={{ width: `${Math.min(entryUsagePercent, 100)}%` }}
-                />
-              </div>
-            )}
-            {entryUsagePercent >= 100 && (
-              <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" />
-                Limit reached. Upgrade for unlimited entries.
-              </p>
-            )}
+        {subscription.currentPeriodEnd && !isFree && (
+          <div className="flex items-center gap-1.5 text-xs text-white/35">
+            <Calendar className="h-3.5 w-3.5" />
+            {cancelSoon ? 'Access until' : 'Renews'}{' '}
+            {new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
           </div>
+        )}
+      </div>
 
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-white/60">AI Requests</span>
-              <span className="text-white">
-                {subscription.usage.aiRequestsCount} / {subscription.usage.aiLimit === Infinity ? '∞' : subscription.usage.aiLimit}
-              </span>
-            </div>
-            {subscription.usage.aiLimit !== Infinity && (
-              <div className="w-full bg-white/10 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all ${
-                    aiUsagePercent >= 100 ? 'bg-red-500' :
-                    aiUsagePercent >= 80 ? 'bg-yellow-500' :
-                    'bg-primary'
-                  }`}
-                  style={{ width: `${Math.min(aiUsagePercent, 100)}%` }}
-                />
-              </div>
-            )}
-            {aiUsagePercent >= 100 && (
-              <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" />
-                Limit reached. Upgrade for unlimited AI requests.
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Usage */}
+      <div className="rounded-xl border border-white/10 bg-black/30 p-4 space-y-4">
+        <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Usage this month</p>
+        <UsageBar
+          label="Journal entries"
+          used={subscription.usage?.entryCount ?? 0}
+          limit={subscription.usage?.entryLimit ?? 50}
+        />
+        <UsageBar
+          label="AI conversations"
+          used={subscription.usage?.aiRequestsCount ?? 0}
+          limit={subscription.usage?.aiLimit ?? 100}
+        />
+      </div>
+
+      {/* Free plan upgrade nudge */}
+      {isFree && (
+        <button
+          type="button"
+          onClick={() => navigate('/upgrade')}
+          className="w-full rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-left hover:bg-primary/8 transition"
+        >
+          <p className="text-sm font-semibold text-white mb-0.5">Unlock unlimited threads</p>
+          <p className="text-xs text-white/40">Pro starts at $12/mo — see all plans</p>
+        </button>
+      )}
+
     </div>
   );
 };
-
