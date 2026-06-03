@@ -1,75 +1,84 @@
-/**
- * Admin Sidebar Component
- */
-
 import {
-  LayoutDashboard,
-  Users,
-  FileText,
-  Zap,
-  Settings,
-  Flag,
-  DollarSign,
-  Activity,
-  Crown,
-  LogIn,
+  LayoutDashboard, Users, FileText, Zap, Settings,
+  Flag, DollarSign, Activity, Crown, LogIn, X, Menu,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { cn } from '../../lib/cn';
 
-export type AdminSection = 'dashboard' | 'users' | 'subscribers' | 'login-activity' | 'logs' | 'ai-events' | 'tools' | 'feature-flags' | 'finance' | 'engine-health';
+export type AdminSection =
+  | 'dashboard' | 'users' | 'subscribers' | 'login-activity'
+  | 'logs' | 'ai-events' | 'engine-health' | 'tools' | 'feature-flags' | 'finance';
 
 interface AdminSidebarProps {
   activeSection: AdminSection;
   onSectionChange: (section: AdminSection) => void;
+  /** Mobile-only: whether the drawer is open */
+  mobileOpen?: boolean;
+  /** Mobile-only: called when backdrop or X is clicked */
+  onMobileClose?: () => void;
 }
 
 const MENU_GROUPS = [
   {
     label: 'Overview',
-    items: [
-      { id: 'dashboard' as AdminSection, label: 'Dashboard', icon: LayoutDashboard },
-    ],
+    items: [{ id: 'dashboard' as AdminSection, label: 'Dashboard', icon: LayoutDashboard }],
   },
   {
     label: 'Users',
     items: [
-      { id: 'users' as AdminSection, label: 'All Users', icon: Users },
-      { id: 'subscribers' as AdminSection, label: 'Subscribers', icon: Crown },
-      { id: 'login-activity' as AdminSection, label: 'Login Activity', icon: LogIn },
+      { id: 'users' as AdminSection,          label: 'All Users',       icon: Users },
+      { id: 'subscribers' as AdminSection,    label: 'Subscribers',     icon: Crown },
+      { id: 'login-activity' as AdminSection, label: 'Login Activity',  icon: LogIn },
     ],
   },
   {
     label: 'System',
     items: [
-      { id: 'logs' as AdminSection, label: 'Logs', icon: FileText },
-      { id: 'ai-events' as AdminSection, label: 'AI Events', icon: Zap },
-      { id: 'engine-health' as AdminSection, label: 'Engine Health', icon: Activity },
-      { id: 'tools' as AdminSection, label: 'Tools', icon: Settings },
-      { id: 'feature-flags' as AdminSection, label: 'Feature Flags', icon: Flag },
+      { id: 'logs' as AdminSection,          label: 'Logs',           icon: FileText },
+      { id: 'ai-events' as AdminSection,     label: 'AI Events',      icon: Zap },
+      { id: 'engine-health' as AdminSection, label: 'Engine Health',  icon: Activity },
+      { id: 'tools' as AdminSection,         label: 'Tools',          icon: Settings },
+      { id: 'feature-flags' as AdminSection, label: 'Feature Flags',  icon: Flag },
     ],
   },
   {
     label: 'Finance',
-    items: [
-      { id: 'finance' as AdminSection, label: 'Finance', icon: DollarSign },
-    ],
+    items: [{ id: 'finance' as AdminSection, label: 'Finance', icon: DollarSign }],
   },
 ];
 
-export const AdminSidebar = ({ activeSection, onSectionChange }: AdminSidebarProps) => {
-  const navigate = useNavigate();
+// ── Shared nav content ────────────────────────────────────────────────────────
 
+function NavContent({
+  activeSection,
+  onSectionChange,
+  onClose,
+}: {
+  activeSection: AdminSection;
+  onSectionChange: (s: AdminSection) => void;
+  onClose?: () => void;
+}) {
+  const navigate = useNavigate();
   return (
-    <aside className="w-64 bg-black/40 border-r border-border/60 p-4">
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-white">Admin Console</h2>
-        <p className="text-xs text-white/60 mt-1">Production Administration</p>
+    <>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-base font-bold text-white">Admin Console</h2>
+          <p className="text-[10px] text-white/35 mt-0.5 uppercase tracking-wider">Production</p>
+        </div>
+        {onClose && (
+          <button type="button" onClick={onClose} aria-label="Close navigation" className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition lg:hidden">
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
-      <nav className="space-y-4">
+      <nav className="space-y-4 flex-1">
         {MENU_GROUPS.map((group) => (
           <div key={group.label}>
-            <p className="text-xs font-semibold text-white/30 uppercase tracking-widest px-4 mb-1">{group.label}</p>
+            <p className="text-[10px] font-semibold text-white/25 uppercase tracking-widest px-3 mb-1">
+              {group.label}
+            </p>
             <div className="space-y-0.5">
               {group.items.map((item) => {
                 const Icon = item.icon;
@@ -78,15 +87,16 @@ export const AdminSidebar = ({ activeSection, onSectionChange }: AdminSidebarPro
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => onSectionChange(item.id)}
-                    className={`w-full text-left px-4 py-2.5 rounded-lg flex items-center gap-3 transition-colors ${
+                    onClick={() => { onSectionChange(item.id); onClose?.(); }}
+                    className={cn(
+                      'w-full text-left px-3 py-2 rounded-xl flex items-center gap-2.5 transition-all text-sm',
                       isActive
-                        ? 'bg-primary/20 text-primary border border-primary/30'
-                        : 'hover:bg-white/5 text-white/70'
-                    }`}
+                        ? 'bg-primary/15 text-primary border border-primary/25'
+                        : 'hover:bg-white/[0.05] text-white/55 hover:text-white/85'
+                    )}
                   >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="text-sm font-medium">{item.label}</span>
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="font-medium">{item.label}</span>
                   </button>
                 );
               })}
@@ -95,14 +105,66 @@ export const AdminSidebar = ({ activeSection, onSectionChange }: AdminSidebarPro
         ))}
       </nav>
 
-      <div className="mt-8 pt-6 border-t border-border/60">
+      <div className="mt-auto pt-4 border-t border-white/8">
         <button
+          type="button"
           onClick={() => navigate('/')}
-          className="w-full text-left px-4 py-2 text-sm text-white/60 hover:text-white transition-colors"
+          className="w-full text-left px-3 py-2 text-xs text-white/35 hover:text-white/70 transition"
         >
-          ← Back to App
+          ← Back to app
         </button>
       </div>
-    </aside>
+    </>
   );
-};
+}
+
+// ── Exported sidebar ──────────────────────────────────────────────────────────
+
+export const AdminSidebar = ({
+  activeSection,
+  onSectionChange,
+  mobileOpen = false,
+  onMobileClose,
+}: AdminSidebarProps) => (
+  <>
+    {/* Desktop sidebar — always visible on lg+ */}
+    <aside className="hidden lg:flex flex-col w-56 flex-shrink-0 bg-black/40 border-r border-white/8 p-4 min-h-screen">
+      <NavContent activeSection={activeSection} onSectionChange={onSectionChange} />
+    </aside>
+
+    {/* Mobile drawer — shown when mobileOpen */}
+    {mobileOpen && (
+      <>
+        {/* Backdrop */}
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          onClick={onMobileClose}
+          aria-hidden
+        />
+        {/* Drawer */}
+        <aside className="fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-[#080510] border-r border-white/10 p-4 lg:hidden">
+          <NavContent
+            activeSection={activeSection}
+            onSectionChange={onSectionChange}
+            onClose={onMobileClose}
+          />
+        </aside>
+      </>
+    )}
+  </>
+);
+
+// ── Mobile trigger button — used in the main header ───────────────────────────
+
+export function AdminMenuButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="lg:hidden flex items-center gap-2 px-3 py-2 rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 text-sm text-white transition"
+    >
+      <Menu className="h-4 w-4" />
+      Menu
+    </button>
+  );
+}

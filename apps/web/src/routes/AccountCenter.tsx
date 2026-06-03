@@ -42,9 +42,9 @@ function getAvatarInitial(name: string, email: string): string {
 // ── Nav item ──────────────────────────────────────────────────────────────────
 
 function NavItem({
-  id, label, icon: Icon, active, onClick,
+  label, icon: Icon, active, onClick,
 }: {
-  id: Tab; label: string; icon: any; active: boolean; onClick: () => void;
+  id?: Tab; label: string; icon: any; active: boolean; onClick: () => void;
 }) {
   return (
     <button
@@ -360,8 +360,30 @@ export default function AccountCenter() {
         {/* Body: sidebar + content */}
         <div className="flex flex-col lg:flex-row gap-6">
 
-          {/* Sidebar nav */}
-          <nav className="lg:w-48 flex-shrink-0 flex lg:flex-col gap-1 flex-wrap">
+          {/* Mobile: horizontal scrollable tab pills */}
+          <nav className="lg:hidden flex gap-1 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none">
+            {tabs.map(t => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveTab(t.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap flex-shrink-0 transition-all ${
+                    activeTab === t.id
+                      ? 'bg-primary/15 text-primary border border-primary/25'
+                      : 'text-white/45 hover:text-white/75 border border-white/8 bg-white/[0.03]'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Desktop: vertical sidebar */}
+          <nav className="hidden lg:flex lg:w-48 flex-shrink-0 lg:flex-col gap-1">
             {tabs.map(t => (
               <NavItem key={t.id} {...t} active={activeTab === t.id} onClick={() => setActiveTab(t.id)} />
             ))}

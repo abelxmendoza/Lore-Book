@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Users, FileText, Sparkles, Zap, AlertTriangle, Search,
-  RefreshCw, Crown, Clock, Gift, LogIn, Filter,
+  RefreshCw, Crown, Clock, Gift, LogIn, Filter, Terminal,
 } from 'lucide-react';
 import { useAuth } from '../../lib/supabase';
 import { fetchJson } from '../../lib/api';
-import { AdminSidebar, type AdminSection } from '../../components/admin/AdminSidebar';
+import { AdminSidebar, AdminMenuButton, type AdminSection } from '../../components/admin/AdminSidebar';
 import { AdminCard } from '../../components/admin/AdminCard';
 import { AdminHeader } from '../../components/admin/AdminHeader';
 import { FinanceDashboard } from '../../components/admin/FinanceDashboard';
@@ -81,6 +81,7 @@ export const AdminPage = () => {
   const [subFilter, setSubFilter] = useState<string>('all');
   const [providerFilter, setProviderFilter] = useState<string>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const isAdmin = canAccessAdmin(user || null);
 
@@ -171,10 +172,10 @@ export const AdminPage = () => {
   // Still waiting for Supabase session — show spinner, don't flash redirect
   if (authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-gray-900 via-purple-950 to-gray-900">
+      <div className="flex min-h-screen items-center justify-center bg-[#080510]">
         <div className="text-center">
-          <div className="mx-auto w-10 h-10 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mb-4" />
-          <p className="text-white/50 text-sm">Verifying admin access…</p>
+          <div className="mx-auto w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
+          <p className="text-white/40 text-sm">Verifying admin access…</p>
         </div>
       </div>
     );
@@ -185,25 +186,54 @@ export const AdminPage = () => {
     return null;
   }
 
+  const isBackendDown = error?.includes('connectivity') || error?.includes('unavailable');
+
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-purple-950 to-gray-900">
-      <AdminSidebar activeSection={currentView} onSectionChange={setCurrentView} />
-      <main className="flex-1 p-6 text-white overflow-auto">
-        <div className="flex items-center justify-between mb-6">
+    <div className="flex min-h-screen bg-[#080510]">
+      <AdminSidebar
+        activeSection={currentView}
+        onSectionChange={setCurrentView}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
+      <main className="flex-1 p-4 sm:p-6 text-white overflow-auto min-w-0">
+        {/* Header row */}
+        <div className="flex items-center gap-3 mb-6">
+          <AdminMenuButton onClick={() => setMobileSidebarOpen(true)} />
           <AdminHeader title="Admin Console" subtitle="Production Administration" badge="ADMIN" />
           <button
             type="button"
             onClick={handleRefresh}
             disabled={refreshing}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 text-sm transition disabled:opacity-50"
+            className="ml-auto flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm transition disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </button>
         </div>
 
-        {error && (
-          <div className="mb-4 rounded-lg bg-red-500/20 border border-red-500/50 p-4 text-red-200 flex items-center gap-2">
+        {/* Backend offline banner — shows start command */}
+        {isBackendDown && (
+          <div className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-300 mb-1">Backend server is not running</p>
+                <p className="text-xs text-white/50 mb-3">
+                  The admin console requires the LoreBook server to be running locally.
+                </p>
+                <div className="flex items-center gap-2 bg-black/40 rounded-lg px-3 py-2 border border-white/10 font-mono text-xs text-emerald-300">
+                  <Terminal className="h-3.5 w-3.5 text-white/30 shrink-0" />
+                  cd apps/server &amp;&amp; npm run dev
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Generic error (non-connectivity) */}
+        {error && !isBackendDown && (
+          <div className="mb-4 rounded-xl bg-red-500/15 border border-red-500/40 p-4 text-red-300 flex items-center gap-2 text-sm">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             {error}
           </div>
