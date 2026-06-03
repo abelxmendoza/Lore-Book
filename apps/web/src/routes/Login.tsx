@@ -116,8 +116,8 @@ export default function Login() {
       {/* ── LEFT — product pitch ─────────────────────────────────────────────── */}
       <div className="relative z-10 hidden lg:flex flex-col justify-between w-[52%] flex-shrink-0 px-14 py-12 border-r border-white/6">
 
-        {/* Logo */}
-        <Logo size="sm" showText />
+        {/* Logo — large on the left pitch side */}
+        <Logo size="lg" showText />
 
         {/* Hero text */}
         <div>
@@ -181,8 +181,8 @@ export default function Login() {
 
         {/* Mobile-only header */}
         <div className="lg:hidden mb-8 text-center">
-          <Logo size="md" showText />
-          <p className="text-white/40 text-sm mt-2">The AI that learns who you are.</p>
+          <Logo size="xl" showText />
+          <p className="text-white/40 text-sm mt-3">The AI that learns who you are.</p>
         </div>
 
         <div className="w-full max-w-sm">
@@ -270,23 +270,33 @@ export default function Login() {
                 </div>
               )}
 
-              {/* Try without signing in */}
-              <div className="pt-1 flex items-center justify-center gap-4 text-xs text-white/25">
-                <button
-                  type="button"
-                  onClick={enterGuest}
-                  className="hover:text-white/60 transition"
-                >
-                  Continue as guest
-                </button>
-                <span>·</span>
-                <button
-                  type="button"
-                  onClick={enterDemo}
-                  className="hover:text-white/60 transition"
-                >
-                  View demo
-                </button>
+              {/* Demo Mode — featured section */}
+              <div className="mt-2 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-300">Demo Mode</p>
+                    <p className="text-xs text-white/45 mt-0.5 leading-relaxed">
+                      Explore the full app with sample data — no account needed.
+                      See what LoreBook looks like when it knows you.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={enterDemo}
+                    className="flex-1 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-200 text-xs font-semibold transition"
+                  >
+                    Try Demo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={enterGuest}
+                    className="flex-1 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-white/50 text-xs font-medium transition"
+                  >
+                    Guest (blank)
+                  </button>
+                </div>
               </div>
             </div>
           )}

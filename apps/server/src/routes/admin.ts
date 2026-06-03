@@ -58,7 +58,7 @@ router.get('/users', async (req: AuthenticatedRequest, res) => {
 
     const { data: users, error } = await supabaseAdmin.auth.admin.listUsers({
       page: 1,
-      perPage: 100
+      perPage: 1000   // Supabase max per page; sufficient until ~1k users
     });
 
     if (error) {
