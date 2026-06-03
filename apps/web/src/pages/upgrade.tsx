@@ -12,7 +12,7 @@ const VALUE_PILLARS = [
     color: 'text-primary',
     bg: 'bg-primary/10',
     title: 'It actually remembers you',
-    body: 'Not just facts — patterns. Who Sol is. That you tend to second-guess yourself before big decisions. That you\'ve mentioned this same feeling three times now.',
+    body: 'Not just facts — patterns. Who the recurring people in your life are. That you tend to second-guess yourself before big decisions. That you\'ve mentioned this same feeling three times now.',
   },
   {
     icon: Lock,

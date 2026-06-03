@@ -17,10 +17,10 @@ const FEATURES = [
 // ── Preview conversation (static, illustrates the product) ───────────────────
 
 const PREVIEW = [
-  { role: 'user',      text: 'Sol texted me.' },
+  { role: 'user',      text: 'Jamie texted me.' },
   {
     role: 'assistant',
-    text: 'Sol again — last you told me she\'d blocked you after your birthday weekend. What changed?',
+    text: 'Jamie — last time you brought them up you were figuring out whether to reach out first. Looks like they beat you to it. What did they say?',
   },
 ];
 
@@ -165,7 +165,7 @@ export default function Login() {
               ))}
             </div>
             <p className="mt-3 text-[11px] text-white/20 text-right">
-              LoreBook remembered Sol from a previous session.
+              LoreBook remembered Jamie from a previous conversation.
             </p>
           </div>
         </div>
