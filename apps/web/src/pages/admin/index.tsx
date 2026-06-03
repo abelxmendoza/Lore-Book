@@ -201,15 +201,25 @@ export const AdminPage = () => {
         <div className="flex items-center gap-3 mb-6">
           <AdminMenuButton onClick={() => setMobileSidebarOpen(true)} />
           <AdminHeader title="Admin Console" subtitle="Production Administration" badge="ADMIN" />
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="ml-auto flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm transition disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Refresh</span>
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {/* Back to app — prominent, always visible */}
+            <button
+              type="button"
+              onClick={() => window.location.href = '/'}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/20 bg-white/[0.07] hover:bg-white/12 text-white/70 hover:text-white text-sm transition"
+            >
+              ← App
+            </button>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm transition disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
         </div>
 
         {/* Backend offline banner — shows start command */}
@@ -248,18 +258,12 @@ export const AdminPage = () => {
             {/* ── DASHBOARD ── */}
             {currentView === 'dashboard' && (
               <div className="space-y-6">
-                {metrics ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <AdminCard title="Total Users" value={metrics.totalUsers} icon={Users} />
-                    <AdminCard title="Total Memories" value={metrics.totalMemories} icon={FileText} />
-                    <AdminCard title="New Users (7d)" value={metrics.newUsersLast7Days} icon={Sparkles} />
-                    <AdminCard title="AI Generations (Today)" value={metrics.aiGenerationsToday} icon={Zap} />
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-red-500/30 bg-black/40 p-4 text-red-300 text-sm">
-                    Metrics unavailable — server may be offline.
-                  </div>
-                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <AdminCard title="Total Users"      value={metrics?.totalUsers      ?? '—'} icon={Users} />
+                  <AdminCard title="Total Memories"   value={metrics?.totalMemories   ?? '—'} icon={FileText} />
+                  <AdminCard title="New Users (7d)"   value={metrics?.newUsersLast7Days ?? '—'} icon={Sparkles} />
+                  <AdminCard title="AI (Today)"       value={metrics?.aiGenerationsToday ?? '—'} icon={Zap} />
+                </div>
 
                 {/* User breakdown from live data */}
                 {users.length > 0 && (

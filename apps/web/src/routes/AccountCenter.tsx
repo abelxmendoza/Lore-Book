@@ -304,39 +304,48 @@ export default function AccountCenter() {
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-8 py-10">
 
-        {/* Back */}
-        <button onClick={() => navigate('/')} className="text-white/30 hover:text-white text-sm mb-8 transition flex items-center gap-1">
-          ← Back to app
-        </button>
+        {/* Page header — back button + user identity + sign out */}
+        <div className="flex items-center gap-3 mb-8">
+          {/* Back to app — visible button, not a text link */}
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/15 bg-white/[0.05] hover:bg-white/10 hover:text-white text-white/60 text-sm font-medium transition shrink-0"
+          >
+            ← App
+          </button>
 
-        {/* Page header */}
-        <div className="flex items-center gap-4 mb-8">
-          <div className="w-12 h-12 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center text-primary font-bold text-lg select-none">
-            {getAvatarInitial(profile.name, displayEmail)}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-white">{profile.name || displayEmail}</h1>
-              {userIsAdmin && (
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                  Admin
-                </span>
-              )}
-              {userRole === 'developer' && !userIsAdmin && (
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30">
-                  Developer
-                </span>
-              )}
+          {/* Avatar + name */}
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm select-none shrink-0">
+              {getAvatarInitial(profile.name, displayEmail)}
             </div>
-            <p className="text-sm text-white/40">{displayEmail}</p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-bold text-white truncate">{profile.name || displayEmail}</span>
+                {userIsAdmin && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/25 shrink-0">
+                    Admin
+                  </span>
+                )}
+                {userRole === 'developer' && !userIsAdmin && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/25 shrink-0">
+                    Dev
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-white/35 truncate">{displayEmail}</p>
+            </div>
           </div>
+
+          {/* Sign out */}
           <button
             type="button"
             onClick={handleLogout}
-            className="ml-auto flex items-center gap-1.5 text-xs text-white/30 hover:text-white/70 transition"
+            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/10 text-white/40 hover:text-white hover:border-white/20 text-xs font-medium transition shrink-0"
           >
             <LogOut className="h-3.5 w-3.5" />
-            Sign out
+            <span className="hidden sm:inline">Sign out</span>
           </button>
         </div>
 

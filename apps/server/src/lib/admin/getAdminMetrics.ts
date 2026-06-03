@@ -1,6 +1,9 @@
 /**
  * Admin Metrics Helper
- * Fetches metrics for admin dashboard
+ *
+ * Returns best-effort metrics for the admin dashboard.
+ * Each query is wrapped independently — a failing query returns 0
+ * rather than crashing the entire response.
  */
 
 import { logger } from '../../logger';
@@ -14,58 +17,51 @@ export interface AdminMetrics {
   errorLogsLast24h: number;
 }
 
+const DEFAULTS: AdminMetrics = {
+  totalUsers: 0,
+  totalMemories: 0,
+  newUsersLast7Days: 0,
+  aiGenerationsToday: 0,
+  errorLogsLast24h: 0,
+};
+
 export async function getAdminMetrics(): Promise<AdminMetrics> {
-  try {
-    // Get total users
-    const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
-      page: 1,
-      perPage: 1000
-    });
+  // Run all queries in parallel; failures return null, never throw.
+  const [usersResult, memoryResult] = await Promise.allSettled([
+    supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+    supabaseAdmin.from('journal_entries').select('*', { count: 'exact', head: true }),
+  ]);
 
-    if (usersError) {
-      logger.error({ error: usersError }, 'Failed to fetch users for metrics');
-    }
+  // ── Users ────────────────────────────────────────────────────────────────
+  let totalUsers        = 0;
+  let newUsersLast7Days = 0;
 
-    const totalUsers = usersData?.users?.length || 0;
+  if (usersResult.status === 'fulfilled' && !usersResult.value.error) {
+    const users = usersResult.value.data?.users ?? [];
+    totalUsers = users.length;
 
-    // Get total memories (journal entries)
-    const { count: memoryCount, error: memoryError } = await supabaseAdmin
-      .from('journal_entries')
-      .select('*', { count: 'exact', head: true });
-
-    if (memoryError) {
-      logger.error({ error: memoryError }, 'Failed to fetch memories for metrics');
-    }
-
-    const totalMemories = memoryCount || 0;
-
-    // Get new users in last 7 days
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
-    const newUsersLast7Days = usersData?.users?.filter(user => {
-      const createdAt = new Date(user.created_at || 0);
-      return createdAt >= sevenDaysAgo;
-    }).length || 0;
-
-    // Get AI generations today (placeholder - would need to track this)
-    // TODO: Implement AI event tracking table
-    const aiGenerationsToday = 0;
-
-    // Get error logs in last 24h (placeholder - would need logging service)
-    // TODO: Implement log querying from logging service
-    const errorLogsLast24h = 0;
-
-    return {
-      totalUsers,
-      totalMemories,
-      newUsersLast7Days,
-      aiGenerationsToday,
-      errorLogsLast24h
-    };
-  } catch (error) {
-    logger.error({ error }, 'Error fetching admin metrics');
-    throw error;
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    newUsersLast7Days = users.filter(u => new Date(u.created_at || 0) >= sevenDaysAgo).length;
+  } else {
+    logger.warn({ error: usersResult.status === 'rejected' ? usersResult.reason : usersResult.value.error },
+      'Admin metrics: user query failed — returning 0');
   }
-}
 
+  // ── Memories ─────────────────────────────────────────────────────────────
+  let totalMemories = 0;
+
+  if (memoryResult.status === 'fulfilled' && !memoryResult.value.error) {
+    totalMemories = memoryResult.value.count ?? 0;
+  } else {
+    logger.warn({ error: memoryResult.status === 'rejected' ? memoryResult.reason : memoryResult.value.error },
+      'Admin metrics: memory count query failed — returning 0');
+  }
+
+  return {
+    totalUsers,
+    totalMemories,
+    newUsersLast7Days,
+    aiGenerationsToday: 0,   // TODO: track via AI event log
+    errorLogsLast24h:   0,   // TODO: track via logging service
+  };
+}
