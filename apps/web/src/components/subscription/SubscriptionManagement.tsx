@@ -1,42 +1,147 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useSubscription } from '../../hooks/useSubscription';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Loader2, Crown, Calendar, AlertTriangle, CheckCircle, XCircle, Sparkles } from 'lucide-react';
-import { SubscriptionStatus } from './SubscriptionStatus';
+import {
+  Loader2, Sparkles, Zap, Check, Minus,
+  Calendar, AlertTriangle, CheckCircle, XCircle,
+  CreditCard, PauseCircle, AlertCircle,
+} from 'lucide-react';
+import { cn } from '../../lib/cn';
 
-const StripeComingSoonBanner = () => (
-  <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 flex items-start gap-3">
-    <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center shrink-0 mt-0.5">
-      <Sparkles className="h-4 w-4 text-primary" />
-    </div>
+// ── Usage bar ─────────────────────────────────────────────────────────────────
+
+function UsageBar({ label, used, limit }: { label: string; used: number; limit: number | typeof Infinity }) {
+  const isUnlimited = limit === Infinity;
+  const pct = isUnlimited ? 0 : Math.min((used / limit) * 100, 100);
+  const isHigh = pct >= 80;
+  const isFull = pct >= 100;
+
+  return (
     <div>
-      <p className="text-white font-semibold text-sm">Payments launching soon</p>
-      <p className="text-white/50 text-xs mt-1 leading-relaxed">
-        The full Free plan is available now — unlimited messages, one thread with real persistent memory.
-        Paid plans unlock unlimited threads, biography generation, and deep relationship intelligence.
-        No credit card needed until launch.
-      </p>
+      <div className="flex justify-between text-xs mb-1.5 text-white/50">
+        <span>{label}</span>
+        <span className={cn(isFull ? 'text-red-400' : isHigh ? 'text-amber-400' : 'text-white/60')}>
+          {isUnlimited ? '∞ unlimited' : `${used} / ${limit}`}
+        </span>
+      </div>
+      {!isUnlimited && (
+        <>
+          <div className="w-full bg-white/8 rounded-full h-1.5 overflow-hidden">
+            <div
+              className={cn('h-1.5 rounded-full transition-all', isFull ? 'bg-red-500' : isHigh ? 'bg-amber-500' : 'bg-primary')}
+              // eslint-disable-next-line react/forbid-dom-props
+          style={{ width: `${pct}%` }}
+            />
+          </div>
+          {isFull && (
+            <p className="text-[11px] text-red-400 mt-1 flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" /> Limit reached — upgrade for unlimited access
+            </p>
+          )}
+        </>
+      )}
     </div>
-  </div>
-);
+  );
+}
+
+// ── Plan feature lists ────────────────────────────────────────────────────────
+
+const FREE_FEATURES = [
+  { text: '1 active thread (full memory)', included: true },
+  { text: '15 tracked characters', included: true },
+  { text: 'Cross-session memory — 30 days', included: true },
+  { text: 'Unlimited messages', included: true },
+  { text: 'Unlimited threads', included: false },
+  { text: 'Relationship intelligence', included: false },
+  { text: 'Biography generation', included: false },
+  { text: 'Memory search', included: false },
+];
+
+const PRO_FEATURES = [
+  { text: 'Unlimited threads', included: true },
+  { text: 'Unlimited tracked characters', included: true },
+  { text: 'Full memory — no date limit', included: true },
+  { text: 'Relationship intelligence dashboard', included: true },
+  { text: 'Biography generation (monthly)', included: true },
+  { text: 'Memory search across all threads', included: true },
+  { text: 'Chapter & arc auto-detection', included: true },
+  { text: 'Data export (PDF / JSON)', included: true },
+];
+
+// ── Cancel confirm dialog ─────────────────────────────────────────────────────
+
+function CancelConfirm({
+  periodEnd,
+  onConfirm,
+  onDismiss,
+  loading,
+}: {
+  periodEnd?: string | null;
+  onConfirm: () => void;
+  onDismiss: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5 space-y-4">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-semibold text-white">Cancel your Pro subscription?</p>
+          <p className="text-xs text-white/60 mt-1 leading-relaxed">
+            You'll keep full access until{' '}
+            <span className="text-white/80">
+              {periodEnd ? new Date(periodEnd).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) : 'the end of your billing period'}
+            </span>
+            . After that you'll revert to the Free plan. Your data is never deleted.
+          </p>
+        </div>
+      </div>
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={onDismiss}
+          disabled={loading}
+          className="flex-1 py-2 rounded-lg border border-white/15 text-sm text-white/70 hover:text-white hover:bg-white/5 transition disabled:opacity-50"
+        >
+          Keep subscription
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={loading}
+          className="flex-1 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-sm font-semibold text-white transition disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+          Yes, cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export const SubscriptionManagement = () => {
-  const navigate = useNavigate();
   const { subscription, loading, cancelSubscription, reactivateSubscription, getBillingPortalUrl } = useSubscription();
   const [canceling, setCanceling] = useState(false);
   const [reactivating, setReactivating] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  const openBillingPortal = async () => {
+    try {
+      const url = await getBillingPortalUrl(window.location.href);
+      window.location.href = url;
+    } catch {
+      alert('Could not open billing portal. Please try again.');
+    }
+  };
 
   const handleCancel = async () => {
     try {
       setCanceling(true);
       await cancelSubscription();
       setShowCancelConfirm(false);
-    } catch (error) {
-      console.error('Failed to cancel subscription:', error);
-      alert('Failed to cancel subscription. Please try again.');
+    } catch {
+      alert('Failed to cancel. Please try again.');
     } finally {
       setCanceling(false);
     }
@@ -46,189 +151,229 @@ export const SubscriptionManagement = () => {
     try {
       setReactivating(true);
       await reactivateSubscription();
-    } catch (error) {
-      console.error('Failed to reactivate subscription:', error);
-      alert('Failed to reactivate subscription. Please try again.');
+    } catch {
+      alert('Failed to reactivate. Please try again.');
     } finally {
       setReactivating(false);
     }
   };
 
-  const handleManageBilling = async () => {
-    try {
-      const url = await getBillingPortalUrl(window.location.href);
-      window.location.href = url;
-    } catch (error) {
-      console.error('Failed to open billing portal:', error);
-      alert('Failed to open billing portal. Please try again.');
-    }
+  const handleUpgrade = () => {
+    const subject = encodeURIComponent('LoreBook Pro plan — early access');
+    const body = encodeURIComponent(
+      "Hi, I'd like to join the waitlist for LoreBook Pro ($20/month).\n\nI'm currently on the free plan and want to lock in early-adopter pricing."
+    );
+    window.open(`mailto:abelxmendoza@gmail.com?subject=${subject}&body=${body}`, '_blank');
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex items-center justify-center p-16">
+        <Loader2 className="h-7 w-7 animate-spin text-primary" />
       </div>
     );
   }
 
   if (!subscription) {
     return (
-      <Card className="bg-black/40 border-border/60">
-        <CardContent className="p-6">
-          <p className="text-white/60">Failed to load subscription information</p>
-        </CardContent>
-      </Card>
+      <div className="rounded-xl border border-white/8 bg-black/30 p-6">
+        <p className="text-sm text-white/50">Could not load subscription info.</p>
+      </div>
     );
   }
 
-  // Any paid plan (pro / power / premium) or an active trial is considered "paid"
-  const isPremium = ['pro', 'power', 'premium'].includes(subscription.planType ?? '') || subscription.usage.isTrial;
+  const isPro = ['pro', 'power', 'premium'].includes(subscription.planType ?? '');
   const isCanceled = subscription.cancelAtPeriodEnd;
+  const isTrial = subscription.status === 'trial' || subscription.usage?.isTrial;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-white">Subscription Management</h1>
+    <div className="space-y-6 max-w-2xl">
+      <h1 className="text-2xl font-bold text-white">Subscription</h1>
+
+      {/* ── Current plan status ─────────────────────────────────────────── */}
+      <div className="rounded-xl border border-white/10 bg-black/30 p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {isPro
+              ? <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center"><Sparkles className="h-4 w-4 text-primary" /></div>
+              : <div className="w-9 h-9 rounded-xl bg-white/8 flex items-center justify-center"><Zap className="h-4 w-4 text-white/40" /></div>
+            }
+            <div>
+              <p className="text-sm font-semibold text-white">{isPro ? 'Pro' : 'Free'} plan</p>
+              {isTrial && subscription.trialDaysRemaining > 0 && (
+                <p className="text-xs text-amber-400">{subscription.trialDaysRemaining}d left in trial</p>
+              )}
+              {isCanceled && (
+                <p className="text-xs text-orange-400">
+                  Access until{' '}
+                  {subscription.currentPeriodEnd
+                    ? new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                    : 'period end'}
+                </p>
+              )}
+            </div>
+          </div>
+          <span className={cn(
+            'text-xs font-semibold px-2.5 py-1 rounded-full',
+            isCanceled ? 'bg-orange-500/15 text-orange-400' :
+            isPro ? 'bg-primary/15 text-primary' :
+            'bg-white/8 text-white/50'
+          )}>
+            {isCanceled ? 'Canceling' : isPro ? 'Active' : 'Free'}
+          </span>
+        </div>
+
+        {isPro && subscription.currentPeriodEnd && !isCanceled && (
+          <div className="flex items-center gap-1.5 mt-4 pt-4 border-t border-white/8 text-xs text-white/40">
+            <Calendar className="h-3.5 w-3.5" />
+            Renews {new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+          </div>
+        )}
       </div>
 
-      <StripeComingSoonBanner />
+      {/* ── Plan comparison (free users only) ──────────────────────────── */}
+      {!isPro && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Free card */}
+          <div className="rounded-xl border border-white/10 bg-black/30 p-5 flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-bold text-white">Free</p>
+              <span className="text-[11px] font-semibold bg-emerald-400/10 text-emerald-400 border border-emerald-400/20 rounded px-2 py-0.5">Current plan</span>
+            </div>
+            <div className="flex items-baseline gap-1 mb-4">
+              <span className="text-3xl font-bold text-white">$0</span>
+              <span className="text-xs text-white/40">/ month</span>
+            </div>
+            <ul className="space-y-2 flex-1">
+              {FREE_FEATURES.map(f => (
+                <li key={f.text} className={cn('flex items-start gap-2 text-xs', !f.included && 'opacity-30')}>
+                  {f.included
+                    ? <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                    : <Minus className="h-3.5 w-3.5 text-white/30 shrink-0 mt-0.5" />
+                  }
+                  <span className={f.included ? 'text-white/70' : 'text-white/40'}>{f.text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
 
-      <SubscriptionStatus />
-
-      {isPremium && (
-        <Card className="bg-black/40 border-border/60">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Crown className="h-5 w-5 text-yellow-400" />
-              Manage Subscription
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {isCanceled ? (
-              <div className="space-y-4">
-                <div className="p-4 bg-orange-500/20 border border-orange-500/50 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-orange-400 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1">
-                      <p className="font-semibold text-orange-400 mb-1">Subscription Canceled</p>
-                      <p className="text-sm text-white/80">
-                        Your subscription will end on{' '}
-                        {subscription.currentPeriodEnd
-                          ? new Date(subscription.currentPeriodEnd).toLocaleDateString()
-                          : 'the end of the current period'}
-                        . You'll continue to have access until then.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  variant="default"
-                  onClick={handleReactivate}
-                  disabled={reactivating}
-                  className="w-full"
-                >
-                  {reactivating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Reactivating...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Reactivate Subscription
-                    </>
-                  )}
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {subscription.currentPeriodEnd && (
-                  <div className="flex items-center gap-2 text-sm text-white/60">
-                    <Calendar className="h-4 w-4" />
-                    <span>
-                      Next billing date: {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
-                    </span>
-                  </div>
-                )}
-                {!showCancelConfirm ? (
-                  <div className="space-y-3">
-                    <Button
-                      variant="outline"
-                      onClick={handleManageBilling}
-                      className="w-full"
-                    >
-                      Manage Billing & Payment Method
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowCancelConfirm(true)}
-                      className="w-full text-red-400 border-red-400/50 hover:bg-red-400/10"
-                    >
-                      <XCircle className="h-4 w-4 mr-2" />
-                      Cancel Subscription
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-3 p-4 bg-red-500/20 border border-red-500/50 rounded-lg">
-                    <p className="text-sm text-white/80 mb-2">
-                      Are you sure you want to cancel your subscription? You'll continue to have access until{' '}
-                      {subscription.currentPeriodEnd
-                        ? new Date(subscription.currentPeriodEnd).toLocaleDateString()
-                        : 'the end of the current period'}
-                      .
-                    </p>
-                    <div className="flex gap-3">
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowCancelConfirm(false)}
-                        className="flex-1"
-                        disabled={canceling}
-                      >
-                        Keep Subscription
-                      </Button>
-                      <Button
-                        variant="default"
-                        onClick={handleCancel}
-                        disabled={canceling}
-                        className="flex-1 bg-red-500 hover:bg-red-600"
-                      >
-                        {canceling ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Canceling...
-                          </>
-                        ) : (
-                          'Yes, Cancel'
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {!isPremium && (
-        <Card className="bg-primary/5 border-primary/20">
-          <CardContent className="p-5">
-            <p className="text-sm font-semibold text-white mb-1">Unlock unlimited threads</p>
-            <p className="text-xs text-white/50 mb-4">
-              Pro is $20/month — unlimited threads, relationship intelligence, biography generation.
-            </p>
-            <Button
-              variant="default"
-              onClick={() => navigate('/upgrade')}
-              className="w-full"
+          {/* Pro card */}
+          <div className="relative rounded-xl border border-primary/40 bg-gradient-to-b from-primary/10 to-black/60 p-5 flex flex-col shadow-[0_0_40px_rgba(139,92,246,0.1)]">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-white text-[11px] font-semibold px-3 py-0.5 rounded-full">
+              Most popular
+            </div>
+            <p className="text-sm font-bold text-white mb-3">Pro</p>
+            <div className="flex items-baseline gap-1 mb-4">
+              <span className="text-3xl font-bold text-white">$20</span>
+              <span className="text-xs text-white/40">/ month</span>
+            </div>
+            <ul className="space-y-2 flex-1 mb-4">
+              {PRO_FEATURES.map(f => (
+                <li key={f.text} className="flex items-start gap-2 text-xs">
+                  <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                  <span className="text-white/80">{f.text}</span>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={handleUpgrade}
+              className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-sm font-semibold text-white transition shadow-[0_0_20px_rgba(139,92,246,0.3)]"
             >
-              See all plans
-            </Button>
-          </CardContent>
-        </Card>
+              Upgrade to Pro
+            </button>
+          </div>
+        </div>
       )}
+
+      {/* ── Billing management (paid users) ────────────────────────────── */}
+      {isPro && (
+        <div className="rounded-xl border border-white/10 bg-black/30 p-5 space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-white/40">Manage subscription</p>
+
+          {isCanceled ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 p-4">
+                <AlertTriangle className="h-4 w-4 text-orange-400 shrink-0 mt-0.5" />
+                <p className="text-sm text-white/80">
+                  Your subscription is set to cancel. You'll have full access until{' '}
+                  <span className="text-white font-medium">
+                    {subscription.currentPeriodEnd
+                      ? new Date(subscription.currentPeriodEnd).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
+                      : 'the end of the billing period'}
+                  </span>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleReactivate}
+                disabled={reactivating}
+                className="w-full py-2.5 rounded-xl border border-primary/40 text-sm font-semibold text-primary hover:bg-primary/10 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {reactivating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                Reactivate subscription
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={openBillingPortal}
+                className="w-full py-2.5 rounded-xl border border-white/15 text-sm font-medium text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
+              >
+                <CreditCard className="h-4 w-4" />
+                Manage billing &amp; payment method
+              </button>
+              <button
+                type="button"
+                onClick={openBillingPortal}
+                className="w-full py-2.5 rounded-xl border border-white/15 text-sm font-medium text-white/80 hover:text-white hover:bg-white/5 transition flex items-center justify-center gap-2"
+              >
+                <PauseCircle className="h-4 w-4" />
+                Pause payments
+              </button>
+              {!showCancelConfirm && (
+                <button
+                  type="button"
+                  onClick={() => setShowCancelConfirm(true)}
+                  className="w-full py-2.5 rounded-xl border border-red-500/20 text-sm font-medium text-red-400 hover:bg-red-500/10 transition flex items-center justify-center gap-2"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Cancel subscription
+                </button>
+              )}
+              {showCancelConfirm && (
+                <CancelConfirm
+                  periodEnd={subscription.currentPeriodEnd}
+                  onConfirm={handleCancel}
+                  onDismiss={() => setShowCancelConfirm(false)}
+                  loading={canceling}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Usage meters ────────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-white/10 bg-black/30 p-5 space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-white/40">Usage this month</p>
+        <UsageBar
+          label="Journal entries"
+          used={subscription.usage?.entryCount ?? 0}
+          limit={isPro ? Infinity : (subscription.usage?.entryLimit ?? 50)}
+        />
+        <UsageBar
+          label="AI conversations"
+          used={subscription.usage?.aiRequestsCount ?? 0}
+          limit={isPro ? Infinity : (subscription.usage?.aiLimit ?? 100)}
+        />
+      </div>
+
+      {/* ── Trust footnote ──────────────────────────────────────────────── */}
+      <p className="text-xs text-white/25 text-center">
+        No credit card required to start&nbsp;·&nbsp;Cancel any time&nbsp;·&nbsp;Your data is never deleted
+      </p>
     </div>
   );
 };
-
