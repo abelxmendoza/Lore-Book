@@ -1,42 +1,66 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, ArrowRight, Sparkles, User, Presentation } from 'lucide-react';
+import { Mail, ArrowRight, Loader2, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Logo } from '../components/Logo';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 import { useGuest } from '../contexts/GuestContext';
 import { useMockData } from '../contexts/MockDataContext';
+
+// ── Left-side feature statements ─────────────────────────────────────────────
+
+const FEATURES = [
+  { accent: 'Remembers', rest: 'across sessions, not just within them.' },
+  { accent: 'Tracks', rest: 'the people, patterns, and moments that shape you.' },
+  { accent: 'Gets smarter', rest: 'the longer you use it.' },
+];
+
+// ── Preview conversation (static, illustrates the product) ───────────────────
+
+const PREVIEW = [
+  { role: 'user',      text: 'Sol texted me.' },
+  {
+    role: 'assistant',
+    text: 'Sol again — last you told me she\'d blocked you after your birthday weekend. What changed?',
+  },
+];
+
+// ── Google G mark ─────────────────────────────────────────────────────────────
+
+function GoogleIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+    </svg>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Login() {
   const navigate = useNavigate();
   const { startGuestSession } = useGuest();
   const { setUseMockData } = useMockData();
-  const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+
+  const [email, setEmail]   = useState('');
+  const [sent, setSent]     = useState(false);
+  const [error, setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleEmailLogin = async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: window.location.origin + '/',
-      },
-    });
-    if (error) throw error;
-  };
-
-  const handleLogin = async () => {
+  const handleMagicLink = async () => {
+    if (!email.trim()) return;
     setLoading(true);
     setError(null);
-    setStatus(null);
     try {
-      await handleEmailLogin(email);
-      setStatus('Check your email for the magic link.');
-      setError(null);
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { emailRedirectTo: window.location.origin + '/' },
+      });
+      if (error) throw error;
+      setSent(true);
     } catch (err: any) {
-      console.error('[Auth] Login error:', err);
       setError(err?.message || 'Failed to send magic link. Please try again.');
     } finally {
       setLoading(false);
@@ -44,219 +68,262 @@ export default function Login() {
   };
 
   const handleGoogle = async () => {
-    setError(null);
     setLoading(true);
+    setError(null);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({ 
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          }
-        }
+          queryParams: { access_type: 'offline', prompt: 'consent' },
+        },
       });
       if (error) {
-        console.error('[Auth] Google OAuth error:', error);
-        if (error.message?.includes('provider is not enabled') || error.message?.includes('Unsupported provider')) {
-          setError('Google sign-in is not enabled. Please use email login.');
-        } else {
-          setError(error.message || 'Failed to sign in with Google.');
-        }
+        setError(
+          error.message?.includes('provider is not enabled') || error.message?.includes('Unsupported provider')
+            ? 'Google sign-in is not configured. Use your email instead.'
+            : error.message || 'Google sign-in failed.'
+        );
       }
     } catch (err: any) {
-      console.error('[Auth] Google OAuth exception:', err);
-      setError(err?.message || 'Failed to sign in with Google.');
+      setError(err?.message || 'Google sign-in failed.');
     } finally {
       setLoading(false);
     }
   };
 
+  const enterDemo = () => {
+    setUseMockData(true);
+    startGuestSession();
+    navigate('/');
+  };
+
+  const enterGuest = () => {
+    setUseMockData(false);
+    startGuestSession();
+    navigate('/');
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="rounded-2xl border border-border/60 bg-black/40 backdrop-blur-sm shadow-2xl p-8 space-y-6">
-          {/* Header */}
-          <div className="text-center space-y-4">
-            <div className="flex justify-center mb-4">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                <Sparkles className="h-10 w-10 text-white" />
-              </div>
-            </div>
-            <Logo size="xl" showText={true} />
-            <p className="text-white/70 text-sm">Your intelligent memory companion. Capture, organize, and understand your life story.</p>
-          </div>
+    <div className="min-h-screen bg-[#080510] text-white flex flex-col lg:flex-row overflow-hidden">
 
-          {/* Login Form */}
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-white/80 mb-2">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-white/40" />
-                <Input
-                  type="email"
-                  placeholder="you@orbital.city"
-                  className="pl-10 bg-black/40 border-border/60 text-white placeholder:text-white/40"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !loading && handleLogin()}
-                />
-              </div>
-            </div>
+      {/* ── Atmospheric glows ───────────────────────────────────────────────── */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute top-0 left-0 w-[700px] h-[500px] bg-primary/10 rounded-full blur-[140px] -translate-x-1/3 -translate-y-1/4" />
+        <div className="absolute bottom-0 right-0 w-[500px] h-[400px] bg-violet-700/8 rounded-full blur-[120px] translate-x-1/4 translate-y-1/4" />
+      </div>
 
-            <Button
-              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-              disabled={!email || loading}
-              onClick={handleLogin}
-            >
-              {loading ? 'Sending link…' : 'Send magic link'}
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
+      {/* ── LEFT — product pitch ─────────────────────────────────────────────── */}
+      <div className="relative z-10 hidden lg:flex flex-col justify-between w-[52%] flex-shrink-0 px-14 py-12 border-r border-white/6">
 
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/10"></div>
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-black/40 px-2 text-white/40">Or continue with</span>
-              </div>
-            </div>
+        {/* Logo */}
+        <Logo size="sm" showText />
 
-            <Button
-              variant="outline"
-              className="w-full border-border/60 bg-white/5 hover:bg-white/10 text-white"
-              onClick={handleGoogle}
-              disabled={loading}
-            >
-              <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
-                <path
-                  fill="currentColor"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                />
-              </svg>
-              Continue with Google
-            </Button>
+        {/* Hero text */}
+        <div>
+          <h1 className="text-[2.6rem] leading-[1.12] font-bold font-serif text-white mb-6">
+            The AI that<br />
+            <span className="text-primary">learns who you are.</span>
+          </h1>
+          <p className="text-white/40 text-base leading-relaxed mb-10 max-w-sm">
+            Not just facts. Patterns. The people who matter.
+            The decisions you keep second-guessing. The version of yourself
+            you're becoming.
+          </p>
 
-            <div className="relative mt-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/10"></div>
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-black/40 px-2 text-white/40">or</span>
-              </div>
-            </div>
+          {/* Feature statements */}
+          <ul className="space-y-3 mb-12">
+            {FEATURES.map(({ accent, rest }) => (
+              <li key={accent} className="flex items-start gap-3 text-sm text-white/55">
+                <span className="mt-0.5 w-1 h-1 rounded-full bg-primary/70 flex-shrink-0 translate-y-[6px]" />
+                <span>
+                  <span className="text-white/90 font-medium">{accent}</span>{' '}
+                  {rest}
+                </span>
+              </li>
+            ))}
+          </ul>
 
-            {/* Demo Mode - mock data for deployed showcase */}
+          {/* Mini conversation preview */}
+          <div className="rounded-2xl border border-white/8 bg-black/30 p-5 max-w-sm">
             <div className="space-y-3">
-              <Button
-                variant="outline"
-                className="w-full border-amber-500/50 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 hover:border-amber-500/70 transition-all"
-                onClick={() => {
-                  setUseMockData(true);
-                  startGuestSession();
-                  navigate('/');
-                }}
-                disabled={loading}
-                size="lg"
-              >
-                <Presentation className="mr-2 h-5 w-5" />
-                Demo Mode
-              </Button>
-              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-left">
-                <p className="text-xs font-medium text-amber-200/90 mb-1">📊 Explore with sample data</p>
-                <p className="text-xs text-white/60 leading-relaxed">
-                  See the app with demo content. No sign-in required. Perfect for trying Lore Book before signing up.
-                </p>
-              </div>
+              {PREVIEW.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[82%] rounded-2xl px-3.5 py-2 text-[13px] leading-snug ${
+                      msg.role === 'user'
+                        ? 'bg-primary/20 text-white/85 rounded-br-sm'
+                        : 'bg-white/6 text-white/70 rounded-bl-sm'
+                    }`}
+                  >
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
             </div>
-
-            {/* Guest Login - clean slate, no mock data */}
-            <div className="space-y-3">
-              <Button
-                variant="outline"
-                className="w-full border-primary/50 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/70 transition-all"
-                onClick={() => {
-                  setUseMockData(false);
-                  startGuestSession();
-                  navigate('/');
-                }}
-                disabled={loading}
-                size="lg"
-              >
-                <User className="mr-2 h-5 w-5" />
-                Continue as Guest
-              </Button>
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-left">
-                <p className="text-xs font-medium text-primary mb-1">✨ Try without signing up</p>
-                <p className="text-xs text-white/60 leading-relaxed">
-                  Explore with a clean slate. Limited chat access. No account required.
-                </p>
-              </div>
-            </div>
-
-            {status && (
-              <div className="rounded-lg bg-green-500/20 border border-green-500/50 p-4 text-green-400 text-sm space-y-2">
-                <p>{status}</p>
-                <p className="text-white/60 text-xs">
-                  If you don&apos;t see it, check spam/junk. Some providers delay or block sign-in emails—try again or use a different address.
-                </p>
-              </div>
-            )}
-
-            {error && (
-              <div className="rounded-lg bg-red-500/20 border border-red-500/50 p-4 text-red-400 text-sm">
-                {error}
-              </div>
-            )}
-          </div>
-
-          {/* Payments coming soon notice */}
-          <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3 text-center">
-            <p className="text-xs text-white/50 leading-relaxed">
-              LoreBook is <span className="text-purple-300 font-medium">free to use</span> while we're in early access.
-              Paid plans are coming soon — no credit card needed now.
-            </p>
-          </div>
-
-          {/* Footer */}
-          <div className="pt-4 border-t border-white/10">
-            <p className="text-xs text-center text-white/40">
-              By continuing, you agree to our{' '}
-              <button onClick={() => navigate('/terms')} className="text-primary hover:underline">
-                Terms of Service
-              </button>
-              {' '}and{' '}
-              <button onClick={() => navigate('/privacy-policy')} className="text-primary hover:underline">
-                Privacy Policy
-              </button>
+            <p className="mt-3 text-[11px] text-white/20 text-right">
+              LoreBook remembered Sol from a previous session.
             </p>
           </div>
         </div>
 
-        {/* Back to landing page */}
-        <div className="mt-6 text-center space-y-2">
-          <button
-            onClick={() => navigate('/home')}
-            className="text-white/60 hover:text-white text-sm transition"
-          >
-            ← Back to home
-          </button>
+        {/* Bottom social proof */}
+        <p className="text-xs text-white/20">
+          Free while in early access · No credit card required
+        </p>
+      </div>
+
+      {/* ── RIGHT — auth form ────────────────────────────────────────────────── */}
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-5 py-10 lg:py-0">
+
+        {/* Mobile-only header */}
+        <div className="lg:hidden mb-8 text-center">
+          <Logo size="md" showText />
+          <p className="text-white/40 text-sm mt-2">The AI that learns who you are.</p>
+        </div>
+
+        <div className="w-full max-w-sm">
+
+          {/* Form heading */}
+          <div className="mb-7">
+            <h2 className="text-xl font-bold text-white mb-1">Sign in to LoreBook</h2>
+            <p className="text-sm text-white/35">Your record is waiting.</p>
+          </div>
+
+          {/* ── Sent state ─────────────────────────────────────────────────── */}
+          {sent ? (
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/8 p-6 text-center space-y-3">
+              <CheckCircle className="h-9 w-9 text-emerald-400 mx-auto" />
+              <p className="text-sm font-semibold text-white">Check your inbox</p>
+              <p className="text-xs text-white/45 leading-relaxed">
+                We sent a magic link to <span className="text-white/70">{email}</span>.
+                Click it to sign in — no password needed.
+              </p>
+              <p className="text-[11px] text-white/25">
+                Didn't arrive? Check spam, or{' '}
+                <button
+                  type="button"
+                  onClick={() => { setSent(false); setError(null); }}
+                  className="text-primary/70 hover:text-primary underline transition"
+                >
+                  try again
+                </button>.
+              </p>
+            </div>
+          ) : (
+
+            /* ── Auth form ──────────────────────────────────────────────────── */
+            <div className="space-y-3">
+
+              {/* Email */}
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/25 pointer-events-none" />
+                <input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  autoComplete="email"
+                  onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !loading && email && handleMagicLink()}
+                  className="w-full bg-white/[0.05] border border-white/12 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-white/[0.07] focus:ring-1 focus:ring-primary/20 transition-all"
+                />
+              </div>
+
+              {/* Magic link CTA */}
+              <button
+                type="button"
+                onClick={handleMagicLink}
+                disabled={!email.trim() || loading}
+                className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm py-2.5 rounded-xl transition-all shadow-[0_0_20px_rgba(139,92,246,0.25)]"
+              >
+                {loading
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>
+                  : <><span>Continue with email</span><ArrowRight className="h-4 w-4" /></>
+                }
+              </button>
+
+              {/* Divider */}
+              <div className="flex items-center gap-3 py-1">
+                <div className="flex-1 h-px bg-white/8" />
+                <span className="text-[11px] text-white/25 uppercase tracking-wider">or</span>
+                <div className="flex-1 h-px bg-white/8" />
+              </div>
+
+              {/* Google */}
+              <button
+                type="button"
+                onClick={handleGoogle}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2.5 bg-white/[0.06] hover:bg-white/10 border border-white/12 hover:border-white/20 text-white/80 hover:text-white text-sm font-medium py-2.5 rounded-xl transition-all disabled:opacity-40"
+              >
+                <GoogleIcon />
+                Continue with Google
+              </button>
+
+              {/* Error */}
+              {error && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/8 px-4 py-3 text-xs text-red-400 leading-relaxed">
+                  {error}
+                </div>
+              )}
+
+              {/* Try without signing in */}
+              <div className="pt-1 flex items-center justify-center gap-4 text-xs text-white/25">
+                <button
+                  type="button"
+                  onClick={enterGuest}
+                  className="hover:text-white/60 transition"
+                >
+                  Continue as guest
+                </button>
+                <span>·</span>
+                <button
+                  type="button"
+                  onClick={enterDemo}
+                  className="hover:text-white/60 transition"
+                >
+                  View demo
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Terms */}
+          <p className="mt-8 text-[11px] text-center text-white/20 leading-relaxed">
+            By continuing, you agree to our{' '}
+            <button
+              type="button"
+              onClick={() => navigate('/terms')}
+              className="text-white/35 hover:text-white/60 underline transition"
+            >
+              Terms
+            </button>
+            {' '}and{' '}
+            <button
+              type="button"
+              onClick={() => navigate('/privacy-policy')}
+              className="text-white/35 hover:text-white/60 underline transition"
+            >
+              Privacy Policy
+            </button>.
+          </p>
+
+          {/* Back */}
+          <div className="mt-5 text-center">
+            <button
+              type="button"
+              onClick={() => navigate('/home')}
+              className="text-xs text-white/20 hover:text-white/50 transition"
+            >
+              ← Back to home
+            </button>
+          </div>
         </div>
       </div>
+
     </div>
   );
 }
-
