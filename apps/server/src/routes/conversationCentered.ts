@@ -10,6 +10,7 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { generateReturnGreeting } from '../services/chat/returnGreetingService';
 import { confidenceTrackingService } from '../services/confidenceTrackingService';
 import { affectionCalculator } from '../services/conversationCentered/affectionCalculator';
 import { breakupDetector } from '../services/conversationCentered/breakupDetector';
@@ -2810,6 +2811,55 @@ router.get(
         mode_router_note: 'If meaning_layer counts are low despite high linkage, EXPERIENCE_INGESTION thresholds may be too strict',
         check_mode_router_if: (emotionsResult.count ?? 0) < (totalEventRecords * 0.3),
       },
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/greeting/:threadId
+ * Return Greeting MVP (Phase 7B.1)
+ *
+ * Returns a specific, grounded greeting string when the user returns
+ * after a qualifying gap, or null when suppressed.
+ * The gap in hours is provided by the client (who owns the thread timestamps)
+ * to avoid an extra DB round-trip for updated_at.
+ *
+ * Query param: gapHours (float) — hours since last message in this thread.
+ */
+router.get(
+  '/greeting/:threadId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId    = req.user!.id;
+    const threadId  = req.params.threadId;
+    const gapHours  = parseFloat(req.query.gapHours as string);
+
+    if (!threadId || isNaN(gapHours)) {
+      return res.status(400).json({ success: false, error: 'threadId and gapHours are required' });
+    }
+
+    // Verify thread belongs to this user before any processing
+    const { data: thread } = await supabaseAdmin
+      .from('conversation_sessions')
+      .select('id')
+      .eq('id', threadId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!thread) {
+      return res.status(404).json({ success: false, error: 'Thread not found' });
+    }
+
+    const greeting = await generateReturnGreeting(userId, threadId, gapHours);
+
+    logger.debug(
+      { userId, threadId, gapHours: Math.round(gapHours), suppressed: greeting === null },
+      'ReturnGreeting: route served'
+    );
+
+    return res.json({
+      success: true,
+      greeting, // string | null — client checks for null before displaying
     });
   })
 );

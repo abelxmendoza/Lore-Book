@@ -1214,7 +1214,7 @@ class OmegaChatService {
           date: new Date().toISOString(),
         }).catch(err => logger.warn({ err, userId }, 'epiphany feed failed'));
 
-        timelineUpdates.push('Message saved and queued for processing');
+        // Pipeline status intentionally not surfaced to user — trust > transparency of ops
       }
 
       // Auto-update memoir (fire and forget)
@@ -1954,7 +1954,7 @@ class OmegaChatService {
             logger.warn({ err, userId, messageId: savedMessage.id }, 'Failed to ingest chat message (non-blocking)');
           });
 
-        timelineUpdates.push('Message saved and queued for processing');
+        // Pipeline status intentionally not surfaced to user — trust > transparency of ops
       }
 
       memoirService.autoUpdateMemoir(userId).catch(err => {

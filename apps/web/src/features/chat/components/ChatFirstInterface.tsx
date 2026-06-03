@@ -18,7 +18,7 @@ function useIsMobile(breakpoint = 640): boolean {
 import { useChat } from '../hooks/useChat';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useConversationRuntime } from '../hooks/useConversationRuntime';
-import { Search as SearchIcon, MessageSquareText, Brain, Menu, SquarePen, UserCircle } from 'lucide-react';
+import { Search as SearchIcon, MessageSquareText, Brain, Menu, SquarePen, UserCircle, BookOpen, Check as CheckIcon, Clipboard as ClipboardIcon } from 'lucide-react';
 import { useLocalStorage } from '../../../hooks/useLocalStorage';
 import { ChatEmptyState } from './ChatEmptyState';
 import { ChatMessageList } from '../message/ChatMessageList';
@@ -37,6 +37,9 @@ import { analytics } from '../../../lib/monitoring';
 import { fetchJson } from '../../../lib/api';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
 import { ThreadSaveChip } from './ThreadSaveChip';
+import { WhatLoreBookKnows } from './WhatLoreBookKnows';
+import { ActiveContextPanel } from './ActiveContextPanel';
+import { ChronologyNarrativeModal } from './ChronologyNarrativeModal';
 import { Logo } from '../../../components/Logo';
 import { useAuth } from '../../../lib/supabase';
 import type { ChatSource } from '../message/ChatMessage';
@@ -72,11 +75,49 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     handleSelectThread,
     handleDeleteThread: handleDeleteThreadBase,
     renameThread,
+    forkThread,
+    greetingMessage,
+    clearGreeting,
   } = useConversationRuntime({
     messages,
     setMessages,
     clearMessages: clearConversation,
   });
+
+  // Build the display list: prepend the ephemeral greeting when present.
+  // greetingMessage is never persisted — it lives only in runtime state.
+  const greetingDisplayMsg = greetingMessage
+    ? ({
+        id: `greeting-${activeThreadId}`,
+        role: 'assistant' as const,
+        content: greetingMessage,
+        timestamp: new Date(),
+        metadata: { intent: 'return_greeting' },
+      })
+    : null;
+
+  const displayMessages = greetingDisplayMsg
+    ? [greetingDisplayMsg, ...messages]
+    : messages;
+
+  // Wrap sendMessage: clear the greeting and track analytics before sending.
+  const handleSubmit = (msg: string) => {
+    if (greetingMessage) {
+      analytics.track('greeting_responded', {
+        threadId: activeThreadId,
+        greetingLength: greetingMessage.length,
+      });
+      clearGreeting();
+    }
+    sendMessage(msg);
+  };
+
+  // Track greeting_shown when the greeting first appears.
+  // greeting_responded is tracked inside handleSubmit above.
+  useEffect(() => {
+    if (!greetingMessage || !activeThreadId) return;
+    analytics.track('greeting_shown', { threadId: activeThreadId });
+  }, [greetingMessage, activeThreadId]);
 
   const { isGuest, canSendChatMessage } = useGuest();
   const { user } = useAuth();
@@ -90,11 +131,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const [showSearch, setShowSearch] = useState(false);
   const [searchMessageId, setSearchMessageId] = useState<string | null>(null);
   const [showWorkSummary, setShowWorkSummary] = useState(false);
-  const [showCognitiveTrace, setShowCognitiveTrace] = useLocalStorage<boolean>('lorekeeper_cognitive_trace', false);
+  const [showCognitiveTrace] = useLocalStorage<boolean>('lorekeeper_cognitive_trace', false);
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
   const [initialDate, setInitialDate] = useState<string | null>(null);
   const [threadListCollapsed, setThreadListCollapsed] = useState(false);
   const [threadListMobileOpen, setThreadListMobileOpen] = useState(false);
+  const [contextPanelOpen, setContextPanelOpen] = useLocalStorage<boolean>('lorekeeper_context_panel', false);
+  const [showNarrative, setShowNarrative] = useState(false);
   const swipeStartX = useRef<number | null>(null);
   const [backendStatus, setBackendStatus] = useState<'ok' | 'degraded' | 'unreachable' | null>(null);
   const [statusDismissed, setStatusDismissed] = useState(false);
@@ -261,6 +304,18 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     setSearchMessageId(messageId);
   };
 
+  const [conversationCopied, setConversationCopied] = useState(false);
+  const handleCopyConversation = () => {
+    if (messages.length === 0) return;
+    const text = messages
+      .map((m) => `${m.role === 'user' ? 'You' : 'LoreBook'}: ${m.content}`)
+      .join('\n\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setConversationCopied(true);
+      setTimeout(() => setConversationCopied(false), 2000);
+    });
+  };
+
   return (
     <div className="flex h-screen lg:h-full bg-black w-full overflow-hidden">
       <ChatThreadList
@@ -330,12 +385,34 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <button
               type="button"
-              onClick={() => setShowCognitiveTrace(!showCognitiveTrace)}
-              className={`h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation ${showCognitiveTrace ? 'text-primary' : 'text-white/40 hover:text-white/60'}`}
-              title={showCognitiveTrace ? 'Hide cognitive trace' : 'Show cognitive trace'}
+              onClick={() => setContextPanelOpen(!contextPanelOpen)}
+              className={`h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation ${contextPanelOpen ? 'text-indigo-400' : 'text-white/40 hover:text-white/60'}`}
+              title={contextPanelOpen ? 'Hide active context' : 'Show active context — why is LoreBook talking about this?'}
             >
               <Brain className="h-4 w-4" />
             </button>
+            {!isMobile && (
+              <button
+                type="button"
+                onClick={() => setShowNarrative(true)}
+                className="text-white/40 hover:text-purple-300 h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
+                title="Generate your story — Chronology Narrative"
+              >
+                <BookOpen className="h-4 w-4" />
+              </button>
+            )}
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={handleCopyConversation}
+                className={`h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors touch-manipulation ${conversationCopied ? 'text-green-400' : 'text-white/40 hover:text-white/70'}`}
+                title={conversationCopied ? 'Copied!' : 'Copy full conversation'}
+              >
+                {conversationCopied
+                  ? <CheckIcon className="h-4 w-4" />
+                  : <ClipboardIcon className="h-4 w-4" />}
+              </button>
+            )}
             {!isMobile && (
               <button
                 type="button"
@@ -404,6 +481,11 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           </div>
         )}
 
+        {/* Chronology Narrative Modal */}
+        {showNarrative && (
+          <ChronologyNarrativeModal onClose={() => setShowNarrative(false)} />
+        )}
+
         {/* Search Modal */}
         {showSearch && (
           <ChatSearchModal
@@ -441,7 +523,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             </div>
           ) : (
             <ChatMessageList
-              messages={messages}
+              messages={displayMessages}
               streamingMessageId={streamingMessageId}
               searchMessageId={searchMessageId}
               messageRefs={messageRefs.current}
@@ -450,6 +532,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               onRegenerate={handleRegenerate}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              onFork={(messageId) => forkThread(messageId)}
               onSourceClick={handleSourceClick}
               onFeedback={handleFeedback}
               registerMessageRef={registerMessageRef}
@@ -475,10 +558,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           )}
         </div>
 
+        {/* What LoreBook Knows strip — only shown when context panel is closed */}
+        {!contextPanelOpen && <WhatLoreBookKnows />}
+
         {/* Composer */}
         <div className="flex-shrink-0">
           <ChatComposer
-            onSubmit={sendMessage}
+            onSubmit={handleSubmit}
             loading={isLoading}
             disabled={isGuest && !canSendChatMessage()}
             initialPrompt={initialPrompt}
@@ -489,6 +575,15 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           />
         </div>
       </div>
+
+      {/* Active Context Panel — collapsible right panel */}
+      {!isMobile && (
+        <ActiveContextPanel
+          open={contextPanelOpen}
+          onClose={() => setContextPanelOpen(false)}
+          lastMessageAt={messages.length}
+        />
+      )}
     </div>
   );
 };

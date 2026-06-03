@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, ThumbsUp, ThumbsDown, Check } from 'lucide-react';
+import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, ThumbsUp, ThumbsDown, Check, GitBranch } from 'lucide-react';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { ChatLoadingDots } from '../components/ChatLoadingDots';
 import { parseConnections } from '../../../utils/parseConnections';
@@ -7,6 +7,7 @@ import { NarrativeStoryPanel } from '../../../components/chat/NarrativeStoryPane
 import { MemoryCognitionPanel } from '../../../components/chat/MemoryCognitionPanel';
 import { CognitionMetaPanel } from '../../../components/chat/CognitionMetaPanel';
 import { ModeAttributionBadge } from '../../../components/chat/ModeAttributionBadge';
+import { PersonaChip } from './PersonaChip';
 
 const humanizeExpressionMode = (mode: string): string => {
   const modeMap: Record<string, string> = {
@@ -111,6 +112,7 @@ type ChatMessageProps = {
   onRegenerate?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onFork?: () => void;
   onSourceClick?: (source: ChatSource) => void;
   onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void;
 };
@@ -122,6 +124,7 @@ export const ChatMessage = ({
   onRegenerate,
   onEdit,
   onDelete,
+  onFork,
   onSourceClick,
   onFeedback
 }: ChatMessageProps) => {
@@ -266,6 +269,15 @@ export const ChatMessage = ({
                   <Edit2 className="h-3.5 w-3.5" />
                 </button>
               )}
+              {onFork && (
+                <button
+                  onClick={onFork}
+                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-indigo-400/70 hover:text-indigo-300 active:bg-indigo-500/20 hover:bg-indigo-500/10 rounded transition-colors touch-manipulation"
+                  title="Fork conversation from here"
+                >
+                  <GitBranch className="h-3.5 w-3.5" />
+                </button>
+              )}
               {onDelete && (
                 <button
                   onClick={onDelete}
@@ -288,19 +300,28 @@ export const ChatMessage = ({
 
           {/* Main Content */}
           <div className="relative group/content">
-            {/* Copy button - always visible for assistant messages */}
+            {/* Copy button — desktop: floats outside bubble; mobile: sits inside bottom-right */}
             {!isUser && onCopy && (
-              <button
-                onClick={handleCopy}
-                className="absolute -right-12 top-0 h-8 w-8 flex items-center justify-center rounded-md hover:bg-white/10 active:bg-white/20 text-white/60 hover:text-white transition-all opacity-70 hover:opacity-100"
-                title={copied ? 'Copied!' : 'Copy response'}
-              >
-                {copied ? (
-                  <Check className="h-4 w-4 text-green-400" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </button>
+              <>
+                {/* Desktop version: outside the bubble */}
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="hidden sm:flex absolute -right-10 top-0 h-7 w-7 items-center justify-center rounded-md hover:bg-white/10 active:bg-white/20 text-white/40 hover:text-white transition-all opacity-0 group-hover/content:opacity-100"
+                  title={copied ? 'Copied!' : 'Copy response'}
+                >
+                  {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+                {/* Mobile version: always visible inside bubble */}
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="sm:hidden absolute bottom-1 right-1 h-7 w-7 flex items-center justify-center rounded-md bg-black/40 text-white/50 active:bg-white/20 transition-all touch-manipulation"
+                  title={copied ? 'Copied!' : 'Copy response'}
+                >
+                  {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </>
             )}
             {!isUser ? (
               <div className="prose prose-invert prose-base sm:prose-lg lg:prose-xl max-w-none prose-headings:text-white prose-p:text-white/90 prose-p:leading-relaxed prose-p:my-3 sm:prose-p:my-4 prose-a:text-primary prose-strong:text-white prose-code:text-white prose-pre:bg-black/40">
@@ -509,14 +530,11 @@ export const ChatMessage = ({
             </div>
           )}
 
-          {/* Timeline Updates */}
+          {/* Timeline Updates — header removed; individual items display without the robotic label */}
           {message.timelineUpdates && message.timelineUpdates.length > 0 && (
-            <div className="pt-3 border-t border-white/10">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-xs font-medium text-green-400/80">✓ Updates</span>
-              </div>
+            <div className="pt-2 space-y-0.5">
               {message.timelineUpdates.map((update, idx) => (
-                <p key={idx} className="text-xs text-green-300/70 ml-4">{update}</p>
+                <p key={idx} className="text-xs text-green-300/60">{update}</p>
               ))}
             </div>
           )}
@@ -563,7 +581,7 @@ export const ChatMessage = ({
           {!isUser && message.continuityAcknowledged && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               <span className="inline-flex items-center gap-1 text-xs text-emerald-400/70 bg-emerald-400/8 border border-emerald-400/15 rounded px-2 py-0.5">
-                ✓ {message.continuityAcknowledged.timelineSignificant ? 'Added to Lorekeeper journey' : 'Captured in your record'}
+                ✓ {message.continuityAcknowledged.timelineSignificant ? 'Part of your journey' : 'Added to your story'}
               </span>
               {message.continuityAcknowledged.entityHints.slice(0, 2).map((hint, i) => (
                 <span key={i} className="inline-flex items-center text-xs text-white/30 bg-white/4 border border-white/8 rounded px-2 py-0.5">
@@ -571,6 +589,11 @@ export const ChatMessage = ({
                 </span>
               ))}
             </div>
+          )}
+
+          {/* Active persona chip — always visible so users know which mode is active */}
+          {!isUser && message.activePersona && (
+            <PersonaChip persona={message.activePersona} />
           )}
 
           {/* Cognitive Observability Panels */}

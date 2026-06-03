@@ -29,7 +29,7 @@
  *   before any messages have been loaded (which would write an empty array to the thread).
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../../lib/supabase';
 import { fetchJson } from '../../../lib/api';
@@ -37,6 +37,11 @@ import { useChatThreads } from './useChatThreads';
 import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
 import type { Message } from '../message/ChatMessage';
 import type { TitleGenerationResult } from '../types/conversationMetadata';
+
+// ── Return greeting constants (MVP: LIGHT + MEDIUM only) ─────────────────────
+const GREETING_MIN_GAP_HOURS     = 12;
+const GREETING_MIN_MSG_COUNT     = 5;
+const GREETING_MAX_GAP_HOURS     = 168; // 7 days
 
 interface ConversationRuntimeOptions {
   /** Live message array from useChat/useConversationStore */
@@ -71,6 +76,12 @@ export const useConversationRuntime = ({
     flushSave,
   } = useChatThreads();
 
+  // ── Return greeting state ────────────────────────────────────────────────────
+  const [greetingMessage, setGreetingMessage] = useState<string | null>(null);
+  // Tracks which thread the current greeting was generated for — prevents
+  // a stale greeting from a previous thread appearing on the new one.
+  const greetingThreadRef = useRef<string | null>(null);
+
   // ── Hydration guards ─────────────────────────────────────────────────────────
   const pendingNewThreadRef = useRef(false);
 
@@ -93,10 +104,18 @@ export const useConversationRuntime = ({
   useEffect(() => {
     if (authLoading || threadsLoading) return;
     if (threadIdParam) {
-      // Handler already loaded this thread — skip to avoid double setMessages
-      if (hydratedByHandlerRef.current === threadIdParam) {
-        runtimeDiagnostics.record('hydration_skip', { threadId: threadIdParam });
-        hydratedByHandlerRef.current = null;
+      // A handler called navigate() but React Router hasn't resolved the new param yet.
+      // hydratedByHandlerRef is set to the target thread id. During this race window the
+      // old threadIdParam is still active, so the effect would overwrite the handler's
+      // setMessages with stale data — causing the "double-click to display" bug.
+      // Return early on ANY pending handler, whether or not the URL has caught up yet.
+      if (hydratedByHandlerRef.current) {
+        if (hydratedByHandlerRef.current === threadIdParam) {
+          // URL caught up — clear the guard and skip this hydration cycle.
+          runtimeDiagnostics.record('hydration_skip', { threadId: threadIdParam });
+          hydratedByHandlerRef.current = null;
+        }
+        // Still in the race window (URL param hasn't updated yet) — do nothing.
         return;
       }
       const thread = getThread(threadIdParam);
@@ -132,6 +151,45 @@ export const useConversationRuntime = ({
   useEffect(() => {
     titleGeneratedRef.current = null;
   }, [threadIdParam]);
+
+  // ── Return greeting fetch ─────────────────────────────────────────────────────
+  // Fires when the user opens a thread after a qualifying gap.
+  // Runs after hydration (isHydratedRef) so thread.messages.length is accurate.
+  // Suppresses for: too-short gap, too-few messages, >7 days (MVP limit), or
+  // when the server finds no specific proper noun to reference.
+  useEffect(() => {
+    if (!threadIdParam || authLoading || threadsLoading) return;
+
+    // Clear any greeting from the previous thread immediately on switch.
+    if (greetingThreadRef.current !== threadIdParam) {
+      setGreetingMessage(null);
+      greetingThreadRef.current = threadIdParam;
+    }
+
+    const thread = getThread(threadIdParam);
+    if (!thread) return;
+
+    // Client-side gates — mirror the server gates to avoid a wasted round-trip.
+    const gapHours = (Date.now() - new Date(thread.updatedAt).getTime()) / 3_600_000;
+    if (gapHours < GREETING_MIN_GAP_HOURS) return;
+    if (gapHours > GREETING_MAX_GAP_HOURS) return;
+    if (thread.messages.length < GREETING_MIN_MSG_COUNT) return;
+
+    // Fetch the greeting. Fire-and-forget — failures silently produce null.
+    fetchJson<{ success: boolean; greeting: string | null }>(
+      `/api/conversation/greeting/${threadIdParam}?gapHours=${gapHours.toFixed(2)}`
+    )
+      .then(({ greeting }) => {
+        // Only apply if the user is still on the same thread.
+        if (greetingThreadRef.current === threadIdParam && greeting) {
+          setGreetingMessage(greeting);
+        }
+      })
+      .catch(() => {
+        // Never surface greeting errors to the user.
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadIdParam, threadsLoading, authLoading]);
 
   // ── Auto-create thread on first message (on /chat with no threadId) ─────────
   useEffect(() => {
@@ -290,6 +348,33 @@ export const useConversationRuntime = ({
     [threads, deleteThread, threadIdParam, setMessages, navigate]
   );
 
+  /** Fork the current thread from a given message, navigate to the new thread */
+  const forkThread = useCallback(
+    async (fromMessageId?: string) => {
+      const sourceId = threadIdParam ?? currentThreadId;
+      if (!sourceId) return;
+      try {
+        await flushSave(sourceId);
+        const res = await fetchJson<{ success: boolean; thread: { id: string } }>(
+          `/api/conversation/threads/${sourceId}/fork`,
+          { method: 'POST', body: JSON.stringify({ message_id: fromMessageId }) }
+        );
+        if (res.success && res.thread?.id) {
+          intendedThreadRef.current = res.thread.id;
+          navigate(`/chat/${res.thread.id}`);
+        }
+      } catch (err) {
+        console.error('[useConversationRuntime] forkThread failed', err);
+      }
+    },
+    [threadIdParam, currentThreadId, flushSave, navigate]
+  );
+
+  /** Dismiss the return greeting (called when user sends their first message). */
+  const clearGreeting = useCallback(() => {
+    setGreetingMessage(null);
+  }, []);
+
   return {
     threads,
     threadsLoading,
@@ -298,6 +383,10 @@ export const useConversationRuntime = ({
     activeThreadId: threadIdParam ?? currentThreadId,
     activeThread: threadIdParam ? getThread(threadIdParam) : null,
 
+    /** Ephemeral return greeting — never persisted, cleared on first user message. */
+    greetingMessage,
+    clearGreeting,
+
     handleNewChat,
     handleSelectThread,
     handleDeleteThread,
@@ -305,5 +394,6 @@ export const useConversationRuntime = ({
     updateThread,
     flushSave,
     getThread,
+    forkThread,
   };
 };

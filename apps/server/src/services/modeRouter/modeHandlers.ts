@@ -129,10 +129,10 @@ class ModeHandlers {
         };
       }
 
-      // If low confidence, be explicit
+      // If low confidence, surface what fragments exist — never apologise
       if (recallResult.confidence < 0.5) {
         return {
-          content: "I don't have a clear record of that yet. Tell me now and it goes into your lore.",
+          content: "My record there is thin — I only have fragments. What specifically were you thinking of?",
           response_mode: 'LOW_CONFIDENCE_RECALL',
           confidence: recallResult.confidence,
           metadata: {
@@ -159,7 +159,7 @@ class ModeHandlers {
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to handle memory recall mode');
       return {
-        content: "I don't have a clear record of that yet. Tell me now and it goes into your lore.",
+        content: "Something went wrong pulling that up — what were you trying to recall?",
         response_mode: 'SILENCE',
         confidence: 0.5,
       };
@@ -196,7 +196,7 @@ class ModeHandlers {
           };
         }
         return {
-          content: `I don't have a record of "${storyName}". If you want, you can tell me about it now.`,
+          content: `I don't have much on "${storyName}" yet — what happened?`,
           response_mode: 'SILENCE',
           confidence: 1.0,
           metadata: { story_name: storyName },
@@ -218,7 +218,7 @@ class ModeHandlers {
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to handle narrative recall mode');
       return {
-        content: "I don't have a clear record of that story. If you want, you can tell me about it now.",
+        content: "Something went wrong pulling that up — what's the story you're thinking of?",
         response_mode: 'SILENCE',
         confidence: 0.5,
       };
@@ -251,8 +251,8 @@ class ModeHandlers {
         const { openai } = await import('../../lib/openai');
         const { config } = await import('../../config');
         const systemPrompt = isDump
-          ? `You are Lorekeeper, a personal lore and memory AI. The user just shared a detailed experience. Acknowledge it warmly in 2-3 sentences — reflect something specific back from what they shared, confirm you've saved it to their lore, and optionally ask one light follow-up question. Be natural and conversational, not robotic.`
-          : `You are Lorekeeper, a personal lore and memory AI. The user just shared a moment or experience from their life. Respond warmly in 1-2 sentences — reflect something specific back from what they shared, and confirm you've captured it. Be natural, curious, and conversational. You may ask a brief follow-up if it feels natural.`;
+          ? `You are LoreBook, a personal lore and memory AI. The user just shared a detailed experience. Acknowledge it warmly in 2-3 sentences — reflect something specific back from what they shared, confirm you've saved it to their lore, and optionally ask one light follow-up question. Be natural and conversational, not robotic.`
+          : `You are LoreBook, a personal lore and memory AI. The user just shared a moment or experience from their life. Respond warmly in 1-2 sentences — reflect something specific back from what they shared, and confirm you've captured it. Be natural, curious, and conversational. You may ask a brief follow-up if it feels natural.`;
         const completion = await openai.chat.completions.create({
           model: config.defaultModel || 'gpt-4o-mini',
           temperature: 0.75,
@@ -372,7 +372,7 @@ class ModeHandlers {
           messages: [
             {
               role: 'system',
-              content: 'You are Lorekeeper, a lore-aware AI assistant. The user just logged a quick note or action. Acknowledge it briefly and warmly in 1-2 sentences. You may ask a light follow-up question if it would be natural. Do not be robotic.',
+              content: 'You are LoreBook, a lore-aware AI assistant. The user just logged a quick note or action. Acknowledge it briefly and warmly in 1-2 sentences. You may ask a light follow-up question if it would be natural. Do not be robotic.',
             },
             { role: 'user', content: message },
           ],
@@ -426,7 +426,7 @@ class ModeHandlers {
 
       if (entries.length === 0) {
         return {
-          content: "You're starting to build that story now. As you share — recurring people, places, what you're working on, what matters — Lorekeeper gradually accumulates the patterns that become your narrative. Share something from your life and it becomes part of your record.",
+          content: "You're starting to build that story now. As you share — recurring people, places, what you're working on, what matters — LoreBook gradually accumulates the patterns that become your narrative. Share something from your life and it becomes part of your record.",
           response_mode: 'NARRATIVE_STORY',
           confidence: 1.0,
           metadata: { empty: true },

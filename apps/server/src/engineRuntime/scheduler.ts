@@ -1,10 +1,17 @@
 import * as cron from 'node-cron';
+import PQueue from 'p-queue';
 
 import { logger } from '../logger';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { memoryConsolidationService } from '../services/compiler/memoryConsolidationService';
 
 import { EngineOrchestrator } from './orchestrator';
+
+// Global concurrency cap for the nightly engine run.
+// Prevents OOM and API rate-limit exhaustion when the active user count grows.
+// At 10 concurrent users × ~20 engine calls each = 200 parallel LLM calls max.
+// Raise this only after verifying OpenAI rate limits can sustain the load.
+const SCHEDULER_CONCURRENCY = 10;
 
 /**
  * Engine Scheduler
@@ -42,21 +49,28 @@ export function startEngineScheduler(): void {
         return;
       }
 
-      logger.info({ userCount: users.length }, 'Running engines for all users');
+      logger.info({ userCount: users.length, concurrency: SCHEDULER_CONCURRENCY }, 'Running engines for all users');
 
-      // Run engines for each user (in parallel, but with rate limiting)
-      // Use save=true to cache results for chat system
-      const promises = users.map((user) =>
-        orchestrator.runAll(user.id, true).catch((err) => {
-          logger.error({ error: err, userId: user.id }, 'Error running scheduled engines');
-        })
-      );
+      // PQueue enforces a hard concurrency ceiling across all users.
+      // Without this, Promise.all() on 1000+ users causes OOM and thundering-herd
+      // on the OpenAI API. Each slot runs one full orchestrator.runAll() to completion
+      // before the next user is admitted.
+      const queue = new PQueue({ concurrency: SCHEDULER_CONCURRENCY });
 
-      await Promise.all(promises);
+      for (const user of users as Array<{ id: string }>) {
+        queue.add(() =>
+          orchestrator.runAll(user.id, true).catch((err) => {
+            logger.error({ error: err, userId: user.id }, 'Error running scheduled engines');
+          })
+        );
+      }
+
+      await queue.onIdle();
 
       logger.info({ userCount: users.length }, 'Completed scheduled engine runs');
 
       // Sweep any entry_ir rows stuck in PENDING (pipeline failed mid-flight, server restarted, etc.)
+      // Runs after engine queue drains to avoid competing for API quota.
       for (const user of users as Array<{ id: string }>) {
         memoryConsolidationService.sweepPendingForUser(user.id).catch((err) => {
           logger.warn({ err, userId: user.id }, 'IR consolidation sweep failed for user (non-critical)');

@@ -213,13 +213,20 @@ function ThreadItem({
   }
 
   return (
-    <li>
+    <li className="relative">
+      {/* Active left-edge indicator bar */}
+      {isActive && (
+        <span
+          className="absolute left-0 top-1 bottom-1 w-[3px] rounded-full bg-primary"
+          aria-hidden
+        />
+      )}
       <div
         className={cn(
           'group flex items-center gap-1 rounded-lg cursor-pointer transition-colors min-h-[44px] sm:min-h-0',
           isActive
-            ? 'bg-white/10 text-white'
-            : 'hover:bg-white/5 active:bg-white/8 text-white/75 hover:text-white'
+            ? 'bg-primary/[0.13] text-white'
+            : 'hover:bg-white/[0.06] active:bg-white/[0.08] text-white/55 hover:text-white/90'
         )}
       >
         <button
@@ -236,29 +243,41 @@ function ThreadItem({
           <MessageSquareText
             className={cn(
               'h-3.5 w-3.5 flex-shrink-0 mt-0.5',
-              isActive ? 'text-primary' : 'text-white/30 group-hover:text-white/50'
+              isActive ? 'text-primary' : 'text-white/25 group-hover:text-white/55'
             )}
           />
           <div className="min-w-0 flex-1">
-            <p className="text-sm leading-snug truncate font-medium">
+            <p className={cn(
+              'text-sm leading-snug truncate',
+              isActive ? 'font-semibold' : 'font-medium'
+            )}>
               {thread.title || 'New chat'}
             </p>
             {thread.subtitle && (
-              <p className="text-[9px] text-white/45 truncate mt-px">{thread.subtitle}</p>
+              <p className={cn(
+                'text-[9px] truncate mt-px',
+                isActive ? 'text-white/60' : 'text-white/35'
+              )}>{thread.subtitle}</p>
             )}
             {thread.dominantEntities && thread.dominantEntities.length > 0 && (
               <div className="flex gap-1 mt-1 flex-wrap">
                 {thread.dominantEntities.slice(0, 3).map((entity) => (
                   <span
                     key={entity}
-                    className="text-[8px] leading-none px-1 py-0.5 rounded bg-white/6 text-white/35 truncate max-w-[5rem]"
+                    className={cn(
+                      'text-[8px] leading-none px-1 py-0.5 rounded truncate max-w-[5rem]',
+                      isActive ? 'bg-primary/20 text-primary/80' : 'bg-white/6 text-white/30'
+                    )}
                   >
                     {entity}
                   </span>
                 ))}
               </div>
             )}
-            <p className="text-[10px] text-white/30 mt-0.5">{formatTimestamp(thread.updatedAt)}</p>
+            <p className={cn(
+              'text-[10px] mt-0.5',
+              isActive ? 'text-white/50' : 'text-white/25'
+            )}>{formatTimestamp(thread.updatedAt)}</p>
           </div>
         </button>
 
@@ -428,8 +447,8 @@ export const ChatThreadList = ({
                 className={cn(
                   'p-2 rounded-lg transition-colors touch-manipulation',
                   currentThreadId === t.id
-                    ? 'bg-primary/20 text-primary'
-                    : 'text-white/40 hover:text-white hover:bg-white/8'
+                    ? 'bg-primary/[0.13] text-primary ring-1 ring-primary/20'
+                    : 'text-white/35 hover:text-white/80 hover:bg-white/[0.06]'
                 )}
               >
                 <MessageSquareText className="h-4 w-4" />

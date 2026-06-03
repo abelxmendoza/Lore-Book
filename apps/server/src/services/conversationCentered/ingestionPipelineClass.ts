@@ -49,6 +49,7 @@ import { questService } from '../quests/questService';
 import { ingestConversationER } from '../unifiedErIngestion';
 import { eventCandidateService } from '../eventCandidates/eventCandidateService';
 import { narrativeContinuityService } from '../narrativeContinuityService';
+import { shadowModeOrchestrator } from '../ingestion/shadowMode';
 
 /**
  * Main ingestion pipeline for conversation messages
@@ -784,6 +785,15 @@ export class ConversationIngestionPipeline {
     eventContext?: string,
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP'; id: string }
   ): Promise<{ messageId: string; utteranceIds: string[]; unitIds: string[] }> {
+      // Collector for shadow mode baseline — populated by synchronous pipeline steps below
+      const _shadowBaseline = {
+        entities:        [] as Array<{ name: string; type: string }>,
+        relationships:   [] as Array<{ from: string; to: string; type: string }>,
+        interests:       [] as Array<{ name: string; category?: string }>,
+        romanticSignals: [] as Array<{ person_name: string; signal_type: string }>,
+        experiences:     [] as Array<{ content: string; type: string }>,
+      };
+
       // Step 1: Save message (if not already saved)
       // Note: In practice, message might already be saved by chat service
       // This is a placeholder - adjust based on your chat service implementation
@@ -884,6 +894,9 @@ export class ConversationIngestionPipeline {
             .map(e => ({ ...e, name: registryById.get(e.id)?.name ?? '' }))
             .filter(e => e.name);
 
+          // Capture for shadow baseline
+          _shadowBaseline.entities = entitiesWithNames.map(e => ({ name: e.name, type: e.type }));
+
           if (entitiesWithNames.length >= 2) {
             const detection = await entityRelationshipDetector.detectRelationshipsAndScopes(
               userId,
@@ -892,6 +905,13 @@ export class ConversationIngestionPipeline {
               messageId,
               undefined // journal entry ID if available
             );
+
+            // Capture for shadow baseline
+            _shadowBaseline.relationships = detection.relationships.map(r => ({
+              from: r.fromEntityId,
+              to: r.toEntityId,
+              type: r.relationshipType,
+            }));
 
             // Save relationships
             for (const relationship of detection.relationships) {
@@ -1075,8 +1095,13 @@ export class ConversationIngestionPipeline {
           const units = await semanticExtractionService.extractSemanticUnits(
             normalized.normalized_text,
             conversationHistory,
-            isAIMessage
+            sender === 'AI'
           );
+
+          // Capture for shadow baseline
+          for (const u of units.units) {
+            _shadowBaseline.experiences.push({ content: u.content, type: u.type });
+          }
 
           // Step 6: Save extracted units
           for (const unit of units.units) {
@@ -1912,6 +1937,21 @@ export class ConversationIngestionPipeline {
         await this.updateThreadTimestamp(threadId);
       } catch (err) {
         logger.warn({ err, userId, threadId }, 'Failed to update thread timestamp, continuing');
+      }
+
+      // Shadow mode — runs in background after response is returned, never blocks chat
+      if (sender === 'USER') {
+        setImmediate(() => {
+          shadowModeOrchestrator.runShadow({
+            messageId,
+            userId,
+            rawText,
+            sender,
+            conversationHistory,
+            knownEntityNames: _shadowBaseline.entities.map(e => e.name),
+            baseline: _shadowBaseline,
+          }).catch(() => {});
+        });
       }
 
       // Return the results
