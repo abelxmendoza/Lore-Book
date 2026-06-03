@@ -16,6 +16,7 @@ export const LandingHeader = () => {
   const navLinks = [
     { path: '/home', label: 'Home' },
     { path: '/features', label: 'Features' },
+    { path: '/upgrade', label: 'Pricing' },
     { path: '/about', label: 'About' },
   ];
 

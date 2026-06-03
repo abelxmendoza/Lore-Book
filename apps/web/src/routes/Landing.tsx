@@ -250,7 +250,7 @@ export default function Landing() {
           }}
         />
 
-        {/* 7. Founder */}
+        {/* 9. Founder */}
         <section className="py-12 sm:py-16 px-4 sm:px-6 lg:px-8 bg-black/20">
           <div className="max-w-4xl mx-auto">
             <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center px-2 sm:px-0">Team</h2>

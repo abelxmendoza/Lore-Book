@@ -1,8 +1,11 @@
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Brain, Lock, Repeat2, MessageSquareHeart, ChevronDown, ChevronUp } from 'lucide-react';
+import { Brain, Lock, Repeat2, MessageSquareHeart, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 import { PricingTable } from '../components/billing/PricingTable';
 import { useSubscription } from '../hooks/useSubscription';
+import { LandingHeader } from '../components/landing/LandingHeader';
+import { LandingFooter } from '../components/landing/LandingFooter';
+import { CTASection } from '../components/landing/CTASection';
 
 // ── Value pillars ─────────────────────────────────────────────────────────────
 
@@ -42,7 +45,7 @@ const VALUE_PILLARS = [
 const FAQ = [
   {
     q: 'What happens to my data when I pay?',
-    a: 'Nothing changes about how your data is stored. Paid plans unlock more threads, deeper analytics, and generation features — not different privacy treatment. Your data is always encrypted and always yours.',
+    a: 'Nothing changes about how your data is stored. Pro unlocks more threads, deeper analytics, and generation features — not different privacy treatment. Your data is always encrypted and always yours.',
   },
   {
     q: 'Can I keep my data if I downgrade?',
@@ -59,10 +62,6 @@ const FAQ = [
   {
     q: 'When do payments actually start?',
     a: 'We\'re finishing payment infrastructure now. Joining the waitlist locks in early-adopter pricing and you\'ll be notified first. No credit card required until launch.',
-  },
-  {
-    q: 'What\'s the difference between Power and Pro?',
-    a: 'Pro is for people who want a memory companion. Power is for people who want to understand their own patterns — relationship health scores, drift signals, the "I\'ve noticed" moments, and a decision journal that tracks outcomes over time.',
   },
 ];
 
@@ -105,66 +104,61 @@ const UpgradePage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#080510] via-[#0a0614] to-black text-white">
+    <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black text-white">
+      <LandingHeader />
 
-      {/* Atmospheric glows */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-0 left-1/4 w-[600px] h-[400px] bg-primary/8 rounded-full blur-[120px]" />
-        <div className="absolute bottom-1/3 right-1/4 w-[500px] h-[300px] bg-violet-600/6 rounded-full blur-[100px]" />
-      </div>
-
-      <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-8 py-10 sm:py-16">
-
-        {/* Back nav */}
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-1.5 text-white/30 hover:text-white text-sm transition mb-12"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          Back
-        </button>
+      <main className="pt-20">
 
         {/* Hero */}
-        <div className="text-center mb-16 sm:mb-20">
-          <p className="text-xs text-primary/60 font-mono tracking-[0.2em] uppercase mb-5">
-            LoreBook Plans
-          </p>
-          <h1 className="text-3xl sm:text-[3.25rem] font-bold text-white mb-5 leading-[1.1] font-serif">
-            The longer you talk,<br className="hidden sm:block" />
-            the more it knows you.
-          </h1>
-          <p className="text-white/45 text-base sm:text-lg max-w-lg mx-auto leading-relaxed">
-            Start free. Upgrade when LoreBook has earned it.
-            Your first memory is free forever.
-          </p>
-        </div>
+        <section className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl mx-auto text-center space-y-6">
+            <p className="text-xs text-primary/60 font-mono tracking-[0.2em] uppercase">
+              LoreBook Plans
+            </p>
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white leading-tight">
+              The longer you talk,{' '}
+              <span className="text-primary">the more it knows you.</span>
+            </h1>
+            <p className="text-lg text-white/60 max-w-xl mx-auto leading-relaxed">
+              Start free. Upgrade when LoreBook has earned it.
+              Your first memory is free forever.
+            </p>
+          </div>
+        </section>
 
         {/* Value pillars */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-20">
-          {VALUE_PILLARS.map(({ icon: Icon, color, bg, title, body }) => (
-            <div key={title} className="flex gap-3.5 p-4 rounded-xl border border-white/6 bg-white/[0.025]">
-              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${bg}`}>
-                <Icon className={`h-4.5 w-4.5 ${color}`} />
+        <section className="py-8 px-4 sm:px-6 lg:px-8 bg-black/20">
+          <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {VALUE_PILLARS.map(({ icon: Icon, color, bg, title, body }) => (
+              <div key={title} className="flex gap-3.5 p-5 rounded-xl border border-white/6 bg-white/[0.025]">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${bg}`}>
+                  <Icon className={`h-4 w-4 ${color}`} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white mb-1">{title}</p>
+                  <p className="text-xs text-white/45 leading-relaxed">{body}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-white mb-1">{title}</p>
-                <p className="text-xs text-white/45 leading-relaxed">{body}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
 
         {/* Pricing table */}
-        <div id="pricing" className="mb-20">
-          <PricingTable
-            onUpgrade={handleUpgrade}
-            currentPlan={subscription?.planType ?? 'free'}
-          />
-        </div>
+        <section className="py-20 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-5xl mx-auto">
+            <div className="text-center mb-12">
+              <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">Simple pricing</h2>
+              <p className="text-white/60">Start free. Upgrade when you're ready for the full picture.</p>
+            </div>
+            <PricingTable
+              onUpgrade={handleUpgrade}
+              currentPlan={subscription?.planType ?? 'free'}
+            />
+          </div>
+        </section>
 
         {/* Trust line */}
-        <div className="text-center mb-20">
+        <div className="text-center pb-12">
           <p className="text-sm text-white/30">
             No credit card required to start.&nbsp;&nbsp;·&nbsp;&nbsp;
             Cancel any time.&nbsp;&nbsp;·&nbsp;&nbsp;
@@ -173,33 +167,26 @@ const UpgradePage = () => {
         </div>
 
         {/* FAQ */}
-        <div className="max-w-2xl mx-auto mb-16">
-          <h2 className="text-lg font-bold text-white mb-6 text-center">Questions</h2>
-          <div className="border border-white/8 rounded-2xl px-5">
-            {FAQ.map(item => <FAQItem key={item.q} {...item} />)}
+        <section className="py-12 px-4 sm:px-6 lg:px-8 bg-black/20">
+          <div className="max-w-2xl mx-auto">
+            <h2 className="text-lg font-bold text-white mb-6 text-center">Questions</h2>
+            <div className="border border-white/8 rounded-2xl px-5">
+              {FAQ.map(item => <FAQItem key={item.q} {...item} />)}
+            </div>
           </div>
-        </div>
+        </section>
 
-        {/* Bottom CTA */}
-        <div className="text-center rounded-2xl border border-primary/20 bg-primary/5 p-8 sm:p-10">
-          <p className="text-white/40 text-xs font-mono tracking-widest uppercase mb-3">Still deciding?</p>
-          <p className="text-lg sm:text-xl font-semibold text-white mb-2">
-            The Free plan is the best way to see if LoreBook works for you.
-          </p>
-          <p className="text-white/40 text-sm mb-6 max-w-sm mx-auto">
-            No limit on messages. One full thread. Real persistent memory.
-            If it's not useful, you'll know in a week.
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate('/chat')}
-            className="inline-flex items-center gap-2 bg-white text-black px-6 py-2.5 rounded-xl text-sm font-semibold hover:bg-white/90 transition"
-          >
-            Start for free
-          </button>
-        </div>
+        {/* CTA */}
+        <CTASection
+          title="Ready to stop starting over?"
+          description="Join LoreBook and let context carry forward. Start free."
+          primaryAction={{ label: 'Get Started Free', path: '/login' }}
+          secondaryAction={{ label: 'Explore Features', path: '/features' }}
+        />
 
-      </div>
+      </main>
+
+      <LandingFooter />
     </div>
   );
 };
