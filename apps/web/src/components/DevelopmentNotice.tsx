@@ -69,20 +69,19 @@ export function DevelopmentNotice() {
 
         {/* Header */}
         <div className="flex items-start gap-3 sm:gap-4 pr-8 sm:pr-0">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center flex-shrink-0">
-            <Rocket className="h-5 w-5 sm:h-6 sm:w-6 text-black" />
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+            <Rocket className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
           </div>
           <div className="flex-1 min-w-0">
             <h2
               id="dev-notice-title"
-              className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2 flex items-center gap-2 flex-wrap"
+              className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2"
             >
-              <Info className="h-5 w-5 sm:h-6 sm:w-6 text-primary flex-shrink-0" />
-              <span>App Under Development</span>
+              Early Access — Lore Book
             </h2>
-            <p id="dev-notice-description" className="text-white/80 text-sm sm:text-base md:text-lg">
-              Lore Book is still being built! You're seeing an early preview of the UI. 
-              Some features may not be fully functional yet.
+            <p id="dev-notice-description" className="text-white/70 text-sm sm:text-base">
+              The core experience is live. You can journal, chat, and watch your story take shape.
+              We're still building — some features are further along than others.
             </p>
           </div>
         </div>
@@ -91,12 +90,23 @@ export function DevelopmentNotice() {
         <div className="space-y-3 sm:space-y-4 text-white/70">
           <div className="bg-black/40 border border-white/10 rounded-lg p-3 sm:p-4 space-y-3">
             <div className="flex items-start gap-2 sm:gap-3">
+              <Rocket className="h-4 w-4 sm:h-5 sm:w-5 text-green-400 mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">What's live</p>
+                <p className="text-xs sm:text-sm">
+                  Chat, journaling, and memory extraction are fully active. Characters, events,
+                  locations, and groups are tracked in real time from your conversations.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 sm:gap-3">
               <Database className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Demo Data</p>
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Some panels use sample data</p>
                 <p className="text-xs sm:text-sm">
-                  Some features are using sample data to showcase the interface. 
-                  Real functionality will be available once the backend is fully deployed.
+                  A few analytical surfaces — mood, goals, perceptions — show sample data
+                  to preview what they'll look like as your story grows. The data will fill in over time.
                 </p>
               </div>
             </div>
@@ -104,10 +114,10 @@ export function DevelopmentNotice() {
             <div className="flex items-start gap-2 sm:gap-3">
               <Code className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Active Development</p>
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Actively evolving</p>
                 <p className="text-xs sm:text-sm">
-                  We're continuously improving the app. Features may change, 
-                  and some functionality may not be fully operational yet.
+                  Features ship frequently. Things may shift, improve, or occasionally break.
+                  That's the deal with early access — you're part of shaping this.
                 </p>
               </div>
             </div>
@@ -115,23 +125,23 @@ export function DevelopmentNotice() {
 
           <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4">
             <p className="text-xs sm:text-sm text-primary/90">
-              <strong>What works:</strong> You can explore the UI, navigate through different sections, 
-              and see how the app will look and feel. The interface is fully functional for demonstration purposes.
+              <strong>Start by chatting.</strong> Tell the app about your day, the people in your life,
+              or something that happened. Lore Book listens and builds your story from there.
             </p>
           </div>
         </div>
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 pt-3 sm:pt-4 border-t border-white/10">
-          <p className="text-xs sm:text-sm text-white/60 text-center sm:text-left">
-            This notice can be dismissed and won't appear again
+          <p className="text-xs sm:text-sm text-white/40 text-center sm:text-left">
+            Won't show again after dismissing
           </p>
           <Button
             onClick={handleDismiss}
             className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 w-full sm:w-auto whitespace-nowrap"
             aria-label="Got it, continue to app"
           >
-            <span className="text-sm sm:text-base">Got it, let's explore!</span>
+            <span className="text-sm sm:text-base">Got it, let's go</span>
           </Button>
         </div>
       </div>
