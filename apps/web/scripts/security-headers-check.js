@@ -8,7 +8,7 @@
 import https from 'https';
 import http from 'http';
 
-const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://lore-keeper-web.vercel.app';
+const PRODUCTION_URL = process.env.PRODUCTION_URL || 'https://lorebookai.com';
 const REQUIRED_HEADERS = [
   'content-security-policy',
   'x-content-type-options',

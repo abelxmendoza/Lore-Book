@@ -107,9 +107,11 @@ app.use(cors({
         const allowedOrigins = [
           process.env.FRONTEND_URL,
           process.env.VITE_API_URL?.replace(/\/api\/?$/, ''), // Base URL without /api
+          'https://lorebookai.com',
+          'https://www.lorebookai.com',
           'https://lorebook.app',
           'https://www.lorebook.app',
-          'https://lore-keeper-web.vercel.app' // Deployed Vercel frontend
+          'https://lore-keeper-web.vercel.app' // Legacy — keep until all traffic migrated
         ].filter(Boolean) as string[];
 
         // Allow requests with no origin (like mobile apps or curl requests)

@@ -22,7 +22,7 @@
   ],
   "env": {
     "NODE_VERSION": "20",
-    "VITE_APP_URL": "https://lore-keeper-web.vercel.app",
+    "VITE_APP_URL": "https://lorebookai.com",
     "VITE_USE_MOCK_DATA": "false",
     "VITE_SHOW_DEV_NOTICE": "false",
     "VITE_SUPABASE_URL": "https://cshtthzpgkmrbcsfghyq.supabase.co",
