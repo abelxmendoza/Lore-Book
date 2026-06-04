@@ -56,13 +56,13 @@ export const Router = () => {
   return (
     <Routes>
       {/* Landing Pages - Public routes */}
-      <Route 
-        path="/home" 
+      <Route
+        path="/"
         element={
           <LazyRoute>
             <Landing />
           </LazyRoute>
-        } 
+        }
       />
       <Route 
         path="/features" 
@@ -89,9 +89,9 @@ export const Router = () => {
         } 
       />
 
-      {/* Root — defaults to home dashboard */}
+      {/* /home — authenticated dashboard */}
       <Route
-        path="/"
+        path="/home"
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="home" /></AuthGate>

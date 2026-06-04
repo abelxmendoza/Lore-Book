@@ -14,7 +14,7 @@ export const LandingHeader = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
-    { path: '/home', label: 'Home' },
+    { path: '/', label: 'Home' },
     { path: '/features', label: 'Features' },
     { path: '/upgrade', label: 'Pricing' },
     { path: '/about', label: 'About' },
@@ -27,7 +27,7 @@ export const LandingHeader = () => {
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/home" className="flex items-center space-x-2 sm:space-x-3">
+          <Link to="/" className="flex items-center space-x-2 sm:space-x-3">
             <Logo size="sm" showText={true} />
           </Link>
 
