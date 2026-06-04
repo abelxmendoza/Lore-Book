@@ -126,7 +126,7 @@ router.get(
 
     const { data: threads, error } = await supabaseAdmin
       .from('conversation_sessions')
-      .select('id, title, subtitle, updated_at, metadata')
+      .select('id, title, updated_at, metadata')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false })
       .limit(limit);
@@ -138,7 +138,7 @@ router.get(
       threads: (threads || []).map((t) => ({
         id: t.id,
         title: t.title ?? 'New chat',
-        subtitle: t.subtitle ?? undefined,
+        subtitle: (t.metadata as Record<string, unknown>)?.subtitle as string | undefined,
         updatedAt: t.updated_at,
         metadata: t.metadata ?? {},
       })),
@@ -189,7 +189,7 @@ router.post(
   '/threads/:id/end',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
     const { summary } = req.body as { summary?: string };
 
