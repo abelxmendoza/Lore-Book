@@ -464,14 +464,19 @@ export class ConversationIngestionPipeline {
     userId: string,
     chatSessionId: string
   ): Promise<string> {
-    // Check if conversation session already exists for this chat session
-    const { data: existing } = await supabaseAdmin
+    // Check if conversation session already exists for this chat session.
+    // Use limit(1) instead of .single() — multiple duplicate sessions can exist
+    // due to prior race conditions, and .single() throws on >1 rows which
+    // causes existing to be null and creates yet another duplicate.
+    const { data: existingRows } = await supabaseAdmin
       .from('conversation_sessions')
       .select('id')
       .eq('user_id', userId)
       .eq('metadata->>chat_session_id', chatSessionId)
-      .single();
+      .order('created_at', { ascending: true })
+      .limit(1);
 
+    const existing = existingRows?.[0] ?? null;
     if (existing && existing.id) {
       return existing.id;
     }

@@ -120,10 +120,13 @@ class ConversationService {
           logger.debug({ error, sessionId }, 'Failed to generate session embedding');
         });
 
-      // Extract topics (simple keyword extraction)
+      // Extract topics (simple keyword extraction) — stored in metadata
       const topics = this.extractTopics(allContent);
       if (topics.length > 0) {
-        updateData.topics = topics;
+        (updateData as Record<string, unknown>).metadata = {
+          ...((updateData as Record<string, unknown>).metadata as Record<string, unknown> || {}),
+          topics,
+        };
       }
     }
 
@@ -159,7 +162,6 @@ class ConversationService {
    */
   private extractTopics(content: string): string[] {
     const topics = new Set<string>();
-    const lowerContent = content.toLowerCase();
 
     // Common topic keywords
     const topicPatterns = [
@@ -300,7 +302,38 @@ class ConversationService {
       return null;
     }
 
-    const messages = await this.getSessionMessages(sessionId, userId);
+    let messages = await this.getSessionMessages(sessionId, userId);
+
+    // Fallback: many sessions store messages in metadata.messages (frontend path)
+    // rather than in the conversation_messages table (pipeline path). Read from
+    // metadata when the table is empty so the extraction worker sees real content.
+    if (messages.length === 0 && Array.isArray(session.metadata?.messages)) {
+      const rawMessages = session.metadata.messages as Array<{
+        id?: string;
+        role?: string;
+        content?: string;
+        timestamp?: string;
+        isSystemMessage?: boolean;
+      }>;
+
+      messages = rawMessages
+        .filter(
+          (m) =>
+            !m.isSystemMessage &&
+            (m.role === 'user' || m.role === 'assistant') &&
+            typeof m.content === 'string' &&
+            m.content.trim().length > 0
+        )
+        .map((m, idx) => ({
+          id: m.id ?? `metadata-msg-${idx}`,
+          session_id: sessionId,
+          user_id: userId,
+          role: m.role as 'user' | 'assistant',
+          content: m.content as string,
+          created_at: m.timestamp ?? session.started_at,
+          metadata: { source: 'session_metadata' },
+        }));
+    }
 
     return { session, messages };
   }

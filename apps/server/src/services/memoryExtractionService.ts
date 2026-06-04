@@ -1,6 +1,15 @@
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../logger';
+
+// Thrown when content is not memory-worthy — signals worker to mark 'skipped',
+// not 'failed'. Skipped sessions can be re-evaluated; failed ones count against retry budget.
+export class NotMemoryWorthyError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'NotMemoryWorthyError';
+  }
+}
 import type {
   ConversationMessage,
   MemoryEntry,
@@ -72,13 +81,13 @@ class MemoryExtractionService {
     }
 
     if (!detection.isMemoryWorthy) {
-      throw new Error('Conversation does not contain memory-worthy content');
+      throw new NotMemoryWorthyError('Conversation does not contain memory-worthy content');
     }
 
     // Extract memory segments
     const segments = await ruleBasedMemoryDetectionService.extractMemorySegments(messages);
     if (segments.length === 0) {
-      throw new Error('No memory segments detected');
+      throw new NotMemoryWorthyError('No memory segments detected');
     }
 
     // Use highest confidence segment for journal entry
