@@ -608,6 +608,77 @@ User's message: ${currentInput}`;
                 </CardContent>
               </Card>
 
+              {/* G1 Intelligence Panel */}
+              <Card className="bg-black/40 border border-purple-500/30">
+                <CardHeader className="pb-3">
+                  <h3 className="text-sm font-semibold text-white/70 flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-purple-400" />
+                    Group Intelligence
+                  </h3>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Your Relationship */}
+                    <div>
+                      <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Your Relationship</p>
+                      <Badge variant="outline" className={(() => {
+                        const r = editedOrg.user_relationship;
+                        if (['founder','leader'].includes(r)) return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+                        if (r === 'member') return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+                        if (r === 'former_member' || r === 'alumnus') return 'bg-gray-500/20 text-gray-300 border-gray-500/30';
+                        if (['adjacent','collaborator'].includes(r)) return 'bg-teal-500/20 text-teal-300 border-teal-500/30';
+                        if (r === 'fan') return 'bg-pink-500/20 text-pink-300 border-pink-500/30';
+                        return 'bg-white/10 text-white/50 border-white/20';
+                      })()}>
+                        {editedOrg.user_relationship?.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
+
+                    {/* Membership Model */}
+                    <div>
+                      <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Membership</p>
+                      <Badge variant="outline" className={
+                        editedOrg.membership_model === 'strict' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
+                        editedOrg.membership_model === 'fuzzy' ? 'bg-orange-500/20 text-orange-300 border-orange-500/30' :
+                        'bg-gray-500/20 text-gray-300 border-gray-500/30'
+                      }>
+                        {editedOrg.membership_model === 'strict' ? 'Defined roster' :
+                         editedOrg.membership_model === 'fuzzy' ? 'Participatory' :
+                         'Reference only'}
+                      </Badge>
+                    </div>
+
+                    {/* Group Type (canonical) */}
+                    <div>
+                      <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Group Type</p>
+                      <Badge variant="outline" className="bg-white/10 text-white/60 border-white/20">
+                        {editedOrg.group_type?.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
+
+                    {/* Public Entity */}
+                    {editedOrg.is_public_entity && (
+                      <div>
+                        <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Entity Class</p>
+                        <Badge variant="outline" className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
+                          Public entity
+                        </Badge>
+                      </div>
+                    )}
+
+                    {/* Lifecycle years */}
+                    {(editedOrg.founded_year || editedOrg.dissolved_year) && (
+                      <div className="col-span-2">
+                        <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Lifecycle</p>
+                        <p className="text-sm text-white/70">
+                          {editedOrg.founded_year ?? '?'} – {editedOrg.dissolved_year ?? 'present'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Stats */}
               <div className="grid grid-cols-4 gap-4">
                 <Card className="bg-black/40 border-border/50">

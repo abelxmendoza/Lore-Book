@@ -708,6 +708,44 @@ export class OrganizationService {
       return [];
     }
   }
+
+  /**
+   * Get all organizations that contain a given character as a member.
+   * Searches by character_id (if available) or character_name (fuzzy).
+   */
+  async getOrganizationsByCharacter(
+    userId: string,
+    characterId?: string,
+    characterName?: string
+  ): Promise<Organization[]> {
+    try {
+      let memberQuery = supabaseAdmin
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', userId);
+
+      if (characterId) {
+        memberQuery = memberQuery.eq('character_id', characterId);
+      } else if (characterName) {
+        memberQuery = memberQuery.ilike('character_name', `%${characterName}%`);
+      } else {
+        return [];
+      }
+
+      const { data: memberships, error } = await memberQuery;
+      if (error) throw error;
+      if (!memberships || memberships.length === 0) return [];
+
+      const orgIds = [...new Set(memberships.map(m => m.organization_id))];
+      const orgs = await Promise.all(
+        orgIds.map(id => this.getOrganization(userId, id))
+      );
+      return orgs.filter((o): o is Organization => o !== null);
+    } catch (error) {
+      logger.error({ error, userId, characterId, characterName }, 'Failed to get organizations by character');
+      return [];
+    }
+  }
 }
 
 export const organizationService = new OrganizationService();

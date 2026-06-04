@@ -47,6 +47,26 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// GET /api/organizations/by-character?character_id=&character_name=
+// Must be registered BEFORE /:id to avoid matching "by-character" as an ID
+router.get('/by-character', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const characterId = req.query.character_id ? String(req.query.character_id) : undefined;
+  const characterName = req.query.character_name ? String(req.query.character_name) : undefined;
+
+  if (!characterId && !characterName) {
+    res.status(400).json({ success: false, error: 'character_id or character_name required' });
+    return;
+  }
+  try {
+    const organizations = await organizationService.getOrganizationsByCharacter(userId, characterId, characterName);
+    res.json({ success: true, organizations });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to get organizations by character');
+    res.status(500).json({ success: false, error: 'Failed to fetch organizations' });
+  }
+});
+
 // GET /api/organizations/:id
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;

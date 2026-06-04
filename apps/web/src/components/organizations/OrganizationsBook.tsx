@@ -13,10 +13,10 @@ import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { OrganizationProfileCard, type Organization, type OrganizationMember, type OrganizationStory, type OrganizationEvent, type OrganizationLocation } from './OrganizationProfileCard';
 import { OrganizationDetailModal } from './OrganizationDetailModal';
+import { GroupSuggestions } from '../groups/GroupSuggestions';
 import { fetchJson } from '../../lib/api';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
-import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { subDays } from 'date-fns';
 
 const ITEMS_PER_PAGE = 24;
@@ -466,6 +466,11 @@ export const OrganizationsBook: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Group Suggestions — surfaces detected group candidates for review */}
+      {!isMockDataEnabled && (
+        <GroupSuggestions onGroupCreated={() => void loadOrganizations()} />
+      )}
+
       {/* Search and Controls — two rows on mobile: row 1 = search, row 2 = sort + refresh */}
       <div className="space-y-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">

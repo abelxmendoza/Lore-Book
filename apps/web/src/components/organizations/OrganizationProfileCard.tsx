@@ -216,14 +216,39 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
       <CardHeader className="pb-0 sm:pb-1.5 pt-1.5 sm:pt-2.5 px-2 sm:px-4 flex-1 min-h-0 flex flex-col justify-center">
         <div className="flex items-start justify-between gap-1 sm:gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="text-xs sm:text-base font-semibold text-white line-clamp-2 sm:truncate group-hover:text-primary transition-colors break-words" title={organization.name}>
-              {organization.name}
-            </h3>
-            {organization.type && (
-              <p className="text-[10px] sm:text-xs text-white/50 mt-0.5 truncate capitalize hidden sm:block">
-                {organization.type.replace(/_/g, ' ')}
-              </p>
-            )}
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-xs sm:text-base font-semibold text-white line-clamp-2 sm:truncate group-hover:text-primary transition-colors break-words" title={organization.name}>
+                {organization.name}
+              </h3>
+              {organization.is_public_entity && (
+                <span className="text-[9px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1 rounded flex-shrink-0 hidden sm:inline">
+                  Public
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5 hidden sm:flex flex-wrap">
+              {organization.group_type && (
+                <p className="text-[10px] text-white/50 truncate capitalize">
+                  {organization.group_type.replace(/_/g, ' ')}
+                </p>
+              )}
+              {organization.user_relationship && organization.user_relationship !== 'member' && (
+                <span className={`text-[9px] px-1 rounded border ${
+                  ['founder','leader'].includes(organization.user_relationship)
+                    ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                    : ['fan','aware_of','referenced'].includes(organization.user_relationship)
+                    ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                    : 'bg-teal-500/20 text-teal-400 border-teal-500/30'
+                }`}>
+                  {organization.user_relationship.replace(/_/g, ' ')}
+                </span>
+              )}
+              {organization.membership_model === 'fuzzy' && (
+                <span className="text-[9px] bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1 rounded">
+                  scene
+                </span>
+              )}
+            </div>
           </div>
           <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0 hidden sm:block" />
         </div>

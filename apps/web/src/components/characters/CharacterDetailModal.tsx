@@ -684,6 +684,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('info');
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
+  const [characterOrganizations, setCharacterOrganizations] = useState<Array<Organization & { user_is_member: boolean; character_role?: string }>>([]);
+  const [orgsLoaded, setOrgsLoaded] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationProfile | null>(null);
   const [selectedPerception, setSelectedPerception] = useState<PerceptionEntry | null>(null);
   const [selectedCharacterForModal, setSelectedCharacterForModal] = useState<Character | null>(null);
@@ -1304,6 +1306,39 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatMessages, chatLoading]);
+
+  // Fetch real organizations for this character
+  useEffect(() => {
+    if (orgsLoaded || isMockDataEnabled) return;
+    const load = async () => {
+      try {
+        const params = character.id
+          ? `character_id=${encodeURIComponent(character.id)}`
+          : `character_name=${encodeURIComponent(character.name)}`;
+        const res = await fetchJson<{ success: boolean; organizations: Organization[] }>(
+          `/api/organizations/by-character?${params}`
+        );
+        if (res.success) {
+          // Mark each org: user_is_member = true when user_relationship is an active role
+          const activeRels = new Set(['founder','leader','member','collaborator','adjacent','alumnus']);
+          const withMeta = res.organizations.map(org => ({
+            ...org,
+            user_is_member: activeRels.has(org.user_relationship),
+            character_role: org.members?.find(m =>
+              m.character_id === character.id ||
+              m.character_name.toLowerCase() === character.name.toLowerCase()
+            )?.role,
+          }));
+          setCharacterOrganizations(withMeta);
+        }
+      } catch {
+        // Non-fatal — falls back to mock
+      } finally {
+        setOrgsLoaded(true);
+      }
+    };
+    void load();
+  }, [character.id, character.name, isMockDataEnabled, orgsLoaded]);
 
   const handleChatSubmit = async (message: string) => {
     if (!message.trim() || chatLoading) return;
@@ -2686,7 +2721,7 @@ User's message: ${message}`;
 
                 {/* Groups & Organizations */}
                 {(() => {
-                  const orgs = getMockOrganizations();
+                  const orgs = isMockDataEnabled ? getMockOrganizations() : characterOrganizations;
                   const shared = orgs.filter((o: any) => o.user_is_member);
                   const theirs = orgs.filter((o: any) => !o.user_is_member);
                   const OrgCard = ({ org, isShared }: { org: any; isShared: boolean }) => (

@@ -49,6 +49,7 @@ import { questService } from '../quests/questService';
 import { ingestConversationER } from '../unifiedErIngestion';
 import { eventCandidateService } from '../eventCandidates/eventCandidateService';
 import { narrativeContinuityService } from '../narrativeContinuityService';
+import { groupCandidateService } from '../groupCandidateService';
 import { shadowModeOrchestrator } from '../ingestion/shadowMode';
 
 /**
@@ -1937,6 +1938,17 @@ export class ConversationIngestionPipeline {
         await this.updateThreadTimestamp(threadId);
       } catch (err) {
         logger.warn({ err, userId, threadId }, 'Failed to update thread timestamp, continuing');
+      }
+
+      // Step 12.13: Group candidate detection — non-blocking, fire-and-forget
+      // Detects recurring people clusters and named groups in USER messages.
+      // Results land in group_candidates table for user review — nothing is auto-created.
+      if (sender === 'USER' && rawText.length > 15) {
+        groupCandidateService
+          .processChatMessage(userId, rawText, messageId)
+          .catch(err => {
+            logger.debug({ err }, 'Group candidate detection failed (non-blocking)');
+          });
       }
 
       // Shadow mode — runs in background after response is returned, never blocks chat

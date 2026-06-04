@@ -1,0 +1,97 @@
+// =====================================================
+// GROUP CANDIDATES ROUTES
+// Purpose: Review queue for detected group signals
+// =====================================================
+
+import { Router } from 'express';
+import { z } from 'zod';
+
+import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { groupCandidateService } from '../services/groupCandidateService';
+
+const router = Router();
+
+const GROUP_TYPES = [
+  'friend_group','band','sports_team','company','club','nonprofit',
+  'family','martial_arts','scene','crew','collective','institution',
+  'public_entity','other',
+] as const;
+
+const USER_RELATIONSHIPS = [
+  'founder','leader','member','former_member','collaborator',
+  'adjacent','fan','aware_of','referenced','alumnus',
+] as const;
+
+const MEMBERSHIP_MODELS = ['strict','fuzzy','none'] as const;
+
+// GET /api/group-candidates
+// Returns pending candidates that have met the surface threshold
+router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const status = (String(req.query.status || 'pending')) as 'pending' | 'accepted' | 'rejected' | 'all';
+  try {
+    const candidates = await groupCandidateService.getCandidates(userId, status);
+    const pendingCount = await groupCandidateService.getPendingCount(userId);
+    res.json({ success: true, candidates, pending_count: pendingCount });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to get group candidates');
+    res.status(500).json({ success: false, error: 'Failed to get group candidates' });
+  }
+});
+
+// GET /api/group-candidates/count
+// Lightweight count for badge/notification purposes
+router.get('/count', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  try {
+    const count = await groupCandidateService.getPendingCount(userId);
+    res.json({ success: true, count });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to get count' });
+  }
+});
+
+// POST /api/group-candidates/:id/accept
+router.post('/:id/accept', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const candidateId = String(req.params.id);
+
+  const schema = z.object({
+    name: z.string().min(1).optional(),
+    group_type: z.enum(GROUP_TYPES).optional(),
+    user_relationship: z.enum(USER_RELATIONSHIPS).optional(),
+    membership_model: z.enum(MEMBERSHIP_MODELS).optional(),
+    description: z.string().optional(),
+    members: z.array(z.string()).optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+
+  try {
+    const result = await groupCandidateService.acceptCandidate(userId, candidateId, parsed.data);
+    res.json({ success: true, organization_id: result.organization_id });
+  } catch (error) {
+    logger.error({ error, userId, candidateId }, 'Failed to accept group candidate');
+    res.status(500).json({ success: false, error: 'Failed to accept candidate' });
+  }
+});
+
+// POST /api/group-candidates/:id/reject
+router.post('/:id/reject', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const candidateId = String(req.params.id);
+  try {
+    await groupCandidateService.rejectCandidate(userId, candidateId);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId, candidateId }, 'Failed to reject group candidate');
+    res.status(500).json({ success: false, error: 'Failed to reject candidate' });
+  }
+});
+
+export default router;

@@ -142,6 +142,7 @@ import correctionDashboardRouter from './correctionDashboard';
 import entityResolutionRouter from './entityResolution';
 import memoryRecallRouter from './memoryRecall';
 import organizationsRouter from './organizations';
+import groupCandidatesRouter from './groupCandidates';
 import lifeArcRouter from './lifeArc';
 import { lifeRouter } from './life';
 import metaControlRouter from './metaControl';
@@ -560,6 +561,12 @@ export const routeRegistry: RouteEntry[] = [
     router: organizationsRouter,
     classification: 'EXPERIMENTAL',
     description: 'Organization entity management',
+  },
+  {
+    path: '/api/group-candidates',
+    router: groupCandidatesRouter,
+    classification: 'EXPERIMENTAL',
+    description: 'Group candidate review queue — detected groups awaiting user confirmation',
   },
   {
     path: '/api/locations',

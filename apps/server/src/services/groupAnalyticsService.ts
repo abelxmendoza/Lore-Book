@@ -45,15 +45,81 @@ export interface GroupAnalytics {
   calculation_period_days: number;
 }
 
+// ── Relationship tiers ────────────────────────────────────────────────────────
+// Determines what level of analytics is meaningful for a given relationship.
+const FULL_ANALYTICS_RELS = new Set(['founder', 'leader', 'member']);
+const HISTORICAL_RELS     = new Set(['former_member', 'alumnus']);
+const CULTURAL_RELS       = new Set(['adjacent', 'fan', 'collaborator']);
+// aware_of | referenced → no analytics
+
+function getAnalyticsTier(rel: string | undefined): 'full' | 'historical' | 'cultural' | 'none' {
+  if (!rel) return 'full'; // legacy orgs without relationship field
+  if (FULL_ANALYTICS_RELS.has(rel)) return 'full';
+  if (HISTORICAL_RELS.has(rel))     return 'historical';
+  if (CULTURAL_RELS.has(rel))       return 'cultural';
+  return 'none';
+}
+
+// Stubs returned for non-full tiers
+function historicalStub(calculated_at: string): GroupAnalytics {
+  return {
+    user_involvement_score: 0, user_ranking: 0, user_role_importance: 0,
+    relevance_score: 0, priority_score: 0, importance_score: 0, value_score: 0,
+    group_influence_on_user: 0, user_influence_over_group: 0,
+    cohesion_score: 0, activity_level: 0, engagement_score: 0,
+    strengths: [], weaknesses: [], opportunities: [], threats: [],
+    recency_score: 0, frequency_score: 0, trend: 'stable',
+    calculated_at, calculation_period_days: 0,
+  };
+}
+
+function culturalStub(group_influence: number, calculated_at: string): GroupAnalytics {
+  return {
+    user_involvement_score: 0, user_ranking: 0, user_role_importance: 0,
+    relevance_score: group_influence, priority_score: 0,
+    importance_score: group_influence, value_score: group_influence,
+    group_influence_on_user: group_influence, user_influence_over_group: 0,
+    cohesion_score: 0, activity_level: 0, engagement_score: 0,
+    strengths: [], weaknesses: [], opportunities: [], threats: [],
+    recency_score: 0, frequency_score: 0, trend: 'stable',
+    calculated_at, calculation_period_days: 0,
+  };
+}
+
 export class GroupAnalyticsService {
   /**
-   * Calculate comprehensive analytics for a group
+   * Calculate analytics for a group, gated by the user's relationship tier.
+   *
+   * Tiers:
+   *   full      (founder | leader | member)  → complete analytics
+   *   historical (former_member | alumnus)   → zeroed stub
+   *   cultural   (adjacent | fan | collab)   → cultural influence only
+   *   none       (aware_of | referenced)     → throws, caller skips analytics
    */
   async calculateAnalytics(
     userId: string,
     organizationId: string,
     organization: Organization
   ): Promise<GroupAnalytics> {
+    const tier = getAnalyticsTier(organization.user_relationship);
+    const now = new Date().toISOString();
+
+    if (tier === 'none') {
+      // Callers wrap this in try/catch and continue without analytics
+      throw new Error(`No analytics for relationship tier: ${organization.user_relationship}`);
+    }
+    if (tier === 'historical') return historicalStub(now);
+    if (tier === 'cultural') {
+      // Light estimate: how often is this group mentioned?
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 90);
+      const conversations = await this.getGroupConversations(userId, organizationId, cutoff);
+      const mentions = await this.getJournalMentions(userId, organization, cutoff);
+      const influence = Math.min(100, (conversations.length + mentions.length) * 4);
+      return culturalStub(influence, now);
+    }
+
+    // full analytics below
     try {
       const calculationPeriod = 90; // Analyze last 90 days
       const cutoffDate = new Date();
@@ -198,15 +264,6 @@ export class GroupAnalyticsService {
         calculated_at: new Date().toISOString(),
         calculation_period_days: calculationPeriod,
       };
-
-      // Update entity confidence based on analytics (fire and forget)
-      entityConfidenceService
-        .updateEntityConfidenceFromAnalytics(userId, organizationId, 'ORG', result)
-        .catch(err => {
-          logger.debug({ err, userId, organizationId }, 'Failed to update confidence from analytics');
-        });
-
-      return result;
     } catch (error) {
       logger.error({ error, userId, organizationId }, 'Failed to calculate group analytics');
       throw error;
