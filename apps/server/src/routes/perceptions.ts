@@ -79,9 +79,10 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     const filters: {
       subject_person_id?: string;
+      subject_alias?: string;
       source?: any;
       retracted?: boolean;
-      resolution?: any;
+      status?: any;
       limit?: number;
       offset?: number;
     } = {};
@@ -123,7 +124,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.get('/about/:personId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { personId } = req.params;
+    const personId = req.params.personId as string;
 
     const perceptions = await perceptionService.getPerceptionsAboutPerson(userId, personId);
 
@@ -141,7 +142,7 @@ router.get('/about/:personId', requireAuth, async (req: AuthenticatedRequest, re
 router.get('/evolution/:personId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { personId } = req.params;
+    const personId = req.params.personId as string;
 
     const perceptions = await perceptionService.getPerceptionEvolution(userId, personId);
 
@@ -204,7 +205,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const perception = await perceptionService.updatePerceptionEntry(userId, id, parsed.data);
 
@@ -221,7 +222,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     await perceptionService.deletePerceptionEntry(userId, id);
 
@@ -229,6 +230,55 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to delete perception entry');
     res.status(500).json({ error: 'Failed to delete perception entry' });
+  }
+});
+
+/**
+ * Detect whether a message contains a perception-worthy statement.
+ * Lightweight heuristic — no AI call. Used by the chat composer to
+ * decide whether to surface the "Save as perception?" chip.
+ */
+router.post('/detect', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const schema = z.object({ text: z.string().min(1) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+
+    const { text } = parsed.data;
+    const lower = text.toLowerCase();
+
+    // Perception signal phrases — someone is forming a belief about another person
+    const perceptionSignals = [
+      'i think', 'i believe', 'i heard', 'i feel like', 'i assumed',
+      'i thought', 'i perceived', 'i got the sense', 'i got the impression',
+      'people say', 'rumor', 'i was told', 'someone told me', 'i overheard',
+      'i read that', 'i noticed', 'it seemed like', 'i suspect',
+    ];
+
+    // Third-person subject indicators — must be about someone else
+    const thirdPersonSignals = [
+      ' he ', ' she ', ' they ', ' him ', ' her ', ' them ',
+      ' his ', ' her ', ' their ', "'s ", ' is ', ' was ', ' has ',
+    ];
+
+    const hasPerceptionSignal = perceptionSignals.some(p => lower.includes(p));
+    const hasThirdPerson = thirdPersonSignals.some(p => lower.includes(p));
+    const isPerception = hasPerceptionSignal && hasThirdPerson && text.length > 15;
+
+    // Extract a rough subject hint (the first capitalized name-like word after a signal)
+    const nameMatch = text.match(/\b([A-Z][a-z]{2,})\b/);
+    const subjectHint = nameMatch ? nameMatch[1] : null;
+
+    res.json({
+      isPerception,
+      confidence: isPerception ? (hasPerceptionSignal && hasThirdPerson ? 0.7 : 0.4) : 0.1,
+      subjectHint,
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to detect perception');
+    res.status(500).json({ error: 'Failed to detect perception' });
   }
 });
 

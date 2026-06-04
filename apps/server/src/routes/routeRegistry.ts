@@ -903,8 +903,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/perceptions',
     router: perceptionsRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Perception tracking',
+    classification: 'CORE_RUNTIME',
+    description: 'Perception tracking — character intelligence layer',
   },
   {
     path: '/api/reactions',
