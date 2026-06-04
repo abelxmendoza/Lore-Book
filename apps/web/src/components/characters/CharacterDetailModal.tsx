@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { PerceptionsView } from '../perceptions/PerceptionsView';
+import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
 import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -2797,13 +2797,10 @@ User's message: ${message}`;
             )}
 
             {!loadingDetails && activeTab === 'perceptions' && (
-              <div className="space-y-6">
-                <PerceptionsView
-                  personId={editedCharacter.id}
-                  personName={editedCharacter.name}
-                  showCreateButton={true}
-                />
-              </div>
+              <CharacterPerceptionsTab
+                personId={editedCharacter.id}
+                personName={editedCharacter.name}
+              />
             )}
 
             {!loadingDetails && activeTab === 'history' && (
