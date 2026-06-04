@@ -2,8 +2,6 @@ import { randomUUID } from 'crypto';
 import { openai } from '../openaiClient';
 
 import mammoth from 'mammoth';
-import * as pdfParseModule from 'pdf-parse';
-const pdfParse = (pdfParseModule as unknown as { default: (buf: Buffer, opts?: Record<string, unknown>) => Promise<{ text: string }> }).default ?? pdfParseModule;
 
 import { config } from '../../config';
 import { logger } from '../../logger';
@@ -58,6 +56,9 @@ class ResumeParsingService {
 
       if (fileType === 'pdf') {
         try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const pdfParseModule = require('pdf-parse');
+          const pdfParse: (buf: Buffer) => Promise<{ text: string }> = pdfParseModule.default ?? pdfParseModule;
           const pdfData = await pdfParse(fileBuffer);
           return pdfData.text;
         } catch (error) {

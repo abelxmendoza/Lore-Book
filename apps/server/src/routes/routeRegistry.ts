@@ -472,7 +472,7 @@ export const routeRegistry: RouteEntry[] = [
     description: 'Epistemic perspective management',
   },
   {
-    path: '/api/relationships',
+    path: '/api/temporal-relationships',
     router: temporalRelationshipsRouter,
     classification: 'EXPERIMENTAL',
     description: 'Temporal relationship tracking',
