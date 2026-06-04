@@ -8,8 +8,73 @@ import { logger } from '../logger';
 import { groupAnalyticsService, type GroupAnalytics } from './groupAnalyticsService';
 import { supabaseAdmin } from './supabaseClient';
 
-export type OrganizationType = 'friend_group' | 'company' | 'sports_team' | 'club' | 'nonprofit' | 'affiliation' | 'other';
+// ── Canonical group type enum ─────────────────────────────────────────
+export type GroupType =
+  | 'friend_group'
+  | 'band'
+  | 'sports_team'
+  | 'company'
+  | 'club'
+  | 'nonprofit'
+  | 'family'
+  | 'martial_arts'
+  | 'scene'
+  | 'crew'
+  | 'collective'
+  | 'institution'
+  | 'public_entity'
+  | 'other';
+
+// ── Membership model ──────────────────────────────────────────────────
+// strict = defined roster | fuzzy = participatory | none = reference only
+export type MembershipModel = 'strict' | 'fuzzy' | 'none';
+
+// ── User relationship to this group ──────────────────────────────────
+export type UserRelationship =
+  | 'founder'
+  | 'leader'
+  | 'member'
+  | 'former_member'
+  | 'collaborator'
+  | 'adjacent'
+  | 'fan'
+  | 'aware_of'
+  | 'referenced'
+  | 'alumnus';
+
+// ── Backward-compat alias (legacy type column) ────────────────────────
+export type OrganizationType =
+  | 'friend_group'
+  | 'company'
+  | 'sports_team'
+  | 'club'
+  | 'nonprofit'
+  | 'affiliation'
+  | 'family'
+  | 'martial_arts'
+  | 'other';
+
 export type OrganizationStatus = 'active' | 'inactive' | 'dissolved';
+
+// ── Relationship between two groups ──────────────────────────────────
+export type OrgRelationshipType =
+  | 'part_of'
+  | 'affiliated_with'
+  | 'rival_of'
+  | 'spawned_from'
+  | 'collaborated_with'
+  | 'succeeded_by'
+  | 'merged_with';
+
+export interface OrganizationRelationship {
+  id: string;
+  user_id: string;
+  from_org_id: string;
+  to_org_id: string;
+  relationship_type: OrgRelationshipType;
+  notes?: string;
+  created_at: string;
+}
 
 export interface OrganizationMember {
   id: string;
@@ -18,6 +83,7 @@ export interface OrganizationMember {
   character_name: string;
   role?: string;
   joined_date?: string;
+  left_at?: string;
   status: 'active' | 'former' | 'honorary';
   notes?: string;
 }
@@ -55,7 +121,18 @@ export interface Organization {
   user_id: string;
   name: string;
   aliases: string[];
+
+  // ── Legacy type column (kept for backward compat) ──────────────────
   type: OrganizationType;
+
+  // ── G1 canonical group model ───────────────────────────────────────
+  group_type: GroupType;
+  membership_model: MembershipModel;
+  user_relationship: UserRelationship;
+  is_public_entity: boolean;
+  founded_year?: number;
+  dissolved_year?: number;
+
   description?: string;
   location?: string;
   founded_date?: string;
@@ -63,19 +140,19 @@ export interface Organization {
   metadata?: Record<string, any>;
   created_at: string;
   updated_at: string;
-  
+
   // Related data
   members?: OrganizationMember[];
   stories?: OrganizationStory[];
   events?: OrganizationEvent[];
   locations?: OrganizationLocation[];
-  
+
   // Computed stats
   member_count?: number;
   usage_count?: number;
   confidence?: number;
   last_seen?: string;
-  
+
   // Analytics
   analytics?: GroupAnalytics;
 }
@@ -125,7 +202,7 @@ export class OrganizationService {
         events,
         locations,
         member_count: members.length,
-        usage_count: 0, // TODO: Calculate from entity mentions
+        usage_count: events.length + stories.length,
         confidence: 1.0,
         last_seen: org.updated_at,
         analytics,
@@ -206,6 +283,12 @@ export class OrganizationService {
           name: data.name!,
           aliases: data.aliases || [],
           type: data.type || 'other',
+          group_type: data.group_type || data.type || 'other',
+          membership_model: data.membership_model || 'strict',
+          user_relationship: data.user_relationship || 'member',
+          is_public_entity: data.is_public_entity ?? false,
+          founded_year: data.founded_year,
+          dissolved_year: data.dissolved_year,
           description: data.description,
           location: data.location,
           founded_date: data.founded_date,
@@ -249,6 +332,12 @@ export class OrganizationService {
           name: updates.name,
           aliases: updates.aliases,
           type: updates.type,
+          group_type: updates.group_type,
+          membership_model: updates.membership_model,
+          user_relationship: updates.user_relationship,
+          is_public_entity: updates.is_public_entity,
+          founded_year: updates.founded_year,
+          dissolved_year: updates.dissolved_year,
           description: updates.description,
           location: updates.location,
           founded_date: updates.founded_date,
@@ -394,28 +483,229 @@ export class OrganizationService {
   }
 
   /**
-   * Chat endpoint for organization editing
+   * Delete an organization (cascades to members, stories, events, locations via FK)
    */
-  async chat(
+  async deleteOrganization(userId: string, organizationId: string): Promise<void> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('organizations')
+        .delete()
+        .eq('id', organizationId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+    } catch (error) {
+      logger.error({ error, userId, organizationId }, 'Failed to delete organization');
+      throw error;
+    }
+  }
+
+  /**
+   * Add an event to an organization
+   */
+  async addEvent(
     userId: string,
     organizationId: string,
-    message: string,
-    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
-  ): Promise<{ answer: string; updates?: Partial<Organization> }> {
+    event: { title: string; date: string; type?: OrganizationEvent['type']; event_id?: string }
+  ): Promise<OrganizationEvent> {
     try {
-      const organization = await this.getOrganization(userId, organizationId);
-      if (!organization) {
-        throw new Error('Organization not found');
-      }
+      const { data, error } = await supabaseAdmin
+        .from('organization_events')
+        .insert({
+          user_id: userId,
+          organization_id: organizationId,
+          title: event.title,
+          date: event.date,
+          type: event.type || 'other',
+          event_id: event.event_id,
+        })
+        .select()
+        .single();
 
-      // TODO: Integrate with omegaChatService for AI responses
-      // For now, return a simple response
-      const answer = `I understand you want to discuss ${organization.name}. This feature is being enhanced to provide AI-powered assistance for managing your organization.`;
-
-      return { answer };
+      if (error) throw error;
+      return data;
     } catch (error) {
-      logger.error({ error, userId, organizationId }, 'Failed to process chat');
+      logger.error({ error, userId, organizationId }, 'Failed to add event');
       throw error;
+    }
+  }
+
+  /**
+   * Remove an event from an organization
+   */
+  async removeEvent(userId: string, organizationId: string, eventId: string): Promise<void> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('organization_events')
+        .delete()
+        .eq('id', eventId)
+        .eq('organization_id', organizationId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+    } catch (error) {
+      logger.error({ error, userId, organizationId, eventId }, 'Failed to remove event');
+      throw error;
+    }
+  }
+
+  /**
+   * Add a story to an organization
+   */
+  async addStory(
+    userId: string,
+    organizationId: string,
+    story: { title: string; summary: string; date: string; memory_id?: string }
+  ): Promise<OrganizationStory> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('organization_stories')
+        .insert({
+          user_id: userId,
+          organization_id: organizationId,
+          title: story.title,
+          summary: story.summary,
+          date: story.date,
+          memory_id: story.memory_id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      logger.error({ error, userId, organizationId }, 'Failed to add story');
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a story from an organization
+   */
+  async removeStory(userId: string, organizationId: string, storyId: string): Promise<void> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('organization_stories')
+        .delete()
+        .eq('id', storyId)
+        .eq('organization_id', organizationId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+    } catch (error) {
+      logger.error({ error, userId, organizationId, storyId }, 'Failed to remove story');
+      throw error;
+    }
+  }
+
+  /**
+   * Add a location to an organization
+   */
+  async addLocation(
+    userId: string,
+    organizationId: string,
+    location: { location_name: string; location_id?: string; visit_count?: number; last_visited?: string }
+  ): Promise<OrganizationLocation> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('organization_locations')
+        .insert({
+          user_id: userId,
+          organization_id: organizationId,
+          location_name: location.location_name,
+          location_id: location.location_id,
+          visit_count: location.visit_count || 1,
+          last_visited: location.last_visited,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      logger.error({ error, userId, organizationId }, 'Failed to add location');
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a location from an organization
+   */
+  async removeLocation(userId: string, organizationId: string, locationId: string): Promise<void> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('organization_locations')
+        .delete()
+        .eq('id', locationId)
+        .eq('organization_id', organizationId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+    } catch (error) {
+      logger.error({ error, userId, organizationId, locationId }, 'Failed to remove location');
+      throw error;
+    }
+  }
+
+  // ── Organization Relationships ──────────────────────────────────────
+
+  async addRelationship(
+    userId: string,
+    fromOrgId: string,
+    toOrgId: string,
+    relationshipType: OrgRelationshipType,
+    notes?: string
+  ): Promise<OrganizationRelationship> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('organization_relationships')
+        .insert({
+          user_id: userId,
+          from_org_id: fromOrgId,
+          to_org_id: toOrgId,
+          relationship_type: relationshipType,
+          notes,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      logger.error({ error, userId, fromOrgId, toOrgId }, 'Failed to add organization relationship');
+      throw error;
+    }
+  }
+
+  async removeRelationship(userId: string, relationshipId: string): Promise<void> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('organization_relationships')
+        .delete()
+        .eq('id', relationshipId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+    } catch (error) {
+      logger.error({ error, userId, relationshipId }, 'Failed to remove organization relationship');
+      throw error;
+    }
+  }
+
+  async getRelationships(userId: string, orgId: string): Promise<OrganizationRelationship[]> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('organization_relationships')
+        .select('*')
+        .eq('user_id', userId)
+        .or(`from_org_id.eq.${orgId},to_org_id.eq.${orgId}`)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      logger.error({ error, userId, orgId }, 'Failed to get organization relationships');
+      return [];
     }
   }
 }

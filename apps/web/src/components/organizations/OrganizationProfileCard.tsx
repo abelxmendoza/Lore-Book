@@ -3,12 +3,39 @@ import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { format, parseISO } from 'date-fns';
 
+// ── G1 canonical types ────────────────────────────────────────────────
+export type GroupType =
+  | 'friend_group' | 'band' | 'sports_team' | 'company' | 'club' | 'nonprofit'
+  | 'family' | 'martial_arts' | 'scene' | 'crew' | 'collective'
+  | 'institution' | 'public_entity' | 'other';
+
+export type MembershipModel = 'strict' | 'fuzzy' | 'none';
+
+export type UserRelationship =
+  | 'founder' | 'leader' | 'member' | 'former_member' | 'collaborator'
+  | 'adjacent' | 'fan' | 'aware_of' | 'referenced' | 'alumnus';
+
+export type OrgRelationshipType =
+  | 'part_of' | 'affiliated_with' | 'rival_of' | 'spawned_from'
+  | 'collaborated_with' | 'succeeded_by' | 'merged_with';
+
+export type OrganizationRelationship = {
+  id: string;
+  user_id: string;
+  from_org_id: string;
+  to_org_id: string;
+  relationship_type: OrgRelationshipType;
+  notes?: string;
+  created_at: string;
+};
+
 export type OrganizationMember = {
   id: string;
   character_id?: string;
   character_name: string;
   role?: string;
   joined_date?: string;
+  left_at?: string;
   status: 'active' | 'former' | 'honorary';
   notes?: string;
 };
@@ -42,13 +69,25 @@ export type Organization = {
   id: string;
   name: string;
   aliases: string[];
+
+  // Legacy type column (kept for backward compat)
   type: 'friend_group' | 'company' | 'sports_team' | 'club' | 'nonprofit' | 'affiliation' | 'family' | 'martial_arts' | 'other';
-  // Family-specific fields
-  generations?: number;       // number of generations in family group
-  family_branches?: string[]; // e.g. ["maternal", "paternal"]
-  // Hierarchy-specific fields
-  hierarchy_system_id?: string;  // references a HierarchySystem
+
+  // G1 canonical group model
+  group_type: GroupType;
+  membership_model: MembershipModel;
+  user_relationship: UserRelationship;
+  is_public_entity: boolean;
+  founded_year?: number;
+  dissolved_year?: number;
+
+  // Family-specific metadata
+  generations?: number;
+  family_branches?: string[];
+  // Hierarchy metadata
+  hierarchy_system_id?: string;
   hierarchy_enabled?: boolean;
+
   description?: string;
   location?: string;
   founded_date?: string;
@@ -154,13 +193,13 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
                 {organization.analytics.importance_score}
               </Badge>
               {organization.analytics.trend === 'increasing' && (
-                <TrendingUp className="h-3 w-3 text-green-400" title="Increasing activity" />
+                <TrendingUp className="h-3 w-3 text-green-400" />
               )}
               {organization.analytics.trend === 'decreasing' && (
-                <TrendingDown className="h-3 w-3 text-red-400" title="Decreasing activity" />
+                <TrendingDown className="h-3 w-3 text-red-400" />
               )}
               {organization.analytics.trend === 'stable' && (
-                <Minus className="h-3 w-3 text-gray-400" title="Stable activity" />
+                <Minus className="h-3 w-3 text-gray-400" />
               )}
             </>
           )}

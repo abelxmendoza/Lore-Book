@@ -1,6 +1,5 @@
 // =====================================================
 // ORGANIZATIONS ROUTES
-// Purpose: API endpoints for organization management
 // =====================================================
 
 import { Router } from 'express';
@@ -8,216 +7,363 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { organizationService } from '../services/organizationService';
-import { asyncHandler } from '../utils/asyncHandler';
+import { organizationService, type OrgRelationshipType } from '../services/organizationService';
 
 const router = Router();
 
-/**
- * GET /api/organizations
- * List all organizations for the authenticated user
- */
-router.get(
-  '/',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
+// Legacy type column values
+const ORG_TYPES = ['friend_group', 'company', 'sports_team', 'club', 'nonprofit', 'affiliation', 'family', 'martial_arts', 'other'] as const;
 
-    try {
-      const organizations = await organizationService.listOrganizations(userId);
-      res.json({ success: true, organizations });
-    } catch (error) {
-      logger.error({ error, userId }, 'Failed to list organizations');
-      res.status(500).json({ success: false, error: 'Failed to fetch organizations' });
+// G1 canonical group types
+const GROUP_TYPES = [
+  'friend_group', 'band', 'sports_team', 'company', 'club', 'nonprofit',
+  'family', 'martial_arts', 'scene', 'crew', 'collective', 'institution',
+  'public_entity', 'other',
+] as const;
+
+const MEMBERSHIP_MODELS = ['strict', 'fuzzy', 'none'] as const;
+
+const USER_RELATIONSHIPS = [
+  'founder', 'leader', 'member', 'former_member', 'collaborator',
+  'adjacent', 'fan', 'aware_of', 'referenced', 'alumnus',
+] as const;
+
+const ORG_STATUSES = ['active', 'inactive', 'dissolved'] as const;
+
+const ORG_REL_TYPES = [
+  'part_of', 'affiliated_with', 'rival_of', 'spawned_from',
+  'collaborated_with', 'succeeded_by', 'merged_with',
+] as const;
+
+// GET /api/organizations
+router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  try {
+    const organizations = await organizationService.listOrganizations(userId);
+    res.json({ success: true, organizations });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to list organizations');
+    res.status(500).json({ success: false, error: 'Failed to fetch organizations' });
+  }
+});
+
+// GET /api/organizations/:id
+router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  try {
+    const organization = await organizationService.getOrganization(userId, organizationId);
+    if (!organization) {
+      res.status(404).json({ success: false, error: 'Organization not found' });
+      return;
     }
-  })
-);
+    res.json({ success: true, organization });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to get organization');
+    res.status(500).json({ success: false, error: 'Failed to fetch organization' });
+  }
+});
 
-/**
- * GET /api/organizations/:id
- * Get a specific organization with all related data
- */
-router.get(
-  '/:id',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
-    const organizationId = req.params.id;
+// POST /api/organizations
+router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const createSchema = z.object({
+    name: z.string().min(1),
+    aliases: z.array(z.string()).optional(),
+    type: z.enum(ORG_TYPES).optional(),
+    group_type: z.enum(GROUP_TYPES).optional(),
+    membership_model: z.enum(MEMBERSHIP_MODELS).optional(),
+    user_relationship: z.enum(USER_RELATIONSHIPS).optional(),
+    is_public_entity: z.boolean().optional(),
+    founded_year: z.number().int().optional(),
+    dissolved_year: z.number().int().optional(),
+    description: z.string().optional(),
+    location: z.string().optional(),
+    founded_date: z.string().optional(),
+    status: z.enum(ORG_STATUSES).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  });
+  const parsed = createSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+  try {
+    const organization = await organizationService.createOrganization(userId, parsed.data);
+    res.json({ success: true, organization });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to create organization');
+    res.status(500).json({ success: false, error: 'Failed to create organization' });
+  }
+});
 
-    try {
-      const organization = await organizationService.getOrganization(userId, organizationId);
-      
-      if (!organization) {
-        return res.status(404).json({ success: false, error: 'Organization not found' });
-      }
+// PATCH /api/organizations/:id
+router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  const updateSchema = z.object({
+    name: z.string().min(1).optional(),
+    aliases: z.array(z.string()).optional(),
+    type: z.enum(ORG_TYPES).optional(),
+    group_type: z.enum(GROUP_TYPES).optional(),
+    membership_model: z.enum(MEMBERSHIP_MODELS).optional(),
+    user_relationship: z.enum(USER_RELATIONSHIPS).optional(),
+    is_public_entity: z.boolean().optional(),
+    founded_year: z.number().int().optional(),
+    dissolved_year: z.number().int().optional(),
+    description: z.string().optional(),
+    location: z.string().optional(),
+    founded_date: z.string().optional(),
+    status: z.enum(ORG_STATUSES).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  });
+  const parsed = updateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+  try {
+    const organization = await organizationService.updateOrganization(userId, organizationId, parsed.data);
+    res.json({ success: true, organization });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to update organization');
+    res.status(500).json({ success: false, error: 'Failed to update organization' });
+  }
+});
 
-      res.json({ success: true, organization });
-    } catch (error) {
-      logger.error({ error, userId, organizationId }, 'Failed to get organization');
-      res.status(500).json({ success: false, error: 'Failed to fetch organization' });
-    }
-  })
-);
+// DELETE /api/organizations/:id
+router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  try {
+    await organizationService.deleteOrganization(userId, organizationId);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to delete organization');
+    res.status(500).json({ success: false, error: 'Failed to delete organization' });
+  }
+});
 
-/**
- * POST /api/organizations
- * Create a new organization
- */
-router.post(
-  '/',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
+// ── Members ──────────────────────────────────────────
 
-    const createSchema = z.object({
-      name: z.string().min(1),
-      aliases: z.array(z.string()).optional(),
-      type: z.enum(['friend_group', 'company', 'sports_team', 'club', 'nonprofit', 'affiliation', 'other']).optional(),
-      description: z.string().optional(),
-      location: z.string().optional(),
-      founded_date: z.string().optional(),
-      status: z.enum(['active', 'inactive', 'dissolved']).optional(),
-      metadata: z.record(z.any()).optional(),
+// POST /api/organizations/:id/members
+router.post('/:id/members', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  const memberSchema = z.object({
+    character_name: z.string().min(1),
+    character_id: z.string().optional(),
+    role: z.string().optional(),
+    joined_date: z.string().optional(),
+    status: z.enum(['active', 'former', 'honorary']).default('active'),
+    notes: z.string().optional(),
+  });
+  const parsed = memberSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+  try {
+    const member = await organizationService.addMember(userId, organizationId, {
+      ...parsed.data,
+      status: parsed.data.status ?? 'active',
     });
+    res.json({ success: true, member });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to add member');
+    res.status(500).json({ success: false, error: 'Failed to add member' });
+  }
+});
 
-    try {
-      const data = createSchema.parse(req.body);
-      const organization = await organizationService.createOrganization(userId, data);
-      res.json({ success: true, organization });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, error: error.errors });
-      }
-      logger.error({ error, userId }, 'Failed to create organization');
-      res.status(500).json({ success: false, error: 'Failed to create organization' });
-    }
-  })
-);
+// DELETE /api/organizations/:id/members/:memberId
+router.delete('/:id/members/:memberId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  const memberId = String(req.params.memberId);
+  try {
+    await organizationService.removeMember(userId, organizationId, memberId);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to remove member');
+    res.status(500).json({ success: false, error: 'Failed to remove member' });
+  }
+});
 
-/**
- * PATCH /api/organizations/:id
- * Update an organization
- */
-router.patch(
-  '/:id',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
-    const organizationId = req.params.id;
+// ── Events ───────────────────────────────────────────
 
-    const updateSchema = z.object({
-      name: z.string().min(1).optional(),
-      aliases: z.array(z.string()).optional(),
-      type: z.enum(['friend_group', 'company', 'sports_team', 'club', 'nonprofit', 'affiliation', 'other']).optional(),
-      description: z.string().optional(),
-      location: z.string().optional(),
-      founded_date: z.string().optional(),
-      status: z.enum(['active', 'inactive', 'dissolved']).optional(),
-      metadata: z.record(z.any()).optional(),
-    });
+// POST /api/organizations/:id/events
+router.post('/:id/events', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  const eventSchema = z.object({
+    title: z.string().min(1),
+    date: z.string().min(1),
+    type: z.enum(['meeting', 'game', 'social', 'work', 'other']).optional(),
+    event_id: z.string().optional(),
+  });
+  const parsed = eventSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+  try {
+    const event = await organizationService.addEvent(userId, organizationId, parsed.data);
+    res.json({ success: true, event });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to add event');
+    res.status(500).json({ success: false, error: 'Failed to add event' });
+  }
+});
 
-    try {
-      const updates = updateSchema.parse(req.body);
-      const organization = await organizationService.updateOrganization(userId, organizationId, updates);
-      res.json({ success: true, organization });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, error: error.errors });
-      }
-      logger.error({ error, userId, organizationId }, 'Failed to update organization');
-      res.status(500).json({ success: false, error: 'Failed to update organization' });
-    }
-  })
-);
+// DELETE /api/organizations/:id/events/:eventId
+router.delete('/:id/events/:eventId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  const eventId = String(req.params.eventId);
+  try {
+    await organizationService.removeEvent(userId, organizationId, eventId);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to remove event');
+    res.status(500).json({ success: false, error: 'Failed to remove event' });
+  }
+});
 
-/**
- * POST /api/organizations/:id/members
- * Add a member to an organization
- */
-router.post(
-  '/:id/members',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
-    const organizationId = req.params.id;
+// ── Stories ──────────────────────────────────────────
 
-    const memberSchema = z.object({
-      character_name: z.string().min(1),
-      character_id: z.string().optional(),
-      role: z.string().optional(),
-      joined_date: z.string().optional(),
-      status: z.enum(['active', 'former', 'honorary']).optional(),
-      notes: z.string().optional(),
-    });
+// POST /api/organizations/:id/stories
+router.post('/:id/stories', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  const storySchema = z.object({
+    title: z.string().min(1),
+    summary: z.string().min(1),
+    date: z.string().min(1),
+    memory_id: z.string().optional(),
+  });
+  const parsed = storySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+  try {
+    const story = await organizationService.addStory(userId, organizationId, parsed.data);
+    res.json({ success: true, story });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to add story');
+    res.status(500).json({ success: false, error: 'Failed to add story' });
+  }
+});
 
-    try {
-      const memberData = memberSchema.parse(req.body);
-      const member = await organizationService.addMember(userId, organizationId, memberData);
-      res.json({ success: true, member });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, error: error.errors });
-      }
-      logger.error({ error, userId, organizationId }, 'Failed to add member');
-      res.status(500).json({ success: false, error: 'Failed to add member' });
-    }
-  })
-);
+// DELETE /api/organizations/:id/stories/:storyId
+router.delete('/:id/stories/:storyId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  const storyId = String(req.params.storyId);
+  try {
+    await organizationService.removeStory(userId, organizationId, storyId);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to remove story');
+    res.status(500).json({ success: false, error: 'Failed to remove story' });
+  }
+});
 
-/**
- * DELETE /api/organizations/:id/members/:memberId
- * Remove a member from an organization
- */
-router.delete(
-  '/:id/members/:memberId',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
-    const organizationId = req.params.id;
-    const memberId = req.params.memberId;
+// ── Locations ────────────────────────────────────────
 
-    try {
-      await organizationService.removeMember(userId, organizationId, memberId);
-      res.json({ success: true });
-    } catch (error) {
-      logger.error({ error, userId, organizationId, memberId }, 'Failed to remove member');
-      res.status(500).json({ success: false, error: 'Failed to remove member' });
-    }
-  })
-);
+// POST /api/organizations/:id/locations
+router.post('/:id/locations', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  const locationSchema = z.object({
+    location_name: z.string().min(1),
+    location_id: z.string().optional(),
+    visit_count: z.number().int().min(1).optional(),
+    last_visited: z.string().optional(),
+  });
+  const parsed = locationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+  try {
+    const location = await organizationService.addLocation(userId, organizationId, parsed.data);
+    res.json({ success: true, location });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to add location');
+    res.status(500).json({ success: false, error: 'Failed to add location' });
+  }
+});
 
-/**
- * POST /api/organizations/:id/chat
- * Chat endpoint for organization editing
- */
-router.post(
-  '/:id/chat',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const userId = req.user!.id;
-    const organizationId = req.params.id;
+// DELETE /api/organizations/:id/locations/:locationId
+router.delete('/:id/locations/:locationId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  const locationId = String(req.params.locationId);
+  try {
+    await organizationService.removeLocation(userId, organizationId, locationId);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to remove location');
+    res.status(500).json({ success: false, error: 'Failed to remove location' });
+  }
+});
 
-    const chatSchema = z.object({
-      message: z.string().min(1),
-      conversationHistory: z.array(z.object({
-        role: z.enum(['user', 'assistant']),
-        content: z.string()
-      })).optional(),
-    });
+// ── Organization Relationships ────────────────────────────────────────
 
-    try {
-      const { message, conversationHistory = [] } = chatSchema.parse(req.body);
-      const result = await organizationService.chat(userId, organizationId, message, conversationHistory);
-      res.json({ success: true, ...result });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, error: error.errors });
-      }
-      logger.error({ error, userId, organizationId }, 'Failed to process chat');
-      res.status(500).json({ success: false, error: 'Failed to process chat' });
-    }
-  })
-);
+// POST /api/organizations/:id/relationships
+router.post('/:id/relationships', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const fromOrgId = String(req.params.id);
+  const relSchema = z.object({
+    to_org_id: z.string().uuid(),
+    relationship_type: z.enum(ORG_REL_TYPES),
+    notes: z.string().optional(),
+  });
+  const parsed = relSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+  try {
+    const relationship = await organizationService.addRelationship(
+      userId,
+      fromOrgId,
+      parsed.data.to_org_id,
+      parsed.data.relationship_type as OrgRelationshipType,
+      parsed.data.notes
+    );
+    res.json({ success: true, relationship });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to add organization relationship');
+    res.status(500).json({ success: false, error: 'Failed to add relationship' });
+  }
+});
+
+// GET /api/organizations/:id/relationships
+router.get('/:id/relationships', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const orgId = String(req.params.id);
+  try {
+    const relationships = await organizationService.getRelationships(userId, orgId);
+    res.json({ success: true, relationships });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to get organization relationships');
+    res.status(500).json({ success: false, error: 'Failed to get relationships' });
+  }
+});
+
+// DELETE /api/organizations/:id/relationships/:relationshipId
+router.delete('/:id/relationships/:relationshipId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const relationshipId = String(req.params.relationshipId);
+  try {
+    await organizationService.removeRelationship(userId, relationshipId);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to remove organization relationship');
+    res.status(500).json({ success: false, error: 'Failed to remove relationship' });
+  }
+});
 
 export default router;
-

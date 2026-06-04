@@ -720,7 +720,18 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
 
   // Character-specific mock organizations — shared (user is also a member) vs theirs only
   const getMockOrganizations = (): Array<Organization & { user_is_member: boolean; character_role?: string }> => {
-    const SHARED: Record<string, Array<Organization & { user_is_member: boolean; character_role?: string }>> = {
+    // Add G1 defaults to any mock org that pre-dates the canonical group model
+    type RawMockOrg = Omit<Organization, 'group_type' | 'membership_model' | 'user_relationship' | 'is_public_entity'>
+      & { user_is_member: boolean; character_role?: string; group_type?: Organization['group_type'] };
+    const withG1 = (org: RawMockOrg): Organization & { user_is_member: boolean; character_role?: string } => ({
+      group_type: (org.type as unknown as Organization['group_type']) ?? 'other',
+      membership_model: 'strict',
+      user_relationship: org.user_is_member ? 'member' : 'aware_of',
+      is_public_entity: false,
+      ...org,
+    } as Organization & { user_is_member: boolean; character_role?: string });
+
+    const SHARED: Record<string, Array<RawMockOrg>> = {
       'Sarah Chen': [
         { id: 'org-sc-1', name: 'Creative Writing Circle', aliases: [], type: 'club', description: 'Weekly writing sessions and story feedback', status: 'active', member_count: 6, usage_count: 18, confidence: 0.91, last_seen: new Date(Date.now() - 7*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Co-Founder', members: [{ id: '1', character_name: 'Sarah Chen', role: 'Co-Founder', status: 'active' }, { id: '2', character_name: 'You', role: 'Member', status: 'active' }, { id: '3', character_name: 'Emma Thompson', role: 'Member', status: 'active' }] },
         { id: 'org-sc-2', name: 'Tech Alumni Network', aliases: [], type: 'affiliation', description: 'Former colleagues from tech careers', status: 'active', member_count: 12, usage_count: 7, confidence: 0.78, last_seen: new Date(Date.now() - 30*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Member', members: [{ id: '1', character_name: 'Sarah Chen', role: 'Member', status: 'active' }] },
@@ -744,10 +755,11 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         { id: 'org-jk-2', name: 'University Alumni Association', aliases: [], type: 'affiliation', description: 'Alumni network from their university program', status: 'active', member_count: 120, usage_count: 4, confidence: 0.74, last_seen: new Date(Date.now() - 90*86400000).toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: false, character_role: 'Alumnus', members: [{ id: '1', character_name: 'Jordan Kim', role: 'Alumnus', status: 'active' }] },
       ],
     };
-    // Default orgs for characters not explicitly mapped
-    return SHARED[editedCharacter.name] ?? [
+    // Default orgs for characters not explicitly mapped; apply G1 defaults to all
+    const raw: RawMockOrg[] = SHARED[editedCharacter.name] ?? [
       { id: 'org-default-1', name: 'Creative Community', aliases: [], type: 'friend_group', description: 'Shared creative network', status: 'active', member_count: 8, usage_count: 6, confidence: 0.72, last_seen: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), user_is_member: true, character_role: 'Member', members: [{ id: '1', character_name: editedCharacter.name, role: 'Member', status: 'active' }] },
     ];
+    return raw.map(withG1);
   };
 
   // Create mock shared memories for display

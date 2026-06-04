@@ -5,9 +5,10 @@
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
-import { Building2, Search, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, MapPin, Calendar, Hash, Sparkles } from 'lucide-react';
+import { Building2, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, MapPin, Calendar, Hash, Sparkles, Plus, X } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { OrganizationProfileCard, type Organization, type OrganizationMember, type OrganizationStory, type OrganizationEvent, type OrganizationLocation } from './OrganizationProfileCard';
@@ -16,7 +17,7 @@ import { fetchJson } from '../../lib/api';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
-import { format, subDays } from 'date-fns';
+import { subDays } from 'date-fns';
 
 const ITEMS_PER_PAGE = 24;
 
@@ -132,6 +133,10 @@ const generateMockOrganizations = (): Organization[] => {
         item.name.replace(/\s+/g, '')
       ].filter(Boolean),
       type: item.type,
+      group_type: item.type as any,
+      membership_model: 'strict' as const,
+      user_relationship: 'member' as const,
+      is_public_entity: false,
       description: item.type === 'friend_group' ? `My close group of friends. We've been together since ${2020 + Math.floor(Math.random() * 4)}.` :
                     item.type === 'company' ? `A company I work with professionally.` :
                     item.type === 'sports_team' ? `A sports team I'm part of. We practice regularly and compete together.` :
@@ -194,8 +199,10 @@ export const OrganizationsBook: React.FC = () => {
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortOption>('name_asc');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newOrg, setNewOrg] = useState({ name: '', type: 'other' as Organization['type'], description: '' });
   const isMockDataEnabled = useShouldUseMockData();
-  const { entries = [], chapters = [] } = useLoreKeeper();
 
   useEffect(() => {
     void loadOrganizations();
@@ -212,33 +219,9 @@ export const OrganizationsBook: React.FC = () => {
     }
 
     try {
-      // Fetch organizations from entity resolution API (filtered for ORG type)
-      const result = await fetchJson<{ success: boolean; entities: any[] }>(
-        '/api/entity-resolution/entities?include_secondary=false&include_tertiary=false'
-      );
-      
-      if (result.success && result.entities) {
-        // Filter for ORG type and transform to Organization format
-        const orgs = result.entities
-          .filter(e => e.entity_type === 'ORG')
-          .map(e => ({
-            id: e.entity_id,
-            name: e.primary_name,
-            aliases: e.aliases || [],
-            type: 'other' as const,
-            status: 'active' as const,
-            description: undefined,
-            location: undefined,
-            member_count: 0,
-            related_people: [],
-            confidence: e.confidence,
-            usage_count: e.usage_count,
-            last_seen: e.last_seen,
-            created_at: e.last_seen,
-            updated_at: e.last_seen,
-            metadata: {}
-          }));
-        setOrganizations(orgs);
+      const result = await fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations');
+      if (result.success) {
+        setOrganizations(result.organizations || []);
       } else {
         setOrganizations([]);
       }
@@ -248,6 +231,29 @@ export const OrganizationsBook: React.FC = () => {
       setError(err.message || 'Failed to load organizations');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!newOrg.name.trim()) return;
+    setCreating(true);
+    try {
+      await fetchJson('/api/organizations', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newOrg.name.trim(),
+          type: newOrg.type,
+          description: newOrg.description.trim() || undefined,
+          status: 'active',
+        }),
+      });
+      setShowCreateForm(false);
+      setNewOrg({ name: '', type: 'other', description: '' });
+      await loadOrganizations();
+    } catch (err: any) {
+      console.error('Failed to create organization:', err);
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -481,7 +487,7 @@ export const OrganizationsBook: React.FC = () => {
           </div>
           
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {/* Sort — full width on mobile so "Name A-Z" etc. is readable and tappable */}
+            {/* Sort */}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
@@ -503,14 +509,68 @@ export const OrganizationsBook: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              leftIcon={<RefreshCw className="h-4 w-4" />} 
               onClick={() => void loadOrganizations()}
               disabled={loading}
             >
+              <RefreshCw className="h-4 w-4 mr-1" />
               {loading ? 'Loading...' : 'Refresh'}
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={() => setShowCreateForm(v => !v)}
+            >
+              {showCreateForm ? <X className="h-4 w-4 mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+              {showCreateForm ? 'Cancel' : 'New'}
             </Button>
           </div>
         </div>
+
+        {/* Create form */}
+        {showCreateForm && (
+          <Card className="bg-black/60 border border-purple-500/40">
+            <CardContent className="pt-4 pb-4 space-y-3">
+              <p className="text-sm font-semibold text-purple-300">New Organization</p>
+              <div className="flex gap-3 flex-wrap">
+                <Input
+                  placeholder="Name *"
+                  value={newOrg.name}
+                  onChange={e => setNewOrg(v => ({ ...v, name: e.target.value }))}
+                  className="flex-1 min-w-[160px] bg-black/60 border-border/50 text-white"
+                  onKeyDown={e => e.key === 'Enter' && void handleCreate()}
+                />
+                <select
+                  value={newOrg.type}
+                  onChange={e => setNewOrg(v => ({ ...v, type: e.target.value as Organization['type'] }))}
+                  className="px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                >
+                  <option value="friend_group">Friend Group</option>
+                  <option value="company">Company</option>
+                  <option value="sports_team">Sports Team</option>
+                  <option value="club">Club</option>
+                  <option value="nonprofit">Nonprofit</option>
+                  <option value="affiliation">Affiliation</option>
+                  <option value="family">Family</option>
+                  <option value="martial_arts">Martial Arts</option>
+                  <option value="other">Other</option>
+                </select>
+                <Input
+                  placeholder="Description (optional)"
+                  value={newOrg.description}
+                  onChange={e => setNewOrg(v => ({ ...v, description: e.target.value }))}
+                  className="flex-1 min-w-[160px] bg-black/60 border-border/50 text-white"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => void handleCreate()}
+                  disabled={creating || !newOrg.name.trim()}
+                >
+                  {creating ? 'Creating...' : 'Create'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Category Tabs - Dynamically generated based on available types. On mobile, wrap to second row so all are visible without horizontal scroll. */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as OrganizationCategory)}>

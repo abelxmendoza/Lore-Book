@@ -1,25 +1,80 @@
 // =====================================================
 // GROUP DETECTION SERVICE
-// Purpose: Auto-detect groups, members, and generate nicknames
+// Purpose: Detect groups in messages and produce
+//          structured output with G1 canonical model.
+//
+// PHASE G1 — output model only.
+// Pipeline wiring is deferred to G2.
+// Auto-creation is DISABLED — callers decide what to do with results.
 // =====================================================
 
 import { logger } from '../logger';
 
-import { organizationService, type Organization, type OrganizationMember } from './organizationService';
+import {
+  organizationService,
+  type Organization,
+  type GroupType,
+  type MembershipModel,
+  type UserRelationship,
+} from './organizationService';
 import { supabaseAdmin } from './supabaseClient';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DetectedGroup — the output contract of this service.
+// Consumers decide whether to create, confirm, or discard.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface DetectedGroup {
+  // Identity
   name?: string;
   nickname?: string;
   members: string[];
   context: string;
   confidence: number;
-  suggested_type?: Organization['type'];
+
+  // G1 canonical fields
+  group_type: GroupType;
+  membership_model: MembershipModel;
+  user_relationship: UserRelationship;
+  is_public_entity: boolean;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Known public entity patterns
+// A non-exhaustive list of signals that indicate a famous/public org.
+// Does not attempt to be comprehensive — high-precision, low-recall.
+// ─────────────────────────────────────────────────────────────────────────────
+const PUBLIC_ENTITY_SIGNALS = [
+  // Fortune 500 / big tech
+  /\b(Apple|Google|Amazon|Microsoft|Meta|Netflix|Tesla|SpaceX|OpenAI|Anthropic|Twitter|X Corp)\b/,
+  // Major media / labels
+  /\b(Sony|Warner|Universal|EMI|Capitol Records|Atlantic Records|Def Jam)\b/,
+  // Famous bands/artists with The
+  /\bThe (Beatles|Rolling Stones|Who|Clash|Ramones|Pixies|Velvet Underground|Smiths)\b/i,
+  // Government / institutions
+  /\b(FBI|CIA|NSA|Congress|Senate|Parliament|Supreme Court|NASA|UN|NATO|EU)\b/,
+  // Universities
+  /\b(Harvard|MIT|Stanford|Oxford|Cambridge|Yale|Princeton|Columbia)\b/,
+];
+
+// Scene vocabulary — indicates a cultural scene rather than a formal org
+const SCENE_SIGNALS = /\b(scene|underground|circuit|movement|community|culture|collective|ecosystem)\b/i;
+
+// Crew / informal group vocabulary
+const CREW_SIGNALS = /\b(crew|squad|gang|circle|clique|posse|bunch|crowd|pack)\b/i;
+
+// Band / music group vocabulary
+const BAND_SIGNALS = /\b(band|ensemble|group|duo|trio|quartet|quintet|orchestra|choir|chorus|collective)\b/i;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GroupDetectionService
+// ─────────────────────────────────────────────────────────────────────────────
 
 export class GroupDetectionService {
   /**
-   * Detect groups mentioned in a conversation message
+   * Detect groups mentioned in a conversation message.
+   * Returns DetectedGroup[] for the caller to act on.
+   * Does NOT create anything in the database.
    */
   async detectGroupsInMessage(
     userId: string,
@@ -28,101 +83,97 @@ export class GroupDetectionService {
   ): Promise<DetectedGroup[]> {
     try {
       const detectedGroups: DetectedGroup[] = [];
-      
+
       // Patterns to detect groups
       const groupPatterns = [
-        // Explicit group mentions: "my band", "our team", "the group"
-        /(?:my|our|the)\s+(band|team|group|club|squad|crew|gang|circle|crew|posse|troupe)/gi,
-        // Named groups: "Tech Corp", "Book Club", etc.
-        /(?:called|named|known as|we call it)\s+["']?([A-Z][a-zA-Z\s]+)["']?/gi,
-        // "We" statements with multiple people: "Sarah, Marcus, and I went..."
+        /(?:my|our|the)\s+(band|team|group|club|squad|crew|gang|circle|posse|troupe|collective|scene|ensemble)/gi,
+        /(?:called|named|known as|we call (?:it|them|ourselves))\s+["']?([A-Z][a-zA-Z\s]+?)["']?(?:\.|,|$)/gi,
         /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s*,\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?))+\s+(?:and\s+)?(?:I|we)/gi,
-        // Activities with groups: "played basketball with...", "had dinner with..."
         /(?:with|together with|along with)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)(?:\s*,\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?))+/gi,
       ];
 
-      // Extract potential group names
-      const groupNames: Set<string> = new Set();
+      const groupNames = new Set<string>();
       for (const pattern of groupPatterns) {
-        const matches = message.matchAll(pattern);
-        for (const match of matches) {
-          if (match[1]) {
-            groupNames.add(match[1].trim());
-          }
+        for (const match of message.matchAll(pattern)) {
+          if (match[1]) groupNames.add(match[1].trim());
         }
       }
 
-      // Extract member names (people mentioned together)
       const memberNames = this.extractMemberNames(message, conversationContext);
 
-      // If we have members but no explicit group name, generate a nickname
+      // Unnamed group from co-mention clustering
       if (memberNames.length >= 2) {
         const existingGroups = await this.findExistingGroupsByMembers(userId, memberNames);
-        
+
         if (existingGroups.length === 0) {
-          // New group detected - generate nickname
-          const nickname = await this.generateGroupNickname(userId, memberNames);
-          const suggestedType = this.suggestGroupType(message, memberNames);
-          
+          const groupType = this.suggestGroupType(message, memberNames);
           detectedGroups.push({
-            nickname,
             members: memberNames,
             context: message.substring(0, 200),
-            confidence: 0.7,
-            suggested_type: suggestedType,
+            confidence: 0.65,
+            group_type: groupType,
+            membership_model: this.suggestMembershipModel(groupType),
+            user_relationship: this.suggestUserRelationship(message, true),
+            is_public_entity: false,
           });
         } else {
-          // Existing group - update members if needed
           for (const group of existingGroups) {
-            const newMembers = memberNames.filter(m => 
-              !group.members?.some(gm => 
+            const newMembers = memberNames.filter(m =>
+              !group.members?.some(gm =>
                 gm.character_name.toLowerCase() === m.toLowerCase()
               )
             );
-            
             if (newMembers.length > 0) {
               detectedGroups.push({
                 name: group.name,
                 members: newMembers,
                 context: message.substring(0, 200),
-                confidence: 0.8,
-                suggested_type: group.type,
+                confidence: 0.80,
+                group_type: group.group_type,
+                membership_model: group.membership_model,
+                user_relationship: group.user_relationship,
+                is_public_entity: group.is_public_entity,
               });
             }
           }
         }
       }
 
-      // Process explicit group names
+      // Named group detection
       for (const groupName of groupNames) {
+        const isPublic = this.isPublicEntity(groupName, message);
+        const groupType = this.suggestGroupType(message, memberNames, groupName);
         const existingGroup = await this.findGroupByName(userId, groupName);
-        
+
         if (!existingGroup) {
-          // New named group
-          const members = memberNames.length > 0 ? memberNames : await this.extractMembersFromContext(userId, message);
-          const suggestedType = this.suggestGroupType(message, members);
-          
           detectedGroups.push({
             name: groupName,
-            members,
+            members: isPublic ? [] : memberNames,
             context: message.substring(0, 200),
-            confidence: 0.9,
-            suggested_type: suggestedType,
+            confidence: isPublic ? 0.95 : 0.85,
+            group_type: isPublic ? 'public_entity' : groupType,
+            membership_model: isPublic ? 'none' : this.suggestMembershipModel(groupType),
+            user_relationship: isPublic
+              ? this.suggestPublicEntityRelationship(message)
+              : this.suggestUserRelationship(message, memberNames.length > 0),
+            is_public_entity: isPublic,
           });
         } else {
-          // Update existing group with new members
-          const newMembers = memberNames.filter(m => 
-            !existingGroup.members?.some(gm => 
+          const newMembers = memberNames.filter(m =>
+            !existingGroup.members?.some(gm =>
               gm.character_name.toLowerCase() === m.toLowerCase()
             )
           );
-          
           if (newMembers.length > 0) {
             detectedGroups.push({
               name: existingGroup.name,
               members: newMembers,
               context: message.substring(0, 200),
-              confidence: 0.8,
+              confidence: 0.80,
+              group_type: existingGroup.group_type,
+              membership_model: existingGroup.membership_model,
+              user_relationship: existingGroup.user_relationship,
+              is_public_entity: existingGroup.is_public_entity,
             });
           }
         }
@@ -135,40 +186,109 @@ export class GroupDetectionService {
     }
   }
 
-  /**
-   * Extract member names from message
-   */
+  // ── Group type inference ─────────────────────────────────────────────────
+
+  suggestGroupType(message: string, _members: string[], groupName?: string): GroupType {
+    const m = message.toLowerCase();
+    const n = (groupName ?? '').toLowerCase();
+
+    if (BAND_SIGNALS.test(m) || /\b(music|gig|concert|rehearsal|song|album|track|riff|jam)\b/i.test(m)) {
+      return 'band';
+    }
+    if (SCENE_SIGNALS.test(m)) return 'scene';
+    if (CREW_SIGNALS.test(m)) return 'crew';
+    if (/\b(basketball|football|soccer|baseball|tennis|volleyball|game|match|tournament|league)\b/i.test(m)) {
+      return 'sports_team';
+    }
+    if (/\b(work|office|company|colleague|startup|business|job|employer|corp)\b/i.test(m)) {
+      return 'company';
+    }
+    if (/\b(family|mom|dad|sister|brother|cousin|aunt|uncle|grandma|grandpa|relatives)\b/i.test(m)) {
+      return 'family';
+    }
+    if (/\b(dojo|dojang|gym|sensei|sparring|belt|kata|bjj|mma|martial arts|karate|judo|jiu.jitsu)\b/i.test(m)) {
+      return 'martial_arts';
+    }
+    if (/\b(club|meeting|gathering|hobby|society|association)\b/i.test(m) ||
+        /\b(club|society|association|guild)\b/i.test(n)) {
+      return 'club';
+    }
+    if (/\b(nonprofit|volunteer|charity|foundation|ngo)\b/i.test(m)) {
+      return 'nonprofit';
+    }
+    if (/\b(collective|art|creative|zine|label|indie)\b/i.test(m)) {
+      return 'collective';
+    }
+    if (/\b(university|college|school|institution|academy|institute)\b/i.test(m) ||
+        /\b(university|college|school|institute|academy)\b/i.test(n)) {
+      return 'institution';
+    }
+    return 'friend_group';
+  }
+
+  // ── Membership model inference ───────────────────────────────────────────
+
+  suggestMembershipModel(groupType: GroupType): MembershipModel {
+    if (groupType === 'scene') return 'fuzzy';
+    if (groupType === 'public_entity') return 'none';
+    return 'strict';
+  }
+
+  // ── User relationship inference ──────────────────────────────────────────
+
+  suggestUserRelationship(message: string, userInvolved: boolean): UserRelationship {
+    if (!userInvolved) return 'aware_of';
+
+    const m = message.toLowerCase();
+
+    if (/\b(founded|started|created|built|launched)\b/.test(m)) return 'founder';
+    if (/\b(lead|run|manage|organize|chair|head)\b/.test(m)) return 'leader';
+    if (/\b(used to|was in|former|ex-member|left|quit|moved on)\b/.test(m)) return 'former_member';
+    if (/\b(collaborate|work with|partner|guest|session)\b/.test(m)) return 'collaborator';
+    if (/\b(always there|hang around|adjacent|peripheral|associate)\b/.test(m)) return 'adjacent';
+    if (/\b(graduated|alumni|alumna|went to)\b/.test(m)) return 'alumnus';
+
+    return 'member';
+  }
+
+  suggestPublicEntityRelationship(message: string): UserRelationship {
+    const m = message.toLowerCase();
+    if (/\b(love|obsessed|huge fan|biggest fan)\b/.test(m)) return 'fan';
+    if (/\b(like|enjoy|listen to|watch|follow)\b/.test(m)) return 'fan';
+    if (/\b(heard of|know about|aware|familiar)\b/.test(m)) return 'aware_of';
+    return 'referenced';
+  }
+
+  // ── Public entity detection ──────────────────────────────────────────────
+
+  isPublicEntity(groupName: string, message: string): boolean {
+    const combined = `${groupName} ${message}`;
+    return PUBLIC_ENTITY_SIGNALS.some(pattern => pattern.test(combined));
+  }
+
+  // ── Member name extraction ───────────────────────────────────────────────
+
   private extractMemberNames(message: string, context?: string[]): string[] {
-    const names: Set<string> = new Set();
-    
-    // Pattern: Capitalized words that look like names
+    const names = new Set<string>();
     const namePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g;
-    const matches = message.matchAll(namePattern);
-    
-    // Common words to exclude
     const excludeWords = new Set([
       'I', 'We', 'You', 'They', 'The', 'This', 'That', 'There', 'Here',
       'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
-      'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December',
-      'Today', 'Tomorrow', 'Yesterday', 'Now', 'Then', 'When', 'Where', 'What', 'Who', 'Why', 'How',
+      'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+      'September', 'October', 'November', 'December',
+      'Today', 'Tomorrow', 'Yesterday', 'Now', 'Then',
     ]);
 
-    for (const match of matches) {
+    for (const match of message.matchAll(namePattern)) {
       const name = match[1].trim();
-      if (!excludeWords.has(name) && name.length > 1) {
-        names.add(name);
-      }
+      if (!excludeWords.has(name) && name.length > 1) names.add(name);
     }
 
-    // Also check context if provided
     if (context) {
       for (const ctx of context) {
-        const ctxMatches = ctx.matchAll(namePattern);
-        for (const match of ctxMatches) {
+        for (const match of ctx.matchAll(namePattern)) {
           const name = match[1].trim();
-          if (!excludeWords.has(name) && name.length > 1) {
-            names.add(name);
-          }
+          if (!excludeWords.has(name) && name.length > 1) names.add(name);
         }
       }
     }
@@ -176,93 +296,8 @@ export class GroupDetectionService {
     return Array.from(names);
   }
 
-  /**
-   * Generate a unique nickname for a group based on members
-   */
-  async generateGroupNickname(userId: string, members: string[]): Promise<string> {
-    try {
-      // Try different nickname strategies
-      const strategies = [
-        // First letters: "Sarah, Marcus, Alex" -> "SMA Squad"
-        () => {
-          const initials = members.map(m => m.charAt(0).toUpperCase()).join('');
-          return `${initials} Squad`;
-        },
-        // First names: "Sarah, Marcus" -> "Sarah & Marcus"
-        () => {
-          const firstNames = members.map(m => m.split(' ')[0]);
-          if (firstNames.length === 2) {
-            return `${firstNames[0]} & ${firstNames[1]}`;
-          } else if (firstNames.length > 2) {
-            return `${firstNames.slice(0, -1).join(', ')}, & ${firstNames[firstNames.length - 1]}`;
-          }
-          return firstNames.join(' & ');
-        },
-        // Number-based: "The Three" or "The Four"
-        () => {
-          const count = members.length;
-          const numberNames: Record<number, string> = {
-            2: 'The Two',
-            3: 'The Three',
-            4: 'The Four',
-            5: 'The Five',
-          };
-          return numberNames[count] || `The ${count}`;
-        },
-      ];
+  // ── Lookup helpers ───────────────────────────────────────────────────────
 
-      // Try each strategy and check for uniqueness
-      for (const strategy of strategies) {
-        const nickname = strategy();
-        if (nickname) {
-          const existing = await this.findGroupByName(userId, nickname);
-          if (!existing) {
-            return nickname;
-          }
-        }
-      }
-
-      // Fallback: timestamp-based
-      return `Group ${Date.now().toString(36).slice(-6)}`;
-    } catch (error) {
-      logger.error({ error, userId, members }, 'Failed to generate group nickname');
-      return `Group ${members.length}`;
-    }
-  }
-
-  /**
-   * Suggest group type based on context
-   */
-  private suggestGroupType(message: string, members: string[]): Organization['type'] {
-    const lowerMessage = message.toLowerCase();
-    
-    // Sports-related
-    if (/\b(basketball|football|soccer|baseball|tennis|volleyball|sports|game|match|tournament|team)\b/.test(lowerMessage)) {
-      return 'sports_team';
-    }
-    
-    // Work-related
-    if (/\b(work|office|company|colleague|meeting|project|business|job)\b/.test(lowerMessage)) {
-      return 'company';
-    }
-    
-    // Club-related
-    if (/\b(club|meeting|gathering|event|activity|hobby)\b/.test(lowerMessage)) {
-      return 'club';
-    }
-    
-    // Band/music
-    if (/\b(band|music|concert|gig|song|album|rehearsal)\b/.test(lowerMessage)) {
-      return 'other'; // Will be dynamically categorized
-    }
-    
-    // Default to friend group
-    return 'friend_group';
-  }
-
-  /**
-   * Find existing groups by member names
-   */
   private async findExistingGroupsByMembers(
     userId: string,
     memberNames: string[]
@@ -270,41 +305,30 @@ export class GroupDetectionService {
     try {
       const { data: orgs, error } = await supabaseAdmin
         .from('organizations')
-        .select('id, name, type')
+        .select('id, name, group_type, membership_model, user_relationship, is_public_entity, type')
         .eq('user_id', userId);
 
       if (error || !orgs) return [];
 
-      // Get members for each org and check for matches
-      const matchingOrgs: Organization[] = [];
-      
+      const matching: Organization[] = [];
       for (const org of orgs) {
         const members = await organizationService.getMembers(org.id);
         const orgMemberNames = members.map(m => m.character_name.toLowerCase());
-        
-        // Check if at least 2 members match
-        const matches = memberNames.filter(name => 
-          orgMemberNames.some(om => om.includes(name.toLowerCase()) || name.toLowerCase().includes(om))
+        const hits = memberNames.filter(n =>
+          orgMemberNames.some(om => om.includes(n.toLowerCase()) || n.toLowerCase().includes(om))
         );
-        
-        if (matches.length >= 2) {
-          const fullOrg = await organizationService.getOrganization(userId, org.id);
-          if (fullOrg) {
-            matchingOrgs.push(fullOrg);
-          }
+        if (hits.length >= 2) {
+          const full = await organizationService.getOrganization(userId, org.id);
+          if (full) matching.push(full);
         }
       }
-
-      return matchingOrgs;
+      return matching;
     } catch (error) {
       logger.error({ error, userId }, 'Failed to find groups by members');
       return [];
     }
   }
 
-  /**
-   * Find group by name (fuzzy match)
-   */
   private async findGroupByName(userId: string, name: string): Promise<Organization | null> {
     try {
       const { data: orgs, error } = await supabaseAdmin
@@ -314,113 +338,12 @@ export class GroupDetectionService {
         .or(`name.ilike.%${name}%,aliases.cs.{${name}}`);
 
       if (error || !orgs || orgs.length === 0) return null;
-
       return await organizationService.getOrganization(userId, orgs[0].id);
     } catch (error) {
       logger.error({ error, userId, name }, 'Failed to find group by name');
       return null;
     }
   }
-
-  /**
-   * Extract members from context (fallback)
-   */
-  private async extractMembersFromContext(userId: string, message: string): Promise<string[]> {
-    // Try to find character names in the database that are mentioned
-    try {
-      const { data: characters, error } = await supabaseAdmin
-        .from('characters')
-        .select('name')
-        .eq('user_id', userId);
-
-      if (error || !characters) return [];
-
-      const mentionedNames: string[] = [];
-      const lowerMessage = message.toLowerCase();
-
-      for (const char of characters) {
-        if (lowerMessage.includes(char.name.toLowerCase())) {
-          mentionedNames.push(char.name);
-        }
-      }
-
-      return mentionedNames;
-    } catch (error) {
-      logger.error({ error, userId }, 'Failed to extract members from context');
-      return [];
-    }
-  }
-
-  /**
-   * Process detected groups and create/update organizations
-   */
-  async processDetectedGroups(
-    userId: string,
-    detectedGroups: DetectedGroup[]
-  ): Promise<Organization[]> {
-    const processed: Organization[] = [];
-
-    for (const detected of detectedGroups) {
-      try {
-        let organization: Organization | null = null;
-
-        if (detected.name) {
-          // Named group - find or create
-          organization = await this.findGroupByName(userId, detected.name);
-          
-          if (!organization) {
-            // Create new organization
-            organization = await organizationService.createOrganization(userId, {
-              name: detected.name,
-              type: detected.suggested_type || 'other',
-              status: 'active',
-            });
-          }
-        } else if (detected.nickname) {
-          // Unnamed group with nickname - create with nickname
-          organization = await organizationService.createOrganization(userId, {
-            name: detected.nickname,
-            aliases: [],
-            type: detected.suggested_type || 'friend_group',
-            status: 'active',
-          });
-        }
-
-        if (organization && detected.members.length > 0) {
-          // Add members
-          for (const memberName of detected.members) {
-            try {
-              // Check if member already exists
-              const existingMembers = await organizationService.getMembers(organization.id);
-              const exists = existingMembers.some(m => 
-                m.character_name.toLowerCase() === memberName.toLowerCase()
-              );
-
-              if (!exists) {
-                await organizationService.addMember(userId, organization.id, {
-                  character_name: memberName,
-                  status: 'active',
-                });
-              }
-            } catch (error) {
-              logger.error({ error, userId, organizationId: organization.id, memberName }, 'Failed to add member');
-            }
-          }
-
-          // Refresh organization
-          organization = await organizationService.getOrganization(userId, organization.id);
-          if (organization) {
-            processed.push(organization);
-          }
-        }
-      } catch (error) {
-        logger.error({ error, userId, detected }, 'Failed to process detected group');
-      }
-    }
-
-    return processed;
-  }
 }
 
 export const groupDetectionService = new GroupDetectionService();
-

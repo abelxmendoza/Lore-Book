@@ -71,12 +71,24 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
 
   // Stories state
   const [stories, setStories] = useState<OrganizationStory[]>(organization.stories || []);
+  const [showAddStory, setShowAddStory] = useState(false);
+  const [newStory, setNewStory] = useState({ title: '', summary: '', date: new Date().toISOString().split('T')[0] });
+  const [storyLoading, setStoryLoading] = useState(false);
 
   // Events state
   const [events, setEvents] = useState<OrganizationEvent[]>(organization.events || []);
+  const [showAddEvent, setShowAddEvent] = useState(false);
+  const [newEvent, setNewEvent] = useState({ title: '', date: new Date().toISOString().split('T')[0], type: 'other' as OrganizationEvent['type'] });
+  const [eventLoading, setEventLoading] = useState(false);
 
   // Locations state
   const [locations, setLocations] = useState<OrganizationLocation[]>(organization.locations || []);
+  const [showAddLocation, setShowAddLocation] = useState(false);
+  const [newLocation, setNewLocation] = useState({ location_name: '' });
+  const [locationLoading, setLocationLoading] = useState(false);
+
+  // Delete state
+  const [deleting, setDeleting] = useState(false);
   
   // Modal states for nested entities
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
@@ -320,14 +332,110 @@ User's message: ${currentInput}`;
 
   const handleRemoveMember = async (memberId: string) => {
     setMembers(prev => prev.filter(m => m.id !== memberId));
-    
-    // TODO: Delete from backend
     try {
-      await fetchJson(`/api/organizations/${organization.id}/members/${memberId}`, {
-        method: 'DELETE',
-      });
+      await fetchJson(`/api/organizations/${organization.id}/members/${memberId}`, { method: 'DELETE' });
     } catch (error) {
       console.error('Failed to remove member:', error);
+    }
+  };
+
+  const handleAddEvent = async () => {
+    if (!newEvent.title.trim() || !newEvent.date) return;
+    setEventLoading(true);
+    try {
+      const result = await fetchJson<{ success: boolean; event: OrganizationEvent }>(
+        `/api/organizations/${organization.id}/events`,
+        { method: 'POST', body: JSON.stringify(newEvent) }
+      );
+      if (result.success) {
+        setEvents(prev => [result.event, ...prev]);
+        setNewEvent({ title: '', date: new Date().toISOString().split('T')[0], type: 'other' });
+        setShowAddEvent(false);
+      }
+    } catch (error) {
+      console.error('Failed to add event:', error);
+    } finally {
+      setEventLoading(false);
+    }
+  };
+
+  const handleRemoveEvent = async (eventId: string) => {
+    setEvents(prev => prev.filter(e => e.id !== eventId));
+    try {
+      await fetchJson(`/api/organizations/${organization.id}/events/${eventId}`, { method: 'DELETE' });
+    } catch (error) {
+      console.error('Failed to remove event:', error);
+    }
+  };
+
+  const handleAddStory = async () => {
+    if (!newStory.title.trim() || !newStory.summary.trim() || !newStory.date) return;
+    setStoryLoading(true);
+    try {
+      const result = await fetchJson<{ success: boolean; story: OrganizationStory }>(
+        `/api/organizations/${organization.id}/stories`,
+        { method: 'POST', body: JSON.stringify(newStory) }
+      );
+      if (result.success) {
+        setStories(prev => [result.story, ...prev]);
+        setNewStory({ title: '', summary: '', date: new Date().toISOString().split('T')[0] });
+        setShowAddStory(false);
+      }
+    } catch (error) {
+      console.error('Failed to add story:', error);
+    } finally {
+      setStoryLoading(false);
+    }
+  };
+
+  const handleRemoveStory = async (storyId: string) => {
+    setStories(prev => prev.filter(s => s.id !== storyId));
+    try {
+      await fetchJson(`/api/organizations/${organization.id}/stories/${storyId}`, { method: 'DELETE' });
+    } catch (error) {
+      console.error('Failed to remove story:', error);
+    }
+  };
+
+  const handleAddLocation = async () => {
+    if (!newLocation.location_name.trim()) return;
+    setLocationLoading(true);
+    try {
+      const result = await fetchJson<{ success: boolean; location: OrganizationLocation }>(
+        `/api/organizations/${organization.id}/locations`,
+        { method: 'POST', body: JSON.stringify(newLocation) }
+      );
+      if (result.success) {
+        setLocations(prev => [result.location, ...prev]);
+        setNewLocation({ location_name: '' });
+        setShowAddLocation(false);
+      }
+    } catch (error) {
+      console.error('Failed to add location:', error);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const handleRemoveLocation = async (locationId: string) => {
+    setLocations(prev => prev.filter(l => l.id !== locationId));
+    try {
+      await fetchJson(`/api/organizations/${organization.id}/locations/${locationId}`, { method: 'DELETE' });
+    } catch (error) {
+      console.error('Failed to remove location:', error);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete "${organization.name}"? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await fetchJson(`/api/organizations/${organization.id}`, { method: 'DELETE' });
+      onUpdate?.();
+      onClose();
+    } catch (error) {
+      console.error('Failed to delete organization:', error);
+      setDeleting(false);
     }
   };
 
@@ -353,9 +461,20 @@ User's message: ${currentInput}`;
               </div>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleDelete()}
+              disabled={deleting}
+              className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -631,10 +750,10 @@ User's message: ${currentInput}`;
                     </div>
 
                     {/* SWOT Analysis */}
-                    {(editedOrg.analytics.strengths?.length > 0 || 
-                      editedOrg.analytics.weaknesses?.length > 0 || 
-                      editedOrg.analytics.opportunities?.length > 0 || 
-                      editedOrg.analytics.threats?.length > 0) && (
+                    {((editedOrg.analytics.strengths?.length ?? 0) > 0 ||
+                      (editedOrg.analytics.weaknesses?.length ?? 0) > 0 ||
+                      (editedOrg.analytics.opportunities?.length ?? 0) > 0 ||
+                      (editedOrg.analytics.threats?.length ?? 0) > 0) && (
                       <div className="grid grid-cols-2 gap-4 mt-4">
                         {editedOrg.analytics.strengths && editedOrg.analytics.strengths.length > 0 && (
                           <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
@@ -833,21 +952,67 @@ User's message: ${currentInput}`;
 
             {/* Stories Tab */}
             <TabsContent value="stories" className="mt-4 space-y-4">
-              <h3 className="text-lg font-semibold text-white">Stories</h3>
-              {stories.length === 0 ? (
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Stories</h3>
+                <Button variant="outline" size="sm" onClick={() => setShowAddStory(v => !v)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Story
+                </Button>
+              </div>
+
+              {showAddStory && (
+                <Card className="bg-black/40 border-border/50">
+                  <CardContent className="pt-6 space-y-3">
+                    <Input
+                      placeholder="Title *"
+                      value={newStory.title}
+                      onChange={e => setNewStory(v => ({ ...v, title: e.target.value }))}
+                      className="bg-black/60 border-border/50 text-white"
+                    />
+                    <Textarea
+                      placeholder="Summary *"
+                      value={newStory.summary}
+                      onChange={e => setNewStory(v => ({ ...v, summary: e.target.value }))}
+                      className="bg-black/60 border-border/50 text-white"
+                      rows={3}
+                    />
+                    <Input
+                      type="date"
+                      value={newStory.date}
+                      onChange={e => setNewStory(v => ({ ...v, date: e.target.value }))}
+                      className="bg-black/60 border-border/50 text-white"
+                    />
+                    <div className="flex gap-2">
+                      <Button onClick={() => void handleAddStory()} disabled={storyLoading} className="flex-1">
+                        {storyLoading ? 'Saving...' : 'Save Story'}
+                      </Button>
+                      <Button variant="outline" onClick={() => setShowAddStory(false)}>Cancel</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {stories.length === 0 && !showAddStory ? (
                 <Card className="bg-black/40 border-border/50">
                   <CardContent className="pt-6 text-center text-white/60">
-                    No stories recorded yet. Use the Chat tab to add stories!
+                    No stories yet. Add one above.
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {stories.map((story) => (
                     <Card key={story.id} className="bg-black/40 border-border/50">
-                      <CardContent className="pt-6">
-                        <div className="font-semibold text-white mb-2">{story.title}</div>
-                        <p className="text-sm text-white/70 mb-2">{story.summary}</p>
-                        <div className="text-xs text-white/50">{formatDate(story.date)}</div>
+                      <CardContent className="pt-4 pb-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="font-semibold text-white mb-1">{story.title}</div>
+                            <p className="text-sm text-white/70 mb-1">{story.summary}</p>
+                            <div className="text-xs text-white/40">{formatDate(story.date)}</div>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => void handleRemoveStory(story.id)}>
+                            <Trash2 className="h-4 w-4 text-red-400" />
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -857,24 +1022,75 @@ User's message: ${currentInput}`;
 
             {/* Events Tab */}
             <TabsContent value="events" className="mt-4 space-y-4">
-              <h3 className="text-lg font-semibold text-white">Events</h3>
-              {events.length === 0 ? (
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Events</h3>
+                <Button variant="outline" size="sm" onClick={() => setShowAddEvent(v => !v)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Event
+                </Button>
+              </div>
+
+              {showAddEvent && (
+                <Card className="bg-black/40 border-border/50">
+                  <CardContent className="pt-6 space-y-3">
+                    <Input
+                      placeholder="Event title *"
+                      value={newEvent.title}
+                      onChange={e => setNewEvent(v => ({ ...v, title: e.target.value }))}
+                      className="bg-black/60 border-border/50 text-white"
+                    />
+                    <div className="flex gap-2">
+                      <Input
+                        type="date"
+                        value={newEvent.date}
+                        onChange={e => setNewEvent(v => ({ ...v, date: e.target.value }))}
+                        className="flex-1 bg-black/60 border-border/50 text-white"
+                      />
+                      <select
+                        value={newEvent.type}
+                        onChange={e => setNewEvent(v => ({ ...v, type: e.target.value as OrganizationEvent['type'] }))}
+                        aria-label="Event type"
+                        className="px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm"
+                      >
+                        <option value="meeting">Meeting</option>
+                        <option value="game">Game</option>
+                        <option value="social">Social</option>
+                        <option value="work">Work</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={() => void handleAddEvent()} disabled={eventLoading} className="flex-1">
+                        {eventLoading ? 'Saving...' : 'Save Event'}
+                      </Button>
+                      <Button variant="outline" onClick={() => setShowAddEvent(false)}>Cancel</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {events.length === 0 && !showAddEvent ? (
                 <Card className="bg-black/40 border-border/50">
                   <CardContent className="pt-6 text-center text-white/60">
-                    No events recorded yet. Use the Chat tab to add events!
+                    No events yet. Add one above.
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {events.map((event) => (
                     <Card key={event.id} className="bg-black/40 border-border/50">
-                      <CardContent className="pt-6">
+                      <CardContent className="pt-4 pb-4">
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="font-semibold text-white">{event.title}</div>
                             <div className="text-xs text-white/50 mt-1">{formatDate(event.date)}</div>
                           </div>
-                          <Badge variant="outline">{event.type}</Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">{event.type}</Badge>
+                            <Button variant="ghost" size="sm" onClick={() => void handleRemoveEvent(event.id)}>
+                              <Trash2 className="h-4 w-4 text-red-400" />
+                            </Button>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -885,51 +1101,45 @@ User's message: ${currentInput}`;
 
             {/* Locations Tab */}
             <TabsContent value="locations" className="mt-4 space-y-4">
-              <h3 className="text-lg font-semibold text-white">Locations</h3>
-              {locations.length === 0 ? (
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Locations</h3>
+                <Button variant="outline" size="sm" onClick={() => setShowAddLocation(v => !v)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Location
+                </Button>
+              </div>
+
+              {showAddLocation && (
+                <Card className="bg-black/40 border-border/50">
+                  <CardContent className="pt-6 space-y-3">
+                    <Input
+                      placeholder="Location name *"
+                      value={newLocation.location_name}
+                      onChange={e => setNewLocation(v => ({ ...v, location_name: e.target.value }))}
+                      className="bg-black/60 border-border/50 text-white"
+                      onKeyDown={e => e.key === 'Enter' && void handleAddLocation()}
+                    />
+                    <div className="flex gap-2">
+                      <Button onClick={() => void handleAddLocation()} disabled={locationLoading} className="flex-1">
+                        {locationLoading ? 'Saving...' : 'Save Location'}
+                      </Button>
+                      <Button variant="outline" onClick={() => setShowAddLocation(false)}>Cancel</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {locations.length === 0 && !showAddLocation ? (
                 <Card className="bg-black/40 border-border/50">
                   <CardContent className="pt-6 text-center text-white/60">
-                    No locations linked yet. Use the Chat tab to add locations!
+                    No locations yet. Add one above.
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {locations.map((location) => (
-                    <Card 
-                      key={location.id} 
-                      className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all"
-                      onClick={async () => {
-                        if (location.location_id) {
-                          try {
-                            const loc = await fetchJson<LocationProfile>(`/api/locations/${location.location_id}`);
-                            setSelectedLocation(loc);
-                          } catch (error) {
-                            setSelectedLocation({
-                              id: location.location_id,
-                              name: location.location_name,
-                            } as LocationProfile);
-                          }
-                        } else if (location.location_name) {
-                          try {
-                            const locs = await fetchJson<LocationProfile[]>(`/api/locations/search?name=${encodeURIComponent(location.location_name)}`);
-                            if (locs && locs.length > 0) {
-                              setSelectedLocation(locs[0]);
-                            } else {
-                              setSelectedLocation({
-                                id: `temp-${location.location_name}`,
-                                name: location.location_name,
-                              } as LocationProfile);
-                            }
-                          } catch (error) {
-                            setSelectedLocation({
-                              id: `temp-${location.location_name}`,
-                              name: location.location_name,
-                            } as LocationProfile);
-                          }
-                        }
-                      }}
-                    >
-                      <CardContent className="pt-6">
+                    <Card key={location.id} className="bg-black/40 border-border/50">
+                      <CardContent className="pt-4 pb-4">
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="font-semibold text-white">{location.location_name}</div>
@@ -937,11 +1147,14 @@ User's message: ${currentInput}`;
                               {location.visit_count} {location.visit_count === 1 ? 'visit' : 'visits'}
                             </div>
                             {location.last_visited && (
-                              <div className="text-xs text-white/50 mt-1">
-                                Last visited: {formatDate(location.last_visited)}
+                              <div className="text-xs text-white/40 mt-1">
+                                Last: {formatDate(location.last_visited)}
                               </div>
                             )}
                           </div>
+                          <Button variant="ghost" size="sm" onClick={() => void handleRemoveLocation(location.id)}>
+                            <Trash2 className="h-4 w-4 text-red-400" />
+                          </Button>
                         </div>
                       </CardContent>
                     </Card>
