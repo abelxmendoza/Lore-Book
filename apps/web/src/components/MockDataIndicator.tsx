@@ -5,11 +5,14 @@
  */
 
 import { Database, X } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useMockData } from '../contexts/MockDataContext';
 import { useState, useEffect } from 'react';
 
 export function MockDataIndicator() {
   const { useMockData: isMockDataEnabled } = useMockData();
+  const { pathname } = useLocation();
+  const isDemo = pathname.startsWith('/demo');
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('lorebook_mock_data_indicator_dismissed') === 'true';
@@ -30,7 +33,7 @@ export function MockDataIndicator() {
     localStorage.setItem('lorebook_mock_data_indicator_dismissed', 'true');
   };
 
-  if (!isMockDataEnabled || dismissed) return null;
+  if (!isMockDataEnabled || dismissed || !isDemo) return null;
 
   return (
     <div className="fixed bottom-28 right-4 z-50 max-w-sm animate-in slide-in-from-bottom-5 fade-in duration-300">
