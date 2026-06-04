@@ -54,6 +54,8 @@ class MemoryService {
     let summary = payload.summary;
     if (!summary && payload.content && payload.content.length > 20 && !payload.preserve_original_language) {
       try {
+        // Lazy import to avoid circular dep (titleGenerationService → memoryService)
+        const { titleGenerationService } = await import('./titleGenerationService');
         summary = await titleGenerationService.generateEntrySummary(
           payload.userId,
           payload.content,
