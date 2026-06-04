@@ -36,6 +36,7 @@ import { relationshipTreeBuilder, type RelationshipCategory } from '../services/
 import { romanticRelationshipAnalytics } from '../services/conversationCentered/romanticRelationshipAnalytics';
 import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
 import { skillNetworkBuilder } from '../services/conversationCentered/skillNetworkBuilder';
+import { conversationService } from '../services/conversationService';
 import { metaControlService } from '../services/metaControlService';
 import { narrativeContinuityService } from '../services/narrativeContinuityService';
 import { omegaChatService } from '../services/omegaChatService';
@@ -125,25 +126,58 @@ router.get(
 
     const { data: threads, error } = await supabaseAdmin
       .from('conversation_sessions')
-      .select('id, title, subtitle, updated_at, message_count')
+      .select('id, title, subtitle, updated_at, metadata')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false })
       .limit(limit);
 
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
     res.json({
       success: true,
       threads: (threads || []).map((t) => ({
         id: t.id,
-        title: t.title ?? 'Untitled',
+        title: t.title ?? 'New chat',
         subtitle: t.subtitle ?? undefined,
         updatedAt: t.updated_at,
-        messageCount: t.message_count ?? undefined,
+        metadata: t.metadata ?? {},
       })),
     });
+  })
+);
+
+/**
+ * POST /api/conversation/threads
+ * Create a new conversation session
+ */
+router.post(
+  '/threads',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const schema = z.object({
+      id: z.string().uuid().optional(),
+      title: z.string().optional(),
+    });
+    const { id, title } = schema.parse(req.body);
+
+    const sessionId = id ?? crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const { error } = await supabaseAdmin
+      .from('conversation_sessions')
+      .insert({
+        id: sessionId,
+        user_id: userId,
+        title: title ?? 'New chat',
+        started_at: now,
+        created_at: now,
+        updated_at: now,
+        metadata: {},
+      });
+
+    if (error) throw error;
+    res.json({ success: true, id: sessionId });
   })
 );
 
