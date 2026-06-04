@@ -148,6 +148,23 @@ router.get(
 );
 
 /**
+ * POST /api/conversation/threads/:id/end
+ * End a conversation session and queue it for memory extraction
+ */
+router.post(
+  '/threads/:id/end',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { summary } = req.body as { summary?: string };
+
+    const session = await conversationService.endSession(id, userId, summary, true);
+    res.json({ success: true, session });
+  })
+);
+
+/**
  * GET /api/conversation/threads/:id/messages
  * Get all messages in a thread
  */

@@ -62,14 +62,16 @@ class MemoryExtractionWorker {
     };
 
     try {
-      // Find sessions that ended but haven't been processed
-      // We'll use metadata.extractionStatus to track processing
+      // Find sessions ready for extraction:
+      // - explicitly ended (ended_at IS NOT NULL), OR
+      // - stale (created > 30 min ago, still open) — treats abandoned sessions as complete
+      const staleThreshold = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       const { data: sessions, error } = await supabaseAdmin
         .from('conversation_sessions')
         .select('id, user_id, ended_at, metadata')
-        .not('ended_at', 'is', null)
+        .or(`ended_at.not.is.null,created_at.lt.${staleThreshold}`)
         .or('metadata->>extractionStatus.is.null,metadata->>extractionStatus.eq.pending')
-        .order('ended_at', { ascending: true })
+        .order('created_at', { ascending: true })
         .limit(this.BATCH_SIZE);
 
       if (error) {
