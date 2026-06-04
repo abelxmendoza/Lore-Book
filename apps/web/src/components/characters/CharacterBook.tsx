@@ -2086,7 +2086,7 @@ const MainCharacterSection = ({ user }: { user: any }) => {
       case 'relationship_status':
         return 'bg-red-500/20 text-red-400 border-red-500/30';
       case 'living_situation':
-        return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
       default:
         return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     }
@@ -2110,31 +2110,31 @@ const MainCharacterSection = ({ user }: { user: any }) => {
     .toUpperCase() || '?';
 
   return (
-    <div className="mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-amber-800/20">
+    <div className="mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-white/10">
       <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
         {avatarUrl ? (
           <img
             src={avatarUrl}
             alt={displayName}
-            className="h-8 w-8 sm:h-9 sm:w-9 rounded-full object-cover border border-amber-700/40 flex-shrink-0"
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-full object-cover border border-purple-500/30 flex-shrink-0"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
           />
         ) : (
-          <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-amber-900/30 border border-amber-700/40 flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-bold text-amber-700/80">{nameInitials}</span>
+          <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-purple-900/30 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
+            <span className="text-xs font-bold text-purple-300/80">{nameInitials}</span>
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-xs sm:text-sm font-semibold text-amber-900/80 break-words">
+          <p className="text-xs sm:text-sm font-semibold text-white/90 break-words">
             {displayName}
-            <span className="ml-1.5 text-[10px] font-normal text-amber-700/50 uppercase tracking-wider">you</span>
+            <span className="ml-1.5 text-[10px] font-normal text-white/40 uppercase tracking-wider">you</span>
           </p>
         </div>
       </div>
       
       {/* Attributes */}
       {loadingAttributes ? (
-        <p className="text-[10px] sm:text-xs text-amber-700/50 ml-6 sm:ml-8">Loading attributes...</p>
+        <p className="text-[10px] sm:text-xs text-white/40 ml-6 sm:ml-8">Loading attributes...</p>
       ) : attributes.length > 0 ? (
         <div className="ml-6 sm:ml-8 flex flex-wrap gap-1.5 sm:gap-2">
           {attributes.map((attr) => (
@@ -2150,7 +2150,7 @@ const MainCharacterSection = ({ user }: { user: any }) => {
           ))}
         </div>
       ) : (
-        <p className="text-[10px] sm:text-xs text-amber-700/50 ml-6 sm:ml-8 italic">No attributes detected yet. Attributes are automatically extracted from your conversations.</p>
+        <p className="text-[10px] sm:text-xs text-white/40 ml-6 sm:ml-8 italic">No attributes detected yet. Attributes are automatically extracted from your conversations.</p>
       )}
     </div>
   );
@@ -2609,7 +2609,7 @@ export const CharacterBook = () => {
             </TabsTrigger>
             <TabsTrigger 
               value="mentioned"
-              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400 text-xs sm:text-sm flex-shrink-0"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 text-xs sm:text-sm flex-shrink-0"
             >
               <MessageSquare className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Mentioned</span>
@@ -2630,7 +2630,7 @@ export const CharacterBook = () => {
             </TabsTrigger>
             <TabsTrigger 
               value="unmet"
-              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400 text-xs sm:text-sm flex-shrink-0"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 text-xs sm:text-sm flex-shrink-0"
             >
               <UserX className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Unmet</span>
@@ -2818,23 +2818,23 @@ export const CharacterBook = () => {
       ) : (
         <>
           {/* Book Page Container with Grid Inside */}
-          <div className="relative w-full min-h-[400px] sm:min-h-[500px] lg:min-h-[600px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden">
+          <div className="relative w-full min-h-[400px] sm:min-h-[500px] lg:min-h-[600px] bg-gradient-to-br from-purple-950/20 via-black/40 to-purple-950/20 rounded-lg border border-purple-500/20 shadow-2xl overflow-hidden">
             {/* Page Content */}
             <div className="p-4 sm:p-6 lg:p-8 flex flex-col">
               {/* Page Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-amber-800/20">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-white/10">
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600/60 flex-shrink-0" />
+                  <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400 flex-shrink-0" />
                   <div className="min-w-0">
-                    <h3 className="text-xs sm:text-sm font-semibold text-amber-900/40 uppercase tracking-wider">
+                    <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
                       Character Book
                     </h3>
-                    <p className="text-[10px] sm:text-xs text-amber-700/50 mt-0.5">
+                    <p className="text-[10px] sm:text-xs text-white/40 mt-0.5">
                       Page {currentPage}/{totalPages} · {filteredCharacters.length} characters
                     </p>
                   </div>
                 </div>
-                <div className="text-[10px] sm:text-xs text-amber-700/40 font-mono flex-shrink-0">
+                <div className="text-[10px] sm:text-xs text-white/35 font-mono flex-shrink-0">
                   {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               </div>
@@ -2846,10 +2846,10 @@ export const CharacterBook = () => {
               <div className="flex-1 space-y-4 mb-4 sm:mb-6">
                 {sortOrder === 'impact' ? (
                   <div className="space-y-2">
-                    <h4 className="text-sm font-semibold text-amber-900/60 flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-purple-500/80" />
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-purple-400" />
                       People by impact on you
-                      <span className="text-xs text-amber-700/50">({charactersByImpact.length})</span>
+                      <span className="text-xs font-normal text-white/40">({charactersByImpact.length})</span>
                     </h4>
                     <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                       {charactersByImpact.map((character, index) => {
@@ -2897,13 +2897,13 @@ export const CharacterBook = () => {
                         <div key={level} className="space-y-2">
                           <button
                             onClick={() => setCollapsedSections(prev => ({ ...prev, [level]: !prev[level] }))}
-                            className="flex items-center gap-2 text-sm font-semibold text-amber-900/60 hover:text-amber-800/80 transition-colors"
+                            className="flex items-center gap-2 text-sm font-bold text-white hover:text-purple-300 transition-colors"
                           >
-                            <ChevronDown 
+                            <ChevronDown
                               className={`h-4 w-4 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
                             />
                             <span>{levelLabels[level] || level.charAt(0).toUpperCase() + level.slice(1)}</span>
-                            <span className="text-xs text-amber-700/50">({chars.length})</span>
+                            <span className="text-xs font-normal text-white/40">({chars.length})</span>
                           </button>
                           {!isCollapsed && (
                             <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -2937,13 +2937,13 @@ export const CharacterBook = () => {
               </div>
 
               {/* Page Footer with Navigation */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-amber-800/20">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-white/10">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={goToPrevious}
                   disabled={currentPage === 1}
-                  className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
+                  className="text-white/50 hover:text-white hover:bg-purple-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
                   <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                   Previous
@@ -2951,7 +2951,7 @@ export const CharacterBook = () => {
 
                 <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-1 sm:gap-2 flex-wrap justify-center">
                   {/* Page indicators */}
-                  <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 bg-black/40 rounded-lg border border-amber-800/30 overflow-x-auto">
+                  <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 bg-black/40 rounded-lg border border-white/10 overflow-x-auto">
                     {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                       let pageNum: number;
                       if (totalPages <= 7) {
@@ -2970,8 +2970,8 @@ export const CharacterBook = () => {
                           onClick={() => goToPage(pageNum)}
                           className={`px-1.5 sm:px-2 py-1 rounded text-xs sm:text-sm transition touch-manipulation ${
                             currentPage === pageNum
-                              ? 'bg-amber-600 text-white'
-                              : 'text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10'
+                              ? 'bg-purple-500 text-white'
+                              : 'text-white/50 hover:text-white hover:bg-purple-500/10'
                           }`}
                         >
                           {pageNum}
@@ -2979,7 +2979,7 @@ export const CharacterBook = () => {
                       );
                     })}
                   </div>
-                  <span className="text-xs sm:text-sm text-amber-700/50 whitespace-nowrap">
+                  <span className="text-xs sm:text-sm text-white/40 whitespace-nowrap">
                     {startIndex + 1}-{Math.min(endIndex, filteredCharacters.length)} of {filteredCharacters.length}
                   </span>
                 </div>
@@ -2989,7 +2989,7 @@ export const CharacterBook = () => {
                   size="sm"
                   onClick={goToNext}
                   disabled={currentPage === totalPages}
-                  className="text-amber-700/60 hover:text-amber-600 hover:bg-amber-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
+                  className="text-white/50 hover:text-white hover:bg-purple-500/10 disabled:opacity-30 w-full sm:w-auto text-xs sm:text-sm"
                 >
                   Next
                   <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 ml-1" />

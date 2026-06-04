@@ -133,7 +133,7 @@ export const PerceptionSearchBar = ({ onSelect, onSearchChange, initialQuery = '
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'unverified':
-        return 'text-orange-400';
+        return 'text-violet-400';
       case 'confirmed':
         return 'text-green-400';
       case 'disproven':
@@ -152,7 +152,7 @@ export const PerceptionSearchBar = ({ onSelect, onSearchChange, initialQuery = '
         <input
           ref={inputRef}
           type="text"
-          className="w-full pl-10 pr-10 py-2 rounded-lg bg-black/40 border border-orange-500/30 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50"
+          className="w-full pl-10 pr-10 py-2 rounded-lg bg-black/40 border border-violet-500/30 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500/50"
           placeholder="Search perceptions by person, content, or impact..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -173,14 +173,14 @@ export const PerceptionSearchBar = ({ onSelect, onSearchChange, initialQuery = '
         )}
         {loading && (
           <div className="absolute right-10 top-1/2 -translate-y-1/2">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-orange-500/20 border-t-orange-500" />
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-violet-500/20 border-t-violet-500" />
           </div>
         )}
       </div>
 
       {/* Suggestions Dropdown */}
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute top-full mt-2 left-0 w-full bg-black/95 backdrop-blur-sm border border-orange-500/30 rounded-lg shadow-xl z-50 max-h-[400px] overflow-y-auto">
+        <div className="absolute top-full mt-2 left-0 w-full bg-black/95 backdrop-blur-sm border border-violet-500/30 rounded-lg shadow-xl z-50 max-h-[400px] overflow-y-auto">
           <div className="p-2 space-y-1">
             {suggestions.map((perception, index) => (
               <button
@@ -201,7 +201,7 @@ export const PerceptionSearchBar = ({ onSelect, onSearchChange, initialQuery = '
                       <span className={`text-xs ${getStatusColor(perception.status)}`}>
                         {perception.status}
                       </span>
-                      <div className="flex items-center gap-1 text-orange-400/60">
+                      <div className="flex items-center gap-1 text-violet-400/60">
                         {getSourceIcon(perception.source)}
                         <span className="text-xs capitalize">{perception.source.replace('_', ' ')}</span>
                       </div>
@@ -214,7 +214,7 @@ export const PerceptionSearchBar = ({ onSelect, onSearchChange, initialQuery = '
                         <Clock className="h-3 w-3" />
                         <span>{formatDistanceToNow(new Date(perception.timestamp_heard), { addSuffix: true })}</span>
                       </div>
-                      <span className="text-orange-400/60">
+                      <span className="text-violet-400/60">
                         {Math.round(perception.confidence_level * 100)}% confidence
                       </span>
                     </div>
@@ -228,7 +228,7 @@ export const PerceptionSearchBar = ({ onSelect, onSearchChange, initialQuery = '
 
       {/* No results */}
       {showSuggestions && !loading && query.trim() && suggestions.length === 0 && (
-        <div className="absolute top-full mt-2 left-0 w-full bg-black/95 backdrop-blur-sm border border-orange-500/30 rounded-lg shadow-xl z-50 p-4">
+        <div className="absolute top-full mt-2 left-0 w-full bg-black/95 backdrop-blur-sm border border-violet-500/30 rounded-lg shadow-xl z-50 p-4">
           <p className="text-sm text-white/60 text-center">No perceptions found</p>
         </div>
       )}

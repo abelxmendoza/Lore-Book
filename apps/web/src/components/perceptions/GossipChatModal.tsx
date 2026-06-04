@@ -211,12 +211,12 @@ Respond naturally and conversationally. Be friendly, curious, and encourage them
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-black/90 border border-orange-500/30 rounded-2xl shadow-panel w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-black/90 border border-violet-500/30 rounded-2xl shadow-panel w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-orange-500/30 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(255,165,0,0.35),_transparent)]">
+        <div className="flex items-center justify-between p-6 border-b border-violet-500/30 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(139,92,246,0.2),_transparent)]">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="p-2 bg-orange-500/20 rounded-lg">
-              <MessageSquare className="w-6 h-6 text-orange-400" />
+            <div className="p-2 bg-violet-500/20 rounded-lg">
+              <MessageSquare className="w-6 h-6 text-violet-400" />
             </div>
             <div className="flex-1 min-w-0">
               <h2 className="text-xl font-semibold text-white">
@@ -236,9 +236,9 @@ Respond naturally and conversationally. Be friendly, curious, and encourage them
 
         {/* Extraction Status Banner */}
         {isExtracting && (
-          <div className="px-6 py-3 bg-orange-500/10 border-b border-orange-500/30 flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-orange-400" />
-            <span className="text-sm text-orange-200">Extracting perceptions and connecting info...</span>
+          <div className="px-6 py-3 bg-violet-500/10 border-b border-violet-500/30 flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-violet-400" />
+            <span className="text-sm text-violet-200">Extracting perceptions and connecting info...</span>
           </div>
         )}
 
@@ -259,7 +259,7 @@ Respond naturally and conversationally. Be friendly, curious, and encourage them
             <ChatMessage key={message.id} message={message} />
           ))}
           {isExtracting && (
-            <div className="flex items-center gap-2 text-orange-400/70 text-sm">
+            <div className="flex items-center gap-2 text-violet-400/70 text-sm">
               <Sparkles className="w-4 h-4 animate-pulse" />
               <span>Analyzing and connecting information...</span>
             </div>
@@ -268,7 +268,7 @@ Respond naturally and conversationally. Be friendly, curious, and encourage them
         </div>
 
         {/* Chat Input */}
-        <div className="border-t border-orange-500/30 pt-4 px-6 pb-6">
+        <div className="border-t border-violet-500/30 pt-4 px-6 pb-6">
           <ChatComposer
             onSubmit={handleChatMessage}
             loading={isLoading || isExtracting}

@@ -104,12 +104,12 @@ export const PerceptionEntryModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
-      <div className="bg-gradient-to-br from-black via-black/95 to-black border-2 border-orange-500/30 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl shadow-orange-500/20">
+      <div className="bg-gradient-to-br from-black via-black/95 to-black border-2 border-violet-500/30 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl shadow-violet-500/20">
         {/* Header */}
-        <div className="relative bg-gradient-to-r from-orange-500/20 via-orange-900/20 to-orange-500/20 border-b-2 border-orange-500/30 p-6">
+        <div className="relative bg-gradient-to-r from-violet-500/10 via-violet-900/20 to-violet-500/10 border-b-2 border-violet-500/30 p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <AlertTriangle className="h-6 w-6 text-orange-400" />
+              <AlertTriangle className="h-6 w-6 text-violet-400" />
               <div>
                 <h2 className="text-2xl font-bold text-white">
                   {perception ? 'Edit Perception' : 'New Perception Entry'}
@@ -128,9 +128,9 @@ export const PerceptionEntryModal = ({
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-black/40">
           {/* Warning */}
-          <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 text-sm text-orange-200/90">
+          <div className="bg-violet-500/10 border border-violet-500/30 rounded-lg p-3 text-sm text-violet-200/90">
             <p className="font-medium mb-1">Remember: This is your perception</p>
-            <p className="text-orange-200/70">
+            <p className="text-violet-200/70">
               Track what you heard, believed, or assumed. This may be incomplete, biased, or false.
               You can retract or resolve it later as your understanding evolves.
             </p>
@@ -232,7 +232,7 @@ export const PerceptionEntryModal = ({
               rows={4}
               className="bg-black/60 border-border/50 text-white resize-none"
             />
-            <p className="text-xs text-orange-400/70 mt-1 flex items-start gap-1">
+            <p className="text-xs text-violet-400/70 mt-1 flex items-start gap-1">
               <AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" />
               <span>Always frame as YOUR perception (e.g., "I believed X did Y", not "X did Y")</span>
             </p>

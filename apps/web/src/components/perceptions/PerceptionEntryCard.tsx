@@ -45,7 +45,7 @@ export const PerceptionEntryCard = ({
       case 'told_by':
         return 'bg-purple-500/10 text-purple-400 border-purple-500/30';
       case 'rumor':
-        return 'bg-orange-500/10 text-orange-400 border-orange-500/30';
+        return 'bg-violet-500/10 text-violet-400 border-violet-500/30';
       case 'social_media':
         return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30';
       case 'intuition':
@@ -100,12 +100,12 @@ export const PerceptionEntryCard = ({
   return (
     <Card
       className={`transition-all duration-200 ${
-        onClick ? 'cursor-pointer hover:border-orange-500/50 hover:shadow-lg hover:shadow-orange-500/20 hover:-translate-y-1' : ''
+        onClick ? 'cursor-pointer hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/20 hover:-translate-y-1' : ''
       } ${
         isRetracted
           ? 'opacity-50 border-dashed border-2 border-gray-500/30 bg-gray-900/20'
           : isUnverified
-          ? 'border-orange-500/30 bg-gradient-to-br from-black/60 via-black/40 to-black/60 opacity-80'
+          ? 'border-violet-500/30 bg-gradient-to-br from-black/60 via-black/40 to-black/60 opacity-80'
           : isConfirmed
           ? 'border-green-500/30 bg-gradient-to-br from-black/60 via-black/40 to-black/60 opacity-85'
           : isDisproven
@@ -197,9 +197,9 @@ export const PerceptionEntryCard = ({
 
         {/* Warning labels for unstable perceptions (MANDATORY for unverified) */}
         {isUnverified && !isRetracted && (
-          <div className="flex items-center gap-2 pt-2 border-t border-orange-500/20">
-            <AlertTriangle className="h-3.5 w-3.5 text-orange-400/70" />
-            <span className="text-xs text-orange-400/70">Unverified • Secondhand • Belief at the time</span>
+          <div className="flex items-center gap-2 pt-2 border-t border-violet-500/20">
+            <AlertTriangle className="h-3.5 w-3.5 text-violet-400/70" />
+            <span className="text-xs text-violet-400/70">Unverified • Secondhand • Belief at the time</span>
           </div>
         )}
       </CardContent>

@@ -15,7 +15,7 @@ import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 function confidenceLabel(level: number): { label: string; color: string; bar: string } {
   if (level >= 0.75) return { label: 'HIGH CONFIDENCE',   color: 'text-emerald-400', bar: 'bg-emerald-500' };
   if (level >= 0.5)  return { label: 'MEDIUM CONFIDENCE', color: 'text-amber-400',   bar: 'bg-amber-500' };
-  if (level >= 0.25) return { label: 'LOW CONFIDENCE',    color: 'text-orange-400',  bar: 'bg-orange-500' };
+  if (level >= 0.25) return { label: 'LOW CONFIDENCE',    color: 'text-rose-400',   bar: 'bg-rose-500' };
   return                    { label: 'UNCERTAIN',          color: 'text-white/30',    bar: 'bg-white/20' };
 }
 
@@ -23,7 +23,7 @@ function sourceLabel(source: string): { label: string; icon: React.ReactNode; bo
   switch (source) {
     case 'told_by':     return { label: 'First-hand',   icon: <MessageSquare className="h-3.5 w-3.5" />, border: 'border-purple-500/40' };
     case 'overheard':   return { label: 'Overheard',    icon: <Eye className="h-3.5 w-3.5" />,           border: 'border-blue-500/30 border-dashed' };
-    case 'rumor':       return { label: 'Rumor',        icon: <AlertTriangle className="h-3.5 w-3.5" />, border: 'border-orange-500/30 border-dotted' };
+    case 'rumor':       return { label: 'Rumor',        icon: <AlertTriangle className="h-3.5 w-3.5" />, border: 'border-rose-500/30 border-dotted' };
     case 'intuition':   return { label: 'Intuition',    icon: <EyeOff className="h-3.5 w-3.5" />,        border: 'border-pink-500/30' };
     case 'social_media':return { label: 'Social media', icon: <Link2 className="h-3.5 w-3.5" />,         border: 'border-cyan-500/30' };
     default:            return { label: source,         icon: <MessageSquare className="h-3.5 w-3.5" />, border: 'border-white/10' };
@@ -295,8 +295,8 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-white">Character Intelligence</h3>
-          <p className="text-xs text-white/40 mt-0.5">What you believe about {firstName}</p>
+          <h3 className="text-base font-bold text-white">Character Intelligence</h3>
+          <p className="text-xs text-white/50 mt-0.5">What you believe about {firstName}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -356,7 +356,7 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
       {/* Current beliefs */}
       {active.length > 0 && (
         <section className="space-y-3">
-          <h4 className="text-xs font-semibold uppercase tracking-widest text-white/30">
+          <h4 className="text-xs font-bold uppercase tracking-widest text-white/60">
             Current beliefs
           </h4>
           <div className="space-y-3">
@@ -374,7 +374,7 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
       {/* How this changed — only if any have evolution */}
       {hasEvolution.length > 0 && (
         <section className="space-y-3">
-          <h4 className="text-xs font-semibold uppercase tracking-widest text-white/30">
+          <h4 className="text-xs font-bold uppercase tracking-widest text-white/60">
             How this changed
           </h4>
           <div className="space-y-2">
