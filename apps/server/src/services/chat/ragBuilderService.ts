@@ -401,10 +401,6 @@ export async function buildRAGPacket(
   } catch (e) { logger.debug({ e }, 'RAGBuilder: crystallized knowledge fetch failed'); }
 
   // ── Relationship context — per-request, NOT cached ────────────────────────
-  // Drift direction, active cycles, and recent interactions are time-sensitive
-  // signals that must be fresh per chat turn. Names are already resolved in the
-  // cached romanticRelationships above.
-  // Only enriches current/active relationships (past ones don't need live signals).
   let romanticContext: RelationshipContinuitySummary[] = [];
   try {
     const activeRels = romanticRelationships.filter((r: any) => r.is_current);
@@ -412,6 +408,41 @@ export async function buildRAGPacket(
       romanticContext = await buildRelationshipContext(activeRels, userId);
     }
   } catch (e) { logger.debug({ e }, 'RAGBuilder: relationship context build failed'); }
+
+  // ── Foundation recall — Sprint G ─────────────────────────────────────────
+  // Routes the user's message to the appropriate foundation data layer
+  // (biography, entity, temporal, fact) and returns a formatted context block.
+  // Also reads from character_relationships and character_timeline_events —
+  // the foundation tables that were missing from this pipeline before Sprint G.
+  let foundationRecallBlock = '';
+  let foundationRelationships: any[] = [];
+  let foundationTimeline: any[] = [];
+
+  try {
+    const { routeRecallQuery } = await import('./recallQueryRouter');
+    // conversationHistory not available at this layer — thread recall handled upstream
+    const recall = await routeRecallQuery(userId, message, []);
+    foundationRecallBlock = recall.contextBlock;
+    logger.debug({ userId, intent: recall.intent, entity: recall.entityName }, 'RAGBuilder: recall routed');
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: recall router failed'); }
+
+  try {
+    const { data } = await supabaseAdmin
+      .from('character_relationships')
+      .select('id, source_character_id, target_character_id, relationship_type, status, metadata')
+      .eq('user_id', userId);
+    foundationRelationships = (data as any[]) ?? [];
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: foundation relationships fetch failed'); }
+
+  try {
+    const { data } = await supabaseAdmin
+      .from('character_timeline_events')
+      .select('event_title, event_type, event_date, event_summary, emotional_impact, confidence')
+      .eq('user_id', userId)
+      .order('event_date', { ascending: false })
+      .limit(10);
+    foundationTimeline = (data as any[]) ?? [];
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: foundation timeline fetch failed'); }
 
   const packet = {
     orchestratorSummary, hqiResults, relatedEntries, fabricNeighbors,
@@ -424,6 +455,10 @@ export async function buildRAGPacket(
     crystallizedKnowledge,
     // Phase 2: entity arc narrative block (null when generic retrieval was used)
     entityArcNarrativeBlock,
+    // Sprint G: foundation recall data
+    foundationRecallBlock,
+    foundationRelationships,
+    foundationTimeline,
   };
 
   ragPacketCacheService.cachePacket(userId, message, packet);

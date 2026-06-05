@@ -763,7 +763,7 @@ ${strategicGuidance ? `${strategicGuidance}\n\n` : ''}
 **Recent Timeline Entries** (${orchestratorSummary.timeline.events.length} total entries):
 ${timelineSummary || 'No previous entries yet.'}
 
-${(loreData as any)?.entityArcNarrativeBlock ? `**ENTITY CONTINUITY ARC** (loaded from complete DB record — use this, not random excerpts below):\n${(loreData as any).entityArcNarrativeBlock}\n\n` : ''}**Available Sources** (${sources.length} total - reference these in your response):
+${(loreData as any)?.foundationRecallBlock ? `**FOUNDATION MEMORY** (retrieved from structured life data — use this first before scanning sources):\n${(loreData as any).foundationRecallBlock}\n\n` : ''}${(loreData as any)?.foundationRelationships?.length > 0 ? `**KNOWN RELATIONSHIPS:**\n${(loreData as any).foundationRelationships.slice(0, 5).map((r: any) => `• ${r.relationship_type} (${r.status}): ${r.source_character_id} ↔ ${r.target_character_id} — ${(r.metadata as any)?.co_mention_count ?? 0} shared memories`).join('\n')}\n\n` : ''}${(loreData as any)?.foundationTimeline?.length > 0 ? `**RECENT TIMELINE:**\n${(loreData as any).foundationTimeline.slice(0, 5).map((e: any) => `• ${e.event_type}: ${e.event_title}`).join('\n')}\n\n` : ''}${(loreData as any)?.entityArcNarrativeBlock ? `**ENTITY CONTINUITY ARC** (loaded from complete DB record — use this, not random excerpts below):\n${(loreData as any).entityArcNarrativeBlock}\n\n` : ''}**Available Sources** (${sources.length} total - reference these in your response):
 ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ? ` (${new Date(s.date).toLocaleDateString()})` : ''}${s.snippet ? ` - ${s.snippet.substring(0, 50)}` : ''}`).join('\n')}
 
 **NARRATIVE INTEGRITY RULES (CRITICAL)**:
