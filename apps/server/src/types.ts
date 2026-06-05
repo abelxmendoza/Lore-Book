@@ -219,7 +219,7 @@ export type PeoplePlaceEntity = {
   id: string;
   user_id: string;
   name: string;
-  type: 'person' | 'place';
+  type: 'person' | 'place' | 'organization' | 'platform';
   first_mentioned_at: string;
   last_mentioned_at: string;
   total_mentions: number;
@@ -232,7 +232,7 @@ export type PeoplePlacesStats = {
   total: number;
   people: number;
   places: number;
-  mostMentioned: { id: string; name: string; total_mentions: number; type: 'person' | 'place' }[];
+  mostMentioned: { id: string; name: string; total_mentions: number; type: string }[];
   topRelationships: Partial<Record<RelationshipTag, number>>;
 };
 
