@@ -95,13 +95,13 @@ export default function Login() {
   const enterDemo = () => {
     setUseMockData(true);
     startGuestSession();
-    navigate('/');
+    navigate('/demo');
   };
 
   const enterGuest = () => {
     setUseMockData(false);
     startGuestSession();
-    navigate('/');
+    navigate('/home');
   };
 
   return (

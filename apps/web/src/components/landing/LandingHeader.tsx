@@ -49,7 +49,7 @@ export const LandingHeader = () => {
             <div className="flex items-center gap-3">
               {user ? (
                 <Button
-                  onClick={() => navigate('/')}
+                  onClick={() => navigate('/home')}
                   variant="outline"
                   size="sm"
                   className="border-primary/40 text-primary hover:bg-primary/10"
@@ -106,7 +106,7 @@ export const LandingHeader = () => {
               ))}
               {user ? (
                 <Button
-                  onClick={() => { setMobileMenuOpen(false); navigate('/'); }}
+                  onClick={() => { setMobileMenuOpen(false); navigate('/home'); }}
                   variant="outline"
                   className="w-full border-primary/40 text-primary hover:bg-primary/10"
                 >

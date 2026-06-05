@@ -44,8 +44,8 @@ export default function AuthCallback() {
           console.log('[AuthCallback] Authentication successful');
           // Clear the hash from the URL
           window.history.replaceState(null, '', window.location.pathname);
-          // Redirect to home page
-          navigate('/');
+          // Redirect to dashboard
+          navigate('/home');
         } else {
           // If no session, check if there's a hash (might still be processing)
           if (window.location.hash) {
@@ -54,7 +54,7 @@ export default function AuthCallback() {
               const { data: { session: retrySession } } = await supabase.auth.getSession();
               if (retrySession) {
                 window.history.replaceState(null, '', window.location.pathname);
-                navigate('/');
+                navigate('/home');
               } else {
                 setError('No session created. Please try again.');
                 setLoading(false);
