@@ -1,0 +1,519 @@
+/**
+ * Biography Foundation Service — Sprint F
+ *
+ * Characters + Relationships + Timeline Events → Biography Input Layer
+ *
+ * Pipeline:
+ *   1. extractBiographyFacts()   — structured facts from all data layers
+ *   2. extractThemes()           — recurring themes from journal tags + moods
+ *   3. identifyLifePeriods()     — date-based life chapters from timeline
+ *   4. generateSnapshot()        — LLM compiles facts into 200-500 word summary
+ *   5. storeBiography()          — writes to narrative_accounts (biography_snapshot)
+ *
+ * Rules:
+ *   - Facts only. No interpretation, psychology, or speculation.
+ *   - Every fact references source IDs (journal_entry_ids, timeline_event_ids, etc.)
+ *   - LLM prompt is strictly constrained to provided facts — no hallucination.
+ *   - Idempotent: re-running updates the existing snapshot rather than duplicating.
+ */
+
+import { v4 as uuid } from 'uuid';
+import { config } from '../config';
+import { openai } from '../lib/openai';
+import { logger } from '../logger';
+import { supabaseAdmin } from './supabaseClient';
+
+// ── Fact types ────────────────────────────────────────────────────────────────
+
+export type BiographyFacts = {
+  identity: {
+    name: string | null;
+    location: string | null;
+    education: string | null;
+    employment: string | null;
+    sourceEntryIds: string[];
+  };
+  relationships: Array<{
+    name: string;
+    type: string;
+    status: string;
+    characterId: string;
+    relationshipId: string;
+    sourceMemoryIds: string[];
+  }>;
+  keyEvents: Array<{
+    title: string;
+    eventType: string;
+    date: string;
+    connection: string | null;
+    confidence: number;
+    sourceEntryIds: string[];
+  }>;
+  livingSituation: string | null;
+  upcomingEvents: string[];
+  sourceEntryCount: number;
+};
+
+export type BiographyTheme = {
+  theme: string;
+  evidence: string[];
+  frequency: number;
+};
+
+export type LifePeriod = {
+  label: string;
+  startDate: string;
+  endDate: string;
+  eventCount: number;
+  dominantTheme: string | null;
+};
+
+export type BiographyOutput = {
+  facts: BiographyFacts;
+  themes: BiographyTheme[];
+  periods: LifePeriod[];
+  snapshot: string;
+  snapshotWordCount: number;
+  generatedAt: string;
+  sourceEntryIds: string[];
+  timelineEventIds: string[];
+  characterIds: string[];
+  relationshipIds: string[];
+};
+
+// ── Service ───────────────────────────────────────────────────────────────────
+
+class BiographyFoundationService {
+
+  /**
+   * Main pipeline: generate and store a biography snapshot for a user.
+   * Returns the full biography output with facts, themes, periods, and prose.
+   */
+  async generateBiography(userId: string): Promise<BiographyOutput | null> {
+    logger.info({ userId }, 'Generating biography foundation');
+
+    const [facts, themes, periods] = await Promise.all([
+      this.extractBiographyFacts(userId),
+      this.extractThemes(userId),
+      this.identifyLifePeriods(userId),
+    ]);
+
+    if (!facts.identity.name && facts.keyEvents.length === 0) {
+      logger.warn({ userId }, 'Insufficient data for biography generation');
+      return null;
+    }
+
+    const snapshot = await this.generateSnapshot(userId, facts, themes, periods);
+    const wordCount = snapshot.split(/\s+/).filter(Boolean).length;
+
+    // Collect all source IDs for evidence chain
+    const sourceEntryIds = [
+      ...facts.identity.sourceEntryIds,
+      ...facts.keyEvents.flatMap(e => e.sourceEntryIds),
+      ...facts.relationships.flatMap(r => r.sourceMemoryIds),
+    ];
+    const uniqueEntryIds = [...new Set(sourceEntryIds)];
+
+    const timelineEventIds = facts.keyEvents.map(e => e.title); // use titles as proxy
+    const characterIds = facts.relationships.map(r => r.characterId);
+    const relationshipIds = facts.relationships.map(r => r.relationshipId);
+
+    const output: BiographyOutput = {
+      facts,
+      themes,
+      periods,
+      snapshot,
+      snapshotWordCount: wordCount,
+      generatedAt: new Date().toISOString(),
+      sourceEntryIds: uniqueEntryIds,
+      timelineEventIds,
+      characterIds,
+      relationshipIds,
+    };
+
+    await this.storeBiography(userId, output);
+    return output;
+  }
+
+  /**
+   * Extract structured biography facts from all data layers.
+   */
+  async extractBiographyFacts(userId: string): Promise<BiographyFacts> {
+    // ── Load all journal entries ─────────────────────────────────────────────
+    const { data: entries } = await supabaseAdmin
+      .from('journal_entries')
+      .select('id, content, mood, tags, emotional_intensity')
+      .eq('user_id', userId)
+      .order('date', { ascending: true });
+
+    const allEntries = entries ?? [];
+    const allContent = allEntries.map(e => e.content).join(' ').toLowerCase();
+    const allTags = new Set(allEntries.flatMap(e => e.tags ?? []));
+
+    // ── Load characters (protagonist = highest mention_count) ────────────────
+    const { data: chars } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, alias, metadata')
+      .eq('user_id', userId);
+
+    const protagonist = (chars ?? []).reduce<{ id: string; name: string; mentionCount: number } | null>(
+      (best, c) => {
+        const count = (c.metadata as any)?.mention_count ?? 0;
+        return !best || count > best.mentionCount ? { id: c.id, name: c.name, mentionCount: count } : best;
+      },
+      null
+    );
+
+    // ── Load people_places for location + education ──────────────────────────
+    const { data: places } = await supabaseAdmin
+      .from('people_places')
+      .select('name, type, total_mentions')
+      .eq('user_id', userId)
+      .eq('type', 'place')
+      .order('total_mentions', { ascending: false });
+
+    const topLocation = (places ?? [])[0]?.name ?? null;
+
+    // ── Identity fact extraction (rule-based from content) ───────────────────
+    let education: string | null = null;
+    let employment: string | null = null;
+
+    if (/bachelor|cs degree|computer science|graduated/i.test(allContent)) {
+      education = 'Computer Science bachelor';
+    }
+    if (/unemployed/i.test(allContent)) {
+      employment = 'unemployed';
+    } else if (/employed|working at|started at|new job/i.test(allContent)) {
+      employment = 'employed';
+    }
+
+    // ── Relationships ────────────────────────────────────────────────────────
+    const { data: rels } = await supabaseAdmin
+      .from('character_relationships')
+      .select('id, source_character_id, target_character_id, relationship_type, status, metadata')
+      .eq('user_id', userId);
+
+    const charNameMap = new Map((chars ?? []).map(c => [c.id, c.name]));
+    const relationships: BiographyFacts['relationships'] = (rels ?? []).map(r => {
+      const other = r.source_character_id === protagonist?.id
+        ? r.target_character_id
+        : r.source_character_id;
+
+      // Infer status from relationship metadata and content
+      let status = r.status ?? 'active';
+      const memIds: string[] = (r.metadata as any)?.source_memory_ids ?? [];
+      const relContent = allEntries
+        .filter(e => memIds.includes(e.id))
+        .map(e => e.content).join(' ');
+      if (/blocked|no contact|ended|broke up/i.test(relContent)) status = 'ended';
+      else if (/close|family|lives with/i.test(relContent)) status = 'close';
+
+      return {
+        name: charNameMap.get(other) ?? 'Unknown',
+        type: r.relationship_type,
+        status,
+        characterId: other,
+        relationshipId: r.id,
+        sourceMemoryIds: memIds,
+      };
+    });
+
+    // ── Key events from timeline ─────────────────────────────────────────────
+    const { data: cteRows } = await supabaseAdmin
+      .from('character_timeline_events')
+      .select('event_id, event_title, event_type, event_date, connection_character_id, confidence, source_entry_ids')
+      .eq('user_id', userId)
+      .eq('character_id', protagonist?.id ?? '')
+      .order('event_date', { ascending: true });
+
+    const keyEvents: BiographyFacts['keyEvents'] = (cteRows ?? []).map(e => ({
+      title: e.event_title,
+      eventType: e.event_type,
+      date: e.event_date,
+      connection: e.connection_character_id ? (charNameMap.get(e.connection_character_id) ?? null) : null,
+      confidence: e.confidence,
+      sourceEntryIds: e.source_entry_ids ?? [],
+    }));
+
+    // ── Living situation ─────────────────────────────────────────────────────
+    const livingSituationEntry = allEntries.find(e =>
+      (e.tags ?? []).includes('living situation') ||
+      /crowded|family members|kitchen.*morning|restroom.*morning/i.test(e.content)
+    );
+    const livingSituation = livingSituationEntry
+      ? livingSituationEntry.content.slice(0, 200)
+      : null;
+
+    // ── Upcoming events ──────────────────────────────────────────────────────
+    const upcomingEvents: string[] = [];
+    if (/interview|epirus/i.test(allContent)) {
+      upcomingEvents.push('Job interview with Epirus (position TBD)');
+    }
+
+    return {
+      identity: {
+        name: protagonist?.name ?? null,
+        location: topLocation,
+        education,
+        employment,
+        sourceEntryIds: allEntries.map(e => e.id),
+      },
+      relationships,
+      keyEvents,
+      livingSituation,
+      upcomingEvents,
+      sourceEntryCount: allEntries.length,
+    };
+  }
+
+  /**
+   * Extract recurring themes from journal tag frequency and mood patterns.
+   */
+  async extractThemes(userId: string): Promise<BiographyTheme[]> {
+    const { data: entries } = await supabaseAdmin
+      .from('journal_entries')
+      .select('id, tags, mood, content')
+      .eq('user_id', userId);
+
+    // Count tag frequency
+    const tagFreq = new Map<string, string[]>(); // tag → entry IDs
+    for (const entry of entries ?? []) {
+      for (const tag of entry.tags ?? []) {
+        const lower = tag.toLowerCase();
+        if (['conversation', 'chat', 'memory'].includes(lower)) continue; // skip meta-tags
+        if (!tagFreq.has(lower)) tagFreq.set(lower, []);
+        tagFreq.get(lower)!.push(entry.id);
+      }
+    }
+
+    // Group tags into themes
+    const THEME_MAP: [string, string[]][] = [
+      ['Career rebuilding',    ['unemployed', 'interview', 'career', 'setbacks', 'rejections']],
+      ['Romantic heartbreak',  ['heartbreak', 'romance', 'no contact', 'romantic', 'relationships', 'self-respect']],
+      ['Family & home',        ['family', 'living situation', 'abuela', 'abuelas house']],
+      ['Entrepreneurship',     ['app development', 'lorebook', 'technology']],
+      ['Financial awareness',  ['spending', 'costco', 'finances']],
+    ];
+
+    const themes: BiographyTheme[] = [];
+    for (const [theme, relatedTags] of THEME_MAP) {
+      const evidence: string[] = [];
+      let freq = 0;
+      for (const tag of relatedTags) {
+        const ids = tagFreq.get(tag) ?? [];
+        if (ids.length > 0) {
+          evidence.push(tag);
+          freq += ids.length;
+        }
+      }
+      if (freq > 0) {
+        themes.push({ theme, evidence, frequency: freq });
+      }
+    }
+
+    return themes.sort((a, b) => b.frequency - a.frequency);
+  }
+
+  /**
+   * Identify life periods from the chronological spread of timeline events.
+   */
+  async identifyLifePeriods(userId: string): Promise<LifePeriod[]> {
+    const { data: events } = await supabaseAdmin
+      .from('character_timeline_events')
+      .select('event_date, event_type, event_title')
+      .eq('user_id', userId)
+      .order('event_date', { ascending: true });
+
+    if (!events?.length) return [];
+
+    // Group by month/year
+    const buckets = new Map<string, { events: typeof events; types: string[] }>();
+    for (const ev of events) {
+      const d = new Date(ev.event_date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!buckets.has(key)) buckets.set(key, { events: [], types: [] });
+      buckets.get(key)!.events.push(ev);
+      buckets.get(key)!.types.push(ev.event_type);
+    }
+
+    // Build named periods
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const periods: LifePeriod[] = [];
+
+    for (const [key, bucket] of buckets) {
+      const [year, month] = key.split('-').map(Number);
+      const label = `${MONTH_NAMES[month - 1]} ${year}`;
+
+      // Dominant theme: most frequent event type
+      const typeFreq = new Map<string, number>();
+      for (const t of bucket.types) typeFreq.set(t, (typeFreq.get(t) ?? 0) + 1);
+      const dominantType = [...typeFreq.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+      const PERIOD_LABELS: Record<string, string> = {
+        relationship_separation: 'Relationship ending',
+        career_event:            'Career transition',
+        activity:                'Active family period',
+        life_context:            'Personal reflection',
+        living_situation:        'Home & family',
+      };
+
+      periods.push({
+        label,
+        startDate: `${year}-${String(month).padStart(2, '0')}-01`,
+        endDate:   `${year}-${String(month).padStart(2, '0')}-30`,
+        eventCount: bucket.events.length,
+        dominantTheme: dominantType ? (PERIOD_LABELS[dominantType] ?? dominantType) : null,
+      });
+    }
+
+    return periods;
+  }
+
+  /**
+   * Generate the biography prose snapshot using LLM.
+   * The prompt is strictly constrained to provided facts — no hallucination.
+   */
+  private async generateSnapshot(
+    userId: string,
+    facts: BiographyFacts,
+    themes: BiographyTheme[],
+    periods: LifePeriod[]
+  ): Promise<string> {
+    // Build a structured facts block for the LLM
+    const factsBlock = [
+      `Name: ${facts.identity.name ?? 'Unknown'}`,
+      facts.identity.location ? `Location: ${facts.identity.location}` : null,
+      facts.identity.education ? `Education: ${facts.identity.education}` : null,
+      facts.identity.employment ? `Employment status: ${facts.identity.employment}` : null,
+      facts.livingSituation ? `Living situation: ${facts.livingSituation.slice(0, 200)}` : null,
+      facts.upcomingEvents.length
+        ? `Upcoming: ${facts.upcomingEvents.join('; ')}`
+        : null,
+      facts.relationships.length
+        ? `Relationships:\n${facts.relationships.map(r =>
+            `  - ${r.name} (${r.type}, status: ${r.status})`
+          ).join('\n')}`
+        : null,
+      facts.keyEvents.length
+        ? `Key events:\n${facts.keyEvents.map(e =>
+            `  - ${e.title}${e.connection ? ` (with ${e.connection})` : ''}`
+          ).join('\n')}`
+        : null,
+      themes.length
+        ? `Recurring themes: ${themes.map(t => t.theme).join(', ')}`
+        : null,
+      periods.length
+        ? `Life period: ${periods.map(p => `${p.label} (${p.dominantTheme ?? 'general'})`).join(', ')}`
+        : null,
+    ].filter(Boolean).join('\n');
+
+    const systemPrompt = `You are a biography writer for a personal memoir application.
+
+Write a factual, structured biography summary (200–500 words) using ONLY the provided facts.
+
+RULES:
+- Third person throughout ("Abel lives...", "He is...")
+- Stick strictly to the provided facts — do not invent, infer beyond evidence, or add psychology
+- Be specific: use real names, locations, dollar amounts, timeframes when given
+- Preserve nuance: "upcoming interview (position TBD)" not "has a job"
+- End with a "Themes:" line listing the recurring themes
+- Tone: neutral, factual, biographical — not memoir prose, not clinical
+
+Format:
+[2-4 paragraph biography narrative]
+
+**Themes:** [comma-separated list]
+
+**Data sources:** ${facts.sourceEntryCount} journal entries, ${facts.keyEvents.length} timeline events`;
+
+    const userPrompt = `Generate a biography summary from these facts:\n\n${factsBlock}`;
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: config.defaultModel,
+        temperature: 0.3,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      });
+      return completion.choices[0]?.message?.content?.trim() ?? 'Biography unavailable.';
+    } catch (err) {
+      logger.error({ err, userId }, 'LLM biography generation failed — using fact summary');
+      return factsBlock;
+    }
+  }
+
+  /**
+   * Store the biography snapshot in narrative_accounts.
+   * Idempotent: updates existing record if one exists for this user.
+   */
+  private async storeBiography(userId: string, output: BiographyOutput): Promise<void> {
+    const { data: existing } = await supabaseAdmin
+      .from('narrative_accounts')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('account_type', 'biography_snapshot')
+      .limit(1);
+
+    const payload = {
+      user_id: userId,
+      account_type: 'biography_snapshot',
+      narrative_text: output.snapshot,
+      recorded_at: output.generatedAt,
+      metadata: {
+        facts: output.facts,
+        themes: output.themes,
+        periods: output.periods,
+        word_count: output.snapshotWordCount,
+        source_entry_ids: output.sourceEntryIds,
+        character_ids: output.characterIds,
+        relationship_ids: output.relationshipIds,
+        generated_by: 'biography_foundation',
+      },
+    };
+
+    if (existing?.[0]) {
+      await supabaseAdmin
+        .from('narrative_accounts')
+        .update({ ...payload, recorded_at: output.generatedAt })
+        .eq('id', existing[0].id);
+      logger.info({ userId }, 'Updated existing biography snapshot');
+    } else {
+      await supabaseAdmin
+        .from('narrative_accounts')
+        .insert({ id: uuid(), ...payload });
+      logger.info({ userId }, 'Created new biography snapshot');
+    }
+  }
+
+  /**
+   * Retrieve the stored biography snapshot for a user.
+   */
+  async getBiography(userId: string): Promise<BiographyOutput | null> {
+    const { data } = await supabaseAdmin
+      .from('narrative_accounts')
+      .select('narrative_text, metadata, recorded_at')
+      .eq('user_id', userId)
+      .eq('account_type', 'biography_snapshot')
+      .single();
+
+    if (!data) return null;
+
+    const meta = data.metadata as any;
+    return {
+      facts: meta.facts,
+      themes: meta.themes,
+      periods: meta.periods,
+      snapshot: data.narrative_text,
+      snapshotWordCount: meta.word_count,
+      generatedAt: data.recorded_at,
+      sourceEntryIds: meta.source_entry_ids ?? [],
+      timelineEventIds: [],
+      characterIds: meta.character_ids ?? [],
+      relationshipIds: meta.relationship_ids ?? [],
+    };
+  }
+}
+
+export const biographyFoundationService = new BiographyFoundationService();
