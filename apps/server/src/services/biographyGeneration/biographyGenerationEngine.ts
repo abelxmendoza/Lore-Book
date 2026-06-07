@@ -15,7 +15,7 @@ import { supabaseAdmin } from '../supabaseClient';
 
 import { detectHierarchyGaps } from '../timelineInsight';
 import { filterSensitiveAtoms, filterBiographyText } from './contentFilter';
-import { buildAtomsFromTimeline } from './narrativeAtomBuilder';
+import { buildAtomsFromTimeline, buildAtomsFromEventCandidates } from './narrativeAtomBuilder';
 import { preservedContentPlacer } from './preservedContentPlacer';
 import { timePeriodAnalyzer } from './timePeriodAnalyzer';
 import { themeAnalyzer } from './themeAnalyzer';
@@ -179,7 +179,14 @@ export class BiographyGenerationEngine {
       }
 
       // Build new graph with indexes
-      const atoms = await buildAtomsFromTimeline(userId);
+      // Experiment: additive enrichment from high-confidence event_candidates
+      // (recurring cross-session scenes). Does not replace or alter the
+      // existing timeline-derived atom pool — see project memory on the
+      // event_candidates atom-injection validation experiment.
+      const atoms = [
+        ...await buildAtomsFromTimeline(userId),
+        ...await buildAtomsFromEventCandidates(userId),
+      ];
       const edges = this.buildEdges(atoms);
       const index = this.buildIndex(atoms);
 

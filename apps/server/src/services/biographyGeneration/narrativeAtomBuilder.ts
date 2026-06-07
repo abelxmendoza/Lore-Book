@@ -144,6 +144,73 @@ export async function buildAtomsFromTimeline(userId: string): Promise<NarrativeA
   }
 }
 
+// Experiment: minimum continuity_strength for an event_candidate to be
+// surfaced as a narrative atom. Mirrors the `timeline_candidate` cutoff.
+const EVENT_CANDIDATE_ATOM_THRESHOLD = 0.60;
+
+// Keyword → domain heuristic so recurring scenes land in domain-scoped
+// queries (e.g. "Living Situation with Family Members" -> family) instead
+// of all collapsing into a generic 'personal' bucket.
+const DOMAIN_KEYWORDS: Array<[Domain, string[]]> = [
+  ['family', ['family', 'abuela', 'mom', 'dad', 'parent', 'sibling', 'grandma', 'grandpa']],
+  ['romance', ['relationship', 'breakup', 'heartbreak', 'dating', 'boyfriend', 'girlfriend']],
+  ['friendship', ['friend', 'hangout', 'hanging']],
+  ['professional', ['interview', 'job', 'career', 'work', 'office']],
+  ['creative', ['lorebook', 'building', 'coding', 'music', 'writing', 'art']],
+  ['health', ['gym', 'exercise', 'therapy', 'health']],
+  ['education', ['studying', 'school', 'class', 'exam']],
+];
+
+function inferDomains(canonicalTitle: string, recurringActivities: string[]): Domain[] {
+  const haystack = [canonicalTitle, ...recurringActivities].join(' ').toLowerCase();
+  const matches = DOMAIN_KEYWORDS.filter(([, keywords]) => keywords.some(k => haystack.includes(k))).map(([domain]) => domain);
+  return matches.length > 0 ? matches : ['personal'];
+}
+
+/**
+ * Build atoms from high-confidence event_candidates (recurring autobiographical
+ * scenes detected across sessions). Experimental enrichment source — additive
+ * only, does not replace or alter buildAtomsFromTimeline.
+ */
+export async function buildAtomsFromEventCandidates(userId: string): Promise<NarrativeAtom[]> {
+  try {
+    const { data: candidates, error } = await supabaseAdmin
+      .from('event_candidates')
+      .select('id, canonical_title, dominant_entities, dominant_entity_names, recurring_activities, occurrence_count, continuity_strength, source_event_ids, first_seen_at, last_seen_at')
+      .eq('user_id', userId)
+      .gte('continuity_strength', EVENT_CANDIDATE_ATOM_THRESHOLD);
+
+    if (error || !candidates) return [];
+
+    return candidates.map((c): NarrativeAtom => {
+      const names = c.dominant_entity_names || [];
+      return {
+        id: `event-candidate-${c.id}`,
+        type: 'event',
+        timestamp: c.last_seen_at || c.first_seen_at,
+        domains: inferDomains(c.canonical_title, c.recurring_activities || []),
+        emotionalWeight: 0.5,
+        sensitivity: 0.3,
+        significance: c.continuity_strength,
+        peopleIds: c.dominant_entities || [],
+        tags: ['recurring-scene', ...(c.recurring_activities || [])],
+        content: `A recurring pattern: "${c.canonical_title}" — observed ${c.occurrence_count} times${names.length ? `, involving ${names.join(', ')}` : ''}.`,
+        timelineIds: c.source_event_ids || [],
+        sourceRefs: c.source_event_ids || [],
+        metadata: {
+          source: 'event_candidate',
+          occurrenceCount: c.occurrence_count,
+          continuityStrength: c.continuity_strength,
+          firstSeenAt: c.first_seen_at,
+        },
+      };
+    });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to build atoms from event candidates');
+    return [];
+  }
+}
+
 /**
  * Build atoms from engine outputs
  */
