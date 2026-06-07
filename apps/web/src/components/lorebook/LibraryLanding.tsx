@@ -82,6 +82,8 @@ interface LibraryLandingProps {
   onOpenDemoBook?: (bookId: string) => void;
   generating?: boolean;
   isMockData?: boolean;
+  /** Slot rendered below the "Recently generated" section — e.g. saved books, recommendations. */
+  bottomSlot?: React.ReactNode;
 }
 
 export const LibraryLanding = ({
@@ -89,6 +91,7 @@ export const LibraryLanding = ({
   onOpenDemoBook,
   generating = false,
   isMockData = false,
+  bottomSlot,
 }: LibraryLandingProps) => {
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -245,6 +248,8 @@ export const LibraryLanding = ({
             </div>
           )}
         </div>
+
+        {bottomSlot}
       </div>
     </div>
   );

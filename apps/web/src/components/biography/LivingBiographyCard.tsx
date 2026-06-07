@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, Sparkles, Users, Compass, Clock } from 'lucide-react';
+import { BookOpen, Sparkles, Users, Compass, Clock, BookMarked } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { fetchLivingBiographyCard, type LivingBiographyCard as LivingBiographyCardData } from '../../api/livingBiography';
 import { cn } from '../../lib/cn';
@@ -28,12 +28,21 @@ export const LivingBiographyCard = () => {
 
   if (loading || !card || !card.hasEnoughData) return null;
 
+  // Bridge: send a Living Biography chapter/person straight into lorebook
+  // generation via the `focus` query param LoreBook already listens for.
+  const generateLorebook = (e: React.MouseEvent, query: string) => {
+    e.stopPropagation();
+    navigate(`/lorebook?focus=${encodeURIComponent(query)}`);
+  };
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => navigate('/memoir')}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/memoir'); }}
       className={cn(
-        'group w-full rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-500/10 via-black/30 to-pink-500/5 p-5 text-left',
+        'group w-full rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-500/10 via-black/30 to-pink-500/5 p-5 text-left cursor-pointer',
         'transition-all duration-200 hover:border-purple-500/40 hover:from-purple-500/15',
       )}
     >
@@ -51,9 +60,19 @@ export const LivingBiographyCard = () => {
       </div>
 
       {card.currentChapter && (
-        <p className="text-lg font-semibold text-white mb-3">
-          Current chapter: <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">{card.currentChapter.label}</span>
-        </p>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <p className="text-lg font-semibold text-white">
+            Current chapter: <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">{card.currentChapter.label}</span>
+          </p>
+          <button
+            type="button"
+            onClick={(e) => generateLorebook(e, `the story of ${card.currentChapter!.label}`)}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-purple-300/80 border border-purple-500/20 hover:border-purple-500/40 hover:text-purple-200 hover:bg-purple-500/10 transition-colors shrink-0"
+          >
+            <BookMarked className="h-3 w-3" />
+            Generate Lorebook
+          </button>
+        </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -73,7 +92,19 @@ export const LivingBiographyCard = () => {
               <Users className="h-3.5 w-3.5 text-pink-400" />
               <span className="text-xs font-medium text-white/40">People who matter most</span>
             </div>
-            <p className="text-sm text-white/80">{card.keyPeople.map(p => p.name).join(', ')}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {card.keyPeople.map((p) => (
+                <button
+                  key={p.name}
+                  type="button"
+                  onClick={(e) => generateLorebook(e, `my story with ${p.name}`)}
+                  title={`Generate a lorebook about ${p.name}`}
+                  className="text-sm text-white/80 hover:text-pink-300 underline decoration-dotted decoration-white/20 hover:decoration-pink-400/50 underline-offset-2 transition-colors"
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -91,6 +122,6 @@ export const LivingBiographyCard = () => {
           </div>
         )}
       </div>
-    </button>
+    </div>
   );
 };

@@ -31,7 +31,7 @@ interface SavedBiographiesProps {
   onSaveAsCore?: (biographyId: string, name: string) => void;
 }
 
-export const SavedBiographies = ({ onLoadBiography, onGenerateVersion }: SavedBiographiesProps) => {
+export const SavedBiographies = ({ onLoadBiography, onSaveAsCore }: SavedBiographiesProps) => {
   const [biographies, setBiographies] = useState<SavedBiography[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);

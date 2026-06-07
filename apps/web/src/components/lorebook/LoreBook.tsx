@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, Type, AlignJustify, Loader2, Download, Menu, X } from 'lucide-react';
 import { LibraryLanding } from './LibraryLanding';
+import { LorebookEmptyState } from './LorebookEmptyState';
+import { SavedBiographies } from './SavedBiographies';
+import { LorebookRecommendations } from './LorebookRecommendations';
 import { BookCoverPage, type ReadingTheme } from './BookCoverPage';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -62,6 +66,27 @@ type Chapter = {
   summary?: string | null;
 };
 
+// Reshape a generated/stored Biography into the MemoirOutline shape the reader uses.
+// Single source of truth for that conversion — used on initial load and whenever a
+// biography is generated or loaded from the saved list.
+function biographyToOutline(biography: Biography): MemoirOutline {
+  return {
+    id: biography.id,
+    title: biography.title,
+    lastUpdated: biography.metadata.generatedAt,
+    autoUpdate: false,
+    sections: biography.chapters.map((chapter, idx) => ({
+      id: chapter.id,
+      title: chapter.title,
+      content: chapter.text,
+      order: idx + 1,
+      period: {
+        from: chapter.timeSpan.start,
+        to: chapter.timeSpan.end
+      }
+    }))
+  };
+}
 
 // Dummy book data for demonstration
 const dummyBook: MemoirOutline = {
@@ -209,6 +234,7 @@ interface LoreBookProps {
 }
 
 export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
+  const [searchParams] = useSearchParams();
   const shouldUseMock = useShouldUseMockData();
   const { chapters: loreChapters } = useLoreKeeper();
   const [outline, setOutline] = useState<MemoirOutline | null>(null);
@@ -219,6 +245,8 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   const [lineHeight, setLineHeight] = useState<'normal' | 'relaxed' | 'loose'>('relaxed');
   const [showChat, setShowChat] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [noStoryYet, setNoStoryYet] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [selectedBiography, setSelectedBiography] = useState<Biography | null>(null);
   const [showKnowledgeBaseCreator, setShowKnowledgeBaseCreator] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -254,21 +282,34 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     const loadData = async () => {
       setLoading(true);
       try {
-        // Try to load real memoir outline
+        // Load from the biography system — the main lifestory is the
+        // "always available" source of truth for a user's story (it
+        // self-generates from existing memory if it doesn't exist yet).
+        // The old /api/memoir/outline path is deprecated and returns an
+        // empty outline for nearly every real user — do not use it.
         let loadedOutline: MemoirOutline | null = null;
+        let storyUnavailable = false;
         try {
-          const response = await fetchJson<{ outline: MemoirOutline }>('/api/memoir/outline');
-          loadedOutline = response.outline;
+          const response = await fetchJson<{ biography: { biography_data: Biography } }>('/api/biography/main-lifestory');
+          if (response.biography?.biography_data) {
+            loadedOutline = biographyToOutline(response.biography.biography_data);
+          }
         } catch (error) {
-          console.warn('Failed to load memoir outline:', error);
+          // 404 means there isn't enough story to compile one yet —
+          // not an error state, just "not enough material" (handled below).
+          storyUnavailable = true;
+          console.warn('No main lifestory available yet:', error);
         }
 
-        // Logged-in users: real data or empty. Unauthenticated only: allow dummy fallback.
+        // Logged-in users: real data, or the "not enough story yet" surface.
+        // Unauthenticated only: allow the demo book fallback.
         if (!loadedOutline && shouldUseMock) {
           loadedOutline = dummyBook;
+          storyUnavailable = false;
         }
 
         setOutline(loadedOutline);
+        setNoStoryYet(!loadedOutline && storyUnavailable);
 
         // Use chapters from useLoreKeeper or mock data (only when unauthenticated)
         if (loreChapters.length > 0) {
@@ -300,19 +341,18 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     void loadData();
   }, [shouldUseMock, loreChaptersKey]);
 
-  // Load lorebook recommendations (must be before early returns)
+  // Auto-generate from a "focus" query param (e.g. ?focus=Career%20Rebuild%20Era),
+  // the bridge from Living Biography chapters into a generated lorebook.
+  const focusHandledRef = useRef(false);
   useEffect(() => {
-    const loadRecommendations = async () => {
-      try {
-        const result = await fetchJson<{ recommendations: any[] }>('/api/biography/lorebook-recommendations?limit=10');
-        // Store recommendations for display
-        // You can add a state variable to show these
-      } catch (error) {
-        console.warn('Failed to load lorebook recommendations:', error);
-      }
-    };
-    loadRecommendations();
-  }, []);
+    if (focusHandledRef.current) return;
+    const focus = searchParams.get('focus');
+    if (focus) {
+      focusHandledRef.current = true;
+      setShowLibrary(false);
+      void handleGenerateFromQuery(focus);
+    }
+  }, [searchParams]);
 
   // Helper function to flatten sections
   const flattenSections = (sections: MemoirSection[]): MemoirSection[] => {
@@ -642,6 +682,82 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     loose: 'leading-loose'
   };
 
+  const handleLoadBiography = (biography: Biography) => {
+    setOutline(biographyToOutline(biography));
+    setCurrentSectionIndex(0);
+    setSelectedBiography(biography);
+    setNoStoryYet(false);
+    setGenerationError(null);
+  };
+
+  const handleSaveAsCore = async (biographyId: string, name: string) => {
+    try {
+      await fetchJson(`/api/biography/${biographyId}/save-as-core`, {
+        method: 'POST',
+        body: JSON.stringify({ lorebookName: name })
+      });
+    } catch (error) {
+      console.error('Failed to save biography as core lorebook:', error);
+    }
+  };
+
+  const handleKnowledgeBaseGenerated = (biography: Biography) => {
+    handleLoadBiography(biography);
+    setShowKnowledgeBaseCreator(false);
+  };
+
+  const handleGenerateFromQuery = async (query: string) => {
+    setGenerating(true);
+    setShowLibrary(false);
+    setGenerationError(null);
+    try {
+      const result = await fetchJson<{ biography: Biography; parsedQuery: any }>('/api/biography/search', {
+        method: 'POST',
+        body: JSON.stringify({ query })
+      });
+      if (result.biography) {
+        handleLoadBiography(result.biography);
+        setIsCoverVisible(true);
+      }
+    } catch (error) {
+      console.error('Failed to generate biography:', error);
+      const raw = error instanceof Error ? error.message : String(error);
+      setGenerationError(
+        raw.includes('No atoms found')
+          ? "There isn't enough material yet for that specific book."
+          : "That book couldn't be compiled right now."
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleGenerateFromSpec = async (spec: any, _type?: string) => {
+    setGenerating(true);
+    setShowLibrary(false);
+    setGenerationError(null);
+    try {
+      const result = await fetchJson<{ biography: Biography }>('/api/biography/generate', {
+        method: 'POST',
+        body: JSON.stringify(spec)
+      });
+      if (result.biography) {
+        handleLoadBiography(result.biography);
+        setIsCoverVisible(true);
+      }
+    } catch (error) {
+      console.error('Failed to generate biography from spec:', error);
+      const raw = error instanceof Error ? error.message : String(error);
+      setGenerationError(
+        raw.includes('No atoms found')
+          ? "There isn't enough material yet for that specific book."
+          : "That book couldn't be compiled right now."
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   // Library landing — shown on first load or when user returns to library
   if (showLibrary) {
     return (
@@ -657,26 +773,35 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         }}
         generating={generating}
         isMockData={shouldUseMock}
+        bottomSlot={
+          !shouldUseMock && (
+            <div className="space-y-8">
+              <SavedBiographies
+                onLoadBiography={(biography) => {
+                  handleLoadBiography(biography);
+                  setIsCoverVisible(true);
+                  setShowLibrary(false);
+                }}
+                onSaveAsCore={handleSaveAsCore}
+              />
+              <div>
+                <p className="text-xs text-white/35 uppercase tracking-widest font-mono mb-4">Suggested next lorebooks</p>
+                <LorebookRecommendations onGenerate={handleGenerateFromSpec} />
+              </div>
+            </div>
+          )
+        }
       />
     );
   }
 
   if (!outline || flatSections.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
-        <Card className="bg-black/40 border-border/60 max-w-md">
-          <CardContent className="p-8 text-center">
-            <BookOpen className="h-16 w-16 mx-auto mb-4 text-primary/50" />
-            <h2 className="text-2xl font-bold mb-2 text-white">Your Lore Book</h2>
-            <p className="text-white/60 mb-4">
-              Your book will appear here once you start building your memoir.
-            </p>
-            <p className="text-sm text-white/40">
-              Go to "My Memoir" to create sections and start writing your story.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <LorebookEmptyState
+        reason={generationError ? 'generation-failed' : 'no-story'}
+        message={generationError}
+        onGenerateFromSpec={handleGenerateFromSpec}
+      />
     );
   }
 
@@ -794,53 +919,6 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
       console.error('Failed to generate PDF:', error);
     } finally {
       setDownloading(false);
-    }
-  };
-
-  const handleKnowledgeBaseGenerated = (biography: Biography) => {
-    handleLoadBiography(biography);
-    setShowKnowledgeBaseCreator(false);
-  };
-
-  const handleLoadBiography = (biography: Biography) => {
-    const newOutline: MemoirOutline = {
-      id: biography.id,
-      title: biography.title,
-      lastUpdated: biography.metadata.generatedAt,
-      autoUpdate: false,
-      sections: biography.chapters.map((chapter, idx) => ({
-        id: chapter.id,
-        title: chapter.title,
-        content: chapter.text,
-        order: idx + 1,
-        period: {
-          from: chapter.timeSpan.start,
-          to: chapter.timeSpan.end
-        }
-      }))
-    };
-
-    setOutline(newOutline);
-    setCurrentSectionIndex(0);
-    setSelectedBiography(biography);
-  };
-
-  const handleGenerateFromQuery = async (query: string) => {
-    setGenerating(true);
-    setShowLibrary(false);
-    try {
-      const result = await fetchJson<{ biography: Biography; parsedQuery: any }>('/api/biography/search', {
-        method: 'POST',
-        body: JSON.stringify({ query })
-      });
-      if (result.biography) {
-        handleLoadBiography(result.biography);
-        setIsCoverVisible(true);
-      }
-    } catch (error) {
-      console.error('Failed to generate biography:', error);
-    } finally {
-      setGenerating(false);
     }
   };
 
