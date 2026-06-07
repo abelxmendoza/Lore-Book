@@ -19,6 +19,7 @@ import { useAuth } from '../lib/supabase';
 import { useEntityCounts } from '../hooks/useEntityCounts';
 import { fetchJson } from '../lib/api';
 import { cn } from '../lib/cn';
+import { LivingBiographyCard } from './biography/LivingBiographyCard';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -188,6 +189,9 @@ export const HomeScreen = () => {
             <p className="text-white/50 text-sm mt-1">Your story is unfolding. Here's where things stand.</p>
           </div>
         </div>
+
+        {/* ── Living biography card ─────────────────────────────────────── */}
+        <LivingBiographyCard />
 
         {/* ── Stats row ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

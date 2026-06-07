@@ -12,6 +12,7 @@ import { dateAssignmentService } from '../services/dateAssignmentService';
 import { lorebookRecommendationEngine } from '../services/lorebook/lorebookRecommendationEngine';
 import { lorebookSearchParser } from '../services/lorebook/lorebookSearchParser';
 import { mainLifestoryService } from '../services/mainLifestoryService';
+import { getLivingBiographyCard, getBiographyChanges } from '../services/livingBiographyService';
 import { omegaChatService } from '../services/omegaChatService';
 import { timeEngine } from '../services/timeEngine';
 
@@ -631,6 +632,49 @@ router.get('/lorebook-recommendations', requireAuth, async (req: AuthenticatedRe
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Failed to get lorebook recommendations');
     res.status(500).json({ error: 'Failed to get recommendations' });
+  }
+});
+
+/**
+ * GET /api/biography/living
+ *
+ * The Living Biography Card (Sprint I) — a product-facing identity surface
+ * built entirely by reshaping the existing biography snapshot. Answers
+ * "who am I / what's happening / who matters / what am I focused on"
+ * without the user reading timelines, memories, or raw data.
+ *
+ * Pure projection: no new tables, no new extraction. Triggers a quiet
+ * background refresh when enough new evidence has accumulated.
+ */
+router.get('/living', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const card = await getLivingBiographyCard(req.user!.id);
+    res.json({ success: true, card });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to build living biography card');
+    res.status(500).json({ success: false, error: 'Failed to build living biography card' });
+  }
+});
+
+/**
+ * GET /api/biography/living/changes?since=<ISO timestamp>
+ *
+ * "What's changed in your biography recently?" — derived on read from
+ * existing row timestamps (new chapters, new people, new milestones,
+ * emerging themes). No new storage.
+ */
+router.get('/living/changes', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const since = req.query.since as string;
+    if (!since || isNaN(new Date(since).getTime())) {
+      return res.status(400).json({ success: false, error: 'since (ISO timestamp) is required' });
+    }
+
+    const changes = await getBiographyChanges(req.user!.id, since);
+    res.json({ success: true, changes });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to compute biography changes');
+    res.status(500).json({ success: false, error: 'Failed to compute biography changes' });
   }
 });
 
