@@ -6,11 +6,12 @@
  * system prompt.
  *
  * Intent types:
- *   biography  — "What do you know about me?" "Who am I?"
- *   entity     — "What happened with Sol?" "Tell me about Abuela."
- *   temporal   — "What was I doing recently?" "What happened lately?"
- *   fact       — "Where do I live?" "What am I working on?"
- *   thread     — "What were we talking about?" "Earlier in this conversation"
+ *   biography      — "What do you know about me?" "Who am I?"
+ *   character_list — "Who do you remember?" "How many characters do you know?" "Who are the people in my story?"
+ *   entity         — "What happened with Sol?" "Tell me about Abuela."
+ *   temporal       — "What was I doing recently?" "What happened lately?"
+ *   fact           — "Where do I live?" "What am I working on?"
+ *   thread         — "What were we talking about?" "Earlier in this conversation"
  *
  * Uses foundation data from Sprints B–F:
  *   characters → character_relationships → character_timeline_events
@@ -24,6 +25,7 @@ import { supabaseAdmin } from '../supabaseClient';
 // ── Intent patterns ───────────────────────────────────────────────────────────
 
 const BIOGRAPHY_RE = /\b(what do you know about me|who am i|what.s my story|tell me about myself|what have you learned|my biography|my life story|what do you remember about me)\b/i;
+const CHARACTER_LIST_RE = /\b(who do you remember|how many (characters|people) do you (remember|know)|who are the people in my (story|life)|who('?s| is) in my (story|life)|tell me (about )?(the )?(people|characters) (you know|in my story|i('?ve| have) (mentioned|talked about))|list (the )?(people|characters) (you know|i('?ve| have) mentioned)|who have i (told you about|mentioned))\b/i;
 const TEMPORAL_RE  = /\b(recently|lately|what.*(was|were|have) i (doing|up to|working|building)|what happened (lately|recently|this week|today)|just (did|told you|mentioned)|what.*(last|past) (few|couple|week|month))\b/i;
 const THREAD_RE    = /\b(earlier|this conversation|what we (discussed|talked|were talking)|remember what i (said|told)|in this (chat|thread))\b/i;
 const LOCATION_RE  = /\b(where (do|did) i live|where.s my (home|house|place)|where am i from|my (address|location|city|neighborhood))\b/i;
@@ -152,6 +154,30 @@ async function fetchEntityContext(userId: string, entityName: string): Promise<s
   return lines.join('\n');
 }
 
+async function fetchCharacterListContext(userId: string): Promise<string> {
+  const { data: chars } = await supabaseAdmin
+    .from('characters')
+    .select('name, alias, metadata')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+
+  const list = chars ?? [];
+  if (list.length === 0) return 'No characters recorded yet.';
+
+  const lines: string[] = [`## PEOPLE IN THIS STORY (${list.length})`];
+  for (const char of list) {
+    const meta = char.metadata as any;
+    const mentions = meta?.mention_count ? ` — mentioned ${meta.mention_count} times` : '';
+    lines.push(`• ${char.name}${mentions}`);
+  }
+  lines.push(
+    '\nWhen answering, name these people directly and give the count. ' +
+    'Do not invent people who are not in this list.'
+  );
+
+  return lines.join('\n');
+}
+
 async function fetchTemporalContext(userId: string): Promise<string> {
   // Most recent timeline events
   const { data: events } = await supabaseAdmin
@@ -231,6 +257,7 @@ async function fetchFactContext(userId: string, factType: 'location' | 'work'): 
 
 export type RecallIntent =
   | 'biography'
+  | 'character_list'
   | 'entity'
   | 'temporal'
   | 'location'
@@ -266,6 +293,20 @@ export async function routeRecallQuery(
       intent: 'thread',
       entityName: null,
       contextBlock: `## CURRENT THREAD CONTEXT\n${recent}`,
+      confidence: 0.9,
+    };
+  }
+
+  // ── Character list recall ────────────────────────────────────────────────────
+  // Checked before biography/entity so "how many characters do you remember?"
+  // routes to the actual character roster instead of falling through to a
+  // narrative surface that has nothing to do with the question.
+  if (CHARACTER_LIST_RE.test(message)) {
+    const block = await fetchCharacterListContext(userId);
+    return {
+      intent: 'character_list',
+      entityName: null,
+      contextBlock: block,
       confidence: 0.9,
     };
   }

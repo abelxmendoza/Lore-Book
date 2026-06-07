@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { generateReturnGreeting } from '../services/chat/returnGreetingService';
+import { getWhatChangedSinceLastVisit, formatWhatChangedLines } from '../services/chat/whatChangedService';
 import { confidenceTrackingService } from '../services/confidenceTrackingService';
 import { affectionCalculator } from '../services/conversationCentered/affectionCalculator';
 import { breakupDetector } from '../services/conversationCentered/breakupDetector';
@@ -2919,6 +2920,45 @@ router.get(
     return res.json({
       success: true,
       greeting, // string | null — client checks for null before displaying
+    });
+  })
+);
+
+/**
+ * GET /api/conversation/what-changed
+ *
+ * The primary continuity-proof surface (Sprint H). Returns a factual,
+ * evidence-backed diff of what LoreBook recorded since the user's last
+ * visit — new memories, new characters, new timeline events, the
+ * strongest current theme, and people who kept showing up.
+ *
+ * Query param: since (ISO timestamp) — when the user was last here.
+ * The client owns this (it knows the last thread's updatedAt), same
+ * pattern as /greeting/:threadId.
+ */
+router.get(
+  '/what-changed',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const since  = req.query.since as string;
+
+    if (!since || isNaN(new Date(since).getTime())) {
+      return res.status(400).json({ success: false, error: 'since (ISO timestamp) is required' });
+    }
+
+    const summary = await getWhatChangedSinceLastVisit(userId, since);
+    const lines   = formatWhatChangedLines(summary);
+
+    logger.debug(
+      { userId, since, gapDays: Math.round(summary.gapDays), hasChanges: summary.hasChanges },
+      'WhatChanged: route served'
+    );
+
+    return res.json({
+      success: true,
+      summary,
+      lines, // pre-formatted, ready to render — keeps "no speculation" enforced server-side
     });
   })
 );

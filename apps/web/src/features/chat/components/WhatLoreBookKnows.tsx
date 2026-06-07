@@ -22,9 +22,11 @@ export const WhatLoreBookKnows = () => {
         if (res.success) {
           const loaded = res.claims.slice(0, 10);
           setClaims(loaded);
-          // Auto-open for users with few claims — they need to see the evidence forming.
-          // Users with many claims have already discovered the panel; collapsed default is fine.
-          if (loaded.length > 0 && loaded.length <= 3) {
+          // The panel is the proof-of-memory surface — it should grow MORE visible
+          // as LoreBook learns more, never less. Auto-open whenever there's anything
+          // to show; the more claims accumulate, the stronger the "it's learning me"
+          // signal becomes, so it should never quietly hide behind a collapsed trigger.
+          if (loaded.length > 0) {
             setPanelOpen(true);
           }
         }
@@ -71,6 +73,8 @@ export const WhatLoreBookKnows = () => {
                 type="button"
                 onClick={() => setPanelOpen(false)}
                 className="text-indigo-400/50 hover:text-indigo-300 transition-colors ml-1"
+                aria-label="Collapse"
+                title="Collapse"
               >
                 <ChevronUp className="h-3.5 w-3.5" />
               </button>

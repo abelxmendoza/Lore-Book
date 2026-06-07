@@ -38,6 +38,7 @@ import { fetchJson } from '../../../lib/api';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
 import { ThreadSaveChip } from './ThreadSaveChip';
 import { WhatLoreBookKnows } from './WhatLoreBookKnows';
+import { WhatChangedSinceLastTime } from './WhatChangedSinceLastTime';
 import { ActiveContextPanel } from './ActiveContextPanel';
 import { ChronologyNarrativeModal } from './ChronologyNarrativeModal';
 import { Logo } from '../../../components/Logo';
@@ -514,6 +515,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             onNavigateToSurface={handleNavigateToSource}
           />
         )}
+
+        {/* What Changed Since Last Time — proves continuity before the user types anything */}
+        <WhatChangedSinceLastTime thread={threads.find(t => t.id === activeThreadId)} />
 
         {/* Messages Area */}
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
