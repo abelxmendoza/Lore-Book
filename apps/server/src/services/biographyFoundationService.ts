@@ -54,6 +54,21 @@ export type BiographyFacts = {
   sourceEntryCount: number;
 };
 
+/**
+ * Provenance record for a single derived biography fact — Sprint O (trust recovery).
+ *
+ * 'authoritative' facts are read directly from a structured source table and
+ * MUST NOT be overwritten by inference over raw text. 'inferred' facts have no
+ * authoritative source to defer to (e.g. employment/education aren't tracked
+ * in any structured table) and are therefore lower-confidence by nature —
+ * never silently presented as equal to an authoritative fact.
+ */
+export type FactProvenance = {
+  value: string | null;
+  source: string;
+  confidence: 'authoritative' | 'inferred';
+};
+
 export type BiographyTheme = {
   theme: string;
   evidence: string[];
@@ -79,6 +94,8 @@ export type BiographyOutput = {
   timelineEventIds: string[];
   characterIds: string[];
   relationshipIds: string[];
+  /** Trust-recovery (Sprint O): traces every major derived fact back to its source and confidence. */
+  provenance: Record<string, FactProvenance>;
 };
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -117,6 +134,7 @@ class BiographyFoundationService {
     const timelineEventIds = facts.keyEvents.map(e => e.title); // use titles as proxy
     const characterIds = facts.relationships.map(r => r.characterId);
     const relationshipIds = facts.relationships.map(r => r.relationshipId);
+    const provenance = this.buildProvenance(facts);
 
     const output: BiographyOutput = {
       facts,
@@ -129,6 +147,7 @@ class BiographyFoundationService {
       timelineEventIds,
       characterIds,
       relationshipIds,
+      provenance,
     };
 
     await this.storeBiography(userId, output);
@@ -199,14 +218,16 @@ class BiographyFoundationService {
         ? r.target_character_id
         : r.source_character_id;
 
-      // Infer status from relationship metadata and content
-      let status = r.status ?? 'active';
+      // Trust recovery (Sprint O): `character_relationships.status` is the
+      // authoritative record — Biography is a narrator over it, not an editor.
+      // A previous keyword-matching heuristic here re-derived status from raw
+      // journal text and overwrote the structured value (e.g. turning an
+      // 'active' family relationship into 'ended' because *another*
+      // relationship's breakup language appeared in a co-mentioned entry).
+      // Derived layers may summarize and rank — they may not contradict
+      // structured truth. Use the DB value as-is.
+      const status = r.status ?? 'active';
       const memIds: string[] = (r.metadata as any)?.source_memory_ids ?? [];
-      const relContent = allEntries
-        .filter(e => memIds.includes(e.id))
-        .map(e => e.content).join(' ');
-      if (/blocked|no contact|ended|broke up/i.test(relContent)) status = 'ended';
-      else if (/close|family|lives with/i.test(relContent)) status = 'close';
 
       return {
         name: charNameMap.get(other) ?? 'Unknown',
@@ -264,6 +285,45 @@ class BiographyFoundationService {
       upcomingEvents,
       sourceEntryCount: allEntries.length,
     };
+  }
+
+  /**
+   * Build a provenance trace for every major derived fact — Sprint O (trust
+   * recovery). Lets future audits see, for any claim Biography makes, whether
+   * it came straight from a structured table ('authoritative') or had to be
+   * inferred because no structured source exists ('inferred'). Internal only —
+   * not surfaced in the prose snapshot, stored alongside it for traceability.
+   */
+  private buildProvenance(facts: BiographyFacts): Record<string, FactProvenance> {
+    const provenance: Record<string, FactProvenance> = {};
+
+    for (const rel of facts.relationships) {
+      provenance[`relationship.${rel.characterId}.status`] = {
+        value: rel.status,
+        source: 'character_relationships.status',
+        confidence: 'authoritative',
+      };
+    }
+
+    provenance['identity.employment'] = {
+      value: facts.identity.employment,
+      source: 'journal_entries (keyword inference — no authoritative employment record exists)',
+      confidence: 'inferred',
+    };
+
+    provenance['identity.education'] = {
+      value: facts.identity.education,
+      source: 'journal_entries (keyword inference — no authoritative education record exists)',
+      confidence: 'inferred',
+    };
+
+    provenance['identity.location'] = {
+      value: facts.identity.location,
+      source: 'people_places (ranked by total_mentions)',
+      confidence: 'inferred',
+    };
+
+    return provenance;
   }
 
   /**
@@ -469,6 +529,7 @@ Format:
         source_entry_ids: output.sourceEntryIds,
         character_ids: output.characterIds,
         relationship_ids: output.relationshipIds,
+        provenance: output.provenance,
         generated_by: 'biography_foundation',
       },
     };
@@ -512,6 +573,7 @@ Format:
       timelineEventIds: [],
       characterIds: meta.character_ids ?? [],
       relationshipIds: meta.relationship_ids ?? [],
+      provenance: meta.provenance ?? {},
     };
   }
 }
