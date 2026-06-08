@@ -5,7 +5,7 @@
 // =====================================================
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2 } from 'lucide-react';
+import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -20,7 +20,7 @@ import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
-import type { Organization, OrganizationMember, OrganizationStory, OrganizationEvent, OrganizationLocation } from './OrganizationProfileCard';
+import type { Organization, OrganizationMember, OrganizationStory, OrganizationEvent, OrganizationLocation, OrganizationRelationship, OrgRelationshipType } from './OrganizationProfileCard';
 import type { Character } from '../characters/CharacterProfileCard';
 import type { LocationProfile } from '../locations/LocationProfileCard';
 
@@ -30,7 +30,7 @@ type OrganizationDetailModalProps = {
   onUpdate?: () => void;
 };
 
-type TabKey = 'info' | 'chat' | 'members' | 'stories' | 'events' | 'locations' | 'timeline';
+type TabKey = 'info' | 'chat' | 'members' | 'stories' | 'events' | 'locations' | 'relationships' | 'timeline';
 
 type ChatMessage = {
   id: string;
@@ -39,6 +39,18 @@ type ChatMessage = {
   timestamp: Date;
 };
 
+const REL_TYPE_LABELS: Record<OrgRelationshipType, string> = {
+  part_of: 'Part of',
+  affiliated_with: 'Affiliated with',
+  rival_of: 'Rival of',
+  spawned_from: 'Spawned from',
+  collaborated_with: 'Collaborated with',
+  succeeded_by: 'Succeeded by',
+  merged_with: 'Merged with',
+};
+
+const ORG_REL_TYPE_OPTIONS = Object.keys(REL_TYPE_LABELS) as OrgRelationshipType[];
+
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'info', label: 'Info', icon: FileText },
   { key: 'chat', label: 'Chat', icon: MessageSquare },
@@ -46,6 +58,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'stories', label: 'Stories', icon: BookOpen },
   { key: 'events', label: 'Events', icon: Calendar },
   { key: 'locations', label: 'Locations', icon: MapPin },
+  { key: 'relationships', label: 'Relationships', icon: Link2 },
   { key: 'timeline', label: 'Timeline', icon: Clock },
 ];
 
@@ -87,6 +100,19 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
   const [newLocation, setNewLocation] = useState({ location_name: '' });
   const [locationLoading, setLocationLoading] = useState(false);
 
+  // Relationships state
+  const [relationships, setRelationships] = useState<OrganizationRelationship[]>([]);
+  const [relationshipsLoaded, setRelationshipsLoaded] = useState(false);
+  const [relationshipsLoading, setRelationshipsLoading] = useState(false);
+  const [relatedOrgs, setRelatedOrgs] = useState<Organization[]>([]);
+  const [showAddRelationship, setShowAddRelationship] = useState(false);
+  const [newRelationship, setNewRelationship] = useState<{ to_org_id: string; relationship_type: OrgRelationshipType; notes: string }>({
+    to_org_id: '',
+    relationship_type: 'affiliated_with',
+    notes: '',
+  });
+  const [relationshipSaving, setRelationshipSaving] = useState(false);
+
   // Delete state
   const [deleting, setDeleting] = useState(false);
   
@@ -109,6 +135,72 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, streamingMessageId]);
+
+  useEffect(() => {
+    if (activeTab === 'relationships' && !relationshipsLoaded) {
+      void loadRelationships();
+    }
+  }, [activeTab, relationshipsLoaded]);
+
+  const loadRelationships = async () => {
+    setRelationshipsLoading(true);
+    try {
+      const [relResult, orgResult] = await Promise.all([
+        fetchJson<{ success: boolean; relationships: OrganizationRelationship[] }>(
+          `/api/organizations/${organization.id}/relationships`
+        ),
+        fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations'),
+      ]);
+      setRelationships(relResult.relationships || []);
+      setRelatedOrgs((orgResult.organizations || []).filter(o => o.id !== organization.id));
+    } catch (error) {
+      console.error('Failed to load relationships:', error);
+    } finally {
+      setRelationshipsLoaded(true);
+      setRelationshipsLoading(false);
+    }
+  };
+
+  const orgNameById = (id: string): string => {
+    if (id === organization.id) return organization.name;
+    return relatedOrgs.find(o => o.id === id)?.name || 'Unknown organization';
+  };
+
+  const handleAddRelationship = async () => {
+    if (!newRelationship.to_org_id) return;
+    setRelationshipSaving(true);
+    try {
+      const result = await fetchJson<{ success: boolean; relationship: OrganizationRelationship }>(
+        `/api/organizations/${organization.id}/relationships`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            to_org_id: newRelationship.to_org_id,
+            relationship_type: newRelationship.relationship_type,
+            notes: newRelationship.notes || undefined,
+          }),
+        }
+      );
+      if (result.success) {
+        setRelationships(prev => [result.relationship, ...prev]);
+        setNewRelationship({ to_org_id: '', relationship_type: 'affiliated_with', notes: '' });
+        setShowAddRelationship(false);
+      }
+    } catch (error) {
+      console.error('Failed to add relationship:', error);
+    } finally {
+      setRelationshipSaving(false);
+    }
+  };
+
+  const handleRemoveRelationship = async (relationshipId: string) => {
+    setRelationships(prev => prev.filter(r => r.id !== relationshipId));
+    try {
+      await fetchJson(`/api/organizations/${organization.id}/relationships/${relationshipId}`, { method: 'DELETE' });
+    } catch (error) {
+      console.error('Failed to remove relationship:', error);
+    }
+  };
 
   const getTypeColor = (type: string) => {
     const colors: Record<string, string> = {
@@ -1230,6 +1322,114 @@ User's message: ${currentInput}`;
                       </CardContent>
                     </Card>
                   ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Relationships Tab */}
+            <TabsContent value="relationships" className="mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Relationships</h3>
+                <Button variant="outline" size="sm" onClick={() => setShowAddRelationship(v => !v)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Relationship
+                </Button>
+              </div>
+
+              {showAddRelationship && (
+                <Card className="bg-black/40 border-border/50">
+                  <CardContent className="pt-6 space-y-3">
+                    <p className="text-xs text-white/50">
+                      {organization.name} <span className="text-white/30">is</span>{' '}
+                      <span className="text-indigo-300">{REL_TYPE_LABELS[newRelationship.relationship_type].toLowerCase()}</span>{' '}
+                      <span className="text-white/30">→</span>{' '}
+                      {newRelationship.to_org_id ? orgNameById(newRelationship.to_org_id) : '…'}
+                    </p>
+                    <select
+                      value={newRelationship.to_org_id}
+                      onChange={e => setNewRelationship(v => ({ ...v, to_org_id: e.target.value }))}
+                      aria-label="Connected organization"
+                      className="w-full px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm"
+                    >
+                      <option value="">Select an organization…</option>
+                      {relatedOrgs.map(org => (
+                        <option key={org.id} value={org.id}>{org.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={newRelationship.relationship_type}
+                      onChange={e => setNewRelationship(v => ({ ...v, relationship_type: e.target.value as OrgRelationshipType }))}
+                      aria-label="Relationship type"
+                      className="w-full px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm"
+                    >
+                      {ORG_REL_TYPE_OPTIONS.map(type => (
+                        <option key={type} value={type}>{REL_TYPE_LABELS[type]}</option>
+                      ))}
+                    </select>
+                    <Input
+                      placeholder="Notes (optional)"
+                      value={newRelationship.notes}
+                      onChange={e => setNewRelationship(v => ({ ...v, notes: e.target.value }))}
+                      className="bg-black/60 border-border/50 text-white"
+                    />
+                    <div className="flex gap-2">
+                      <Button onClick={() => void handleAddRelationship()} disabled={relationshipSaving || !newRelationship.to_org_id} className="flex-1">
+                        {relationshipSaving ? 'Saving...' : 'Save Relationship'}
+                      </Button>
+                      <Button variant="outline" onClick={() => setShowAddRelationship(false)}>Cancel</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {relationshipsLoading ? (
+                <Card className="bg-black/40 border-border/50">
+                  <CardContent className="pt-6 text-center text-white/60 flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading relationships...
+                  </CardContent>
+                </Card>
+              ) : relationships.length === 0 && !showAddRelationship ? (
+                <Card className="bg-black/40 border-border/50">
+                  <CardContent className="pt-6 text-center text-white/60">
+                    No relationships yet. Connect this organization to another one above.
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {relationships.map((rel) => {
+                    const outgoing = rel.from_org_id === organization.id;
+                    const otherOrgId = outgoing ? rel.to_org_id : rel.from_org_id;
+                    const otherOrgName = orgNameById(otherOrgId);
+                    return (
+                      <Card key={rel.id} className="bg-black/40 border-border/50">
+                        <CardContent className="pt-4 pb-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-semibold text-white truncate">{outgoing ? organization.name : otherOrgName}</span>
+                                {outgoing
+                                  ? <ArrowRight className="h-3.5 w-3.5 text-white/40 shrink-0" />
+                                  : <ArrowLeft className="h-3.5 w-3.5 text-white/40 shrink-0" />}
+                                <span className="font-semibold text-white truncate">{outgoing ? otherOrgName : organization.name}</span>
+                              </div>
+                              <div className="mt-1.5">
+                                <Badge variant="outline" className="bg-indigo-500/20 text-indigo-300 border-indigo-500/40">
+                                  {REL_TYPE_LABELS[rel.relationship_type]}
+                                </Badge>
+                              </div>
+                              {rel.notes && (
+                                <div className="text-xs text-white/50 mt-1.5">{rel.notes}</div>
+                              )}
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => void handleRemoveRelationship(rel.id)}>
+                              <Trash2 className="h-4 w-4 text-red-400" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </TabsContent>

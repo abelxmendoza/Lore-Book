@@ -5,7 +5,7 @@
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
-import { Building2, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, MapPin, Calendar, Hash, Sparkles, Plus, X } from 'lucide-react';
+import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -21,174 +21,633 @@ import { subDays } from 'date-fns';
 
 const ITEMS_PER_PAGE = 24;
 
-type OrganizationCategory = 'all' | 'friend_groups' | 'companies' | 'sports_teams' | 'clubs' | 'nonprofits' | 'affiliations' | 'recent';
+type OrganizationCategory =
+  | 'all' | 'recent'
+  | 'crews' | 'bands' | 'scenes'
+  | 'companies' | 'clubs' | 'nonprofits'
+  | 'sports_teams' | 'family' | 'public_entities';
+
 type SortOption = 'name_asc' | 'name_desc' | 'usage_desc' | 'usage_asc' | 'confidence_desc' | 'confidence_asc' | 'recent' | 'importance_desc' | 'involvement_desc' | 'priority_desc' | 'value_desc';
 
-// Generate comprehensive mock organizations data with rich metadata
-const generateMockOrganizations = (): Organization[] => {
-  const now = new Date();
-  
-  // Friend Groups
-  const friendGroups = [
-    { name: 'College Squad', members: ['Sarah Chen', 'Marcus Johnson', 'Alex Rivera', 'Jordan Kim'] },
-    { name: 'Weekend Warriors', members: ['Emma Wilson', 'Chris Taylor', 'Sam Martinez'] },
-    { name: 'Gaming Crew', members: ['Mike Chen', 'Lisa Park', 'David Lee', 'Anna Brown'] },
-  ];
+// ── Mock analytics helpers ─────────────────────────────────────────────
+const mkAnalytics = (
+  involvement: number,
+  importance: number,
+  trend: 'increasing' | 'stable' | 'decreasing',
+  strengths: string[],
+  weaknesses: string[] = []
+): Organization['analytics'] => ({
+  user_involvement_score: involvement,
+  user_ranking: involvement >= 80 ? 1 : involvement >= 60 ? 2 : 3,
+  user_role_importance: Math.round(involvement * 0.9),
+  relevance_score: Math.round(importance * 0.95),
+  priority_score: Math.round(importance * 0.85),
+  importance_score: importance,
+  value_score: Math.round(importance * 0.9),
+  group_influence_on_user: Math.round(importance * 0.7),
+  user_influence_over_group: Math.round(involvement * 0.6),
+  cohesion_score: involvement >= 70 ? 82 : 55,
+  activity_level: trend === 'increasing' ? 88 : trend === 'stable' ? 65 : 38,
+  engagement_score: Math.round((involvement + importance) / 2),
+  recency_score: trend === 'increasing' ? 90 : trend === 'stable' ? 65 : 30,
+  frequency_score: Math.round(importance * 0.75),
+  trend,
+  strengths,
+  weaknesses,
+  opportunities: ['Potential for deeper engagement'],
+  threats: [],
+});
 
-  // Companies
-  const companies = [
-    { name: 'Tech Corp', members: ['Sarah Chen', 'Marcus Johnson', 'Alex Rivera'] },
-    { name: 'Design Studio', members: ['Emma Wilson', 'Chris Taylor'] },
-    { name: 'Startup Inc', members: ['Jordan Kim', 'Sam Martinez'] },
-  ];
+const culturalAnalytics = (influence: number): Organization['analytics'] => ({
+  user_involvement_score: 0,
+  user_ranking: 0,
+  user_role_importance: 0,
+  relevance_score: influence,
+  priority_score: 0,
+  importance_score: influence,
+  value_score: influence,
+  group_influence_on_user: influence,
+  user_influence_over_group: 0,
+  cohesion_score: 0,
+  activity_level: 0,
+  engagement_score: 0,
+  recency_score: 0,
+  frequency_score: 0,
+  trend: 'stable',
+  strengths: [],
+  weaknesses: [],
+  opportunities: [],
+  threats: [],
+});
 
-  // Sports Teams
-  const sportsTeams = [
-    { name: 'Basketball Team', members: ['Mike Chen', 'David Lee', 'Chris Taylor', 'Sam Martinez'] },
-    { name: 'Running Club', members: ['Sarah Chen', 'Emma Wilson', 'Anna Brown'] },
-    { name: 'Soccer Squad', members: ['Marcus Johnson', 'Alex Rivera', 'Jordan Kim'] },
-  ];
+// ── Comprehensive mock organizations ──────────────────────────────────
+const MOCK_ORGANIZATIONS: Organization[] = [
 
-  // Clubs
-  const clubs = [
-    { name: 'Book Club', members: ['Sarah Chen', 'Lisa Park', 'Emma Wilson'] },
-    { name: 'Photography Club', members: ['Alex Rivera', 'Chris Taylor', 'Anna Brown'] },
-    { name: 'Cooking Club', members: ['Marcus Johnson', 'Jordan Kim', 'David Lee'] },
-  ];
+  // ── CREWS / FRIEND GROUPS ──────────────────────────────────────────
 
-  // Nonprofits
-  const nonprofits = [
-    { name: 'Community Foundation', members: ['Sarah Chen', 'Emma Wilson'] },
-    { name: 'Environmental Group', members: ['Alex Rivera', 'Chris Taylor', 'Sam Martinez'] },
-  ];
+  {
+    id: 'mock-1',
+    name: 'The Thursday Crew',
+    aliases: ['Thursday people', 'Thursday gang'],
+    type: 'other', group_type: 'crew',
+    membership_model: 'strict', user_relationship: 'member', is_public_entity: false,
+    description: "We started meeting at the diner every Thursday back in 2021 and never stopped. Sarah, Marcus, Jordan, and me — four people who don't know how to end a night early.",
+    location: 'Rosie\'s Diner, East Side',
+    status: 'active',
+    member_count: 4,
+    usage_count: 38,
+    confidence: 0.94,
+    last_seen: subDays(new Date(), 4).toISOString(),
+    created_at: subDays(new Date(), 180).toISOString(),
+    updated_at: subDays(new Date(), 4).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Sarah Chen', role: 'Instigator', status: 'active' },
+      { id: 'm2', character_name: 'Marcus Johnson', role: 'Designated Driver (rotation)', status: 'active' },
+      { id: 'm3', character_name: 'Jordan Kim', role: 'Menu critic', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'The Night the Power Went Out', summary: 'We stayed until 2am with just candles. Marcus kept doing shadow puppets. One of the best nights.', date: subDays(new Date(), 45).toISOString() },
+      { id: 's2', title: 'Jordan\'s Birthday Ambush', summary: 'We told her it was just a normal Thursday. She had no idea. She cried. Then we all cried.', date: subDays(new Date(), 90).toISOString() },
+    ],
+    events: [
+      { id: 'e1', title: 'Regular Thursday', date: subDays(new Date(), 4).toISOString(), type: 'social' },
+      { id: 'e2', title: 'Holiday dinner', date: subDays(new Date(), 30).toISOString(), type: 'social' },
+    ],
+    locations: [{ id: 'l1', location_name: "Rosie's Diner", visit_count: 34, last_visited: subDays(new Date(), 4).toISOString() }],
+    analytics: mkAnalytics(88, 91, 'stable', ['Core emotional anchor', 'Consistent frequency', 'Authentic space']),
+  },
 
-  // Affiliations
-  const affiliations = [
-    { name: 'Alumni Association', members: ['Sarah Chen', 'Marcus Johnson', 'Alex Rivera', 'Jordan Kim'] },
-    { name: 'Professional Network', members: ['Emma Wilson', 'Chris Taylor', 'David Lee'] },
-  ];
+  {
+    id: 'mock-2',
+    name: 'College Friends',
+    aliases: ['College crew', 'The originals'],
+    type: 'friend_group', group_type: 'friend_group',
+    membership_model: 'strict', user_relationship: 'member', is_public_entity: false,
+    description: 'Six people from the same dorm floor freshman year. Half of us ended up in the same city, the other half are scattered. We try to do a trip once a year.',
+    location: 'Various',
+    founded_year: 2018,
+    status: 'active',
+    member_count: 6,
+    usage_count: 22,
+    confidence: 0.88,
+    last_seen: subDays(new Date(), 18).toISOString(),
+    created_at: subDays(new Date(), 365 * 5).toISOString(),
+    updated_at: subDays(new Date(), 18).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Emma Wilson', role: 'Group chat admin', status: 'active' },
+      { id: 'm2', character_name: 'Chris Taylor', role: 'Trip planner', status: 'active' },
+      { id: 'm3', character_name: 'Sam Martinez', role: 'Photographer', status: 'active' },
+      { id: 'm4', character_name: 'Lisa Park', role: 'The responsible one', status: 'active' },
+      { id: 'm5', character_name: 'David Lee', role: 'Chaos agent', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'Portland Trip \'23', summary: 'Five days, three fights about restaurants, one perfect hike. Exactly what we needed.', date: subDays(new Date(), 120).toISOString() },
+    ],
+    events: [
+      { id: 'e1', title: 'Annual trip planning call', date: subDays(new Date(), 18).toISOString(), type: 'meeting' },
+    ],
+    locations: [
+      { id: 'l1', location_name: 'Portland, OR', visit_count: 1, last_visited: subDays(new Date(), 120).toISOString() },
+    ],
+    analytics: mkAnalytics(72, 84, 'stable', ['Long shared history', 'Annual reunion tradition'], ['Geographic distance']),
+  },
 
-  const allOrgs = [
-    ...friendGroups.map(g => ({ ...g, type: 'friend_group' as const })),
-    ...companies.map(c => ({ ...c, type: 'company' as const })),
-    ...sportsTeams.map(t => ({ ...t, type: 'sports_team' as const })),
-    ...clubs.map(c => ({ ...c, type: 'club' as const })),
-    ...nonprofits.map(n => ({ ...n, type: 'nonprofit' as const })),
-    ...affiliations.map(a => ({ ...a, type: 'affiliation' as const })),
-  ];
+  {
+    id: 'mock-3',
+    name: 'Neighbors on Maple',
+    aliases: ['The block', 'Maple people'],
+    type: 'friend_group', group_type: 'crew',
+    membership_model: 'fuzzy', user_relationship: 'adjacent', is_public_entity: false,
+    description: "The people on my street who know each other's names. Not close friends exactly, but we look out for each other's packages and share tools.",
+    location: 'Maple Street',
+    status: 'active',
+    member_count: 8,
+    usage_count: 9,
+    confidence: 0.71,
+    last_seen: subDays(new Date(), 12).toISOString(),
+    created_at: subDays(new Date(), 400).toISOString(),
+    updated_at: subDays(new Date(), 12).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Dave from across the street', role: 'Neighborhood watch', status: 'active' },
+      { id: 'm2', character_name: 'Linda & Frank', role: 'The older couple', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'Block party last summer', summary: 'Someone brought a smoker. It was actually a great afternoon. Talked to Dave for real for the first time.', date: subDays(new Date(), 200).toISOString() },
+    ],
+    events: [{ id: 'e1', title: 'Block cleanup day', date: subDays(new Date(), 12).toISOString(), type: 'social' }],
+    locations: [{ id: 'l1', location_name: 'Maple Street', visit_count: 8, last_visited: subDays(new Date(), 12).toISOString() }],
+    analytics: mkAnalytics(35, 42, 'stable', ['Low-maintenance proximity'], ['Not close enough to rely on']),
+  },
 
-  const organizations: Organization[] = allOrgs.map((item, index) => {
-    const daysAgo = Math.floor(Math.random() * 90);
-    const lastSeen = subDays(now, daysAgo);
-    const usageCount = Math.floor(Math.random() * 50) + 1;
-    const confidence = Math.random() * 0.4 + 0.6;
-    const memberCount = item.members.length;
-    const locations = ['San Francisco', 'New York', 'Remote', 'Los Angeles', 'Chicago', 'Boston', 'Seattle'];
+  // ── BANDS / MUSIC ──────────────────────────────────────────────────
 
-    // Generate members
-    const members: OrganizationMember[] = item.members.map((name, i) => ({
-      id: `member-${index}-${i}`,
-      character_name: name,
-      role: item.type === 'company' ? (i === 0 ? 'Founder' : 'Member') :
-            item.type === 'sports_team' ? (i === 0 ? 'Captain' : 'Player') :
-            item.type === 'club' ? (i === 0 ? 'President' : 'Member') :
-            'Member',
-      status: 'active' as const,
-    }));
+  {
+    id: 'mock-4',
+    name: 'The Midnight Circuit',
+    aliases: ['Midnight Circuit', 'TMC'],
+    type: 'other', group_type: 'band',
+    membership_model: 'strict', user_relationship: 'founder', is_public_entity: false,
+    description: 'The band I started with Marcus in 2021. Post-punk, sort of. We play about once a month at the Roxy. Working on our first proper EP right now.',
+    location: 'The Roxy, East Side',
+    founded_year: 2021,
+    status: 'active',
+    member_count: 4,
+    usage_count: 47,
+    confidence: 0.97,
+    last_seen: subDays(new Date(), 2).toISOString(),
+    created_at: subDays(new Date(), 365 * 3).toISOString(),
+    updated_at: subDays(new Date(), 2).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Marcus Johnson', role: 'Lead guitar', status: 'active' },
+      { id: 'm2', character_name: 'Riley Okonkwo', role: 'Drums', status: 'active' },
+      { id: 'm3', character_name: 'Cam Reyes', role: 'Bass', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'First show at the Roxy', summary: 'Twenty people. Three of them were family. We still played like it was sold out. Something clicked that night.', date: subDays(new Date(), 300).toISOString() },
+      { id: 's2', title: 'The EP argument', summary: 'Marcus wanted distortion everywhere. I wanted space. We compromised and the track is better for it.', date: subDays(new Date(), 30).toISOString() },
+    ],
+    events: [
+      { id: 'e1', title: 'Rehearsal', date: subDays(new Date(), 2).toISOString(), type: 'meeting' },
+      { id: 'e2', title: 'Roxy show', date: subDays(new Date(), 14).toISOString(), type: 'other' },
+      { id: 'e3', title: 'EP recording session', date: subDays(new Date(), 21).toISOString(), type: 'work' },
+    ],
+    locations: [
+      { id: 'l1', location_name: 'The Roxy', visit_count: 18, last_visited: subDays(new Date(), 14).toISOString() },
+      { id: 'l2', location_name: 'Marcus\'s garage', visit_count: 40, last_visited: subDays(new Date(), 2).toISOString() },
+    ],
+    analytics: mkAnalytics(96, 94, 'increasing', ['Creative core of my week', 'High output right now', 'Real momentum building']),
+  },
 
-    // Generate stories (2-4 per org)
-    const storyCount = Math.floor(Math.random() * 3) + 2;
-    const stories: OrganizationStory[] = Array.from({ length: storyCount }, (_, i) => ({
-      id: `story-${index}-${i}`,
-      title: `${item.name} Story ${i + 1}`,
-      summary: `A memorable moment with ${item.name}. We had a great time together.`,
-      date: subDays(now, Math.floor(Math.random() * 60)).toISOString(),
-      related_members: [item.members[Math.floor(Math.random() * item.members.length)]],
-    }));
+  {
+    id: 'mock-5',
+    name: 'Ghost Signal',
+    aliases: ['Ghost Sig'],
+    type: 'other', group_type: 'band',
+    membership_model: 'strict', user_relationship: 'collaborator', is_public_entity: false,
+    description: "Riley's other project. Ambient, mostly instrumental. I've played guest bass on two tracks. They don't really need a permanent bassist but I like being in the room.",
+    location: 'Various studios',
+    founded_year: 2020,
+    status: 'active',
+    member_count: 3,
+    usage_count: 14,
+    confidence: 0.82,
+    last_seen: subDays(new Date(), 22).toISOString(),
+    created_at: subDays(new Date(), 500).toISOString(),
+    updated_at: subDays(new Date(), 22).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Riley Okonkwo', role: 'Synths / production', status: 'active' },
+      { id: 'm2', character_name: 'Priya Nair', role: 'Violin, piano', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'Session at Analog Sound', summary: "Riley let me sit in on the full recording day. Watched how she layers. Took a lot of notes.", date: subDays(new Date(), 60).toISOString() },
+    ],
+    events: [{ id: 'e1', title: 'Guest session', date: subDays(new Date(), 22).toISOString(), type: 'work' }],
+    locations: [{ id: 'l1', location_name: 'Analog Sound Studio', visit_count: 3, last_visited: subDays(new Date(), 22).toISOString() }],
+    analytics: mkAnalytics(28, 58, 'stable', ['Learning opportunity', 'Broadens my network']),
+  },
 
-    // Generate events (1-3 per org)
-    const eventCount = Math.floor(Math.random() * 3) + 1;
-    const events: OrganizationEvent[] = Array.from({ length: eventCount }, (_, i) => ({
-      id: `event-${index}-${i}`,
-      title: item.type === 'sports_team' ? 'Game' : item.type === 'company' ? 'Meeting' : 'Gathering',
-      date: subDays(now, Math.floor(Math.random() * 30)).toISOString(),
-      type: item.type === 'sports_team' ? 'game' : item.type === 'company' ? 'meeting' : 'social',
-    }));
+  // ── SCENES ────────────────────────────────────────────────────────
 
-    // Generate locations (1-2 per org)
-    const locationCount = Math.floor(Math.random() * 2) + 1;
-    const locations_list: OrganizationLocation[] = Array.from({ length: locationCount }, (_, i) => ({
-      id: `location-${index}-${i}`,
-      location_name: locations[(index + i) % locations.length],
-      visit_count: Math.floor(Math.random() * 20) + 1,
-      last_visited: subDays(now, Math.floor(Math.random() * 30)).toISOString(),
-    }));
+  {
+    id: 'mock-6',
+    name: 'Local Punk Scene',
+    aliases: ['The scene', 'Eastside punk'],
+    type: 'other', group_type: 'scene',
+    membership_model: 'fuzzy', user_relationship: 'adjacent', is_public_entity: false,
+    description: 'The underground circuit of DIY venues, house shows, and basement gigs in this city. I go to shows regularly and know most of the faces. Nobody has a card but we all know who belongs.',
+    location: 'East Side venues',
+    founded_year: 2015,
+    status: 'active',
+    member_count: 0,
+    usage_count: 31,
+    confidence: 0.76,
+    last_seen: subDays(new Date(), 7).toISOString(),
+    created_at: subDays(new Date(), 365 * 4).toISOString(),
+    updated_at: subDays(new Date(), 7).toISOString(),
+    metadata: {},
+    members: [],
+    stories: [
+      { id: 's1', title: 'The show at the warehouse on 5th', summary: 'No PA, no stage, just amps and a hundred people sweating. Exactly what a punk show should be.', date: subDays(new Date(), 60).toISOString() },
+    ],
+    events: [
+      { id: 'e1', title: 'Show at The Pit', date: subDays(new Date(), 7).toISOString(), type: 'social' },
+      { id: 'e2', title: 'House show on Elm', date: subDays(new Date(), 30).toISOString(), type: 'social' },
+    ],
+    locations: [
+      { id: 'l1', location_name: 'The Pit (venue)', visit_count: 14, last_visited: subDays(new Date(), 7).toISOString() },
+    ],
+    analytics: mkAnalytics(42, 68, 'stable', ['Cultural identity anchor', 'Discovery channel for music'], ['No formal membership']),
+  },
 
-    return {
-      id: `mock-org-${index + 1}`,
-      name: item.name,
-      aliases: [
-        item.name.split(' ')[0],
-        item.name.split(' ').slice(0, 2).join(' '),
-        item.name.replace(/\s+/g, '')
-      ].filter(Boolean),
-      type: item.type,
-      group_type: item.type as any,
-      membership_model: 'strict' as const,
-      user_relationship: 'member' as const,
-      is_public_entity: false,
-      description: item.type === 'friend_group' ? `My close group of friends. We've been together since ${2020 + Math.floor(Math.random() * 4)}.` :
-                    item.type === 'company' ? `A company I work with professionally.` :
-                    item.type === 'sports_team' ? `A sports team I'm part of. We practice regularly and compete together.` :
-                    item.type === 'club' ? `A club I'm involved with. We meet regularly to share our interests.` :
-                    item.type === 'nonprofit' ? `A nonprofit organization I volunteer with.` :
-                    `An organization I'm affiliated with.`,
-      location: locations[index % locations.length],
-      founded_date: subDays(now, Math.floor(Math.random() * 365 * 3)).toISOString().split('T')[0],
-      status: 'active' as const,
-      members,
-      stories,
-      events,
-      locations: locations_list,
-      member_count: memberCount,
-      confidence,
-      usage_count: usageCount,
-      last_seen: lastSeen.toISOString(),
-      created_at: subDays(now, daysAgo + 30).toISOString(),
-      updated_at: lastSeen.toISOString(),
-      metadata: {},
-      // Mock analytics
-      analytics: {
-        user_involvement_score: Math.floor(Math.random() * 40) + 60, // 60-100
-        user_ranking: Math.floor(Math.random() * 3) + 1, // 1-3
-        user_role_importance: Math.floor(Math.random() * 30) + 50, // 50-80
-        relevance_score: Math.floor(Math.random() * 40) + 50, // 50-90
-        priority_score: Math.floor(Math.random() * 30) + 60, // 60-90
-        importance_score: Math.floor(Math.random() * 30) + 60, // 60-90
-        value_score: Math.floor(Math.random() * 40) + 50, // 50-90
-        group_influence_on_user: Math.floor(Math.random() * 30) + 40, // 40-70
-        user_influence_over_group: Math.floor(Math.random() * 40) + 30, // 30-70
-        cohesion_score: Math.floor(Math.random() * 40) + 50, // 50-90
-        activity_level: Math.floor(Math.random() * 40) + 50, // 50-90
-        engagement_score: Math.floor(Math.random() * 30) + 60, // 60-90
-        recency_score: Math.max(0, 100 - daysAgo * 2), // Based on days ago
-        frequency_score: Math.min(100, (usageCount / 50) * 100), // Based on usage
-        trend: daysAgo < 7 ? 'increasing' : daysAgo < 30 ? 'stable' : 'decreasing',
-        strengths: item.type === 'friend_group' ? ['Strong personal connections', 'Regular interactions'] :
-                   item.type === 'company' ? ['Professional network', 'Career growth'] :
-                   item.type === 'sports_team' ? ['Active participation', 'Team spirit'] :
-                   ['Shared interests', 'Regular meetings'],
-        weaknesses: memberCount < 3 ? ['Small member base'] : [],
-        opportunities: ['Potential for increased engagement'],
-        threats: [],
-      }
-    };
-  });
+  {
+    id: 'mock-7',
+    name: 'Indie Film Scene',
+    aliases: ['Film circle', 'The film people'],
+    type: 'other', group_type: 'scene',
+    membership_model: 'fuzzy', user_relationship: 'aware_of', is_public_entity: false,
+    description: "The indie filmmakers and critics who rotate through the same festivals, screenings, and Letterboxd lists. I'm adjacent through a couple of people but not really embedded.",
+    location: 'Various festivals & venues',
+    status: 'active',
+    member_count: 0,
+    usage_count: 8,
+    confidence: 0.63,
+    last_seen: subDays(new Date(), 45).toISOString(),
+    created_at: subDays(new Date(), 365 * 2).toISOString(),
+    updated_at: subDays(new Date(), 45).toISOString(),
+    metadata: {},
+    members: [],
+    stories: [],
+    events: [{ id: 'e1', title: 'Screening at the Alamo', date: subDays(new Date(), 45).toISOString(), type: 'social' }],
+    locations: [],
+    analytics: culturalAnalytics(45),
+  },
 
-  return organizations;
-};
+  // ── FAMILY ────────────────────────────────────────────────────────
 
-const MOCK_ORGANIZATIONS: Organization[] = generateMockOrganizations();
+  {
+    id: 'mock-8',
+    name: 'The Mendoza Family',
+    aliases: ['Family', 'Home'],
+    type: 'family', group_type: 'family',
+    membership_model: 'strict', user_relationship: 'member', is_public_entity: false,
+    description: 'Three generations. My parents, my sister and her husband, the kids, and the aunts and uncles who show up for every holiday whether invited or not.',
+    location: 'San Bernardino, CA',
+    founded_year: 1968,
+    generations: 3,
+    family_branches: ['maternal', 'paternal'],
+    status: 'active',
+    member_count: 14,
+    usage_count: 52,
+    confidence: 1.0,
+    last_seen: subDays(new Date(), 6).toISOString(),
+    created_at: subDays(new Date(), 365 * 30).toISOString(),
+    updated_at: subDays(new Date(), 6).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Mom', role: 'Matriarch', status: 'active' },
+      { id: 'm2', character_name: 'Dad', role: 'Patriarch', status: 'active' },
+      { id: 'm3', character_name: 'Sofia', role: 'Sister', status: 'active' },
+      { id: 'm4', character_name: 'Tía Rosa', role: 'The one with opinions', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'Christmas dinner disaster, 2022', summary: 'The oven broke at 3pm. We pivoted to tamales from the neighbor. Honestly better than anything we planned.', date: subDays(new Date(), 365).toISOString() },
+      { id: 's2', title: 'Dad\'s 60th', summary: 'The whole family in one backyard for the first time since before the pandemic. Complicated and loud and exactly right.', date: subDays(new Date(), 200).toISOString() },
+    ],
+    events: [
+      { id: 'e1', title: 'Sunday call with Mom', date: subDays(new Date(), 6).toISOString(), type: 'social' },
+    ],
+    locations: [{ id: 'l1', location_name: 'San Bernardino, CA', visit_count: 12, last_visited: subDays(new Date(), 60).toISOString() }],
+    analytics: mkAnalytics(85, 97, 'stable', ['Unconditional foundation', 'Longest relationship of my life'], ['Distance', 'Old dynamics']),
+  },
+
+  // ── MARTIAL ARTS ──────────────────────────────────────────────────
+
+  {
+    id: 'mock-9',
+    name: 'Eastside BJJ',
+    aliases: ['The gym', 'BJJ crew'],
+    type: 'martial_arts', group_type: 'martial_arts',
+    membership_model: 'strict', user_relationship: 'member', is_public_entity: false,
+    description: 'Brazilian jiu-jitsu gym I started at six months ago. Coach Lima runs a tight ship. I show up Tuesday/Thursday nights and Saturday mornings.',
+    location: 'Eastside, 3rd Ave',
+    founded_year: 2012,
+    status: 'active',
+    member_count: 28,
+    usage_count: 26,
+    confidence: 0.91,
+    last_seen: subDays(new Date(), 3).toISOString(),
+    created_at: subDays(new Date(), 180).toISOString(),
+    updated_at: subDays(new Date(), 3).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Coach Lima', role: 'Head instructor', status: 'active' },
+      { id: 'm2', character_name: 'Andre', role: 'Training partner', status: 'active' },
+      { id: 'm3', character_name: 'Tanya', role: 'Purple belt', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'First stripe on my white belt', summary: 'Six months of embarrassing myself on the mat. Felt like something finally clicked this week. Lima noticed.', date: subDays(new Date(), 14).toISOString() },
+    ],
+    events: [
+      { id: 'e1', title: 'Tuesday class', date: subDays(new Date(), 3).toISOString(), type: 'other' },
+      { id: 'e2', title: 'Saturday open mat', date: subDays(new Date(), 5).toISOString(), type: 'other' },
+    ],
+    locations: [{ id: 'l1', location_name: 'Eastside BJJ Gym', visit_count: 48, last_visited: subDays(new Date(), 3).toISOString() }],
+    analytics: mkAnalytics(78, 82, 'increasing', ['Physical discipline', 'Consistent weekly structure', 'Humility practice']),
+  },
+
+  // ── COMPANIES ─────────────────────────────────────────────────────
+
+  {
+    id: 'mock-10',
+    name: 'Pixel & Thread Studio',
+    aliases: ['Pixel & Thread', 'P&T'],
+    type: 'company', group_type: 'company',
+    membership_model: 'strict', user_relationship: 'founder', is_public_entity: false,
+    description: 'The design studio I co-founded with Emma two years ago. Brand identity, motion, some editorial. Small on purpose.',
+    location: 'DTLA',
+    founded_year: 2022,
+    status: 'active',
+    member_count: 4,
+    usage_count: 61,
+    confidence: 0.99,
+    last_seen: subDays(new Date(), 1).toISOString(),
+    created_at: subDays(new Date(), 365 * 2).toISOString(),
+    updated_at: subDays(new Date(), 1).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Emma Wilson', role: 'Co-founder, Creative Director', status: 'active' },
+      { id: 'm2', character_name: 'Kenji', role: 'Motion designer', status: 'active' },
+      { id: 'm3', character_name: 'Priya', role: 'Account manager', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'First big client', summary: 'Signed a six-month retainer with a startup we actually believed in. That changed the whole energy in the studio.', date: subDays(new Date(), 180).toISOString() },
+      { id: 's2', title: 'The pitch we lost', summary: 'Lost a large brand rebrand to a bigger agency. Good learning. We were too experimental for their comfort level.', date: subDays(new Date(), 60).toISOString() },
+    ],
+    events: [
+      { id: 'e1', title: 'Studio standup', date: subDays(new Date(), 1).toISOString(), type: 'meeting' },
+      { id: 'e2', title: 'Client presentation', date: subDays(new Date(), 7).toISOString(), type: 'work' },
+    ],
+    locations: [{ id: 'l1', location_name: 'Studio, DTLA', visit_count: 200, last_visited: subDays(new Date(), 1).toISOString() }],
+    analytics: mkAnalytics(97, 98, 'increasing', ['Primary livelihood', 'Creative home', 'Equity stake']),
+  },
+
+  {
+    id: 'mock-11',
+    name: 'Novara Systems',
+    aliases: ['Novara', 'Old job'],
+    type: 'company', group_type: 'company',
+    membership_model: 'strict', user_relationship: 'former_member', is_public_entity: false,
+    description: 'The SaaS company I left eighteen months ago. Good people, wrong fit for where I wanted to go. Still in touch with a few people from there.',
+    location: 'San Francisco, CA',
+    founded_year: 2016,
+    status: 'active',
+    member_count: 120,
+    usage_count: 7,
+    confidence: 0.88,
+    last_seen: subDays(new Date(), 40).toISOString(),
+    created_at: subDays(new Date(), 365 * 4).toISOString(),
+    updated_at: subDays(new Date(), 40).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Derek', role: 'Former manager', status: 'former' },
+      { id: 'm2', character_name: 'Aisha Chen', role: 'Still there, senior PM', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'Leaving conversation with Derek', summary: 'He was more supportive than I expected. Said he saw it coming. Still keep in touch occasionally.', date: subDays(new Date(), 550).toISOString() },
+    ],
+    events: [],
+    locations: [],
+  },
+
+  // ── CLUBS / COLLECTIVES ───────────────────────────────────────────
+
+  {
+    id: 'mock-12',
+    name: 'Tuesday Writers\' Workshop',
+    aliases: ['Writers\' group', 'Tuesday group'],
+    type: 'club', group_type: 'club',
+    membership_model: 'strict', user_relationship: 'member', is_public_entity: false,
+    description: 'Eight writers meeting every other Tuesday to share work in progress. Fiction and nonfiction. No egos (theoretically). I share drafts of my essays here before anywhere else.',
+    location: 'Coffee shop on 9th',
+    founded_year: 2020,
+    status: 'active',
+    member_count: 8,
+    usage_count: 34,
+    confidence: 0.93,
+    last_seen: subDays(new Date(), 9).toISOString(),
+    created_at: subDays(new Date(), 365 * 3).toISOString(),
+    updated_at: subDays(new Date(), 9).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Helen Marsh', role: 'Facilitator', status: 'active' },
+      { id: 'm2', character_name: 'Tobi', role: 'Fiction writer', status: 'active' },
+      { id: 'm3', character_name: 'Rosa Fuentes', role: 'Poet', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'The essay they didn\'t like', summary: "Read a draft about my dad. Half the group found it too personal. Helen said that meant I was getting somewhere. I think she was right.", date: subDays(new Date(), 30).toISOString() },
+    ],
+    events: [
+      { id: 'e1', title: 'Bi-weekly session', date: subDays(new Date(), 9).toISOString(), type: 'meeting' },
+    ],
+    locations: [{ id: 'l1', location_name: 'Groundwork Coffee, 9th Ave', visit_count: 28, last_visited: subDays(new Date(), 9).toISOString() }],
+    analytics: mkAnalytics(80, 88, 'stable', ['Creative accountability', 'Trusted feedback loop']),
+  },
+
+  {
+    id: 'mock-13',
+    name: 'Rec Basketball League',
+    aliases: ['Basketball', 'The league'],
+    type: 'sports_team', group_type: 'sports_team',
+    membership_model: 'strict', user_relationship: 'member', is_public_entity: false,
+    description: 'Sunday morning rec league. We are not good. We are very enthusiastic about not being good. Marcus somehow convinced me to join last spring.',
+    location: 'Community Center',
+    founded_year: 2019,
+    status: 'active',
+    member_count: 10,
+    usage_count: 19,
+    confidence: 0.87,
+    last_seen: subDays(new Date(), 6).toISOString(),
+    created_at: subDays(new Date(), 365).toISOString(),
+    updated_at: subDays(new Date(), 6).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Marcus Johnson', role: 'Point guard (self-appointed)', status: 'active' },
+      { id: 'm2', character_name: 'Dex', role: 'The one who actually played in college', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'We won a game', summary: "Our first win. Not because we got better — the other team had three people. Still counts.", date: subDays(new Date(), 45).toISOString() },
+    ],
+    events: [
+      { id: 'e1', title: 'Sunday game', date: subDays(new Date(), 6).toISOString(), type: 'game' },
+    ],
+    locations: [{ id: 'l1', location_name: 'Community Center, Court B', visit_count: 22, last_visited: subDays(new Date(), 6).toISOString() }],
+    analytics: mkAnalytics(64, 61, 'stable', ['Physical outlet', 'Time with Marcus']),
+  },
+
+  // ── NONPROFITS ────────────────────────────────────────────────────
+
+  {
+    id: 'mock-14',
+    name: 'City Harvest Volunteers',
+    aliases: ['Food bank', 'City Harvest'],
+    type: 'nonprofit', group_type: 'nonprofit',
+    membership_model: 'strict', user_relationship: 'collaborator', is_public_entity: false,
+    description: "The food distribution operation I volunteer with twice a month. I do logistics and some communication design for free. Not 'in' the org officially, but I show up.",
+    location: 'Warehouse District',
+    founded_year: 2008,
+    status: 'active',
+    member_count: 45,
+    usage_count: 11,
+    confidence: 0.84,
+    last_seen: subDays(new Date(), 15).toISOString(),
+    created_at: subDays(new Date(), 365 * 2).toISOString(),
+    updated_at: subDays(new Date(), 15).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Fatima', role: 'Operations lead', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'The holiday push', summary: "300 families in one Saturday. I worked the intake table for six hours. Went home and couldn't talk for a while.", date: subDays(new Date(), 90).toISOString() },
+    ],
+    events: [
+      { id: 'e1', title: 'Twice-monthly shift', date: subDays(new Date(), 15).toISOString(), type: 'work' },
+    ],
+    locations: [{ id: 'l1', location_name: 'Warehouse District site', visit_count: 18, last_visited: subDays(new Date(), 15).toISOString() }],
+    analytics: mkAnalytics(44, 74, 'stable', ['Values alignment', 'Grounding practice']),
+  },
+
+  // ── INSTITUTIONS ─────────────────────────────────────────────────
+
+  {
+    id: 'mock-15',
+    name: 'Cal Poly Pomona',
+    aliases: ['CPP', 'School', 'College'],
+    type: 'other', group_type: 'institution',
+    membership_model: 'strict', user_relationship: 'alumnus', is_public_entity: false,
+    description: "Where I spent four years studying graphic design. Still goes on my resume. I go back occasionally for portfolio reviews or to talk to students.",
+    location: 'Pomona, CA',
+    founded_year: 1938,
+    status: 'active',
+    member_count: 0,
+    usage_count: 6,
+    confidence: 0.95,
+    last_seen: subDays(new Date(), 80).toISOString(),
+    created_at: subDays(new Date(), 365 * 8).toISOString(),
+    updated_at: subDays(new Date(), 80).toISOString(),
+    metadata: {},
+    members: [],
+    stories: [
+      { id: 's1', title: 'Guest critique at the design school', summary: 'Sat in on a junior portfolio review. Made me think about how much I didn\'t know at that age. And how much I still don\'t.', date: subDays(new Date(), 80).toISOString() },
+    ],
+    events: [],
+    locations: [{ id: 'l1', location_name: 'Pomona, CA', visit_count: 4, last_visited: subDays(new Date(), 80).toISOString() }],
+  },
+
+  // ── PUBLIC ENTITIES ───────────────────────────────────────────────
+
+  {
+    id: 'mock-16',
+    name: 'Radiohead',
+    aliases: ['The band from Abingdon'],
+    type: 'other', group_type: 'public_entity',
+    membership_model: 'none', user_relationship: 'fan', is_public_entity: true,
+    description: "I've listened to OK Computer more times than I could ever count. They're the reason I started taking music seriously. Not expecting to meet them.",
+    location: 'Oxford, UK',
+    founded_year: 1985,
+    status: 'active',
+    member_count: 5,
+    usage_count: 22,
+    confidence: 1.0,
+    last_seen: subDays(new Date(), 3).toISOString(),
+    created_at: subDays(new Date(), 365 * 10).toISOString(),
+    updated_at: subDays(new Date(), 3).toISOString(),
+    metadata: {},
+    members: [
+      { id: 'm1', character_name: 'Thom Yorke', role: 'Vocals, guitar, piano', status: 'active' },
+      { id: 'm2', character_name: 'Jonny Greenwood', role: 'Guitar, keys, orchestration', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'The kid a era changed everything', summary: "Heard Everything in Its Right Place at 16. Had no idea music could sound like that. Direct line from there to The Midnight Circuit.", date: subDays(new Date(), 365 * 8).toISOString() },
+    ],
+    events: [],
+    locations: [],
+    analytics: culturalAnalytics(88),
+  },
+
+  {
+    id: 'mock-17',
+    name: 'The Criterion Collection',
+    aliases: ['Criterion'],
+    type: 'other', group_type: 'public_entity',
+    membership_model: 'none', user_relationship: 'fan', is_public_entity: true,
+    description: "The distributor behind my film education. Their supplements and essays taught me how to watch movies properly. I have an embarrassing number of their spines on the shelf.",
+    location: 'New York, NY',
+    founded_year: 1984,
+    status: 'active',
+    member_count: 0,
+    usage_count: 18,
+    confidence: 1.0,
+    last_seen: subDays(new Date(), 11).toISOString(),
+    created_at: subDays(new Date(), 365 * 5).toISOString(),
+    updated_at: subDays(new Date(), 11).toISOString(),
+    metadata: {},
+    members: [],
+    stories: [],
+    events: [],
+    locations: [],
+    analytics: culturalAnalytics(62),
+  },
+
+  {
+    id: 'mock-18',
+    name: 'Apple',
+    aliases: ['Apple Inc.'],
+    type: 'other', group_type: 'public_entity',
+    membership_model: 'none', user_relationship: 'referenced', is_public_entity: true,
+    description: "A company that makes products I use and think about professionally as a designer. I reference them a lot when talking about craft, pricing, and taste.",
+    location: 'Cupertino, CA',
+    founded_year: 1976,
+    status: 'active',
+    member_count: 0,
+    usage_count: 29,
+    confidence: 1.0,
+    last_seen: subDays(new Date(), 1).toISOString(),
+    created_at: subDays(new Date(), 365 * 3).toISOString(),
+    updated_at: subDays(new Date(), 1).toISOString(),
+    metadata: {},
+    members: [],
+    stories: [],
+    events: [],
+    locations: [],
+    analytics: culturalAnalytics(41),
+  },
+
+];
 
 export const OrganizationsBook: React.FC = () => {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -257,83 +716,54 @@ export const OrganizationsBook: React.FC = () => {
     }
   };
 
-  // Dynamic categories based on actual organization types in data
-  const availableCategories = useMemo(() => {
-    const typeCounts = new Map<OrganizationCategory, number>();
-    
-    organizations.forEach(org => {
-      switch (org.type) {
-        case 'friend_group':
-          typeCounts.set('friend_groups', (typeCounts.get('friend_groups') || 0) + 1);
-          break;
-        case 'company':
-          typeCounts.set('companies', (typeCounts.get('companies') || 0) + 1);
-          break;
-        case 'sports_team':
-          typeCounts.set('sports_teams', (typeCounts.get('sports_teams') || 0) + 1);
-          break;
-        case 'club':
-          typeCounts.set('clubs', (typeCounts.get('clubs') || 0) + 1);
-          break;
-        case 'nonprofit':
-          typeCounts.set('nonprofits', (typeCounts.get('nonprofits') || 0) + 1);
-          break;
-        case 'affiliation':
-          typeCounts.set('affiliations', (typeCounts.get('affiliations') || 0) + 1);
-          break;
-      }
-    });
-
-    // Only include categories that have at least one organization
-    const categories: OrganizationCategory[] = ['all', 'recent'];
-    
-    if (typeCounts.get('friend_groups') || 0 > 0) categories.push('friend_groups');
-    if (typeCounts.get('companies') || 0 > 0) categories.push('companies');
-    if (typeCounts.get('sports_teams') || 0 > 0) categories.push('sports_teams');
-    if (typeCounts.get('clubs') || 0 > 0) categories.push('clubs');
-    if (typeCounts.get('nonprofits') || 0 > 0) categories.push('nonprofits');
-    if (typeCounts.get('affiliations') || 0 > 0) categories.push('affiliations');
-
-    return categories;
+  // Categories derived from canonical group_type field
+  const availableCategories = useMemo((): OrganizationCategory[] => {
+    const has = (types: string[]) => organizations.some(o => types.includes(o.group_type));
+    const cats: OrganizationCategory[] = ['all', 'recent'];
+    if (has(['friend_group', 'crew']))   cats.push('crews');
+    if (has(['band']))                   cats.push('bands');
+    if (has(['scene']))                  cats.push('scenes');
+    if (has(['company']))                cats.push('companies');
+    if (has(['club', 'collective']))     cats.push('clubs');
+    if (has(['sports_team']))            cats.push('sports_teams');
+    if (has(['nonprofit']))              cats.push('nonprofits');
+    if (has(['family']))                 cats.push('family');
+    if (has(['public_entity']))          cats.push('public_entities');
+    return cats;
   }, [organizations]);
 
   const filteredOrganizations = useMemo(() => {
     let filtered = [...organizations];
 
-    // Filter by category
     if (activeCategory !== 'all') {
       filtered = filtered.filter(org => {
+        const gt = org.group_type;
         switch (activeCategory) {
-          case 'friend_groups':
-            return org.type === 'friend_group';
-          case 'companies':
-            return org.type === 'company';
-          case 'sports_teams':
-            return org.type === 'sports_team';
-          case 'clubs':
-            return org.type === 'club';
-          case 'nonprofits':
-            return org.type === 'nonprofit';
-          case 'affiliations':
-            return org.type === 'affiliation';
-          case 'recent':
-            const thirtyDaysAgo = subDays(new Date(), 30);
-            return new Date(org.last_seen) >= thirtyDaysAgo;
-          default:
-            return true;
+          case 'crews':          return gt === 'friend_group' || gt === 'crew';
+          case 'bands':          return gt === 'band';
+          case 'scenes':         return gt === 'scene';
+          case 'companies':      return gt === 'company';
+          case 'clubs':          return gt === 'club' || gt === 'collective';
+          case 'sports_teams':   return gt === 'sports_team';
+          case 'nonprofits':     return gt === 'nonprofit';
+          case 'family':         return gt === 'family';
+          case 'public_entities':return gt === 'public_entity';
+          case 'recent': {
+            const cutoff = subDays(new Date(), 30);
+            return new Date(org.last_seen) >= cutoff;
+          }
+          default: return true;
         }
       });
     }
 
-    // Filter by search term
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (org) =>
-          org.name.toLowerCase().includes(term) ||
-          org.aliases.some(alias => alias.toLowerCase().includes(term)) ||
-          (org.description && org.description.toLowerCase().includes(term)) ||
-          (org.type && org.type.toLowerCase().includes(term))
+      filtered = filtered.filter(org =>
+        org.name.toLowerCase().includes(term) ||
+        org.aliases.some(a => a.toLowerCase().includes(term)) ||
+        (org.description && org.description.toLowerCase().includes(term)) ||
+        org.group_type.toLowerCase().includes(term)
       );
     }
 
@@ -494,20 +924,17 @@ export const OrganizationsBook: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {/* Sort */}
             <select
+              aria-label="Sort organizations"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
               className="h-9 flex-1 sm:flex-none min-w-0 w-full sm:w-auto max-w-full px-3 py-2 bg-black/40 border border-border/50 rounded-lg text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 appearance-none"
             >
               <option value="importance_desc">Most Important</option>
               <option value="involvement_desc">Most Involved</option>
-              <option value="priority_desc">Highest Priority</option>
-              <option value="value_desc">Highest Value</option>
+              <option value="usage_desc">Most Mentioned</option>
               <option value="name_asc">Name A-Z</option>
               <option value="name_desc">Name Z-A</option>
-              <option value="usage_desc">Most Mentioned</option>
-              <option value="usage_asc">Least Mentioned</option>
               <option value="confidence_desc">High Confidence</option>
-              <option value="confidence_asc">Low Confidence</option>
               <option value="recent">Recently Seen</option>
             </select>
 
@@ -589,13 +1016,31 @@ export const OrganizationsBook: React.FC = () => {
                 All
               </TabsTrigger>
             )}
-            {availableCategories.includes('friend_groups') && (
-              <TabsTrigger 
-                value="friend_groups" 
+            {availableCategories.includes('crews') && (
+              <TabsTrigger
+                value="crews"
                 className="flex items-center gap-2 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400"
               >
                 <Users className="h-4 w-4" />
-                Friend Groups
+                Crews
+              </TabsTrigger>
+            )}
+            {availableCategories.includes('bands') && (
+              <TabsTrigger
+                value="bands"
+                className="flex items-center gap-2 data-[state=active]:bg-fuchsia-500/20 data-[state=active]:text-fuchsia-400"
+              >
+                <Music className="h-4 w-4" />
+                Bands
+              </TabsTrigger>
+            )}
+            {availableCategories.includes('scenes') && (
+              <TabsTrigger
+                value="scenes"
+                className="flex items-center gap-2 data-[state=active]:bg-violet-500/20 data-[state=active]:text-violet-400"
+              >
+                <Zap className="h-4 w-4" />
+                Scenes
               </TabsTrigger>
             )}
             {availableCategories.includes('companies') && (
@@ -634,13 +1079,22 @@ export const OrganizationsBook: React.FC = () => {
                 Nonprofits
               </TabsTrigger>
             )}
-            {availableCategories.includes('affiliations') && (
-              <TabsTrigger 
-                value="affiliations" 
-                className="flex items-center gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400"
+            {availableCategories.includes('family') && (
+              <TabsTrigger
+                value="family"
+                className="flex items-center gap-2 data-[state=active]:bg-rose-500/20 data-[state=active]:text-rose-400"
               >
-                <Building2 className="h-4 w-4" />
-                Affiliations
+                <Heart className="h-4 w-4" />
+                Family
+              </TabsTrigger>
+            )}
+            {availableCategories.includes('public_entities') && (
+              <TabsTrigger
+                value="public_entities"
+                className="flex items-center gap-2 data-[state=active]:bg-cyan-500/20 data-[state=active]:text-cyan-400"
+              >
+                <Globe className="h-4 w-4" />
+                Public Entities
               </TabsTrigger>
             )}
             {availableCategories.includes('recent') && (

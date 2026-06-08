@@ -1,4 +1,9 @@
-import { Building2, Users, MapPin, Calendar, ChevronRight, Hash, BookOpen, CalendarDays, TrendingUp, TrendingDown, Minus, Star, Award, Heart } from 'lucide-react';
+import {
+  Building2, Users, ChevronRight, Hash, BookOpen, CalendarDays,
+  TrendingUp, TrendingDown, Minus, Star, Award, Heart,
+  Music, Shield, Zap, Globe, GraduationCap, Layers,
+  Calendar, MapPin,
+} from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { format, parseISO } from 'date-fns';
@@ -92,13 +97,13 @@ export type Organization = {
   location?: string;
   founded_date?: string;
   status: 'active' | 'inactive' | 'dissolved';
-  
+
   // Rich metadata
   members?: OrganizationMember[];
   stories?: OrganizationStory[];
   events?: OrganizationEvent[];
   locations?: OrganizationLocation[];
-  
+
   // Stats
   member_count: number;
   usage_count: number;
@@ -107,7 +112,7 @@ export type Organization = {
   created_at: string;
   updated_at: string;
   metadata?: Record<string, any>;
-  
+
   // Analytics
   analytics?: {
     user_involvement_score: number;
@@ -137,115 +142,195 @@ type OrganizationProfileCardProps = {
   onClick?: () => void;
 };
 
-export const OrganizationProfileCard = ({ organization, onClick }: OrganizationProfileCardProps) => {
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.7) return 'bg-green-500/20 text-green-400 border-green-500/30';
-    if (confidence >= 0.4) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-    return 'bg-red-500/20 text-red-400 border-red-500/30';
-  };
+// ── Per-type visual config ────────────────────────────────────────────
+type VisualConfig = {
+  grad: string;
+  icon: React.ElementType;
+  iconCls: string;
+};
 
-  const getConfidenceLabel = (confidence: number): string => {
-    if (confidence >= 0.7) return 'High';
-    if (confidence >= 0.4) return 'Medium';
-    return 'Low';
-  };
+const TYPE_VISUALS: Record<GroupType, VisualConfig> = {
+  friend_group: {
+    grad: 'from-purple-500/20 via-purple-600/20 to-purple-500/20',
+    icon: Users,
+    iconCls: 'text-purple-400/60 group-hover:text-purple-400',
+  },
+  crew: {
+    grad: 'from-orange-500/20 via-amber-600/20 to-orange-500/20',
+    icon: Users,
+    iconCls: 'text-orange-400/60 group-hover:text-orange-400',
+  },
+  band: {
+    grad: 'from-violet-500/20 via-indigo-600/20 to-violet-500/20',
+    icon: Music,
+    iconCls: 'text-violet-400/60 group-hover:text-violet-400',
+  },
+  scene: {
+    grad: 'from-pink-500/20 via-fuchsia-600/20 to-pink-500/20',
+    icon: Zap,
+    iconCls: 'text-pink-400/60 group-hover:text-pink-400',
+  },
+  collective: {
+    grad: 'from-indigo-500/20 via-violet-600/20 to-indigo-500/20',
+    icon: Layers,
+    iconCls: 'text-indigo-400/60 group-hover:text-indigo-400',
+  },
+  sports_team: {
+    grad: 'from-cyan-500/20 via-blue-600/20 to-cyan-500/20',
+    icon: Users,
+    iconCls: 'text-cyan-400/60 group-hover:text-cyan-400',
+  },
+  company: {
+    grad: 'from-amber-500/20 via-yellow-600/20 to-amber-500/20',
+    icon: Building2,
+    iconCls: 'text-amber-400/60 group-hover:text-amber-400',
+  },
+  club: {
+    grad: 'from-emerald-500/20 via-green-600/20 to-emerald-500/20',
+    icon: Star,
+    iconCls: 'text-emerald-400/60 group-hover:text-emerald-400',
+  },
+  nonprofit: {
+    grad: 'from-teal-500/20 via-cyan-600/20 to-teal-500/20',
+    icon: Heart,
+    iconCls: 'text-teal-400/60 group-hover:text-teal-400',
+  },
+  family: {
+    grad: 'from-rose-500/20 via-pink-600/20 to-rose-500/20',
+    icon: Heart,
+    iconCls: 'text-rose-400/60 group-hover:text-rose-400',
+  },
+  martial_arts: {
+    grad: 'from-red-500/20 via-orange-600/20 to-red-500/20',
+    icon: Shield,
+    iconCls: 'text-orange-400/60 group-hover:text-orange-400',
+  },
+  institution: {
+    grad: 'from-slate-500/20 via-blue-600/20 to-slate-500/20',
+    icon: GraduationCap,
+    iconCls: 'text-slate-400/60 group-hover:text-slate-300',
+  },
+  public_entity: {
+    grad: 'from-yellow-500/20 via-amber-600/20 to-yellow-500/20',
+    icon: Globe,
+    iconCls: 'text-yellow-400/60 group-hover:text-yellow-400',
+  },
+  other: {
+    grad: 'from-gray-500/20 via-gray-600/20 to-gray-500/20',
+    icon: Building2,
+    iconCls: 'text-gray-400/60 group-hover:text-gray-400',
+  },
+};
+
+// ── Relationship tier display ─────────────────────────────────────────
+const REL_LABELS: Record<UserRelationship, string> = {
+  founder: 'Founder',
+  leader: 'Leader',
+  member: 'Member',
+  former_member: 'Former member',
+  collaborator: 'Collaborator',
+  adjacent: 'Adjacent',
+  fan: 'Fan',
+  aware_of: 'Aware of',
+  referenced: 'Referenced',
+  alumnus: 'Alumnus',
+};
+
+function relBadgeCls(rel: UserRelationship): string {
+  if (rel === 'founder') return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+  if (rel === 'leader')  return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+  if (rel === 'former_member' || rel === 'alumnus') return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+  if (rel === 'collaborator' || rel === 'adjacent') return 'bg-teal-500/20 text-teal-400 border-teal-500/30';
+  if (rel === 'fan')    return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
+  if (rel === 'aware_of' || rel === 'referenced') return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
+  return 'bg-white/10 text-white/40 border-white/20';
+}
+
+export const OrganizationProfileCard = ({ organization, onClick }: OrganizationProfileCardProps) => {
+  const gt = organization.group_type ?? 'other';
+  const visual = TYPE_VISUALS[gt] ?? TYPE_VISUALS.other;
+  const Icon = visual.icon;
+  const rel = organization.user_relationship;
 
   const formatDate = (dateString: string) => {
-    try {
-      return format(parseISO(dateString), 'MMM d, yyyy');
-    } catch {
-      return dateString;
-    }
+    try { return format(parseISO(dateString), 'MMM d, yyyy'); }
+    catch { return dateString; }
   };
 
-  const isFamily  = organization.type === 'family';
-  const isMartial = organization.type === 'martial_arts';
-  const isSports  = organization.type === 'sports_team';
-  const isWork    = organization.type === 'company';
-  const headerGrad = isFamily  ? 'from-rose-500/20 via-pink-600/20 to-rose-500/20'
-                   : isMartial ? 'from-red-500/20 via-orange-600/20 to-red-500/20'
-                   : isSports  ? 'from-cyan-500/20 via-blue-600/20 to-cyan-500/20'
-                   : isWork    ? 'from-amber-500/20 via-yellow-600/20 to-amber-500/20'
-                   : 'from-purple-500/20 via-purple-600/20 to-purple-500/20';
-  const HeaderIcon = isFamily ? Heart : (isMartial || isSports) ? Users : Building2;
-  const iconCls    = isFamily  ? 'text-rose-400/60 group-hover:text-rose-400'
-                   : isMartial ? 'text-orange-400/60 group-hover:text-orange-400'
-                   : 'text-white/40 group-hover:text-primary/60';
+  const isFamily = gt === 'family';
+  const isPublic = organization.is_public_entity;
+  const isFuzzy  = organization.membership_model === 'fuzzy';
+  const isFormer = rel === 'former_member' || rel === 'alumnus';
+  const isObserver = rel === 'fan' || rel === 'aware_of' || rel === 'referenced';
 
   return (
     <Card
-      className="group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden flex flex-col aspect-square sm:aspect-auto min-h-0 sm:min-h-0"
+      className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden flex flex-col aspect-square sm:aspect-auto min-h-0 sm:min-h-0 ${isFormer ? 'opacity-75' : ''}`}
       onClick={onClick}
     >
-      {/* Header — color and icon vary by org type */}
-      <div className={`relative h-10 sm:h-16 bg-gradient-to-br ${headerGrad} flex items-center justify-center flex-shrink-0`}>
+      {/* Header — color and icon vary by group type */}
+      <div className={`relative h-10 sm:h-16 bg-gradient-to-br ${visual.grad} flex items-center justify-center flex-shrink-0`}>
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-        <HeaderIcon className={`h-6 w-6 sm:h-10 sm:w-10 ${iconCls} transition-colors relative z-10`} />
+        <Icon className={`h-6 w-6 sm:h-10 sm:w-10 ${visual.iconCls} transition-colors relative z-10`} />
+
+        {/* Top-right: analytics + confidence */}
         <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 flex items-center gap-1 hidden sm:flex">
-          {organization.analytics && (
+          {organization.analytics && !isObserver && (
             <>
-              <Badge 
+              <Badge
                 variant="outline"
                 className={`${organization.analytics.importance_score >= 70 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : organization.analytics.importance_score >= 40 ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
-                title={`Importance: ${organization.analytics.importance_score}/100`}
               >
                 {organization.analytics.importance_score >= 70 ? <Star className="h-2.5 w-2.5" /> : organization.analytics.importance_score >= 40 ? <Award className="h-2.5 w-2.5" /> : null}
                 {organization.analytics.importance_score}
               </Badge>
-              {organization.analytics.trend === 'increasing' && (
-                <TrendingUp className="h-3 w-3 text-green-400" />
-              )}
-              {organization.analytics.trend === 'decreasing' && (
-                <TrendingDown className="h-3 w-3 text-red-400" />
-              )}
-              {organization.analytics.trend === 'stable' && (
-                <Minus className="h-3 w-3 text-gray-400" />
-              )}
+              {organization.analytics.trend === 'increasing' && <TrendingUp className="h-3 w-3 text-green-400" />}
+              {organization.analytics.trend === 'decreasing' && <TrendingDown className="h-3 w-3 text-red-400" />}
+              {organization.analytics.trend === 'stable'     && <Minus className="h-3 w-3 text-gray-400" />}
             </>
           )}
-          <Badge
-            variant="outline"
-            className={`${getConfidenceColor(organization.confidence)} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
-            title={`${getConfidenceLabel(organization.confidence)} confidence (${Math.round(organization.confidence * 100)}%)`}
-          >
-            {getConfidenceLabel(organization.confidence)}
-          </Badge>
+          {/* Confidence — skip for public/reference-only orgs */}
+          {!isPublic && !isObserver && (
+            <Badge
+              variant="outline"
+              className={`${organization.confidence >= 0.7 ? 'bg-green-500/20 text-green-400 border-green-500/30' : organization.confidence >= 0.4 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'} text-[10px] px-1.5 py-0.5`}
+            >
+              {organization.confidence >= 0.7 ? 'High' : organization.confidence >= 0.4 ? 'Med' : 'Low'}
+            </Badge>
+          )}
+          {isPublic && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+              Public
+            </Badge>
+          )}
         </div>
+
+        {/* Fuzzy/scene indicator */}
+        {isFuzzy && (
+          <div className="absolute bottom-1 left-2 hidden sm:block">
+            <span className="text-[9px] text-white/40 uppercase tracking-wider">participatory</span>
+          </div>
+        )}
       </div>
 
       <CardHeader className="pb-0 sm:pb-1.5 pt-1.5 sm:pt-2.5 px-2 sm:px-4 flex-1 min-h-0 flex flex-col justify-center">
         <div className="flex items-start justify-between gap-1 sm:gap-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h3 className="text-xs sm:text-base font-semibold text-white line-clamp-2 sm:truncate group-hover:text-primary transition-colors break-words" title={organization.name}>
-                {organization.name}
-              </h3>
-              {organization.is_public_entity && (
-                <span className="text-[9px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1 rounded flex-shrink-0 hidden sm:inline">
-                  Public
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5 hidden sm:flex flex-wrap">
-              {organization.group_type && (
-                <p className="text-[10px] text-white/50 truncate capitalize">
-                  {organization.group_type.replace(/_/g, ' ')}
-                </p>
-              )}
-              {organization.user_relationship && organization.user_relationship !== 'member' && (
-                <span className={`text-[9px] px-1 rounded border ${
-                  ['founder','leader'].includes(organization.user_relationship)
-                    ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
-                    : ['fan','aware_of','referenced'].includes(organization.user_relationship)
-                    ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                    : 'bg-teal-500/20 text-teal-400 border-teal-500/30'
-                }`}>
-                  {organization.user_relationship.replace(/_/g, ' ')}
-                </span>
-              )}
-              {organization.membership_model === 'fuzzy' && (
-                <span className="text-[9px] bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1 rounded">
-                  scene
+            <h3
+              className="text-xs sm:text-base font-semibold text-white line-clamp-2 sm:truncate group-hover:text-primary transition-colors break-words"
+              title={organization.name}
+            >
+              {organization.name}
+            </h3>
+
+            {/* Group type + relationship badges */}
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap hidden sm:flex">
+              <p className="text-[10px] text-white/50 truncate capitalize">
+                {gt.replace(/_/g, ' ')}
+              </p>
+              {rel && rel !== 'member' && (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded border ${relBadgeCls(rel)}`}>
+                  {REL_LABELS[rel]}
                 </span>
               )}
             </div>
@@ -253,18 +338,19 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
           <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0 hidden sm:block" />
         </div>
       </CardHeader>
-      
-      {/* Mobile: two rows — row 1 = members, row 2 = type • mentions. Desktop: full metadata. */}
+
       <CardContent className="space-y-2 pt-0 px-2 sm:px-4 pb-2 sm:pb-3 flex-shrink-0">
-        {/* Row 1 — members (family shows generations instead) */}
+        {/* Row 1 — members or generations for family */}
         <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-white/70">
           {isFamily ? (
             <>
               <Heart className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-rose-400 flex-shrink-0" />
               <span>{organization.generations ?? '-'} generations</span>
-              {organization.family_branches && organization.family_branches.length > 0 && (
-                <span className="text-white/40 hidden sm:inline">· {organization.family_branches.join(', ')}</span>
-              )}
+            </>
+          ) : isPublic ? (
+            <>
+              <Globe className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-yellow-400 flex-shrink-0" />
+              <span>Public entity</span>
             </>
           ) : (
             <>
@@ -272,50 +358,74 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
               <span>{organization.member_count ?? 0} {(organization.member_count ?? 0) === 1 ? 'member' : 'members'}</span>
             </>
           )}
-          <span className="text-white/40 hidden sm:inline">•</span>
-          <span className="hidden sm:inline">
-            <Hash className="h-2.5 w-2.5 inline mr-0.5 align-middle" />
-            {organization.usage_count} {organization.usage_count === 1 ? 'mention' : 'mentions'}
-          </span>
-        </div>
-
-        {/* Row 2 — type • mentions (mobile only, so all content shows in two rows) */}
-        <div className="flex items-center gap-1.5 text-[10px] text-white/50 sm:hidden">
-          {organization.type && (
+          {!isPublic && (
             <>
-              <span className="capitalize truncate">{String(organization.type).replace(/_/g, ' ')}</span>
-              <span className="text-white/40">•</span>
+              <span className="text-white/40 hidden sm:inline">•</span>
+              <span className="hidden sm:inline">
+                <Hash className="h-2.5 w-2.5 inline mr-0.5 align-middle" />
+                {organization.usage_count} {organization.usage_count === 1 ? 'mention' : 'mentions'}
+              </span>
             </>
           )}
-          <span className="flex items-center gap-0.5">
-            <Hash className="h-2.5 w-2.5 flex-shrink-0" />
-            {organization.usage_count} {organization.usage_count === 1 ? 'mention' : 'mentions'}
-          </span>
         </div>
 
-        {/* Description - hidden on mobile */}
+        {/* Mobile — type + relationship + mentions */}
+        <div className="flex items-center gap-1.5 text-[10px] text-white/50 sm:hidden flex-wrap">
+          <span className="capitalize truncate">{gt.replace(/_/g, ' ')}</span>
+          {rel && rel !== 'member' && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded border ${relBadgeCls(rel)}`}>
+              {REL_LABELS[rel]}
+            </span>
+          )}
+          {isPublic && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded border bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+              Public
+            </span>
+          )}
+          <span className="text-white/30">•</span>
+          <Hash className="h-2.5 w-2.5 flex-shrink-0" />
+          <span>{organization.usage_count}</span>
+        </div>
+
+        {/* Description */}
         {organization.description && (
-          <p className="text-xs text-white/70 line-clamp-2 leading-snug hidden sm:block">{organization.description}</p>
+          <p className="text-xs text-white/60 line-clamp-2 leading-snug hidden sm:block">
+            {organization.description}
+          </p>
         )}
-        
-        {/* Metadata Row - hidden on mobile */}
+
+        {/* Metadata row */}
         <div className="flex flex-wrap gap-2 text-[10px] text-white/50 hidden sm:flex">
-          {organization.analytics && (
+          {organization.analytics && !isObserver && (
             <>
-              <div className="flex items-center gap-1" title={`Your ranking: #${organization.analytics.user_ranking}`}>
+              <div className="flex items-center gap-1">
                 <Award className="h-2.5 w-2.5 text-amber-400" />
                 <span className="text-amber-400">Rank #{organization.analytics.user_ranking}</span>
               </div>
-              <div className="flex items-center gap-1" title={`Involvement: ${organization.analytics.user_involvement_score}%`}>
+              <div className="flex items-center gap-1">
                 <Users className="h-2.5 w-2.5" />
                 <span>{organization.analytics.user_involvement_score}% involved</span>
               </div>
             </>
           )}
-          <div className="flex items-center gap-1">
-            <Calendar className="h-2.5 w-2.5" />
-            <span>Last seen: {formatDate(organization.last_seen)}</span>
-          </div>
+          {organization.analytics && isObserver && (
+            <div className="flex items-center gap-1">
+              <TrendingUp className="h-2.5 w-2.5 text-pink-400" />
+              <span className="text-pink-400">{organization.analytics.group_influence_on_user}% cultural influence</span>
+            </div>
+          )}
+          {organization.founded_year && (
+            <div className="flex items-center gap-1">
+              <Calendar className="h-2.5 w-2.5" />
+              <span>Est. {organization.founded_year}</span>
+            </div>
+          )}
+          {!organization.founded_year && (
+            <div className="flex items-center gap-1">
+              <Calendar className="h-2.5 w-2.5" />
+              <span>Last seen: {formatDate(organization.last_seen)}</span>
+            </div>
+          )}
           {organization.stories && organization.stories.length > 0 && (
             <div className="flex items-center gap-1">
               <BookOpen className="h-2.5 w-2.5" />
@@ -335,28 +445,7 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
             </div>
           )}
         </div>
-
-        {/* Aliases/Tags - hidden on mobile */}
-        {organization.aliases && organization.aliases.length > 0 && (
-          <div className="flex flex-wrap gap-1 pt-1.5 border-t border-border/30 hidden sm:flex">
-            {organization.aliases.slice(0, 3).map((alias) => (
-              <Badge
-                key={alias}
-                variant="outline"
-                className="px-2 py-0.5 text-xs bg-primary/5 text-primary/80 border-primary/20 hover:bg-primary/10 transition-colors"
-              >
-                {alias}
-              </Badge>
-            ))}
-            {organization.aliases.length > 3 && (
-              <Badge variant="outline" className="px-2 py-0.5 text-xs text-white/40 border-border/30">
-                +{organization.aliases.length - 3}
-              </Badge>
-            )}
-          </div>
-        )}
       </CardContent>
     </Card>
   );
 };
-
