@@ -7,6 +7,7 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import type { Skill } from '../skills/skillService';
+import { calculateXPForLevel } from '../skills/skillService';
 
 export interface SkillTree {
   skillId: string;
@@ -154,19 +155,12 @@ export class SkillTreeEngine {
     if (skill.current_level < 10) return 0;
 
     // Mastery levels: 10+ = Master, 15+ = Grandmaster, 20+ = Legendary
-    const excessXP = skill.total_xp - this.calculateXPForLevel(10);
+    // Sprint T: routes through skillService's calculateXPForLevel — the
+    // single source of truth for the per-skill leveling curve — instead of
+    // a private byte-for-byte copy that could silently drift from it.
+    const excessXP = skill.total_xp - calculateXPForLevel(10);
     const masteryXP = 1000; // XP needed per mastery level
     return Math.floor(excessXP / masteryXP);
-  }
-
-  /**
-   * Calculate XP needed for a level (helper)
-   */
-  private calculateXPForLevel(level: number): number {
-    const BASE_XP = 100;
-    const MULTIPLIER = 1.5;
-    if (level === 1) return 0;
-    return Math.floor(BASE_XP * Math.pow(MULTIPLIER, level - 2));
   }
 
   /**

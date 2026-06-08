@@ -1769,13 +1769,13 @@ export class ConversationIngestionPipeline {
                     );
                   }
                 } catch (err) {
-                  logger.debug({ err, questTitle: quest.title }, 'Failed to create auto-detected quest');
+                  logger.warn({ err, userId, questTitle: quest.title, questType: quest.quest_type }, 'Failed to create auto-detected quest');
                 }
               }
             }
           })
           .catch(err => {
-            logger.debug({ err }, 'Quest extraction failed (non-blocking)');
+            logger.warn({ err, userId, messageId }, 'Quest extraction failed (non-blocking)');
           });
 
         // 12.12.2: Extract progress updates and update existing quests
@@ -1793,7 +1793,7 @@ export class ConversationIngestionPipeline {
             }
           })
           .catch(err => {
-            logger.debug({ err }, 'Progress update extraction failed (non-blocking)');
+            logger.warn({ err, userId, messageId }, 'Progress update extraction failed (non-blocking)');
           });
 
         // 12.12.3: Detect life changes and handle conflicting quests
@@ -1847,7 +1847,7 @@ export class ConversationIngestionPipeline {
             }
           })
           .catch(err => {
-            logger.debug({ err }, 'Life change detection failed (non-blocking)');
+            logger.warn({ err, userId, messageId }, 'Life change detection failed (non-blocking)');
           });
       } // End of Step 12.12 quest extraction block
 
@@ -1881,12 +1881,12 @@ export class ConversationIngestionPipeline {
                   }
                 })
                 .catch(err => {
-                  logger.debug({ err }, 'Skill relationship detection failed (non-blocking)');
+                  logger.warn({ err, userId, messageId, mentionedSkillCount: mentionedSkills.length }, 'Skill relationship detection failed (non-blocking)');
                 });
             }
           }
         } catch (error) {
-          logger.debug({ error }, 'Skill relationship detection check failed');
+          logger.warn({ error, userId, messageId }, 'Skill relationship detection check failed');
         }
 
         // Detect group relationships if groups are mentioned

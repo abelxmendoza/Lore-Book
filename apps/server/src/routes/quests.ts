@@ -472,25 +472,6 @@ router.post('/:id/link-task', requireAuth, async (req: AuthenticatedRequest, res
 });
 
 /**
- * GET /api/quests/completed
- * Get completed quests
- */
-router.get('/completed', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { limit, offset } = req.query;
-    const quests = await questStorage.getQuests(req.user!.id, {
-      status: 'completed',
-      limit: limit ? parseInt(limit as string, 10) : undefined,
-      offset: offset ? parseInt(offset as string, 10) : undefined,
-    });
-    res.json({ quests, count: quests.length });
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to get completed quests');
-    res.status(500).json({ error: 'Failed to get completed quests' });
-  }
-});
-
-/**
  * GET /api/quests/:id/history
  * Get quest history
  */
@@ -502,56 +483,6 @@ router.get('/:id/history', requireAuth, async (req: AuthenticatedRequest, res) =
   } catch (error) {
     logger.error({ err: error }, 'Failed to get quest history');
     res.status(500).json({ error: 'Failed to get quest history' });
-  }
-});
-
-/**
- * GET /api/quests/board
- * Get quest board (organized view)
- */
-router.get('/board', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const board = await questService.getQuestBoard(req.user!.id);
-    res.json(board);
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to get quest board');
-    res.status(500).json({ error: 'Failed to get quest board' });
-  }
-});
-
-/**
- * GET /api/quests/analytics
- * Get quest analytics
- */
-router.get('/analytics', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const analytics = await questService.getQuestAnalytics(req.user!.id);
-    res.json(analytics);
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to get quest analytics');
-    res.status(500).json({ error: 'Failed to get quest analytics' });
-  }
-});
-
-/**
- * GET /api/quests/suggestions
- * Get AI suggestions
- */
-router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    // Get recent journal entries
-    const { data: entries } = await supabaseAdmin
-      .from('journal_entries')
-      .select('*')
-      .eq('user_id', req.user!.id)
-      .order('date', { ascending: false })
-      .limit(50);
-
-    const suggestions = await questExtractor.extractQuests(req.user!.id, entries || []);
-    res.json({ suggestions, count: suggestions.length });
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to get quest suggestions');
-    res.status(500).json({ error: 'Failed to get quest suggestions' });
   }
 });
 

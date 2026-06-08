@@ -62,41 +62,69 @@ export interface SkillProgress {
   created_at: string;
 }
 
+// ─── PER-SKILL LEVELING — single source of truth (Sprint T) ──────────────────
+//
+// Every consumer that derives a *skill's* level from its XP (skillService
+// itself, skillTreeEngine's mastery calculation, and any future caller) must
+// route through these two functions rather than re-deriving the curve. Before
+// this change, skillTreeEngine.calculateXPForLevel carried a byte-for-byte
+// copy of this geometric formula — a silent fork that would have drifted the
+// moment either constant changed.
+//
+// NOTE: this is deliberately distinct from xpEngine's `calculateLevel`, which
+// answers a different question — the user's *overall* account level from
+// aggregate memory XP (a logarithmic curve over a separate XP pool). The two
+// are not duplicates of each other; they level different things ("Cooking:
+// Level 3" vs "Account Level 12") and must not be merged.
+
+export const SKILL_BASE_XP_PER_LEVEL = 100;
+export const SKILL_XP_MULTIPLIER = 1.5; // Each level requires 1.5x more XP than the last
+
+/** XP required to advance FROM (level-1) TO `level`. Level 1 costs nothing. */
+export function calculateXPForLevel(level: number): number {
+  if (level === 1) return 0;
+  return Math.floor(SKILL_BASE_XP_PER_LEVEL * Math.pow(SKILL_XP_MULTIPLIER, level - 2));
+}
+
+/** Derives a skill's level from its cumulative XP using the same curve `calculateXPForLevel` defines. */
+export function calculateLevelFromXP(totalXP: number): number {
+  if (totalXP < SKILL_BASE_XP_PER_LEVEL) return 1;
+
+  let level = 1;
+  let xpNeeded = 0;
+
+  while (xpNeeded <= totalXP) {
+    level++;
+    xpNeeded += calculateXPForLevel(level);
+    if (xpNeeded > totalXP) {
+      level--;
+      break;
+    }
+  }
+
+  return Math.max(1, level);
+}
+
 /**
  * Skill Service
  * Manages user skills, XP tracking, and level progression
  */
 class SkillService {
-  private readonly BASE_XP_PER_LEVEL = 100;
-  private readonly XP_MULTIPLIER = 1.5; // Each level requires 1.5x more XP
+  private readonly BASE_XP_PER_LEVEL = SKILL_BASE_XP_PER_LEVEL;
+  private readonly XP_MULTIPLIER = SKILL_XP_MULTIPLIER; // Each level requires 1.5x more XP
 
   /**
    * Calculate XP needed for a level
    */
   private calculateXPForLevel(level: number): number {
-    if (level === 1) return 0;
-    return Math.floor(this.BASE_XP_PER_LEVEL * Math.pow(this.XP_MULTIPLIER, level - 2));
+    return calculateXPForLevel(level);
   }
 
   /**
    * Calculate level from total XP
    */
   private calculateLevelFromXP(totalXP: number): number {
-    if (totalXP < this.BASE_XP_PER_LEVEL) return 1;
-    
-    let level = 1;
-    let xpNeeded = 0;
-    
-    while (xpNeeded <= totalXP) {
-      level++;
-      xpNeeded += this.calculateXPForLevel(level);
-      if (xpNeeded > totalXP) {
-        level--;
-        break;
-      }
-    }
-    
-    return Math.max(1, level);
+    return calculateLevelFromXP(totalXP);
   }
 
   /**

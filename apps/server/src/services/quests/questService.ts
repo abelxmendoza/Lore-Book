@@ -1,6 +1,7 @@
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../../logger';
+import { supabaseAdmin } from '../supabaseClient';
 
 import { questStorage } from './questStorage';
 import type {
@@ -8,6 +9,7 @@ import type {
   QuestBoard,
   QuestAnalytics,
   QuestSuggestion,
+  QuestType,
   CreateQuestInput,
   UpdateQuestInput,
   QuestHistory,
@@ -562,12 +564,63 @@ export class QuestService {
   }
 
   /**
-   * Get quest suggestions (placeholder - to be implemented with LLM)
+   * Get quest suggestions
+   *
+   * Smallest-viable recovery (Sprint T): derives suggestions entirely from
+   * existing structured data — active goals that aren't yet tracked as
+   * quests — rather than an LLM pass over journal entries. This keeps the
+   * surface populated even when extraction/LLM paths are degraded, and
+   * intentionally does not duplicate `questExtractor.extractQuests` (the
+   * existing LLM-based path the `/suggestions` route already wires up for
+   * journal-entry-derived candidates).
    */
   async getQuestSuggestions(userId: string): Promise<QuestSuggestion[]> {
-    // TODO: Implement LLM-based quest extraction from journal entries
-    // For now, return empty array
-    return [];
+    try {
+      const { data: goals, error: goalsError } = await supabaseAdmin
+        .from('goals')
+        .select('id, title, description, status, goal_type')
+        .eq('user_id', userId)
+        .eq('status', 'ACTIVE')
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (goalsError) {
+        logger.warn({ error: goalsError, userId }, 'Failed to load goals for quest suggestions');
+        return [];
+      }
+      if (!goals || goals.length === 0) return [];
+
+      // Existing signal: don't suggest a goal that's already tracked as a
+      // quest, whether linked explicitly (related_goal_id) or by matching
+      // title (covers quests created before linking existed).
+      const existingQuests = await questStorage.getQuests(userId, { status: ['active', 'paused', 'completed'] });
+      const linkedGoalIds = new Set(existingQuests.map(q => q.related_goal_id).filter((id): id is string => Boolean(id)));
+      const existingTitles = new Set(existingQuests.map(q => q.title.trim().toLowerCase()));
+
+      const suggestions: QuestSuggestion[] = [];
+      for (const goal of goals) {
+        if (linkedGoalIds.has(goal.id)) continue;
+        if (existingTitles.has((goal.title || '').trim().toLowerCase())) continue;
+
+        const questType: QuestType = goal.goal_type === 'PERSONAL' || goal.goal_type === 'CAREER' ? 'main' : 'side';
+
+        suggestions.push({
+          title: goal.title,
+          description: goal.description || undefined,
+          quest_type: questType,
+          priority: 5,
+          importance: 7,
+          impact: 6,
+          confidence: 0.6,
+          reasoning: `"${goal.title}" is an active goal that isn't tracked as a quest yet — converting it would surface its progress on the quest board.`,
+        });
+      }
+
+      return suggestions.slice(0, 10);
+    } catch (error) {
+      logger.error({ error, userId }, 'Failed to get quest suggestions');
+      return [];
+    }
   }
 
   /**
