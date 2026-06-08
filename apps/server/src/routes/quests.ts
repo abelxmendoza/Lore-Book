@@ -37,6 +37,117 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 /**
+ * POST /api/quests/convert/goal/:goalId
+ * Convert an existing goal into a quest (Sprint S: wires up the
+ * already-implemented questLinker.convertGoalToQuest to the API surface
+ * the frontend hooks already call — the service existed, the route did not).
+ */
+router.post('/convert/goal/:goalId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { goalId } = req.params;
+    const quest = await questLinker.convertGoalToQuest(req.user!.id, goalId);
+    res.json({ quest });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to convert goal to quest');
+    res.status(500).json({ error: 'Failed to convert goal to quest' });
+  }
+});
+
+/**
+ * POST /api/quests/convert/task/:taskId
+ * Convert an existing task into a quest (Sprint S: wires up the
+ * already-implemented questLinker.convertTaskToQuest to the API surface
+ * the frontend hooks already call).
+ */
+router.post('/convert/task/:taskId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { taskId } = req.params;
+    const quest = await questLinker.convertTaskToQuest(req.user!.id, taskId);
+    res.json({ quest });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to convert task to quest');
+    res.status(500).json({ error: 'Failed to convert task to quest' });
+  }
+});
+
+/**
+ * Sprint S (quest surface recovery): literal single-segment routes must be
+ * registered before `/:id` — Express matches in registration order, so
+ * `/completed`, `/board`, `/analytics`, `/suggestions` were previously being
+ * captured by `/:id` (id="board" etc.), producing 404 "Quest not found" for
+ * the Quest Board, Analytics, Suggestions, and Completed surfaces.
+ */
+
+/**
+ * GET /api/quests/completed
+ * Get completed quests
+ */
+router.get('/completed', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { limit, offset } = req.query;
+    const quests = await questStorage.getQuests(req.user!.id, {
+      status: 'completed',
+      limit: limit ? parseInt(limit as string, 10) : undefined,
+      offset: offset ? parseInt(offset as string, 10) : undefined,
+    });
+    res.json({ quests, count: quests.length });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get completed quests');
+    res.status(500).json({ error: 'Failed to get completed quests' });
+  }
+});
+
+/**
+ * GET /api/quests/board
+ * Get quest board (organized view)
+ */
+router.get('/board', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const board = await questService.getQuestBoard(req.user!.id);
+    res.json(board);
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get quest board');
+    res.status(500).json({ error: 'Failed to get quest board' });
+  }
+});
+
+/**
+ * GET /api/quests/analytics
+ * Get quest analytics
+ */
+router.get('/analytics', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const analytics = await questService.getQuestAnalytics(req.user!.id);
+    res.json(analytics);
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get quest analytics');
+    res.status(500).json({ error: 'Failed to get quest analytics' });
+  }
+});
+
+/**
+ * GET /api/quests/suggestions
+ * Get AI suggestions
+ */
+router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    // Get recent journal entries
+    const { data: entries } = await supabaseAdmin
+      .from('journal_entries')
+      .select('*')
+      .eq('user_id', req.user!.id)
+      .order('date', { ascending: false })
+      .limit(50);
+
+    const suggestions = await questExtractor.extractQuests(req.user!.id, entries || []);
+    res.json({ suggestions, count: suggestions.length });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get quest suggestions');
+    res.status(500).json({ error: 'Failed to get quest suggestions' });
+  }
+});
+
+/**
  * GET /api/quests/:id
  * Get quest details
  */

@@ -642,11 +642,11 @@ export function useLinkQuestToGoal() {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchJson<{ quest: Quest }>(`/api/quests/${questId}/link/goal`, {
+      const result = await fetchJson<{ success: boolean }>(`/api/quests/${questId}/link-goal`, {
         method: 'POST',
         body: JSON.stringify({ goal_id: goalId }),
       });
-      return result.quest;
+      return result.success;
     } catch (err) {
       console.error('Failed to link quest to goal:', err);
       setError('Failed to link quest to goal');
@@ -670,11 +670,11 @@ export function useLinkQuestToTask() {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchJson<{ quest: Quest }>(`/api/quests/${questId}/link/task`, {
+      const result = await fetchJson<{ success: boolean }>(`/api/quests/${questId}/link-task`, {
         method: 'POST',
         body: JSON.stringify({ task_id: taskId }),
       });
-      return result.quest;
+      return result.success;
     } catch (err) {
       console.error('Failed to link quest to task:', err);
       setError('Failed to link quest to task');

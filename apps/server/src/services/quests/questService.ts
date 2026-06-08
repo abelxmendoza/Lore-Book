@@ -62,7 +62,7 @@ export class QuestService {
         estimated_completion_date: questData.estimated_completion_date,
         tags: questData.tags || [],
         category: questData.category,
-        source: 'manual',
+        source: questData.source || 'manual',
         metadata: questData.metadata || {},
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

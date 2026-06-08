@@ -113,6 +113,7 @@ export interface CreateQuestInput {
   title: string;
   description?: string;
   quest_type: QuestType;
+  source?: QuestSource;
   priority?: number;
   importance?: number;
   impact?: number;
