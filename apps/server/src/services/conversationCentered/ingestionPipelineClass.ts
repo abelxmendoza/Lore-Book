@@ -880,9 +880,16 @@ export class ConversationIngestionPipeline {
         logger.debug({ error }, 'Failed to resolve entities for enrichment, continuing without');
       }
 
-      // Step 4.2: Detect entity relationships and scopes
-      // This happens after entity extraction so we have entity IDs
-      if (resolvedEntities.length >= 2) {
+      // Step 4.2: Resolve entity names (shadow baseline) + detect relationships/scopes
+      // Sprint P (shadow-mode integrity): name resolution must run for ANY
+      // resolved-entity count so `_shadowBaseline.entities` reflects what the
+      // legacy pipeline actually found — including the 1-entity case, which
+      // this gate used to skip entirely (silently logging an empty baseline
+      // and producing trivially-perfect precision/recall/F1 downstream).
+      // Relationship detection genuinely requires >= 2 named entities — that
+      // gate is preserved below, unchanged, because a relationship needs two
+      // parties; it is a real domain constraint, not a measurement shortcut.
+      if (resolvedEntities.length >= 1) {
         try {
           // Map entity types to our EntityType format
           const entitiesForDetection = resolvedEntities.map(e => ({

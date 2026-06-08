@@ -411,7 +411,7 @@ export interface ShadowComparisonMetrics {
 }
 
 // Verdict for a single threshold criterion
-export type ThresholdVerdict = 'PASS' | 'FAIL' | 'INSUFFICIENT_DATA';
+export type ThresholdVerdict = 'PASS' | 'FAIL' | 'INSUFFICIENT_DATA' | 'NOT_COMPARABLE';
 
 export interface ThresholdCheck {
   metric:    string;
@@ -428,6 +428,11 @@ export interface ReadinessReport {
   hard_blocks:         ThresholdCheck[];    // failing required criteria
   soft_warnings:       ThresholdCheck[];    // passing but below ideal
   passed:              ThresholdCheck[];
+  not_comparable:      ThresholdCheck[];    // metrics with no valid baseline to compare against (Sprint P)
+  // Baseline integrity (Sprint P — restore-baseline-measurement-integrity)
+  baseline_valid:        boolean;   // true only when every counted sample has a trustworthy baseline capture
+  valid_sample_count:    number;    // samples logged after the baseline-capture fix landed
+  invalid_sample_count:  number;    // samples logged before the fix — degenerate, excluded from evidence
   // Economics summary
   avg_token_reduction_pct:   number;
   avg_call_reduction_pct:    number;

@@ -34,6 +34,31 @@ const BASELINE_TOKENS    = 19_400;
 const BASELINE_CALLS     = 14.2;
 const BASELINE_LATENCY_MS = 2_400;   // serial equivalent of 14 round-trips at ~170 ms each
 
+// ─── BASELINE INTEGRITY (Sprint P) ────────────────────────────────────────────
+// `_shadowBaseline.entities`/`.relationships` were gated in
+// ingestionPipelineClass.ts behind `resolvedEntities.length >= 2`, so any
+// message that resolved exactly 0 or 1 entities logged an EMPTY baseline.
+// `signalQuality()` (below) treats an empty baseline as a trivial {1,1,1} —
+// correct for a genuinely-empty ground truth, but indistinguishable from a
+// capture failure. Every row logged before the gate fix shipped therefore
+// carries a degenerate, non-evidentiary quality score. Rows logged at/after
+// this timestamp were captured by the corrected `>= 1` gate and are trustworthy.
+const BASELINE_CAPTURE_FIX_DEPLOYED_AT = '2026-06-08T18:00:00.000Z';
+
+// Signal classes the shadow harness structurally cannot baseline against —
+// reporting them as PASS/FAIL would silently launder an empty-baseline default
+// as measured quality. Surfaced as NOT_COMPARABLE instead of folded into the
+// pass/fail tally:
+//   - romantic_signal_*: the legacy pipeline has NO synchronous romantic-signal
+//     detector. Romantic-signal extraction is a net-new capability the merged
+//     extractor introduces — there is nothing on the other side of the ledger
+//     to compare against, ever, with this architecture.
+//   - interest_*: `interestDetector.detectInterests` exists in the legacy
+//     pipeline (Step 12.11) but runs async/fire-and-forget — it cannot be
+//     captured into `_shadowBaseline` without awaiting it, which would change
+//     pipeline blocking behavior (out of scope for a measurement-only fix).
+const NOT_COMPARABLE_HARD_BLOCK_METRICS = ['romantic_signal_precision'];
+
 // ─── THRESHOLD DEFINITIONS ────────────────────────────────────────────────────
 // Three decision gates: 50-message sanity check → 100-message quality lock →
 // 200-message A/B approval. Each gate must be fully cleared before advancing.
@@ -468,8 +493,11 @@ class ShadowModeOrchestrator {
     const { data, error } = await supabaseAdmin
       .from('shadow_extraction_log')
       .select([
+        'created_at',
         'entity_precision', 'entity_recall', 'entity_f1',
         'relationship_recall', 'relationship_f1',
+        'romantic_signal_precision', 'romantic_signal_recall',
+        'interest_recall', 'interest_f1',
         'token_reduction_pct', 'call_reduction_pct',
         'latency_reduction_pct', 'merged_runtime_ms',
         'merged_token_count',
@@ -485,6 +513,10 @@ class ShadowModeOrchestrator {
       hard_blocks:              [],
       soft_warnings:            [],
       passed:                   [],
+      not_comparable:           [],
+      baseline_valid:           false,
+      valid_sample_count:       0,
+      invalid_sample_count:     0,
       avg_token_reduction_pct:  0,
       avg_call_reduction_pct:   0,
       avg_latency_ms:           0,
@@ -498,21 +530,46 @@ class ShadowModeOrchestrator {
 
     if (error || !data || data.length === 0) return empty;
 
-    const allRows    = data as unknown as any[];
-    const total      = allRows.length;
-    const successful = allRows.filter(r => r.merged_extraction !== null);
+    const allRows = data as unknown as any[];
+
+    // Baseline integrity split (Sprint P): exclude rows logged before the
+    // capture-gate fix — their entity/relationship baselines are
+    // systematically empty and their quality scores are degenerate, not
+    // evidence. Only post-fix rows count toward the decision gate.
+    const cutoverMs   = new Date(BASELINE_CAPTURE_FIX_DEPLOYED_AT).getTime();
+    const validRows   = allRows.filter(r => new Date(r.created_at).getTime() >= cutoverMs);
+    const invalidRows = allRows.filter(r => new Date(r.created_at).getTime() <  cutoverMs);
+
+    const total      = validRows.length;
+    const successful = validRows.filter(r => r.merged_extraction !== null);
     const n          = successful.length;
 
+    const baseline_valid       = invalidRows.length === 0;
+    const valid_sample_count   = validRows.length;
+    const invalid_sample_count = invalidRows.length;
+
     if (total < targetSamples) {
+      const hard_blocks: ThresholdCheck[] = [{
+        metric:   'valid_sample_count',
+        required: targetSamples,
+        actual:   total,
+        verdict:  'INSUFFICIENT_DATA',
+      }];
+      if (invalid_sample_count > 0) {
+        hard_blocks.push({
+          metric:   'baseline_integrity',
+          required: 0,
+          actual:   invalid_sample_count,
+          verdict:  'FAIL',
+        });
+      }
       return {
         ...empty,
         sample_count: total,
-        hard_blocks: [{
-          metric:  'sample_count',
-          required: targetSamples,
-          actual:   total,
-          verdict: 'INSUFFICIENT_DATA',
-        }],
+        baseline_valid,
+        valid_sample_count,
+        invalid_sample_count,
+        hard_blocks,
       };
     }
 
@@ -541,16 +598,13 @@ class ShadowModeOrchestrator {
       passes:   boolean;
     };
 
-    const avgRomanticPrecision = avg(successful.map(r => get(r, 'romantic_signal_precision')));
-
     const criteria: Criterion[] = [
-      { metric: 'entity_precision',          required: thresholds.entityPrecision,         actual: r2(avgEntityPrecision),       passes: avgEntityPrecision >= thresholds.entityPrecision },
-      { metric: 'entity_recall',             required: thresholds.entityRecall,            actual: r2(avgEntityRecall),          passes: avgEntityRecall >= thresholds.entityRecall },
-      { metric: 'entity_f1',                 required: thresholds.entityF1,                actual: r2(avgEntityF1),              passes: avgEntityF1 >= thresholds.entityF1 },
-      { metric: 'relationship_recall',       required: thresholds.relationshipRecall,      actual: r2(avgRelRecall),             passes: avgRelRecall >= thresholds.relationshipRecall },
-      { metric: 'token_ratio_ceiling',       required: thresholds.tokenRatioCeiling,       actual: r2(avgTokenRatio),            passes: avgTokenRatio <= thresholds.tokenRatioCeiling },
-      { metric: 'romantic_signal_precision', required: thresholds.romanticSignalPrecision, actual: r2(avgRomanticPrecision),     passes: avgRomanticPrecision >= thresholds.romanticSignalPrecision },
-      { metric: 'success_rate',              required: thresholds.successRateFloor,        actual: r2(successRate),              passes: successRate >= thresholds.successRateFloor },
+      { metric: 'entity_precision',    required: thresholds.entityPrecision,    actual: r2(avgEntityPrecision), passes: avgEntityPrecision >= thresholds.entityPrecision },
+      { metric: 'entity_recall',       required: thresholds.entityRecall,       actual: r2(avgEntityRecall),    passes: avgEntityRecall >= thresholds.entityRecall },
+      { metric: 'entity_f1',           required: thresholds.entityF1,           actual: r2(avgEntityF1),        passes: avgEntityF1 >= thresholds.entityF1 },
+      { metric: 'relationship_recall', required: thresholds.relationshipRecall, actual: r2(avgRelRecall),       passes: avgRelRecall >= thresholds.relationshipRecall },
+      { metric: 'token_ratio_ceiling', required: thresholds.tokenRatioCeiling,  actual: r2(avgTokenRatio),      passes: avgTokenRatio <= thresholds.tokenRatioCeiling },
+      { metric: 'success_rate',        required: thresholds.successRateFloor,   actual: r2(successRate),        passes: successRate >= thresholds.successRateFloor },
     ];
 
     const toCheck = (c: Criterion): ThresholdCheck => ({
@@ -566,13 +620,48 @@ class ShadowModeOrchestrator {
     const soft_warnings = criteria.filter(c => !c.passes && !HARD_BLOCK_METRICS.includes(c.metric)).map(toCheck);
     const passed        = criteria.filter(c => c.passes).map(toCheck);
 
+    // romantic_signal_precision is a Phase 6B hard-block metric, but the
+    // shadow harness has no legacy baseline to compare it against (see
+    // NOT_COMPARABLE_HARD_BLOCK_METRICS doc above). Reporting it as PASS/FAIL
+    // would launder an empty-baseline default as measured quality — surface it
+    // honestly as NOT_COMPARABLE and keep it a standing block on `ready_for_ab`
+    // until a different validation method exists (e.g. human-labeled spot-check).
+    const not_comparable: ThresholdCheck[] = [
+      {
+        metric:   'romantic_signal_precision',
+        required: thresholds.romanticSignalPrecision,
+        actual:   r2(avg(successful.map(r => get(r, 'romantic_signal_precision')))),
+        verdict:  'NOT_COMPARABLE',
+      },
+      {
+        metric:   'interest_recall',
+        required: 0,
+        actual:   r2(avg(successful.map(r => get(r, 'interest_recall')))),
+        verdict:  'NOT_COMPARABLE',
+      },
+      {
+        metric:   'interest_f1',
+        required: 0,
+        actual:   r2(avg(successful.map(r => get(r, 'interest_f1')))),
+        verdict:  'NOT_COMPARABLE',
+      },
+    ];
+    const not_comparable_hard_blocks = not_comparable.filter(c => NOT_COMPARABLE_HARD_BLOCK_METRICS.includes(c.metric));
+
     return {
       sample_count:              total,
       required_samples:          targetSamples,
-      ready_for_ab:              hard_blocks.length === 0 && soft_warnings.length === 0,
-      hard_blocks,
+      ready_for_ab:              hard_blocks.length === 0
+                                 && soft_warnings.length === 0
+                                 && not_comparable_hard_blocks.length === 0
+                                 && baseline_valid,
+      hard_blocks:               [...hard_blocks, ...not_comparable_hard_blocks],
       soft_warnings,
       passed,
+      not_comparable,
+      baseline_valid,
+      valid_sample_count,
+      invalid_sample_count,
       avg_token_reduction_pct:   r2(avgTokenReduction),
       avg_call_reduction_pct:    r2(avgCallReduction),
       avg_latency_ms:            r2(avgLatencyMs),
