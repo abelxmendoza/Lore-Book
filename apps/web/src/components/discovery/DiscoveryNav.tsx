@@ -1,79 +1,118 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Compass } from 'lucide-react';
-import { ANALYTICS_MODULES, getModulesByTier, type AnalyticsModuleTier } from '../../config/analyticsModules';
+import {
+  Compass, Heart, Brain, Users, TrendingUp, Target, Clock, MapPin,
+  AlertCircle, Zap, HeartPulse, Database, ClipboardCheck, Activity,
+  Ghost, BookOpen
+} from 'lucide-react';
+import { useDiscoverySummary } from '../../hooks/useDiscoverySummary';
+
+interface NavPanel {
+  id: string;
+  title: string;
+  path: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badgeKey?: 'pendingProposals' | 'openContradictions' | 'fadingMemories';
+}
+
+const INSIGHTS_PANELS: NavPanel[] = [
+  { id: 'soul-profile',         title: 'Soul Profile',            path: '/discovery/soul-profile',          icon: Heart },
+  { id: 'identity',             title: 'Identity Pulse',          path: '/discovery/identity',              icon: Brain },
+  { id: 'relationships',        title: 'Relationships',           path: '/discovery/relationships',         icon: Users },
+  { id: 'insights-predictions', title: 'Insights & Predictions',  path: '/discovery/insights-predictions',  icon: TrendingUp },
+  { id: 'values-habits',        title: 'Values & Habits',         path: '/discovery/values-habits',         icon: Target },
+  { id: 'decisions',            title: 'Decision Memory',         path: '/discovery/decisions',             icon: Clock },
+  { id: 'life-arc',             title: 'Recent Moments',          path: '/discovery/life-arc',              icon: MapPin },
+  { id: 'shadow',               title: 'Shadow',                  path: '/discovery/shadow',                icon: AlertCircle },
+  { id: 'xp',                   title: 'Skills & Progress',       path: '/discovery/xp',                   icon: Zap },
+  { id: 'reactions-resilience', title: 'Reactions & Resilience',  path: '/discovery/reactions-resilience',  icon: HeartPulse },
+];
+
+const DATA_CONTROL_PANELS: NavPanel[] = [
+  { id: 'memory-management',    title: 'Memory Management',       path: '/discovery/memory-management',     icon: Database },
+  { id: 'memory-review',        title: 'Memory Review Queue',     path: '/discovery/memory-review',         icon: ClipboardCheck,  badgeKey: 'pendingProposals' },
+  { id: 'continuity',           title: 'Continuity',              path: '/discovery/continuity',            icon: Activity },
+  { id: 'correction-dashboard', title: 'Corrections & Pruning',   path: '/discovery/correction-dashboard',  icon: AlertCircle,     badgeKey: 'openContradictions' },
+  { id: 'entity-resolution',    title: 'Entity Resolution',       path: '/discovery/entity-resolution',     icon: Users },
+  { id: 'memory-fade',          title: 'Memory Fade Index',       path: '/discovery/memory-fade',           icon: Ghost,           badgeKey: 'fadingMemories' },
+];
 
 export const DiscoveryNav = () => {
   const location = useLocation();
-  const currentPath = location.pathname;
+  const { summary } = useDiscoverySummary();
 
-  const coreModules = getModulesByTier('core');
-  const advancedModules = getModulesByTier('advanced');
-  const labModules = getModulesByTier('lab');
+  const isActive = (path: string) =>
+    path === '/discovery'
+      ? location.pathname === '/discovery'
+      : location.pathname.startsWith(path);
 
-  const isActive = (route: string) => {
-    return currentPath === route;
+  const getBadgeCount = (key?: NavPanel['badgeKey']): number => {
+    if (!key || !summary) return 0;
+    return summary[key] ?? 0;
   };
 
-  const renderNavGroup = (title: string, modules: typeof ANALYTICS_MODULES, tier: AnalyticsModuleTier) => {
-    if (modules.length === 0) return null;
-
-    return (
-      <div className="space-y-2">
-        <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider px-3 py-2">
-          {title}
-        </h3>
-        <nav className="space-y-1">
-          {modules.map((module) => {
-            const Icon = module.icon;
-            const active = isActive(module.route);
-            
-            return (
-              <Link
-                key={module.key}
-                to={module.route}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                  active
-                    ? 'bg-primary/20 text-primary border border-primary/30'
-                    : 'text-white/70 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                <span className="text-sm font-medium">{module.title}</span>
-                {module.tier === 'lab' && (
-                  <span className="ml-auto text-xs text-white/40 bg-white/10 px-2 py-0.5 rounded">
-                    Lab
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-    );
-  };
+  const renderGroup = (label: string, panels: NavPanel[]) => (
+    <div className="space-y-1">
+      <p className="text-xs font-semibold text-white/30 uppercase tracking-widest px-3 pt-3 pb-1">
+        {label}
+      </p>
+      {panels.map((panel) => {
+        const Icon = panel.icon;
+        const active = isActive(panel.path);
+        const count = getBadgeCount(panel.badgeKey);
+        return (
+          <Link
+            key={panel.id}
+            to={panel.path}
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+              active
+                ? 'bg-primary/20 text-primary border border-primary/30'
+                : 'text-white/60 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="flex-1 font-medium truncate">{panel.title}</span>
+            {count > 0 && (
+              <span className="shrink-0 text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-1.5 py-0.5 leading-none">
+                {count > 99 ? '99+' : count}
+              </span>
+            )}
+          </Link>
+        );
+      })}
+    </div>
+  );
 
   return (
-    <aside className="w-64 flex-shrink-0 border-r border-border/60 bg-black/20 p-4">
-      <div className="mb-6">
-        <Link
-          to="/discovery"
-          className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-            currentPath === '/discovery'
-              ? 'bg-primary/20 text-primary border border-primary/30'
-              : 'text-white/70 hover:bg-white/5 hover:text-white'
-          }`}
-        >
-          <Compass className="h-4 w-4" />
-          <span className="text-sm font-medium">Overview</span>
-        </Link>
-      </div>
+    <aside className="w-56 flex-shrink-0 border-r border-border/60 bg-black/20 flex flex-col py-3 px-2 overflow-y-auto">
+      {/* Overview link */}
+      <Link
+        to="/discovery"
+        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors mb-1 ${
+          isActive('/discovery') && location.pathname === '/discovery'
+            ? 'bg-primary/20 text-primary border border-primary/30'
+            : 'text-white/70 hover:bg-white/5 hover:text-white'
+        }`}
+      >
+        <Compass className="h-4 w-4 shrink-0" />
+        <span>Overview</span>
+      </Link>
 
-      <div className="space-y-6">
-        {renderNavGroup('Core', coreModules, 'core')}
-        {renderNavGroup('Advanced', advancedModules, 'advanced')}
-        {renderNavGroup('Labs', labModules, 'lab')}
+      {/* Lorebook shortcut */}
+      <Link
+        to="/lorebook"
+        className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors mb-2"
+      >
+        <BookOpen className="h-4 w-4 shrink-0" />
+        <span>Generate Lorebook</span>
+      </Link>
+
+      <div className="border-t border-border/40 mt-1" />
+
+      <div className="flex-1 space-y-2 mt-1">
+        {renderGroup('Insights', INSIGHTS_PANELS)}
+        <div className="border-t border-border/30 mx-1" />
+        {renderGroup('Data & Control', DATA_CONTROL_PANELS)}
       </div>
     </aside>
   );
 };
-

@@ -363,7 +363,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
         {activeSurface === 'discovery' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-hidden">
             <DiscoveryHub />
           </div>
         )}

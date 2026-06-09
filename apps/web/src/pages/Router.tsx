@@ -238,13 +238,22 @@ export const Router = () => {
           </LazyRoute>
         } 
       />
-      <Route 
-        path="/discovery" 
+      <Route
+        path="/discovery"
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="discovery" /></AuthGate>
           </LazyRoute>
-        } 
+        }
+      />
+      {/* Sub-routes for Discovery panels — App surfaces as 'discovery' for all */}
+      <Route
+        path="/discovery/*"
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="discovery" /></AuthGate>
+          </LazyRoute>
+        }
       />
       <Route 
         path="/love" 
