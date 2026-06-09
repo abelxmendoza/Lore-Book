@@ -8,7 +8,7 @@ import { AISummaryCard } from './AISummaryCard';
 import { GraphVis } from './GraphVis';
 import { LoadingSkeleton } from './LoadingSkeleton';
 import { EmptyState } from './EmptyState';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Card, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Users } from 'lucide-react';
 import { RelationshipSentimentTimeline } from './RelationshipSentimentTimeline';
 import { RelationshipHeatmapCard } from './RelationshipHeatmapCard';
@@ -18,7 +18,7 @@ import { RelationshipForecastCard } from './RelationshipForecastCard';
 import { ArcAppearanceCard } from './ArcAppearanceCard';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
-import type { AnalyticsPayload } from '../../../server/src/services/analytics/types';
+import type { AnalyticsPayload, InsightData } from '../../hooks/useAnalytics';
 
 // Mock data for development/demo
 const MOCK_RELATIONSHIPS_DATA: AnalyticsPayload = {
@@ -230,7 +230,7 @@ export const RelationshipsAnalyticsPanel = () => {
         <div>
           <h3 className="text-lg font-semibold text-white mb-4">Visualizations</h3>
           <div className="space-y-6">
-            {data.charts.map((chart, index) => (
+            {data.charts.map((chart: import('../../hooks/useAnalytics').ChartData, index: number) => (
               <ChartCard
                 key={chart.id || index}
                 title={chart.title || 'Chart'}
@@ -271,7 +271,7 @@ export const RelationshipsAnalyticsPanel = () => {
         <div>
           <h3 className="text-lg font-semibold text-white mb-4">Insights</h3>
           <div className="space-y-3">
-            {data.insights.map((insight, index) => {
+            {data.insights.map((insight: InsightData, index: number) => {
               const insightText = typeof insight === 'string' ? insight : (insight?.text || '');
               const insightTitle = typeof insight === 'object' ? insight?.title : undefined;
               const insightCategory = typeof insight === 'object' ? insight?.category : undefined;

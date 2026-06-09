@@ -10,7 +10,7 @@ import { EmptyState } from './EmptyState';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { AlertCircle } from 'lucide-react';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
-import type { AnalyticsPayload } from '../../../server/src/services/analytics/types';
+import type { AnalyticsPayload, InsightData } from '../../hooks/useAnalytics';
 
 // Mock data for development
 const MOCK_SHADOW_DATA: AnalyticsPayload = {
@@ -273,7 +273,7 @@ export const ShadowAnalyticsPanel = () => {
         <div>
           <h3 className="text-lg font-semibold text-white mb-4">Insights</h3>
           <div className="space-y-3">
-            {data.insights.map((insight, index) => {
+            {data.insights.map((insight: InsightData, index: number) => {
               const insightText = typeof insight === 'string' ? insight : (insight?.text || '');
               const insightTitle = typeof insight === 'object' ? insight?.title : undefined;
               const insightCategory = typeof insight === 'object' ? insight?.category : undefined;

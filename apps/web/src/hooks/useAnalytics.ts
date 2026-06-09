@@ -2,7 +2,55 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
 import { getModuleByKey } from '../config/analyticsModules';
 import { shouldUseMockData } from './useShouldUseMockData';
-import type { AnalyticsPayload } from '../../../server/src/services/analytics/types';
+
+// Mirrored from server analytics types — kept client-side to avoid cross-package imports
+export interface ChartData {
+  id?: string;
+  type: 'line' | 'bar' | 'scatter' | 'pie' | 'area';
+  title: string;
+  description?: string;
+  data: Array<Record<string, unknown>>;
+  xAxis?: string;
+  yAxis?: string;
+  series?: string[];
+}
+
+export interface InsightData {
+  id?: string;
+  title?: string;
+  text?: string;
+  body?: string;
+  category?: string;
+  score?: number;
+}
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  type?: string;
+  group?: number;
+  size?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  value?: number;
+  label?: string;
+}
+
+export interface AnalyticsPayload {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metrics: Record<string, any>;
+  charts?: ChartData[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  graph?: { nodes: any[]; edges: any[] };
+  insights: InsightData[];
+  summary: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata?: Record<string, any>;
+}
 
 interface UseAnalyticsResult {
   data: AnalyticsPayload | null;
@@ -37,7 +85,7 @@ export function useAnalytics(moduleKey: string | null): UseAnalyticsResult {
       // Allow mock data fallback if toggle is enabled
       const result = await fetchJson<AnalyticsPayload>(endpoint, undefined, {
         useMockData: shouldUseMockData(),
-        mockData: null // Will be handled by individual panels
+        mockData: undefined // Will be handled by individual panels
       });
       setData(result);
     } catch (err) {
