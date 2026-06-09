@@ -90,6 +90,102 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   'calendar': Calendar
 };
 
+const AchievementCard: React.FC<{ achievement: Achievement & Record<string, any> }> = ({ achievement }) => {
+  const colors = RARITY_COLORS[achievement.rarity];
+  const Icon = achievement.icon_name ? ICON_MAP[achievement.icon_name] || Award : Award;
+  const RarityIcon = RARITY_ICONS[achievement.rarity];
+  const displayDate = achievement.achievement_date
+    ? new Date(achievement.achievement_date)
+    : new Date(achievement.unlocked_at);
+  const isRecent = Date.now() - new Date(achievement.unlocked_at).getTime() < 7 * 24 * 60 * 60 * 1000;
+  const isLegendary = achievement.rarity === 'legendary';
+
+  return (
+    <Card
+      className={`group relative overflow-hidden flex flex-col border-2 transition-all duration-300 ${colors.bg} ${colors.border} hover:shadow-xl ${isLegendary ? `shadow-lg ${colors.glow}` : ''}`}
+    >
+      {/* Base gradient — always on for legendary, hover-only for others */}
+      <div
+        className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} transition-opacity duration-300 ${isLegendary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+      />
+      {/* Legendary shimmer pulse */}
+      {isLegendary && (
+        <div className="absolute inset-0 bg-gradient-to-tr from-yellow-400/[0.07] via-transparent to-orange-300/[0.07] animate-pulse pointer-events-none" />
+      )}
+
+      {/* "New" badge */}
+      {isRecent && (
+        <div className="absolute top-2 left-2 z-10">
+          <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px] px-1.5 py-0.5 animate-pulse">
+            <Sparkles className="h-2.5 w-2.5 mr-1" />
+            New
+          </Badge>
+        </div>
+      )}
+      {/* Verified badge */}
+      {achievement.verified && (
+        <div className="absolute top-2 right-2 z-10">
+          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-[10px] px-1.5 py-0.5">
+            ✓ Verified
+          </Badge>
+        </div>
+      )}
+
+      <CardContent className="p-4 relative z-10 flex-1 flex flex-col gap-3">
+        {/* Icon + title */}
+        <div className="flex items-start gap-3">
+          <div className={`p-2.5 rounded-xl flex-shrink-0 ${colors.iconBg} border ${colors.border} group-hover:scale-110 transition-transform duration-300`}>
+            <Icon className={`h-6 w-6 sm:h-7 sm:w-7 ${colors.icon}`} />
+          </div>
+          <div className="flex-1 min-w-0 pt-0.5">
+            <CardTitle className={`text-sm sm:text-base font-bold ${colors.text} leading-tight mb-1`}>
+              {achievement.achievement_name}
+            </CardTitle>
+            <CardDescription className="text-white/60 text-xs sm:text-sm leading-relaxed line-clamp-3">
+              {achievement.description}
+            </CardDescription>
+          </div>
+        </div>
+
+        {/* Real-life extras */}
+        {achievement.life_category && (
+          <Badge variant="outline" className="self-start text-[10px] bg-pink-500/10 text-pink-400 border-pink-500/30">
+            {(achievement.life_category as string).replace('_', ' ')}
+          </Badge>
+        )}
+        {achievement.impact_description && (
+          <p className="text-[10px] sm:text-xs text-white/50 italic line-clamp-2 -mt-1">
+            {achievement.impact_description}
+          </p>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-white/10 pt-2 mt-auto">
+          <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-white/50">
+            <Calendar className="h-3 w-3 flex-shrink-0" />
+            <span>{displayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+          </div>
+          {achievement.xp_reward > 0 && (
+            <div className="flex items-center gap-1 bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-0.5">
+              <Zap className="h-3 w-3 text-yellow-400" />
+              <span className="text-yellow-400 font-bold text-[10px] sm:text-xs">+{achievement.xp_reward}</span>
+            </div>
+          )}
+        </div>
+      </CardContent>
+
+      {/* Rarity ribbon */}
+      <div className={`relative z-10 flex items-center justify-center gap-2 py-1.5 border-t ${colors.border} ${colors.iconBg}`}>
+        <RarityIcon className={`h-3 w-3 ${colors.icon}`} />
+        <span className={`text-[10px] font-bold tracking-widest uppercase ${colors.text}`}>
+          {achievement.rarity}
+        </span>
+        <RarityIcon className={`h-3 w-3 ${colors.icon}`} />
+      </div>
+    </Card>
+  );
+};
+
 export const AchievementsPanel: React.FC = () => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const [achievements, setAchievements] = useState<Achievement[]>([]);
@@ -335,168 +431,88 @@ export const AchievementsPanel: React.FC = () => {
         </TabsList>
 
         <TabsContent value="app_usage" className="mt-6">
-      {/* Filter */}
-          <div className="flex items-center gap-2 flex-wrap mb-6">
-            <span className="text-sm font-medium text-white/70">Filter:</span>
+          {/* Filter — single scrollable row */}
+          <div className="flex items-center gap-2 mb-6 overflow-x-auto scrollbar-none pb-1">
+            <span className="text-sm font-medium text-white/70 flex-shrink-0">Filter:</span>
             {(['all', 'common', 'uncommon', 'rare', 'epic', 'legendary'] as const).map((rarity) => {
-              const colors = rarity !== 'all' ? RARITY_COLORS[rarity] : null;
+              const rarityColors = rarity !== 'all' ? RARITY_COLORS[rarity] : null;
               return (
-          <button
-            key={rarity}
-            onClick={() => setFilter(rarity)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-              filter === rarity
+                <button
+                  type="button"
+                  key={rarity}
+                  onClick={() => setFilter(rarity)}
+                  className={`flex-shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 ${
+                    filter === rarity
                       ? rarity === 'all'
                         ? 'bg-purple-500/20 text-purple-400 border-2 border-purple-500/40 shadow-lg shadow-purple-500/20'
-                        : `bg-gradient-to-r ${colors?.gradient} ${colors?.text} border-2 ${colors?.border} shadow-lg ${colors?.glow}`
+                        : `bg-gradient-to-r ${rarityColors?.gradient} ${rarityColors?.text} border-2 ${rarityColors?.border} shadow-lg ${rarityColors?.glow}`
                       : 'bg-black/40 text-white/60 border border-white/10 hover:bg-white/5 hover:border-white/20'
                   }`}
                 >
                   {rarity === 'all' ? 'All' : rarity.charAt(0).toUpperCase() + rarity.slice(1)}
-          </button>
+                </button>
               );
             })}
-      </div>
+          </div>
 
-      {/* Achievements Grid */}
-      {achievements.length === 0 ? (
-        <EmptyState
+          {achievements.length === 0 ? (
+            <EmptyState
               title="No App Achievements Yet"
               description="Keep using the app to unlock achievements!"
-          icon={<Award className="h-12 w-12 text-white/20" />}
-        />
-      ) : (
-            <div className="h-[800px] overflow-y-auto pr-2">
-              <div className="grid grid-cols-3 gap-4">
-          {achievements.map((achievement) => {
-            const colors = RARITY_COLORS[achievement.rarity];
-            const Icon = achievement.icon_name ? ICON_MAP[achievement.icon_name] || Award : Award;
-                const RarityIcon = RARITY_ICONS[achievement.rarity];
-                const unlockedDate = new Date(achievement.unlocked_at);
-                const isRecent = Date.now() - unlockedDate.getTime() < 7 * 24 * 60 * 60 * 1000; // Within 7 days
-            
-                return (
-                  <Card 
-                    key={achievement.id} 
-                    className={`${colors.bg} ${colors.border} border-2 hover:border-opacity-60 transition-all duration-300 hover:shadow-lg ${colors.glow} group relative overflow-hidden h-full flex flex-col`}
-                  >
-                    {/* Gradient overlay */}
-                    <div className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-                    
-                    {/* Rarity indicator corner */}
-                    <div className={`absolute top-0 right-0 ${colors.iconBg} p-1.5 rounded-bl-lg`}>
-                      <RarityIcon className={`h-4 w-4 ${colors.icon}`} />
-                    </div>
-
-                    {isRecent && (
-                      <div className="absolute top-2 left-2 z-10">
-                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs px-2 py-0.5 animate-pulse">
-                          <Sparkles className="h-3 w-3 mr-1" />
-                          New
-                        </Badge>
-                      </div>
-                    )}
-
-                    <CardContent className="p-5 relative z-10 flex-1 flex flex-col">
-                      <div className="flex items-start gap-4 flex-1">
-                        {/* Icon */}
-                        <div className={`p-3 rounded-xl ${colors.iconBg} border-2 ${colors.border} group-hover:scale-110 transition-transform duration-300 flex-shrink-0`}>
-                          <Icon className={`h-8 w-8 ${colors.icon}`} />
-                        </div>
-                        
-                        {/* Content */}
-                        <div className="flex-1 min-w-0 flex flex-col">
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <CardTitle className={`text-lg font-bold ${colors.text} leading-tight`}>
-                              {achievement.achievement_name}
-                            </CardTitle>
-                          </div>
-                          
-                          <CardDescription className="text-white/70 text-sm mb-3 leading-relaxed flex-1 line-clamp-3">
-                            {achievement.description}
-                          </CardDescription>
-                          
-                          {/* Metadata */}
-                          <div className="flex items-center justify-between pt-3 border-t border-white/10 mt-auto">
-                            <div className="flex items-center gap-2 text-xs text-white/50">
-                              <Calendar className="h-3 w-3" />
-                              <span>{unlockedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                            </div>
-                            
-                            {achievement.xp_reward > 0 && (
-                              <div className="flex items-center gap-1.5 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-2.5 py-1">
-                                <Zap className="h-3.5 w-3.5 text-yellow-400" />
-                                <span className="text-yellow-400 font-bold text-sm">
-                                  +{achievement.xp_reward} XP
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-              </div>
+              icon={<Award className="h-12 w-12 text-white/20" />}
+            />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              {achievements.map((achievement) => (
+                <AchievementCard key={achievement.id} achievement={achievement} />
+              ))}
             </div>
           )}
         </TabsContent>
 
         <TabsContent value="real_life" className="mt-6">
-          {/* Create Achievement Button and Filter */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium text-white/70">Filter:</span>
+          {/* Add button + scrollable filter */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1 flex-1">
+              <span className="text-sm font-medium text-white/70 flex-shrink-0">Filter:</span>
               {([
-                'all', 
-                'career', 
-                'education', 
-                'health', 
-                'relationships', 
-                'creative', 
-                'financial', 
-                'personal_growth', 
-                'travel', 
-                'hobby',
-                'verified'
+                'all', 'career', 'education', 'health', 'relationships',
+                'creative', 'financial', 'personal_growth', 'travel', 'hobby', 'verified',
               ] as const).map((filterValue) => {
-              const isActive = realLifeFilter === filterValue;
-              const getFilterLabel = (val: string) => {
-                if (val === 'all') return 'All';
-                if (val === 'verified') return '✓ Verified';
-                return val.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-              };
-              
-              return (
-                <button
-                  key={filterValue}
-                  onClick={() => setRealLifeFilter(filterValue)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    isActive
-                      ? filterValue === 'all'
-                        ? 'bg-pink-500/20 text-pink-400 border-2 border-pink-500/40 shadow-lg shadow-pink-500/20'
-                        : filterValue === 'verified'
-                        ? 'bg-blue-500/20 text-blue-400 border-2 border-blue-500/40 shadow-lg shadow-blue-500/20'
-                        : 'bg-pink-500/20 text-pink-400 border-2 border-pink-500/40 shadow-lg shadow-pink-500/20'
-                      : 'bg-black/40 text-white/60 border border-white/10 hover:bg-white/5 hover:border-white/20'
-                  }`}
-                >
-                  {getFilterLabel(filterValue)}
-                </button>
-              );
-            })}
+                const isActive = realLifeFilter === filterValue;
+                const getFilterLabel = (val: string) => {
+                  if (val === 'all') return 'All';
+                  if (val === 'verified') return '✓ Verified';
+                  return val.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                };
+                return (
+                  <button
+                    type="button"
+                    key={filterValue}
+                    onClick={() => setRealLifeFilter(filterValue)}
+                    className={`flex-shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 ${
+                      isActive
+                        ? filterValue === 'verified'
+                          ? 'bg-blue-500/20 text-blue-400 border-2 border-blue-500/40 shadow-lg shadow-blue-500/20'
+                          : 'bg-pink-500/20 text-pink-400 border-2 border-pink-500/40 shadow-lg shadow-pink-500/20'
+                        : 'bg-black/40 text-white/60 border border-white/10 hover:bg-white/5 hover:border-white/20'
+                    }`}
+                  >
+                    {getFilterLabel(filterValue)}
+                  </button>
+                );
+              })}
             </div>
             <Button
+              type="button"
               onClick={() => setShowCreateDialog(true)}
-              className="bg-pink-500/20 text-pink-400 border-pink-500/40 hover:bg-pink-500/30"
+              className="bg-pink-500/20 text-pink-400 border border-pink-500/40 hover:bg-pink-500/30 flex-shrink-0 w-full sm:w-auto"
             >
               <Plus className="h-4 w-4 mr-2" />
               Add Achievement
             </Button>
           </div>
 
-          {/* Achievements Grid */}
           {achievements.length === 0 ? (
             <EmptyState
               title="No Real Life Achievements Yet"
@@ -504,111 +520,12 @@ export const AchievementsPanel: React.FC = () => {
               icon={<Heart className="h-12 w-12 text-white/20" />}
             />
           ) : (
-            <div className="h-[800px] overflow-y-auto pr-2">
-              <div className="grid grid-cols-3 gap-4">
-                {achievements.map((achievement) => {
-                  const colors = RARITY_COLORS[achievement.rarity];
-                  const Icon = achievement.icon_name ? ICON_MAP[achievement.icon_name] || Award : Award;
-                  const RarityIcon = RARITY_ICONS[achievement.rarity];
-                  const unlockedDate = new Date(achievement.unlocked_at);
-                  const isRecent = Date.now() - unlockedDate.getTime() < 7 * 24 * 60 * 60 * 1000; // Within 7 days
-                  const realLifeAchievement = achievement as any; // Type assertion for real-life specific fields
-                
-                return (
-                  <Card 
-                    key={achievement.id} 
-                    className={`${colors.bg} ${colors.border} border-2 hover:border-opacity-60 transition-all duration-300 hover:shadow-lg ${colors.glow} group relative overflow-hidden`}
-                  >
-                    {/* Gradient overlay */}
-                    <div className={`absolute inset-0 bg-gradient-to-br ${colors.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
-                    
-                    {/* Rarity indicator corner */}
-                    <div className={`absolute top-0 right-0 ${colors.iconBg} p-1.5 rounded-bl-lg`}>
-                      <RarityIcon className={`h-4 w-4 ${colors.icon}`} />
-                    </div>
-
-                    {isRecent && (
-                      <div className="absolute top-2 left-2 z-10">
-                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs px-2 py-0.5 animate-pulse">
-                          <Sparkles className="h-3 w-3 mr-1" />
-                          New
-                        </Badge>
-                      </div>
-                    )}
-
-                    {realLifeAchievement.verified && (
-                      <div className="absolute top-2 right-2 z-10">
-                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs px-2 py-0.5">
-                          ✓ Verified
-                        </Badge>
-                      </div>
-                    )}
-
-                    <CardContent className="p-5 relative z-10">
-                      <div className="flex items-start gap-4">
-                        {/* Icon */}
-                        <div className={`p-3 rounded-xl ${colors.iconBg} border-2 ${colors.border} group-hover:scale-110 transition-transform duration-300`}>
-                          <Icon className={`h-8 w-8 ${colors.icon}`} />
-                        </div>
-                        
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <CardTitle className={`text-lg font-bold ${colors.text} leading-tight`}>
-                              {achievement.achievement_name}
-                            </CardTitle>
-                          </div>
-                          
-                          <CardDescription className="text-white/70 text-sm mb-3 leading-relaxed">
-                        {achievement.description}
-                      </CardDescription>
-
-                          {/* Life Category Badge */}
-                          {realLifeAchievement.life_category && (
-                            <div className="mb-2">
-                              <Badge variant="outline" className="text-xs bg-pink-500/10 text-pink-400 border-pink-500/30">
-                                {realLifeAchievement.life_category.replace('_', ' ')}
-                              </Badge>
-                            </div>
-                          )}
-
-                          {/* Impact Description */}
-                          {realLifeAchievement.impact_description && (
-                            <p className="text-xs text-white/60 mb-3 italic">
-                              {realLifeAchievement.impact_description}
-                            </p>
-                          )}
-                          
-                          {/* Metadata */}
-                          <div className="flex items-center justify-between pt-3 border-t border-white/10">
-                            <div className="flex items-center gap-2 text-xs text-white/50">
-                              <Calendar className="h-3 w-3" />
-                              <span>
-                                {realLifeAchievement.achievement_date 
-                                  ? new Date(realLifeAchievement.achievement_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                                  : unlockedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                                }
-                        </span>
-                            </div>
-                            
-                        {achievement.xp_reward > 0 && (
-                              <div className="flex items-center gap-1.5 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-2.5 py-1">
-                                <Zap className="h-3.5 w-3.5 text-yellow-400" />
-                                <span className="text-yellow-400 font-bold text-sm">
-                            +{achievement.xp_reward} XP
-                          </span>
-                              </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-              </div>
-        </div>
-      )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+              {achievements.map((achievement) => (
+                <AchievementCard key={achievement.id} achievement={achievement} />
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

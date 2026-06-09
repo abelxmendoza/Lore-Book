@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   Compass, Heart, Brain, Users, TrendingUp, Target, Clock, MapPin,
   AlertCircle, Zap, HeartPulse, Database, ClipboardCheck, Activity,
-  Ghost, BookOpen
+  Ghost, BookOpen, CalendarDays, BarChart3, Trophy, ScrollText
 } from 'lucide-react';
 import { useDiscoverySummary } from '../../hooks/useDiscoverySummary';
 
@@ -25,6 +25,9 @@ const INSIGHTS_PANELS: NavPanel[] = [
   { id: 'shadow',               title: 'Shadow',                  path: '/discovery/shadow',                icon: AlertCircle },
   { id: 'xp',                   title: 'Skills & Progress',       path: '/discovery/xp',                   icon: Zap },
   { id: 'reactions-resilience', title: 'Reactions & Resilience',  path: '/discovery/reactions-resilience',  icon: HeartPulse },
+  { id: 'activity',             title: 'Activity Calendar',        path: '/discovery/activity',              icon: CalendarDays },
+  { id: 'life-stats',           title: 'Life Stats',               path: '/discovery/life-stats',            icon: BarChart3 },
+  { id: 'achievements',         title: 'Achievements',             path: '/discovery/achievements',          icon: Trophy },
 ];
 
 const DATA_CONTROL_PANELS: NavPanel[] = [
@@ -32,8 +35,8 @@ const DATA_CONTROL_PANELS: NavPanel[] = [
   { id: 'memory-review',        title: 'Memory Review Queue',     path: '/discovery/memory-review',         icon: ClipboardCheck,  badgeKey: 'pendingProposals' },
   { id: 'continuity',           title: 'Continuity',              path: '/discovery/continuity',            icon: Activity },
   { id: 'correction-dashboard', title: 'Corrections & Pruning',   path: '/discovery/correction-dashboard',  icon: AlertCircle,     badgeKey: 'openContradictions' },
-  { id: 'entity-resolution',    title: 'Entity Resolution',       path: '/discovery/entity-resolution',     icon: Users },
   { id: 'memory-fade',          title: 'Memory Fade Index',       path: '/discovery/memory-fade',           icon: Ghost,           badgeKey: 'fadingMemories' },
+  { id: 'knowledge-records',    title: 'Knowledge Records',       path: '/discovery/knowledge-records',     icon: ScrollText },
 ];
 
 export const DiscoveryNav = () => {

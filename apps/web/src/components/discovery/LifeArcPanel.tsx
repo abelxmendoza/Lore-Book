@@ -4,7 +4,7 @@
 // =====================================================
 
 import { useState } from 'react';
-import { Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, TrendingUp, RefreshCw, Eye, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, TrendingUp, RefreshCw, Eye } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -13,11 +13,51 @@ import { useLifeArc, type Timeframe } from '../../hooks/useLifeArc';
 import { format, parseISO } from 'date-fns';
 import { EventDetailModal, type Event } from '../events/EventDetailModal';
 import { StabilityCard } from './StabilityCard';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+
+const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
+
+const MOCK_LIFE_ARC = {
+  timeframe: 'LAST_30_DAYS' as Timeframe,
+  is_silence: false,
+  stability_state: null,
+  narrative_summary: {
+    text: "This has been an active month. You've been pushing through a major creative project, navigating some tension with a close friend, and finding unexpected comfort in your morning routine. The thread connecting it all: a period of deliberate, intentional building.",
+  },
+  event_groups: {
+    significant_events: [
+      { id: 'mock-e1', title: 'Finished the first draft', summary: 'Stayed up until 3am to complete it. Relief mixed with vulnerability.', start_time: ago(4), people: ['Jordan'], locations: ['Home Office'], confidence: 0.92 },
+      { id: 'mock-e2', title: 'Difficult conversation with Maya', summary: 'Finally addressed the tension that had been building for weeks. It went better than expected.', start_time: ago(11), people: ['Maya'], locations: [], confidence: 0.88 },
+      { id: 'mock-e3', title: 'Started the morning run habit', summary: 'Three weeks in and still going. First time a fitness routine has stuck in years.', start_time: ago(21), people: [], locations: ['Riverside Park'], confidence: 0.85 },
+      { id: 'mock-e4', title: 'Mentor meeting — career crossroads', summary: 'Long conversation about the next 2 years. More clarity than expected.', start_time: ago(7), people: ['Dr. Chen'], locations: ['Coffee Shop'], confidence: 0.79 },
+    ],
+    recurring_patterns: [
+      { label: 'Late-night creative work', frequency: 6 },
+      { label: 'Morning reflection', frequency: 18 },
+      { label: 'Avoidance before difficult conversations', frequency: 3 },
+    ],
+    unresolved_events: [
+      { id: 'mock-u1', title: 'The thing with Alex at the party', summary: "Something felt off but you haven't addressed it yet.", start_time: ago(14), people: ['Alex'], locations: ["Jamie's apartment"], confidence: 0.52 },
+    ],
+  },
+  change_signals: {
+    first_time_people: ['Dr. Chen'],
+    first_time_locations: ['Riverside Park'],
+    pattern_shifts: ['Sleep schedule shifted ~2 hours later'],
+    emotional_shifts: ['More grounded tone in recent entries'],
+  },
+  events_with_continuity: [] as any[],
+};
 
 export const LifeArcPanel: React.FC = () => {
+  const isMockData = useShouldUseMockData();
   const [timeframe, setTimeframe] = useState<Timeframe>('LAST_30_DAYS');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const { data, loading, error, refresh } = useLifeArc(timeframe);
+  const { data: realData, loading: realLoading, error: realError, refresh } = useLifeArc(timeframe);
+
+  const data = isMockData ? MOCK_LIFE_ARC : realData;
+  const loading = isMockData ? false : realLoading;
+  const error = isMockData ? null : realError;
 
   const humanizeTimeframe = (tf: Timeframe): string => {
     switch (tf) {

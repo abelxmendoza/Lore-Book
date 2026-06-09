@@ -156,13 +156,22 @@ export const Router = () => {
           </LazyRoute>
         } 
       />
-      <Route 
-        path="/lorebook" 
+      <Route
+        path="/lorebook"
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="lorebook" /></AuthGate>
           </LazyRoute>
-        } 
+        }
+      />
+      {/* Wildcard so /lorebook/* (future sub-routes, focus params, etc.) still surface as lorebook */}
+      <Route
+        path="/lorebook/*"
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="lorebook" /></AuthGate>
+          </LazyRoute>
+        }
       />
       <Route 
         path="/photos" 
@@ -271,13 +280,21 @@ export const Router = () => {
           </LazyRoute>
         } 
       />
-      <Route 
-        path="/gaps" 
+      <Route
+        path="/gaps"
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="gaps" /></AuthGate>
           </LazyRoute>
-        } 
+        }
+      />
+      <Route
+        path="/saga"
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="saga" /></AuthGate>
+          </LazyRoute>
+        }
       />
       <Route 
         path="/continuity" 

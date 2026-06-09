@@ -4,9 +4,9 @@
  */
 
 import { useState } from 'react';
-import { 
-  CheckCircle2, 
-  Clock, 
+import {
+  CheckCircle2,
+  Clock,
   AlertCircle,
   Heart,
   Briefcase,
@@ -20,6 +20,41 @@ import {
   Plus
 } from 'lucide-react';
 import { useDecisionMemory, type DecisionSummary, type DecisionType, type OutcomeSentiment } from '../../hooks/useDecisionMemory';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+
+const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
+
+const MOCK_DECISIONS = [
+  {
+    decision: { id: 'mock-d1', decision_type: 'CAREER' as DecisionType, title: 'Whether to take the lead role on the new project', description: 'The company offered me the lead position on the new product launch. Bigger scope, more visibility, but also more risk if it fails.', created_at: ago(45), uncertainty_notes: 'Not sure if the timing is right given everything else going on.' },
+    options: [
+      { id: 'mock-o1', option_text: 'Accept the lead role — stretch opportunity', perceived_risks: 'Burnout risk, higher stakes if it fails', perceived_rewards: 'Career growth, more autonomy, team leadership experience' },
+      { id: 'mock-o2', option_text: 'Stay in current role — safer path', perceived_risks: 'May miss the window for this kind of opportunity', perceived_rewards: 'Lower stress, maintain focus on current work' },
+    ],
+    rationale: { reasoning: "I keep coming back to the fact that the comfortable choice is also the one I'll regret more. The risk is real but manageable.", values_considered: ['growth', 'security', 'impact'], emotions_present: ['excitement', 'anxiety', 'self-doubt'], constraints: ['bandwidth is tight right now'], known_unknowns: 'Whether the project will actually get the resources it needs.' },
+    outcomes: [
+      { id: 'mock-out1', sentiment: 'POSITIVE' as OutcomeSentiment, recorded_at: ago(10), outcome_text: "Took the role. Three weeks in and it's intense but I'm learning a lot. The team has been more supportive than I expected." },
+    ],
+  },
+  {
+    decision: { id: 'mock-d2', decision_type: 'RELATIONSHIP' as DecisionType, title: 'How to handle the growing distance with Sam', description: "We used to talk every week. Haven't spoken in two months. Deciding whether to reach out or let it fade.", created_at: ago(30), uncertainty_notes: null },
+    options: [
+      { id: 'mock-o3', option_text: 'Reach out and be direct about noticing the drift', perceived_risks: 'Awkward conversation', perceived_rewards: 'Restore a meaningful friendship' },
+      { id: 'mock-o4', option_text: 'Let the friendship naturally wind down', perceived_risks: 'Regret later', perceived_rewards: 'Avoid potential discomfort now' },
+    ],
+    rationale: { reasoning: 'Sam has been a real friend. The silence is probably just life getting in the way, not something deeper.', values_considered: ['loyalty', 'honesty'], emotions_present: ['nostalgia', 'mild guilt'], constraints: [], known_unknowns: undefined },
+    outcomes: [],
+  },
+  {
+    decision: { id: 'mock-d3', decision_type: 'CREATIVE' as DecisionType, title: 'Share the draft publicly now or keep refining solo', description: 'The piece feels close but not quite there. Do I share it with a wider audience and use feedback, or keep refining alone?', created_at: ago(8), uncertainty_notes: "Hard to tell if it needs more time or if I'm just scared." },
+    options: [
+      { id: 'mock-o5', option_text: 'Share now with a small trusted circle', perceived_risks: 'Feedback might derail the current vision', perceived_rewards: 'Fresh perspective, accountability' },
+      { id: 'mock-o6', option_text: 'Give it two more weeks solo', perceived_risks: 'Overthinking it into the ground', perceived_rewards: 'More ownership over the final form' },
+    ],
+    rationale: { reasoning: "The perfectionist in me wants more time but the pattern is that 'more time' never ends.", values_considered: ['creative integrity', 'growth', 'vulnerability'], emotions_present: ['fear', 'pride', 'anticipation'], constraints: [], known_unknowns: 'How the people I share it with will actually receive it.' },
+    outcomes: [],
+  },
+];
 
 const DecisionTypeIcon = ({ type }: { type: DecisionType }) => {
   const icons = {
@@ -286,7 +321,12 @@ const DecisionCard = ({ summary, onOutcomeRecord }: { summary: DecisionSummary; 
 };
 
 export const DecisionMemoryPanel = () => {
-  const { decisions, loading, error, refetch } = useDecisionMemory({ limit: 20 });
+  const isMockData = useShouldUseMockData();
+  const { decisions: realDecisions, loading: realLoading, error: realError, refetch } = useDecisionMemory({ limit: 20 });
+
+  const decisions = isMockData ? MOCK_DECISIONS as unknown as DecisionSummary[] : realDecisions;
+  const loading = isMockData ? false : realLoading;
+  const error = isMockData ? null : realError;
 
   // Group by decision type
   const grouped = decisions.reduce((acc, summary) => {

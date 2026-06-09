@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Filter, X, Sparkles, List as ListIcon, Award } from 'lucide-react';
+import { Search, Filter, X, Sparkles, Award, Check, Pause, Play, ArrowUpDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { QuestDetailPanel } from './QuestDetailPanel';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
-import { useQuestBoard } from '../../hooks/useQuests';
+import { useQuestBoard, useStartQuest, useCompleteQuest, usePauseQuest } from '../../hooks/useQuests';
 import type { Quest, QuestStatus, QuestType } from '../../types/quest';
 
 // Prevent body scroll only when mobile detail overlay is open (sm:hidden fixed modal)
@@ -35,6 +35,14 @@ const useIsMobile = () => {
   return isMobile;
 };
 
+const SORT_KEYS = ['priority', 'activity', 'progress', 'due_date'] as const;
+const SORT_LABELS: Record<string, string> = {
+  priority: 'PRIORITY',
+  activity: 'RECENT',
+  progress: 'PROGRESS',
+  due_date: 'DUE SOON',
+};
+
 export const QuestBoard = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -51,7 +59,13 @@ export const QuestBoard = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'today' | 'week' | 'main' | 'side' | 'completed'>('all');
-  
+  const [sortKey, setSortKey] = useState<'priority' | 'activity' | 'progress' | 'due_date'>('priority');
+  const cycleSort = () => setSortKey(prev => SORT_KEYS[(SORT_KEYS.indexOf(prev) + 1) % SORT_KEYS.length]);
+
+  const startQuest = useStartQuest();
+  const completeQuest = useCompleteQuest();
+  const pauseQuest = usePauseQuest();
+
   const { data: board, isLoading, error } = useQuestBoard();
 
   // Get all unique categories from quests
@@ -201,8 +215,25 @@ export const QuestBoard = () => {
     const byId = new Map<string, Quest>();
     questsToFilter.forEach(q => { if (!byId.has(q.id)) byId.set(q.id, q); });
     const unique = Array.from(byId.values());
-    return filterQuests(unique);
-  }, [selectedCategory, mainQuests, sideQuests, todaysQuests, thisWeeksQuests, completedQuests, filterQuests]);
+    const filtered = filterQuests(unique);
+    return [...filtered].sort((a, b) => {
+      switch (sortKey) {
+        case 'priority': return b.priority - a.priority;
+        case 'activity': {
+          const at = a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0;
+          const bt = b.last_activity_at ? new Date(b.last_activity_at).getTime() : 0;
+          return bt - at;
+        }
+        case 'progress': return b.progress_percentage - a.progress_percentage;
+        case 'due_date': {
+          const ad = a.estimated_completion_date ? new Date(a.estimated_completion_date).getTime() : Infinity;
+          const bd = b.estimated_completion_date ? new Date(b.estimated_completion_date).getTime() : Infinity;
+          return ad - bd;
+        }
+        default: return 0;
+      }
+    });
+  }, [selectedCategory, mainQuests, sideQuests, todaysQuests, thisWeeksQuests, completedQuests, filterQuests, sortKey]);
 
   // Auto-select first quest if none selected or current selection is not in displayed quests
   // Only auto-select on desktop (not mobile) to avoid auto-opening modal
@@ -279,6 +310,35 @@ export const QuestBoard = () => {
     }
   };
 
+  const getTypeStripeColor = (type: string) => {
+    switch (type) {
+      case 'main': return 'bg-blue-500';
+      case 'side': return 'bg-purple-500';
+      case 'daily': return 'bg-green-500';
+      case 'achievement': return 'bg-yellow-500';
+      default: return 'bg-primary';
+    }
+  };
+
+  const getTimeAgo = (dateStr?: string): string | null => {
+    if (!dateStr) return null;
+    const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+    if (diff < 2592000) return `${Math.floor(diff / 604800)}w ago`;
+    return `${Math.floor(diff / 2592000)}mo ago`;
+  };
+
+  const getActivityColor = (dateStr?: string) => {
+    if (!dateStr) return 'text-white/20';
+    const days = (Date.now() - new Date(dateStr).getTime()) / 86400000;
+    if (days < 7) return 'text-green-400/70';
+    if (days < 30) return 'text-yellow-400/70';
+    return 'text-red-400/50';
+  };
+
   return (
     <div className="flex-1 min-h-0 flex flex-col w-full">
       <div className="flex-shrink-0 px-2 sm:px-4 pt-2 sm:pt-3">
@@ -303,6 +363,15 @@ export const QuestBoard = () => {
           
           {/* Filters & Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={cycleSort}
+              className="h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50"
+            >
+              <ArrowUpDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 sm:mr-2" />
+              <span className="hidden sm:inline">{SORT_LABELS[sortKey]}</span>
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -333,7 +402,7 @@ export const QuestBoard = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate('/discovery?panel=achievements')}
+              onClick={() => navigate('/discovery/achievements')}
               className="h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50"
             >
               <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
@@ -403,7 +472,7 @@ export const QuestBoard = () => {
         {/* Left Panel - Quest List */}
         <div className="w-full sm:w-1/2 lg:w-2/5 border-r-0 sm:border-r border-primary/20 bg-black/20 flex flex-col min-h-0 pr-0 sm:pr-4">
           {/* Category Tabs */}
-          <div className="flex flex-wrap border-b border-primary/20 bg-black/40 flex-shrink-0">
+          <div className="flex overflow-x-auto sm:flex-wrap border-b border-primary/20 bg-black/40 flex-shrink-0 scrollbar-none">
             {[
               { id: 'all', label: 'ALL', count: mainQuests.length + sideQuests.length + todaysQuests.length + thisWeeksQuests.length + completedQuests.length },
               { id: 'today', label: 'TODAY', count: todaysQuests.length, color: 'primary' },
@@ -449,7 +518,7 @@ export const QuestBoard = () => {
                       setSelectedQuestId(displayedQuests[0]?.id || null);
                     }
                   }}
-                  className={`flex-1 min-w-[50%] sm:min-w-[33.333%] px-2 py-1.5 sm:px-4 sm:py-2 sm:py-3 text-[10px] sm:text-xs sm:text-sm font-mono transition-all ${getTabClasses()}`}
+                  className={`flex-shrink-0 whitespace-nowrap min-h-[44px] sm:flex-1 sm:min-w-[33.333%] sm:min-h-0 px-3 py-2 sm:px-4 sm:py-3 text-[10px] sm:text-sm font-mono transition-all ${getTabClasses()}`}
                 >
                   <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                     <span>{tab.label}</span>
@@ -465,67 +534,129 @@ export const QuestBoard = () => {
           {/* Quest List */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden p-1.5 sm:p-2 sm:p-4 space-y-1.5 sm:space-y-2 min-h-0 scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent" style={{ WebkitOverflowScrolling: 'touch' }}>
             {displayedQuests.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <div className="text-primary/40 text-2xl mb-4 font-mono">[NO QUESTS]</div>
-                <p className="text-white/40 text-sm font-mono">
-                  {hasActiveFilters 
-                    ? 'Try adjusting your filters' 
-                    : 'Quests will be auto-detected from conversations'}
+              <div className="flex flex-col items-center justify-center h-full text-center p-6 sm:p-8 gap-3">
+                <div className="text-primary/20 font-mono text-[10px] leading-relaxed select-none whitespace-pre">
+                  {'╔═══════════╗\n║  ·  ·  ·  ║\n║           ║\n║  empty    ║\n╚═══════════╝'}
+                </div>
+                <div className="text-primary/40 text-base font-mono font-bold">[QUEST LOG EMPTY]</div>
+                <p className="text-white/40 text-xs font-mono max-w-[220px] leading-relaxed">
+                  {hasActiveFilters
+                    ? '> Adjust or clear your filters to see quests'
+                    : '> Mention a goal in Chat — quests are auto-detected from your story'}
                 </p>
+                {!hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/chat')}
+                    className="mt-1 text-xs text-primary/60 hover:text-primary border border-primary/20 hover:border-primary/40 px-3 py-1.5 rounded font-mono transition-colors"
+                  >
+                    GO TO CHAT →
+                  </button>
+                )}
               </div>
             ) : (
-              displayedQuests.map((quest) => (
-                <button
-                  key={quest.id}
-                  onClick={() => setSelectedQuestId(quest.id)}
-                  className={`w-full text-left p-2 sm:p-3 sm:p-4 rounded border transition-all ${
-                    selectedQuestId === quest.id
-                      ? 'border-primary/70 bg-primary/20 shadow-neon'
-                      : `${getStatusColor(quest.status)} hover:border-primary/50 hover:bg-primary/10`
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-[10px] sm:text-xs font-mono ${getTypeColor(quest.quest_type)}`}>
+              displayedQuests.map((quest) => {
+                const activityTime = getTimeAgo(quest.last_activity_at);
+                const activityColor = getActivityColor(quest.last_activity_at);
+                return (
+                  <button
+                    type="button"
+                    key={quest.id}
+                    onClick={() => setSelectedQuestId(quest.id)}
+                    className={`relative w-full text-left p-2 sm:p-3 rounded border transition-all overflow-hidden ${
+                      selectedQuestId === quest.id
+                        ? 'border-primary/70 bg-primary/20 shadow-neon'
+                        : `${getStatusColor(quest.status)} hover:border-primary/50 hover:bg-primary/10`
+                    }`}
+                  >
+                    {/* Left type accent stripe */}
+                    <span className={`absolute left-0 inset-y-0 w-[3px] ${getTypeStripeColor(quest.quest_type)}`} aria-hidden="true" />
+
+                    {/* Header row: type badge + quick actions */}
+                    <div className="flex items-center justify-between gap-1 mb-1 pl-1">
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <span className={`text-[10px] sm:text-xs font-mono flex-shrink-0 ${getTypeColor(quest.quest_type)}`}>
                           {quest.quest_type.toUpperCase()}
                         </span>
                         {quest.source === 'extracted' && (
-                          <span className="text-[8px] sm:text-[10px] text-primary/60 font-mono">[AUTO]</span>
+                          <span className="text-[8px] sm:text-[10px] text-primary/60 font-mono flex-shrink-0">[AUTO]</span>
                         )}
                       </div>
-                      <h3 className="text-xs sm:text-sm sm:text-base font-bold text-white mb-1 font-mono truncate">
-                        {quest.title}
-                      </h3>
-                      {quest.description && (
-                        <p className="text-xs sm:text-sm text-white/60 line-clamp-2 mb-2">
-                          {quest.description}
-                        </p>
-                      )}
+                      {/* Quick actions — desktop only */}
+                      <div
+                        className="hidden sm:flex items-center gap-0.5 flex-shrink-0"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {quest.status === 'active' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => { pauseQuest.mutateAsync(quest.id).catch(() => {}); }}
+                              className="h-6 w-6 flex items-center justify-center rounded text-white/30 hover:text-orange-400 hover:bg-orange-400/10 transition-colors"
+                              title="Pause"
+                            >
+                              <Pause className="h-2.5 w-2.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { completeQuest.mutateAsync({ questId: quest.id }).catch(() => {}); }}
+                              className="h-6 w-6 flex items-center justify-center rounded text-white/30 hover:text-green-400 hover:bg-green-400/10 transition-colors"
+                              title="Complete"
+                            >
+                              <Check className="h-2.5 w-2.5" />
+                            </button>
+                          </>
+                        )}
+                        {quest.status === 'paused' && (
+                          <button
+                            type="button"
+                            onClick={() => { startQuest.mutateAsync(quest.id).catch(() => {}); }}
+                            className="h-6 w-6 flex items-center justify-center rounded text-white/30 hover:text-blue-400 hover:bg-blue-400/10 transition-colors"
+                            title="Resume"
+                          >
+                            <Play className="h-2.5 w-2.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  
-                  {/* Progress Bar */}
-                  <div className="relative mb-2">
-                    <div className="w-full h-1.5 bg-black/60 rounded-sm overflow-hidden border border-primary/20">
+
+                    {/* Title */}
+                    <h3 className="text-xs sm:text-sm font-bold text-white mb-1 font-mono truncate pl-1">
+                      {quest.title}
+                    </h3>
+
+                    {/* Description */}
+                    {quest.description && (
+                      <p className="text-[10px] sm:text-xs text-white/60 line-clamp-2 mb-2 pl-1">
+                        {quest.description}
+                      </p>
+                    )}
+
+                    {/* Progress Bar */}
+                    <div className="w-full h-1.5 bg-black/60 rounded-sm overflow-hidden border border-primary/20 mb-1.5">
                       <div
                         className="h-full bg-gradient-to-r from-primary via-secondary to-primary transition-all duration-500 shadow-[0_0_8px_rgba(154,77,255,0.4)]"
                         style={{ width: `${quest.progress_percentage}%` }}
                       />
                     </div>
-                    <div className="text-[10px] sm:text-xs text-primary/60 mt-1 font-mono">
-                      {Math.round(quest.progress_percentage)}% COMPLETE
-                    </div>
-                  </div>
 
-                  {/* Stats */}
-                  <div className="flex items-center gap-2 sm:gap-3 sm:gap-4 text-[9px] sm:text-[10px] sm:text-xs text-white/50 font-mono">
-                    <span>PRI: {quest.priority}</span>
-                    <span>IMP: {quest.importance}</span>
-                    <span>IMPACT: {quest.impact}</span>
-                  </div>
-                </button>
-              ))
+                    {/* Footer: stats + last activity */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-[9px] sm:text-[10px] text-white/50 font-mono">
+                        <span>PRI:{quest.priority}</span>
+                        <span>IMP:{quest.importance}</span>
+                        <span>{Math.round(quest.progress_percentage)}%</span>
+                      </div>
+                      {activityTime && (
+                        <div className={`flex items-center gap-1 text-[9px] font-mono flex-shrink-0 ${activityColor}`}>
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
+                          <span>{activityTime}</span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>

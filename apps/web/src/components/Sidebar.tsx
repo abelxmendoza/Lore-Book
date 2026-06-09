@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, Brain, ExternalLink } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, ExternalLink } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -262,20 +262,6 @@ const SidebarContent = ({
             Life Saga
           </button>
           <button
-            onClick={() => handleSurfaceChange('continuity')}
-            aria-label="Open continuity engine"
-            aria-current={activeSurface === 'continuity' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'continuity'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
-            Continuity
-          </button>
-          <button
             onClick={() => handleSurfaceChange('discovery')}
             aria-label="Open discovery hub"
             aria-current={activeSurface === 'discovery' ? 'page' : undefined}
@@ -321,20 +307,6 @@ const SidebarContent = ({
           {/* 5. Your content */}
           <p className="mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40 px-1">Your content</p>
           <button
-            onClick={() => handleSurfaceChange('memoir')}
-            aria-label="Open biography editor"
-            aria-current={activeSurface === 'memoir' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'memoir'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <BookOpen className="h-4 w-4 text-primary" aria-hidden="true" />
-            My Biography Editor
-          </button>
-          <button
             onClick={() => handleSurfaceChange('lorebook')}
             aria-label="Open lore book"
             aria-current={activeSurface === 'lorebook' ? 'page' : undefined}
@@ -345,8 +317,22 @@ const SidebarContent = ({
                 : 'border-primary/50 bg-primary/5 text-white hover:border-primary hover:bg-primary/15 hover:shadow-md hover:shadow-primary/10'
             )}
           >
-            <BookMarked className="h-5 w-5 text-primary" aria-hidden="true" />
+            <BookMarked className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
             LoreBooks
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('memoir')}
+            aria-label="Open lore editor"
+            aria-current={activeSurface === 'memoir' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ml-3",
+              activeSurface === 'memoir'
+                ? 'border-primary/40 bg-primary/10 text-white'
+                : 'border-transparent text-white/50 hover:border-primary/30 hover:text-white/80 hover:bg-primary/5'
+            )}
+          >
+            <BookOpen className="h-3.5 w-3.5 text-primary/70 shrink-0" aria-hidden="true" />
+            Edit Lore
           </button>
           <button
             onClick={() => handleSurfaceChange('photos')}
@@ -409,20 +395,6 @@ const SidebarContent = ({
           >
             <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
             Privacy & Security
-          </button>
-          <button
-            onClick={() => navigate('/what-ai-knows')}
-            aria-label="What the AI knows about you"
-            aria-current={isActiveRoute('/what-ai-knows') ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              isActiveRoute('/what-ai-knows')
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Brain className="h-4 w-4 text-primary" aria-hidden="true" />
-            What AI Knows
           </button>
           <button
             onClick={() => handleSurfaceChange('guide')}

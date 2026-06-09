@@ -349,9 +349,10 @@ class OmegaChatService {
     currentEmotionalState?: EmotionalState | null,
     currentFocusLine?: string,
     timelineInsight?: ChatContextExtension & { layer?: string },
-    continuityIntent?: import('../../utils/continuityIntentDetection').ContinuityIntent | null
+    continuityIntent?: import('../../utils/continuityIntentDetection').ContinuityIntent | null,
+    userId?: string
   ): string {
-    return _buildSystemPrompt(orchestratorSummary, connections, continuityWarnings, strategicGuidance, sources, loreData, entityContext, entityAnalytics, entityConfidence, analyticsGate, personaBlend, transitionAnalysis, currentEmotionalState, currentFocusLine, timelineInsight, continuityIntent);
+    return _buildSystemPrompt(orchestratorSummary, connections, continuityWarnings, strategicGuidance, sources, loreData, entityContext, entityAnalytics, entityConfidence, analyticsGate, personaBlend, transitionAnalysis, currentEmotionalState, currentFocusLine, timelineInsight, continuityIntent, userId);
   }
 
   /**
@@ -992,7 +993,8 @@ class OmegaChatService {
       undefined,
       currentFocusLine,
       timelineInsight,
-      continuityIntent
+      continuityIntent,
+      userId
     );
 
     if (returnToThreadContext) {
@@ -1702,7 +1704,9 @@ class OmegaChatService {
       undefined,
       undefined,
       currentFocusLine,
-      timelineInsightChat
+      timelineInsightChat,
+      undefined,
+      userId
     );
 
     if (refinementClarificationChat) {

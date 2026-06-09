@@ -12,15 +12,42 @@ interface RateLimitStore {
 const store: RateLimitStore = {};
 
 // SECURITY: Properly detect production environment
-const isDevelopment = () => process.env.NODE_ENV === 'development' || 
+const isDevelopment = () => process.env.NODE_ENV === 'development' ||
                       process.env.NODE_ENV === 'test' ||
                       (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');
-const isProduction = () => process.env.NODE_ENV === 'production' || 
-                     process.env.API_ENV === 'production';
 
 // More lenient rate limits in development
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const getMaxRequests = () => isDevelopment() ? 10000 : 100; // Much higher limit in dev
+
+// Factory for endpoint-specific rate limiters
+export function createRateLimiter(prodMax: number, windowMs = RATE_LIMIT_WINDOW_MS) {
+  const limitStore: RateLimitStore = {};
+  return (req: Request, res: Response, next: NextFunction) => {
+    const clientId = getClientId(req);
+    const now = Date.now();
+    const record = limitStore[clientId];
+    if (!record || now > record.resetTime) {
+      limitStore[clientId] = { count: 1, resetTime: now + windowMs };
+      return next();
+    }
+    const max = isDevelopment() ? 10000 : prodMax;
+    if (record.count >= max) {
+      logSecurityEvent('rate_limit_exceeded', {
+        ip: req.ip, path: req.path,
+        clientId: clientId.substring(0, 8),
+        userAgent: req.headers['user-agent'] || 'unknown',
+      });
+      return res.status(429).json({
+        error: 'Too many requests',
+        message: 'Rate limit exceeded. Please try again later.',
+        retryAfter: Math.ceil((record.resetTime - now) / 1000),
+      });
+    }
+    record.count++;
+    next();
+  };
+}
 
 const getClientId = (req: Request): string => {
   return (req as any).user?.id || req.ip || 'anonymous';

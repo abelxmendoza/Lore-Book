@@ -3,13 +3,16 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { rateLimitMiddleware } from '../middleware/rateLimit';
+import { rateLimitMiddleware, createRateLimiter } from '../middleware/rateLimit';
 import { checkAiRequestLimit } from '../middleware/subscription';
 import { omegaChatService } from '../services/omegaChatService';
 import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
 import { incrementAiRequestCount } from '../services/usageTracking';
 import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
 import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
+
+// AI endpoints get their own stricter limit: 30 req/15min in prod, unlimited in dev
+const aiRateLimit = createRateLimiter(30);
 
 const personaRL = new ChatPersonaRL();
 
@@ -36,8 +39,8 @@ const chatSchema = z.object({
   message: z.string().min(1).max(5000),
   conversationHistory: z.array(z.object({
     role: z.enum(['user', 'assistant']),
-    content: z.string()
-  })).optional(),
+    content: z.string().max(4000)
+  })).max(50).optional(),
   stream: z.boolean().optional().default(false),
   entityContext: z.object({
     type: z.enum(['CHARACTER', 'LOCATION', 'PERCEPTION', 'MEMORY', 'ENTITY', 'GOSSIP']),
@@ -48,7 +51,7 @@ const chatSchema = z.object({
 });
 
 // Streaming endpoint
-router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   // Disable Nagle's algorithm so SSE chunks reach the client immediately without buffering.
   req.socket?.setNoDelay(true);
 
@@ -146,7 +149,7 @@ router.post('/stream', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, a
 });
 
 // Non-streaming endpoint (fallback)
-router.post('/', rateLimitMiddleware, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
+router.post('/', aiRateLimit, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = chatSchema.safeParse(req.body);
     if (!parsed.success) {

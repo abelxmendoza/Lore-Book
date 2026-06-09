@@ -35,6 +35,14 @@ const sanitizeValue = (value: unknown): unknown => {
   return value;
 };
 
+// Returns true if the value (or any nested string in it) matches a SQL injection pattern
+const containsSqlPattern = (value: unknown): boolean => {
+  if (typeof value === 'string') return sqlPatterns.some(p => { p.lastIndex = 0; return p.test(value); });
+  if (Array.isArray(value)) return value.some(containsSqlPattern);
+  if (value && typeof value === 'object') return Object.values(value).some(containsSqlPattern);
+  return false;
+};
+
 // Mutate object in place; do not assign to req.query (read-only getter in Express/Node)
 function mutateSanitize(obj: Record<string, unknown>): void {
   for (const key of Object.keys(obj)) {
@@ -42,7 +50,18 @@ function mutateSanitize(obj: Record<string, unknown>): void {
   }
 }
 
-export const inputSanitizer = (req: Request, _res: Response, next: NextFunction) => {
+export const inputSanitizer = (req: Request, res: Response, next: NextFunction) => {
+  // Query params and path params are control-plane — reject immediately if they contain SQL patterns.
+  // Body content is user-written text (fiction, lore) — sanitize-and-log is intentional there.
+  if (containsSqlPattern(req.query) || containsSqlPattern(req.params)) {
+    logSecurityEvent('sql_injection_attempt', {
+      path: req.path,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    return res.status(400).json({ error: 'Invalid request parameters' });
+  }
+
   const originalBody = JSON.stringify(req.body ?? {});
   req.body = sanitizeValue(req.body) as any;
   try {

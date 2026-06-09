@@ -49,11 +49,20 @@ const ContinuityDashboard = lazy(() =>
 const CorrectionDashboard = lazy(() =>
   import('../correction-dashboard/CorrectionDashboard').then(m => ({ default: m.CorrectionDashboard }))
 );
-const EntityResolutionDashboard = lazy(() =>
-  import('../entity-resolution/EntityResolutionDashboard').then(m => ({ default: m.EntityResolutionDashboard }))
-);
 const MemoryFadePanel = lazy(() =>
   import('./MemoryFadePanel').then(m => ({ default: m.MemoryFadePanel }))
+);
+const ActivityCalendarPanel = lazy(() =>
+  import('./ActivityCalendarPanel').then(m => ({ default: m.ActivityCalendarPanel }))
+);
+const LifeStatsPanel = lazy(() =>
+  import('./LifeStatsPanel').then(m => ({ default: m.LifeStatsPanel }))
+);
+const AchievementsPanel = lazy(() =>
+  import('./AchievementsPanel').then(m => ({ default: m.AchievementsPanel }))
+);
+const KnowledgeRecords = lazy(() =>
+  import('../../routes/WhatAIKnows')
 );
 
 const PanelFallback = () => (
@@ -88,14 +97,17 @@ export const DiscoveryHub = () => (
         <Route path="shadow"               element={<Panel><ShadowAnalyticsPanel /></Panel>} />
         <Route path="xp"                   element={<Panel><XpAnalyticsPanel /></Panel>} />
         <Route path="reactions-resilience" element={<Panel><ReactionsResiliencePanel /></Panel>} />
+        <Route path="activity"             element={<Panel><ActivityCalendarPanel /></Panel>} />
+        <Route path="life-stats"           element={<Panel><LifeStatsPanel /></Panel>} />
+        <Route path="achievements"         element={<Panel><AchievementsPanel /></Panel>} />
 
         {/* Data & Control panels */}
         <Route path="memory-management"    element={<Panel><MemoryManagementPanel /></Panel>} />
         <Route path="memory-review"        element={<Panel><MemoryReviewQueuePanel /></Panel>} />
         <Route path="continuity"           element={<Panel><ContinuityDashboard /></Panel>} />
         <Route path="correction-dashboard" element={<Panel><CorrectionDashboard /></Panel>} />
-        <Route path="entity-resolution"    element={<Panel><EntityResolutionDashboard /></Panel>} />
         <Route path="memory-fade"          element={<Panel><MemoryFadePanel /></Panel>} />
+        <Route path="knowledge-records"    element={<Panel><KnowledgeRecords /></Panel>} />
       </Routes>
     </Suspense>
   </DiscoveryLayout>

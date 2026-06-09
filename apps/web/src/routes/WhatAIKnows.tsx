@@ -6,6 +6,34 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/supabase';
 import { fetchJson } from '../lib/api';
+import { useShouldUseMockData } from '../hooks/useShouldUseMockData';
+
+const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
+
+const MOCK_DATA: WhatAIKnowsData = {
+  journal_entries: [
+    { id: 'mock-e1', title: 'Finished the first draft', content: "Stayed up until 3am to finish it. Relief mixed with vulnerability — putting creative work into the world is terrifying in the best way.", metadata: { truth_state: 'CANONICAL' }, created_at: ago(4) },
+    { id: 'mock-e2', title: 'Morning run — week 3', content: "Three weeks of the running habit and I haven't fallen off. Something actually shifted this time. The consistency feels different.", metadata: { truth_state: 'CANONICAL' }, created_at: ago(21) },
+    { id: 'mock-e3', title: 'The conversation with Maya', content: "Finally said what needed to be said. It was uncomfortable but the relief afterward was immediate.", metadata: { truth_state: 'CONTEXTUAL' }, created_at: ago(11) },
+    { id: 'mock-e4', title: 'Thinking about the next 2 years', content: "Talked with Dr. Chen today. More clarity coming out of that conversation than I expected. A lot to sit with.", metadata: { truth_state: 'INFERRED' }, created_at: ago(7) },
+    { id: 'mock-e5', title: 'Late night thoughts', content: "Can't sleep. Thinking about the lead role. It feels right but the anxiety is real. Writing helps.", metadata: { truth_state: 'PENDING_VERIFICATION' }, created_at: ago(48) },
+  ],
+  insights: [
+    { id: 'mock-i1', content: "You tend to do your best creative work late at night, consistently after 10pm.", metadata: { truth_state: 'CANONICAL' }, created_at: ago(15) },
+    { id: 'mock-i2', content: "Physical routines like running and cooking seem to stabilize you during periods of high creative or professional stress.", metadata: { truth_state: 'INFERRED' }, created_at: ago(20) },
+    { id: 'mock-i3', content: "You often delay difficult interpersonal conversations but consistently report feeling relieved afterward.", metadata: { truth_state: 'CONTEXTUAL' }, created_at: ago(10) },
+    { id: 'mock-i4', content: "Wednesdays and Thursdays are your most reflective journaling days based on entry volume and depth.", metadata: { truth_state: 'CANONICAL' }, created_at: ago(35) },
+  ],
+  entities: [
+    { id: 'mock-ent1', canonical_name: 'Maya', type: 'PERSON', metadata: { truth_state: 'CANONICAL' }, created_at: ago(60) },
+    { id: 'mock-ent2', canonical_name: 'Dr. Chen', type: 'PERSON', metadata: { truth_state: 'CANONICAL' }, created_at: ago(7) },
+    { id: 'mock-ent3', canonical_name: 'Sam', type: 'PERSON', metadata: { truth_state: 'CONTEXTUAL' }, created_at: ago(45) },
+    { id: 'mock-ent4', canonical_name: 'Jordan', type: 'PERSON', metadata: { truth_state: 'CANONICAL' }, created_at: ago(30) },
+    { id: 'mock-ent5', canonical_name: 'Riverside Park', type: 'LOCATION', metadata: { truth_state: 'CANONICAL' }, created_at: ago(21) },
+    { id: 'mock-ent6', canonical_name: 'Home Office', type: 'LOCATION', metadata: { truth_state: 'CANONICAL' }, created_at: ago(90) },
+  ],
+  entry_ir: [],
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -278,6 +306,7 @@ function EntityRow({ entity, onRevise }: { entity: Entity; onRevise: (id: string
 export default function WhatAIKnows() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isMockData = useShouldUseMockData();
 
   const [data, setData] = useState<WhatAIKnowsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -289,6 +318,11 @@ export default function WhatAIKnows() {
   const [revising, setRevising] = useState<{ id: string; type: string; state: TruthState } | null>(null);
 
   const load = useCallback(async () => {
+    if (isMockData) {
+      setData(MOCK_DATA);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -299,24 +333,24 @@ export default function WhatAIKnows() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isMockData]);
 
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (tab !== 'audit' || auditLog.length > 0) return;
+    if (isMockData || tab !== 'audit' || auditLog.length > 0) return;
     setAuditLoading(true);
     fetchJson<{ mutations: MutationRecord[] }>('/api/identity/audit-log?limit=50')
       .then(r => setAuditLog(r.mutations))
       .catch(() => {})
       .finally(() => setAuditLoading(false));
-  }, [tab, auditLog.length]);
+  }, [tab, auditLog.length, isMockData]);
 
   const handleExport = () => {
     window.open('/api/identity/export', '_blank');
   };
 
-  if (!user) {
+  if (!user && !isMockData) {
     navigate('/login');
     return null;
   }

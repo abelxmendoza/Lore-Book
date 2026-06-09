@@ -51,8 +51,8 @@ import { DemoModeBootstrap } from '../components/DemoModeBootstrap';
 import { LoveAndRelationshipsView } from '../components/love/LoveAndRelationshipsView';
 import { QuestBoard } from '../components/quests/QuestBoard';
 import { KnowledgeGapDashboard } from '../components/voids/KnowledgeGapDashboard';
-import { SagaScreen } from '../components/_future-surfaces/saga/SagaScreen';
-import { ContinuityPanel } from '../components/ContinuityPanel';
+import { SagaScreen } from '../components/saga/SagaScreen';
+import { ContinuityDashboard } from '../components/continuity/ContinuityDashboard';
 import { HomeScreen } from '../components/HomeScreen';
 import { getSurfaceFromRoute, type SurfaceKey } from '../utils/routeMapping';
 
@@ -251,8 +251,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <SkipLink />
       <DemoModeBootstrap />
 
-      {/* Mobile Header — hidden in chat and lorebook (both have their own top bars) */}
-      <header className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden${(activeSurface === 'chat' || activeSurface === 'lorebook') ? ' hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
+      {/* Mobile Header — hidden in chat, lorebook, and memoir (all have their own top bars) */}
+      <header className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga') ? ' hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -280,11 +280,11 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <DemoModeBanner />
       <main
         id="main-content"
-        className={`flex-1 text-white overflow-x-hidden flex flex-col ${(activeSurface === 'chat' || activeSurface === 'lorebook') ? 'p-0' : activeSurface === 'home' ? 'p-0 pt-14 lg:pt-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
+        className={`flex-1 text-white overflow-x-hidden flex flex-col ${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga') ? 'p-0' : activeSurface === 'home' ? 'p-0 pt-14 lg:pt-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
         role="main"
-        style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : (activeSurface === 'chat' || activeSurface === 'lorebook') ? { height: '100vh', overflow: 'hidden' } : activeSurface === 'home' ? { minHeight: '100vh', overflowY: 'auto' } : {}}
+        style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : (activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga') ? { height: '100vh', overflow: 'hidden' } : activeSurface === 'home' ? { minHeight: '100vh', overflowY: 'auto' } : {}}
       >
-        {activeSurface !== 'chat' && activeSurface !== 'home' && (
+        {activeSurface !== 'chat' && activeSurface !== 'home' && activeSurface !== 'memoir' && activeSurface !== 'lorebook' && activeSurface !== 'saga' && (
           <>
             <header className="hidden lg:flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
               <div>
@@ -310,7 +310,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         {activeSurface === 'characters' && <CharacterBook />}
         {activeSurface === 'locations' && <LocationBook />}
         {activeSurface === 'memoir' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-12rem)]">
+          <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
             <BiographyEditor />
           </div>
         )}
@@ -373,7 +373,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
                         {activeSurface === 'quests' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] h-[calc(100vh-8rem)] sm:h-[calc(100vh-4rem)] overflow-hidden flex flex-col p-4 sm:p-6">
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-5rem)] sm:h-[calc(100vh-3rem)] lg:h-[calc(100vh-12rem)] xl:h-[calc(100vh-13rem)] overflow-hidden flex flex-col">
                             <div className="flex-1 min-h-0 flex flex-col">
                               <QuestBoard />
                             </div>
@@ -386,13 +386,13 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                         )}
         {activeSurface === 'guide' && <UserGuide />}
         {activeSurface === 'saga' && (
-          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+          <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-y-auto">
             <SagaScreen />
           </div>
         )}
         {activeSurface === 'continuity' && (
           <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
-            <ContinuityPanel />
+            <ContinuityDashboard />
           </div>
         )}
 
