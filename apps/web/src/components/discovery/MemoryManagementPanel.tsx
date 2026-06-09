@@ -378,7 +378,7 @@ export const MemoryManagementPanel = () => {
       </div>
 
       {/* Search and Filters */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/40" />
           <input
@@ -407,7 +407,7 @@ export const MemoryManagementPanel = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white/5 border border-white/10 rounded-lg p-3">
           <div className="text-2xl font-bold text-white">{entities.length}</div>
           <div className="text-xs text-white/60">Total Entities</div>

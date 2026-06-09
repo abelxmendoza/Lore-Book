@@ -3,6 +3,7 @@ import {
   Brain, Sparkles, Zap, Heart, Users, Activity,
   AlertCircle, ClipboardCheck, Clock, TrendingUp, Target, Database,
   HeartPulse, Ghost, MapPin, ArrowRight, BookOpen, CheckCircle2,
+  CalendarDays, BarChart3,
 } from 'lucide-react';
 import { useDiscoverySummary } from '../../hooks/useDiscoverySummary';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
@@ -100,6 +101,22 @@ const CORE_PANELS: PanelConfig[] = [
     route: '/discovery/reactions-resilience',
     accent: 'from-pink-600 to-rose-700',
   },
+  {
+    id: 'activity',
+    title: 'Activity Calendar',
+    description: 'Your journaling heatmap — streaks, active days, and consistency over time.',
+    icon: CalendarDays,
+    route: '/discovery/activity',
+    accent: 'from-emerald-600 to-green-700',
+  },
+  {
+    id: 'life-stats',
+    title: 'Life Stats',
+    description: 'Total entries, words written, peak journaling hours, and weekly patterns.',
+    icon: BarChart3,
+    route: '/discovery/life-stats',
+    accent: 'from-violet-600 to-purple-700',
+  },
 ];
 
 const DATA_CONTROL_PANELS: PanelConfig[] = [
@@ -136,14 +153,6 @@ const DATA_CONTROL_PANELS: PanelConfig[] = [
     route: '/discovery/correction-dashboard',
     badgeKey: 'openContradictions',
     accent: 'from-red-600 to-rose-700',
-  },
-  {
-    id: 'entity-resolution',
-    title: 'Entity Resolution',
-    description: 'Explicit control over people, places, orgs, and concepts.',
-    icon: Users,
-    route: '/discovery/entity-resolution',
-    accent: 'from-blue-600 to-indigo-700',
   },
   {
     id: 'memory-fade',

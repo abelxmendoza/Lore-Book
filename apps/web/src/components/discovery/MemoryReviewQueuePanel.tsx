@@ -327,7 +327,7 @@ export const MemoryReviewQueuePanel = () => {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
           <div className="text-2xl font-bold text-red-400">{grouped.HIGH.length}</div>
           <div className="text-xs text-white/60">High Risk</div>

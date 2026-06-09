@@ -67,7 +67,7 @@ export const CorrectionDashboard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchJson<{ success: boolean; data: DashboardData }>(
+      const result = await fetchJson<{ success: boolean; data: DashboardData; error?: string }>(
         '/api/correction-dashboard/dashboard'
       );
       if (result.success) {
@@ -113,7 +113,19 @@ export const CorrectionDashboard: React.FC = () => {
   }
 
   if (!data) {
-    return null;
+    return (
+      <div className="p-6 text-center py-16">
+        <AlertCircle className="h-12 w-12 mx-auto mb-4 text-white/20" />
+        <p className="text-white/50 mb-4">No dashboard data available</p>
+        <button
+          type="button"
+          onClick={loadDashboardData}
+          className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition-colors text-sm"
+        >
+          Refresh
+        </button>
+      </div>
+    );
   }
 
   const totalCorrections = data.corrections.length;
@@ -131,7 +143,7 @@ export const CorrectionDashboard: React.FC = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="p-4 border border-border/40 rounded-lg bg-black/20">
               <div className="flex items-center gap-2 mb-2">
                 <History className="w-5 h-5 text-blue-400" />

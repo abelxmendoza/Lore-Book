@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
   BookOpen, Search, Sparkles, User, Briefcase, Clock,
-  Heart, Zap, MapPin, Calendar, Loader2, BookMarked, ChevronRight
+  Heart, Zap, MapPin, Calendar, Loader2, BookMarked, ChevronRight, Edit3,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
 
 interface BookCategory {
@@ -93,6 +94,7 @@ export const LibraryLanding = ({
   isMockData = false,
   bottomSlot,
 }: LibraryLandingProps) => {
+  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
@@ -200,6 +202,24 @@ export const LibraryLanding = ({
               );
             })}
           </div>
+        </div>
+
+        {/* Edit Lore entry point */}
+        <div className="mb-8 sm:mb-10">
+          <button
+            type="button"
+            onClick={() => navigate('/memoir')}
+            className="group w-full flex items-center gap-3 rounded-xl border border-white/8 bg-white/3 hover:bg-white/5 hover:border-primary/25 px-4 py-3.5 text-left transition-all"
+          >
+            <div className="shrink-0 p-2 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-700 opacity-80 group-hover:opacity-100 transition-opacity">
+              <Edit3 className="h-4 w-4 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white/70 group-hover:text-white transition-colors">Edit Lore</p>
+              <p className="text-xs text-white/35 mt-0.5">Browse and edit biography sections, characters, locations, and chapters with AI</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-white/50 group-hover:translate-x-0.5 shrink-0 transition-all" />
+          </button>
         </div>
 
         {/* Recently generated section */}

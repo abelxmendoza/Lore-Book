@@ -16,8 +16,9 @@ const PANEL_NAMES: Record<string, string> = {
   'memory-review':          'Memory Review Queue',
   'continuity':             'Continuity Intelligence',
   'correction-dashboard':   'Corrections & Pruning',
-  'entity-resolution':      'Entity Resolution',
   'memory-fade':            'Memory Fade Index',
+  'activity':               'Activity Calendar',
+  'life-stats':             'Life Stats',
 };
 
 export const PanelBreadcrumb = () => {
