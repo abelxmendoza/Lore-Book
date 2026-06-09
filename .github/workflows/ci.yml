@@ -7,11 +7,45 @@ on:
     branches: [main, develop]
 
 jobs:
+  typecheck:
+    name: TypeScript Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install server dependencies
+        run: |
+          cd apps/server
+          npm install
+
+      - name: Install web dependencies
+        run: |
+          cd apps/web
+          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: Type check server
+        run: |
+          cd apps/server
+          npx tsc --noEmit
+
+      - name: Type check web
+        run: |
+          cd apps/web
+          npx tsc --noEmit
+
   server-tests:
     name: Server Tests
     runs-on: ubuntu-latest
-    continue-on-error: true
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,18 +60,17 @@ jobs:
       - name: Install dependencies
         run: |
           cd apps/server
-          npm install || echo "⚠️ Server dependencies installed (no package-lock.json)"
+          npm install
 
       - name: Run server tests
         run: |
           cd apps/server
-          npm test || echo "⚠️ Server tests completed with failures"
-        continue-on-error: true
+          npm test
 
       - name: Generate server coverage
         run: |
           cd apps/server
-          npm test -- --coverage || echo "⚠️ Coverage generation completed with warnings"
+          npm test -- --coverage
         continue-on-error: true
 
       - name: Upload server coverage
@@ -52,8 +85,7 @@ jobs:
   lint-and-test:
     name: Lint and Test (Web)
     runs-on: ubuntu-latest
-    continue-on-error: true
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -73,25 +105,22 @@ jobs:
       - name: Run linter
         run: |
           cd apps/web
-          npm run lint || echo "⚠️ Lint completed with warnings"
-        continue-on-error: true
+          npm run lint
 
       - name: Run unit tests
         run: |
           cd apps/web
-          npm run test:unit || echo "⚠️ Unit tests completed with failures"
-        continue-on-error: true
+          npm run test:unit
 
       - name: Run error handling tests
         run: |
           cd apps/web
-          npm run test:unit -- "**/*.error.test.*" || echo "⚠️ Error handling tests completed with failures"
-        continue-on-error: true
+          npm run test:unit -- "**/*.error.test.*"
 
       - name: Generate coverage report
         run: |
           cd apps/web
-          npm run test:coverage || echo "⚠️ Coverage generation completed with warnings"
+          npm run test:coverage
         continue-on-error: true
 
       - name: Upload coverage to Codecov

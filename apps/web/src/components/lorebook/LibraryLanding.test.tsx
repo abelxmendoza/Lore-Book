@@ -1,0 +1,90 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { LibraryLanding } from './LibraryLanding';
+
+describe('LibraryLanding', () => {
+  const mockOnGenerate = vi.fn();
+  const mockOnOpenDemoBook = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders without crashing', () => {
+    const { container } = render(
+      <LibraryLanding onGenerate={mockOnGenerate} />
+    );
+    expect(container.innerHTML.length).toBeGreaterThan(0);
+  });
+
+  it('renders all category buttons', () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} />);
+    // Each category button renders its label text inside a div — use getByText
+    // rather than getByRole because the button's computed accessible name in jsdom
+    // includes the description div (not hidden without CSS), making role queries fragile.
+    expect(screen.getByText('Full Biography')).toBeInTheDocument();
+    expect(screen.getByText('A Person')).toBeInTheDocument();
+    expect(screen.getByText('Career')).toBeInTheDocument();
+    expect(screen.getByText('Relationship')).toBeInTheDocument();
+  });
+
+  it('renders a query input', () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} />);
+    const input = screen.getByRole('textbox');
+    expect(input).toBeInTheDocument();
+  });
+
+  it('calls onGenerate with the typed query when Generate is clicked', async () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} />);
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'my journey with music' } });
+
+    const generateBtn = screen.getByRole('button', { name: /generate/i });
+    fireEvent.click(generateBtn);
+
+    expect(mockOnGenerate).toHaveBeenCalledWith('my journey with music');
+  });
+
+  it('pre-fills query when a category is clicked', async () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} />);
+    const careerBtn = screen.getByRole('button', { name: /Career/i });
+    fireEvent.click(careerBtn);
+
+    const input = screen.getByRole('textbox') as HTMLInputElement;
+    await waitFor(() => {
+      expect(input.value).toMatch(/professional journey/i);
+    });
+  });
+
+  it('calls onGenerate via Enter key on input', () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} />);
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'the story of my first job' } });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+
+    expect(mockOnGenerate).toHaveBeenCalledWith('the story of my first job');
+  });
+
+  it('does not call onGenerate when query is empty', () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} />);
+    const generateBtn = screen.getByRole('button', { name: /generate/i });
+    fireEvent.click(generateBtn);
+    expect(mockOnGenerate).not.toHaveBeenCalled();
+  });
+
+  it('renders demo books when onOpenDemoBook is provided', () => {
+    // isMockData={true} is required — demo books only render in mock/demo mode
+    render(<LibraryLanding onGenerate={mockOnGenerate} onOpenDemoBook={mockOnOpenDemoBook} isMockData={true} />);
+    expect(screen.getByText('The Creative Renaissance')).toBeInTheDocument();
+  });
+
+  it('calls onOpenDemoBook when a demo book is clicked', async () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} onOpenDemoBook={mockOnOpenDemoBook} isMockData={true} />);
+    const demoBookTitle = screen.getByText('The Creative Renaissance');
+    const demoBookBtn = demoBookTitle.closest('button') ?? demoBookTitle;
+    fireEvent.click(demoBookBtn);
+    await waitFor(() => {
+      expect(mockOnOpenDemoBook).toHaveBeenCalled();
+    });
+  });
+});

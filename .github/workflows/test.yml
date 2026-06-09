@@ -27,9 +27,8 @@ jobs:
       
       - name: Run tests
         working-directory: apps/server
-        run: npm test || echo "⚠️ Backend tests completed with failures"
-        continue-on-error: true
-      
+        run: npm test
+
       - name: Run tests with coverage
         working-directory: apps/server
         run: npm test -- --coverage
@@ -61,8 +60,7 @@ jobs:
       
       - name: Run unit tests
         working-directory: apps/web
-        run: npm run test:unit || echo "⚠️ Frontend tests completed with failures"
-        continue-on-error: true
+        run: npm run test:unit
       
       - name: Run tests with coverage
         working-directory: apps/web
