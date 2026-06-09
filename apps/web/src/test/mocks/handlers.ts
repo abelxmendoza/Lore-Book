@@ -4,6 +4,11 @@ import { http, HttpResponse } from 'msw';
 const API_BASE = process.env.VITE_API_URL || 'http://localhost:3000';
 
 export const handlers = [
+  // Health check — prevents MockDataContext from flipping isMockEnabled=true in tests
+  http.get(`${API_BASE}/api/health`, () => {
+    return HttpResponse.json({ status: 'ok' });
+  }),
+
   // Entries
   http.get(`${API_BASE}/api/entries`, () => {
     return HttpResponse.json({

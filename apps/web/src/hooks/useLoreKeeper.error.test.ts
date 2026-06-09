@@ -13,6 +13,7 @@ vi.mock('../lib/supabase', () => ({
       getSession: vi.fn().mockResolvedValue({ data: { session: null } })
     }
   },
+  useAuth: vi.fn(() => ({ user: null, session: null, loading: false })),
   isSupabaseConfigured: vi.fn().mockReturnValue(true),
   getConfigDebug: vi.fn().mockReturnValue({})
 }));

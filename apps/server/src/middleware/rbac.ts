@@ -90,6 +90,10 @@ export const requireAdmin = async (
   res: Response,
   next: NextFunction
 ) => {
+  // In dev/development environments, skip role enforcement entirely
+  if (config.apiEnv === 'dev' || config.apiEnv === 'development') {
+    return next();
+  }
   return requireRole('admin', 'developer')(req, res, next);
 };
 

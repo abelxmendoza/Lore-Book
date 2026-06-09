@@ -270,7 +270,7 @@ describe('Chapters Routes', () => {
 
       await request(app)
         .delete('/api/chapters/ch-1')
-        .expect(204);
+        .expect(200);
 
       expect(chapterService.deleteChapter).toHaveBeenCalledWith('test-user-id', 'ch-1');
     });

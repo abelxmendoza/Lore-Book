@@ -19,9 +19,10 @@ describe('ModeRouterService', () => {
   });
 
   describe('quickModeCheck - Pattern Matching', () => {
-    it('should detect ACTION_LOG mode for verb-forward messages', async () => {
-      const result = await modeRouterService.routeMessage('user-1', 'I walked away');
-      
+    it('should detect ACTION_LOG mode for explicit log commands', async () => {
+      // ACTION_LOG now requires an explicit save/log command — not bare first-person sentences
+      const result = await modeRouterService.routeMessage('user-1', 'Log this: I walked away');
+
       expect(result.mode).toBe('ACTION_LOG');
       expect(result.confidence).toBeGreaterThan(0.8);
     });
@@ -105,7 +106,7 @@ describe('ModeRouterService', () => {
       expect(['UNKNOWN', 'EMOTIONAL_EXISTENTIAL']).toContain(result.mode);
       // Error should be logged if LLM was attempted
       // Note: llmModeCheck catches errors internally and uses logger.warn, not logger.error
-      if (openai.chat.completions.create.mock.calls.length > 0) {
+      if ((openai.chat.completions.create as any).mock.calls.length > 0) {
         // The llmModeCheck method catches errors and logs with logger.warn
         expect(logger.warn).toHaveBeenCalled();
       }
@@ -113,25 +114,26 @@ describe('ModeRouterService', () => {
   });
 
   describe('Experience vs Action Detection', () => {
-    it('should distinguish between experience and action', async () => {
+    it('should distinguish between experience and explicit log command', async () => {
       const experienceResult = await modeRouterService.routeMessage(
         'user-1',
         'Last night I went to a show, met these people, things got weird'
       );
 
+      // ACTION_LOG now requires an explicit log/save/record command prefix
       const actionResult = await modeRouterService.routeMessage(
         'user-1',
-        'I told him I was done'
+        'Save this: I told him I was done'
       );
 
       expect(experienceResult.mode).toBe('EXPERIENCE_INGESTION');
       expect(actionResult.mode).toBe('ACTION_LOG');
     });
 
-    it('should prioritize action detection over experience for verb-forward messages', async () => {
+    it('should detect ACTION_LOG for explicit record command', async () => {
       const result = await modeRouterService.routeMessage(
         'user-1',
-        'I said goodbye and left'
+        'Record: I said goodbye and left'
       );
 
       expect(result.mode).toBe('ACTION_LOG');
@@ -213,8 +215,9 @@ describe('ModeRouterService', () => {
       );
 
       // If LLM was called, check that it was called (history is passed but not currently used in prompt)
-      if (openai.chat.completions.create.mock.calls.length > 0) {
-        const callArgs = vi.mocked(openai.chat.completions.create).mock.calls[0][0];
+      const createMock = openai.chat.completions.create as any;
+      if (createMock.mock.calls.length > 0) {
+        const callArgs = createMock.mock.calls[0][0];
         // Currently, the prompt only includes the message, not history (could be enhanced later)
         expect(callArgs.messages.length).toBeGreaterThanOrEqual(1);
       }
@@ -226,14 +229,13 @@ describe('ModeRouterService', () => {
     it('should return quickly for pattern-matched messages', async () => {
       vi.clearAllMocks();
       const startTime = Date.now();
-      
-      // Use a message that will have high confidence (> 0.8) to avoid LLM call
-      await modeRouterService.routeMessage('user-1', 'I walked away');
-      
+
+      // MEMORY_RECALL matches with confidence > 0.8 via pattern — no LLM needed
+      await modeRouterService.routeMessage('user-1', 'What did I eat last Sunday morning?');
+
       const elapsed = Date.now() - startTime;
-      
-      expect(elapsed).toBeLessThan(500); // Should be fast (allowing for some overhead)
-      // ACTION_LOG should have confidence 0.9, which is > 0.8, so LLM shouldn't be called
+
+      expect(elapsed).toBeLessThan(500);
       expect(openai.chat.completions.create).not.toHaveBeenCalled();
     });
   });

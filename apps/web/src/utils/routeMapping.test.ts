@@ -4,7 +4,7 @@ import { getSurfaceFromRoute, getRouteFromSurface, routeToSurface, surfaceToRout
 describe('routeMapping', () => {
   describe('getSurfaceFromRoute', () => {
     it('returns exact match for /', () => {
-      expect(getSurfaceFromRoute('/')).toBe('chat');
+      expect(getSurfaceFromRoute('/')).toBe('home');
     });
 
     it('returns exact match for /chat', () => {
@@ -52,8 +52,8 @@ describe('routeMapping', () => {
   });
 
   describe('routeToSurface and surfaceToRoute', () => {
-    it('routeToSurface has / mapping to chat', () => {
-      expect(routeToSurface['/']).toBe('chat');
+    it('routeToSurface has / mapping to home', () => {
+      expect(routeToSurface['/']).toBe('home');
     });
 
     it('surfaceToRoute has chat mapping to /chat', () => {

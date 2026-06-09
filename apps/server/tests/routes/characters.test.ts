@@ -1,11 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import { peoplePlacesService } from '../../src/services/peoplePlacesService';
 import { requireAuth } from '../../src/middleware/auth';
 import { charactersRouter } from '../../src/routes/characters';
-
-// Mock dependencies
 import { peoplePlacesService } from '../../src/services/peoplePlacesService';
 import { supabaseAdmin } from '../../src/services/supabaseClient';
 
@@ -53,7 +50,7 @@ describe('Characters API Routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireAuth).mockImplementation((req, res, next) => {
+    vi.mocked(requireAuth).mockImplementation(async (req, _res, next) => {
       (req as any).user = mockUser;
       next();
     });
@@ -103,7 +100,12 @@ describe('Characters API Routes', () => {
         error: null,
       });
 
+      // Route calls select() for dedup checks before insert; provide empty returns for those
+      const mockEq = vi.fn().mockResolvedValue({ data: [], error: null });
+      const mockSelectQuery = vi.fn().mockReturnValue({ eq: mockEq, limit: vi.fn().mockResolvedValue({ data: [], error: null }) });
+
       mockFrom.mockReturnValue({
+        select: mockSelectQuery,
         insert: mockInsert.mockReturnValue({
           select: mockSelect.mockReturnValue({
             single: mockSingle,

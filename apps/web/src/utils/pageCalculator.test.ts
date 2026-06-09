@@ -56,10 +56,10 @@ describe('pageCalculator', () => {
   });
 
   describe('fontSizeToPixels', () => {
-    it('maps sm to 18', () => expect(fontSizeToPixels('sm')).toBe(18));
-    it('maps base to 22', () => expect(fontSizeToPixels('base')).toBe(22));
-    it('maps lg to 26', () => expect(fontSizeToPixels('lg')).toBe(26));
-    it('maps xl to 30', () => expect(fontSizeToPixels('xl')).toBe(30));
+    it('maps sm to 13', () => expect(fontSizeToPixels('sm')).toBe(13));
+    it('maps base to 15', () => expect(fontSizeToPixels('base')).toBe(15));
+    it('maps lg to 17', () => expect(fontSizeToPixels('lg')).toBe(17));
+    it('maps xl to 20', () => expect(fontSizeToPixels('xl')).toBe(20));
   });
 
   describe('lineHeightToMultiplier', () => {

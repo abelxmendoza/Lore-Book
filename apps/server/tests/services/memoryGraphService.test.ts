@@ -18,7 +18,7 @@ describe('MemoryGraphService', () => {
 
   describe('buildGraph', () => {
     it('should return graph with nodes and edges', async () => {
-      const result = await memoryGraphService.buildGraph('user-1');
+      const result = await memoryGraphService.buildGraph('user-graph-shape');
 
       expect(result).toHaveProperty('nodes');
       expect(result).toHaveProperty('edges');
@@ -27,8 +27,10 @@ describe('MemoryGraphService', () => {
     });
 
     it('should call memoryService.searchEntriesWithCorrections', async () => {
-      await memoryGraphService.buildGraph('user-1');
-      expect(memoryService.searchEntriesWithCorrections).toHaveBeenCalledWith('user-1', { limit: 250 });
+      // Use a fresh userId to avoid the 3-minute LRU cache from the previous test
+      const uid = `user-fresh-${Date.now()}`;
+      await memoryGraphService.buildGraph(uid);
+      expect(memoryService.searchEntriesWithCorrections).toHaveBeenCalledWith(uid, { limit: 250 });
     });
   });
 });

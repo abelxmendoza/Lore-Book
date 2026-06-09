@@ -8,17 +8,21 @@ describe('roleGuard', () => {
       expect(isAdmin(undefined)).toBe(false);
     });
 
-    it('returns true only for allowed admin email (abelxmendoza@gmail.com)', () => {
-      expect(isAdmin({ email: 'abelxmendoza@gmail.com' })).toBe(true);
-      expect(isAdmin({ email: 'Abelxmendoza@gmail.com' })).toBe(true);
+    it('returns true for app_metadata.role === admin or developer (server-set)', () => {
+      expect(isAdmin({ app_metadata: { role: 'admin' } })).toBe(true);
+      expect(isAdmin({ app_metadata: { role: 'developer' } })).toBe(true);
     });
 
-    it('returns false for other emails and role metadata only', () => {
+    it('returns true for user_metadata.role === admin or developer (server-set)', () => {
+      expect(isAdmin({ user_metadata: { role: 'admin' } })).toBe(true);
+      expect(isAdmin({ user_metadata: { role: 'developer' } })).toBe(true);
+    });
+
+    it('returns false for other emails without role claims and no env var set', () => {
       expect(isAdmin({ email: 'other@example.com' })).toBe(false);
-      expect(isAdmin({ user_metadata: { role: 'admin' } })).toBe(false);
-      expect(isAdmin({ app_metadata: { role: 'admin' } })).toBe(false);
       expect(isAdmin({})).toBe(false);
       expect(isAdmin({ user_metadata: {} })).toBe(false);
+      expect(isAdmin({ app_metadata: {} })).toBe(false);
     });
   });
 

@@ -61,7 +61,7 @@ describe('Account API Routes', () => {
         .expect(200);
 
       expect(response.headers['content-type']).toContain('application/zip');
-      expect(response.headers['content-disposition']).toContain('lorekeeper-export.json.gz');
+      expect(response.headers['content-disposition']).toContain('lorebook-export.json.gz');
       expect(Buffer.isBuffer(response.body) || typeof response.body).toBeTruthy();
     });
   });

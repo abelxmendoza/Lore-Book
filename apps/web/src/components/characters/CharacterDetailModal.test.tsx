@@ -14,7 +14,9 @@ vi.mock('../../features/chat/composer/ChatComposer', () => ({
 }));
 
 vi.mock('../../lib/api', () => ({
-  fetchJson: vi.fn(),
+  // Reject by default so the component's catch blocks preserve the initial character state.
+  // Individual tests can override with vi.mocked(fetchJson).mockResolvedValue(...).
+  fetchJson: vi.fn().mockRejectedValue(new Error('Not found')),
 }));
 
 vi.mock('../../contexts/MockDataContext', () => ({
@@ -99,13 +101,15 @@ describe('CharacterDetailModal', () => {
       />
     );
 
-    expect(screen.getByText(/info/i)).toBeInTheDocument();
+    // Actual tab labels: Info, Intelligence, What I Know, Chat, Connections, History, Insights, Perceptions, Social, Metadata
+    expect(screen.getByText(/^info$/i)).toBeInTheDocument();
     expect(screen.getAllByText(/chat/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/social media/i)).toBeInTheDocument();
-    expect(screen.getByText(/connections/i)).toBeInTheDocument();
+    expect(screen.getByText(/^social$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^connections$/i)).toBeInTheDocument();
   });
 
-  it('should show chat composer at bottom', () => {
+  it('should show chat composer when Chat tab is active', async () => {
+    const user = userEvent.setup();
     render(
       <CharacterDetailModal
         character={mockCharacter}
@@ -114,15 +118,20 @@ describe('CharacterDetailModal', () => {
       />
     );
 
+    // Switch to the Chat tab (composer only renders on the chat tab).
+    // Tabs are plain <button> elements; find by the visible label text.
+    const chatTab = screen.getByText(/^chat$/i).closest('button')!;
+    await user.click(chatTab);
+
     expect(screen.getByTestId('chat-composer')).toBeInTheDocument();
   });
 
   it('should handle character with no data gracefully', () => {
     const emptyCharacter: Character = {
       ...mockCharacter,
-      name: '',
-      summary: null,
-      role: null,
+      name: 'Unknown',
+      summary: undefined,
+      role: undefined,
     };
 
     render(
@@ -133,8 +142,8 @@ describe('CharacterDetailModal', () => {
       />
     );
 
-    // Should still render without crashing
-    expect(screen.getByTestId('chat-composer')).toBeInTheDocument();
+    // Should still render without crashing — check for Info tab (default)
+    expect(screen.getByText(/^info$/i)).toBeInTheDocument();
   });
 
   describe('distant but high impact', () => {

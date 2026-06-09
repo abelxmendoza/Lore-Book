@@ -11,7 +11,7 @@ vi.mock('../../hooks/useLoreKeeper', () => ({
 }));
 
 vi.mock('../../lib/api', () => ({
-  fetchJson: vi.fn(),
+  fetchJson: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('../../contexts/MockDataContext', () => ({
@@ -215,7 +215,7 @@ describe('CharacterBook', () => {
     ];
 
     beforeEach(() => {
-      vi.mocked(fetchJson).mockImplementation(async (url: string) => {
+      vi.mocked(fetchJson).mockImplementation(async (url: RequestInfo) => {
         if (url === '/api/characters/list') {
           return { characters: charactersWithAnalytics };
         }

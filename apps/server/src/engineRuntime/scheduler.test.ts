@@ -27,6 +27,8 @@ describe('Engine Scheduler', () => {
   let mockRunAll: any;
   let mockFrom: any;
   let mockSelect: any;
+  let mockGte: any;
+  let mockLimit: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -44,14 +46,19 @@ describe('Engine Scheduler', () => {
       return mockOrchestrator;
     });
 
-    mockSelect = vi.fn().mockResolvedValue({
+    // Scheduler now queries journal_entries with .select('user_id').gte(...).limit(...)
+    mockLimit = vi.fn().mockResolvedValue({
       data: [
-        { id: 'user-1' },
-        { id: 'user-2' },
-        { id: 'user-3' },
+        { user_id: 'user-1' },
+        { user_id: 'user-2' },
+        { user_id: 'user-3' },
       ],
       error: null,
     });
+
+    mockGte = vi.fn().mockReturnValue({ limit: mockLimit });
+
+    mockSelect = vi.fn().mockReturnValue({ gte: mockGte });
 
     mockFrom = vi.fn().mockReturnValue({
       select: mockSelect,
@@ -80,8 +87,9 @@ describe('Engine Scheduler', () => {
       const scheduledFunction = mockSchedule.mock.calls[0][1];
       await scheduledFunction();
 
-      expect(mockFrom).toHaveBeenCalledWith('users');
-      expect(mockSelect).toHaveBeenCalledWith('id');
+      // Scheduler queries journal_entries (active last 90 days) to find unique user IDs
+      expect(mockFrom).toHaveBeenCalledWith('journal_entries');
+      expect(mockSelect).toHaveBeenCalledWith('user_id');
     });
 
     it('should run engines for all users', async () => {
@@ -97,7 +105,7 @@ describe('Engine Scheduler', () => {
     });
 
     it('should handle empty user list', async () => {
-      mockSelect.mockResolvedValue({
+      mockLimit.mockResolvedValue({
         data: [],
         error: null,
       });
@@ -111,7 +119,7 @@ describe('Engine Scheduler', () => {
     });
 
     it('should handle database errors gracefully', async () => {
-      mockSelect.mockResolvedValue({
+      mockLimit.mockResolvedValue({
         data: null,
         error: { message: 'Database error' },
       });
@@ -149,7 +157,7 @@ describe('Engine Scheduler', () => {
     });
 
     it('should handle scheduler errors', async () => {
-      mockSelect.mockRejectedValue(new Error('Scheduler error'));
+      mockLimit.mockRejectedValue(new Error('Scheduler error'));
 
       startEngineScheduler();
 

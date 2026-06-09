@@ -26,17 +26,41 @@ vi.mock('../lib/supabase', () => {
 });
 
 // Mock useGuest hook - need to export useGuest for AuthGate to use
-vi.mock('../contexts/GuestContext', () => {
-  const mockStartGuestSession = vi.fn();
-  return {
-    useGuest: () => ({ isGuest: false, startGuestSession: mockStartGuestSession }),
-    GuestProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
-  };
-});
+vi.mock('../contexts/GuestContext', () => ({
+  useGuest: () => ({ isGuest: false, startGuestSession: vi.fn(), endGuestSession: vi.fn() }),
+  GuestProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>
+}));
 
 // Mock useTermsAcceptance
 vi.mock('../hooks/useTermsAcceptance', () => ({
-  useTermsAcceptance: () => ({ hasAcceptedTerms: true, acceptTerms: vi.fn() })
+  useTermsAcceptance: () => ({
+    hasAcceptedTerms: true,
+    status: { accepted: true },   // AuthGate: { status: termsStatus }
+    loading: false,                // AuthGate: { loading: termsLoading }
+    acceptTerms: vi.fn(),
+  })
+}));
+
+vi.mock('../routes/Demo', () => ({
+  clearDemoSession: vi.fn(),
+  default: () => null,
+}));
+
+vi.mock('../hooks/useRuntimeIdentity', () => ({
+  useRuntimeIdentity: () => ({ needsAuth: true, needsTerms: false, identity: 'REAL_USER', is: { realUser: true, guest: false, demo: false, degraded: false } })
+}));
+
+vi.mock('../contexts/MockDataContext', () => ({
+  useMockData: () => ({
+    useMockData: false,
+    runtimeIdentity: 'REAL_USER',
+    mockDataMode: 'LIVE',
+    setMockDataMode: vi.fn(),
+  }),
+  getGlobalMockDataEnabled: () => false,
+  setGlobalMockDataEnabled: vi.fn(),
+  subscribeToMockDataState: vi.fn(() => vi.fn()),
+  MockDataProvider: ({ children }: { children?: unknown }) => children,
 }));
 
 describe('AuthGate Integration Tests - Black Screen Prevention', () => {
@@ -91,8 +115,8 @@ describe('AuthGate Integration Tests - Black Screen Prevention', () => {
     await waitFor(() => {
       const content = screen.queryByText(/App Content|Guest|Login/i);
       expect(content).toBeTruthy();
-    }, { timeout: 6000 });
-  });
+    }, { timeout: 7000 });
+  }, 10000);
 
   it('should show auth screen when not authenticated', async () => {
     // Note: AuthGate has DEV_DISABLE_AUTH=true, so it bypasses auth in dev/test

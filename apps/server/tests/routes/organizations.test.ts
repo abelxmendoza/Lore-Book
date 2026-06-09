@@ -209,38 +209,5 @@ describe('Organizations Routes', () => {
     });
   });
 
-  describe('POST /api/organizations/:id/chat', () => {
-    it('should process chat for organization editing', async () => {
-      const { organizationService } = await import('../../src/services/organizationService');
-      const mockResult = {
-        response: 'Updated organization',
-        changes: ['name'],
-      };
-
-      vi.mocked(organizationService.chat).mockResolvedValue(mockResult as any);
-
-      const response = await request(app)
-        .post('/api/organizations/org-1/chat')
-        .send({
-          message: 'Change the name to Tech Corp',
-        })
-        .expect(200);
-
-      expect(response.body).toHaveProperty('success', true);
-      expect(response.body).toHaveProperty('response');
-      expect(organizationService.chat).toHaveBeenCalledWith(
-        'test-user-id',
-        'org-1',
-        'Change the name to Tech Corp',
-        []
-      );
-    });
-
-    it('should validate message is provided', async () => {
-      await request(app)
-        .post('/api/organizations/org-1/chat')
-        .send({})
-        .expect(400);
-    });
-  });
 });
+

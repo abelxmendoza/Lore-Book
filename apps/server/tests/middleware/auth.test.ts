@@ -88,6 +88,7 @@ describe('auth middleware', () => {
       id: 'u2',
       email: 'u@x.com',
       lastSignInAt: '2020-01-01',
+      fullName: null,
     });
     expect(mockNext).toHaveBeenCalled();
     expect(mockResponse.status).not.toHaveBeenCalled();

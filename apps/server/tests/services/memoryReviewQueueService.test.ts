@@ -36,6 +36,17 @@ vi.mock('../../src/config', () => ({
   }
 }));
 vi.mock('openai');
+// Also mock the lib/openai singleton that the service actually uses at runtime
+const mockLibCreate = vi.fn();
+vi.mock('../../src/lib/openai', () => ({
+  openai: {
+    chat: {
+      completions: {
+        create: (...args: any[]) => mockLibCreate(...args),
+      },
+    },
+  },
+}));
 vi.mock('../../src/logger', () => ({
   logger: {
     error: vi.fn(),
@@ -99,8 +110,8 @@ describe('MemoryReviewQueueService', () => {
         })
       } as any);
 
-      // Create a new service instance with mocked OpenAI
-      const mockCreate = vi.fn().mockResolvedValue({
+      // Configure the lib/openai singleton mock to return identity-affecting response
+      mockLibCreate.mockResolvedValue({
         choices: [{
           message: {
             content: JSON.stringify({
@@ -112,23 +123,13 @@ describe('MemoryReviewQueueService', () => {
         }]
       });
 
-      const mockOpenAI = {
-        chat: {
-          completions: {
-            create: mockCreate
-          }
-        }
-      };
-
-      const service = new MemoryReviewQueueService(mockOpenAI as any);
-
-      const risk = await service.classifyRisk({
+      const risk = await memoryReviewQueueService.classifyRisk({
         entity_id: 'entity-1',
         claim_text: 'I am a parent',
         confidence: 0.5, // Low confidence so it checks affectsIdentity
       }, 'user-123');
 
-      expect(mockCreate).toHaveBeenCalled();
+      expect(mockLibCreate).toHaveBeenCalled();
       expect(risk).toBe('HIGH');
     });
   });

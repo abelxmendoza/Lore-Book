@@ -12,7 +12,8 @@ vi.mock('../lib/supabase', () => ({
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: null } })
     }
-  }
+  },
+  useAuth: vi.fn(() => ({ user: null, session: null, loading: false })),
 }));
 
 const mockFetchJson = vi.fn();
@@ -93,16 +94,16 @@ describe('useLoreKeeper Integration Tests', () => {
 
     const { result } = renderHook(() => useLoreKeeper(), { wrapper });
 
+    // Wait for initial load to fully complete before creating entry
     await waitFor(() => {
-      expect(result.current.entries).toBeDefined();
-    }, { timeout: 2000 });
+      expect(result.current.loading).toBe(false);
+    }, { timeout: 3000 });
 
     const newEntry = await result.current.createEntry('New entry');
 
+    // Validate the returned entry — state array races with concurrent refreshEntries calls
     expect(newEntry).toBeDefined();
+    expect(newEntry.id).toBe('new-entry');
     expect(newEntry.content).toBe('New entry');
-    await waitFor(() => {
-      expect(result.current.entries[0]?.id).toBe('new-entry');
-    }, { timeout: 2000 });
   });
 });

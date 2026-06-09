@@ -19,7 +19,7 @@ vi.mock('../../hooks/useChatStream', () => ({
 }));
 
 vi.mock('../../lib/api', () => ({
-  fetchJson: vi.fn(),
+  fetchJson: vi.fn().mockResolvedValue({}),
 }));
 
 const mockEvent = {
@@ -37,7 +37,6 @@ const mockEvent = {
 
 describe('EventDetailModal', () => {
   const mockOnClose = vi.fn();
-  const mockOnUpdate = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -50,7 +49,6 @@ describe('EventDetailModal', () => {
       <EventDetailModal
         event={mockEvent}
         onClose={mockOnClose}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -62,7 +60,6 @@ describe('EventDetailModal', () => {
       <EventDetailModal
         event={mockEvent}
         onClose={mockOnClose}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -75,7 +72,6 @@ describe('EventDetailModal', () => {
       <EventDetailModal
         event={mockEvent}
         onClose={mockOnClose}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -91,13 +87,12 @@ describe('EventDetailModal', () => {
       <EventDetailModal
         event={mockEvent}
         onClose={mockOnClose}
-        onUpdate={mockOnUpdate}
       />
     );
 
-    // Check for tab labels - tabs are "Chat", "Details", "Sources", "Questions"
-    expect(screen.getByText(/chat/i)).toBeInTheDocument();
-    expect(screen.getByText(/details/i)).toBeInTheDocument();
+    // Actual tab labels: Overview, Meaning, Connections, Sources
+    expect(screen.getByText(/overview/i)).toBeInTheDocument();
+    expect(screen.getByText(/meaning/i)).toBeInTheDocument();
     expect(screen.getByText(/sources/i)).toBeInTheDocument();
   });
 
@@ -111,7 +106,6 @@ describe('EventDetailModal', () => {
       <EventDetailModal
         event={eventWithoutSummary}
         onClose={mockOnClose}
-        onUpdate={mockOnUpdate}
       />
     );
 

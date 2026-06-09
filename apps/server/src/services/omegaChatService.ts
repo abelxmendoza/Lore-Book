@@ -1817,6 +1817,10 @@ class OmegaChatService {
       { role: 'user' as const, content: message }
     ];
 
+    // Declare entryId here so it is in scope for RL context saving below.
+    // The variable is assigned after the user message is persisted further down in the function.
+    let entryId: string | undefined;
+
     const completion = await openai.chat.completions.create({
       model: config.defaultModel,
       temperature: 0.7,
@@ -1835,12 +1839,6 @@ class OmegaChatService {
       connections: connections,
       continuity_warnings: continuityWarnings,
     };
-
-    // Store challenged perception ID if a challenge was generated
-    if (challengedPerceptionIdForResponse) {
-      assistantMetadata.challenged_perception_id = challengedPerceptionIdForResponse;
-      assistantMetadata.challenge_prompt = challengePromptForResponse;
-    }
 
     // Save assistant message (fire-and-forget)
     supabaseAdmin
@@ -1907,7 +1905,7 @@ class OmegaChatService {
     const memories: MemoryClaim[] = [];
 
     // Save chat message and ingest through pipeline (all non-trivial messages)
-    let entryId: string | undefined;
+    // Note: entryId was declared earlier in this function, above the OpenAI call.
     const timelineUpdates: string[] = [];
 
     // Only exclude truly trivial messages (hi, ok, thanks, etc.)

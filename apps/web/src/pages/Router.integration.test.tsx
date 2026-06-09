@@ -16,12 +16,17 @@ vi.mock('../pages/App', () => ({
   default: () => <div data-testid="app">App Content</div>
 }));
 
+vi.mock('../routes/Landing', () => ({
+  default: () => <div data-testid="landing">Landing Content</div>
+}));
+
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: null } })
     }
-  }
+  },
+  useAuth: vi.fn(() => ({ user: null, session: null, loading: false })),
 }));
 
 describe('Router Integration Tests - Black Screen Prevention', () => {
@@ -62,8 +67,9 @@ describe('Router Integration Tests - Black Screen Prevention', () => {
     );
 
     await waitFor(() => {
-      const app = screen.queryByTestId('app');
-      expect(app).toBeTruthy();
+      // / renders Landing, not App
+      const landing = screen.queryByTestId('landing');
+      expect(landing).toBeTruthy();
     }, { timeout: 3000 });
   });
 

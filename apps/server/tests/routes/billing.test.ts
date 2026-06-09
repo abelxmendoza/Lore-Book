@@ -7,6 +7,7 @@ const mockUser = { id: 'u1', email: 'a@b.com' };
 const mockStripe = {
   checkout: { sessions: { create: vi.fn().mockResolvedValue({ url: 'https://checkout.example.com' }) } },
   billingPortal: { sessions: { create: vi.fn().mockResolvedValue({ url: 'https://portal.example.com' }) } },
+  webhooks: { constructEvent: vi.fn().mockReturnValue({ type: 'ping', id: 'evt_test' }) },
 };
 
 vi.mock('../../src/middleware/auth', () => ({
@@ -59,7 +60,14 @@ describe('Billing API Routes', () => {
   });
 
   it('POST /webhook returns received', async () => {
-    const res = await request(app).post('/api/billing/webhook').send({}).expect(200);
+    const origSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    process.env.STRIPE_WEBHOOK_SECRET = 'test-secret';
+    const res = await request(app)
+      .post('/api/billing/webhook')
+      .set('stripe-signature', 't=1,v1=abc')
+      .send({})
+      .expect(200);
     expect(res.body).toEqual({ received: true });
+    process.env.STRIPE_WEBHOOK_SECRET = origSecret;
   });
 });
