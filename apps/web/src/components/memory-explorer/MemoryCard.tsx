@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calendar, ChevronDown, ChevronUp, Tag, Users, Sparkles } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronUp, Tag, Users, Sparkles, Star } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Card, CardContent } from '../ui/card';
 import { fetchJson } from '../../lib/api';
@@ -11,6 +11,7 @@ type MemoryCardProps = {
   showLinked?: boolean;
   expanded?: boolean;
   onToggleExpand?: () => void;
+  onToggleFavorite?: (memory: MemoryCard) => void;
 };
 
 const formatDate = (dateString: string) => {
@@ -36,7 +37,8 @@ export const MemoryCardComponent = ({
   onSelect,
   showLinked = true,
   expanded: controlledExpanded,
-  onToggleExpand
+  onToggleExpand,
+  onToggleFavorite
 }: MemoryCardProps) => {
   const [internalExpanded, setInternalExpanded] = useState(false);
   const [linkedMemories, setLinkedMemories] = useState<LinkedMemory[]>([]);
@@ -131,6 +133,26 @@ export const MemoryCardComponent = ({
             <Badge className={`text-xs ${moodColor}`} variant="outline">
               {memory.mood}
             </Badge>
+          )}
+          {onToggleFavorite && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite(memory);
+              }}
+              className="p-1 rounded hover:bg-white/10 transition-colors flex-shrink-0"
+              title={memory.metadata?.favorite ? 'Remove from favorites' : 'Add to favorites'}
+              aria-label={memory.metadata?.favorite ? 'Remove from favorites' : 'Add to favorites'}
+            >
+              <Star
+                className={`h-4 w-4 transition-colors ${
+                  memory.metadata?.favorite
+                    ? 'fill-yellow-400 text-yellow-400'
+                    : 'text-white/30 hover:text-white/60'
+                }`}
+              />
+            </button>
           )}
         </div>
 

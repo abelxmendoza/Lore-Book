@@ -11,7 +11,8 @@
     "test:coverage": "vitest run --coverage",
     "check-env": "tsx scripts/check-env.ts",
     "typecheck": "tsc --noEmit",
-    "runtime-health": "tsx scripts/runtime-health.ts"
+    "runtime-health": "tsx scripts/runtime-health.ts",
+    "mvp-diagnostic": "tsx scripts/true-mvp-diagnostic.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.91.1",

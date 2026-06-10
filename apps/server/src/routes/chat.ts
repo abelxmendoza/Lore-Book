@@ -132,14 +132,25 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
     sseWrite({ type: 'metadata', data: result.metadata });
 
     try {
+      let fullResponse = '';
       for await (const chunk of result.stream) {
         if (clientGone) break;
         const content = chunk.choices[0]?.delta?.content;
-        if (content) sseWrite({ type: 'chunk', content });
+        if (content) {
+          fullResponse += content;
+          sseWrite({ type: 'chunk', content });
+        }
       }
       if (!clientGone) {
         sseWrite({ type: 'done' });
         res.end();
+      }
+      // Advisory hallucination guard — never blocks the stream; flags
+      // responses that claim memory about names absent from the entity graph.
+      if (fullResponse.length > 0 && req.user?.id) {
+        import('../services/chat/memoryClaimGuard')
+          .then(({ verifyMemoryClaims }) => verifyMemoryClaims(req.user!.id, fullResponse))
+          .catch(() => {});
       }
     } catch (streamError) {
       // Mid-stream failure — headers committed, can only write an error event.

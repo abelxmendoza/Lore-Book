@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Search, Sparkles, RefreshCw, ChevronLeft, ChevronRight, BookOpen, LayoutGrid, Calendar, Tag, Heart, FileText, Clock, CheckCircle2, XCircle, AlertTriangle, Info, ChevronDown, ChevronUp, ClipboardCheck } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { MemoryCardComponent } from './MemoryCard';
@@ -710,6 +710,33 @@ export const MemoryExplorer = () => {
     }
   }, [entries, shouldUseMock]);
 
+  // Toggle favorite: optimistic local update + persist to entry metadata.
+  // Mock entries only update locally (no backend row to patch).
+  const handleToggleFavorite = useCallback((memory: MemoryCard) => {
+    const nextFavorite = !(memory.metadata?.favorite === true);
+    const apply = (list: MemoryCard[]) =>
+      list.map(m => m.id === memory.id
+        ? { ...m, metadata: { ...(m.metadata ?? {}), favorite: nextFavorite } }
+        : m);
+    setMemories(apply);
+    setAllMemories(apply);
+
+    if (!shouldUseMock && !memory.id.startsWith('dummy-')) {
+      fetchJson(`/api/entries/${memory.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ metadata: { ...(memory.metadata ?? {}), favorite: nextFavorite } }),
+      }).catch(() => {
+        // Revert on failure
+        const revert = (list: MemoryCard[]) =>
+          list.map(m => m.id === memory.id
+            ? { ...m, metadata: { ...(m.metadata ?? {}), favorite: !nextFavorite } }
+            : m);
+        setMemories(revert);
+        setAllMemories(revert);
+      });
+    }
+  }, [shouldUseMock]);
+
   const filteredMemories = useMemo(() => {
     let mems = memories;
 
@@ -717,14 +744,16 @@ export const MemoryExplorer = () => {
       // Show most recent first (already sorted by date)
       mems = [...mems].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     } else if (selectedTab === 'by-tag') {
-      // Group by most common tags
-      mems = mems;
+      // Entries with the most tags first; untagged entries hidden
+      mems = [...mems]
+        .filter(m => m.tags.length > 0)
+        .sort((a, b) => b.tags.length - a.tags.length);
     } else if (selectedTab === 'by-mood') {
-      // Group by mood
+      // Only entries that have a mood recorded
       mems = mems.filter(m => m.mood);
     } else if (selectedTab === 'by-source') {
-      // Group by source
-      mems = mems;
+      // Group same-source entries together
+      mems = [...mems].sort((a, b) => a.source.localeCompare(b.source));
     } else if (selectedTab === 'favorites') {
       // Filter by favorites (if metadata has favorite flag)
       mems = mems.filter(m => m.metadata?.favorite === true);
@@ -1001,6 +1030,7 @@ export const MemoryExplorer = () => {
                     expanded={expandedCardId === memory.id}
                     onToggleExpand={() => setExpandedCardId(expandedCardId === memory.id ? null : memory.id)}
                     onSelect={() => setSelectedMemory(memory)}
+                    onToggleFavorite={handleToggleFavorite}
                   />
                 ))}
               </div>
@@ -1246,6 +1276,7 @@ export const MemoryExplorer = () => {
                                       expanded={false}
                                       onToggleExpand={() => {}}
                                       onSelect={() => setSelectedMemory(memory)}
+                                      onToggleFavorite={handleToggleFavorite}
                                     />
                                   );
                                 } catch {

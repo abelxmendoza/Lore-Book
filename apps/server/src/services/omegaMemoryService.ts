@@ -790,11 +790,13 @@ Only extract clear relationships. Include temporal context when available.`
 
   private promoteMentionIfNeeded(userId: string, entity: Entity): void {
     const e = entity as Entity & { mention_status?: string; mention_count?: number };
-    if (e.mention_status !== 'mentioned_only') return;
+    // Count EVERY re-mention — previously this early-returned for confirmed
+    // entities, freezing mention_count at the confirmation threshold and
+    // making character importance permanently stuck at its initial level.
     const newCount = (e.mention_count ?? 1) + 1;
-    const newStatus = newCount >= AI_THRESHOLDS.ENTITY_CONFIRMATION_THRESHOLD
+    const newStatus = e.mention_status === 'mentioned_only' && newCount >= AI_THRESHOLDS.ENTITY_CONFIRMATION_THRESHOLD
       ? 'confirmed'
-      : 'mentioned_only';
+      : e.mention_status ?? 'mentioned_only';
     Promise.resolve(
       supabaseAdmin
         .from('omega_entities')
@@ -802,6 +804,44 @@ Only extract clear relationships. Include temporal context when available.`
         .eq('id', entity.id)
         .eq('user_id', userId)
     ).catch((err: unknown) => logger.warn({ err, entityId: entity.id }, 'mention promotion failed (non-fatal)'));
+
+    // Keep the promoted character's importance in step with how often the
+    // person actually comes up: 1–2 minor, 3–5 supporting, 6+ major.
+    this.syncCharacterImportance(userId, entity.id, newCount).catch((err: unknown) =>
+      logger.debug({ err, entityId: entity.id }, 'character importance sync failed (non-fatal)')
+    );
+  }
+
+  private async syncCharacterImportance(
+    userId: string,
+    omegaEntityId: string,
+    mentionCount: number
+  ): Promise<void> {
+    const importanceLevel = mentionCount >= 6 ? 'major' : mentionCount >= 3 ? 'supporting' : 'minor';
+    const { data: rows } = await supabaseAdmin
+      .from('characters')
+      .select('id, importance_level, metadata')
+      .eq('user_id', userId)
+      .eq('metadata->>omega_entity_id', omegaEntityId)
+      .limit(1);
+    const character = rows?.[0] as { id: string; importance_level: string | null; metadata: Record<string, unknown> | null } | undefined;
+    if (!character) return;
+
+    // Only auto-raise, never lower — and never touch protagonist (manual)
+    const rank: Record<string, number> = { background: 0, minor: 1, supporting: 2, major: 3, protagonist: 4 };
+    const current = rank[character.importance_level ?? 'minor'] ?? 1;
+    const proposed = rank[importanceLevel];
+    const metadata = { ...(character.metadata ?? {}), mention_count: mentionCount };
+
+    await supabaseAdmin
+      .from('characters')
+      .update(
+        proposed > current
+          ? { importance_level: importanceLevel, metadata, updated_at: new Date().toISOString() }
+          : { metadata, updated_at: new Date().toISOString() }
+      )
+      .eq('id', character.id)
+      .eq('user_id', userId);
   }
 
   /**
