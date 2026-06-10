@@ -962,6 +962,7 @@ class OmegaChatService {
       episodicEvents: ragPacket.episodicEvents,
       socialCommunities: ragPacket.socialCommunities,
       crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
+      entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
       entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,
     };
 
@@ -1681,6 +1682,7 @@ class OmegaChatService {
       episodicEvents: ragPacket.episodicEvents,
       socialCommunities: ragPacket.socialCommunities,
       crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
+      entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
       entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,
     };
 

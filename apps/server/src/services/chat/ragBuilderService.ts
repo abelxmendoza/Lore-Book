@@ -64,12 +64,15 @@ export async function buildRAGPacket(
   let workoutEvents: any[] = [];
   let recentBiometrics: any[] = [];
   let topInterests: any[] = [];
+  // Episodic evidence: recent character_memories grouped by character_id
+  let characterMemoriesMap: Record<string, any[]> = {};
 
   const cachedLore = ragPacketCacheService.getLoreCache(userId);
   if (cachedLore) {
     ({ allCharacters, allLocations, allChapters, timelineHierarchy, allPeoplePlaces,
       romanticRelationships, corrections, deprecatedUnits, workoutEvents, recentBiometrics, topInterests } = cachedLore);
     characterAttributesMap = new Map(Object.entries(cachedLore.characterAttributesMap || {}));
+    characterMemoriesMap = (cachedLore as any).characterMemoriesMap || {};
   } else {
     // Characters
     try {
@@ -119,6 +122,22 @@ export async function buildRAGPacket(
           characterAttributesMap.set(attr.entity_id, list);
         }
       } catch (e) { logger.debug({ e }, 'RAGBuilder: character attributes fetch failed'); }
+
+      // character_memories — batched, capped at 5 per character for system prompt relevance
+      try {
+        const charIds = allCharacters.map((c: any) => c.id);
+        const { data: memData } = await supabaseAdmin
+          .from('character_memories')
+          .select('character_id, summary, created_at')
+          .in('character_id', charIds)
+          .order('created_at', { ascending: false })
+          .limit(charIds.length * 5);
+        for (const mem of ((memData as any[]) || [])) {
+          const list = characterMemoriesMap[mem.character_id] ?? [];
+          if (list.length < 5) list.push({ summary: mem.summary, createdAt: mem.created_at });
+          characterMemoriesMap[mem.character_id] = list;
+        }
+      } catch (e) { logger.debug({ e }, 'RAGBuilder: character memories fetch failed'); }
     }
 
     // Romantic relationships — fetch + resolve partner names (batched, not N+1)
@@ -161,8 +180,9 @@ export async function buildRAGPacket(
     ragPacketCacheService.setLoreCache(userId, {
       allCharacters, allLocations, allChapters, timelineHierarchy, allPeoplePlaces,
       characterAttributesMap: Object.fromEntries(characterAttributesMap),
+      characterMemoriesMap,
       romanticRelationships, corrections, deprecatedUnits, workoutEvents, recentBiometrics, topInterests,
-    });
+    } as any);
   }
 
   // ── Social centrality → character salience boost ────────────────────────
@@ -224,8 +244,20 @@ export async function buildRAGPacket(
     const { MemoryRetriever } = await import('../chat/memoryRetriever');
 
     if (currentContext?.kind === 'thread' && currentContext.threadId) {
-      // Thread context always wins — user is focused on a specific conversation
-      relatedEntries = (await retrieveMemoriesByThread(userId, currentContext.threadId, 30)) as ResolvedMemoryEntry[];
+      // Thread-scoped entries + cross-thread entity mentions run in parallel.
+      // Cross-thread path uses people_places.related_entries to surface what the user
+      // said about the same people in completely different conversations.
+      const [threadEntries, crossThreadEntries] = await Promise.all([
+        retrieveMemoriesByThread(userId, currentContext.threadId, 20),
+        (await import('../chat/contextAwareMemoryRetrieval')).retrieveEntityMentionsAcrossThreads(
+          userId, message, allCharacters, 10
+        ),
+      ]);
+      const seen = new Set(threadEntries.map((e: any) => e.id));
+      relatedEntries = [
+        ...threadEntries,
+        ...crossThreadEntries.filter((e: any) => !seen.has(e.id)),
+      ] as ResolvedMemoryEntry[];
 
     } else if (currentContext?.kind === 'timeline' && currentContext.timelineNodeId && currentContext.timelineLayer) {
       relatedEntries = (await retrieveMemoriesUnderNode(userId, currentContext.timelineNodeId, currentContext.timelineLayer, 30)) as ResolvedMemoryEntry[];
@@ -400,6 +432,14 @@ export async function buildRAGPacket(
     crystallizedKnowledge = await loadPromptClaims(userId);
   } catch (e) { logger.debug({ e }, 'RAGBuilder: crystallized knowledge fetch failed'); }
 
+  // ── Entity dossier — verified facts + recurring moments for entities the
+  //    user just mentioned. Grounding layer for accurate recall.
+  let entityDossierBlock: string | null = null;
+  try {
+    const { buildEntityDossierBlock } = await import('./entityDossierService');
+    entityDossierBlock = await buildEntityDossierBlock(userId, message, allCharacters, allLocations);
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: entity dossier build failed'); }
+
   // ── Relationship context — per-request, NOT cached ────────────────────────
   let romanticContext: RelationshipContinuitySummary[] = [];
   try {
@@ -449,10 +489,13 @@ export async function buildRAGPacket(
     extractedDates, sources,
     allCharacters, allLocations, allChapters, timelineHierarchy, allPeoplePlaces,
     characterAttributesMap: Object.fromEntries(characterAttributesMap),
+    characterMemoriesMap,
     romanticRelationships, romanticContext, corrections, deprecatedUnits,
     workoutEvents, recentBiometrics, topInterests,
     recentInterpretations, stableArcs, episodicEvents, socialCommunities,
     crystallizedKnowledge,
+    // Entity dossier: verified facts + recurring moments for mentioned entities
+    entityDossierBlock,
     // Phase 2: entity arc narrative block (null when generic retrieval was used)
     entityArcNarrativeBlock,
     // Sprint G: foundation recall data

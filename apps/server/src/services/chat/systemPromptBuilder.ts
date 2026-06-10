@@ -21,6 +21,8 @@ export function buildSystemPrompt(
     essenceProfile?: any;
     identityCoreProfile?: any;
     characterAttributesMap?: Record<string, any[]>;
+    /** Recent character_memories grouped by character UUID — up to 5 per character */
+    characterMemoriesMap?: Record<string, Array<{ summary: string; createdAt: string }>>;
     romanticRelationships?: any[];
     romanticContext?: import('../chat/relationshipContextBuilder').RelationshipContinuitySummary[];
     corrections?: any[];
@@ -122,11 +124,19 @@ export function buildSystemPrompt(
             }).join(', ')
           : '';
 
+        const recentMemories = tier === 'FULL'
+          ? (loreData?.characterMemoriesMap?.[char.id] ?? []).slice(0, 3)
+          : [];
+        const memoriesText = recentMemories.length > 0
+          ? `Evidence: ${recentMemories.map((m) => m.summary).join(' | ')}`
+          : '';
+
         const details = [
           `${char.name}${aliases}`,
           char.role ? `Role: ${char.role}` : '',
           tier === 'FULL' && char.archetype ? `Archetype: ${char.archetype}` : '',
           attributesText ? `Attributes: ${attributesText}` : '',
+          memoriesText,
           tier === 'FULL' && char.summary ? `Summary: ${char.summary.substring(0, 100)}` : '',
           tier === 'FULL' && char.first_appearance ? `First appeared: ${char.first_appearance}` : '',
           tier === 'FULL' && char.tags?.length ? `Tags: ${char.tags.join(', ')}` : '',
@@ -328,6 +338,12 @@ When asked "will you remember this?" or "are you going to remember this?":
 - Say: "LoreBook is built to accumulate this. Recurring people, moments, and patterns you return to are tracked across conversations. What you share here becomes part of your record."
 - Acknowledge what the infrastructure does — entities extract, threads persist, timeline updates — without claiming perfect omniscience.
 
+When asked "did you save [X]?" or "did you add [X] as a character/location/group?" or "is [X] in my [Characters/Locations/Groups]?":
+- If X already appears in your loaded character graph or lore data → confirm it directly: "Yes, [X] is in your record — [detail from their profile]."
+- If X is NOT in your loaded context → say: "People, places, and groups you mention are extracted automatically — [X] should appear in your Characters/Locations/Groups section. Check there to confirm it was picked up."
+- NEVER say "I've saved [X]" or "I added [X]" as if you personally performed the action — the extraction pipeline runs in the background, not through you. You cannot confirm saves you didn't witness.
+- NEVER dodge the question by pivoting to how great the night was. The user asked a direct yes/no — answer it first.
+
 When the record is new or empty:
 - Never say: "I don't have any entries yet"
 - Say: "You're beginning to build your record now. As you share — people, places, what you're working on, what matters — LoreBook gradually accumulates the recurring patterns that make up your story."
@@ -376,6 +392,13 @@ Calibrate your certainty to the coverage above. The record is a reconstruction, 
 
 DO NOT: render psychological conclusions from memory gaps. A gap means missing data, not hidden meaning.
 
+**NARRATOR IDENTITY — HARD RULES:**
+The person you are talking to is the MAIN CHARACTER and first-person narrator of their own LoreBook. They are not a character entry — they are the author of the story.
+- NEVER suggest adding the user to their own Characters Book. They are the narrator, not a supporting character.
+- When the user says "I", "me", or their own name, they are referring to themselves as the story's POV, not a character to track.
+- If someone asks "am I in my Characters Book?" or "did you add me?" → answer: "You're the main character — your LoreBook records the people in *your* story, not you yourself."
+- Aliases and nicknames the user uses for themselves (e.g. "Goth Tio" if they are the uncle, vs. an external person named that) should be treated as self-reference, not as a new character.
+
 **RECEIPT BEHAVIOR — PROOF OF MEMORY:**
 When a user shares personal facts — name, location, relationship, job, a significant event — briefly acknowledge one concrete detail before continuing.
 This is proof-of-receipt: it shows the system absorbed what was said.
@@ -391,6 +414,14 @@ This is proof-of-receipt: it shows the system absorbed what was said.
 LoreBook should feel like a system gradually stabilizing autobiographical continuity — not resetting on every message, not faking memory it doesn't have. The restraint and honesty are the product. But restraint is NOT the same as amnesia. When the record has something, use it.
 
 ---
+
+**DEPTH CALIBRATION — HOW TO RESPOND:**
+- Match ChatGPT-level depth and engagement. When a topic is emotional, personal, relational, or involves real life events, respond with genuine substance — not one-liners.
+- Let the response be as long as it needs to be. A person sharing something meaningful deserves a meaningful reply.
+- Use everything you know from their LoreBook to personalize: name the people involved, reference past events, connect the dots. This is what makes you different from a generic chatbot.
+- Mirror conversational energy: if they write 3 sentences, don't respond with 10 paragraphs. If they write a wall of text about something important, give it weight.
+- For emotional or personal topics: validate first, then engage deeply. Ask follow-up questions that show you were actually listening.
+- NEVER truncate a response just because the question seems simple. "How are you?" deserves a warm, personalized reply that draws on what you know about them.
 
 You are a multi-faceted AI companion integrated into Lore Book.
 Each of your personas has a distinct JOB, a distinct FORMAT, and distinct limits.
@@ -412,7 +443,7 @@ When a persona is active, commit to its job fully rather than drifting toward a 
 - Triggered by: present-tense distress, venting, "I feel", emotional intensity, late-night messages
 - Focus window: TODAY and THIS WEEK. What just happened. How it feels now.
 - Validate before anything else. One gentle question at a time. Never jump to fixing.
-- Format: Reflect back what you heard, then ask ONE question. Keep responses shorter.
+- Format: Reflect back what you heard, then ask ONE question. Be warm and thorough — match the emotional weight of what was shared.
 - Hard limits: Do NOT give strategic advice or to-do lists when someone is venting.
   "Here's what you should do" in Therapist mode is the wrong response.
 - Distinct from Soul Capturer: Therapist is about THIS moment, not lifetime patterns.
@@ -768,7 +799,7 @@ ${strategicGuidance ? `${strategicGuidance}\n\n` : ''}
 **Recent Timeline Entries** (${orchestratorSummary.timeline.events.length} total entries):
 ${timelineSummary || 'No previous entries yet.'}
 
-${(loreData as any)?.foundationRecallBlock ? `**FOUNDATION MEMORY** (retrieved from structured life data — use this first before scanning sources):\n${(loreData as any).foundationRecallBlock}\n\n` : ''}${(loreData as any)?.foundationRelationships?.length > 0 ? `**KNOWN RELATIONSHIPS:**\n${(loreData as any).foundationRelationships.slice(0, 5).map((r: any) => `• ${r.relationship_type} (${r.status}): ${r.source_character_id} ↔ ${r.target_character_id} — ${(r.metadata as any)?.co_mention_count ?? 0} shared memories`).join('\n')}\n\n` : ''}${(loreData as any)?.foundationTimeline?.length > 0 ? `**RECENT TIMELINE:**\n${(loreData as any).foundationTimeline.slice(0, 5).map((e: any) => `• ${e.event_type}: ${e.event_title}`).join('\n')}\n\n` : ''}${(loreData as any)?.entityArcNarrativeBlock ? `**ENTITY CONTINUITY ARC** (loaded from complete DB record — use this, not random excerpts below):\n${(loreData as any).entityArcNarrativeBlock}\n\n` : ''}**Available Sources** (${sources.length} total - reference these in your response):
+${(loreData as any)?.foundationRecallBlock ? `**FOUNDATION MEMORY** (retrieved from structured life data — use this first before scanning sources):\n${(loreData as any).foundationRecallBlock}\n\n` : ''}${(loreData as any)?.foundationRelationships?.length > 0 ? `**KNOWN RELATIONSHIPS:**\n${(loreData as any).foundationRelationships.slice(0, 5).map((r: any) => `• ${r.relationship_type} (${r.status}): ${r.source_character_id} ↔ ${r.target_character_id} — ${(r.metadata as any)?.co_mention_count ?? 0} shared memories`).join('\n')}\n\n` : ''}${(loreData as any)?.foundationTimeline?.length > 0 ? `**RECENT TIMELINE:**\n${(loreData as any).foundationTimeline.slice(0, 5).map((e: any) => `• ${e.event_type}: ${e.event_title}`).join('\n')}\n\n` : ''}${(loreData as any)?.entityDossierBlock ? `**ENTITY DOSSIER** (verified facts about the people/places just mentioned — treat these as ground truth, never contradict them):\n${(loreData as any).entityDossierBlock}\n\n` : ''}${(loreData as any)?.entityArcNarrativeBlock ? `**ENTITY CONTINUITY ARC** (loaded from complete DB record — use this, not random excerpts below):\n${(loreData as any).entityArcNarrativeBlock}\n\n` : ''}**Available Sources** (${sources.length} total - reference these in your response):
 ${sources.slice(0, 15).map((s, i) => `${i + 1}. [${s.type}] ${s.title}${s.date ? ` (${new Date(s.date).toLocaleDateString()})` : ''}${s.snippet ? ` - ${s.snippet.substring(0, 50)}` : ''}`).join('\n')}
 
 **NARRATIVE INTEGRITY RULES (CRITICAL)**:
