@@ -47,17 +47,23 @@ export const useChatStream = () => {
       ? `${apiUrl}/api/chat/memory-feedback/${messageId}`
       : `/api/chat/memory-feedback/${messageId}`;
 
-    try {
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      if (res.status === 200) {
-        const feedback: MemoryFeedbackEvent = await res.json();
-        onMemoryFeedback(feedback);
+    // The server long-polls 8s per request but the ingestion pipeline can take
+    // 8–15s end-to-end. Two attempts (~16s coverage) so slow runs still surface
+    // their "remembered" indicator instead of being silently dropped.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (res.status === 200) {
+          const feedback: MemoryFeedbackEvent = await res.json();
+          onMemoryFeedback(feedback);
+          return;
+        }
+        // 204 = not ready yet — retry once, then give up
+      } catch {
+        return; // network error — non-critical, silently drop
       }
-      // 204 = pipeline timed out — silently drop, no retry needed
-    } catch {
-      // Network error during feedback poll — non-critical, silently drop
     }
   }, []);
 

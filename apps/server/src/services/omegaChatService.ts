@@ -13,7 +13,6 @@ import {
   evaluateBelief,
   generateBeliefChallenge,
 } from './conversationCentered/beliefChallenge';
-import { conversationIngestionPipeline } from './conversationCentered/ingestionPipeline';
 import { ingestionQueue } from './ingestion/ingestionQueue';
 import { tokenBudgetService } from './chat/tokenBudgetService';
 import { compactionService } from './chat/compactionService';
@@ -1953,22 +1952,17 @@ class OmegaChatService {
         // Set entryId for tracking and RL
         entryId = savedMessage.id;
 
-        // Fire-and-forget ingestion through pipeline (non-blocking)
-        conversationIngestionPipeline
-          .ingestFromChatMessage(
+        // Enqueue ingestion — tracked by pipelineRunService (matches chatStream path).
+        // Skip when entityContext is set: ingestMessageWithContext() fires separately
+        // and enqueueing here too would double-ingest the same content.
+        if (!entityContext) {
+          ingestionQueue.enqueue({
             userId,
-            savedMessage.id,
+            chatMessageId: savedMessage.id,
             sessionId,
-            conversationHistory
-          )
-          .then(result => {
-            logger.debug({ userId, messageId: savedMessage.id }, 'Successfully ingested chat message');
-          })
-          .catch(err => {
-            logger.warn({ err, userId, messageId: savedMessage.id }, 'Failed to ingest chat message (non-blocking)');
-          });
-
-        // Pipeline status intentionally not surfaced to user — trust > transparency of ops
+            conversationHistory,
+          }, 'NORMAL');
+        }
       }
 
       memoirService.autoUpdateMemoir(userId).catch(err => {
