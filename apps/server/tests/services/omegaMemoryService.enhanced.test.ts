@@ -122,11 +122,13 @@ describe('OmegaMemoryService - Enhanced Features', () => {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
             or: vi.fn().mockReturnThis(),
+            ilike: vi.fn().mockReturnThis(),
             limit: vi.fn().mockReturnThis(),
             single: vi.fn().mockImplementation(() => {
               entityFindCallCount++;
-              // First call: entity not found (triggers create)
-              if (entityFindCallCount === 1) {
+              // First two calls: not found — findEntityByNameOrAlias miss, then
+              // the createEntity race-condition pre-check miss (triggers insert)
+              if (entityFindCallCount <= 2) {
                 return Promise.resolve({ data: null, error: { code: 'PGRST116' } });
               }
               // Subsequent calls: return the entity
