@@ -52,14 +52,10 @@ export class ExpressionRoutingService {
         return 'ANALYTICAL';
 
       case 'CASUAL_CHAT':
-        if (toneProfile.verbosity === 'LOW') {
-          return 'MINIMAL';
-        } else {
-          return 'FACTUAL';
-        }
+        return 'SUPPORTIVE';
 
       default:
-        return 'FACTUAL';
+        return 'SUPPORTIVE';
     }
   }
 

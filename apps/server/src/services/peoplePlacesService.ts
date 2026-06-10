@@ -443,19 +443,23 @@ class PeoplePlacesService {
     };
   }
 
-  async recordEntitiesForEntry(entry: MemoryEntry, relationships?: EntryRelationship[]) {
+  async recordEntitiesForEntry(entry: MemoryEntry, relationships?: EntryRelationship[]): Promise<PeoplePlaceEntity[]> {
     const fromMetadata = (entry.metadata as { relationships?: EntryRelationship[] } | undefined)?.relationships;
     const normalizedRelationships = relationships ?? fromMetadata ?? [];
     const detected = await this.detectEntities(entry.content);
 
+    const upserted: PeoplePlaceEntity[] = [];
     for (const entity of detected) {
       const existing = await this.findEntity(entry.user_id, entity.name);
       const payload = this.buildEntityPayload(entry, entity, existing, normalizedRelationships);
       const { error } = await supabaseAdmin.from('people_places').upsert(payload);
       if (error) {
         logger.error({ error, name: entity.name }, 'Failed to upsert entity');
+      } else {
+        upserted.push(payload);
       }
     }
+    return upserted;
   }
 
   async listEntities(userId: string, type?: string): Promise<PeoplePlaceEntity[]> {

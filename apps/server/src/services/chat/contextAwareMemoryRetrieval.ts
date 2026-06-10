@@ -151,6 +151,66 @@ async function getChapterIdsUnderNode(
 }
 
 /**
+ * Given character names mentioned in the current message, find all journal entries
+ * across ANY thread that mention those same entities.
+ *
+ * Uses people_places.related_entries (populated per ingestion) so there's no full-text scan.
+ * Deduplication against thread-scoped entries is done at the call site.
+ */
+export async function retrieveEntityMentionsAcrossThreads(
+  userId: string,
+  message: string,
+  knownCharacters: Array<{ id: string; name: string }>,
+  limit: number = 10
+): Promise<MemoryEntry[]> {
+  try {
+    if (knownCharacters.length === 0) return [];
+
+    const messageLower = message.toLowerCase();
+    const mentionedNames = knownCharacters
+      .filter((c) => c.name && messageLower.includes(c.name.toLowerCase()))
+      .map((c) => c.name);
+
+    if (mentionedNames.length === 0) return [];
+
+    const { data: entityRows } = await supabaseAdmin
+      .from('people_places')
+      .select('name, related_entries')
+      .eq('user_id', userId)
+      .in('name', mentionedNames);
+
+    if (!entityRows?.length) return [];
+
+    const entryIdSet = new Set<string>();
+    for (const row of (entityRows as Array<{ name: string; related_entries: string[] | null }>)) {
+      for (const eid of (row.related_entries ?? [])) {
+        entryIdSet.add(eid);
+      }
+    }
+
+    if (entryIdSet.size === 0) return [];
+
+    const entryIds = [...entryIdSet].slice(0, limit * 4);
+    const { data: entries, error } = await supabaseAdmin
+      .from('journal_entries')
+      .select('*')
+      .eq('user_id', userId)
+      .in('id', entryIds)
+      .order('date', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      logger.warn({ error, userId }, 'retrieveEntityMentionsAcrossThreads: entry fetch failed');
+      return [];
+    }
+    return (entries ?? []) as MemoryEntry[];
+  } catch (err) {
+    logger.warn({ err, userId }, 'retrieveEntityMentionsAcrossThreads failed');
+    return [];
+  }
+}
+
+/**
  * Retrieve journal entries under the given timeline node (era/saga/arc/chapter).
  */
 export async function retrieveMemoriesUnderNode(

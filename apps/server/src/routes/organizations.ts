@@ -386,4 +386,21 @@ router.delete('/:id/relationships/:relationshipId', requireAuth, async (req: Aut
   }
 });
 
+// GET /api/organizations/:id/facts
+// Returns entity facts for this organization extracted from conversations.
+router.get('/:id/facts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const orgId = req.params.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { entityFactsService } = await import('../services/entityFactsService');
+    const facts = await entityFactsService.getEntityFacts(userId, orgId, 'organization');
+    res.json({ success: true, facts });
+  } catch (error) {
+    logger.error({ error, orgId }, 'Failed to get organization facts');
+    res.status(500).json({ error: 'Failed to get organization facts' });
+  }
+});
+
 export default router;

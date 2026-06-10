@@ -148,6 +148,52 @@ router.get(
 );
 
 /**
+ * DELETE /api/conversation/threads/empty
+ * Purge stale threads that were created but never had any messages saved.
+ * Safe to call on every boot — only deletes threads older than 1 hour with no messages.
+ */
+router.delete(
+  '/threads/empty',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour ago
+
+    // Find thread IDs where metadata has no messages and the thread is old enough.
+    const { data: candidates, error: fetchErr } = await supabaseAdmin
+      .from('conversation_sessions')
+      .select('id, metadata, updated_at')
+      .eq('user_id', userId)
+      .lt('updated_at', cutoff);
+
+    if (fetchErr) {
+      res.json({ success: true, deleted: 0 });
+      return;
+    }
+
+    const emptyIds = (candidates ?? [])
+      .filter((t) => {
+        const msgs = (t.metadata as Record<string, unknown> | null)?.messages;
+        return !msgs || (Array.isArray(msgs) && msgs.length === 0);
+      })
+      .map((t) => t.id);
+
+    if (emptyIds.length === 0) {
+      res.json({ success: true, deleted: 0 });
+      return;
+    }
+
+    await supabaseAdmin
+      .from('conversation_sessions')
+      .delete()
+      .eq('user_id', userId)
+      .in('id', emptyIds);
+
+    res.json({ success: true, deleted: emptyIds.length });
+  })
+);
+
+/**
  * POST /api/conversation/threads
  * Create a new conversation session
  */
@@ -476,6 +522,53 @@ function isTableMissingError(error: unknown): boolean {
 }
 
 /**
+ * Resolve a list of entity IDs to human-readable names.
+ * Checks omega_entities (primary_name) first, then people_places (name).
+ * IDs that are already names (no UUID format) are passed through as-is.
+ * Returns the same array length with unresolvable IDs replaced by empty string and filtered out.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function resolveEntityNamesToDisplay(ids: string[], userId: string): Promise<string[]> {
+  if (!ids || ids.length === 0) return [];
+
+  const uuids = ids.filter(id => UUID_RE.test(id));
+  const alreadyNames = ids.filter(id => !UUID_RE.test(id));
+
+  if (uuids.length === 0) return alreadyNames;
+
+  const nameMap = new Map<string, string>();
+
+  // Query all three tables in parallel — each is typed with `as any` since not all are in the generated schema
+  const db = supabaseAdmin as any;
+  const [omegaResult, ppResult, charResult] = await Promise.allSettled([
+    db.from('omega_entities').select('id, primary_name').eq('user_id', userId).in('id', uuids),
+    db.from('people_places').select('id, name').eq('user_id', userId).in('id', uuids),
+    db.from('characters').select('id, name').eq('user_id', userId).in('id', uuids),
+  ]);
+
+  if (omegaResult.status === 'fulfilled') {
+    for (const row of ((omegaResult.value?.data as Array<{ id: string; primary_name: string }>) ?? [])) {
+      if (row.primary_name) nameMap.set(row.id, row.primary_name);
+    }
+  }
+  if (ppResult.status === 'fulfilled') {
+    for (const row of ((ppResult.value?.data as Array<{ id: string; name: string }>) ?? [])) {
+      if (!nameMap.has(row.id) && row.name) nameMap.set(row.id, row.name);
+    }
+  }
+  if (charResult.status === 'fulfilled') {
+    for (const row of ((charResult.value?.data as Array<{ id: string; name: string }>) ?? [])) {
+      if (!nameMap.has(row.id) && row.name) nameMap.set(row.id, row.name);
+    }
+  }
+
+  // Rebuild: resolved UUIDs + passthrough names, drop unresolvable UUIDs
+  const resolvedUuids = uuids.map(id => nameMap.get(id)).filter((n): n is string => !!n);
+  return [...alreadyNames, ...resolvedUuids];
+}
+
+/**
  * GET /api/conversation/events
  * Get all events for user, sorted by time
  */
@@ -549,8 +642,14 @@ router.get(
           connectionCharacterName = character?.name;
         }
 
+        const ev = event as any;
+        const resolvedPeople = await resolveEntityNamesToDisplay(ev.people ?? [], userId);
+        const resolvedLocations = await resolveEntityNamesToDisplay(ev.locations ?? [], userId);
+
         return {
-          ...event,
+          ...ev,
+          people: resolvedPeople,
+          locations: resolvedLocations,
           source_count: count || 0,
           impact: primaryImpact
             ? {
@@ -850,10 +949,17 @@ router.get(
       logger.debug({ err, eventId: id }, 'Could not fetch story position (optional)');
     }
 
+    const [resolvedPeople, resolvedLocations] = await Promise.all([
+      resolveEntityNamesToDisplay(event.people ?? [], userId),
+      resolveEntityNamesToDisplay(event.locations ?? [], userId),
+    ]);
+
     res.json({
       success: true,
       event: {
         ...event,
+        people: resolvedPeople,
+        locations: resolvedLocations,
         source_messages: sourceMessages,
         source_unit_ids: unitIds,
         linked_decisions: linkedDecisions,

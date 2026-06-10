@@ -16,7 +16,9 @@ export class SelfThemeExtractor {
       { key: 'ambition', regex: /(dream|goal|future|aspire|drive)/i },
       { key: 'identity', regex: /(who i am|finding myself|identity)/i },
       { key: 'connection', regex: /(friends|love|relationships|bond)/i },
-      { key: 'violence', regex: /(fight|hit|punched|attacked|spar|hurt)/i },
+      // Require unambiguous physical violence — "fight" alone matches "fighting for the bathroom",
+      // "hurt" alone matches minor everyday pain, etc.
+      { key: 'violence', regex: /(punched|got attacked|physical fight|fist fight|threatened me|beat me|beat him|beat her|jumped me|violence)/i },
       { key: 'self_worth', regex: /(i matter|i'm worth|i deserve)/i },
       { key: 'shadow', regex: /(my dark side|sabotage|self destruction)/i },
       { key: 'purpose', regex: /(purpose|mission|why i exist)/i },
@@ -33,12 +35,16 @@ export class SelfThemeExtractor {
       });
     });
 
-    return Object.entries(themeMap).map(([theme, evidence]) => ({
-      id: randomUUID(),
-      theme: theme as SelfTheme['theme'],
-      evidence,
-      strength: Math.min(1, evidence.length / 10),
-    }));
+    return Object.entries(themeMap)
+      // Require at least 2 matching entries before surfacing a theme — prevents
+      // a single incidental word match from becoming a core narrative theme.
+      .filter(([, evidence]) => evidence.length >= 2)
+      .map(([theme, evidence]) => ({
+        id: randomUUID(),
+        theme: theme as SelfTheme['theme'],
+        evidence,
+        strength: Math.min(1, evidence.length / 10),
+      }));
   }
 }
 

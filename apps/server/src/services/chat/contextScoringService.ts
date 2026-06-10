@@ -415,9 +415,11 @@ export function scoreContext(
       continuityImportance: 0.9,
     });
 
-    // characterAttributesMap follows characters — builder reads it for FULL-tier cards
+    // characterAttributesMap and characterMemoriesMap follow characters — builder reads both for FULL-tier cards
     if (filtered.allCharacters) {
       filtered.characterAttributesMap = attrMap;
+      const memMap = loreData.characterMemoriesMap as Record<string, unknown> | undefined;
+      if (memMap) filtered.characterMemoriesMap = memMap;
     }
   }
 
