@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { Users, MapPin } from 'lucide-react';
+import { Users, MapPin, Building2 } from 'lucide-react';
 
 interface EntityChip {
   id: string;
   name: string;
-  type: 'character' | 'location';
+  type: 'character' | 'location' | 'organization';
 }
 
 interface EntityChipsRowProps {
@@ -12,18 +12,21 @@ interface EntityChipsRowProps {
 }
 
 const ICON = {
-  character: <Users className="h-3 w-3 flex-shrink-0" />,
-  location:  <MapPin className="h-3 w-3 flex-shrink-0" />,
+  character:    <Users     className="h-3 w-3 flex-shrink-0" />,
+  location:     <MapPin    className="h-3 w-3 flex-shrink-0" />,
+  organization: <Building2 className="h-3 w-3 flex-shrink-0" />,
 };
 
 const ROUTE = {
-  character: '/characters',
-  location:  '/locations',
+  character:    '/characters',
+  location:     '/locations',
+  organization: '/organizations',
 };
 
 const COLOR = {
-  character: 'border-purple-500/40 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20',
-  location:  'border-cyan-500/40   bg-cyan-500/10   text-cyan-300   hover:bg-cyan-500/20',
+  character:    'border-purple-500/40 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20',
+  location:     'border-cyan-500/40   bg-cyan-500/10   text-cyan-300   hover:bg-cyan-500/20',
+  organization: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20',
 };
 
 export const EntityChipsRow = ({ entities }: EntityChipsRowProps) => {

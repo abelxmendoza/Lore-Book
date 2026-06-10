@@ -195,21 +195,28 @@ export class OmegaMemoryService {
         messages: [
           {
             role: 'system',
-            content: `You are an entity extraction system. Extract entities (people, characters, locations, organizations, events) from text.
+            content: `You are an entity extraction system for a personal memory and lore journal.
+
+The text is written in FIRST-PERSON. The narrator ("I" / "me" / "my") is the journal author — do NOT extract them as an entity.
+
+Extract all OTHER people, places, organizations, and events. Rules:
+- Named people: use their full name if known, first name only if that is all that was mentioned.
+- Unnamed people: generate a SHORT DESCRIPTIVE NICKNAME from context, like "the barista at Blue Bottle", "guy from the show who gave free shirt", "Abuela's neighbor with the dog". Keep it under 6 words and specific enough to be recognizable.
+- Aliases and nicknames: capture any alternate names mentioned (e.g. "Tío Juan" and "Uncle Juan" → aliases of each other).
 
 Return JSON:
 {
   "entities": [
     {
-      "name": "entity name",
+      "name": "entity name or descriptive nickname",
       "type": "PERSON" | "CHARACTER" | "LOCATION" | "ORG" | "EVENT",
-      "aliases": ["alternative names"],
+      "aliases": ["alternative names or nicknames"],
       "confidence": 0.0-1.0
     }
   ]
 }
 
-Only extract entities that are clearly mentioned. Be conservative with confidence scores.`
+Only extract entities clearly mentioned. Be conservative with confidence scores. Never include the first-person narrator.`
           },
           {
             role: 'user',
@@ -319,6 +326,8 @@ Only extract entities that are clearly mentioned. Be conservative with confidenc
           match = bestEntity;
           await continuityService.recordEntityResolved(userId, match, 'alias_match').catch(() => {});
           this.promoteMentionIfNeeded(userId, match);
+          // Register as alias so future lookups hit exact match instead of re-running JW
+          this.registerAliasIfNew(userId, match, candidate.name).catch(() => {});
         }
       }
 
@@ -447,6 +456,17 @@ Only extract entities that are clearly mentioned. Be conservative with confidenc
     type: EntityType,
     aliases: string[] = []
   ): Promise<Entity> {
+    // Race condition guard: a concurrent request may have just created this entity
+    const { data: existing } = await supabaseAdmin
+      .from('omega_entities')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('type', type)
+      .ilike('primary_name', name)
+      .limit(1)
+      .single();
+    if (existing) return existing as Entity;
+
     // Generate embedding for entity name
     const embedding = await embeddingService.embedText(name);
 
@@ -752,6 +772,22 @@ Only extract clear relationships. Include temporal context when available.`
    * Fire-and-forget: increment mention_count and promote 'mentioned_only' →
    * 'confirmed' once the entity has been seen ENTITY_CONFIRMATION_THRESHOLD times.
    */
+  private async registerAliasIfNew(userId: string, entity: Entity, name: string): Promise<void> {
+    const existing = Array.isArray(entity.aliases) ? entity.aliases as string[] : [];
+    const nameLower = name.toLowerCase();
+    if (entity.primary_name.toLowerCase() === nameLower) return;
+    if (existing.some((a) => a.toLowerCase() === nameLower)) return;
+    try {
+      await supabaseAdmin
+        .from('omega_entities')
+        .update({ aliases: [...existing, name] })
+        .eq('id', entity.id)
+        .eq('user_id', userId);
+    } catch (err) {
+      logger.warn({ err, entityId: entity.id, alias: name }, 'alias registration failed (non-fatal)');
+    }
+  }
+
   private promoteMentionIfNeeded(userId: string, entity: Entity): void {
     const e = entity as Entity & { mention_status?: string; mention_count?: number };
     if (e.mention_status !== 'mentioned_only') return;

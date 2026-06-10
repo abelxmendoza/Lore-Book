@@ -89,7 +89,7 @@ export type OmegaChatResponse = {
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   memories?: MemoryClaim[]; // Memory claims used in this response
   memorySuggestion?: MemorySuggestion; // Proactive memory suggestion
-  mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' }>;
+  mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
 };
 
 export type MemorySuggestion = {
@@ -164,7 +164,7 @@ export type StreamingChatResponse = {
     mentionedEntities?: Array<{
       id: string;
       name: string;
-      type: 'character' | 'location';
+      type: 'character' | 'location' | 'organization';
     }>;
     mode?: string;
     confidence?: number;
@@ -327,6 +327,7 @@ class OmegaChatService {
       essenceProfile?: any;
       identityCoreProfile?: any;
       characterAttributesMap?: Record<string, any[]>;
+      characterMemoriesMap?: Record<string, Array<{ summary: string; createdAt: string }>>;
       romanticRelationships?: any[];
       corrections?: any[];
       deprecatedUnits?: any[];
@@ -946,6 +947,7 @@ class OmegaChatService {
       essenceProfile: essenceProfile,
       identityCoreProfile: identityCoreProfile,
       characterAttributesMap: ragPacket.characterAttributesMap,
+      characterMemoriesMap: (ragPacket as any).characterMemoriesMap,
       romanticRelationships: ragPacket.romanticRelationships,
       romanticContext: ragPacket.romanticContext ?? [],
       corrections: ragPacket.corrections,
@@ -1255,8 +1257,14 @@ class OmegaChatService {
       return nameMatch || aliasMatch;
     });
     const characterIds = mentionedCharacters.map(c => c.id);
-    const mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' }> =
-      mentionedCharacters.map(c => ({ id: c.id, name: c.name, type: 'character' as const }));
+    const mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }> =
+      mentionedCharacters.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: c.type === 'place' ? 'location' as const
+            : (c.type === 'organization' || c.type === 'platform') ? 'organization' as const
+            : 'character' as const,
+      }));
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');
@@ -1658,6 +1666,7 @@ class OmegaChatService {
       essenceProfile: essenceProfile,
       identityCoreProfile: identityCoreProfile,
       characterAttributesMap: ragPacket.characterAttributesMap,
+      characterMemoriesMap: (ragPacket as any).characterMemoriesMap,
       romanticRelationships: ragPacket.romanticRelationships,
       romanticContext: ragPacket.romanticContext ?? [],
       corrections: ragPacket.corrections,
@@ -1988,8 +1997,14 @@ class OmegaChatService {
       message.toLowerCase().includes(char.name.toLowerCase())
     );
     const characterIds = mentionedCharacters.map(c => c.id);
-    const mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' }> =
-      mentionedCharacters.map(c => ({ id: c.id, name: c.name, type: 'character' as const }));
+    const mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }> =
+      mentionedCharacters.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: c.type === 'place' ? 'location' as const
+            : (c.type === 'organization' || c.type === 'platform') ? 'organization' as const
+            : 'character' as const,
+      }));
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');

@@ -1164,4 +1164,39 @@ router.get('/:id/lifecycle', requireAuth, async (req: AuthenticatedRequest, res)
   }
 });
 
+// GET /api/characters/:id/facts
+// Returns all known facts about this character extracted from conversations.
+// Facts are grouped by category and include confidence, status, and update history.
+router.get('/:id/facts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = req.params.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { entityFactsService } = await import('../services/entityFactsService');
+    const facts = await entityFactsService.getEntityFacts(userId, characterId, 'character');
+    res.json({ success: true, facts });
+  } catch (error) {
+    logger.error({ error, characterId }, 'Failed to get character facts');
+    res.status(500).json({ error: 'Failed to get character facts' });
+  }
+});
+
+// GET /api/characters/:id/scene-candidates
+// Returns recurring event candidates involving this character (for "Moments with X" UI).
+router.get('/:id/scene-candidates', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = req.params.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { eventCandidateService } = await import('../services/eventCandidates/eventCandidateService');
+    const candidates = await eventCandidateService.getCandidatesForEntity(userId, characterId);
+    res.json({ success: true, candidates });
+  } catch (error) {
+    logger.error({ error, characterId }, 'Failed to get scene candidates');
+    res.status(500).json({ error: 'Failed to get scene candidates' });
+  }
+});
+
 export const charactersRouter = router;

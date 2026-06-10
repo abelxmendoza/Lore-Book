@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Bot, User as UserIcon, Copy, RotateCw, Edit2, Trash2, Sparkles, ExternalLink, ThumbsUp, ThumbsDown, Check, GitBranch } from 'lucide-react';
+import { Bot, User as UserIcon, Copy, Sparkles, ExternalLink, Check } from 'lucide-react';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { ChatLoadingDots } from '../components/ChatLoadingDots';
 import { parseConnections } from '../../../utils/parseConnections';
-import { NarrativeStoryPanel } from '../../../components/chat/NarrativeStoryPanel';
 import { MemoryCognitionPanel } from '../../../components/chat/MemoryCognitionPanel';
 import { CognitionMetaPanel } from '../../../components/chat/CognitionMetaPanel';
 import { ModeAttributionBadge } from '../../../components/chat/ModeAttributionBadge';
@@ -22,7 +21,7 @@ const humanizeExpressionMode = (mode: string): string => {
 };
 
 export type ChatSource = {
-  type: 'entry' | 'chapter' | 'character' | 'task' | 'hqi' | 'fabric';
+  type: 'entry' | 'chapter' | 'character' | 'location' | 'task' | 'hqi' | 'fabric';
   id: string;
   title: string;
   snippet?: string;
@@ -64,6 +63,11 @@ export type Message = {
     intent?: string;
     expression_mode?: string;
     why?: string;
+    response_mode?: string;
+    confidence_label?: string;
+    recall_sources?: Message['recall_sources'];
+    recall_meta?: Message['recall_meta'];
+    disclaimer?: string;
   };
   // Memory Recall fields
   recall?: RecallChatPayload;
@@ -102,31 +106,21 @@ export type Message = {
   activePersona?: string;
   cognitionFeedback?: import('../../../hooks/useChatStream').MemoryFeedbackEvent;
   continuityAcknowledged?: { signals: string[]; entityHints: string[]; timelineSignificant: boolean };
-  mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' }>;
+  mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
 };
 
 type ChatMessageProps = {
   message: Message;
   showCognitiveTrace?: boolean;
   onCopy?: () => void;
-  onRegenerate?: () => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
-  onFork?: () => void;
   onSourceClick?: (source: ChatSource) => void;
-  onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void;
 };
 
 export const ChatMessage = ({
   message,
   showCognitiveTrace = false,
   onCopy,
-  onRegenerate,
-  onEdit,
-  onDelete,
-  onFork,
   onSourceClick,
-  onFeedback
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -158,10 +152,6 @@ export const ChatMessage = ({
       }
       document.body.removeChild(textArea);
     }
-  };
-
-  const handleFeedback = (feedback: 'positive' | 'negative') => {
-    onFeedback?.(message.id, feedback);
   };
 
   const isUser = message.role === 'user';
@@ -221,72 +211,17 @@ export const ChatMessage = ({
               : 'bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
           }`}
         >
-          {/* Message Actions Menu - ChatGPT style */}
-          {showActions && (
-            <div className={`absolute ${isUser ? 'left-0' : 'right-0'} -top-9 sm:-top-10 flex gap-0.5 sm:gap-1 bg-black/80 backdrop-blur-sm rounded-lg p-0.5 sm:p-1 z-10 shadow-xl border border-white/10`}>
-              {!isUser && onRegenerate && (
-                <button
-                  onClick={onRegenerate}
-                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-white/70 hover:text-white active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation"
-                  title="Regenerate response"
-                >
-                  <RotateCw className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {onCopy && (
-                <button
-                  onClick={handleCopy}
-                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-white/70 hover:text-white active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation"
-                  title={copied ? 'Copied!' : 'Copy message'}
-                >
-                  <Copy className={`h-3.5 w-3.5 ${copied ? 'text-green-400' : ''}`} />
-                </button>
-              )}
-              {!isUser && onFeedback && (
-                <>
-                  <button
-                    onClick={() => handleFeedback('positive')}
-                    className={`h-8 sm:h-7 px-2.5 sm:px-2 text-xs active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation ${message.feedback === 'positive' ? 'text-green-400' : 'text-white/70 hover:text-white'}`}
-                    title="Good response"
-                  >
-                    <ThumbsUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleFeedback('negative')}
-                    className={`h-8 sm:h-7 px-2.5 sm:px-2 text-xs active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation ${message.feedback === 'negative' ? 'text-red-400' : 'text-white/70 hover:text-white'}`}
-                    title="Poor response"
-                  >
-                    <ThumbsDown className="h-3.5 w-3.5" />
-                  </button>
-                </>
-              )}
-              {isUser && onEdit && (
-                <button
-                  onClick={onEdit}
-                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-white/70 hover:text-white active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation"
-                  title="Edit message"
-                >
-                  <Edit2 className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {onFork && (
-                <button
-                  onClick={onFork}
-                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-indigo-400/70 hover:text-indigo-300 active:bg-indigo-500/20 hover:bg-indigo-500/10 rounded transition-colors touch-manipulation"
-                  title="Fork conversation from here"
-                >
-                  <GitBranch className="h-3.5 w-3.5" />
-                </button>
-              )}
-              {onDelete && (
-                <button
-                  onClick={onDelete}
-                  className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-red-400/70 hover:text-red-400 active:bg-red-500/20 hover:bg-red-500/10 rounded transition-colors touch-manipulation"
-                  title="Delete message"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
+          {/* Message Actions Menu */}
+          {showActions && onCopy && (
+            <div className={`absolute ${isUser ? 'left-0' : 'right-0'} -top-9 sm:-top-10 flex bg-black/80 backdrop-blur-sm rounded-lg p-0.5 sm:p-1 z-10 shadow-xl border border-white/10`}>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="h-8 sm:h-7 px-2.5 sm:px-2 text-xs text-white/70 hover:text-white active:bg-white/20 hover:bg-white/10 rounded transition-colors touch-manipulation"
+                title={copied ? 'Copied!' : 'Copy message'}
+              >
+                <Copy className={`h-3.5 w-3.5 ${copied ? 'text-green-400' : ''}`} />
+              </button>
             </div>
           )}
 
@@ -366,34 +301,25 @@ export const ChatMessage = ({
             )}
           </div>
 
-          {/* Sources - Clickable Cards - More subtle ChatGPT style */}
-          {message.sources && message.sources.length > 0 && (
-            <div className="pt-4 sm:pt-5 lg:pt-6 border-t border-white/10">
-              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-white/50" />
-                <span className="text-sm sm:text-base font-medium text-white/50">Sources</span>
-              </div>
-              <div className="flex flex-wrap gap-2 sm:gap-3">
+          {/* Sources - compact inline chips */}
+          {message.sources && message.sources.length > 0 && message.citations && message.citations.length > 0 && (
+            <div className="pt-2 border-t border-white/8">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-white/30">from</span>
                 {message.sources.slice(0, 5).map((source, idx) => (
                   <button
                     key={idx}
                     onClick={() => onSourceClick?.(source)}
-                    className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-md border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 cursor-pointer transition-colors text-sm sm:text-base text-white/70 hover:text-white"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-white/10 bg-white/4 hover:border-white/20 hover:bg-white/8 transition-colors text-xs text-white/50 hover:text-white/80"
+                    title={source.title}
                   >
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      <span className="text-white/60">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</span>
-                      <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4 text-white/40" />
-                    </div>
-                    <div className="text-white/90 truncate max-w-[150px] sm:max-w-[200px]" title={source.title}>
-                      {source.title}
-                    </div>
-                    {source.date && (
-                      <div className="text-white/40 text-xs sm:text-sm">
-                        {new Date(source.date).toLocaleDateString()}
-                      </div>
-                    )}
+                    <span className="text-white/30">{SOURCE_TYPE_LABELS[source.type] ?? source.type}</span>
+                    <span className="truncate max-w-[120px]">{source.title}</span>
                   </button>
                 ))}
+                {message.sources.length > 5 && (
+                  <span className="text-xs text-white/25">+{message.sources.length - 5} more</span>
+                )}
               </div>
             </div>
           )}
@@ -577,15 +503,12 @@ export const ChatMessage = ({
             </div>
           )}
 
-          {/* Continuity acknowledgement chip */}
-          {!isUser && message.continuityAcknowledged && (
+          {/* Continuity acknowledgement chip — only show when real entities were captured */}
+          {!isUser && message.continuityAcknowledged && message.continuityAcknowledged.entityHints.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center gap-1 text-xs text-emerald-400/70 bg-emerald-400/8 border border-emerald-400/15 rounded px-2 py-0.5">
-                ✓ {message.continuityAcknowledged.timelineSignificant ? 'Part of your journey' : 'Added to your story'}
-              </span>
-              {message.continuityAcknowledged.entityHints.slice(0, 2).map((hint, i) => (
-                <span key={i} className="inline-flex items-center text-xs text-white/30 bg-white/4 border border-white/8 rounded px-2 py-0.5">
-                  {hint}
+              {message.continuityAcknowledged.entityHints.slice(0, 3).map((hint, i) => (
+                <span key={i} className="inline-flex items-center gap-1 text-xs text-emerald-400/60 bg-emerald-400/6 border border-emerald-400/12 rounded px-2 py-0.5">
+                  ✓ {hint}
                 </span>
               ))}
             </div>
@@ -610,13 +533,8 @@ export const ChatMessage = ({
             <MemoryCognitionPanel feedback={message.cognitionFeedback} />
           )}
 
-          {/* Narrative Story Panel */}
-          {!isUser && message.narrativeStory && (
-            <NarrativeStoryPanel
-              story={message.narrativeStory}
-              entryCount={message.narrativeEntryCount}
-            />
-          )}
+          {/* NarrativeStoryPanel intentionally removed from inline chat.
+              Story-of-self analysis lives on the dedicated Story page only. */}
           </div>
         </div>
       </div>

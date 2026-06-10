@@ -702,6 +702,11 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [knowledgeClaims, setKnowledgeClaims] = useState<any[]>([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [knowledgeLoaded, setKnowledgeLoaded] = useState(false);
+  const [characterFacts, setCharacterFacts] = useState<any[]>([]);
+  const [factsLoading, setFactsLoading] = useState(false);
+  const [factsLoaded, setFactsLoaded] = useState(false);
+  const [sceneCandidates, setSceneCandidates] = useState<any[]>([]);
+  const [scenesLoaded, setScenesLoaded] = useState(false);
 
   // ── Relationship Intelligence (dynamics + influence) ────────────────────────
   const [dynamics, setDynamics] = useState<any | null>(null);
@@ -1269,18 +1274,40 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       .finally(() => setAllAttributesLoaded(true));
   }, [character.id, character.name, allAttributesLoaded, isMockDataEnabled, characterAttributes]);
 
-  // Load knowledge claims when Knowledge tab opens
+  // Load knowledge claims + character facts when Knowledge tab opens
   useEffect(() => {
-    if (activeTab !== 'knowledge' || knowledgeLoaded || isMockDataEnabled) return;
-    setKnowledgeLoading(true);
-    const encodedName = encodeURIComponent(character.name);
-    fetchJson<{ success: boolean; claims: any[] }>(
-      `/api/knowledge/character-context/${encodedName}`
-    )
-      .then(r => { if (r.success) setKnowledgeClaims(r.claims); })
-      .catch(() => {})
-      .finally(() => { setKnowledgeLoading(false); setKnowledgeLoaded(true); });
-  }, [activeTab, character.name, knowledgeLoaded, isMockDataEnabled]);
+    if (activeTab !== 'knowledge' || isMockDataEnabled) return;
+
+    if (!knowledgeLoaded) {
+      setKnowledgeLoading(true);
+      const encodedName = encodeURIComponent(character.name);
+      fetchJson<{ success: boolean; claims: any[] }>(
+        `/api/knowledge/character-context/${encodedName}`
+      )
+        .then(r => { if (r.success) setKnowledgeClaims(r.claims); })
+        .catch(() => {})
+        .finally(() => { setKnowledgeLoading(false); setKnowledgeLoaded(true); });
+    }
+
+    if (!factsLoaded && character.id && !character.id.startsWith('dummy-')) {
+      setFactsLoading(true);
+      fetchJson<{ success: boolean; facts: any[] }>(
+        `/api/characters/${character.id}/facts`
+      )
+        .then(r => { if (r.success) setCharacterFacts(r.facts); })
+        .catch(() => {})
+        .finally(() => { setFactsLoading(false); setFactsLoaded(true); });
+    }
+
+    if (!scenesLoaded && character.id && !character.id.startsWith('dummy-')) {
+      fetchJson<{ success: boolean; candidates: any[] }>(
+        `/api/characters/${character.id}/scene-candidates`
+      )
+        .then(r => { if (r.success) setSceneCandidates(r.candidates); })
+        .catch(() => {})
+        .finally(() => setScenesLoaded(true));
+    }
+  }, [activeTab, character.id, character.name, knowledgeLoaded, factsLoaded, scenesLoaded, isMockDataEnabled]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -3686,16 +3713,99 @@ User's message: ${message}`;
 
             {/* ── What LoreBook Knows ── */}
             {!loadingDetails && activeTab === 'knowledge' && (
-              <div className="space-y-5">
-                <div>
-                  <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
-                    <Brain className="h-4 w-4 text-indigo-400" />
-                    What LoreBook Knows About {editedCharacter.name.split(' ')[0]}
-                  </h3>
-                  <p className="text-xs text-white/45">
-                    Knowledge crystallized from your entries, arcs, and interactions involving this person.
-                  </p>
+              <div className="space-y-6">
+                {/* ── Character Facts (from conversations) ── */}
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-violet-400" />
+                      Facts From Conversations
+                    </h3>
+                    <p className="text-xs text-white/45">
+                      Extracted directly from chats — updated as new information comes in.
+                    </p>
+                  </div>
+
+                  {factsLoading && (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="h-5 w-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+
+                  {!factsLoading && characterFacts.length === 0 && (
+                    <div className="text-center py-8 text-white/30">
+                      <p className="text-xs">Chat about {editedCharacter.name.split(' ')[0]} to start building their profile.</p>
+                    </div>
+                  )}
+
+                  {!factsLoading && characterFacts.length > 0 && (
+                    <div className="space-y-4">
+                      {Object.entries(
+                        characterFacts.reduce((acc: Record<string, any[]>, f: any) => {
+                          if (!acc[f.category]) acc[f.category] = [];
+                          acc[f.category].push(f);
+                          return acc;
+                        }, {})
+                      ).map(([category, facts]) => {
+                        const catLabel: Record<string, string> = {
+                          personality: 'Personality', appearance: 'Appearance',
+                          relationship: 'Relationship', history: 'History',
+                          career: 'Career', location: 'Location', goals: 'Goals', general: 'General',
+                        };
+                        const statusBadge: Record<string, { label: string; cls: string }> = {
+                          updated:      { label: 'Updated',      cls: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+                          corrected:    { label: 'Corrected',    cls: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+                          contradicted: { label: 'Contradicted', cls: 'bg-red-500/20 text-red-300 border-red-500/30' },
+                        };
+                        return (
+                          <div key={category}>
+                            <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">
+                              {catLabel[category] ?? category}
+                            </p>
+                            <div className="space-y-2">
+                              {(facts as any[]).map((fact: any) => {
+                                const pct = Math.round((fact.confidence ?? 0.7) * 100);
+                                const badge = statusBadge[fact.status as string];
+                                return (
+                                  <div key={fact.id} className="flex items-start gap-2.5 p-3 rounded-lg border border-white/6 bg-white/3">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm text-white/85 leading-snug">{fact.fact}</p>
+                                      {fact.previous_value && (
+                                        <p className="text-[11px] text-white/35 mt-1 line-through">{fact.previous_value}</p>
+                                      )}
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                      {badge && (
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${badge.cls}`}>
+                                          {badge.label}
+                                        </span>
+                                      )}
+                                      <span className={`text-[10px] tabular-nums font-semibold ${pct >= 80 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                                        {pct}%
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
+
+                {/* ── Crystallized Knowledge ── */}
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-indigo-400" />
+                      Crystallized Knowledge
+                    </h3>
+                    <p className="text-xs text-white/45">
+                      Patterns crystallized from your entries, arcs, and interactions.
+                    </p>
+                  </div>
 
                 {knowledgeLoading && (
                   <div className="flex items-center justify-center py-12">
@@ -3779,6 +3889,47 @@ User's message: ${message}`;
                         </div>
                       );
                     })}
+                  </div>
+                )}
+                </div>
+
+                {/* ── Recurring Moments ── */}
+                {sceneCandidates.length > 0 && (
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
+                        <span className="h-4 w-4 text-amber-400">⟳</span>
+                        Recurring Moments
+                      </h3>
+                      <p className="text-xs text-white/45">
+                        Patterns LoreBook has noticed across multiple conversations.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      {sceneCandidates.map((c: any) => {
+                        const strength = Math.round((c.continuity_strength ?? 0) * 100);
+                        return (
+                          <div key={c.id} className="p-3 rounded-lg border border-amber-500/15 bg-amber-500/5 space-y-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm text-white/85 leading-snug font-medium">
+                                {c.canonical_title ?? c.recurring_activities?.[0] ?? 'Recurring moment'}
+                              </p>
+                              <span className={`text-[10px] tabular-nums font-semibold flex-shrink-0 ${strength >= 80 ? 'text-green-400' : strength >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                                {strength}%
+                              </span>
+                            </div>
+                            {c.recurring_activities?.length > 0 && (
+                              <p className="text-xs text-white/45 leading-snug">
+                                {c.recurring_activities.slice(0, 3).join(' · ')}
+                              </p>
+                            )}
+                            <p className="text-[10px] text-white/25">
+                              Seen {c.occurrence_count ?? 1}× · last {c.last_seen_at ? new Date(c.last_seen_at).toLocaleDateString() : 'recently'}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
