@@ -62,6 +62,7 @@ function makeChain(
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     or: vi.fn().mockReturnThis(),
+    ilike: vi.fn().mockReturnThis(),
     in: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
@@ -143,7 +144,9 @@ describe('OmegaMemoryService', () => {
         .mockReturnValueOnce(makeChain({ data: null }, { data: null, error: { code: 'PGRST116' } }))
         // 3. findEntityByNameOrAlias — fuzzy scan: empty
         .mockReturnValueOnce(makeChain({ data: [] }))
-        // 4. createEntity — insert returns new entity
+        // 4. createEntity — race-condition pre-check: no existing entity
+        .mockReturnValueOnce(makeChain({ data: null }, { data: null, error: { code: 'PGRST116' } }))
+        // 5. createEntity — insert returns new entity
         .mockReturnValueOnce(makeChain({ data: newEntity }, { data: newEntity, error: null }));
 
       mockJW.mockReturnValue(0); // no fuzzy match
@@ -217,7 +220,11 @@ describe('OmegaMemoryService', () => {
         type: 'CHARACTER',
         user_id: 'u1',
       };
-      mockFrom.mockReturnValue(makeChain({ data: created }, { data: created, error: null }));
+      mockFrom
+        // race-condition pre-check: no existing entity
+        .mockReturnValueOnce(makeChain({ data: null }, { data: null, error: { code: 'PGRST116' } }))
+        // insert returns the created entity
+        .mockReturnValueOnce(makeChain({ data: created }, { data: created, error: null }));
 
       const result = await svc.createEntity('u1', 'Dave', 'CHARACTER');
       expect(result.id).toBe('new-ent');

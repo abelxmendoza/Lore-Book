@@ -465,6 +465,19 @@ export class ConversationIngestionPipeline {
     userId: string,
     chatSessionId: string
   ): Promise<string> {
+    // If the id is already a conversation_sessions row (a UI thread), use it
+    // directly — this keeps ingested memories attached to the thread the user
+    // is actually chatting in instead of a parallel shadow session.
+    const { data: directRows } = await supabaseAdmin
+      .from('conversation_sessions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('id', chatSessionId)
+      .limit(1);
+    if (directRows?.[0]?.id) {
+      return directRows[0].id;
+    }
+
     // Check if conversation session already exists for this chat session.
     // Use limit(1) instead of .single() — multiple duplicate sessions can exist
     // due to prior race conditions, and .single() throws on >1 rows which

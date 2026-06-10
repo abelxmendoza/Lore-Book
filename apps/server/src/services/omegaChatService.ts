@@ -398,9 +398,12 @@ class OmegaChatService {
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
-    soulProfileContext?: SoulProfileContext
+    soulProfileContext?: SoulProfileContext,
+    threadId?: string
   ): Promise<StreamingChatResponse> {
-    const sessionId = await this.getOrCreateChatSession(userId);
+    // Use the UI thread as the session so messages, recall scoping, and
+    // ingestion all stay attached to the thread the user is actually in.
+    const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
 
     // Phase 4.5: follow-up after recall (expand / correct)
     try {
@@ -1171,8 +1174,7 @@ class OmegaChatService {
 
     // Only exclude truly trivial messages (hi, ok, thanks, etc.)
     if (!isTrivialMessage(message)) {
-      // Get or create chat session
-      const sessionId = await this.getOrCreateChatSession(userId);
+      // sessionId from the top of chatStream — thread-aware when threadId was provided
 
       // Save message to chat_messages table
       const { data: savedMessage, error: saveError } = await supabaseAdmin
@@ -1403,7 +1405,8 @@ class OmegaChatService {
     conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
-    soulProfileContext?: SoulProfileContext
+    soulProfileContext?: SoulProfileContext,
+    threadId?: string
   ): Promise<OmegaChatResponse> {
     // Build RAG packet
     const ragPacket = await this.buildRAGPacket(userId, message, currentContext);
@@ -1844,7 +1847,7 @@ class OmegaChatService {
 
     // RL: Save context for later reward updates (use entryId if available, otherwise generate)
     const messageId = entryId || randomUUID();
-    const sessionId = await this.getOrCreateChatSession(userId);
+    const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
 
     // Save assistant response with challenge metadata if present
     const assistantMetadata: any = {
@@ -1923,8 +1926,8 @@ class OmegaChatService {
 
     // Only exclude truly trivial messages (hi, ok, thanks, etc.)
     if (!isTrivialMessage(message)) {
-      // Get or create chat session
-      const sessionId = await this.getOrCreateChatSession(userId);
+      // Use the UI thread as the session when provided (matches chatStream behaviour)
+      const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
 
       // Save message to chat_messages table
       const { data: savedMessage, error: saveError } = await supabaseAdmin

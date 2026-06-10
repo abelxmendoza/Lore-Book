@@ -42,6 +42,7 @@ const chatSchema = z.object({
     content: z.string().max(4000)
   })).max(50).optional(),
   stream: z.boolean().optional().default(false),
+  threadId: z.string().uuid().optional(),
   entityContext: z.object({
     type: z.enum(['CHARACTER', 'LOCATION', 'PERCEPTION', 'MEMORY', 'ENTITY', 'GOSSIP']),
     id: z.string().uuid()
@@ -49,6 +50,18 @@ const chatSchema = z.object({
   currentContext: currentContextSchema,
   soulProfileContext: soulProfileContextSchema
 });
+
+// If the client supplied a threadId but no thread context, derive it so the
+// RAG builder takes the thread-scoped + cross-thread entity retrieval path.
+function resolveThreadContext(
+  threadId: string | undefined,
+  currentContext: z.infer<typeof currentContextSchema>
+): z.infer<typeof currentContextSchema> {
+  if (threadId && (!currentContext || currentContext.kind === 'none')) {
+    return { kind: 'thread', threadId };
+  }
+  return currentContext;
+}
 
 // Streaming endpoint
 router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
@@ -77,7 +90,8 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
-    const { message, conversationHistory = [], entityContext, currentContext, soulProfileContext } = parsed.data;
+    const { message, conversationHistory = [], threadId, entityContext, soulProfileContext } = parsed.data;
+    const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
     // Resolve the chat stream BEFORE committing SSE headers.
@@ -85,7 +99,7 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
     // proper JSON error response instead of sending a broken SSE stream.
     let result: Awaited<ReturnType<typeof omegaChatService.chatStream>>;
     try {
-      result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext);
+      result = await omegaChatService.chatStream(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId);
     } catch (setupError) {
       if (isFallbackEnabled() && isFallbackError(setupError)) {
         const reason = (setupError instanceof Error && setupError.message.includes('429'))
@@ -156,7 +170,8 @@ router.post('/', aiRateLimit, optionalAuth, checkAiRequestLimit, async (req: Aut
       return res.status(400).json({ error: 'Invalid message format' });
     }
 
-    const { message, conversationHistory = [], stream, entityContext, currentContext, soulProfileContext } = parsed.data;
+    const { message, conversationHistory = [], stream, threadId, entityContext, soulProfileContext } = parsed.data;
+    const currentContext = resolveThreadContext(threadId, parsed.data.currentContext);
     const userId = req.user?.id || '00000000-0000-0000-0000-000000000000';
 
     // If streaming requested but endpoint is /, redirect to /stream
@@ -164,7 +179,7 @@ router.post('/', aiRateLimit, optionalAuth, checkAiRequestLimit, async (req: Aut
       return res.status(400).json({ error: 'Use /api/chat/stream for streaming' });
     }
 
-    const result = await omegaChatService.chat(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext);
+    const result = await omegaChatService.chat(userId, message, conversationHistory, entityContext, currentContext, soulProfileContext, threadId);
 
     // Increment usage count (fire and forget)
     incrementAiRequestCount(userId).catch(err => 
