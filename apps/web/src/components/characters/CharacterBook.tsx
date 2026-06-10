@@ -13,6 +13,7 @@ import { CharacterCardSkeleton } from '../ui/skeleton';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
+import { supabase } from '../../lib/supabase';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { useCharacterExtraction } from '../../hooks/useCharacterExtraction';
@@ -24,10 +25,37 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 
+// ── Demo filter-field normalization ──────────────────────────────────────────
+// Every category tab (proximity, mentioned, etc.) must have matches in demo
+// mode. Explicit overrides put specific characters into the rarer buckets;
+// everything else derives proximity/has_met/relationship_depth from archetype.
+const DEMO_PROXIMITY_OVERRIDES: Record<string, { proximity_level: Character['proximity_level']; has_met?: boolean; relationship_depth?: Character['relationship_depth']; status?: Character['status'] }> = {
+  'dummy-9':  { proximity_level: 'indirect' },                                              // Dr. Mitchell — friend-of-friend
+  'dummy-17': { proximity_level: 'indirect' },                                              // Priya — met through Sam
+  'dummy-19': { proximity_level: 'distant' },                                               // Oliver — rarely seen
+  'dummy-21': { proximity_level: 'distant' },                                               // Jamie — drifted apart
+  'dummy-15': { proximity_level: 'unmet', has_met: false, relationship_depth: 'mentioned_only', status: 'unmet' }, // Sam Taylor — online only
+  'dummy-22': { proximity_level: 'unmet', has_met: false, relationship_depth: 'mentioned_only', status: 'unmet' },
+  'dummy-23': { proximity_level: 'third_party' },                                           // talked about, never interacted
+  'dummy-24': { proximity_level: 'third_party' },
+};
+
+function withFilterDefaults(char: Character): Character {
+  const override = DEMO_PROXIMITY_OVERRIDES[char.id];
+  return {
+    ...char,
+    proximity_level: override?.proximity_level ?? char.proximity_level ?? 'direct',
+    has_met: override?.has_met ?? char.has_met ?? true,
+    relationship_depth: override?.relationship_depth ?? char.relationship_depth ?? 'moderate',
+    status: override?.status ?? char.status,
+  };
+}
+
 // ── Demo analytics normalization ─────────────────────────────────────────────
 // Derives a full analytics object from metadata fields so demo cards render
 // correctly without touching every mock character object individually.
-function withDemoAnalytics(char: Character): Character {
+function withDemoAnalytics(rawChar: Character): Character {
+  const char = withFilterDefaults(rawChar);
   if (char.analytics) return char;
   const closeness  = Number((char.metadata?.closeness_score as number | undefined) ?? (char.importance_score ?? 0));
   const importance = char.importance_score ?? 0;
@@ -2170,10 +2198,12 @@ export const CharacterBook = () => {
   });
   const [relationships, setRelationships] = useState<Map<string, RomanticRelationship>>(new Map());
   
-  // Register mock data with service on mount
+  // Register mock data with service on mount — only for unauthenticated / demo sessions
   useEffect(() => {
-    mockDataService.register.characters(dummyCharacters);
-  }, []);
+    if (!user) {
+      mockDataService.register.characters(dummyCharacters);
+    }
+  }, [user]);
   const [loading, setLoading] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
@@ -2192,11 +2222,27 @@ export const CharacterBook = () => {
   // Auto-extract characters from chat
   useCharacterExtraction(chatMessages, {
     enabled: true,
-    onCharacterCreated: (newCharacter) => {
-      // Refresh character list when a new character is created
+    onCharacterCreated: () => {
       void loadCharacters();
     }
   });
+
+  // Realtime: refresh whenever the server-side ingestion pipeline promotes a
+  // person entity to a character record (e.g. "tío Juan" mentioned in chat).
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`characters:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'characters', filter: `user_id=eq.${user.id}` },
+        () => { void loadCharacters(); }
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  // loadCharacters is stable within a render; user.id is the only dep that matters
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const loadCharacters = async () => {
     setLoading(true);
@@ -2328,23 +2374,25 @@ export const CharacterBook = () => {
       }
     }
     
-    // Filter by category
+    // Filter by category. Relationship tabs match archetype OR
+    // metadata.relationship_type consistently, so characters classified by
+    // either signal (manual edit, promotion pipeline, or mock data) all land
+    // in the right tab. Unmet people only appear under Mentioned / Unmet.
     if (activeCategory !== 'all') {
       filtered = filtered.filter(char => {
+        const relType = char.metadata?.relationship_type as string | undefined;
+        const met = char.status !== 'unmet';
         switch (activeCategory) {
           case 'family':
-            return char.archetype === 'family' || char.metadata?.relationship_type === 'family';
+            return char.archetype === 'family' || relType === 'family';
           case 'friends':
-            return (char.archetype === 'friend' || char.archetype === 'ally') && 
-                   char.status !== 'unmet' &&
-                   (char.metadata?.relationship_type === 'friend' || !char.metadata?.relationship_type);
+            return met && (char.archetype === 'friend' || char.archetype === 'ally' || relType === 'friend');
           case 'mentors':
-            return char.archetype === 'mentor' && char.status !== 'unmet';
+            return met && (char.archetype === 'mentor' || relType === 'mentor');
           case 'professional':
-            return (char.archetype === 'colleague' || char.metadata?.relationship_type === 'professional') && 
-                   char.status !== 'unmet';
+            return met && (char.archetype === 'colleague' || relType === 'professional');
           case 'creative':
-            return char.archetype === 'collaborator' && char.status !== 'unmet';
+            return met && (char.archetype === 'collaborator' || relType === 'creative');
           case 'mentioned':
             return char.status === 'unmet' || char.relationship_depth === 'mentioned_only';
           case 'direct':

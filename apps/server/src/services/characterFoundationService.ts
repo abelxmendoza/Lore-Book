@@ -19,6 +19,14 @@ import { logger } from '../logger';
 import { supabaseAdmin } from './supabaseClient';
 import type { PeoplePlaceEntity } from '../types';
 
+function parseNameParts(fullName: string): { firstName: string; lastName: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? '',
+    lastName: parts.length > 1 ? parts.slice(1).join(' ') : '',
+  };
+}
+
 type CharacterRow = {
   id: string;
   user_id: string;
@@ -42,6 +50,41 @@ type CharacterMemoryRow = {
 };
 
 class CharacterFoundationService {
+  // Cache user identity names per userId to avoid repeated auth lookups
+  private readonly _identityCache = new Map<string, string[]>();
+
+  private async getUserIdentityNames(userId: string): Promise<string[]> {
+    if (this._identityCache.has(userId)) return this._identityCache.get(userId)!;
+    try {
+      const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
+      const meta = data.user?.user_metadata ?? {};
+      const fullName = String(meta.full_name ?? meta.name ?? '').trim();
+      if (!fullName) {
+        this._identityCache.set(userId, []);
+        return [];
+      }
+      const names = new Set<string>();
+      names.add(fullName.toLowerCase());
+      fullName.split(/\s+/).filter(p => p.length > 1).forEach(p => names.add(p.toLowerCase()));
+      const result = Array.from(names);
+      this._identityCache.set(userId, result);
+      return result;
+    } catch {
+      return [];
+    }
+  }
+
+  private async isSelfEntity(userId: string, name: string): Promise<boolean> {
+    const userNames = await this.getUserIdentityNames(userId);
+    if (userNames.length === 0) return false;
+    const n = name.toLowerCase().trim();
+    return userNames.some(self =>
+      n === self ||
+      // "Abel" matches "Abel Mendoza" — block single-name self-references too
+      (!self.includes(' ') && (n === self || n.startsWith(self + ' ') || n.endsWith(' ' + self)))
+    );
+  }
+
   /**
    * Promote a canonical person entity to a character record.
    * Idempotent: safe to call multiple times for the same entity.
@@ -53,6 +96,12 @@ class CharacterFoundationService {
   ): Promise<string | null> {
     if (entity.type !== 'person') {
       logger.debug({ entityName: entity.name, type: entity.type }, 'Skipping non-person entity');
+      return null;
+    }
+
+    // The user is the narrator/main character — never add them to their own book
+    if (await this.isSelfEntity(userId, entity.name)) {
+      logger.debug({ name: entity.name }, 'Skipping self-entity: user is the narrator');
       return null;
     }
 
@@ -86,6 +135,7 @@ class CharacterFoundationService {
       ? new Date(entity.first_mentioned_at).toISOString().split('T')[0]
       : null;
 
+    const { firstName, lastName } = parseNameParts(entity.name);
     const character: CharacterRow = {
       id: characterId,
       user_id: userId,
@@ -101,6 +151,8 @@ class CharacterFoundationService {
         source_entry_ids: entity.related_entries ?? [],
         generated_by: 'character_foundation',
         generated_at: new Date().toISOString(),
+        first_name: firstName || undefined,
+        last_name: lastName || undefined,
       },
     };
 
@@ -287,6 +339,76 @@ class CharacterFoundationService {
       sourceEntityId: row.metadata?.source_entity_id ?? null,
       entryIds: row.metadata?.source_entry_ids ?? [],
     }));
+  }
+
+  /**
+   * Promote an omega_entities record (PERSON/CHARACTER) to the characters table.
+   * Called from the chat ingestion pipeline so chat-mentioned people appear in
+   * the Characters Book. Deduped by metadata.omega_entity_id — safe to call
+   * multiple times for the same entity.
+   */
+  async promoteOmegaEntityToCharacter(
+    userId: string,
+    entity: { id: string; primary_name: string; type: string; aliases?: string[] | null; mention_count?: number }
+  ): Promise<string | null> {
+    if (entity.type !== 'PERSON' && entity.type !== 'CHARACTER') return null;
+
+    // The user is the narrator/main character — never add them to their own book
+    if (await this.isSelfEntity(userId, entity.primary_name)) {
+      logger.debug({ name: entity.primary_name }, 'Skipping self-entity (chat): user is the narrator');
+      return null;
+    }
+
+    const { data: existing } = await supabaseAdmin
+      .from('characters')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('metadata->>omega_entity_id', entity.id)
+      .limit(1);
+
+    if (existing?.[0]) return existing[0].id as string;
+
+    const characterId = uuid();
+    const aliases = Array.isArray(entity.aliases)
+      ? entity.aliases.filter(a => a.toLowerCase() !== entity.primary_name.toLowerCase())
+      : [];
+
+    const { firstName, lastName } = parseNameParts(entity.primary_name);
+    // Honest initial classification: importance scales with mention count;
+    // relationship_depth starts at mentioned_only so the character appears in
+    // the Mentioned tab until facts confirm a real relationship. Archetype and
+    // proximity are NOT guessed here — entityFactsService upgrades them when
+    // relationship facts arrive.
+    const mentions = entity.mention_count ?? 1;
+    const importanceLevel = mentions >= 6 ? 'major' : mentions >= 3 ? 'supporting' : 'minor';
+    const { error } = await supabaseAdmin.from('characters').insert({
+      id: characterId,
+      user_id: userId,
+      name: entity.primary_name,
+      alias: aliases.length > 0 ? aliases : null,
+      status: 'active',
+      tags: [],
+      first_name: firstName || null,
+      last_name: lastName || null,
+      importance_level: importanceLevel,
+      relationship_depth: 'mentioned_only',
+      metadata: {
+        omega_entity_id: entity.id,
+        mention_count: mentions,
+        generated_by: 'chat_extraction',
+        generated_at: new Date().toISOString(),
+        first_name: firstName || undefined,
+        last_name: lastName || undefined,
+      },
+    });
+
+    if (error) {
+      logger.error({ error, name: entity.primary_name }, 'Failed to promote omega entity to character');
+      return null;
+    }
+
+    logger.info({ characterId, name: entity.primary_name }, 'Promoted chat entity to character');
+    return characterId;
   }
 }
 

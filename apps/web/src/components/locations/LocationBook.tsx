@@ -91,6 +91,7 @@ export const dummyLocations: LocationProfile[] = [
       { id: 'person-3', name: 'Marcus Johnson', total_mentions: 15, entryCount: 8 }
     ],
     tagCounts: [
+      { tag: 'home', count: 80 },
       { tag: 'music-production', count: 60 },
       { tag: 'creative-work', count: 45 },
       { tag: 'collaboration', count: 35 },
@@ -420,39 +421,40 @@ export const LocationBook = () => {
   const filteredLocations = useMemo(() => {
     let locs = locations;
 
-    if (selectedTab === 'work') {
-      locs = locs.filter(loc => 
-        loc.tagCounts.some(t => t.tag === 'work') || 
-        loc.name.toLowerCase().includes('office') ||
-        loc.name.toLowerCase().includes('tech') ||
-        loc.name.toLowerCase().includes('conference')
-      );
-    } else if (selectedTab === 'home') {
-      locs = locs.filter(loc => 
-        loc.name.toLowerCase().includes('home') ||
-        loc.name.toLowerCase().includes('office') && loc.visitCount > 30
-      );
-    } else if (selectedTab === 'travel') {
-      locs = locs.filter(loc => 
-        loc.tagCounts.some(t => t.tag === 'travel') ||
-        loc.tagCounts.some(t => t.tag === 'vacation') ||
-        loc.coordinates && (loc.coordinates.lat < 37 || loc.coordinates.lat > 38)
-      );
-    } else if (selectedTab === 'social') {
-      locs = locs.filter(loc => 
-        loc.tagCounts.some(t => t.tag === 'coffee') ||
-        loc.tagCounts.some(t => t.tag === 'social') ||
-        loc.name.toLowerCase().includes('coffee') ||
-        loc.name.toLowerCase().includes('gallery')
-      );
-    } else if (selectedTab === 'nature') {
-      locs = locs.filter(loc => 
-        loc.tagCounts.some(t => t.tag === 'nature') ||
-        loc.tagCounts.some(t => t.tag === 'hiking') ||
-        loc.name.toLowerCase().includes('park') ||
-        loc.name.toLowerCase().includes('trail') ||
-        loc.name.toLowerCase().includes('beach')
-      );
+    // Tag-driven category filtering. Tags are the primary signal; name keywords
+    // are a fallback for locations that haven't accumulated tags yet.
+    const CATEGORY_TAGS: Record<string, { tags: string[]; nameKeywords: string[] }> = {
+      work: {
+        tags: ['work', 'meeting', 'networking', 'office', 'conference', 'professional', 'study', 'education', 'career-transition'],
+        nameKeywords: ['office', 'work', 'conference', 'campus', 'library'],
+      },
+      home: {
+        tags: ['home', 'family', 'routine'],
+        nameKeywords: ['home', 'house', 'apartment'],
+      },
+      travel: {
+        tags: ['travel', 'vacation', 'adventure', 'culture', 'trip'],
+        nameKeywords: ['airport', 'hotel'],
+      },
+      social: {
+        tags: ['social', 'coffee', 'dates', 'art', 'friends', 'party'],
+        nameKeywords: ['coffee', 'gallery', 'bar', 'restaurant', 'cafe'],
+      },
+      nature: {
+        tags: ['nature', 'hiking', 'outdoors', 'beach', 'park'],
+        nameKeywords: ['park', 'trail', 'beach', 'mountain', 'lake', 'forest'],
+      },
+    };
+
+    const category = CATEGORY_TAGS[selectedTab];
+    if (category) {
+      locs = locs.filter(loc => {
+        const nameLower = loc.name.toLowerCase();
+        return (
+          loc.tagCounts.some(t => category.tags.includes(t.tag.toLowerCase())) ||
+          category.nameKeywords.some(kw => nameLower.includes(kw))
+        );
+      });
     }
 
     if (!searchTerm.trim()) return locs;

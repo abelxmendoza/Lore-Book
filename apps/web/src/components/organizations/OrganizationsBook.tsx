@@ -720,15 +720,15 @@ export const OrganizationsBook: React.FC = () => {
   const availableCategories = useMemo((): OrganizationCategory[] => {
     const has = (types: string[]) => organizations.some(o => types.includes(o.group_type));
     const cats: OrganizationCategory[] = ['all', 'recent'];
-    if (has(['friend_group', 'crew']))   cats.push('crews');
-    if (has(['band']))                   cats.push('bands');
-    if (has(['scene']))                  cats.push('scenes');
-    if (has(['company']))                cats.push('companies');
-    if (has(['club', 'collective']))     cats.push('clubs');
-    if (has(['sports_team']))            cats.push('sports_teams');
-    if (has(['nonprofit']))              cats.push('nonprofits');
-    if (has(['family']))                 cats.push('family');
-    if (has(['public_entity']))          cats.push('public_entities');
+    if (has(['friend_group', 'crew']))           cats.push('crews');
+    if (has(['band']))                           cats.push('bands');
+    if (has(['scene']))                          cats.push('scenes');
+    if (has(['company']))                        cats.push('companies');
+    if (has(['club', 'collective']))             cats.push('clubs');
+    if (has(['sports_team', 'martial_arts']))    cats.push('sports_teams');
+    if (has(['nonprofit']))                      cats.push('nonprofits');
+    if (has(['family']))                         cats.push('family');
+    if (has(['public_entity', 'institution']))   cats.push('public_entities');
     return cats;
   }, [organizations]);
 
@@ -744,10 +744,10 @@ export const OrganizationsBook: React.FC = () => {
           case 'scenes':         return gt === 'scene';
           case 'companies':      return gt === 'company';
           case 'clubs':          return gt === 'club' || gt === 'collective';
-          case 'sports_teams':   return gt === 'sports_team';
+          case 'sports_teams':   return gt === 'sports_team' || gt === 'martial_arts';
           case 'nonprofits':     return gt === 'nonprofit';
           case 'family':         return gt === 'family';
-          case 'public_entities':return gt === 'public_entity';
+          case 'public_entities':return gt === 'public_entity' || gt === 'institution';
           case 'recent': {
             const cutoff = subDays(new Date(), 30);
             return new Date(org.last_seen) >= cutoff;
