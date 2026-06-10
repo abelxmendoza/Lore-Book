@@ -3,6 +3,7 @@ import { config } from '../config';
 import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import type { ConversationMessage, MemoryComponent } from '../types';
+import { componentExtractionCacheService } from './componentExtractionCacheService';
 
 
 /**
@@ -86,6 +87,11 @@ Respond with JSON:
     tags: string[];
     importance_score: number;
   }>> {
+    const cached = await componentExtractionCacheService.getCachedExtraction(content);
+    if (cached) {
+      return cached.components as any;
+    }
+
     const prompt = `Extract memory components from this journal entry content.
 
 Extract distinct memory components such as:
@@ -125,7 +131,7 @@ Respond with JSON array:
       const components = response.components || [];
 
       // Validate and normalize components
-      return components
+      const normalized = components
         .filter((comp: any) => comp.component_type && comp.text)
         .map((comp: any) => ({
           component_type: comp.component_type,
@@ -135,6 +141,13 @@ Respond with JSON array:
           tags: Array.isArray(comp.tags) ? comp.tags : [],
           importance_score: Math.max(0, Math.min(10, comp.importance_score || 5)),
         }));
+
+      await componentExtractionCacheService.cacheExtraction(content, {
+        components: normalized as any,
+        extractionConfidence: normalized.length > 0 ? 0.8 : 0.3,
+      });
+
+      return normalized;
     } catch (error) {
       logger.error({ error }, 'LLM component extraction failed');
       return [];

@@ -158,6 +158,7 @@ import { personalStrategyRouter } from './personalStrategy';
 import { photosRouter } from './photos';
 import { summaryRouter } from './summary';
 import { timelineRouter } from './timeline';
+import timelineV2Router from './timelineV2';
 import { timelineHierarchyRouter } from './timelineHierarchy';
 import { threadsRouter } from './threads';
 import willRouter from './will';
@@ -465,6 +466,12 @@ export const routeRegistry: RouteEntry[] = [
     requiresAuth: false,
     classification: 'CORE_RUNTIME',
     description: 'Primary timeline view',
+  },
+  {
+    path: '/api/timeline-v2',
+    router: timelineV2Router,
+    classification: 'CORE_RUNTIME',
+    description: 'Timeline v2 — full CRUD, used by TimelineV2 components',
   },
   {
     path: '/api/perspectives',

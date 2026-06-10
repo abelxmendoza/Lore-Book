@@ -54,6 +54,7 @@ import { KnowledgeGapDashboard } from '../components/voids/KnowledgeGapDashboard
 import { SagaScreen } from '../components/saga/SagaScreen';
 import { ContinuityDashboard } from '../components/continuity/ContinuityDashboard';
 import { HomeScreen } from '../components/HomeScreen';
+import { PhotoGallery } from '../components/PhotoGallery';
 import { getSurfaceFromRoute, type SurfaceKey } from '../utils/routeMapping';
 
 
@@ -320,7 +321,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                           </div>
                         )}
                         {activeSurface === 'photos' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6 space-y-6">
+                            <PhotoGallery />
                             <PhotoAlbum />
                           </div>
                         )}

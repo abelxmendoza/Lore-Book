@@ -51,6 +51,7 @@ import { eventCandidateService } from '../eventCandidates/eventCandidateService'
 import { narrativeContinuityService } from '../narrativeContinuityService';
 import { groupCandidateService } from '../groupCandidateService';
 import { shadowModeOrchestrator } from '../ingestion/shadowMode';
+import { hybridExtractor } from './hybridExtractor';
 
 /**
  * Main ingestion pipeline for conversation messages
@@ -875,6 +876,64 @@ export class ConversationIngestionPipeline {
           const candidateEntities = await omegaMemoryService.extractEntities(normalizedUtterances[0].normalized_text);
           const resolved = await omegaMemoryService.resolveEntities(userId, candidateEntities);
           resolvedEntities.push(...resolved.map(e => ({ id: e.id, type: e.type })));
+
+          // Promote PERSON/CHARACTER entities to characters table so they appear
+          // in the Characters Book. Fire-and-forget — never blocks chat response.
+          const personEntities = resolved.filter(
+            e => e.type === 'PERSON' || e.type === 'CHARACTER'
+          );
+          if (personEntities.length > 0) {
+            import('../characterFoundationService').then(({ characterFoundationService }) => {
+              personEntities.forEach(entity => {
+                characterFoundationService.promoteOmegaEntityToCharacter(userId, entity as any).then(
+                  async (characterId) => {
+                    if (!characterId) return;
+                    const { entityFactsService } = await import('../entityFactsService');
+                    entityFactsService.extractAndPersistFacts(
+                      userId,
+                      characterId,
+                      'character',
+                      (entity as any).primary_name,
+                      normalizedUtterances[0]?.normalized_text ?? ''
+                    ).catch(err => logger.debug({ err }, 'Character facts extraction failed (non-blocking)'));
+                  }
+                ).catch(
+                  err => logger.debug({ err, name: (entity as any).primary_name }, 'Character promotion failed (non-blocking)')
+                );
+              });
+            }).catch(() => {});
+          }
+
+          // Extract facts for ORG and LOCATION entities — fire-and-forget
+          const utteranceText = normalizedUtterances[0]?.normalized_text ?? '';
+          const orgEntities = resolved.filter(e => e.type === 'ORG');
+          const locationEntities = resolved.filter(e => e.type === 'LOCATION');
+
+          if (orgEntities.length > 0 || locationEntities.length > 0) {
+            import('../entityFactsService').then(({ entityFactsService }) => {
+              orgEntities.forEach(async (entity) => {
+                try {
+                  const name = (entity as any).primary_name as string;
+                  if (!name) return;
+                  const id = await entityFactsService.resolveOrgIdByName(userId, name);
+                  if (!id) return;
+                  entityFactsService.extractAndPersistFacts(userId, id, 'organization', name, utteranceText)
+                    .catch(err => logger.debug({ err }, 'Org facts extraction failed (non-blocking)'));
+                } catch { /* non-blocking */ }
+              });
+
+              locationEntities.forEach(async (entity) => {
+                try {
+                  const name = (entity as any).primary_name as string;
+                  if (!name) return;
+                  const id = await entityFactsService.resolveLocationIdByName(userId, name);
+                  if (!id) return;
+                  entityFactsService.extractAndPersistFacts(userId, id, 'location', name, utteranceText)
+                    .catch(err => logger.debug({ err }, 'Location facts extraction failed (non-blocking)'));
+                } catch { /* non-blocking */ }
+              });
+            }).catch(() => {});
+          }
         }
       } catch (error) {
         logger.debug({ error }, 'Failed to resolve entities for enrichment, continuing without');
@@ -1104,11 +1163,17 @@ export class ConversationIngestionPipeline {
             unitIds.push(savedUnit.id);
           }
         } else {
-          // Normal extraction for single-event utterances
-          const units = await semanticExtractionService.extractSemanticUnits(
+          // Normal extraction for single-event utterances — hybrid router first,
+          // falls back to full LLM only for complex messages.
+          const hybridResult = await hybridExtractor.extractSemanticUnits(
             normalized.normalized_text,
             conversationHistory,
             sender === 'AI'
+          );
+          const units = hybridResult;
+          logger.debug(
+            { route: hybridResult.route, complexity: hybridResult.classification.complexity },
+            'Extraction route taken'
           );
 
           // Capture for shadow baseline

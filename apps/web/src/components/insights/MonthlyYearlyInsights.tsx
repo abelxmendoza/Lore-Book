@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Loader2, Maximize2, RefreshCw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Select } from '../ui/select';
 import { InsightsPanel, type InsightPayload } from '../InsightsPanel';
+import { InsightsModal } from '../InsightsModal';
+import { InsightTimelineView } from '../InsightTimelineView';
 import { fetchJson } from '../../lib/api';
 
 type TimePeriod = 'monthly' | 'yearly';
@@ -15,6 +17,7 @@ export const MonthlyYearlyInsights = () => {
   const [insights, setInsights] = useState<InsightPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   // Generate list of years (current year and 5 years back)
   const years = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i);
@@ -125,15 +128,26 @@ export const MonthlyYearlyInsights = () => {
             <Calendar className="h-5 w-5 text-primary" />
             <CardTitle className="text-white">Time-based Insights</CardTitle>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={loadInsights}
-            disabled={loading}
-            leftIcon={loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          >
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            {insights && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setModalOpen(true)}
+                leftIcon={<Maximize2 className="h-4 w-4" />}
+                title="Full-screen view"
+              />
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadInsights}
+              disabled={loading}
+              leftIcon={loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            >
+              Refresh
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -220,8 +234,11 @@ export const MonthlyYearlyInsights = () => {
 
         {/* Insights Display */}
         {insights && !loading && (
-          <div className="mt-6">
+          <div className="mt-6 space-y-4">
             <InsightsPanel insights={insights} loading={loading} onRefresh={loadInsights} />
+            {insights.predictions && insights.predictions.length > 0 && (
+              <InsightTimelineView predictions={insights.predictions} />
+            )}
           </div>
         )}
 
@@ -249,6 +266,14 @@ export const MonthlyYearlyInsights = () => {
         )}
       </CardContent>
     </Card>
+
+    <InsightsModal
+      isOpen={modalOpen}
+      onClose={() => setModalOpen(false)}
+      insights={insights ?? undefined}
+      loading={loading}
+      onRefresh={loadInsights}
+    />
   );
 };
 

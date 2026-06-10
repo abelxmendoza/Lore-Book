@@ -5,9 +5,9 @@
  */
 
 import { useState } from 'react';
-import { 
-  Sparkles, 
-  TrendingUp, 
+import {
+  Sparkles,
+  TrendingUp,
   X,
   Info,
   ChevronDown,
@@ -15,6 +15,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
+import { MonthlyYearlyInsights } from '../insights/MonthlyYearlyInsights';
 import { 
   useInsightsAndPredictions, 
   type Insight, 
@@ -418,6 +419,10 @@ export const InsightsAndPredictionsPanel = () => {
           )}
         </>
       )}
+
+      <div className="mt-8">
+        <MonthlyYearlyInsights />
+      </div>
     </div>
   );
 };

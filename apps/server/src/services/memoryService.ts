@@ -15,12 +15,14 @@ import type {
 import { deriveEmotionalIntensity } from '../utils/emotionalIntensity';
 
 import { chapterService } from './chapterService';
+import { characterFoundationService } from './characterFoundationService';
 import { correctionService } from './correctionService';
 import { embeddingService } from './embeddingService';
 import { peoplePlacesService } from './peoplePlacesService';
 import { skillExtractionService } from './skills/skillExtractionService';
 import { supabaseAdmin } from './supabaseClient';
 import { ingestJournalEntry } from './unifiedErIngestion';
+import { dateAssignmentService } from './dateAssignmentService';
 
 export type SaveEntryPayload = {
   userId: string;
@@ -66,11 +68,25 @@ class MemoryService {
       }
     }
 
+    // If no date supplied, ask dateAssignmentService to infer one from content.
+    // Only use the suggestion when confidence is reasonable (≥0.5); otherwise keep now().
+    let entryDate = payload.date;
+    if (!entryDate && payload.content && payload.content.length > 20) {
+      try {
+        const suggestion = await dateAssignmentService.suggestDate(payload.userId, payload.content);
+        if (suggestion.confidence >= 0.5 && suggestion.source !== 'default') {
+          entryDate = suggestion.date.toISOString();
+        }
+      } catch (error) {
+        logger.debug({ error }, 'Date suggestion failed, using current date');
+      }
+    }
+
     const entry: MemoryEntry = {
       id: uuid(),
       user_id: payload.userId,
       content: payload.content,
-      date: payload.date ?? new Date().toISOString(),
+      date: entryDate ?? new Date().toISOString(),
       tags: payload.tags ?? [],
       chapter_id: payload.chapterId ?? null,
       mood: payload.mood ?? null,
@@ -109,7 +125,17 @@ class MemoryService {
     }
 
     try {
-      await peoplePlacesService.recordEntitiesForEntry(entry, payload.relationships);
+      const upsertedEntities = await peoplePlacesService.recordEntitiesForEntry(entry, payload.relationships);
+
+      // Promote person entities extracted from this entry to character records (fire-and-forget).
+      // This is what makes "tío Juan" show up in the Character Book after being mentioned in chat.
+      for (const entity of upsertedEntities) {
+        if (entity.type === 'person') {
+          characterFoundationService.promoteEntityToCharacter(payload.userId, entity).catch((err) => {
+            logger.debug({ err, entityName: entity.name }, 'Character promotion failed (non-blocking)');
+          });
+        }
+      }
     } catch (serviceError) {
       logger.warn({ serviceError }, 'Entry saved but failed to track people/places');
     }
