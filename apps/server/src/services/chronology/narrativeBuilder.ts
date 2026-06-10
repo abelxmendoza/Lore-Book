@@ -58,7 +58,7 @@ export class NarrativeBuilder {
       const prompt = `You are a narrative storyteller. Create a concise, engaging summary of this sequence of events. Capture the flow, key moments, and overall narrative arc. Write in first person, be reflective and personal. Keep it to 3-5 paragraphs.\n\nEvents:\n${eventTexts}`;
 
       const response = await openai.chat.completions.create({
-        model: config.chatModel || 'gpt-4o-mini',
+        model: config.chatModel || 'gpt-5.4-mini',
         messages: [
           {
             role: 'system',

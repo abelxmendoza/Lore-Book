@@ -507,7 +507,7 @@ export class PredictiveContinuityService {
   ): Promise<string> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.3,
         messages: [
           {
@@ -565,7 +565,7 @@ Provide a neutral summary of what this suggests about likely outcomes.`
   private async describePatternContinuation(insight: any): Promise<string> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.3,
         messages: [
           {

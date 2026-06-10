@@ -254,7 +254,7 @@ class ModeHandlers {
           ? `You are LoreBook, a personal lore and memory AI. The user just shared a detailed experience. Acknowledge it warmly in 2-3 sentences — reflect something specific back from what they shared, confirm you've saved it to their lore, and optionally ask one light follow-up question. Be natural and conversational, not robotic.`
           : `You are LoreBook, a personal lore and memory AI. The user just shared a moment or experience from their life. Respond warmly in 1-2 sentences — reflect something specific back from what they shared, and confirm you've captured it. Be natural, curious, and conversational. You may ask a brief follow-up if it feels natural.`;
         const completion = await openai.chat.completions.create({
-          model: config.defaultModel || 'gpt-4o-mini',
+          model: config.chatModel,
           temperature: 0.75,
           max_tokens: 120,
           messages: [
@@ -366,7 +366,7 @@ class ModeHandlers {
         const { openai } = await import('../../lib/openai');
         const { config } = await import('../../config');
         const ackCompletion = await openai.chat.completions.create({
-          model: config.defaultModel || 'gpt-4o-mini',
+          model: config.chatModel,
           temperature: 0.7,
           max_tokens: 80,
           messages: [

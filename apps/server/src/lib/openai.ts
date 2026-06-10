@@ -3,10 +3,30 @@ import OpenAI from 'openai';
 import { config } from '../config';
 import { logger } from '../logger';
 
+/**
+ * gpt-5.x models reject the legacy `max_tokens` parameter and require
+ * `max_completion_tokens`. ~30 call sites across the codebase still pass
+ * `max_tokens`, so normalize once here instead of touching every caller.
+ */
+const normalizingFetch: typeof fetch = async (url, init) => {
+  if (init?.body && typeof init.body === 'string' && String(url).includes('/chat/completions')) {
+    try {
+      const body = JSON.parse(init.body);
+      if (typeof body.model === 'string' && body.model.startsWith('gpt-5') && body.max_tokens != null) {
+        body.max_completion_tokens = body.max_tokens;
+        delete body.max_tokens;
+        init = { ...init, body: JSON.stringify(body) };
+      }
+    } catch { /* not JSON — pass through untouched */ }
+  }
+  return fetch(url, init);
+};
+
 export const openai = new OpenAI({
   apiKey: config.openAiKey,
   maxRetries: 3,
   timeout: 30_000,
+  fetch: normalizingFetch,
 });
 
 /**

@@ -113,7 +113,7 @@ export async function inferStoryTime(
   try {
     const prompt = buildTemporalInferencePrompt(segments, context);
     const completion = await openai.chat.completions.create({
-      model: config.defaultModel || 'gpt-4o-mini',
+      model: config.defaultModel || 'gpt-5.4-mini',
       temperature: 0.2,
       response_format: { type: 'json_object' },
       messages: [

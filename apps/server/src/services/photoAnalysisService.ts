@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 
 import { config } from '../config';
 import { logger } from '../logger';
@@ -6,7 +5,7 @@ import { logger } from '../logger';
 import type { PhotoMetadata } from './photoService';
 import { supabaseAdmin } from './supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
+import { openai } from './openaiClient';
 
 export type PhotoAnalysisResult = {
   photoType: 'memory' | 'document' | 'junk';
@@ -73,7 +72,7 @@ class PhotoAnalysisService {
 
       // Use OpenAI Vision API to analyze the photo
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini', // Use vision-capable model (supports vision, cheaper than gpt-4o)
+        model: 'gpt-5.4-mini', // Use vision-capable model (supports vision, cheaper than gpt-4o)
         messages: [
           {
             role: 'system',

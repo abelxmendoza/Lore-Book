@@ -320,7 +320,7 @@ export async function generateReturnGreeting(
     );
 
     const completion = await openai.chat.completions.create({
-      model:       'gpt-4o-mini',
+      model:       'gpt-5.4-mini',
       temperature: 0.6,
       max_tokens:  GREETING_MAX_TOKENS,
       messages: [{ role: 'user', content: prompt }],

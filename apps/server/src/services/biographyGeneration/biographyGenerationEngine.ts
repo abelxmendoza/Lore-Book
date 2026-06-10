@@ -1004,7 +1004,7 @@ export class BiographyGenerationEngine {
             }
 
             const completion = await openai.chat.completions.create({
-              model: config.defaultModel || 'gpt-4o-mini',
+              model: config.defaultModel || 'gpt-5.4-mini',
               temperature: 0.7,
               messages: [
                 {
@@ -1156,7 +1156,7 @@ Generate an enhanced chapter title that reflects the timeline context, events, a
     ].filter(Boolean);
 
     const completion = await openai.chat.completions.create({
-      model: config.defaultModel || 'gpt-4o-mini',
+      model: config.defaultModel || 'gpt-5.4-mini',
       temperature: 0.7,
       messages: [
         {
@@ -1198,7 +1198,7 @@ The title should reflect the specific events, timeline period, and characters in
           .join('; ');
 
         const completion = await openai.chat.completions.create({
-          model: config.defaultModel || 'gpt-4o-mini',
+          model: config.defaultModel || 'gpt-5.4-mini',
           temperature: 0.7,
           messages: [
             {
@@ -1287,7 +1287,7 @@ Examples: "Forged in Backyard Fights", "Learning to Build Instead of Break", "Wh
         let text = await fallbackGenerator.callWithFallback(
           async () => {
             const completion = await openai.chat.completions.create({
-              model: config.defaultModel || 'gpt-4o-mini',
+              model: config.defaultModel || 'gpt-5.4-mini',
               temperature: 0.7,
               messages: [
                 {
@@ -1776,7 +1776,7 @@ ${openingPreservedContent ? 'First, include the opening preserved content EXACTL
       ].filter(Boolean);
 
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.8,
         messages: [
           {

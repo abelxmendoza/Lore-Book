@@ -70,7 +70,7 @@ class ThoughtClassificationService {
       if (quickClassification.confidence > 0.8) {
         classification = quickClassification;
       } else {
-        // Use LLM for nuanced classification (still fast with gpt-4o-mini)
+        // Use LLM for nuanced classification (still fast with gpt-5.4-mini)
         classification = await this.llmClassify(thoughtText);
       }
 
@@ -219,7 +219,7 @@ Respond with JSON:
 
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.4-mini',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
         temperature: 0.2,

@@ -6,7 +6,7 @@
  *
  * Principles:
  * - Titles are episode names, not truncated messages
- * - LLM path: gpt-4o-mini, single JSON call produces title + subtitle
+ * - LLM path: gpt-5.4-mini, single JSON call produces title + subtitle
  * - Keyword fallback if LLM is unavailable (billing 429, etc.)
  * - Never overwrites a user-renamed title (detected via titleSource flag)
  * - Called once after the first assistant response, never again unless explicitly triggered
@@ -44,28 +44,38 @@ const STOP = new Set([
   'more', 'some', 'any', 'all', 'into', 'as', 'by', 'through', 'after',
 ]);
 
+const FILLER_RE = /^(hi|hey|ok|okay|yo|huh|so|well|alright|um|uh)[,!.\s]+/i;
+const QUESTION_RE = /^(do you|did you|can you|could you|will you|have you|remember|what do|what did|what was)[,\s]+/i;
+
+function titleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function keywordFallback(messages: TitleInput['messages']): string {
-  const userText = messages
-    .filter((m) => m.role === 'user')
-    .slice(0, 2)
-    .map((m) => m.content)
-    .join(' ');
+  const firstUser = messages.find((m) => m.role === 'user');
+  if (!firstUser) return 'New chat';
 
-  const words = userText
-    .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, ' ')
+  // Strip filler openings and question prefixes, then take first sentence
+  const stripped = firstUser.content
+    .replace(FILLER_RE, '')
+    .replace(QUESTION_RE, '')
+    .trim();
+  const sentence = stripped.split(/[.!?]/)[0].trim();
+
+  // Prefer meaningful words (no stop-words), up to 5
+  const meaningful = sentence
     .split(/\s+/)
-    .filter((w) => w.length > 3 && !STOP.has(w));
+    .filter((w) => w.length > 2 && !STOP.has(w.toLowerCase().replace(/[^a-z]/g, '')))
+    .slice(0, 5);
 
-  const freq: Record<string, number> = {};
-  for (const w of words) freq[w] = (freq[w] ?? 0) + 1;
+  if (meaningful.length >= 2) {
+    return titleCase(meaningful.join(' ').toLowerCase());
+  }
 
-  const top = Object.entries(freq)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4)
-    .map(([w]) => w.charAt(0).toUpperCase() + w.slice(1));
-
-  return top.length >= 2 ? top.join(' ') : messages[0]?.content.slice(0, 40).trim() || 'New chat';
+  // Fallback: first 6 words of the stripped sentence
+  const words = sentence.split(/\s+/).slice(0, 6).join(' ');
+  const result = words || firstUser.content.slice(0, 40).trim();
+  return titleCase(result.toLowerCase()) || 'New chat';
 }
 
 // Map mode decisions to human-readable subtitle categories
@@ -119,7 +129,7 @@ class ConversationTitleService {
 
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.4-mini',
         response_format: { type: 'json_object' },
         messages: [
           {

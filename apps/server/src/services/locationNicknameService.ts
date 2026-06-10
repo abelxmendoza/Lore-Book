@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
@@ -6,7 +5,7 @@ import { logger } from '../logger';
 
 import { supabaseAdmin } from './supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
+import { openai } from './openaiClient';
 
 export type UnnamedLocation = {
   context: string; // The conversation context where it was mentioned

@@ -189,7 +189,7 @@ export class OmegaMemoryService {
 
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.1,
         response_format: { type: 'json_object' },
         messages: [
@@ -509,7 +509,7 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
       const entityNames = entities.map(e => e.primary_name).join(', ');
       
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [
@@ -623,7 +623,7 @@ Only extract clear factual claims. Include temporal context when available.`
       const entityNames = entities.map(e => e.primary_name).join(', ');
       
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [
@@ -851,7 +851,7 @@ Only extract clear relationships. Include temporal context when available.`
   private async llmDetectContradiction(text1: string, text2: string): Promise<boolean> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.1,
         response_format: { type: 'json_object' },
         messages: [
@@ -1296,7 +1296,7 @@ A contradiction means the claims cannot both be true at the same time.`
       }));
 
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.3,
         messages: [
           {
@@ -1378,7 +1378,7 @@ Generate a comprehensive summary that:
   ): Promise<UpdateSuggestion[]> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [

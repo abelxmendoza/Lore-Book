@@ -134,7 +134,7 @@ export class IdentitySignalExtractor {
   private async extractWithLLM(entry: { id: string; text: string; timestamp: string }): Promise<IdentitySignal[]> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [

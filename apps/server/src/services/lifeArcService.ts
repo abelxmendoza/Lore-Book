@@ -504,7 +504,7 @@ ${unresolvedEvents.length > 0 ? `Unclear moments: ${unresolvedEvents.length}\n` 
 Provide a brief, observational summary of what stands out from these recent events.`;
 
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         messages: [
           {
             role: 'system',

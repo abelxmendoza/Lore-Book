@@ -1132,7 +1132,7 @@ class OmegaChatService {
     const { truncatedHistory, compactionNeeded, droppedTurns } =
       tokenBudgetService.buildBudgetedHistory(
         conversationHistory,
-        config.defaultModel,
+        config.chatModel,
         ragTokens,
         systemTokens
       );
@@ -1160,9 +1160,9 @@ class OmegaChatService {
       { role: 'user' as const, content: message }
     ];
 
-    // Create streaming response
+    // Create streaming response — flagship tier: this is the reply the user reads
     const stream = await openai.chat.completions.create({
-      model: config.defaultModel,
+      model: config.chatModel,
       temperature: 0.7,
       stream: true,
       messages
@@ -1839,7 +1839,7 @@ class OmegaChatService {
     let entryId: string | undefined;
 
     const completion = await openai.chat.completions.create({
-      model: config.defaultModel,
+      model: config.chatModel,
       temperature: 0.7,
       messages
     });

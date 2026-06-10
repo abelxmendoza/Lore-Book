@@ -53,7 +53,7 @@ export class ChatOrchestrator {
 
       // 4. Send to LLM
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4',
+        model: config.chatModel,
         messages,
         temperature: 0.7,
       });
@@ -140,7 +140,7 @@ export class ChatOrchestrator {
 
       // 4. Create streaming response
       const stream = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4',
+        model: config.chatModel,
         messages,
         temperature: 0.7,
         stream: true,

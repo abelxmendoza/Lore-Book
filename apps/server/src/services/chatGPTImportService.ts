@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
@@ -10,7 +9,7 @@ import { ruleBasedFactExtractionService } from './ruleBasedFactExtraction';
 import { supabaseAdmin } from './supabaseClient';
 import { truthVerificationService } from './truthVerificationService';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
+import { openai } from './openaiClient';
 
 export type ImportedFact = {
   id: string;

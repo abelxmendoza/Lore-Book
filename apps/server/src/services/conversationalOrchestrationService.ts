@@ -210,7 +210,7 @@ export class ConversationalOrchestrationService {
   private async classifyIntent(message: string): Promise<UserIntent> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.1,
         response_format: { type: 'json_object' },
         messages: [
@@ -449,7 +449,7 @@ Return JSON:
   private async detectMemoryChangeIntent(message: string): Promise<boolean> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.1,
         response_format: { type: 'json_object' },
         messages: [
@@ -551,7 +551,7 @@ Examples of NOT memory proposals:
       const entityNames = entities.map(e => e.primary_name).join(', ');
 
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.3,
         messages: [
           {
@@ -699,7 +699,7 @@ Answer the question using ONLY the information from these claims.`
     try {
       // Use LLM to extract entity mentions
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.1,
         response_format: { type: 'json_object' },
         messages: [
@@ -798,7 +798,7 @@ Return JSON:
   ): Promise<string> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.3,
         messages: [
           {
@@ -840,7 +840,7 @@ Provide a helpful synthesis that shows patterns without being prescriptive.`
   } | null> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [

@@ -141,7 +141,7 @@ export class GoalValueAlignmentService {
 
       // Use OpenAI to extract values
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.3,
         response_format: { type: 'json_object' },
         messages: [
@@ -748,7 +748,7 @@ Only include values with confidence > 0.6. Priority should reflect how often/str
   ): Promise<{ score: number; explanation: string } | null> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [
@@ -793,7 +793,7 @@ Evaluate alignment and return JSON:
   ): Promise<{ score: number; explanation: string } | null> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [
@@ -834,7 +834,7 @@ Evaluate alignment and return JSON:
   ): Promise<{ score: number; explanation: string } | null> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [
@@ -1025,7 +1025,7 @@ Evaluate alignment and return JSON:
   private async describeDrift(goal: Goal, snapshots: AlignmentSnapshot[]): Promise<string> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.3,
         messages: [
           {
@@ -1155,7 +1155,7 @@ Describe the drift neutrally.`
       const combinedText = textSources.map(s => s.text).join('\n\n').substring(0, 8000);
 
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [

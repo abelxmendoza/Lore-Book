@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import { differenceInDays, differenceInMonths, differenceInYears } from 'date-fns';
 
 import { config } from '../config';
@@ -6,7 +5,7 @@ import { logger } from '../logger';
 
 import { supabaseAdmin } from './supabaseClient';
 
-const openai = new OpenAI({ apiKey: config.openAiKey });
+import { openai } from './openaiClient';
 
 export type LocationImportanceLevel = 'essential' | 'major' | 'supporting' | 'minor' | 'ephemeral';
 

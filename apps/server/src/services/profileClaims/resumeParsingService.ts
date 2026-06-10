@@ -125,7 +125,7 @@ Resume text:
 ${resumeText.substring(0, 4000)}`;
 
       const response = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         messages: [
           {
             role: 'system',

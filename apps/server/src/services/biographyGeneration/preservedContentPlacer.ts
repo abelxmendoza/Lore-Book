@@ -148,7 +148,7 @@ export class PreservedContentPlacer {
 
     try {
       const analysis = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.3,
         messages: [{
           role: 'system',

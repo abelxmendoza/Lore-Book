@@ -222,7 +222,7 @@ router.get('/test-openai', rateLimitMiddleware, optionalAuth, async (_req: Authe
 
     // Test with a simple completion
     const testCompletion = await openai.chat.completions.create({
-      model: config.defaultModel || 'gpt-4o-mini',
+      model: config.defaultModel || 'gpt-5.4-mini',
       messages: [
         { role: 'system', content: 'You are a helpful assistant.' },
         { role: 'user', content: 'Say "Hello, OpenAI is working!" if you can read this.' }

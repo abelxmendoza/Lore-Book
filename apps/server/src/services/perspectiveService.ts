@@ -532,7 +532,7 @@ export class PerspectiveService {
   private async llmDetectContradiction(text1: string, text2: string): Promise<boolean> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.1,
         response_format: { type: 'json_object' },
         messages: [
@@ -583,7 +583,7 @@ A contradiction means the claims cannot both be true at the same time.`
   ): Promise<string> {
     try {
       const completion = await openai.chat.completions.create({
-        model: config.defaultModel || 'gpt-4o-mini',
+        model: config.defaultModel || 'gpt-5.4-mini',
         temperature: 0.3,
         messages: [
           {

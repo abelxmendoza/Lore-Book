@@ -46,6 +46,12 @@ type EnvConfig = {
   supabaseAnonKey: string;
   supabaseServiceRoleKey: string;
   defaultModel: string;
+  /** User-facing chat responses — flagship tier (quality is felt here) */
+  chatModel: string;
+  /** Extraction, facts, titles — mini tier (quality is remembered here) */
+  extractionModel: string;
+  /** High-volume classification/routing — nano tier */
+  nanoModel: string;
   embeddingModel: string;
   xBearerToken?: string;
   microsoftClientId?: string;
@@ -74,7 +80,10 @@ export const config: EnvConfig = {
   supabaseUrl: process.env.SUPABASE_URL ?? '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-  defaultModel: process.env.OPENAI_API_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+  defaultModel: process.env.OPENAI_API_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-5.4-mini',
+  chatModel: process.env.OPENAI_CHAT_MODEL ?? 'gpt-5.4',
+  extractionModel: process.env.OPENAI_EXTRACTION_MODEL ?? 'gpt-5.4-mini',
+  nanoModel: process.env.OPENAI_NANO_MODEL ?? 'gpt-5.4-nano',
   embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
   xBearerToken: process.env.X_API_BEARER_TOKEN ?? process.env.TWITTER_BEARER_TOKEN ?? '',
   microsoftClientId: process.env.MICROSOFT_CLIENT_ID ?? '',

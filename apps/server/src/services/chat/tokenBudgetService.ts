@@ -16,6 +16,10 @@
 // ─── Context window limits per model ─────────────────────────────────────────
 // Conservative values — stay well under actual limits to leave headroom.
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  // gpt-5 series: 272k input context — 256k here leaves headroom
+  'gpt-5.4':          256_000,
+  'gpt-5.4-mini':     256_000,
+  'gpt-5.4-nano':     256_000,
   'gpt-4o':          128_000,
   'gpt-4o-mini':      128_000,
   'gpt-4-turbo':      128_000,

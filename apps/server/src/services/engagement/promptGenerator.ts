@@ -58,7 +58,7 @@ export class EngagementPromptGenerator {
           const afterContext = afterEntries?.map(e => e.content).join('\n').substring(0, 500) || '';
 
           const completion = await openai.chat.completions.create({
-            model: config.defaultModel || 'gpt-4o-mini',
+            model: config.defaultModel || 'gpt-5.4-mini',
             messages: [
               {
                 role: 'system',
