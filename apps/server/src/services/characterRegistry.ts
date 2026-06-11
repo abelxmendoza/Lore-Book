@@ -47,7 +47,7 @@ export type CreationDecision =
   | { action: 'reject'; reason: string }
   | { action: 'merge'; characterId: string; matchedName: string; cleanName: string }
   | { action: 'create'; cleanName: string }
-  | { action: 'defer'; cleanName: string; candidates: Array<{ character_id: string; name: string; subtitle?: string }> };
+  | { action: 'defer'; cleanName: string; rawName: string; candidates: Array<{ character_id: string; name: string; subtitle?: string }> };
 
 type CharacterRow = {
   id: string;
@@ -133,39 +133,51 @@ class CharacterRegistry {
     const mentionFirst = mentionLower.split(' ')[0];
     const mentionHasSurname = mentionLower.includes(' ');
 
-    // 1. Exact name or alias match → certain merge
-    for (const c of existing) {
-      if (c.name.toLowerCase() === mentionLower) {
-        return { action: 'merge', characterId: c.id, matchedName: c.name, cleanName };
-      }
-      if ((c.alias ?? []).some(a => a.toLowerCase() === mentionLower)) {
-        return { action: 'merge', characterId: c.id, matchedName: c.name, cleanName };
-      }
+    // Distinctness cue: "Derrik the OTHER manager", "a DIFFERENT Kelly" — the
+    // user is telling us this is not the person we know. When a same-name card
+    // exists, the cue makes exact-merge ineligible and forces a question.
+    const hasDistinctnessCue = /\b(other|another|different|second|new)\b/i.test(rawName);
+
+    // 1. Exact name or alias matches. Multiple exact matches (two people
+    //    genuinely named "Derrik") can never auto-resolve — always ask.
+    const exactMatches = existing.filter(
+      c => c.name.toLowerCase() === mentionLower || (c.alias ?? []).some(a => a.toLowerCase() === mentionLower)
+    );
+    if (exactMatches.length === 1 && !hasDistinctnessCue) {
+      const c = exactMatches[0];
+      return { action: 'merge', characterId: c.id, matchedName: c.name, cleanName };
+    }
+    if (exactMatches.length >= 1) {
+      // 1+ exacts with a distinctness cue, or 2+ exacts: gray zone.
+      return await this.deferWith(userId, cleanName, rawName, exactMatches);
     }
 
     // 2. Candidate set: shared first name, or strong fuzzy on the full name.
-    //    Respect "not the same person" memory from previous answers.
+    //    "Not the same person" memory applies only to materially different
+    //    mentions ("Kel" vs "Kelly") — for same-first-name people the
+    //    ambiguity is real on every mention and must not be blanket-excluded.
     const candidates = existing.filter(c => {
-      const distinct: string[] = c.metadata?.distinct_from_mentions ?? [];
-      if (distinct.includes(mentionLower)) return false;
       const nameLower = c.name.toLowerCase();
       const candFirst = nameLower.split(' ')[0];
       const candHasSurname = nameLower.includes(' ');
-      if (candFirst === mentionFirst) {
-        // Same first name but BOTH have different surnames → different people
-        if (mentionHasSurname && candHasSurname && nameLower !== mentionLower) return false;
-        return true;
+      if (candFirst !== mentionFirst) {
+        // Fuzzy full-name match (typos: Quintesa/Quintessa). Guarded by a high
+        // threshold — JW on short names is noisy (Abuela vs Abel).
+        const distinct: string[] = c.metadata?.distinct_from_mentions ?? [];
+        if (distinct.includes(mentionLower)) return false;
+        return jaroWinkler(mentionLower, nameLower) >= 0.93;
       }
-      // Fuzzy full-name match (typos: Quintesa/Quintessa). Guarded by a high
-      // threshold — JW on short names is noisy (Abuela vs Abel).
-      return jaroWinkler(mentionLower, nameLower) >= 0.93;
+      // Same first name but BOTH have different surnames → different people
+      if (mentionHasSurname && candHasSurname && nameLower !== mentionLower) return false;
+      return true;
     });
 
     if (candidates.length === 0) return { action: 'create', cleanName };
 
     // 3. Single candidate, one side is first-name-only → certain enough to
     //    merge ("Quintessa" ↔ "Quintessa Vexworth"). Asking here would spam.
-    if (candidates.length === 1) {
+    //    A distinctness cue overrides the certainty.
+    if (candidates.length === 1 && !hasDistinctnessCue) {
       const cand = candidates[0];
       const nameLower = cand.name.toLowerCase();
       const oneSideFirstNameOnly = !mentionHasSurname || !nameLower.includes(' ');
@@ -175,16 +187,43 @@ class CharacterRegistry {
       }
     }
 
-    // 4. Gray zone — multiple plausible people, or a fuzzy-but-not-certain
-    //    match. Don't create; ask the user in chat.
+    // 4. Gray zone — multiple plausible people, a fuzzy-but-not-certain
+    //    match, or an explicit distinctness cue. Don't create; ask in chat.
+    return await this.deferWith(userId, cleanName, rawName, candidates);
+  }
+
+  /**
+   * Build a defer decision whose options carry each candidate's most
+   * distinguishing fact ("manager at SpaceX") — "mentioned 3×" can't help the
+   * user tell two Derriks apart.
+   */
+  private async deferWith(
+    userId: string,
+    cleanName: string,
+    rawName: string,
+    candidates: CharacterRow[]
+  ): Promise<CreationDecision> {
+    const top = candidates.slice(0, 3);
+    const subtitles = await Promise.all(
+      top.map(async c => {
+        const { data } = await supabaseAdmin
+          .from('entity_facts')
+          .select('fact')
+          .eq('user_id', userId)
+          .eq('entity_id', c.id)
+          .eq('entity_type', 'character')
+          .order('confidence', { ascending: false })
+          .limit(1);
+        const fact = data?.[0]?.fact as string | undefined;
+        if (fact) return fact.length > 60 ? `${fact.slice(0, 57)}…` : fact;
+        return c.metadata?.mention_count ? `mentioned ${c.metadata.mention_count}×` : undefined;
+      })
+    );
     return {
       action: 'defer',
       cleanName,
-      candidates: candidates.slice(0, 3).map(c => ({
-        character_id: c.id,
-        name: c.name,
-        subtitle: c.metadata?.mention_count ? `mentioned ${c.metadata.mention_count}×` : undefined,
-      })),
+      rawName,
+      candidates: top.map((c, i) => ({ character_id: c.id, name: c.name, subtitle: subtitles[i] })),
     };
   }
 
@@ -219,9 +258,27 @@ class CharacterRegistry {
       mention_count: ((row.metadata?.mention_count as number) ?? 0) + 1,
     };
 
+    // Name upgrade: when the user finally uses a fuller name ("Derrik" →
+    // "Derrik Halvorsen"), promote the card's primary name and demote the old
+    // name to an alias so earlier mentions still match.
+    const update: Record<string, unknown> = { metadata, updated_at: new Date().toISOString() };
+    const mentionFirst = mention.toLowerCase().split(' ')[0];
+    const rowFirst = row.name.toLowerCase().split(' ')[0];
+    const mentionIsFuller = mention.includes(' ') && !row.name.includes(' ') && mentionFirst === rowFirst;
+    if (addAlias && mentionIsFuller) {
+      aliases.delete(mention);
+      aliases.add(row.name);
+      const tokens = mention.split(' ');
+      update.name = mention;
+      update.first_name = tokens[0];
+      update.last_name = tokens.slice(1).join(' ') || null;
+      logger.info({ characterId, from: row.name, to: mention }, 'Character name upgraded to fuller form');
+    }
+    update.alias = aliases.size > 0 ? [...aliases] : null;
+
     await supabaseAdmin
       .from('characters')
-      .update({ alias: aliases.size > 0 ? [...aliases] : null, metadata, updated_at: new Date().toISOString() })
+      .update(update)
       .eq('id', characterId)
       .eq('user_id', userId);
   }
@@ -236,7 +293,8 @@ class CharacterRegistry {
     userId: string,
     mention: string,
     candidates: Array<{ character_id: string; name: string; subtitle?: string }>,
-    threadId?: string | null
+    threadId?: string | null,
+    rawText?: string
   ): Promise<void> {
     const mentionLower = mention.toLowerCase();
     const { data: existing } = await supabaseAdmin
@@ -259,6 +317,7 @@ class CharacterRegistry {
       mention_lower: mentionLower,
       candidates,
       status: 'pending',
+      raw_text: rawText ?? null,
     });
     logger.info({ userId, mention, candidateCount: candidates.length }, 'Entity question queued for chat');
   }
@@ -315,7 +374,7 @@ class CharacterRegistry {
   ): Promise<{ ok: boolean; createdCharacterId?: string }> {
     const { data: q } = await supabaseAdmin
       .from('entity_questions')
-      .select('id, mention_text, candidates, status')
+      .select('id, mention_text, candidates, status, raw_text')
       .eq('id', questionId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -344,14 +403,22 @@ class CharacterRegistry {
     }
 
     if (answer.createNew) {
-      // Mention is (also) a new person: create a minimal card and stamp
-      // distinct_from on the non-selected candidates so we never re-match.
+      // Mention is (also) a new person. If a candidate shares the name, derive
+      // a distinguishing display name from the raw clause the gate stripped:
+      // "Derrik the other manager that worked at SpaceX" → "Derrik (SpaceX)".
+      // The bare mention stays as an alias so it still matches this card.
+      const sameNameExists = ((q.candidates as any[]) ?? []).some(
+        c => (c.name as string).toLowerCase().split(' ')[0] === mention.toLowerCase().split(' ')[0]
+      );
+      const displayName = sameNameExists ? this.qualifiedName(mention, (q.raw_text as string | null) ?? mention) : mention;
+
       const { v4: uuid } = await import('uuid');
       createdCharacterId = uuid();
       await supabaseAdmin.from('characters').insert({
         id: createdCharacterId,
         user_id: userId,
-        name: mention,
+        name: displayName,
+        alias: displayName !== mention ? [mention] : null,
         status: 'active',
         tags: [],
         importance_level: 'minor',
@@ -359,9 +426,19 @@ class CharacterRegistry {
         metadata: { generated_by: 'user_clarification', generated_at: now, mention_count: 1 },
       });
     }
+    // "Not the same person" memory — but only for materially different names
+    // ("Kel" ≠ Kelly). For same-first-name people the ambiguity is real on
+    // every future mention and must be asked/context-resolved, not blanket-
+    // excluded, or every later "Derrik" story silently routes to one Derrik.
     const rejectedIds = candidateIds.filter(id => !selected.includes(id));
     if (answer.createNew && rejectedIds.length > 0) {
-      await this.recordDistinctFrom(userId, mention, rejectedIds);
+      const mentionFirst = mention.toLowerCase().split(' ')[0];
+      const differentNameIds = ((q.candidates as any[]) ?? [])
+        .filter(c => rejectedIds.includes(c.character_id) && (c.name as string).toLowerCase().split(' ')[0] !== mentionFirst)
+        .map(c => c.character_id as string);
+      if (differentNameIds.length > 0) {
+        await this.recordDistinctFrom(userId, mention, differentNameIds);
+      }
     }
 
     await supabaseAdmin
@@ -374,6 +451,20 @@ class CharacterRegistry {
       .eq('id', questionId);
 
     return { ok: true, createdCharacterId };
+  }
+
+  /**
+   * Derive a display name that distinguishes a same-name person, using the
+   * clause the name gate stripped: prefer a capitalized token (org/place,
+   * "SpaceX"), fall back to a role word ("manager").
+   */
+  private qualifiedName(mention: string, rawText: string): string {
+    const idx = rawText.toLowerCase().indexOf(mention.toLowerCase());
+    const clause = idx >= 0 ? rawText.slice(idx + mention.length) : rawText;
+    const capToken = clause.match(/\b([A-Z][\w-]{2,})\b/)?.[1];
+    const role = clause.match(/\b(manager|recruiter|boss|coach|teacher|professor|doctor|therapist|coworker|colleague|neighbor|roommate|barista|trainer|landlord|mentor)\b/i)?.[1]?.toLowerCase();
+    const qualifier = capToken ?? role;
+    return qualifier ? `${mention} (${qualifier})` : mention;
   }
 
   /**

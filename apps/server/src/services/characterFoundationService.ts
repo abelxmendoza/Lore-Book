@@ -141,7 +141,7 @@ class CharacterFoundationService {
       return decision.characterId;
     }
     if (decision.action === 'defer') {
-      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates);
+      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, null, decision.rawName);
       return null;
     }
     const cleanedName = decision.cleanName;
@@ -400,7 +400,7 @@ class CharacterFoundationService {
       return decision.characterId;
     }
     if (decision.action === 'defer') {
-      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates);
+      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, null, decision.rawName);
       return null;
     }
     const cleanedName = decision.cleanName;
