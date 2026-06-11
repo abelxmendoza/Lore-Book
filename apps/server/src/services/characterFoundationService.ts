@@ -16,6 +16,7 @@
 
 import { v4 as uuid } from 'uuid';
 import { logger } from '../logger';
+import { characterRegistry } from './characterRegistry';
 import { supabaseAdmin } from './supabaseClient';
 import type { PeoplePlaceEntity } from '../types';
 
@@ -126,20 +127,39 @@ class CharacterFoundationService {
     // foundation pipeline. Jaro-Winkler matching causes cross-person merges
     // (e.g. "Abuela" matches "Abel Mendoza" on the "Abe" prefix). Fuzzy
     // matching is reserved for future character reconciliation workflows.
+    // Registry choke point: cross-pipeline dedup, junk gate, gray-zone defer.
+    // This is what stops "Kelly who's handling onboarding" from becoming a
+    // second Kelly card when the omega pipeline already created "Kelly".
+    const decision = await characterRegistry.classifyForCreation(userId, entity.name);
+    if (decision.action === 'reject') {
+      logger.debug({ name: entity.name, reason: decision.reason }, 'Registry rejected character creation (foundation)');
+      return null;
+    }
+    if (decision.action === 'merge') {
+      await characterRegistry.mergeMention(userId, decision.characterId, decision.cleanName, { source_entity_id: entity.id });
+      logger.info({ mention: entity.name, mergedInto: decision.matchedName }, 'Registry merged foundation mention into existing character');
+      return decision.characterId;
+    }
+    if (decision.action === 'defer') {
+      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates);
+      return null;
+    }
+    const cleanedName = decision.cleanName;
+
     const characterId = uuid();
     const aliases = Array.from(new Set(entity.corrected_names ?? [])).filter(
-      a => a.toLowerCase() !== entity.name.toLowerCase()
+      a => a.toLowerCase() !== cleanedName.toLowerCase()
     );
 
     const firstAppearance = entity.first_mentioned_at
       ? new Date(entity.first_mentioned_at).toISOString().split('T')[0]
       : null;
 
-    const { firstName, lastName } = parseNameParts(entity.name);
+    const { firstName, lastName } = parseNameParts(cleanedName);
     const character: CharacterRow = {
       id: characterId,
       user_id: userId,
-      name: entity.name,
+      name: cleanedName,
       alias: aliases.length > 0 ? aliases : null,
       status: 'active',
       first_appearance: firstAppearance,
@@ -368,12 +388,29 @@ class CharacterFoundationService {
 
     if (existing?.[0]) return existing[0].id as string;
 
+    // Registry choke point: cross-pipeline dedup, junk gate, gray-zone defer.
+    const decision = await characterRegistry.classifyForCreation(userId, entity.primary_name);
+    if (decision.action === 'reject') {
+      logger.debug({ name: entity.primary_name, reason: decision.reason }, 'Registry rejected character creation (chat)');
+      return null;
+    }
+    if (decision.action === 'merge') {
+      await characterRegistry.mergeMention(userId, decision.characterId, decision.cleanName, { omega_entity_id: entity.id });
+      logger.info({ mention: entity.primary_name, mergedInto: decision.matchedName }, 'Registry merged chat mention into existing character');
+      return decision.characterId;
+    }
+    if (decision.action === 'defer') {
+      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates);
+      return null;
+    }
+    const cleanedName = decision.cleanName;
+
     const characterId = uuid();
     const aliases = Array.isArray(entity.aliases)
-      ? entity.aliases.filter(a => a.toLowerCase() !== entity.primary_name.toLowerCase())
+      ? entity.aliases.filter(a => a.toLowerCase() !== cleanedName.toLowerCase())
       : [];
 
-    const { firstName, lastName } = parseNameParts(entity.primary_name);
+    const { firstName, lastName } = parseNameParts(cleanedName);
     // Honest initial classification: importance scales with mention count;
     // relationship_depth starts at mentioned_only so the character appears in
     // the Mentioned tab until facts confirm a real relationship. Archetype and

@@ -129,6 +129,43 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
       logger.warn({ error: err }, 'Failed to increment AI request count')
     );
 
+    // Pending entity question (gray-zone character mention from a previous
+    // ingestion). Route-level so EVERY response path can carry it — mode acks
+    // and recall replies included. At most one per response; the registry
+    // enforces the asked-twice cap and never re-asks resolved questions.
+    if (!result.metadata?.disambiguationPrompt) {
+      try {
+        const { characterRegistry } = await import('../services/characterRegistry');
+        const pending = await characterRegistry.takeNextPendingQuestion(userId);
+        if (pending) {
+          // metadata is a loose pass-through to the client; disambiguationPrompt
+          // is read by useChat → message.disambiguation_prompt
+          result.metadata = {
+            ...((result.metadata ?? {}) as Record<string, unknown>),
+            disambiguationPrompt: {
+              type: 'ENTITY_CLARIFICATION',
+              question_id: pending.question_id,
+              multi_select: true,
+              mention_text: pending.mention_text,
+              options: [
+                ...pending.candidates.map(c => ({
+                  label: c.name,
+                  subtitle: c.subtitle,
+                  entity_id: c.character_id,
+                  entity_type: 'CHARACTER',
+                })),
+                { label: 'Someone else', subtitle: 'Create a new person', entity_id: '', entity_type: '' },
+              ],
+              skippable: true,
+              explanation: `You mentioned "${pending.mention_text}" — same person as before, or someone new?`,
+            },
+          };
+        }
+      } catch (err) {
+        logger.debug({ err, userId }, 'Pending entity question lookup failed (non-blocking)');
+      }
+    }
+
     sseWrite({ type: 'metadata', data: result.metadata });
 
     try {

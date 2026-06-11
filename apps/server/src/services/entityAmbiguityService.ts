@@ -44,6 +44,11 @@ export interface ChatContext {
 
 export interface DisambiguationPrompt {
   type: 'ENTITY_CLARIFICATION';
+  /** Present when backed by a persisted entity_questions row (creation-time
+   * near-duplicate). Resolution goes to /api/entity-resolution/questions/:id. */
+  question_id?: string;
+  /** Allow selecting multiple existing people (mention may cover several). */
+  multi_select?: boolean;
   mention_text: string;
   options: Array<{
     label: string;

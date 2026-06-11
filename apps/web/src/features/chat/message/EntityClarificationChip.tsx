@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { User, MapPin, Building2, HelpCircle, X } from 'lucide-react';
+import { User, MapPin, Building2, HelpCircle, X, Check } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
-import { Badge } from '../../../components/ui/badge';
 import { Card, CardContent } from '../../../components/ui/card';
 import { fetchJson } from '../../../lib/api';
 
@@ -22,6 +21,10 @@ interface EntityClarificationChipProps {
   messageId: string;
   onResolved?: () => void;
   hasCreateNewOption?: boolean;
+  /** Persisted entity_questions row — resolution goes to the questions endpoint
+   * and supports selecting multiple people for one mention. */
+  questionId?: string;
+  multiSelect?: boolean;
 }
 
 const getEntityIcon = (type: string) => {
@@ -56,14 +59,45 @@ export const EntityClarificationChip: React.FC<EntityClarificationChipProps> = (
   ambiguity,
   messageId,
   onResolved,
-  hasCreateNewOption = true
+  hasCreateNewOption = true,
+  questionId,
+  multiSelect = false,
 }) => {
   const [isResolving, setIsResolving] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [createNewSelected, setCreateNewSelected] = useState(false);
 
+  const isQuestionMode = Boolean(questionId);
+
+  const finish = () => {
+    setIsDismissed(true);
+    onResolved?.();
+  };
+
+  const resolveQuestion = async (body: { selected_character_ids?: string[]; create_new?: boolean; skip?: boolean }) => {
+    if (isResolving) return;
+    setIsResolving(true);
+    try {
+      await fetchJson(`/api/entity-resolution/questions/${questionId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({
+          selected_character_ids: body.selected_character_ids ?? [],
+          create_new: body.create_new ?? false,
+          skip: body.skip ?? false,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to resolve entity question:', error);
+    } finally {
+      setIsResolving(false);
+      finish();
+    }
+  };
+
+  // ── Legacy ambiguity flow (no persisted question) ─────────────────────────
   const handleResolve = async (chosenEntityId: string, chosenEntityName: string) => {
     if (isResolving) return;
-
     setIsResolving(true);
     try {
       await fetchJson('/api/entity-ambiguity/resolve', {
@@ -75,21 +109,16 @@ export const EntityClarificationChip: React.FC<EntityClarificationChipProps> = (
           chosen_entity_name: chosenEntityName,
         }),
       });
-
-      setIsDismissed(true);
-      onResolved?.();
     } catch (error) {
       console.error('Failed to resolve entity ambiguity:', error);
-      // Still dismiss on error to not block user
-      setIsDismissed(true);
     } finally {
       setIsResolving(false);
+      finish();
     }
   };
 
   const handleCreateNew = async () => {
     if (isResolving) return;
-
     setIsResolving(true);
     try {
       await fetchJson('/api/entity-ambiguity/resolve', {
@@ -100,20 +129,36 @@ export const EntityClarificationChip: React.FC<EntityClarificationChipProps> = (
           create_new: true,
         }),
       });
-
-      setIsDismissed(true);
-      onResolved?.();
     } catch (error) {
       console.error('Failed to create new entity:', error);
-      setIsDismissed(true);
     } finally {
       setIsResolving(false);
+      finish();
     }
   };
 
   const handleSkip = () => {
+    if (isQuestionMode) {
+      // Persist the skip so this question is never asked again
+      void resolveQuestion({ skip: true });
+      return;
+    }
     setIsDismissed(true);
   };
+
+  const toggleCandidate = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else {
+        if (!multiSelect) next.clear();
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const hasSelection = selectedIds.size > 0 || createNewSelected;
 
   if (isDismissed) {
     return null;
@@ -126,6 +171,9 @@ export const EntityClarificationChip: React.FC<EntityClarificationChipProps> = (
           <div className="flex-1">
             <p className="text-sm text-white/90 mb-2">
               When you said <span className="font-semibold text-primary">{ambiguity.surface_text}</span>, did you mean:
+              {isQuestionMode && multiSelect && ambiguity.candidates.length > 1 && (
+                <span className="block text-xs text-white/50 mt-0.5">You can pick more than one.</span>
+              )}
             </p>
           </div>
           <Button
@@ -133,49 +181,79 @@ export const EntityClarificationChip: React.FC<EntityClarificationChipProps> = (
             size="sm"
             onClick={handleSkip}
             className="h-6 w-6 p-0 text-white/50 hover:text-white"
-            title="Skip"
+            title="Skip — don't ask again"
           >
             <X className="h-3 w-3" />
           </Button>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {ambiguity.candidates.map((candidate) => (
-            <Button
-              key={candidate.entity_id}
-              variant="outline"
-              size="sm"
-              onClick={() => handleResolve(candidate.entity_id, candidate.name)}
-              disabled={isResolving}
-              className={`${getEntityTypeColor(candidate.type)} hover:opacity-80 transition-opacity`}
-            >
-              <div className="flex items-center gap-2">
-                {getEntityIcon(candidate.type)}
-                <div className="flex flex-col items-start">
-                  <span className="font-medium">{candidate.name}</span>
-                  {candidate.context_hint && (
-                    <span className="text-xs opacity-70">{candidate.context_hint}</span>
-                  )}
+          {ambiguity.candidates.map((candidate) => {
+            const selected = selectedIds.has(candidate.entity_id);
+            return (
+              <Button
+                key={candidate.entity_id}
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  isQuestionMode
+                    ? toggleCandidate(candidate.entity_id)
+                    : handleResolve(candidate.entity_id, candidate.name)
+                }
+                disabled={isResolving}
+                className={`${getEntityTypeColor(candidate.type)} hover:opacity-80 transition-opacity ${selected ? 'ring-2 ring-primary' : ''}`}
+              >
+                <div className="flex items-center gap-2">
+                  {selected ? <Check className="h-3 w-3" /> : getEntityIcon(candidate.type)}
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">{candidate.name}</span>
+                    {candidate.context_hint && (
+                      <span className="text-xs opacity-70">{candidate.context_hint}</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </Button>
-          ))}
+              </Button>
+            );
+          })}
 
           {hasCreateNewOption && (
             <Button
               variant="outline"
               size="sm"
-              onClick={handleCreateNew}
+              onClick={() => (isQuestionMode ? setCreateNewSelected(v => !v) : handleCreateNew())}
               disabled={isResolving}
-              className="bg-gray-500/20 text-gray-300 border-gray-500/30 hover:bg-gray-500/30"
+              className={`bg-gray-500/20 text-gray-300 border-gray-500/30 hover:bg-gray-500/30 ${createNewSelected ? 'ring-2 ring-primary' : ''}`}
             >
               <div className="flex items-center gap-2">
-                <HelpCircle className="h-3 w-3" />
+                {createNewSelected ? <Check className="h-3 w-3" /> : <HelpCircle className="h-3 w-3" />}
                 <span>Someone else</span>
               </div>
             </Button>
           )}
         </div>
+
+        {isQuestionMode && hasSelection && (
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() =>
+                resolveQuestion({
+                  selected_character_ids: [...selectedIds],
+                  create_new: createNewSelected,
+                })
+              }
+              disabled={isResolving}
+              className="bg-primary/80 hover:bg-primary text-white"
+            >
+              Confirm
+            </Button>
+            <span className="text-xs text-white/40">
+              {selectedIds.size > 0 && `${selectedIds.size} selected`}
+              {selectedIds.size > 0 && createNewSelected && ' + '}
+              {createNewSelected && 'new person'}
+            </span>
+          </div>
+        )}
 
         {isResolving && (
           <p className="text-xs text-white/50">Processing...</p>
@@ -184,4 +262,3 @@ export const EntityClarificationChip: React.FC<EntityClarificationChipProps> = (
     </Card>
   );
 };
-

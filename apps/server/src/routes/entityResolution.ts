@@ -15,6 +15,48 @@ import { asyncHandler } from '../utils/asyncHandler';
 const router = Router();
 
 /**
+ * POST /api/entity-resolution/questions/:id/resolve
+ * Answer a persisted in-chat entity question (creation-time near-duplicate).
+ * Multi-select: the mention may map to one or several existing people, a new
+ * person, or be skipped. All outcomes are permanent never-re-ask memory.
+ */
+router.post(
+  '/questions/:id/resolve',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const schema = z.object({
+      selected_character_ids: z.array(z.string().uuid()).default([]),
+      create_new: z.boolean().default(false),
+      skip: z.boolean().default(false),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid request' });
+    }
+    const { selected_character_ids, create_new, skip } = parsed.data;
+    if (!skip && !create_new && selected_character_ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'Pick at least one option, create new, or skip' });
+    }
+
+    const { characterRegistry } = await import('../services/characterRegistry');
+    const result = await characterRegistry.resolveQuestion(userId, String(req.params.id), {
+      selectedCharacterIds: selected_character_ids,
+      createNew: create_new,
+      skip,
+    });
+    if (!result.ok) {
+      return res.status(404).json({ success: false, error: 'Question not found or already answered' });
+    }
+    logger.info(
+      { userId, questionId: String(req.params.id), selected: selected_character_ids.length, createNew: create_new, skip },
+      'Entity question resolved'
+    );
+    res.json({ success: true, created_character_id: result.createdCharacterId ?? null });
+  })
+);
+
+/**
  * POST /api/entity-resolution/disambiguate
  * Handle disambiguation response from user
  */

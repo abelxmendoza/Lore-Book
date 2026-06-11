@@ -89,6 +89,8 @@ export type Message = {
   ambiguities?: EntityAmbiguity[];
   disambiguation_prompt?: {
     type: 'ENTITY_CLARIFICATION';
+    question_id?: string;
+    multi_select?: boolean;
     mention_text: string;
     options: Array<{
       label: string;
@@ -573,6 +575,8 @@ export const ChatMessage = ({
               }}
               messageId={message.id}
               hasCreateNewOption={message.disambiguation_prompt.options.some(opt => opt.label === 'Someone else')}
+              questionId={message.disambiguation_prompt.question_id}
+              multiSelect={message.disambiguation_prompt.multi_select}
             />
           )}
         </div>

@@ -114,6 +114,10 @@ export type StreamingChatResponse = {
     memorySuggestion?: MemorySuggestion;
     disambiguationPrompt?: {
       type: 'ENTITY_CLARIFICATION';
+      /** Persisted entity_questions row id (creation-time near-duplicate flow) */
+      question_id?: string;
+      /** Allow selecting multiple existing people for one mention */
+      multi_select?: boolean;
       mention_text: string;
       options: Array<{
         label: string;
