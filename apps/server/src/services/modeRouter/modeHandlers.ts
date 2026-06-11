@@ -28,6 +28,8 @@ class ModeHandlers {
     options?: {
       messageId?: string;
       conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+      /** Return-to-thread orientation block — present when the thread was idle 24h+ */
+      continuityContext?: string;
     }
   ): Promise<ModeHandlerResponse> {
     switch (mode) {
@@ -44,7 +46,7 @@ class ModeHandlers {
         return await this.handleNarrativeStory(userId, message);
       
       case 'EXPERIENCE_INGESTION':
-        return await this.handleExperienceIngestion(userId, message, options?.messageId);
+        return await this.handleExperienceIngestion(userId, message, options?.messageId, options?.continuityContext);
       
       case 'ACTION_LOG':
         return await this.handleActionLog(userId, message, options);
@@ -232,7 +234,8 @@ class ModeHandlers {
   private async handleExperienceIngestion(
     userId: string,
     message: string,
-    messageId?: string
+    messageId?: string,
+    continuityContext?: string
   ): Promise<ModeHandlerResponse> {
     try {
       // Fire-and-forget: Extract and store experience structure
@@ -250,9 +253,11 @@ class ModeHandlers {
       try {
         const { openai } = await import('../../lib/openai');
         const { config } = await import('../../config');
-        const systemPrompt = isDump
+        const basePrompt = isDump
           ? `You are LoreBook, a personal lore and memory AI. The user just shared a detailed experience. Acknowledge it warmly in 2-3 sentences — reflect something specific back from what they shared, confirm you've saved it to their lore, and optionally ask one light follow-up question. Be natural and conversational, not robotic.`
           : `You are LoreBook, a personal lore and memory AI. The user just shared a moment or experience from their life. Respond warmly in 1-2 sentences — reflect something specific back from what they shared, and confirm you've captured it. Be natural, curious, and conversational. You may ask a brief follow-up if it feels natural.`;
+        // Returning to an idle thread: orient quietly to the resumed context
+        const systemPrompt = continuityContext ? `${basePrompt}${continuityContext}` : basePrompt;
         const completion = await openai.chat.completions.create({
           model: config.chatModel,
           temperature: 0.75,

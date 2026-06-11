@@ -52,11 +52,12 @@ class ModeRouterService {
       // Step 1: Quick pattern checks (fast, <50ms)
       const quickCheck = this.quickModeCheck(message);
       if (quickCheck.confidence > 0.8) {
-        const elapsed = Date.now() - startTime;
-        logger.debug({ mode: quickCheck.mode, confidence: quickCheck.confidence, elapsed }, 'Mode routed via pattern matching');
-        if (process.env.NODE_ENV !== 'production') {
-          logger.info(`[ModeRouter] mode=${quickCheck.mode} message="${message.substring(0, 120)}"`);
-        }
+        // Always log routing decisions at info — the router gates the entire
+        // conversational pipeline, and silent misroutes cost weeks to find.
+        logger.info(
+          { mode: quickCheck.mode, confidence: quickCheck.confidence, via: 'pattern', reason: quickCheck.reasoning, elapsed: Date.now() - startTime },
+          'Mode routed'
+        );
         return quickCheck;
       }
 
@@ -66,11 +67,10 @@ class ModeRouterService {
       // Step 3: Combine and decide
       const result = this.combineChecks(quickCheck, llmCheck);
 
-      const elapsed = Date.now() - startTime;
-      logger.debug({ mode: result.mode, confidence: result.confidence, elapsed }, 'Mode routed');
-      if (process.env.NODE_ENV !== 'production') {
-        logger.info(`[ModeRouter] mode=${result.mode} message="${message.substring(0, 120)}"`);
-      }
+      logger.info(
+        { mode: result.mode, confidence: result.confidence, via: 'llm+pattern', reason: result.reasoning, elapsed: Date.now() - startTime },
+        'Mode routed'
+      );
 
       return result;
     } catch (error) {
@@ -204,7 +204,11 @@ class ModeRouterService {
     const uniqueNames = new Set(
       namedMatches.map(m => m[2]).filter(name => !commonWords.has(name))
     );
-    score += Math.min(uniqueNames.size * 2, 6); // up to +6 for named people
+    // Cap at +4 so capitalized words alone can't clear the salience threshold
+    // (5): place names like "Smith Rock" count as "people" here, and a message
+    // can be full of names while being a question or a meta-comment. A
+    // relationship/social/interaction signal below is required to tip it over.
+    score += Math.min(uniqueNames.size * 2, 4);
 
     // Family relationship words — always autobiographically significant
     const familyPattern = /\b(cousin|brother|sister|mom|dad|mother|father|uncle|aunt|nephew|niece|grandma|grandpa|grandmother|grandfather|wife|husband|boyfriend|girlfriend|partner|fiance|fiancee|son|daughter|stepbrother|stepsister|stepdad|stepmom|in-law|brother-in-law|sister-in-law)\b/i;
@@ -230,6 +234,14 @@ class ModeRouterService {
    * autobiographical graph data critical for character extraction.
    */
   private looksLikeExperience(message: string): boolean {
+    // Questions are never experience dumps. Without this guard, "did you save
+    // Goth Tio as a character?" or "should I book the campsite for the trip
+    // with Quintessa?" got an ingestion ack instead of a conversational answer
+    // — the user asks something and the app replies "got it, captured!".
+    const text = message.trim();
+    if (text.includes('?')) return false;
+    if (/^(do|did|does|should|shall|can|could|would|will|what|when|where|who|why|how|is|are|am|any)\b/i.test(text)) return false;
+
     const hasTimeRange = /(last night|yesterday|that weekend|when i was|during|while|for \d+)/i.test(message);
     const hasMultiplePeople = /(we|they|everyone|people|group|together)/i.test(message);
     const hasLocation = /(at|in|to|from) (the |a |an )?[a-z]+/i.test(message);
@@ -242,7 +254,9 @@ class ModeRouterService {
 
     // Entity-salience elevation: named people + relationship context is always
     // worth ingesting as an experience even without an explicit time range.
-    // Threshold 5 = at least one named person + family/social context.
+    // Threshold 5 requires a relationship/social/interaction signal on top of
+    // names — capitalized words alone (which match place names like "Smith
+    // Rock") can no longer clear it on their own.
     const entitySalient = this.entitySalienceScore(message) >= 5;
 
     return standardExperience || entitySalient;

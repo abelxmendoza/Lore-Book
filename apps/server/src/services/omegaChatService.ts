@@ -391,6 +391,70 @@ class OmegaChatService {
   /**
    * Chat with streaming support
    */
+  /**
+   * Return-to-thread orientation block for the system prompt. Empty string
+   * unless the thread has been idle 24h+. Includes recurring scenes
+   * (continuity_strength ≥ 0.72 — 3+ traced occurrences) the thread
+   * participated in: structural facts the model may reference when relevant
+   * but must never interpret emotionally.
+   */
+  private async buildReturnToThreadContext(userId: string, threadId: string): Promise<string> {
+    let context = '';
+    try {
+      const { data: threadRow } = await supabaseAdmin
+        .from('conversation_sessions')
+        .select('title, metadata')
+        .eq('id', threadId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!threadRow) return '';
+
+      // Idle gap is measured from the last MESSAGE, not the session row's
+      // updated_at: background machinery (subtitle extraction, ingestion
+      // bookkeeping) touches the row constantly, which silently reset the
+      // idle clock and made the 24h gap undetectable for real users.
+      const { data: lastMsg } = await supabaseAdmin
+        .from('chat_messages')
+        .select('created_at')
+        .eq('session_id', threadId)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!lastMsg?.created_at) return '';
+
+      const idleHours = (Date.now() - new Date(lastMsg.created_at).getTime()) / 3_600_000;
+      if (idleHours < 24) return '';
+
+      const idleDays = Math.floor(idleHours / 24);
+      const timeLabel = idleDays === 1 ? '1 day' : `${idleDays} days`;
+      const subtitle = (threadRow.metadata as any)?.subtitle as string | undefined;
+      const entities: string[] = (threadRow.metadata as any)?.dominantEntities ?? [];
+      const entityPhrase = entities.length > 0 ? ` The recurring context included: ${entities.slice(0, 3).join(', ')}.` : '';
+      const subtitlePhrase = subtitle ? ` The last topic was: ${subtitle}.` : '';
+      context = `\n\n**THREAD RESUMED AFTER ${timeLabel.toUpperCase()} GAP**: This conversation was last active ${timeLabel} ago.${subtitlePhrase}${entityPhrase} Orient naturally to the resumed context — no dramatic welcome, just quiet continuity.`;
+
+      try {
+        const { eventCandidateService } = await import('./eventCandidates/eventCandidateService');
+        const scenes = await eventCandidateService.getRecurringScenesForThread(userId, threadId);
+        if (scenes.length > 0) {
+          const sceneLines = scenes.map(s => {
+            const who = (s.dominant_entity_names ?? []).slice(0, 3).join(', ');
+            const lastSeen = s.last_seen_at ? new Date(s.last_seen_at).toISOString().slice(0, 10) : 'unknown';
+            return `- "${s.canonical_title}"${who ? ` (${who})` : ''} — ${s.occurrence_count} occurrences on record, last ${lastSeen}`;
+          });
+          context += `\n**RECURRING SCENES IN THIS THREAD** (traced, structural — reference only when relevant, never interpret what they mean emotionally):\n${sceneLines.join('\n')}`;
+        }
+        logger.info({ userId, threadId, idleDays, scenes: scenes.length }, 'Return-to-thread context injected');
+      } catch (err) {
+        logger.warn({ err, threadId }, 'Recurring scene lookup failed, continuing without');
+      }
+    } catch (err) {
+      logger.warn({ err, threadId }, 'Return-to-thread context lookup failed, continuing without');
+    }
+    return context;
+  }
+
   async chatStream(
     userId: string,
     message: string,
@@ -449,6 +513,13 @@ class OmegaChatService {
       logger.debug({ err, userId }, 'Phase 4.5 follow-up check failed, continuing');
     }
 
+    // Return-to-thread orientation — computed BEFORE mode routing so that
+    // mode-handled responses (e.g. the experience-ingestion ack) are also
+    // continuity-aware, not just the full conversational path.
+    const returnToThreadContext = currentContext?.threadId
+      ? await this.buildReturnToThreadContext(userId, currentContext.threadId)
+      : '';
+
     // =====================================================
     // MODE ROUTER (NEW - FIRST GATE)
     // =====================================================
@@ -499,12 +570,13 @@ class OmegaChatService {
           }
         }
         
-        // Handle mode
+        // Handle mode — continuityContext keeps mode-handled replies oriented
+        // when the user returns to a thread after a gap.
         const handlerResponse = await modeHandlers.handleMode(
           routing.mode,
           userId,
           message,
-          { messageId, conversationHistory }
+          { messageId, conversationHistory, continuityContext: returnToThreadContext || undefined }
         );
 
         // Phase 4.5: persist assistant with recall_sources for MEMORY_RECALL
@@ -921,55 +993,9 @@ class OmegaChatService {
       logger.debug({ userId, signals: continuityIntent.signals, entityHints: continuityIntent.entityHints }, 'Continuity intent detected');
     }
 
-    // Return-to-thread orientation: detect idle gap and inject grounding context
-    let returnToThreadContext = '';
-    if (currentContext?.threadId) {
-      try {
-        const { data: threadRow } = await supabaseAdmin
-          .from('conversation_sessions')
-          .select('updated_at, title, metadata')
-          .eq('id', currentContext.threadId)
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (threadRow?.updated_at) {
-          const idleMs = Date.now() - new Date(threadRow.updated_at).getTime();
-          const idleHours = idleMs / 3_600_000;
-          if (idleHours >= 24) {
-            const idleDays = Math.floor(idleHours / 24);
-            const timeLabel = idleDays === 1 ? '1 day' : `${idleDays} days`;
-            const subtitle = (threadRow.metadata as any)?.subtitle as string | undefined;
-            const entities: string[] = (threadRow.metadata as any)?.dominantEntities ?? [];
-            const entityPhrase = entities.length > 0 ? ` The recurring context included: ${entities.slice(0, 3).join(', ')}.` : '';
-            const subtitlePhrase = subtitle ? ` The last topic was: ${subtitle}.` : '';
-            returnToThreadContext = `\n\n**THREAD RESUMED AFTER ${timeLabel.toUpperCase()} GAP**: This conversation was last active ${timeLabel} ago.${subtitlePhrase}${entityPhrase} Orient naturally to the resumed context — no dramatic welcome, just quiet continuity.`;
-
-            // Recurring scenes (continuity_strength ≥ 0.72 — 3+ traced occurrences)
-            // this thread participated in. Structural facts only: the model may
-            // reference them when relevant but must never interpret their meaning.
-            try {
-              const { eventCandidateService } = await import('./eventCandidates/eventCandidateService');
-              const scenes = await eventCandidateService.getRecurringScenesForThread(userId, currentContext.threadId);
-              if (scenes.length > 0) {
-                const sceneLines = scenes.map(s => {
-                  const who = (s.dominant_entity_names ?? []).slice(0, 3).join(', ');
-                  const lastSeen = s.last_seen_at ? new Date(s.last_seen_at).toISOString().slice(0, 10) : 'unknown';
-                  return `- "${s.canonical_title}"${who ? ` (${who})` : ''} — ${s.occurrence_count} occurrences on record, last ${lastSeen}`;
-                });
-                returnToThreadContext += `\n**RECURRING SCENES IN THIS THREAD** (traced, structural — reference only when relevant, never interpret what they mean emotionally):\n${sceneLines.join('\n')}`;
-              }
-              logger.info(
-                { userId, threadId: currentContext.threadId, idleDays, scenes: scenes.length },
-                'Return-to-thread context injected'
-              );
-            } catch (err) {
-              logger.warn({ err, threadId: currentContext.threadId }, 'Recurring scene lookup failed, continuing without');
-            }
-          }
-        }
-      } catch (err) {
-        logger.warn({ err, threadId: currentContext.threadId }, 'Return-to-thread context lookup failed, continuing without');
-      }
-    }
+    // Return-to-thread orientation: computed once before mode routing (so the
+    // ingestion-ack path gets it too) and reused here for the main prompt.
+    // returnToThreadContext is defined above the MODE ROUTER block.
 
     // ── Context Selection Layer ───────────────────────────────────────────────
     // Score and filter loreData before prompt assembly.
