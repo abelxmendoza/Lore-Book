@@ -735,12 +735,10 @@ export class ConversationIngestionPipeline {
     try {
       await supabaseAdmin
         .from('event_unit_links')
-        .insert({
-          event_id: eventId,
-          unit_id: unitId,
-        })
-        .onConflict('event_id,unit_id')
-        .ignore();
+        .upsert(
+          { event_id: eventId, unit_id: unitId },
+          { onConflict: 'event_id,unit_id', ignoreDuplicates: true }
+        );
     } catch (error) {
       logger.warn({ error, unitId, eventId }, 'Failed to link unit to event');
     }

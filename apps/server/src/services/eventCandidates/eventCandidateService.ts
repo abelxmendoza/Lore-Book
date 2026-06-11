@@ -335,8 +335,31 @@ async function getCandidatesForEntity(
   return (data ?? []) as EventCandidate[];
 }
 
+/**
+ * Recurring scenes a specific thread participated in — for return-to-thread
+ * system prompt grounding. 0.72 is the "recurring scene" tier of the
+ * confidence curve (3+ occurrences); below that a scene is only "emerging"
+ * and must not be asserted back to the user.
+ */
+async function getRecurringScenesForThread(
+  userId: string,
+  threadId: string,
+  limit = 3
+): Promise<EventCandidate[]> {
+  const { data } = await supabaseAdmin
+    .from('event_candidates')
+    .select('*')
+    .eq('user_id', userId)
+    .gte('continuity_strength', 0.72)
+    .contains('source_thread_ids', [threadId])
+    .order('continuity_strength', { ascending: false })
+    .limit(limit);
+  return (data ?? []) as EventCandidate[];
+}
+
 export const eventCandidateService = {
   processResolvedEvent,
   getSurfaceableCandidates,
   getCandidatesForEntity,
+  getRecurringScenesForThread,
 };

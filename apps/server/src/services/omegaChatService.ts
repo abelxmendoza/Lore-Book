@@ -929,6 +929,24 @@ class OmegaChatService {
             const entityPhrase = entities.length > 0 ? ` The recurring context included: ${entities.slice(0, 3).join(', ')}.` : '';
             const subtitlePhrase = subtitle ? ` The last topic was: ${subtitle}.` : '';
             returnToThreadContext = `\n\n**THREAD RESUMED AFTER ${timeLabel.toUpperCase()} GAP**: This conversation was last active ${timeLabel} ago.${subtitlePhrase}${entityPhrase} Orient naturally to the resumed context — no dramatic welcome, just quiet continuity.`;
+
+            // Recurring scenes (continuity_strength ≥ 0.72 — 3+ traced occurrences)
+            // this thread participated in. Structural facts only: the model may
+            // reference them when relevant but must never interpret their meaning.
+            try {
+              const { eventCandidateService } = await import('./eventCandidates/eventCandidateService');
+              const scenes = await eventCandidateService.getRecurringScenesForThread(userId, currentContext.threadId);
+              if (scenes.length > 0) {
+                const sceneLines = scenes.map(s => {
+                  const who = (s.dominant_entity_names ?? []).slice(0, 3).join(', ');
+                  const lastSeen = s.last_seen_at ? new Date(s.last_seen_at).toISOString().slice(0, 10) : 'unknown';
+                  return `- "${s.canonical_title}"${who ? ` (${who})` : ''} — ${s.occurrence_count} occurrences on record, last ${lastSeen}`;
+                });
+                returnToThreadContext += `\n**RECURRING SCENES IN THIS THREAD** (traced, structural — reference only when relevant, never interpret what they mean emotionally):\n${sceneLines.join('\n')}`;
+              }
+            } catch (err) {
+              logger.debug({ err, threadId: currentContext.threadId }, 'Recurring scene lookup failed, continuing without');
+            }
           }
         }
       } catch (err) {

@@ -160,10 +160,17 @@ export class EventAssemblyService {
     const where = this.extractWhere(unitGroup);
     const when = this.extractWhen(unitGroup);
 
-    // Use omegaMemoryService to create resolved event
-    // This integrates with existing event system
-    // Use EXPERIENCE units for event assembly (what happened)
-    const sourceText = experienceUnits.map(u => u.content).join(' ');
+    // Group units by knowledge type. Event narrative comes from EXPERIENCE
+    // units (what happened); fall back to the whole group when a cluster has
+    // no EXPERIENCE units so entity extraction still gets source text.
+    const experienceUnits = unitGroup.filter(u => u.type === 'EXPERIENCE');
+    const factUnits = unitGroup.filter(u => u.type === 'CLAIM');
+    const beliefUnits = unitGroup.filter(u => u.type === 'PERCEPTION');
+    const feelingUnits = unitGroup.filter(u => u.type === 'FEELING');
+
+    const sourceText = (experienceUnits.length > 0 ? experienceUnits : unitGroup)
+      .map(u => u.content)
+      .join(' ');
 
     // Ingest text to extract entities and create event
     const ingestionResult = await omegaMemoryService.ingestText(userId, sourceText, 'AI');
@@ -264,22 +271,20 @@ export class EventAssemblyService {
       }
     );
 
-    // Re-evaluate beliefs related to this event (BRRE integration)
-    // Fire-and-forget: non-blocking
-    this.reevaluateBeliefsForEvent(userId, event.id, experienceUnits).catch(err => {
-      logger.warn({ error: err, eventId: event.id }, 'Failed to re-evaluate beliefs for event (non-blocking)');
-    });
+    // NOTE: a per-event BRRE re-evaluation hook used to be called here, but the
+    // method never existed and the call crashed all event assembly. Belief
+    // re-evaluation runs via beliefRealityReconciliationService.reevaluateAllBeliefs
+    // on its own cadence instead of per assembled event.
 
-    // Link units to event
+    // Link units to event. upsert with ignoreDuplicates is the supabase-js v2
+    // form — .insert().onConflict().ignore() does not exist and throws.
     for (const unit of unitGroup) {
       await supabaseAdmin
         .from('event_unit_links')
-        .insert({
-          event_id: event.id,
-          unit_id: unit.id,
-        })
-        .onConflict('event_id,unit_id')
-        .ignore();
+        .upsert(
+          { event_id: event.id, unit_id: unit.id },
+          { onConflict: 'event_id,unit_id', ignoreDuplicates: true }
+        );
     }
 
     // ── Phase C1: Link nearby event_records to this resolved_event ─────────────
@@ -441,12 +446,10 @@ export class EventAssemblyService {
     for (const unit of newUnits) {
       await supabaseAdmin
         .from('event_unit_links')
-        .insert({
-          event_id: eventId,
-          unit_id: unit.id,
-        })
-        .onConflict('event_id,unit_id')
-        .ignore();
+        .upsert(
+          { event_id: eventId, unit_id: unit.id },
+          { onConflict: 'event_id,unit_id', ignoreDuplicates: true }
+        );
     }
 
     // ── Phase C1: Link nearby event_records to this resolved_event ─────────────
