@@ -277,7 +277,13 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         isMobileDrawerOpen={isMobileDrawerOpen}
         onMobileDrawerClose={() => setIsMobileDrawerOpen(false)}
       />
-      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+      {/* Viewport-locked surfaces (chat/lorebook/memoir/saga) must clamp this
+          wrapper to the viewport: as a flex item its min-height:auto floor let
+          content push it (and <main>'s height:100vh) past the viewport, so the
+          chat composer rendered below the fold and the page scrolled. h-screen
+          + min-h-0 pins the composer to the bottom like ChatGPT. All other
+          surfaces keep min-h-screen so they can grow and page-scroll. */}
+      <div className={`flex-1 flex flex-col overflow-hidden ${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga') ? 'h-screen min-h-0' : 'min-h-screen'}`}>
       <DemoModeBanner />
       <main
         id="main-content"
