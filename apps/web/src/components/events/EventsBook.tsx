@@ -8,7 +8,7 @@ import {
   Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
   RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
   Music2, Building2, Briefcase, Plane, Heart, LayoutGrid, List,
-  CalendarDays, Repeat2, Star, TrendingUp,
+  CalendarDays, Repeat2, Star, TrendingUp, BookOpen,
 } from 'lucide-react';
 import { formatDistanceToNow, parseISO as dfParseISO } from 'date-fns';
 import { Card, CardContent } from '../ui/card';
@@ -24,6 +24,7 @@ import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { MemoryExplorer } from '../memory-explorer/MemoryExplorer';
 
 const ITEMS_PER_PAGE = 18;
 
@@ -43,9 +44,10 @@ type RecurringScene = {
   timeline_candidate?: boolean;
 };
 
-type ViewMode = 'moments' | 'timeline' | 'calendar' | 'recurring';
+type ViewMode = 'moments' | 'timeline' | 'calendar' | 'recurring' | 'entries';
 type EventCategory = 'all' | 'recent' | 'birthdays' | 'parties' | 'concerts_shows' | 'conventions' | 'work' | 'travel' | 'family' | 'festivals' | 'with_people' | 'with_locations';
 type ImpactFilter = 'all' | 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
+type SignificanceFilter = 'all' | 'major' | 'moderate' | 'minor';
 type SortOption = 'date_desc' | 'date_asc' | 'confidence_desc' | 'confidence_asc' | 'title_asc' | 'title_desc' | 'people_desc';
 type DateRange = 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
 
@@ -89,11 +91,19 @@ const IMPACT_CHIPS: { value: ImpactFilter; label: string; activeClass: string }[
   { value: 'ripple_effect', label: 'Ripple Effects', activeClass: 'bg-pink-500/20 text-pink-300 border-pink-500/40' },
 ];
 
+const SIGNIFICANCE_CHIPS: { value: SignificanceFilter; label: string; activeClass: string }[] = [
+  { value: 'all', label: 'All Scale', activeClass: 'bg-primary/20 text-primary border-primary/40' },
+  { value: 'major', label: '★ Major', activeClass: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40' },
+  { value: 'moderate', label: 'Moderate', activeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/40' },
+  { value: 'minor', label: 'Minor', activeClass: 'bg-slate-500/20 text-slate-400 border-slate-500/40' },
+];
+
 const VIEWS: { value: ViewMode; label: string; icon: React.ElementType; soon?: boolean }[] = [
   { value: 'moments', label: 'Moments', icon: LayoutGrid },
   { value: 'timeline', label: 'Timeline', icon: List },
   { value: 'calendar', label: 'Calendar', icon: CalendarDays, soon: true },
   { value: 'recurring', label: 'Recurring Scenes', icon: Repeat2 },
+  { value: 'entries', label: 'All Entries', icon: BookOpen },
 ];
 
 // ─── Keyword matching ─────────────────────────────────────────────────────────
@@ -120,6 +130,15 @@ function eventMatchesCategory(event: Event, category: EventCategory): boolean {
   if (category === 'with_locations') return event.locations.length > 0;
   const kw = CATEGORY_KEYWORDS[category];
   return kw ? kw.some(k => eventText(event).includes(k)) : false;
+}
+
+function getSignificanceScore(event: Event): number {
+  return Math.round(
+    (event.confidence * 40) +
+    Math.min(30, (event.source_count ?? 0) * 5) +
+    Math.min(20, (event.impact?.impactIntensity ?? 0) * 20) +
+    Math.min(10, event.people.length * 2)
+  );
 }
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
@@ -452,6 +471,7 @@ export const EventsBook: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<EventCategory>('all');
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>('all');
+  const [significanceFilter, setSignificanceFilter] = useState<SignificanceFilter>('all');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -564,6 +584,14 @@ export const EventsBook: React.FC = () => {
     if (filters.hasPeople !== null) filtered = filtered.filter(e => filters.hasPeople ? e.people.length > 0 : e.people.length === 0);
     if (impactFilter !== 'all') filtered = filtered.filter(e => e.impact?.type === impactFilter);
     if (activeCategory !== 'all') filtered = filtered.filter(e => eventMatchesCategory(e, activeCategory));
+    if (significanceFilter !== 'all') {
+      filtered = filtered.filter(e => {
+        const score = getSignificanceScore(e);
+        if (significanceFilter === 'major') return score >= 60;
+        if (significanceFilter === 'moderate') return score >= 25 && score < 60;
+        return score < 25; // minor
+      });
+    }
 
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
@@ -590,9 +618,9 @@ export const EventsBook: React.FC = () => {
       }
     });
     return filtered;
-  }, [events, searchTerm, activeCategory, filters, sortBy, impactFilter]);
+  }, [events, searchTerm, activeCategory, filters, sortBy, impactFilter, significanceFilter]);
 
-  useEffect(() => { setCurrentPage(1); }, [searchTerm, activeCategory, filters, sortBy, impactFilter]);
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, activeCategory, filters, sortBy, impactFilter, significanceFilter]);
 
   const totalPages = Math.ceil(filteredEvents.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -617,14 +645,16 @@ export const EventsBook: React.FC = () => {
     if (filters.locations.length > 0) n++;
     if (filters.hasLocation !== null) n++;
     if (filters.hasPeople !== null) n++;
+    if (significanceFilter !== 'all') n++;
     return n;
-  }, [filters]);
+  }, [filters, significanceFilter]);
 
   const clearFilters = () => {
     setFilters({ dateRange: 'all', types: [], confidenceMin: 0, confidenceMax: 1, peopleCountMin: 0, peopleCountMax: 10, locations: [], hasLocation: null, hasPeople: null });
     setSearchTerm('');
     setActiveCategory('all');
     setImpactFilter('all');
+    setSignificanceFilter('all');
   };
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -755,6 +785,26 @@ export const EventsBook: React.FC = () => {
             className={`
               inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors border
               ${impactFilter === value
+                ? activeClass
+                : 'bg-black/30 text-white/40 border-border/30 hover:border-border/50 hover:text-white/60'
+              }
+            `}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Significance filter chips ── */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[10px] text-white/25 font-medium uppercase tracking-wide">Scale</span>
+        {SIGNIFICANCE_CHIPS.map(({ value, label, activeClass }) => (
+          <button
+            key={value}
+            onClick={() => setSignificanceFilter(value)}
+            className={`
+              inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors border
+              ${significanceFilter === value
                 ? activeClass
                 : 'bg-black/30 text-white/40 border-border/30 hover:border-border/50 hover:text-white/60'
               }
@@ -945,7 +995,7 @@ export const EventsBook: React.FC = () => {
             <Sparkles className="h-10 w-10 mx-auto mb-3 text-white/15" />
             <p className="text-base font-medium mb-1">No moments found</p>
             <p className="text-sm text-white/35">Try adjusting your filters or search</p>
-            {(activeFilterCount > 0 || searchTerm || activeCategory !== 'all' || impactFilter !== 'all') && (
+            {(activeFilterCount > 0 || searchTerm || activeCategory !== 'all' || impactFilter !== 'all' || significanceFilter !== 'all') && (
               <Button variant="outline" size="sm" onClick={clearFilters} className="mt-4 text-xs">
                 Clear All Filters
               </Button>
@@ -997,6 +1047,13 @@ export const EventsBook: React.FC = () => {
       {viewMode === 'timeline' && (
         <div className="mt-2">
           <ColorCodedTimeline />
+        </div>
+      )}
+
+      {/* ══ ALL ENTRIES ══ */}
+      {viewMode === 'entries' && (
+        <div className="mt-2">
+          <MemoryExplorer />
         </div>
       )}
 

@@ -22,15 +22,23 @@ vi.mock('../../contexts/MockDataContext', () => ({
   MockDataProvider: ({ children }: { children?: unknown }) => children,
 }));
 
-vi.mock('../../lib/supabase', () => ({
-  supabase: {
-    auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
-      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } }))
-    }
-  },
-  useAuth: () => ({ user: { id: 'user-1' } })
-}));
+vi.mock('../../lib/supabase', () => {
+  // Realtime channel chain used by CharacterBook's characters subscription
+  const channel: any = {};
+  channel.on = vi.fn(() => channel);
+  channel.subscribe = vi.fn(() => channel);
+  return {
+    supabase: {
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+        onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } }))
+      },
+      channel: vi.fn(() => channel),
+      removeChannel: vi.fn(),
+    },
+    useAuth: () => ({ user: { id: 'user-1' } })
+  };
+});
 
 vi.mock('../../hooks/useCharacterExtraction', () => ({
   useCharacterExtraction: () => ({ extractCharacters: vi.fn() })

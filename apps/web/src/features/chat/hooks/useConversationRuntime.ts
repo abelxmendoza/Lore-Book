@@ -38,6 +38,21 @@ import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
 import type { Message } from '../message/ChatMessage';
 import type { TitleGenerationResult } from '../types/conversationMetadata';
 
+// ── Provisional title from first user message ─────────────────────────────────
+const FILLER_PREFIX = /^(hi|hey|ok|okay|yo|huh|so|well|alright|um|uh)[,!.\s]+/i;
+const QUESTION_PREFIX = /^(do you|did you|can you|could you|will you|have you|remember|what do|what did|what was)[,\s]+/i;
+
+function makeProvisionalTitle(content: string): string {
+  const stripped = content
+    .replace(FILLER_PREFIX, '')
+    .replace(QUESTION_PREFIX, '')
+    .trim();
+  const sentence = stripped.split(/[.!?]/)[0].trim();
+  const words = sentence.split(/\s+/).slice(0, 7).join(' ');
+  const result = words.length > 45 ? words.slice(0, 42) + '…' : words;
+  return result.charAt(0).toUpperCase() + result.slice(1) || 'New chat';
+}
+
 // ── Return greeting constants (MVP: LIGHT + MEDIUM only) ─────────────────────
 const GREETING_MIN_GAP_HOURS     = 12;
 const GREETING_MIN_MSG_COUNT     = 5;
@@ -199,7 +214,7 @@ export const useConversationRuntime = ({
       runtimeDiagnostics.record('thread_create', { threadId: id });
       const firstUser = messages.find((m) => m.role === 'user');
       const provisionalTitle = firstUser
-        ? firstUser.content.slice(0, 50).trim() || 'New chat'
+        ? makeProvisionalTitle(firstUser.content)
         : 'New chat';
       intendedThreadRef.current = id;
       isHydratedRef.current = true;
@@ -308,13 +323,18 @@ export const useConversationRuntime = ({
       }
       runtimeDiagnostics.startTimer('thread_switch');
       const thread = getThread(id);
+      // Always clear first so stale messages from the previous thread never bleed
+      // into the new thread's view during the navigation transition.
+      clearMessages();
       if (thread) {
         // Set intendedThreadRef BEFORE setMessages to prevent sync contamination
         // during the intermediate render between setMessages and navigate processing.
         intendedThreadRef.current = id;
         isHydratedRef.current = true;
         hydratedByHandlerRef.current = id;
-        setMessages(thread.messages);
+        if (thread.messages.length > 0) {
+          setMessages(thread.messages);
+        }
       }
       switchThread(id);
       navigate(`/chat/${id}`);

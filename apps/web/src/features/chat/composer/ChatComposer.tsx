@@ -38,7 +38,7 @@ export const ChatComposer = ({
     moodColor,
     moodEngine,
     autoTagger,
-    characterIndexer,
+    entityIndexer,
     handleSubmit,
     handleKeyDown,
     insertSuggestion
@@ -95,7 +95,7 @@ export const ChatComposer = ({
       {showHints && (
         <ComposerHints
           mood={moodEngine.mood}
-          characterCount={characterIndexer.matches.length}
+          entities={entityIndexer.matches}
           tagCount={autoTagger.suggestions.length}
         />
       )}

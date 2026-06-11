@@ -52,6 +52,22 @@ function dbRowToThread(t: any): ChatThread {
   };
 }
 
+const STALE_EMPTY_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/** Returns false for threads that are permanently broken: no messages and not recently created. */
+function isUsableThread(t: ChatThread): boolean {
+  if (t.messages.length > 0) return true;
+  const age = Date.now() - new Date(t.updatedAt).getTime();
+  return age < STALE_EMPTY_THRESHOLD_MS;
+}
+
+/** Deduplicates threads by ID — last occurrence wins (most recent data). */
+function dedupeThreads(threads: ChatThread[]): ChatThread[] {
+  const seen = new Map<string, ChatThread>();
+  for (const t of threads) seen.set(t.id, t);
+  return Array.from(seen.values());
+}
+
 // ── Read Supabase access_token from localStorage synchronously (for keepalive saves) ──
 function getTokenSync(): string | null {
   try {
@@ -84,6 +100,9 @@ export const useChatThreads = () => {
 
   const saveDebounceRef = useRef<Record<string, PendingSave>>({});
   const currentThreadIdRef = useRef<string | null>(null);
+  const threadsRef = useRef<ChatThread[]>([]);
+
+  useEffect(() => { threadsRef.current = threads; }, [threads]);
 
   useEffect(() => {
     currentThreadIdRef.current = currentThreadId;
@@ -111,11 +130,15 @@ export const useChatThreads = () => {
     try {
       const raw = localStorage.getItem(storageKey(userId));
       const parsed: ChatThread[] = raw ? JSON.parse(raw) : [];
-      const hydrated = parsed.map((t) => ({
-        ...t,
-        messages: (t.messages || []).map(parseStoredMessage),
-        updatedAt: t.updatedAt || new Date(0).toISOString(),
-      }));
+      const hydrated = dedupeThreads(
+        parsed
+          .map((t) => ({
+            ...t,
+            messages: (t.messages || []).map(parseStoredMessage),
+            updatedAt: t.updatedAt || new Date(0).toISOString(),
+          }))
+          .filter(isUsableThread)
+      );
       setThreads(hydrated);
       for (const t of hydrated) threadPersistenceTracker.markRestoredFromLocal(t.id);
       const last = localStorage.getItem(lastThreadKey(userId));
@@ -136,7 +159,9 @@ export const useChatThreads = () => {
     setThreadsLoading(true);
     try {
       const data = await fetchJson<{ threads: any[]; success: boolean }>('/api/conversation/threads');
-      const loaded = (data.threads || []).map(dbRowToThread);
+      const loaded = dedupeThreads(
+        (data.threads || []).map(dbRowToThread).filter(isUsableThread)
+      );
       setThreads(loaded);
       for (const t of loaded) threadPersistenceTracker.markRestoredFromBackend(t.id);
       const last = localStorage.getItem(lastThreadKey(userId));
@@ -149,6 +174,8 @@ export const useChatThreads = () => {
       runtimeDiagnostics.recordTimed('backend_load_complete', 'backend_load', {
         meta: { threadCount: loaded.length },
       });
+      // Purge stale empty threads from the DB (fire-and-forget — failures are silent).
+      fetchJson('/api/conversation/threads/empty', { method: 'DELETE' }).catch(() => {});
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       runtimeDiagnostics.recordTimed('backend_load_fallback', 'backend_load', {
@@ -226,6 +253,15 @@ export const useChatThreads = () => {
   // ── Public API ──────────────────────────────────────────────────────────────
 
   const createThread = useCallback((): string => {
+    // Reuse the most recent thread if it is still empty — prevents orphan accumulation
+    // when the user navigates to /chat repeatedly before sending any message.
+    const latest = threadsRef.current[0];
+    if (latest && latest.messages.length === 0 && latest.title === 'New chat') {
+      setCurrentThreadIdState(latest.id);
+      if (isAuthenticated) localStorage.setItem(lastThreadKey(userId), latest.id);
+      return latest.id;
+    }
+
     const id = crypto.randomUUID();
     const thread: ChatThread = {
       id,

@@ -1,4 +1,4 @@
-import { Clock, MapPin, Users, ChevronRight, Calendar, Briefcase, Plane, Heart, Music2, PartyPopper, Dumbbell, BookOpen, Home } from 'lucide-react';
+import { Clock, MapPin, Users, ChevronRight, Calendar, Briefcase, Plane, Heart, Music2, PartyPopper, Dumbbell, BookOpen, Home, Star } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tooltip } from '../ui/tooltip';
@@ -111,6 +111,14 @@ const getImpactTooltip = (type: string, impactDescription?: string): string => {
   }
 };
 
+const getSignificanceScore = (event: Event): number =>
+  Math.round(
+    (event.confidence * 40) +
+    Math.min(30, (event.source_count ?? 0) * 5) +
+    Math.min(20, (event.impact?.impactIntensity ?? 0) * 20) +
+    Math.min(10, event.people.length * 2)
+  );
+
 const getImpactColor = (type: string): string => {
   switch (type) {
     case 'direct_participant': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
@@ -144,10 +152,15 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
   const showImpact = event.impact && event.impact.type !== 'observer';
   const TypeIcon = getTypeIcon(event.type);
   const relative = formatRelative(event.start_time);
+  const sigScore = getSignificanceScore(event);
+  const isMajor = sigScore >= 60;
+  const isMinor = sigScore < 25;
 
   return (
     <Card
-      className="group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-slate-900/90 via-slate-800/60 to-slate-900/90 border-border/50 overflow-hidden flex flex-col aspect-square sm:aspect-auto w-full relative"
+      className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-slate-900/90 via-slate-800/60 to-slate-900/90 overflow-hidden flex flex-col aspect-square sm:aspect-auto w-full relative ${
+        isMajor ? 'border-yellow-500/40 shadow-yellow-500/10 shadow-md' : isMinor ? 'border-border/25 opacity-75' : 'border-border/50'
+      }`}
       onClick={onClick}
     >
       {/* Emotional tone accent strip */}
@@ -182,8 +195,17 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
           </div>
         )}
 
-        {/* Relative time — top left */}
-        {relative && (
+        {/* Major event star — top left */}
+        {isMajor && (
+          <div className="absolute top-2 left-2 z-10">
+            <Tooltip content={`Major event — high confidence, well-sourced, significant impact`} side="right">
+              <Star className="h-3 w-3 text-yellow-400/80 fill-yellow-400/60 cursor-help" />
+            </Tooltip>
+          </div>
+        )}
+
+        {/* Relative time — top left (shown only when not major) */}
+        {relative && !isMajor && (
           <div className="absolute top-2 left-2 z-10">
             <Tooltip content={formatFull(event.start_time)} side="right">
               <span className="text-[9px] text-white/35 cursor-help leading-none">{relative}</span>

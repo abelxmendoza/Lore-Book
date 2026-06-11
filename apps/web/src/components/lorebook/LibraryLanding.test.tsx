@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { LibraryLanding } from './LibraryLanding';
+
+// LibraryLanding calls useNavigate(), so it must render inside a Router
+const render: typeof rtlRender = (ui, options) =>
+  rtlRender(<MemoryRouter>{ui}</MemoryRouter>, options);
 
 describe('LibraryLanding', () => {
   const mockOnGenerate = vi.fn();

@@ -148,7 +148,7 @@ const SidebarContent = ({
           <button
             type="button"
             onClick={() => handleSurfaceChange('events')}
-            aria-label="Open events view"
+            aria-label="Open memories view"
             aria-current={activeSurface === 'events' ? 'page' : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
@@ -158,10 +158,25 @@ const SidebarContent = ({
             )}
           >
             <Calendar className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Events</span>
+            <span className="flex-1 text-left">Memories</span>
             {counts && counts.events > 0 && (
               <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
             )}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSurfaceChange('search')}
+            aria-label="Open all entries"
+            aria-current={activeSurface === 'search' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ml-3",
+              activeSurface === 'search'
+                ? 'border-primary/40 bg-primary/10 text-white'
+                : 'border-transparent text-white/50 hover:border-primary/30 hover:text-white/80 hover:bg-primary/5'
+            )}
+          >
+            <BookOpen className="h-3.5 w-3.5 text-primary/70 shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">All Entries</span>
           </button>
           <button
             type="button"
@@ -274,20 +289,6 @@ const SidebarContent = ({
           >
             <Compass className="h-4 w-4 text-primary" aria-hidden="true" />
             Discovery Hub
-          </button>
-          <button
-            onClick={() => handleSurfaceChange('search')}
-            aria-label="Open memory explorer"
-            aria-current={activeSurface === 'search' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'search'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <Search className="h-4 w-4 text-primary" aria-hidden="true" />
-            Memory Explorer
           </button>
           <button
             onClick={() => handleSurfaceChange('quests')}

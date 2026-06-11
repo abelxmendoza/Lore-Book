@@ -64,9 +64,8 @@ describe('App Edge Cases', () => {
       expect(container).toBeTruthy();
     }, { timeout: 3000 });
 
-    // Restore env
-    // @ts-ignore
-    import.meta.env = originalEnv;
+    // Restore env (import.meta.env can't be reassigned under Vite's transform)
+    Object.assign(import.meta.env, originalEnv);
   });
 
   it('should handle slow API responses', async () => {

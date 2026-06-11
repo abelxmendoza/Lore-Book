@@ -11,11 +11,12 @@ import 'highlight.js/styles/github-dark.css';
 type MarkdownRendererProps = {
   content: string;
   isStreaming?: boolean;
+  className?: string;
 };
 
-export const MarkdownRenderer = ({ content, isStreaming }: MarkdownRendererProps) => {
+export const MarkdownRenderer = ({ content, isStreaming, className }: MarkdownRendererProps) => {
   return (
-    <div className="markdown-content prose prose-invert prose-sm max-w-none">
+    <div className={`markdown-content prose prose-invert prose-sm max-w-none${className ? ` ${className}` : ''}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeHighlight]}

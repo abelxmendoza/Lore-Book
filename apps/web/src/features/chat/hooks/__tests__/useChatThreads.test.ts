@@ -52,6 +52,16 @@ function makeDbThread(id: string, title = 'Test thread', messages: any[] = []) {
   };
 }
 
+function makeMessage(id = 'm1', content = 'hi') {
+  return { id, role: 'user', content, timestamp: new Date().toISOString() };
+}
+
+// Threads with messages survive the stale-empty filter regardless of age;
+// empty threads survive only if updatedAt is recent.
+function makeStoredThread(id: string, title: string, messages: any[] = [makeMessage()]) {
+  return { id, title, messages, updatedAt: new Date(0).toISOString() };
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('useChatThreads', () => {
@@ -78,7 +88,7 @@ describe('useChatThreads', () => {
 
   it('loads threads from localStorage when not authenticated', async () => {
     mockUseAuth.mockReturnValue(makeAuthState());
-    const stored = [{ id: 'thread-1', title: 'Old thread', messages: [], updatedAt: new Date(0).toISOString() }];
+    const stored = [makeStoredThread('thread-1', 'Old thread')];
     localStorage.setItem('lorekeeper_chat_threads_guest', JSON.stringify(stored));
 
     const { result } = renderHook(() => useChatThreads());
@@ -88,6 +98,21 @@ describe('useChatThreads', () => {
     expect(result.current.threads).toHaveLength(1);
     expect(result.current.threads[0].id).toBe('thread-1');
     expect(mockFetchJson).not.toHaveBeenCalled();
+  });
+
+  it('filters out stale empty threads on load but keeps threads with messages', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState());
+    const stored = [
+      makeStoredThread('stale-empty', 'Stale', []),       // no messages + epoch updatedAt → dropped
+      makeStoredThread('has-messages', 'Keep me'),        // has a message → kept regardless of age
+    ];
+    localStorage.setItem('lorekeeper_chat_threads_guest', JSON.stringify(stored));
+
+    const { result } = renderHook(() => useChatThreads());
+    await waitFor(() => expect(result.current.threadsLoading).toBe(false));
+
+    expect(result.current.threads).toHaveLength(1);
+    expect(result.current.threads[0].id).toBe('has-messages');
   });
 
   it('starts with empty threads when localStorage is empty and not authenticated', async () => {
@@ -107,6 +132,7 @@ describe('useChatThreads', () => {
       threads: [makeDbThread('thread-a', 'Thread A'), makeDbThread('thread-b', 'Thread B')],
       success: true,
     });
+    mockFetchJson.mockResolvedValue({ success: true }); // purge of empty threads after load
 
     const { result } = renderHook(() => useChatThreads());
 
@@ -125,7 +151,7 @@ describe('useChatThreads', () => {
 
   it('falls back to localStorage when backend load fails', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
-    const stored = [{ id: 'local-1', title: 'Local thread', messages: [], updatedAt: new Date(0).toISOString() }];
+    const stored = [makeStoredThread('local-1', 'Local thread')];
     localStorage.setItem('lorekeeper_chat_threads_user-1', JSON.stringify(stored));
     mockFetchJson.mockRejectedValueOnce(new Error('Network error'));
 
@@ -150,6 +176,7 @@ describe('useChatThreads', () => {
       threads: [makeDbThread('t1', 'Thread', [{ id: 'm1', role: 'user', content: 'hi', timestamp: ts }])],
       success: true,
     });
+    mockFetchJson.mockResolvedValue({ success: true }); // purge of empty threads after load
 
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
@@ -178,11 +205,30 @@ describe('useChatThreads', () => {
     expect(mockFetchJson).not.toHaveBeenCalled();
   });
 
+  it('reuses the most recent empty thread instead of creating a new one', async () => {
+    mockUseAuth.mockReturnValue(makeAuthState());
+    const { result } = renderHook(() => useChatThreads());
+    await waitFor(() => expect(result.current.threadsLoading).toBe(false));
+
+    let firstId: string;
+    act(() => {
+      firstId = result.current.createThread();
+    });
+
+    let secondId: string;
+    act(() => {
+      secondId = result.current.createThread();
+    });
+
+    expect(secondId!).toBe(firstId!);
+    expect(result.current.threads).toHaveLength(1);
+  });
+
   it('creates a thread via backend when authenticated', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     mockFetchJson.mockResolvedValueOnce({ threads: [], success: true });
-    // POST for createThread
-    mockFetchJson.mockResolvedValueOnce({ success: true });
+    // purge DELETE after load + POST for createThread
+    mockFetchJson.mockResolvedValue({ success: true });
 
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
@@ -203,7 +249,7 @@ describe('useChatThreads', () => {
 
   it('removes thread from state on deleteThread', async () => {
     mockUseAuth.mockReturnValue(makeAuthState());
-    const stored = [{ id: 'del-1', title: 'Delete me', messages: [], updatedAt: new Date(0).toISOString() }];
+    const stored = [makeStoredThread('del-1', 'Delete me')];
     localStorage.setItem('lorekeeper_chat_threads_guest', JSON.stringify(stored));
 
     const { result } = renderHook(() => useChatThreads());
@@ -306,7 +352,7 @@ describe('useChatThreads', () => {
 
   it('renameThread updates local state optimistically', async () => {
     mockUseAuth.mockReturnValue(makeAuthState());
-    const stored = [{ id: 'r1', title: 'Old Name', messages: [], updatedAt: new Date(0).toISOString() }];
+    const stored = [makeStoredThread('r1', 'Old Name')];
     localStorage.setItem('lorekeeper_chat_threads_guest', JSON.stringify(stored));
 
     const { result } = renderHook(() => useChatThreads());
@@ -327,6 +373,7 @@ describe('useChatThreads', () => {
       threads: [makeDbThread('find-me', 'Found')],
       success: true,
     });
+    mockFetchJson.mockResolvedValue({ success: true }); // purge of empty threads after load
 
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsReady).toBe(true));

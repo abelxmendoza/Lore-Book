@@ -243,10 +243,11 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
     }
   }, [user?.id]);
 
-  // Sync with global state
+  // Sync with global state — always apply the auth gate so authenticated users
+  // can never have the global mock flag set to true even via localStorage bleed.
   useEffect(() => {
-    setGlobalMockDataEnabled(useMockData);
-  }, [useMockData]);
+    setGlobalMockDataEnabled(user ? false : useMockData);
+  }, [useMockData, user]);
 
   // Save to localStorage
   useEffect(() => {
@@ -256,17 +257,19 @@ export function MockDataProvider({ children }: { children: ReactNode }) {
   }, [useMockData]);
 
   const toggleMockData = useCallback(() => {
+    if (user) return; // authenticated users cannot toggle mock data
     setUseMockDataState(prev => {
       const newValue = !prev;
       setGlobalMockDataEnabled(newValue);
       return newValue;
     });
-  }, []);
+  }, [user]);
 
   const setUseMockData = useCallback((value: boolean) => {
+    if (user) return; // authenticated users cannot enable mock data
     setUseMockDataState(value);
     setGlobalMockDataEnabled(value);
-  }, []);
+  }, [user]);
 
   const runtimeIdentity = useMemo<RuntimeIdentityType>(() => resolveRuntimeIdentity({
     isAuthenticated:   !!user,

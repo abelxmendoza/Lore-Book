@@ -34,6 +34,7 @@ export type MemoryCard = {
   content_type?: ContentType | string | null;
   original_content?: string | null;
   preserve_original_language?: boolean;
+  metadata?: Record<string, unknown>;
 };
 
 export type LinkedMemory = {

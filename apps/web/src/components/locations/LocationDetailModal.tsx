@@ -14,10 +14,11 @@ type LocationDetailModalProps = {
   onClose: () => void;
 };
 
-type TabKey = 'overview' | 'memories' | 'people' | 'insights';
+type TabKey = 'overview' | 'memories' | 'people' | 'insights' | 'knowledge';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'overview',  label: 'Overview',  icon: FileText },
+  { key: 'knowledge', label: 'What I Know', icon: Brain },
   { key: 'memories',  label: 'Memories',  icon: Calendar },
   { key: 'people',    label: 'People',    icon: Users },
   { key: 'insights',  label: 'Insights',  icon: Brain },
@@ -34,6 +35,9 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
   const [chatLoading, setChatLoading] = useState(false);
   const [insights, setInsights] = useState<any>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
+  const [locationFacts, setLocationFacts] = useState<any[]>([]);
+  const [factsLoading, setFactsLoading] = useState(false);
+  const [factsLoaded, setFactsLoaded] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -190,6 +194,16 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
       }, 500);
     }
   }, [activeTab, insights, loadingInsights, location]);
+
+  // Load facts when knowledge tab opens
+  useEffect(() => {
+    if (activeTab !== 'knowledge' || factsLoaded || isMockDataEnabled || !location.id) return;
+    setFactsLoading(true);
+    fetchJson<{ success: boolean; facts: any[] }>(`/api/locations/${location.id}/facts`)
+      .then(r => { if (r.success) setLocationFacts(r.facts); })
+      .catch(() => {})
+      .finally(() => { setFactsLoading(false); setFactsLoaded(true); });
+  }, [activeTab, location.id, factsLoaded, isMockDataEnabled]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -441,6 +455,93 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
                     </div>
                   </div>
                 ))
+              )}
+            </div>
+          )}
+
+          {/* ── KNOWLEDGE ── */}
+          {activeTab === 'knowledge' && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-violet-400" />
+                  What LoreBook Knows About {location.name}
+                </h3>
+                <p className="text-xs text-white/45">
+                  Facts about this place extracted from your conversations.
+                </p>
+              </div>
+
+              {factsLoading && (
+                <div className="flex items-center justify-center py-12">
+                  <div className="h-5 w-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
+              {!factsLoading && locationFacts.length === 0 && (
+                <div className="text-center py-12 text-white/30">
+                  <Brain className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm font-medium mb-1">No facts yet</p>
+                  <p className="text-xs max-w-xs mx-auto">
+                    Mention {location.name} in a chat to start building knowledge about this place.
+                  </p>
+                </div>
+              )}
+
+              {!factsLoading && locationFacts.length > 0 && (
+                <div className="space-y-4">
+                  {Object.entries(
+                    locationFacts.reduce((acc: Record<string, any[]>, f: any) => {
+                      if (!acc[f.category]) acc[f.category] = [];
+                      acc[f.category].push(f);
+                      return acc;
+                    }, {})
+                  ).map(([category, facts]) => {
+                    const catLabel: Record<string, string> = {
+                      experience: 'Experiences', association: 'Associations',
+                      pattern: 'Patterns', sentiment: 'Sentiment',
+                      practical: 'Practical', general: 'General',
+                    };
+                    const statusBadge: Record<string, { label: string; cls: string }> = {
+                      updated:      { label: 'Updated',      cls: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+                      corrected:    { label: 'Corrected',    cls: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+                      contradicted: { label: 'Contradicted', cls: 'bg-red-500/20 text-red-300 border-red-500/30' },
+                    };
+                    return (
+                      <div key={category}>
+                        <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">
+                          {catLabel[category] ?? category}
+                        </p>
+                        <div className="space-y-2">
+                          {(facts as any[]).map((fact: any) => {
+                            const pct = Math.round((fact.confidence ?? 0.7) * 100);
+                            const badge = statusBadge[fact.status as string];
+                            return (
+                              <div key={fact.id} className="flex items-start gap-2.5 p-3 rounded-lg border border-white/6 bg-white/3">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-white/85 leading-snug">{fact.fact}</p>
+                                  {fact.previous_value && (
+                                    <p className="text-[11px] text-white/35 mt-1 line-through">{fact.previous_value}</p>
+                                  )}
+                                </div>
+                                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                  {badge && (
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${badge.cls}`}>
+                                      {badge.label}
+                                    </span>
+                                  )}
+                                  <span className={`text-[10px] tabular-nums font-semibold ${pct >= 80 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                                    {pct}%
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           )}

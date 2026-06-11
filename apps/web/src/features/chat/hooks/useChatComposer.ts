@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useMoodEngine, localHeuristic } from '../../../hooks/useMoodEngine';
 import { useAutoTagger } from '../../../hooks/useAutoTagger';
-import { useCharacterIndexer } from '../../../hooks/useCharacterIndexer';
+import { useEntityIndexer } from '../../../hooks/useEntityIndexer';
 import { getCommandSuggestions, parseSlashCommand } from '../../../utils/slashCommands';
 
 export const useChatComposer = (onSubmit: (message: string) => void, initialValue?: string | null) => {
@@ -12,7 +12,7 @@ export const useChatComposer = (onSubmit: (message: string) => void, initialValu
   
   const moodEngine = useMoodEngine();
   const autoTagger = useAutoTagger();
-  const characterIndexer = useCharacterIndexer();
+  const entityIndexer = useEntityIndexer();
 
   // Analyze input for mood, tags, and characters (debounced to avoid excessive API calls)
   useEffect(() => {
@@ -20,7 +20,7 @@ export const useChatComposer = (onSubmit: (message: string) => void, initialValu
     if (input.trim()) {
       // Non-API operations can run immediately
       autoTagger.refreshSuggestions(input);
-      characterIndexer.analyze(input);
+      entityIndexer.analyze(input);
       
       // Check for slash commands
       if (input.startsWith('/')) {
@@ -33,7 +33,7 @@ export const useChatComposer = (onSubmit: (message: string) => void, initialValu
     } else {
       moodEngine.setScore(0);
       autoTagger.refreshSuggestions('');
-      characterIndexer.analyze('');
+      entityIndexer.analyze('');
       setShowCommandSuggestions(false);
     }
 
@@ -91,7 +91,7 @@ export const useChatComposer = (onSubmit: (message: string) => void, initialValu
     moodColor,
     moodEngine,
     autoTagger,
-    characterIndexer,
+    entityIndexer,
     handleSubmit,
     handleKeyDown,
     insertSuggestion
