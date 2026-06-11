@@ -28,6 +28,23 @@ import { schemaGuard } from './middleware/schemaGuard';
 
 assertConfig();
 
+// ── Process-level guards ───────────────────────────────────────────────────────
+// The chat pipeline runs dozens of fire-and-forget async chains; a broken pipe
+// on any background socket (EPIPE) was crashing the entire server mid-request.
+// EPIPE/ECONNRESET are survivable (the peer went away); everything else is an
+// unknown state and stays fatal.
+process.on('uncaughtException', (err: NodeJS.ErrnoException) => {
+  if (err?.code === 'EPIPE' || err?.code === 'ECONNRESET') {
+    logger.error({ err }, 'Survivable socket error (uncaught) — continuing');
+    return;
+  }
+  logger.fatal({ err }, 'Uncaught exception — exiting');
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'Unhandled promise rejection — continuing');
+});
+
 // SECURITY: Detect environment before any logic that uses it
 const isDevelopment = process.env.NODE_ENV === 'development' ||
   (process.env.API_ENV === 'dev' && process.env.NODE_ENV !== 'production');

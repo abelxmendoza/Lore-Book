@@ -222,11 +222,13 @@ class EntityFactsService {
 
     const ARCHETYPE_RULES: Array<{ archetype: string; relType: string; keywords: string[] }> = [
       { archetype: 'family',       relType: 'family',       keywords: ['mom', 'mother', 'dad', 'father', 'sister', 'brother', 'sibling', 'cousin', 'aunt', 'uncle', 'grandma', 'grandmother', 'grandpa', 'grandfather', 'abuela', 'abuelo', 'daughter', 'son', 'wife', 'husband', 'family'] },
-      { archetype: 'romantic',     relType: 'romantic',     keywords: ['girlfriend', 'boyfriend', 'partner', 'fiancé', 'fiancee', 'dating', 'romantic'] },
+      // 'my partner' (not bare 'partner') — otherwise "climbing partner" /
+      // "business partner" misclassify as romantic
+      { archetype: 'romantic',     relType: 'romantic',     keywords: ['girlfriend', 'boyfriend', 'my partner', 'fiancé', 'fiancee', 'dating', 'romantic'] },
       { archetype: 'mentor',       relType: 'mentor',       keywords: ['mentor', 'coach', 'teacher', 'professor', 'advisor', 'therapist'] },
       { archetype: 'colleague',    relType: 'professional', keywords: ['boss', 'coworker', 'co-worker', 'colleague', 'manager', 'client', 'business partner', 'works with', 'work together'] },
       { archetype: 'collaborator', relType: 'creative',     keywords: ['bandmate', 'collaborator', 'co-founder', 'cofounder', 'creative partner'] },
-      { archetype: 'friend',       relType: 'friend',       keywords: ['best friend', 'friend', 'roommate', 'buddy'] },
+      { archetype: 'friend',       relType: 'friend',       keywords: ['best friend', 'friend', 'roommate', 'buddy', 'climbing partner', 'workout partner', 'training partner', 'gym partner'] },
     ];
 
     const match = ARCHETYPE_RULES.find(rule => rule.keywords.some(kw => text.includes(kw)));

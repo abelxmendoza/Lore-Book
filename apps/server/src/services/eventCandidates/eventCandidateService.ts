@@ -167,10 +167,16 @@ async function processResolvedEvent(userId: string, eventId: string): Promise<vo
       .from('event_candidates')
       .select('*')
       .eq('user_id', userId)
-      .not('source_event_ids', 'cs', `{${eventId}}`)
       .filter('dominant_entities', 'ov', entityFilter);
 
     const existingCandidates: EventCandidate[] = candidates ?? [];
+
+    // Idempotency: if some candidate already absorbed this event, re-processing
+    // must be a no-op. (Excluding such candidates in the DB query instead — the
+    // old behavior — made the event look novel and spawned a duplicate candidate.)
+    if (existingCandidates.some(c => (c.source_event_ids ?? []).includes(eventId))) {
+      return;
+    }
 
     // Qualify and rank — at this point the candidate set is already small (DB-filtered).
     // Build a Set once for O(1) lookups instead of O(n) array scans.
@@ -287,14 +293,15 @@ async function processResolvedEvent(userId: string, eventId: string): Promise<vo
         });
 
       if (insertError) {
-        logger.debug({ userId, eventId, error: insertError.message }, 'Failed to create event candidate');
+        logger.warn({ userId, eventId, error: insertError }, 'Failed to create event candidate');
       } else {
         logger.debug({ userId, eventId, entities: allEntities.length }, 'New event candidate created');
       }
     }
   } catch (err) {
-    // Never interrupt ingestion
-    logger.debug({ err, userId, eventId }, 'EventCandidateService failed (non-blocking)');
+    // Never interrupt ingestion — but failures must be visible (this subsystem
+    // was silently dead for months behind debug-level catches)
+    logger.warn({ err, userId, eventId }, 'EventCandidateService failed (non-blocking)');
   }
 }
 

@@ -20,7 +20,7 @@ export class IdentityStorage {
 
     try {
       for (const signal of signals) {
-        const { data: row, error } = await supabase
+        const { data: row, error } = await supabaseAdmin
           .from('identity_signals')
           .insert({
             user_id: userId,
@@ -60,7 +60,7 @@ export class IdentityStorage {
 
     try {
       for (const dimension of dimensions) {
-        const { data: dimRow, error: dimError } = await supabase
+        const { data: dimRow, error: dimError } = await supabaseAdmin
           .from('identity_dimensions')
           .insert({
             user_id: userId,
@@ -105,7 +105,7 @@ export class IdentityStorage {
 
     try {
       for (const conflict of conflicts) {
-        const { data: row, error } = await supabase
+        const { data: row, error } = await supabaseAdmin
           .from('identity_conflicts')
           .insert({
             user_id: userId,
@@ -140,7 +140,7 @@ export class IdentityStorage {
    */
   async save(userId: string, profile: IdentityCoreProfile): Promise<any> {
     try {
-      const { data: profileRow, error: profileError } = await supabase
+      const { data: profileRow, error: profileError } = await supabaseAdmin
         .from('identity_core_profiles')
         .insert({
           user_id: userId,
@@ -172,7 +172,7 @@ export class IdentityStorage {
    */
   async getProfiles(userId: string): Promise<IdentityCoreProfile[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('identity_core_profiles')
         .select('*')
         .eq('user_id', userId)
@@ -205,7 +205,7 @@ export class IdentityStorage {
    */
   async getSignals(userId: string, limit: number = 100): Promise<IdentitySignal[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from('identity_signals')
         .select('*')
         .eq('user_id', userId)

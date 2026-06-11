@@ -481,6 +481,19 @@ class OmegaChatService {
           
           if (!saveError && savedMessage) {
             messageId = savedMessage.id;
+
+            // CRITICAL: route mode-handled messages through the tracked ingestion
+            // pipeline, same as the normal chat flow. Until 2026-06-11 this branch
+            // returned after a warm "I've captured this" acknowledgment WITHOUT
+            // ingesting — the recall spine (entities, characters, facts, scenes)
+            // never ran for exactly the experience-sharing messages it exists for,
+            // and pipeline_runs stayed empty.
+            ingestionQueue.enqueue({
+              userId,
+              chatMessageId: savedMessage.id,
+              sessionId,
+              conversationHistory,
+            }, 'NORMAL');
           } else {
             logger.warn({ error: saveError, mode: routing.mode }, 'Failed to save message for ingestion/logging');
           }
@@ -944,13 +957,17 @@ class OmegaChatService {
                 });
                 returnToThreadContext += `\n**RECURRING SCENES IN THIS THREAD** (traced, structural — reference only when relevant, never interpret what they mean emotionally):\n${sceneLines.join('\n')}`;
               }
+              logger.info(
+                { userId, threadId: currentContext.threadId, idleDays, scenes: scenes.length },
+                'Return-to-thread context injected'
+              );
             } catch (err) {
-              logger.debug({ err, threadId: currentContext.threadId }, 'Recurring scene lookup failed, continuing without');
+              logger.warn({ err, threadId: currentContext.threadId }, 'Recurring scene lookup failed, continuing without');
             }
           }
         }
       } catch (err) {
-        logger.debug({ err, threadId: currentContext.threadId }, 'Return-to-thread context lookup failed, continuing without');
+        logger.warn({ err, threadId: currentContext.threadId }, 'Return-to-thread context lookup failed, continuing without');
       }
     }
 

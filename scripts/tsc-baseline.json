@@ -185,7 +185,6 @@
     "src/services/health/stressCorrelation.ts::TS2395": 2,
     "src/services/health/stressCorrelation.ts::TS2440": 1,
     "src/services/identityCore/identityCoreEngine.ts::TS2345": 1,
-    "src/services/identityCore/identityStorage.ts::TS2304": 6,
     "src/services/influence/influenceStorage.ts::TS2339": 2,
     "src/services/innerMythology/mythStorage.ts::TS2304": 5,
     "src/services/insightReflectionService.ts::TS2561": 2,
