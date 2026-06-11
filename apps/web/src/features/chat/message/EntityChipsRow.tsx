@@ -9,6 +9,10 @@ interface EntityChip {
 
 interface EntityChipsRowProps {
   entities: EntityChip[];
+  /** Leading label; defaults to the per-message "mentioned:" */
+  label?: string;
+  /** Max chips before collapsing to "+N more" */
+  max?: number;
 }
 
 const ICON = {
@@ -29,12 +33,12 @@ const COLOR = {
   organization: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20',
 };
 
-export const EntityChipsRow = ({ entities }: EntityChipsRowProps) => {
+export const EntityChipsRow = ({ entities, label = 'mentioned:', max = 5 }: EntityChipsRowProps) => {
   const navigate = useNavigate();
 
   if (!entities || entities.length === 0) return null;
 
-  const visible = entities.slice(0, 5);
+  const visible = entities.slice(0, max);
   const overflow = entities.length - visible.length;
 
   const handleClick = (entity: EntityChip) => {
@@ -44,7 +48,7 @@ export const EntityChipsRow = ({ entities }: EntityChipsRowProps) => {
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-      <span className="text-[10px] text-white/30 mr-0.5">mentioned:</span>
+      <span className="text-[10px] text-white/30 mr-0.5">{label}</span>
       {visible.map(entity => (
         <button
           key={entity.id}

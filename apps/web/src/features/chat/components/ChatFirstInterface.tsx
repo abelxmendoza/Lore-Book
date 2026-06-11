@@ -24,6 +24,7 @@ import { ChatEmptyState } from './ChatEmptyState';
 import { ChatMessageList } from '../message/ChatMessageList';
 import { ChatLoadingPulse } from './ChatLoadingPulse';
 import { ChatComposer } from '../composer/ChatComposer';
+import { ThreadEntityChips } from './ThreadEntityChips';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
@@ -518,6 +519,9 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
         {/* What Changed Since Last Time — proves continuity before the user types anything */}
         <WhatChangedSinceLastTime thread={threads.find(t => t.id === activeThreadId)} />
+
+        {/* Accumulated entities for this thread — continuity made structural */}
+        <ThreadEntityChips messages={messages} />
 
         {/* Messages Area */}
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
