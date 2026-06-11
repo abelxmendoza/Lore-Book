@@ -66,7 +66,10 @@ Return JSON: { "facts": [ { "fact": "...", "category": "...", "confidence": 0.0-
 Category options: personality, appearance, relationship, history, career, location, goals, general
 
 Rules:
-- Only extract facts explicitly stated about "${name}" — not the narrator/user
+- Only extract facts explicitly stated about "${name}" — not facts about the narrator's own life
+- The person's relationship TO the narrator IS a fact about them (category: relationship):
+  "my old college roommate" → "Is the narrator's old college roommate"
+  "my sister" → "Is the narrator's sister"
 - Write facts as short declarative sentences: "Works as a nurse", "Lives in Chicago"
 - confidence: 0.9 = directly stated, 0.7 = clearly implied, 0.5 = speculative
 - contradicts: old fact text if this contradicts something known (otherwise omit)
@@ -171,29 +174,51 @@ class EntityFactsService {
       await this.upsertFact(userId, entityId, entityType, incoming, existing);
     }
 
-    // Relationship facts carry classification signal — use them to upgrade
-    // chat-promoted characters from "mentioned" to a categorized archetype
-    // so they appear under the right tab in the Characters Book.
+    // Facts carry classification signal — use them to upgrade chat-promoted
+    // characters from "mentioned" to a categorized archetype so they appear
+    // under the right tab in the Characters Book. Scan ALL categories AND the
+    // raw utterance: LLM extraction doesn't reliably surface "my old college
+    // roommate" as a fact, but the user's own words always contain it.
     if (entityType === 'character') {
-      const relationshipFacts = extracted.filter(f => f.category === 'relationship');
-      if (relationshipFacts.length > 0) {
-        this.classifyCharacterFromFacts(userId, entityId, relationshipFacts).catch(err =>
-          logger.debug({ err, entityId }, 'Character classification from facts failed (non-blocking)')
-        );
-      }
+      this.classifyCharacterFromFacts(userId, entityId, entityName, extracted, conversationText).catch(err =>
+        logger.debug({ err, entityId }, 'Character classification from facts failed (non-blocking)')
+      );
     }
   }
 
   /**
-   * Infer archetype + relationship metadata from relationship-category facts.
+   * Sentences that talk about this person: any sentence naming them, plus the
+   * sentence right after (pronoun continuation: "Had coffee with Maya. She's
+   * my old college roommate.").
+   */
+  private sentencesAbout(text: string, entityName: string): string {
+    const firstName = entityName.split(/\s+/)[0].toLowerCase();
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    const picked: string[] = [];
+    for (let i = 0; i < sentences.length; i++) {
+      if (sentences[i].toLowerCase().includes(firstName)) {
+        picked.push(sentences[i]);
+        if (i + 1 < sentences.length) picked.push(sentences[i + 1]);
+      }
+    }
+    return picked.join(' ');
+  }
+
+  /**
+   * Infer archetype + relationship metadata from extracted facts plus the
+   * entity-relevant sentences of the raw utterance.
    * Only fills fields that are currently empty — never overwrites manual edits.
    */
   private async classifyCharacterFromFacts(
     userId: string,
     characterId: string,
-    relationshipFacts: ExtractedFact[]
+    entityName: string,
+    facts: ExtractedFact[],
+    conversationText: string
   ): Promise<void> {
-    const text = relationshipFacts.map(f => f.fact.toLowerCase()).join(' ');
+    const factText = facts.map(f => f.fact.toLowerCase()).join(' ');
+    const utteranceText = this.sentencesAbout(conversationText, entityName).toLowerCase();
+    const text = `${factText} ${utteranceText}`;
 
     const ARCHETYPE_RULES: Array<{ archetype: string; relType: string; keywords: string[] }> = [
       { archetype: 'family',       relType: 'family',       keywords: ['mom', 'mother', 'dad', 'father', 'sister', 'brother', 'sibling', 'cousin', 'aunt', 'uncle', 'grandma', 'grandmother', 'grandpa', 'grandfather', 'abuela', 'abuelo', 'daughter', 'son', 'wife', 'husband', 'family'] },

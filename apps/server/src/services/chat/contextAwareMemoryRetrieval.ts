@@ -151,11 +151,15 @@ async function getChapterIdsUnderNode(
 }
 
 /**
- * Given character names mentioned in the current message, find all journal entries
- * across ANY thread that mention those same entities.
+ * Given character names mentioned in the current message, find what the user
+ * said about those same entities across ANY thread.
  *
- * Uses people_places.related_entries (populated per ingestion) so there's no full-text scan.
- * Deduplication against thread-scoped entries is done at the call site.
+ * Two sources, merged journal-first:
+ *   1. journal_entries via people_places.related_entries (populated when
+ *      journal entries are ingested — no full-text scan)
+ *   2. chat_messages via name match — chat ingestion produces entry_ir, NOT
+ *      journal entries, so chat-borne mentions are invisible to source 1.
+ *      Without this, cross-thread recall never works for chat conversations.
  */
 export async function retrieveEntityMentionsAcrossThreads(
   userId: string,
@@ -173,37 +177,74 @@ export async function retrieveEntityMentionsAcrossThreads(
 
     if (mentionedNames.length === 0) return [];
 
+    // ── Source 1: journal entries via people_places.related_entries ────────
+    const journalEntries: MemoryEntry[] = [];
     const { data: entityRows } = await supabaseAdmin
       .from('people_places')
       .select('name, related_entries')
       .eq('user_id', userId)
       .in('name', mentionedNames);
 
-    if (!entityRows?.length) return [];
-
     const entryIdSet = new Set<string>();
-    for (const row of (entityRows as Array<{ name: string; related_entries: string[] | null }>)) {
+    for (const row of ((entityRows ?? []) as Array<{ name: string; related_entries: string[] | null }>)) {
       for (const eid of (row.related_entries ?? [])) {
         entryIdSet.add(eid);
       }
     }
 
-    if (entryIdSet.size === 0) return [];
-
-    const entryIds = [...entryIdSet].slice(0, limit * 4);
-    const { data: entries, error } = await supabaseAdmin
-      .from('journal_entries')
-      .select('*')
-      .eq('user_id', userId)
-      .in('id', entryIds)
-      .order('date', { ascending: false })
-      .limit(limit);
-
-    if (error) {
-      logger.warn({ error, userId }, 'retrieveEntityMentionsAcrossThreads: entry fetch failed');
-      return [];
+    if (entryIdSet.size > 0) {
+      const entryIds = [...entryIdSet].slice(0, limit * 4);
+      const { data: entries } = await supabaseAdmin
+        .from('journal_entries')
+        .select('*')
+        .eq('user_id', userId)
+        .in('id', entryIds)
+        .order('date', { ascending: false })
+        .limit(limit);
+      journalEntries.push(...((entries ?? []) as MemoryEntry[]));
     }
-    return (entries ?? []) as MemoryEntry[];
+
+    // ── Source 2: past chat messages naming the entity ─────────────────────
+    const chatMentions: MemoryEntry[] = [];
+    const remaining = limit - journalEntries.length;
+    if (remaining > 0) {
+      // One ILIKE per name (max 2 names keeps this cheap); user messages only —
+      // assistant replies would echo recall back into recall.
+      const nameFilters = mentionedNames.slice(0, 2);
+      for (const name of nameFilters) {
+        const { data: msgs } = await supabaseAdmin
+          .from('chat_messages')
+          .select('id, content, created_at, session_id')
+          .eq('user_id', userId)
+          .eq('role', 'user')
+          .ilike('content', `%${name}%`)
+          .order('created_at', { ascending: false })
+          .limit(remaining);
+        for (const m of (msgs ?? []) as Array<{ id: string; content: string; created_at: string; session_id: string }>) {
+          chatMentions.push({
+            id: m.id,
+            user_id: userId,
+            content: m.content,
+            date: m.created_at,
+            summary: null,
+            tags: [],
+            source: 'chat',
+            metadata: { session_id: m.session_id, cross_thread_mention: true },
+          } as unknown as MemoryEntry);
+        }
+      }
+    }
+
+    // Merge journal-first, dedup by id, cap at limit
+    const seen = new Set<string>();
+    const merged: MemoryEntry[] = [];
+    for (const e of [...journalEntries, ...chatMentions]) {
+      if (seen.has((e as { id: string }).id)) continue;
+      seen.add((e as { id: string }).id);
+      merged.push(e);
+      if (merged.length >= limit) break;
+    }
+    return merged;
   } catch (err) {
     logger.warn({ err, userId }, 'retrieveEntityMentionsAcrossThreads failed');
     return [];

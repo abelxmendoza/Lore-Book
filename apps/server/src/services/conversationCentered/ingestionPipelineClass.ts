@@ -882,11 +882,14 @@ export class ConversationIngestionPipeline {
       // Step 4: Extract entities for enrichment (needed before saving utterances)
       const resolvedEntities: Array<{ id: string; type: string }> = [];
       try {
-        // Get entities from semantic extraction or entity resolution
-        // For now, we'll extract them from the first normalized utterance
+        // Get entities from semantic extraction or entity resolution.
+        // Use the full message (all utterances joined) — a message like
+        // "Had coffee with X. She's my old roommate." splits into two
+        // utterances, and the relationship context lives in the second one.
         if (normalizedUtterances.length > 0) {
+          const fullNormalizedText = normalizedUtterances.map(u => u.normalized_text).join(' ');
           const { omegaMemoryService } = await import('../omegaMemoryService');
-          const candidateEntities = await omegaMemoryService.extractEntities(normalizedUtterances[0].normalized_text);
+          const candidateEntities = await omegaMemoryService.extractEntities(fullNormalizedText);
           const resolved = await omegaMemoryService.resolveEntities(userId, candidateEntities);
           resolvedEntities.push(...resolved.map(e => ({ id: e.id, type: e.type })));
 
@@ -907,7 +910,7 @@ export class ConversationIngestionPipeline {
                       characterId,
                       'character',
                       (entity as any).primary_name,
-                      normalizedUtterances[0]?.normalized_text ?? ''
+                      fullNormalizedText
                     ).catch(err => logger.debug({ err }, 'Character facts extraction failed (non-blocking)'));
                   }
                 ).catch(
@@ -918,7 +921,7 @@ export class ConversationIngestionPipeline {
           }
 
           // Extract facts for ORG and LOCATION entities — fire-and-forget
-          const utteranceText = normalizedUtterances[0]?.normalized_text ?? '';
+          const utteranceText = fullNormalizedText;
           const orgEntities = resolved.filter(e => e.type === 'ORG');
           const locationEntities = resolved.filter(e => e.type === 'LOCATION');
 
