@@ -154,7 +154,7 @@ class EntityFactsService {
     try {
       extracted = await this.extractFacts(entityType, entityName, conversationText);
     } catch (err) {
-      logger.debug({ err, entityName, entityType }, 'Entity fact extraction failed (non-blocking)');
+      logger.warn({ err, entityName, entityType }, 'Entity fact extraction failed (non-blocking)');
       return;
     }
 
@@ -181,7 +181,7 @@ class EntityFactsService {
     // roommate" as a fact, but the user's own words always contain it.
     if (entityType === 'character') {
       this.classifyCharacterFromFacts(userId, entityId, entityName, extracted, conversationText).catch(err =>
-        logger.debug({ err, entityId }, 'Character classification from facts failed (non-blocking)')
+        logger.warn({ err, entityId }, 'Character classification from facts failed (non-blocking)')
       );
     }
   }

@@ -128,7 +128,7 @@ export class ConversationIngestionPipeline {
           result.utteranceIds,
           pipelineStart
         ).catch(err => {
-          logger.debug({ err, chatMessageId }, 'Failed to build memory feedback (non-critical)');
+          logger.warn({ err, chatMessageId }, 'Failed to build memory feedback (non-critical)');
         });
       });
     } catch (error) {
@@ -286,7 +286,7 @@ export class ConversationIngestionPipeline {
               const dateEventPromise = romanticRelationshipDetector
                 .detectDateEvent(userId, rawText, relationship.id, rel.personId, messageId);
               void dateEventPromise.catch(err => {
-                logger.debug({ err }, 'Date event detection failed');
+                logger.warn({ err }, 'Date event detection failed');
               });
 
               // Detect breakups
@@ -297,14 +297,14 @@ export class ConversationIngestionPipeline {
                   logger.debug({ userId, relationshipId: relationship.id }, 'Detected breakup');
                 }
               }).catch(err => {
-                logger.debug({ err }, 'Breakup detection failed');
+                logger.warn({ err }, 'Breakup detection failed');
               });
 
               // Detect love declarations
               const loveDeclarationPromise = breakupDetector
                 .detectLoveDeclaration(userId, rawText, relationship.id, rel.personId, messageId);
               void loveDeclarationPromise.catch(err => {
-                logger.debug({ err }, 'Love declaration detection failed');
+                logger.warn({ err }, 'Love declaration detection failed');
               });
 
               // Detect drift (async, less frequent)
@@ -319,7 +319,7 @@ export class ConversationIngestionPipeline {
                     );
                   }
                 }).catch(err => {
-                  logger.debug({ err }, 'Drift detection failed');
+                  logger.warn({ err }, 'Drift detection failed');
                 });
               }
 
@@ -335,7 +335,7 @@ export class ConversationIngestionPipeline {
                     );
                   }
                 }).catch(err => {
-                  logger.debug({ err }, 'Cycle detection failed');
+                  logger.warn({ err }, 'Cycle detection failed');
                 });
               }
 
@@ -350,14 +350,14 @@ export class ConversationIngestionPipeline {
                 rawText,
                 messageId
               ).catch(err => {
-                logger.debug({ err }, 'Interaction extraction failed (non-blocking)');
+                logger.warn({ err }, 'Interaction extraction failed (non-blocking)');
               });
             }
           }
         }
       }
     } catch (err) {
-      logger.debug({ err }, 'Romantic relationship detection failed (non-blocking)');
+      logger.warn({ err }, 'Romantic relationship detection failed (non-blocking)');
     }
   }
 
@@ -911,10 +911,10 @@ export class ConversationIngestionPipeline {
                       'character',
                       (entity as any).primary_name,
                       fullNormalizedText
-                    ).catch(err => logger.debug({ err }, 'Character facts extraction failed (non-blocking)'));
+                    ).catch(err => logger.warn({ err }, 'Character facts extraction failed (non-blocking)'));
                   }
                 ).catch(
-                  err => logger.debug({ err, name: (entity as any).primary_name }, 'Character promotion failed (non-blocking)')
+                  err => logger.warn({ err, name: (entity as any).primary_name }, 'Character promotion failed (non-blocking)')
                 );
               });
             }).catch(() => {});
@@ -934,7 +934,7 @@ export class ConversationIngestionPipeline {
                   const id = await entityFactsService.resolveOrgIdByName(userId, name);
                   if (!id) return;
                   entityFactsService.extractAndPersistFacts(userId, id, 'organization', name, utteranceText)
-                    .catch(err => logger.debug({ err }, 'Org facts extraction failed (non-blocking)'));
+                    .catch(err => logger.warn({ err }, 'Org facts extraction failed (non-blocking)'));
                 } catch { /* non-blocking */ }
               });
 
@@ -945,14 +945,14 @@ export class ConversationIngestionPipeline {
                   const id = await entityFactsService.resolveLocationIdByName(userId, name);
                   if (!id) return;
                   entityFactsService.extractAndPersistFacts(userId, id, 'location', name, utteranceText)
-                    .catch(err => logger.debug({ err }, 'Location facts extraction failed (non-blocking)'));
+                    .catch(err => logger.warn({ err }, 'Location facts extraction failed (non-blocking)'));
                 } catch { /* non-blocking */ }
               });
             }).catch(() => {});
           }
         }
       } catch (error) {
-        logger.debug({ error }, 'Failed to resolve entities for enrichment, continuing without');
+        logger.warn({ error }, 'Failed to resolve entities for enrichment, continuing without');
       }
 
       // Step 4.2: Resolve entity names (shadow baseline) + detect relationships/scopes
@@ -1054,7 +1054,7 @@ export class ConversationIngestionPipeline {
                   );
                 }
               } catch (error) {
-                logger.debug({ error }, 'Attribute detection failed, continuing');
+                logger.warn({ error }, 'Attribute detection failed, continuing');
               }
             }
 
@@ -1071,7 +1071,7 @@ export class ConversationIngestionPipeline {
             }
           }
         } catch (error) {
-          logger.debug({ error }, 'Entity relationship detection failed (non-blocking)');
+          logger.warn({ error }, 'Entity relationship detection failed (non-blocking)');
         }
       }
 
@@ -1268,7 +1268,7 @@ export class ConversationIngestionPipeline {
               .eq('id', savedUnit.id);
           } catch (error) {
             // Non-blocking - log but continue
-            logger.debug({ error, unitId: savedUnit.id }, 'Failed to create knowledge unit');
+            logger.warn({ error, unitId: savedUnit.id }, 'Failed to create knowledge unit');
           }
 
           // Step 6.7: Convert semantic units to memory artifacts
@@ -1385,7 +1385,7 @@ export class ConversationIngestionPipeline {
               }
             } catch (error) {
               // Non-blocking - log but continue
-              logger.debug({ error, unitId: savedUnit.id }, 'Contextual intelligence failed (non-blocking)');
+              logger.warn({ error, unitId: savedUnit.id }, 'Contextual intelligence failed (non-blocking)');
             }
           } catch (error) {
             // Non-blocking - log but continue
@@ -1601,7 +1601,7 @@ export class ConversationIngestionPipeline {
                           );
                         })
                         .catch(err => {
-                          logger.debug({ err }, 'Character timeline processing failed (non-blocking)');
+                          logger.warn({ err }, 'Character timeline processing failed (non-blocking)');
                         });
                     }
 
@@ -1609,7 +1609,7 @@ export class ConversationIngestionPipeline {
                     eventCandidateService
                       .processResolvedEvent(userId, fullEvent.id)
                       .catch(err => {
-                        logger.debug({ err }, 'Event candidate processing failed (non-blocking)');
+                        logger.warn({ err }, 'Event candidate processing failed (non-blocking)');
                       });
 
                     // Step 12.8.6: Narrative continuity detection — non-blocking
@@ -1666,7 +1666,7 @@ export class ConversationIngestionPipeline {
                           }
                         }
                       } catch (err) {
-                        logger.debug({ err, eventId: fullEvent.id }, 'Narrative continuity detection failed (non-blocking)');
+                        logger.warn({ err, eventId: fullEvent.id }, 'Narrative continuity detection failed (non-blocking)');
                       }
                     })();
 
@@ -1727,7 +1727,7 @@ export class ConversationIngestionPipeline {
                           }
                         })
                         .catch(err => {
-                          logger.debug({ err, eventId: fullEvent.id }, 'Workout detection failed (non-blocking)');
+                          logger.warn({ err, eventId: fullEvent.id }, 'Workout detection failed (non-blocking)');
                         });
                     }
 
@@ -1745,12 +1745,12 @@ export class ConversationIngestionPipeline {
                           }
                         })
                         .catch(err => {
-                          logger.debug({ err, eventId: fullEvent.id }, 'Biometric extraction failed (non-blocking)');
+                          logger.warn({ err, eventId: fullEvent.id }, 'Biometric extraction failed (non-blocking)');
                         });
                     }
                   }
                 } catch (error) {
-                  logger.debug({ error, eventId: eventResult.event_id }, 'Failed to process event context');
+                  logger.warn({ error, eventId: eventResult.event_id }, 'Failed to process event context');
                 }
               }
             }
@@ -1791,13 +1791,13 @@ export class ConversationIngestionPipeline {
                     'Detected and saved interest'
                   );
                 } catch (err) {
-                  logger.debug({ err, interestName: detected.interest_name }, 'Failed to save interest');
+                  logger.warn({ err, interestName: detected.interest_name }, 'Failed to save interest');
                 }
               }
             }
           })
           .catch(err => {
-            logger.debug({ err }, 'Interest detection failed (non-blocking)');
+            logger.warn({ err }, 'Interest detection failed (non-blocking)');
           });
       }
 
@@ -2004,12 +2004,12 @@ export class ConversationIngestionPipeline {
                   }
                 })
                 .catch(err => {
-                  logger.debug({ err }, 'Group relationship detection failed (non-blocking)');
+                  logger.warn({ err }, 'Group relationship detection failed (non-blocking)');
                 });
             }
           }
         } catch (error) {
-          logger.debug({ error }, 'Group relationship detection check failed');
+          logger.warn({ error }, 'Group relationship detection check failed');
         }
       }
 
@@ -2019,10 +2019,10 @@ export class ConversationIngestionPipeline {
           // SECURITY: Store promise in variable to avoid esbuild parsing issues
           const romanticDetectionPromise = this.detectRomanticRelationshipsAsync(userId, rawText, unitIds, messageId);
           romanticDetectionPromise.catch((err: unknown) => {
-            logger.debug({ err }, 'Romantic relationship detection failed');
+            logger.warn({ err }, 'Romantic relationship detection failed');
           });
         } catch (err) {
-          logger.debug({ err }, 'Failed to initiate romantic relationship detection');
+          logger.warn({ err }, 'Failed to initiate romantic relationship detection');
         }
       }
 
@@ -2040,7 +2040,7 @@ export class ConversationIngestionPipeline {
         groupCandidateService
           .processChatMessage(userId, rawText, messageId)
           .catch(err => {
-            logger.debug({ err }, 'Group candidate detection failed (non-blocking)');
+            logger.warn({ err }, 'Group candidate detection failed (non-blocking)');
           });
       }
 

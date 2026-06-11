@@ -1,0 +1,66 @@
+# Trust Floor — guards the two failure classes that broke the recall chain:
+#   1. Migration drift: repo migrations never applied to prod (PGRST205 errors)
+#   2. Recall regression: the 7-step true-MVP diagnostic silently breaking
+#
+# Required repo secrets (jobs skip with a warning until these are set):
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY            — both jobs
+#   OPENAI_API_KEY, LOREKEEPER_TEST_USER_ID            — diagnostic only
+name: Trust Floor
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  migration-drift:
+    name: Migration Drift Check
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check migration drift
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::warning::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY secrets not set — skipping drift check"
+            exit 0
+          fi
+          node scripts/check-migration-drift.mjs
+
+  mvp-diagnostic:
+    name: True-MVP Recall Diagnostic
+    # LLM calls cost money and the diagnostic writes (then cleans) test data,
+    # so run on main pushes only, not on every PR iteration.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      LOREKEEPER_TEST_USER_ID: ${{ secrets.LOREKEEPER_TEST_USER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install server dependencies
+        run: cd apps/server && npm install
+
+      - name: Run recall-chain diagnostic
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$OPENAI_API_KEY" ] || [ -z "$LOREKEEPER_TEST_USER_ID" ]; then
+            echo "::warning::Diagnostic secrets not set — skipping recall diagnostic"
+            exit 0
+          fi
+          cd apps/server
+          npx tsx scripts/true-mvp-diagnostic.ts
