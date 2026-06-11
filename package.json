@@ -10,6 +10,7 @@
     "smoke": "node scripts/smoke.mjs",
     "check:supabase": "node scripts/check-supabase.mjs",
     "check:drift": "node scripts/check-migration-drift.mjs",
+    "check:types": "node scripts/check-tsc-baseline.mjs all",
     "test:security": "cd apps/server && npm test middleware/ integration/privacy.test.ts",
     "test:e2e:security": "cd apps/web && npm run test:e2e:security",
     "test:all": "npm run test:security && npm run test:e2e:security",

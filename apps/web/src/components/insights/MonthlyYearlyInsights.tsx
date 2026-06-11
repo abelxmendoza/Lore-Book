@@ -121,6 +121,7 @@ export const MonthlyYearlyInsights = () => {
   };
 
   return (
+    <>
     <Card className="bg-black/40 border-border/60">
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -274,6 +275,7 @@ export const MonthlyYearlyInsights = () => {
       loading={loading}
       onRefresh={loadInsights}
     />
+    </>
   );
 };
 
