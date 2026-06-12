@@ -9,6 +9,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { UnknownField } from '../ui/UnknownField';
 import { fetchJson } from '../../lib/api';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { EventConfidenceHistory } from './EventConfidenceHistory';
@@ -1007,7 +1008,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               })()}
 
               {/* ── Summary ── */}
-              {eventData.summary && (
+              {eventData.summary ? (
                 <section>
                   <h3 className="text-xs font-bold text-white/60 uppercase tracking-widest mb-3 flex items-center gap-2">
                     <Quote className="w-3.5 h-3.5 text-primary/60" />
@@ -1018,9 +1019,26 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                     <p className="text-sm text-white/90 leading-relaxed">{eventData.summary}</p>
                   </div>
                 </section>
+              ) : (
+                <section>
+                  <h3 className="text-xs font-bold text-white/60 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <Quote className="w-3.5 h-3.5 text-primary/60" />
+                    Summary
+                  </h3>
+                  <UnknownField label="What happened" prompt={`About the event "${eventData.title}": `} />
+                </section>
               )}
 
               {/* ── Characters in this Story ── */}
+              {eventData.people.length === 0 && (
+                <section>
+                  <h3 className="text-xs font-bold text-white/60 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <UserCircle2 className="w-3.5 h-3.5 text-blue-400/70" />
+                    Characters in this Story
+                  </h3>
+                  <UnknownField label="Who was there" prompt={`Who was at "${eventData.title}": `} />
+                </section>
+              )}
               {eventData.people.length > 0 && (
                 <section>
                   <h3 className="text-xs font-bold text-white/60 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -1132,11 +1150,11 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
 
               {/* ── Places · When ── */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                {eventData.locations.length > 0 && (
-                  <section>
-                    <h3 className="text-xs font-bold text-emerald-400/70 uppercase tracking-widest mb-2.5 flex items-center gap-2">
-                      <MapPin className="w-3.5 h-3.5" /> Places
-                    </h3>
+                <section>
+                  <h3 className="text-xs font-bold text-emerald-400/70 uppercase tracking-widest mb-2.5 flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5" /> Places
+                  </h3>
+                  {eventData.locations.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {eventData.locations.map(l => (
                         <Badge key={l} variant="outline"
@@ -1145,8 +1163,10 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                         </Badge>
                       ))}
                     </div>
-                  </section>
-                )}
+                  ) : (
+                    <UnknownField label="Where" prompt={`The event "${eventData.title}" happened at `} />
+                  )}
+                </section>
                 <section>
                   <h3 className="text-xs font-bold text-white/55 uppercase tracking-widest mb-2.5 flex items-center gap-2">
                     <Clock className="w-3.5 h-3.5" /> When

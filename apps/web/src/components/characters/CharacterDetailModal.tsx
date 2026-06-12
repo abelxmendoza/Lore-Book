@@ -18,6 +18,7 @@ import type { Organization } from '../organizations/OrganizationProfileCard';
 import { LocationDetailModal, type LocationProfile } from '../locations/LocationDetailModal';
 import { PerceptionDetailModal } from '../perceptions/PerceptionDetailModal';
 import { fetchJson } from '../../lib/api';
+import { UnknownField } from '../ui/UnknownField';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { Character } from './CharacterProfileCard';
 import { CharacterAvatar } from './CharacterAvatar';
@@ -683,6 +684,13 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('info');
+  // Unknown-field flow: clicking an Unknown chip jumps to the Chat tab with a
+  // prefilled prompt — filling in unknowns is chat-first.
+  const [chatPrefill, setChatPrefill] = useState<string | null>(null);
+  const askInChat = (prompt: string) => {
+    setChatPrefill(prompt);
+    setActiveTab('chat');
+  };
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
   const [characterOrganizations, setCharacterOrganizations] = useState<Array<Organization & { user_is_member: boolean; character_role?: string }>>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
@@ -1876,7 +1884,16 @@ User's message: ${message}`;
                         {editedCharacter.summary ? (
                           <p className="whitespace-pre-wrap">{editedCharacter.summary}</p>
                         ) : (
-                          <span className="text-white/50 italic text-base">No summary available yet. Information will appear here as you talk about this character.</span>
+                          <div className="space-y-3">
+                            <p className="text-white/50 italic text-base">
+                              Lorebook doesn&apos;t know {editedCharacter.name}&apos;s story yet.
+                            </p>
+                            <UnknownField
+                              label="Their story"
+                              prompt={`Let me tell you about ${editedCharacter.name}: `}
+                              onAskInChat={askInChat}
+                            />
+                          </div>
                         )}
                       </div>
                     </CardContent>
@@ -2501,7 +2518,11 @@ User's message: ${message}`;
                               </Badge>
                             </Tooltip>
                           ) : (
-                            <span className="text-white/40 italic text-base">Not specified</span>
+                            <UnknownField
+                              label="Proximity"
+                              prompt={`How directly I know ${editedCharacter.name}: `}
+                              onAskInChat={askInChat}
+                            />
                           )}
                         </div>
                     </div>
@@ -2516,7 +2537,11 @@ User's message: ${message}`;
                               </Badge>
                             </Tooltip>
                           ) : (
-                            <span className="text-white/40 italic text-base">Not specified</span>
+                            <UnknownField
+                              label="Relationship depth"
+                              prompt={`How close ${editedCharacter.name} and I are: `}
+                              onAskInChat={askInChat}
+                            />
                           )}
                         </div>
                     </div>
@@ -2524,11 +2549,19 @@ User's message: ${message}`;
 
                     <div className="grid grid-cols-2 gap-6 mb-6">
                       <div className="flex items-center gap-4 bg-black/40 rounded-lg p-4 border border-orange-500/30">
-                        <div className={`w-6 h-6 rounded border-2 flex items-center justify-center shadow-md ${
-                          editedCharacter.has_met ? 'bg-green-500 border-green-400' : 'bg-black/60 border-border/50'
-                        }`}>
-                          {editedCharacter.has_met && <span className="text-white text-sm font-bold">✓</span>}
-                        </div>
+                        {editedCharacter.has_met == null ? (
+                          <UnknownField
+                            label="Met in person"
+                            prompt={`Have I met ${editedCharacter.name} in person? `}
+                            onAskInChat={askInChat}
+                          />
+                        ) : (
+                          <div className={`w-6 h-6 rounded border-2 flex items-center justify-center shadow-md ${
+                            editedCharacter.has_met ? 'bg-green-500 border-green-400' : 'bg-black/60 border-border/50'
+                          }`}>
+                            {editedCharacter.has_met && <span className="text-white text-sm font-bold">✓</span>}
+                          </div>
+                        )}
                         <label className="text-base font-semibold text-white">
                         Have met in person
                       </label>
@@ -2544,7 +2577,11 @@ User's message: ${message}`;
                               </Badge>
                             </Tooltip>
                           ) : (
-                            <span className="text-white/40 italic text-base">Not specified</span>
+                            <UnknownField
+                              label="Likelihood to meet"
+                              prompt={`Whether I'm likely to meet ${editedCharacter.name}: `}
+                              onAskInChat={askInChat}
+                            />
                           )}
                         </div>
                     </div>
@@ -2573,7 +2610,13 @@ User's message: ${message}`;
                     <CardContent className="p-5">
                       <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Pronouns</label>
                       <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-inner">
-                        {editedCharacter.pronouns || <span className="text-white/40 italic text-base">Not specified</span>}
+                        {editedCharacter.pronouns || (
+                          <UnknownField
+                            label="Pronouns"
+                            prompt={`${editedCharacter.name}'s pronouns are `}
+                            onAskInChat={askInChat}
+                          />
+                        )}
                   </div>
                     </CardContent>
                   </Card>
@@ -2581,7 +2624,13 @@ User's message: ${message}`;
                     <CardContent className="p-5">
                       <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Archetype</label>
                       <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-inner">
-                        {editedCharacter.archetype || <span className="text-white/40 italic text-base">Not specified</span>}
+                        {editedCharacter.archetype || (
+                          <UnknownField
+                            label="Archetype"
+                            prompt={`The role ${editedCharacter.name} plays in my story: `}
+                            onAskInChat={askInChat}
+                          />
+                        )}
                   </div>
                     </CardContent>
                   </Card>
@@ -2589,7 +2638,13 @@ User's message: ${message}`;
                     <CardContent className="p-5">
                       <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Role</label>
                       <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-inner">
-                        {editedCharacter.role || <span className="text-white/40 italic text-base">Not specified</span>}
+                        {editedCharacter.role || (
+                          <UnknownField
+                            label="Role"
+                            prompt={`${editedCharacter.name}'s role in my life: `}
+                            onAskInChat={askInChat}
+                          />
+                        )}
                   </div>
                     </CardContent>
                   </Card>
@@ -3243,6 +3298,7 @@ User's message: ${message}`;
                   <ChatComposer
                     onSubmit={handleChatSubmit}
                     loading={chatLoading}
+                    initialPrompt={chatPrefill}
                   />
                 </div>
               </div>

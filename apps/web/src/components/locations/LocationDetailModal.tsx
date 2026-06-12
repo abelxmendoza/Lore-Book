@@ -6,6 +6,7 @@ import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage } from '../../features/chat/message/ChatMessage';
 import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
+import { UnknownField } from '../ui/UnknownField';
 import type { LocationProfile } from './LocationProfileCard';
 import { useMockData } from '../../contexts/MockDataContext';
 
@@ -322,7 +323,9 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
                       <Icon className="h-3 w-3 text-teal-400" />
                       <span className="text-[10px] text-white/40 uppercase tracking-wider">{label}</span>
                     </div>
-                    <p className="text-sm font-semibold text-white">{value}</p>
+                    <p className="text-sm font-semibold text-white">
+                      {value === '—' ? <UnknownField compact label={label} /> : value}
+                    </p>
                   </div>
                 ))}
               </div>

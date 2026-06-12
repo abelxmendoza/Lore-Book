@@ -30,6 +30,38 @@ function calculateEngagementScore(voidPeriod: {
 }
 
 /**
+ * Things Lorebook doesn't know yet — entity/field knowledge gaps detected
+ * during chat (knowledgeGapDetector). Distinct from the temporal /gaps below.
+ * GET /api/voids/knowledge-gaps
+ */
+router.get('/knowledge-gaps', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { knowledgeGapsService } = await import('../services/chat/knowledgeGapsService');
+    const gaps = await knowledgeGapsService.listPending(req.user!.id);
+    res.json({ gaps });
+  } catch (error) {
+    logger.error({ error }, 'Failed to list knowledge gaps');
+    res.status(500).json({ error: 'Failed to list knowledge gaps' });
+  }
+});
+
+/**
+ * Dismiss a knowledge gap ("don't ask me about this")
+ * PATCH /api/voids/knowledge-gaps/:id/dismiss
+ */
+router.patch('/knowledge-gaps/:id/dismiss', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { knowledgeGapsService } = await import('../services/chat/knowledgeGapsService');
+    const ok = await knowledgeGapsService.dismiss(req.user!.id, String(req.params.id));
+    if (!ok) return res.status(404).json({ error: 'Gap not found' });
+    res.json({ dismissed: true });
+  } catch (error) {
+    logger.error({ error }, 'Failed to dismiss knowledge gap');
+    res.status(500).json({ error: 'Failed to dismiss knowledge gap' });
+  }
+});
+
+/**
  * Get all void periods with enhanced context and prompts
  * GET /api/voids/gaps
  */

@@ -364,6 +364,14 @@ export class MemoryRecallEngine {
    * Format recall for chat with confidence-aware language
    */
   formatRecallForChat(recall: RecallResult): { text: string; moments: RecallMoment[]; footer?: string } {
+    // Honest no-record answer — never imply past moments exist when none do
+    if (recall.moments.length === 0) {
+      return {
+        text: "We haven't talked about that yet — tell me about it and it becomes part of your record.",
+        moments: [],
+      };
+    }
+
     if (recall.phrasing === 'TENTATIVE') {
       return {
         text: 'This seems loosely similar to a few past moments.',

@@ -238,6 +238,7 @@ export async function buildRAGPacket(
 
   let relatedEntries: ResolvedMemoryEntry[] = [];
   let entityArcNarrativeBlock: string | null = null; // injected into system prompt later
+  let knowledgeGapBlock: string | null = null; // explicit unknowns for this message
 
   try {
     const { retrieveMemoriesByThread, retrieveMemoriesUnderNode } = await import('../chat/contextAwareMemoryRetrieval');
@@ -262,9 +263,10 @@ export async function buildRAGPacket(
     } else if (currentContext?.kind === 'timeline' && currentContext.timelineNodeId && currentContext.timelineLayer) {
       relatedEntries = (await retrieveMemoriesUnderNode(userId, currentContext.timelineNodeId, currentContext.timelineLayer, 30)) as ResolvedMemoryEntry[];
 
-    } else if (isEntityQuery(message) && (allCharacters.length > 0 || allLocations.length > 0)) {
+    } else if (isEntityQuery(message)) {
       // Entity-scoped retrieval path
       const mentionedEntities = detectMentionedEntities(message, allCharacters, allLocations);
+      let arcLoadedForPrimary = false;
 
       if (mentionedEntities.length > 0) {
         // Try the highest-confidence match first
@@ -274,14 +276,45 @@ export async function buildRAGPacket(
           if (arc) {
             relatedEntries = arcToMemoryEntries(arc) as unknown as ResolvedMemoryEntry[];
             entityArcNarrativeBlock = arc.narrativeBlock;
+            arcLoadedForPrimary = true;
             logger.debug(
               { userId, entityId: primary.id, entityName: primary.name, events: arc.events.length },
               '[EntityScopedRetriever] Loaded entity arc — bypassing generic retrieval'
             );
+            // This name has a real record now — close any pending gap for it
+            import('./knowledgeGapsService')
+              .then(({ knowledgeGapsService }) => knowledgeGapsService.markFilled(userId, [primary.name]))
+              .catch(() => undefined);
           }
         } catch (arcErr) {
           logger.warn({ arcErr, userId, entity: primary.name }, '[EntityScopedRetriever] Arc load failed');
         }
+      }
+
+      // Explicit unknowns: names that match nothing, or matched entities whose
+      // record is just a name. Becomes a KNOWLEDGE GAPS prompt block so the
+      // model says "we haven't talked about X yet" instead of guessing.
+      try {
+        const { detectKnowledgeGaps, formatKnowledgeGapBlock } = await import('./knowledgeGapDetector');
+        const primary = mentionedEntities[0];
+        const gaps = detectKnowledgeGaps({
+          message,
+          characters: allCharacters,
+          locations: allLocations,
+          matchedEntities: mentionedEntities,
+          arcLoadedForPrimary,
+          primaryHasAttributes: primary ? (characterAttributesMap.get(primary.id)?.length ?? 0) > 0 : false,
+        });
+        knowledgeGapBlock = formatKnowledgeGapBlock(gaps);
+        if (gaps.length > 0) {
+          logger.debug({ userId, gaps }, '[KnowledgeGapDetector] Gaps detected for message');
+          // Persist for the "things Lorebook doesn't know yet" dashboard —
+          // fire-and-forget, never blocks chat.
+          const { knowledgeGapsService } = await import('./knowledgeGapsService');
+          knowledgeGapsService.recordGaps(userId, gaps).catch(() => undefined);
+        }
+      } catch (gapErr) {
+        logger.debug({ gapErr, userId }, '[KnowledgeGapDetector] Gap detection failed');
       }
 
       // Fall through to generic if entity arc is empty
@@ -498,6 +531,8 @@ export async function buildRAGPacket(
     entityDossierBlock,
     // Phase 2: entity arc narrative block (null when generic retrieval was used)
     entityArcNarrativeBlock,
+    // Explicit unknowns detected for this message (null when none)
+    knowledgeGapBlock,
     // Sprint G: foundation recall data
     foundationRecallBlock,
     foundationRelationships,

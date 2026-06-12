@@ -16,6 +16,7 @@ export function formatRecallChatResponse(
   persona?: PersonaMode
 ): ChatResponse {
   const isLowConfidence = recall.confidence < 0.5;
+  const isEmpty = recall.entries.length === 0;
 
   let messageText: string;
   let responseMode: ChatResponse['response_mode'] = 'RECALL';
@@ -25,6 +26,11 @@ export function formatRecallChatResponse(
     responseMode = 'RECALL';
   } else if (recall.silence) {
     messageText = recall.silence.message;
+    responseMode = 'SILENCE';
+  } else if (isEmpty) {
+    // Honest no-record answer — never imply past moments exist when none do
+    messageText =
+      "We haven't talked about that yet — tell me about it and it becomes part of your record.";
     responseMode = 'SILENCE';
   } else if (isLowConfidence) {
     messageText =
@@ -54,7 +60,7 @@ export function formatRecallChatResponse(
     content: messageText,
     response_mode: responseMode,
     confidence: recall.confidence,
-    confidence_label: isLowConfidence ? 'Tentative' : 'Strong match',
+    confidence_label: isEmpty ? 'No record' : isLowConfidence ? 'Tentative' : 'Strong match',
     disclaimer: recall.explanation,
     recall_sources: recall.entries.map((entry) => ({
       entry_id: entry.id,
@@ -66,7 +72,7 @@ export function formatRecallChatResponse(
     })),
     recall_meta: {
       persona: persona || 'DEFAULT',
-      recall_type: recall.silence ? 'SILENCE' : 'RECALL',
+      recall_type: responseMode === 'SILENCE' ? 'SILENCE' : 'RECALL',
     },
   };
 }

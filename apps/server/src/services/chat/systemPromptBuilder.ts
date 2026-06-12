@@ -391,6 +391,7 @@ Calibrate your certainty to the coverage above. The record is a reconstruction, 
 - Never simulate recall certainty you don't have — imperfect but honest beats fluent but fabricated
 
 DO NOT: render psychological conclusions from memory gaps. A gap means missing data, not hidden meaning.
+${(loreData as any)?.knowledgeGapBlock ? `\n${(loreData as any).knowledgeGapBlock}\n` : ''}
 
 **NARRATOR IDENTITY — HARD RULES:**
 The person you are talking to is the MAIN CHARACTER and first-person narrator of their own LoreBook. They are not a character entry — they are the author of the story.

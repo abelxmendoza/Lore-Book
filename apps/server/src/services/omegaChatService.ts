@@ -1029,6 +1029,7 @@ class OmegaChatService {
       crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
       entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,
+      knowledgeGapBlock: (ragPacket as { knowledgeGapBlock?: string | null }).knowledgeGapBlock ?? null,
     };
 
     let scoredLoreData: Record<string, unknown> = rawLoreData;
@@ -1749,6 +1750,7 @@ class OmegaChatService {
       crystallizedKnowledge: ragPacket.crystallizedKnowledge ?? [],
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
       entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,
+      knowledgeGapBlock: (ragPacket as { knowledgeGapBlock?: string | null }).knowledgeGapBlock ?? null,
     };
 
     let scoredLoreDataChat: Record<string, unknown> = rawLoreDataChat;

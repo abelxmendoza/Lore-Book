@@ -2,6 +2,7 @@ import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, G
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { UnknownField } from '../ui/UnknownField';
 import { CharacterAvatar } from './CharacterAvatar';
 import { useState, useEffect } from 'react';
 import { fetchJson } from '../../lib/api';
@@ -370,10 +371,14 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
               )}
             </div>
             {/* Show role prominently on mobile; keep short on card, full text in modal */}
-            {character.role && (
+            {character.role ? (
               <p className="text-[9px] sm:text-xs text-white/70 mt-0.5 line-clamp-1 truncate" title={character.role}>
                 {character.role.length > 60 ? `${character.role.slice(0, 60).trim()}…` : character.role}
               </p>
+            ) : (
+              <div className="mt-0.5 hidden sm:block">
+                <UnknownField compact label="Role" />
+              </div>
             )}
             {character.first_name && character.last_name && character.name !== displayName && (
               <p className="text-[9px] sm:text-xs text-white/40 mt-0.5 truncate hidden sm:block">

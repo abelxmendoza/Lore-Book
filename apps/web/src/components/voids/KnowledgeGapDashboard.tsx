@@ -1,9 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Calendar, Clock, AlertCircle, Sparkles, ArrowRight, Filter } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, Sparkles, ArrowRight, Filter, HelpCircle, X, MessageCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
+
+interface EntityKnowledgeGap {
+  id: string;
+  gap_type: 'unknown_entity' | 'sparse_entity';
+  label: string;
+  prompt: string;
+  created_at: string;
+}
 
 interface VoidPeriod {
   id: string;
@@ -39,18 +47,21 @@ export const KnowledgeGapDashboard: React.FC = () => {
   const [significanceFilter, setSignificanceFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
   const [voidData, setVoidData] = useState<{ voids: VoidPeriod[]; totalGaps: number } | null>(null);
   const [statsData, setStatsData] = useState<VoidStats | null>(null);
+  const [entityGaps, setEntityGaps] = useState<EntityKnowledgeGap[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
-        const [voidsResult, statsResult] = await Promise.all([
+        const [voidsResult, statsResult, gapsResult] = await Promise.all([
           fetchJson<{ voids: VoidPeriod[]; totalGaps: number }>('/api/voids/gaps'),
           fetchJson<VoidStats>('/api/voids/stats'),
+          fetchJson<{ gaps: EntityKnowledgeGap[] }>('/api/voids/knowledge-gaps').catch(() => ({ gaps: [] })),
         ]);
         setVoidData(voidsResult);
         setStatsData(statsResult);
+        setEntityGaps(gapsResult.gaps ?? []);
       } catch (error) {
         console.error('Failed to fetch void data:', error);
         setVoidData({ voids: [], totalGaps: 0 });
@@ -106,6 +117,19 @@ export const KnowledgeGapDashboard: React.FC = () => {
     window.location.href = `/?surface=timeline&focus=${voidPeriod.start}`;
   };
 
+  const handleTellLorebook = (gap: EntityKnowledgeGap) => {
+    window.location.href = `/?surface=chat&prompt=${encodeURIComponent(gap.prompt)}`;
+  };
+
+  const handleDismissGap = async (gap: EntityKnowledgeGap) => {
+    setEntityGaps(prev => prev.filter(g => g.id !== gap.id));
+    try {
+      await fetchJson(`/api/voids/knowledge-gaps/${gap.id}/dismiss`, { method: 'PATCH' });
+    } catch (error) {
+      console.error('Failed to dismiss knowledge gap:', error);
+    }
+  };
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -153,6 +177,56 @@ export const KnowledgeGapDashboard: React.FC = () => {
               <p className="text-2xl font-bold text-white">{stats.coveragePercentage}%</p>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* Things Lorebook doesn't know yet — entity/field gaps from chat */}
+      {entityGaps.length > 0 && (
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-gray-400" />
+              Things Lorebook doesn&apos;t know yet
+            </h2>
+            <p className="text-white/50 text-sm mt-0.5">
+              You asked about these, but there&apos;s nothing in your record yet. Tell Lorebook and they become part of your story.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {entityGaps.map(gap => (
+              <Card key={gap.id} className="border border-dashed border-gray-500/30 bg-gray-500/5">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{gap.label}</p>
+                      <p className="text-xs text-white/50 mt-0.5">
+                        {gap.gap_type === 'unknown_entity'
+                          ? 'Not in your record at all'
+                          : 'Just a name so far — no facts or events'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDismissGap(gap)}
+                      className="text-white/30 hover:text-white/70 transition-colors flex-shrink-0"
+                      title="Dismiss — don't track this"
+                      aria-label={`Dismiss ${gap.label}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => handleTellLorebook(gap)}
+                    className="w-full mt-3 bg-gray-500/15 hover:bg-gray-500/25 text-gray-200 border border-gray-500/40"
+                  >
+                    <MessageCircle className="w-3 h-3 mr-2" />
+                    Tell Lorebook
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
 

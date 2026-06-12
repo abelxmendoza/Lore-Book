@@ -93,6 +93,11 @@ export class ResponseBuilder {
       return result.silence.message;
     }
 
+    // Honest no-record answer — never imply past moments exist when none do
+    if (result.entries.length === 0) {
+      return "We haven't talked about that yet — tell me about it and it becomes part of your record.";
+    }
+
     const parts: string[] = [];
 
     // Add explanation
