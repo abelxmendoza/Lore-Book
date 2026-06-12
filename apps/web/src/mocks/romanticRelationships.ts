@@ -173,6 +173,33 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
       rank_among_active: 2
     },
 
+    // Ghosted — real endings aren't always clean breakups
+    {
+      id: 'rel-005',
+      person_id: 'char-005',
+      person_type: 'character',
+      person_name: 'Riley',
+      relationship_type: 'hooking_up',
+      status: 'ghosted',
+      is_current: false,
+      affection_score: 0.4,
+      emotional_intensity: 0.6,
+      compatibility_score: 0.35,
+      relationship_health: 0.1,
+      is_situationship: true,
+      exclusivity_status: undefined,
+      strengths: ['Great chemistry early on'],
+      weaknesses: ['Communication dropped off completely'],
+      pros: ['Fun while it lasted'],
+      cons: ['Left on read for two weeks', 'Never explained what changed'],
+      red_flags: ['Disappeared without a word'],
+      green_flags: [],
+      start_date: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+      created_at: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+      rank_among_all: 5,
+      rank_among_active: 0
+    },
+
     // Situationship
     {
       id: 'rel-003',

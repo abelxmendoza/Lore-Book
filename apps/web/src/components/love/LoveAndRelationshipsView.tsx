@@ -146,8 +146,10 @@ export const LoveAndRelationshipsView = () => {
     );
   });
 
-  const activeRelationships = filteredRelationships.filter(r => r.is_current && r.status === 'active');
-  const pastRelationships = filteredRelationships.filter(r => !r.is_current || r.status === 'ended');
+  // ghosted/blocked are end-states; fading/rekindled/unrequited still count as current
+  const ENDED_STATUSES = ['ended', 'ghosted', 'blocked'];
+  const activeRelationships = filteredRelationships.filter(r => r.is_current && !ENDED_STATUSES.includes(r.status));
+  const pastRelationships = filteredRelationships.filter(r => !r.is_current || ENDED_STATUSES.includes(r.status));
   const crushes = filteredRelationships.filter(r => 
     r.relationship_type === 'crush' || 
     r.relationship_type === 'obsession' || 

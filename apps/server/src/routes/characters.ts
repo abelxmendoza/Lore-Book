@@ -1164,6 +1164,22 @@ router.get('/:id/lifecycle', requireAuth, async (req: AuthenticatedRequest, res)
   }
 });
 
+// POST /api/characters/social-standing/recompute
+// Recompute inner-circle tier + network degree for all characters.
+// Descriptive organization signal only — never injected into chat tone.
+router.post('/social-standing/recompute', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { socialStandingService } = await import('../services/socialStandingService');
+    const result = await socialStandingService.recompute(userId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ error, userId }, 'Social standing recompute failed');
+    res.status(500).json({ error: 'Recompute failed' });
+  }
+});
+
 // POST /api/characters/classify-backfill
 // Classify relationship type (family/romantic/professional/…) for every
 // character that has no archetype yet, using their facts plus past chat and

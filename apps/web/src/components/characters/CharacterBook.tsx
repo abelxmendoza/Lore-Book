@@ -126,6 +126,7 @@ export const dummyCharacters: Character[] = [
       relationship_type: 'friend',
       closeness_score: 95,
       first_met: '2018-09-15',
+      social_standing: { score: 0.84, tier: 'inner_circle', degree: 5, connector: true, computed_at: new Date().toISOString() },
       relationships: {
         'char-alex-boyfriend': { type: 'friend', closeness: 75 },
         'dummy-2': { type: 'friend', closeness: 70 }, // Marcus
@@ -285,7 +286,8 @@ export const dummyCharacters: Character[] = [
     metadata: {
       relationship_type: 'family',
       closeness_score: 90,
-      first_met: '1995-06-15'
+      first_met: '1995-06-15',
+      social_standing: { score: 0.78, tier: 'inner_circle', degree: 3, connector: true, computed_at: new Date().toISOString() }
     },
     memory_count: 32,
     relationship_count: 12
@@ -361,7 +363,10 @@ export const dummyCharacters: Character[] = [
     metadata: {
       relationship_type: 'professional',
       closeness_score: 81,
-      first_met: '2020-11-20'
+      first_met: '2020-11-20',
+      public_figure: true,
+      figure_type: 'creator',
+      social_standing: { score: 0.46, tier: 'close', degree: 2, connector: false, computed_at: new Date().toISOString() }
     },
     social_media: {
       twitter: '@sophia_writes',
@@ -1991,7 +1996,7 @@ const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger scre
 
 type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professional' | 'creative' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
 type ImportanceFilter = 'all' | 'important' | 'high_impact' | 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
-type SortOrder = 'role' | 'impact';
+type SortOrder = 'role' | 'impact' | 'standing';
 
 type CharacterAttribute = {
   id: string;
@@ -2300,16 +2305,15 @@ export const CharacterBook = () => {
     }
   };
 
+  // Load on mount, when auth hydration completes (user?.id appears), and when
+  // the mock toggle changes. The mount fetch can fire before the Supabase
+  // session is hydrated → 401 → empty book; the user?.id dependency reloads
+  // once the session is actually available.
   useEffect(() => {
     void loadCharacters();
     void loadRelationships();
-  }, []);
-
-  // Refresh when mock data toggle changes
-  useEffect(() => {
-    void loadCharacters();
-    void loadRelationships();
-  }, [isMockDataEnabled]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, isMockDataEnabled]);
 
   // Auto-open modal when navigated here from an entity chip (chat → characters).
   useEffect(() => {
@@ -2444,6 +2448,12 @@ export const CharacterBook = () => {
     return [...filteredCharacters].sort(
       (a, b) => (b.analytics?.character_influence_on_user ?? 0) - (a.analytics?.character_influence_on_user ?? 0)
     );
+  }, [filteredCharacters]);
+
+  // Computed social standing (inner circle → peripheral), highest first.
+  const charactersByStanding = useMemo(() => {
+    const score = (c: Character) => Number((c.metadata as any)?.social_standing?.score ?? 0);
+    return [...filteredCharacters].sort((a, b) => score(b) - score(a));
   }, [filteredCharacters]);
 
   const levelLabels: Record<string, string> = {
@@ -2605,6 +2615,7 @@ export const CharacterBook = () => {
             >
               <option value="role">By role in story</option>
               <option value="impact">By impact on me</option>
+              <option value="standing">By standing</option>
             </select>
           </div>
         </div>
@@ -2892,7 +2903,38 @@ export const CharacterBook = () => {
 
               {/* Character Grid - By impact or grouped by role */}
               <div className="flex-1 space-y-4 mb-4 sm:mb-6">
-                {sortOrder === 'impact' ? (
+                {sortOrder === 'standing' ? (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-amber-400" />
+                      Your circle, closest first
+                      <span className="text-xs font-normal text-white/40">({charactersByStanding.length})</span>
+                    </h4>
+                    <div className="grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {charactersByStanding.map((character, index) => {
+                        try {
+                          const isUpdated = character.id && recentlyUpdatedIds.has(character.id);
+                          return (
+                            <div
+                              key={character.id || `char-${index}`}
+                              className={isUpdated ? 'ring-2 ring-primary/70 rounded-lg transition-all duration-500' : ''}
+                            >
+                              <CharacterProfileCard
+                                character={character}
+                                relationship={relationships.get(character.id)}
+                                onClick={() => {
+                                  setSelectedCharacter(character);
+                                }}
+                              />
+                            </div>
+                          );
+                        } catch {
+                          return null;
+                        }
+                      })}
+                    </div>
+                  </div>
+                ) : sortOrder === 'impact' ? (
                   <div className="space-y-2">
                     <h4 className="text-sm font-bold text-white flex items-center gap-2">
                       <Zap className="h-4 w-4 text-purple-400" />

@@ -301,8 +301,15 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
               </Badge>
             ) : null;
 
+            // Social standing — computed organization signal (never judgmental copy)
+            const standing = (character.metadata as any)?.social_standing as { tier?: string; connector?: boolean } | undefined;
+            const isPublicFigure = Boolean((character.metadata as any)?.public_figure);
+            const figureType = ((character.metadata as any)?.figure_type as string | undefined) ?? 'public figure';
+
             // Count secondary signals for "+N" badge
             const extras: string[] = [];
+            if (standing?.tier === 'inner_circle') extras.push('Inner circle');
+            if (standing?.connector) extras.push('Connector');
             if (hasMet === false) extras.push('Unmet');
             if ((character.analytics?.character_influence_on_user ?? 0) >= 70 &&
                 (character.importance_level === 'minor' || character.importance_level === 'background'))
@@ -315,6 +322,15 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
             return (
               <div className="absolute top-1 right-1 z-10 flex flex-col gap-0.5 items-end">
                 {primaryBadge}
+                {isPublicFigure && (
+                  <Badge
+                    variant="outline"
+                    className="bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5"
+                    title={`Public figure: ${figureType}`}
+                  >
+                    ★<span className="hidden sm:inline ml-0.5">{figureType}</span>
+                  </Badge>
+                )}
                 {extras.length > 0 && (
                   <Badge
                     variant="outline"
