@@ -35,7 +35,7 @@ export type RomanticRelationshipType =
   | 'friends_with_benefits'
   | 'in_love';
 
-export type RelationshipStatus = 'active' | 'on_break' | 'ended' | 'complicated' | 'paused';
+export type RelationshipStatus = 'active' | 'on_break' | 'ended' | 'complicated' | 'paused' | 'ghosted' | 'blocked' | 'unrequited' | 'fading' | 'rekindled';
 
 export interface DetectedRomanticRelationship {
   personId: string;
@@ -201,7 +201,7 @@ Only include relationships with confidence >= 0.7. Be conservative.`,
         await supabaseAdmin
           .from('romantic_relationships')
           .update({
-            is_current: relationship.status === 'active',
+            is_current: !['ended', 'ghosted', 'blocked'].includes(relationship.status),
             is_situationship: relationship.isSituationship || false,
             exclusivity_status: relationship.exclusivityStatus,
             start_date: relationship.startDate || existing.start_date,
@@ -222,7 +222,7 @@ Only include relationships with confidence >= 0.7. Be conservative.`,
           person_type: relationship.personType,
           relationship_type: relationship.relationshipType,
           status: relationship.status,
-          is_current: relationship.status === 'active',
+          is_current: !['ended', 'ghosted', 'blocked'].includes(relationship.status),
           is_situationship: relationship.isSituationship || false,
           exclusivity_status: relationship.exclusivityStatus,
           start_date: relationship.startDate,

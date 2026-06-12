@@ -237,20 +237,21 @@ class EntityFactsService {
     const text = rawText.toLowerCase();
     if (text.trim().length < 3) return false;
 
+    // Kinship terms across cultures — "Abuela" IS the user's grandmother;
+    // the book's Family filter must understand that without translation.
+    const KINSHIP_TERMS = ['mom', 'mother', 'dad', 'father', 'sister', 'brother', 'sibling', 'cousin', 'aunt', 'uncle', 'grandma', 'grandmother', 'granny', 'grandpa', 'grandfather', 'daughter', 'son', 'wife', 'husband', 'niece', 'nephew', 'stepmom', 'stepdad',
+      'abuela', 'abuelo', 'tía', 'tío', 'tia', 'tio', 'mamá', 'papá', 'hermana', 'hermano', 'prima', 'primo', 'madrina', 'padrino', // Spanish
+      'nonna', 'nonno', 'zia', 'zio', // Italian
+      'oma', 'opa', // German/Dutch
+      'bubbe', 'zayde', // Yiddish
+      'halmoni', 'harabeoji', 'eomma', 'appa', // Korean
+      'nai nai', 'ye ye', 'lao lao', 'lao ye', // Chinese
+      'baba', 'amma', 'ammi', 'abba', 'dadi', 'nani', // South Asian/Arabic
+      'lola', 'lolo', 'tita', 'tito', // Filipino
+      'yia yia', 'yiayia', 'pappous', // Greek
+      'mamaw', 'papaw', 'meemaw', 'nana', 'pops'];
+
     const ARCHETYPE_RULES: Array<{ archetype: string; relType: string; keywords: string[] }> = [
-      // Kinship terms across cultures — "Abuela" IS the user's grandmother;
-      // the book's Family filter must understand that without translation.
-      { archetype: 'family',       relType: 'family',       keywords: ['mom', 'mother', 'dad', 'father', 'sister', 'brother', 'sibling', 'cousin', 'aunt', 'uncle', 'grandma', 'grandmother', 'granny', 'grandpa', 'grandfather', 'daughter', 'son', 'wife', 'husband', 'family', 'niece', 'nephew', 'stepmom', 'stepdad', 'in-law',
-        'abuela', 'abuelo', 'tía', 'tío', 'tia', 'tio', 'mamá', 'papá', 'hermana', 'hermano', 'prima', 'primo', 'madrina', 'padrino', // Spanish
-        'nonna', 'nonno', 'zia', 'zio', // Italian
-        'oma', 'opa', // German/Dutch
-        'bubbe', 'zayde', // Yiddish
-        'halmoni', 'harabeoji', 'eomma', 'appa', // Korean
-        'nai nai', 'ye ye', 'lao lao', 'lao ye', // Chinese
-        'baba', 'amma', 'ammi', 'abba', 'dadi', 'nani', // South Asian/Arabic
-        'lola', 'lolo', 'tita', 'tito', // Filipino
-        'yia yia', 'yiayia', 'pappous', // Greek
-        'mamaw', 'papaw', 'meemaw', 'nana', 'pops'] },
       // 'my partner' (not bare 'partner') — otherwise "climbing partner" /
       // "business partner" misclassify as romantic
       { archetype: 'romantic',     relType: 'romantic',     keywords: ['girlfriend', 'boyfriend', 'my partner', 'fiancé', 'fiancee', 'dating', 'romantic', 'situationship', 'hooked up', 'hooking up', 'slept with', 'slept together', 'made out', 'went on a date', 'our date', 'friends with benefits', 'my ex', 'crush on'] },
@@ -263,25 +264,76 @@ class EntityFactsService {
     let archetype: string | undefined;
     let relType: string | undefined;
     let romanticType: string | undefined;
+    let relStatus: string | undefined;
+    let publicFigure: { is: boolean; type?: string } | undefined;
 
+    const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // Word-boundary matching, not substring: short kinship terms otherwise
     // match inside ordinary words ('tio' is inside "mentioned", 'son' inside
     // "person") and misclassify everyone as family.
-    const matchesWord = (kw: string) => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text);
-    const match = ARCHETYPE_RULES.find(rule => rule.keywords.some(matchesWord));
-    if (match) {
-      archetype = match.archetype;
-      relType = match.relType;
-    } else if (rawText.trim().length >= 40) {
+    const matchesWord = (kw: string, t: string) => new RegExp(`\\b${escapeRe(kw)}\\b`, 'i').test(t);
+
+    // Family detection is stage-name aware ("Goth Tio" is an influencer's
+    // handle, not the user's uncle). Family fires only when:
+    //   (a) the entity's name STARTS with a kinship term ("Abuela",
+    //       "Tío Juan") — the term is how the user addresses them; or
+    //   (b) the context (with the entity's own name masked out) contains a
+    //       POSSESSIVE kinship reference: "my tío", "mi abuela", "his mom".
+    const nameLower = entityName.toLowerCase();
+    const kinshipName = KINSHIP_TERMS.some(
+      k => nameLower === k || nameLower.startsWith(`${k} `)
+    );
+    const maskedText = text.replace(new RegExp(escapeRe(nameLower), 'gi'), ' ');
+    const possessiveKinship = new RegExp(
+      `\\b(?:my|mi|mis|our|his|her|their)\\s+(?:${KINSHIP_TERMS.map(escapeRe).join('|')})\\b`, 'i'
+    ).test(maskedText) || matchesWord('family', maskedText);
+
+    if (kinshipName || possessiveKinship) {
+      archetype = 'family';
+      relType = 'family';
+    } else {
+      const match = ARCHETYPE_RULES.find(rule => rule.keywords.some(kw => matchesWord(kw, maskedText)));
+      if (match) {
+        archetype = match.archetype;
+        relType = match.relType;
+      }
+    }
+
+    // Keywords can detect romance but not its state — "she blocked me" only
+    // means something to a model. Romantic keyword hits still consult the LLM
+    // for romantic_type and current status.
+    if (archetype === 'romantic' && rawText.trim().length >= 40) {
+      const llm = await this.llmClassifyRelationship(entityName, rawText);
+      if (llm && llm.confidence >= 0.6) {
+        romanticType = llm.romantic_type ?? romanticType;
+        relStatus = llm.status;
+        if (llm.public_figure) publicFigure = { is: true, type: llm.figure_type };
+      }
+    }
+
+    if (!archetype && rawText.trim().length >= 40) {
       // Keywords can't decide — let context decide ("we went out twice and
       // slept together" → romantic; "mi abuelita" → family). The model also
       // covers kinship terms in languages the keyword list doesn't.
       const llm = await this.llmClassifyRelationship(entityName, rawText);
-      if (llm && llm.confidence >= 0.7 && llm.archetype !== 'unknown') {
-        archetype = llm.archetype;
-        relType = llm.relationship_type;
-        romanticType = llm.romantic_type;
+      if (llm && llm.confidence >= 0.7) {
+        if (llm.archetype !== 'unknown') {
+          archetype = llm.archetype;
+          relType = llm.relationship_type;
+          romanticType = llm.romantic_type;
+          relStatus = llm.status;
+        }
+        if (llm.public_figure) publicFigure = { is: true, type: llm.figure_type };
       }
+    }
+
+    // Public-figure flag is useful even without an archetype
+    if (publicFigure?.is) {
+      await supabaseAdmin
+        .from('characters')
+        .update({ metadata: await this.mergedMetadata(userId, characterId, { public_figure: true, figure_type: publicFigure.type ?? 'influencer' }) })
+        .eq('id', characterId)
+        .eq('user_id', userId);
     }
     if (!archetype || !relType) return false;
 
@@ -313,11 +365,17 @@ class EntityFactsService {
       try {
         const { romanticRelationshipDetector } = await import('./conversationCentered/romanticRelationshipDetector');
         const endedTypes = ['ex_girlfriend', 'ex_boyfriend', 'ex_wife', 'ex_husband', 'ex_lover', 'one_night_stand'];
+        const validStatuses = ['active', 'on_break', 'ended', 'complicated', 'paused', 'ghosted', 'blocked', 'unrequited', 'fading', 'rekindled'];
+        // Prefer the LLM's status (it reads ending signals like "she blocked
+        // me"); fall back to mapping ex_* types to ended.
+        const status = relStatus && validStatuses.includes(relStatus)
+          ? relStatus
+          : romanticType && endedTypes.includes(romanticType) ? 'ended' : 'active';
         await romanticRelationshipDetector.saveRelationship(userId, {
           personId: characterId,
           personType: 'character',
           relationshipType: (romanticType as any) ?? 'dating',
-          status: romanticType && endedTypes.includes(romanticType) ? 'ended' : 'active',
+          status: status as any,
           confidence: 0.75,
           evidence: rawText.slice(0, 280),
         });
@@ -337,20 +395,21 @@ class EntityFactsService {
   private async llmClassifyRelationship(
     entityName: string,
     text: string
-  ): Promise<{ archetype: string; relationship_type: string; romantic_type?: string; confidence: number } | null> {
+  ): Promise<{ archetype: string; relationship_type: string; romantic_type?: string; status?: string; public_figure?: boolean; figure_type?: string; confidence: number } | null> {
     try {
       const response = await openai.chat.completions.create({
         model: config.extractionModel,
         response_format: { type: 'json_object' },
         temperature: 0.1,
-        max_tokens: 150,
+        max_tokens: 200,
         messages: [
           {
             role: 'system',
             content: `Classify the user's relationship to a person based on what the user has said about them.
 
 Archetypes (pick ONE):
-- family — relatives. IMPORTANT: kinship terms in ANY language or culture count ("Abuela" = grandmother, "Tío" = uncle, "Nonna", "Halmoni", "Lola", etc.). If the person is ADDRESSED by a kinship term as their name, they ARE family.
+- family — relatives. Kinship terms in ANY language count ("Abuela" = grandmother, "Tío" = uncle, "Nonna", "Halmoni", "Lola"). If the person is ADDRESSED by a kinship term as their name, they ARE family.
+  EXCEPTION — stage names and usernames: a kinship word inside a handle or stage name does NOT make someone family ("Goth Tio" the club influencer is not the user's uncle). Judge by how the user actually relates to them.
 - romantic — dating, hooking up, situationship, ex, crush, sexual or romantic involvement of any kind. Infer from context ("we went out twice", "spent the night"), not just labels.
 - mentor — teacher, coach, advisor, therapist
 - colleague — work: boss, coworker, recruiter, client
@@ -358,9 +417,13 @@ Archetypes (pick ONE):
 - friend — platonic friend, roommate
 - unknown — not enough signal
 
-If romantic, also pick romantic_type from: dating, situationship, hooking_up, talking, crush, ex_girlfriend, ex_boyfriend, friends_with_benefits, one_night_stand, lover.
+If romantic, also pick:
+- romantic_type: dating, situationship, hooking_up, talking, crush, ex_girlfriend, ex_boyfriend, friends_with_benefits, one_night_stand, lover
+- status: read the CURRENT state from ending signals. "she blocked me" → blocked; "ghosted me"/"left me on read and disappeared" → ghosted; broke up → ended; "we're on a break" → on_break; one-sided feelings → unrequited; losing steam → fading; back together → rekindled; otherwise active.
 
-Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|professional|creative|friend|unknown", "romantic_type": "...or omit", "confidence": 0.0-1.0}`,
+Also detect public figures: if the person is an influencer, celebrity, artist, or content creator the user follows or encountered (rather than an intimate connection), set public_figure true and figure_type (influencer|celebrity|artist|creator|other).
+
+Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|professional|creative|friend|unknown", "romantic_type": "...or omit", "status": "...or omit", "public_figure": false, "figure_type": "...or omit", "confidence": 0.0-1.0}`,
           },
           { role: 'user', content: `Person: ${entityName}\n\nWhat the user has said:\n${text.slice(0, 1500)}` },
         ],
@@ -372,6 +435,17 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
       logger.warn({ err, entityName }, 'LLM relationship classification failed');
       return null;
     }
+  }
+
+  /** Merge keys into a character's metadata without clobbering other fields. */
+  private async mergedMetadata(userId: string, characterId: string, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { data } = await supabaseAdmin
+      .from('characters')
+      .select('metadata')
+      .eq('id', characterId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    return { ...((data?.metadata as Record<string, unknown>) ?? {}), ...patch };
   }
 
   /**
