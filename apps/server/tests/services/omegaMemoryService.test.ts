@@ -119,12 +119,22 @@ describe('OmegaMemoryService', () => {
         single: vi.fn().mockResolvedValue({ data: newEntity, error: null })
       };
 
+      // createEntity re-checks for a concurrently-created entity before inserting
+      const mockRaceCheckChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        ilike: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: null, error: { code: 'PGRST116' } })
+      };
+
       // resolveEntities call order:
       //   1. batch load (empty pool)       → mockBatchChain
       //   2. exact match query             → mockFindChain (returns null via .single())
       //   3. fuzzy scan (all entities)     → mockFuzzyScanChain (returns empty)
       //   4. (rpc semantic search — auto-mocked, returns undefined, caught gracefully)
-      //   5. createEntity insert           → mockCreateChain
+      //   5. createEntity race-check       → mockRaceCheckChain (returns null)
+      //   6. createEntity insert           → mockCreateChain
       const mockBatchChain = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
@@ -143,7 +153,8 @@ describe('OmegaMemoryService', () => {
         .mockReturnValueOnce(mockBatchChain as any)      // 1. batch load
         .mockReturnValueOnce(mockFindChain as any)       // 2. exact match
         .mockReturnValueOnce(mockFuzzyScanChain as any)  // 3. fuzzy scan
-        .mockReturnValueOnce(mockCreateChain as any);    // 4. createEntity insert
+        .mockReturnValueOnce(mockRaceCheckChain as any)  // 4. createEntity race-check
+        .mockReturnValueOnce(mockCreateChain as any);    // 5. createEntity insert
 
       const result = await omegaMemoryService.resolveEntities('user-123', [
         { name: 'Jane Doe', type: 'PERSON' }
