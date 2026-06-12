@@ -10,6 +10,7 @@
  * Cross-entity queries are possible because all facts live in one table.
  */
 
+import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
 import { supabaseAdmin } from './supabaseClient';
@@ -216,23 +217,73 @@ class EntityFactsService {
     facts: ExtractedFact[],
     conversationText: string
   ): Promise<void> {
-    const factText = facts.map(f => f.fact.toLowerCase()).join(' ');
-    const utteranceText = this.sentencesAbout(conversationText, entityName).toLowerCase();
-    const text = `${factText} ${utteranceText}`;
+    const factText = facts.map(f => f.fact).join(' ');
+    const utteranceText = this.sentencesAbout(conversationText, entityName);
+    await this.classifyAndApply(userId, characterId, entityName, `${factText} ${utteranceText}`);
+  }
+
+  /**
+   * Shared classification core. Keyword pass first (free, multilingual
+   * kinship terms included); LLM fallback when keywords can't decide —
+   * relationship type often lives in context ("we went out twice"), not in
+   * a kinship word. Never overwrites an existing archetype.
+   */
+  async classifyAndApply(
+    userId: string,
+    characterId: string,
+    entityName: string,
+    rawText: string
+  ): Promise<boolean> {
+    const text = rawText.toLowerCase();
+    if (text.trim().length < 3) return false;
 
     const ARCHETYPE_RULES: Array<{ archetype: string; relType: string; keywords: string[] }> = [
-      { archetype: 'family',       relType: 'family',       keywords: ['mom', 'mother', 'dad', 'father', 'sister', 'brother', 'sibling', 'cousin', 'aunt', 'uncle', 'grandma', 'grandmother', 'grandpa', 'grandfather', 'abuela', 'abuelo', 'daughter', 'son', 'wife', 'husband', 'family'] },
+      // Kinship terms across cultures — "Abuela" IS the user's grandmother;
+      // the book's Family filter must understand that without translation.
+      { archetype: 'family',       relType: 'family',       keywords: ['mom', 'mother', 'dad', 'father', 'sister', 'brother', 'sibling', 'cousin', 'aunt', 'uncle', 'grandma', 'grandmother', 'granny', 'grandpa', 'grandfather', 'daughter', 'son', 'wife', 'husband', 'family', 'niece', 'nephew', 'stepmom', 'stepdad', 'in-law',
+        'abuela', 'abuelo', 'tía', 'tío', 'tia', 'tio', 'mamá', 'papá', 'hermana', 'hermano', 'prima', 'primo', 'madrina', 'padrino', // Spanish
+        'nonna', 'nonno', 'zia', 'zio', // Italian
+        'oma', 'opa', // German/Dutch
+        'bubbe', 'zayde', // Yiddish
+        'halmoni', 'harabeoji', 'eomma', 'appa', // Korean
+        'nai nai', 'ye ye', 'lao lao', 'lao ye', // Chinese
+        'baba', 'amma', 'ammi', 'abba', 'dadi', 'nani', // South Asian/Arabic
+        'lola', 'lolo', 'tita', 'tito', // Filipino
+        'yia yia', 'yiayia', 'pappous', // Greek
+        'mamaw', 'papaw', 'meemaw', 'nana', 'pops'] },
       // 'my partner' (not bare 'partner') — otherwise "climbing partner" /
       // "business partner" misclassify as romantic
-      { archetype: 'romantic',     relType: 'romantic',     keywords: ['girlfriend', 'boyfriend', 'my partner', 'fiancé', 'fiancee', 'dating', 'romantic'] },
+      { archetype: 'romantic',     relType: 'romantic',     keywords: ['girlfriend', 'boyfriend', 'my partner', 'fiancé', 'fiancee', 'dating', 'romantic', 'situationship', 'hooked up', 'hooking up', 'slept with', 'slept together', 'made out', 'went on a date', 'our date', 'friends with benefits', 'my ex', 'crush on'] },
       { archetype: 'mentor',       relType: 'mentor',       keywords: ['mentor', 'coach', 'teacher', 'professor', 'advisor', 'therapist'] },
-      { archetype: 'colleague',    relType: 'professional', keywords: ['boss', 'coworker', 'co-worker', 'colleague', 'manager', 'client', 'business partner', 'works with', 'work together'] },
+      { archetype: 'colleague',    relType: 'professional', keywords: ['boss', 'coworker', 'co-worker', 'colleague', 'manager', 'client', 'business partner', 'works with', 'work together', 'recruiter', 'onboarding', 'hiring', 'interviewer', 'staffing'] },
       { archetype: 'collaborator', relType: 'creative',     keywords: ['bandmate', 'collaborator', 'co-founder', 'cofounder', 'creative partner'] },
       { archetype: 'friend',       relType: 'friend',       keywords: ['best friend', 'friend', 'roommate', 'buddy', 'climbing partner', 'workout partner', 'training partner', 'gym partner'] },
     ];
 
-    const match = ARCHETYPE_RULES.find(rule => rule.keywords.some(kw => text.includes(kw)));
-    if (!match) return;
+    let archetype: string | undefined;
+    let relType: string | undefined;
+    let romanticType: string | undefined;
+
+    // Word-boundary matching, not substring: short kinship terms otherwise
+    // match inside ordinary words ('tio' is inside "mentioned", 'son' inside
+    // "person") and misclassify everyone as family.
+    const matchesWord = (kw: string) => new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text);
+    const match = ARCHETYPE_RULES.find(rule => rule.keywords.some(matchesWord));
+    if (match) {
+      archetype = match.archetype;
+      relType = match.relType;
+    } else if (rawText.trim().length >= 40) {
+      // Keywords can't decide — let context decide ("we went out twice and
+      // slept together" → romantic; "mi abuelita" → family). The model also
+      // covers kinship terms in languages the keyword list doesn't.
+      const llm = await this.llmClassifyRelationship(entityName, rawText);
+      if (llm && llm.confidence >= 0.7 && llm.archetype !== 'unknown') {
+        archetype = llm.archetype;
+        relType = llm.relationship_type;
+        romanticType = llm.romantic_type;
+      }
+    }
+    if (!archetype || !relType) return false;
 
     const { data: rows } = await supabaseAdmin
       .from('characters')
@@ -241,13 +292,13 @@ class EntityFactsService {
       .eq('user_id', userId)
       .limit(1);
     const character = rows?.[0] as { id: string; archetype: string | null; relationship_depth: string | null; metadata: Record<string, unknown> | null } | undefined;
-    if (!character || character.archetype) return; // never overwrite an existing archetype
+    if (!character || character.archetype) return false; // never overwrite an existing archetype
 
-    const metadata = { ...(character.metadata ?? {}), relationship_type: match.relType };
+    const metadata = { ...(character.metadata ?? {}), relationship_type: relType };
     await supabaseAdmin
       .from('characters')
       .update({
-        archetype: match.archetype,
+        archetype,
         // A confirmed relationship fact means this is more than a passing mention
         relationship_depth: character.relationship_depth === 'mentioned_only' ? 'moderate' : character.relationship_depth,
         metadata,
@@ -256,7 +307,118 @@ class EntityFactsService {
       .eq('id', characterId)
       .eq('user_id', userId);
 
-    logger.info({ characterId, archetype: match.archetype }, 'Character classified from relationship facts');
+    // Romantic people also belong in the Love & Relationships view, which
+    // reads romantic_relationships keyed by character id.
+    if (archetype === 'romantic') {
+      try {
+        const { romanticRelationshipDetector } = await import('./conversationCentered/romanticRelationshipDetector');
+        const endedTypes = ['ex_girlfriend', 'ex_boyfriend', 'ex_wife', 'ex_husband', 'ex_lover', 'one_night_stand'];
+        await romanticRelationshipDetector.saveRelationship(userId, {
+          personId: characterId,
+          personType: 'character',
+          relationshipType: (romanticType as any) ?? 'dating',
+          status: romanticType && endedTypes.includes(romanticType) ? 'ended' : 'active',
+          confidence: 0.75,
+          evidence: rawText.slice(0, 280),
+        });
+      } catch (err) {
+        logger.warn({ err, characterId }, 'Failed to create romantic relationship row (non-blocking)');
+      }
+    }
+
+    logger.info({ characterId, name: entityName, archetype, relType }, 'Character relationship classified');
+    return true;
+  }
+
+  /**
+   * LLM relationship classification from contextual text. Multilingual
+   * kinship aware: "Abuela" = grandmother, "Tío" = uncle, etc.
+   */
+  private async llmClassifyRelationship(
+    entityName: string,
+    text: string
+  ): Promise<{ archetype: string; relationship_type: string; romantic_type?: string; confidence: number } | null> {
+    try {
+      const response = await openai.chat.completions.create({
+        model: config.extractionModel,
+        response_format: { type: 'json_object' },
+        temperature: 0.1,
+        max_tokens: 150,
+        messages: [
+          {
+            role: 'system',
+            content: `Classify the user's relationship to a person based on what the user has said about them.
+
+Archetypes (pick ONE):
+- family — relatives. IMPORTANT: kinship terms in ANY language or culture count ("Abuela" = grandmother, "Tío" = uncle, "Nonna", "Halmoni", "Lola", etc.). If the person is ADDRESSED by a kinship term as their name, they ARE family.
+- romantic — dating, hooking up, situationship, ex, crush, sexual or romantic involvement of any kind. Infer from context ("we went out twice", "spent the night"), not just labels.
+- mentor — teacher, coach, advisor, therapist
+- colleague — work: boss, coworker, recruiter, client
+- collaborator — creative partner, bandmate, co-founder
+- friend — platonic friend, roommate
+- unknown — not enough signal
+
+If romantic, also pick romantic_type from: dating, situationship, hooking_up, talking, crush, ex_girlfriend, ex_boyfriend, friends_with_benefits, one_night_stand, lover.
+
+Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|professional|creative|friend|unknown", "romantic_type": "...or omit", "confidence": 0.0-1.0}`,
+          },
+          { role: 'user', content: `Person: ${entityName}\n\nWhat the user has said:\n${text.slice(0, 1500)}` },
+        ],
+      });
+      const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}');
+      if (!parsed.archetype) return null;
+      return parsed;
+    } catch (err) {
+      logger.warn({ err, entityName }, 'LLM relationship classification failed');
+      return null;
+    }
+  }
+
+  /**
+   * Backfill classification for characters that predate the classifier or
+   * never accumulated relationship facts. Context comes from their facts plus
+   * past chat messages and journal entries that mention them by name.
+   */
+  async backfillCharacterClassifications(userId: string): Promise<{ classified: number; skipped: number }> {
+    const { data: chars } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, alias')
+      .eq('user_id', userId)
+      .is('archetype', null);
+
+    let classified = 0;
+    let skipped = 0;
+    for (const c of (chars ?? []) as Array<{ id: string; name: string; alias: string[] | null }>) {
+      const names = [c.name, ...(c.alias ?? [])].filter(n => n.length >= 3);
+      if (names.length === 0) { skipped++; continue; }
+
+      const parts: string[] = [];
+      const { data: facts } = await supabaseAdmin
+        .from('entity_facts')
+        .select('fact')
+        .eq('user_id', userId)
+        .eq('entity_id', c.id)
+        .limit(15);
+      parts.push(...((facts ?? []) as Array<{ fact: string }>).map(f => f.fact));
+
+      // Word-boundary name match against past messages/entries
+      const pattern = `\\m(${names.map(n => n.replace(/[^\w áéíóúñü-]/gi, '')).join('|')})\\M`;
+      const [{ data: msgs }, { data: entries }] = await Promise.all([
+        supabaseAdmin.from('chat_messages').select('content').eq('user_id', userId).eq('role', 'user')
+          .filter('content', 'imatch', pattern).order('created_at', { ascending: false }).limit(10),
+        supabaseAdmin.from('journal_entries').select('content').eq('user_id', userId)
+          .filter('content', 'imatch', pattern).order('created_at', { ascending: false }).limit(5),
+      ]);
+      for (const m of (msgs ?? []) as Array<{ content: string }>) parts.push(this.sentencesAbout(m.content, c.name) || m.content.slice(0, 300));
+      for (const e of (entries ?? []) as Array<{ content: string }>) parts.push(this.sentencesAbout(e.content, c.name) || e.content.slice(0, 300));
+
+      const text = parts.join(' ').trim();
+      if (!text) { skipped++; continue; }
+      const ok = await this.classifyAndApply(userId, c.id, c.name, text);
+      if (ok) classified++; else skipped++;
+    }
+    logger.info({ userId, classified, skipped }, 'Character classification backfill complete');
+    return { classified, skipped };
   }
 
   private async extractFacts(

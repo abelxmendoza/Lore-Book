@@ -1164,6 +1164,23 @@ router.get('/:id/lifecycle', requireAuth, async (req: AuthenticatedRequest, res)
   }
 });
 
+// POST /api/characters/classify-backfill
+// Classify relationship type (family/romantic/professional/…) for every
+// character that has no archetype yet, using their facts plus past chat and
+// journal mentions. Multilingual kinship aware (Abuela = grandmother).
+router.post('/classify-backfill', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { entityFactsService } = await import('../services/entityFactsService');
+    const result = await entityFactsService.backfillCharacterClassifications(userId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ error, userId }, 'Character classification backfill failed');
+    res.status(500).json({ error: 'Backfill failed' });
+  }
+});
+
 // GET /api/characters/:id/facts
 // Returns all known facts about this character extracted from conversations.
 // Facts are grouped by category and include confidence, status, and update history.
