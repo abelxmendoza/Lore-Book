@@ -620,11 +620,17 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     // Merge social_media into metadata
     const existingMetadata = (existing.metadata || {}) as Record<string, unknown>;
-    const updatedMetadata = {
+    const metadataPatch = (updateData.metadata || {}) as Record<string, unknown>;
+    const updatedMetadata: Record<string, unknown> = {
       ...existingMetadata,
-      ...(updateData.metadata || {}),
+      ...metadataPatch,
       ...(updateData.social_media ? { social_media: updateData.social_media } : {})
     };
+    // Explicit null clears a user override (UI "Auto" choice) — a shallow
+    // merge alone can never remove a key.
+    for (const key of ['standing_override', 'impact_override']) {
+      if (key in metadataPatch && metadataPatch[key] === null) delete updatedMetadata[key];
+    }
 
     // Get existing character to check if it's a nickname
     const { data: existingChar } = await supabaseAdmin
@@ -712,6 +718,14 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(500).json({ error: 'Failed to update character' });
     }
 
+    // Standing override changes should reflect in social_standing right away
+    if ('standing_override' in metadataPatch) {
+      const { socialStandingService } = await import('../services/socialStandingService');
+      socialStandingService.recompute(userId).catch(err => {
+        logger.debug({ err, characterId: updated.id }, 'Failed to recompute standing after override change');
+      });
+    }
+
     // Recalculate importance if role, archetype, or other significant fields changed
     if (updateData.role !== undefined || updateData.archetype !== undefined || updateData.name !== undefined) {
       const { characterImportanceService } = await import('../services/characterImportanceService');
@@ -728,6 +742,32 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to update character');
     res.status(500).json({ error: 'Failed to update character' });
+  }
+});
+
+/**
+ * Delete a character and its derived data (facts, omega entity graph,
+ * event participation). Events stay; the person is removed from them.
+ */
+router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { characterDeletionService } = await import('../services/characterDeletionService');
+    const report = await characterDeletionService.deleteCharacter(userId, String(req.params.id));
+    if (!report) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Co-participation degrees changed — refresh standing in the background
+    const { socialStandingService } = await import('../services/socialStandingService');
+    socialStandingService.recompute(userId).catch(err => {
+      logger.debug({ err }, 'Failed to recompute standing after character deletion');
+    });
+
+    res.json({ deleted: true, report });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to delete character');
+    res.status(500).json({ error: 'Failed to delete character' });
   }
 });
 

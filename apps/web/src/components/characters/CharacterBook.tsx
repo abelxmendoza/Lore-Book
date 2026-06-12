@@ -1998,6 +1998,13 @@ type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professiona
 type ImportanceFilter = 'all' | 'important' | 'high_impact' | 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
 type SortOrder = 'role' | 'impact' | 'standing';
 
+// Impact on the user: user-set override (metadata.impact_override) wins over
+// computed analytics, so "minor in the story but big influence on me" sticks.
+const impactOnUser = (c: Character): number => {
+  const override = (c.metadata as any)?.impact_override;
+  return typeof override === 'number' ? override : (c.analytics?.character_influence_on_user ?? 0);
+};
+
 type CharacterAttribute = {
   id: string;
   attributeType: string;
@@ -2372,7 +2379,7 @@ export const CharacterBook = () => {
           return ['protagonist', 'major', 'supporting'].includes(level);
         });
       } else if (importanceFilter === 'high_impact') {
-        filtered = filtered.filter(char => (char.analytics?.character_influence_on_user ?? 0) >= 70);
+        filtered = filtered.filter(char => impactOnUser(char) >= 70);
       } else {
         filtered = filtered.filter(char => (char.importance_level || 'minor') === importanceFilter);
       }
@@ -2445,15 +2452,20 @@ export const CharacterBook = () => {
 
   // Sorted by impact on you (for "By impact" view)
   const charactersByImpact = useMemo(() => {
-    return [...filteredCharacters].sort(
-      (a, b) => (b.analytics?.character_influence_on_user ?? 0) - (a.analytics?.character_influence_on_user ?? 0)
-    );
+    return [...filteredCharacters].sort((a, b) => impactOnUser(b) - impactOnUser(a));
   }, [filteredCharacters]);
 
-  // Computed social standing (inner circle → peripheral), highest first.
+  // Social standing (inner circle → peripheral), highest first. Tier ranks
+  // first so a user-pinned tier outranks a higher raw score, then score
+  // breaks ties within a tier.
   const charactersByStanding = useMemo(() => {
-    const score = (c: Character) => Number((c.metadata as any)?.social_standing?.score ?? 0);
-    return [...filteredCharacters].sort((a, b) => score(b) - score(a));
+    const tierRank: Record<string, number> = {
+      inner_circle: 4, close: 3, regular: 2, public_figure: 1.5, peripheral: 1,
+    };
+    const standing = (c: Character) => (c.metadata as any)?.social_standing as { tier?: string; score?: number } | undefined;
+    const rank = (c: Character) => tierRank[standing(c)?.tier ?? ''] ?? 0;
+    const score = (c: Character) => Number(standing(c)?.score ?? 0);
+    return [...filteredCharacters].sort((a, b) => (rank(b) - rank(a)) || (score(b) - score(a)));
   }, [filteredCharacters]);
 
   const levelLabels: Record<string, string> = {

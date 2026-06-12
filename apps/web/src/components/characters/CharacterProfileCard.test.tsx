@@ -64,9 +64,9 @@ describe('CharacterProfileCard', () => {
         }}
       />
     );
-    // Header badge and/or content badge have this title; card content shows "Rare in story, high impact on you".
+    // Compact "High impact" label; full explanation lives in the title tooltip.
     expect(screen.getAllByTitle('Rare in your story, but high impact on you').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Rare in story, high impact on you/i)).toBeInTheDocument();
+    expect(screen.getByText(/High impact/i)).toBeInTheDocument();
   });
 
   it('shows high-impact badge when background and influence >= 70', async () => {

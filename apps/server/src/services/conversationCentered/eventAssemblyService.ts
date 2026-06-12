@@ -10,6 +10,7 @@ import { confidenceTrackingService } from '../confidenceTrackingService';
 import { knowledgeTypeEngineService } from '../knowledgeTypeEngineService';
 import { metaControlService } from '../metaControlService';
 import { omegaMemoryService } from '../omegaMemoryService';
+import { ruleBasedTitleGenerationService } from '../ruleBasedTitleGeneration';
 import { supabaseAdmin } from '../supabaseClient';
 
 /**
@@ -640,15 +641,17 @@ export class EventAssemblyService {
    * Extract event title from unit group
    */
   private extractEventTitle(units: ExtractedUnit[]): string {
-    // Use first unit's content as base, or generate from entities
-    if (units.length === 0) {
-      return 'Untitled Event';
+    // Contextual title from unit content — never "Untitled Event"
+    const source = units.map(u => u.content).join(' ').trim();
+    if (source.length > 0) {
+      const generated = ruleBasedTitleGenerationService.generateTitle(source);
+      if (generated && generated.length >= 8) return generated;
+      const sentences = source.split(/[.!?]+/).filter(s => s.trim().length > 0);
+      const firstSentence = sentences[0]?.trim().substring(0, 100);
+      if (firstSentence) return firstSentence;
     }
-
-    const firstContent = units[0].content;
-    // Simple extraction - can be enhanced with LLM
-    const sentences = firstContent.split(/[.!?]+/).filter(s => s.trim().length > 0);
-    return sentences[0]?.trim().substring(0, 100) || 'Untitled Event';
+    // Empty units shouldn't happen; date-stamp as the last resort
+    return `Event on ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
   }
 
   /**

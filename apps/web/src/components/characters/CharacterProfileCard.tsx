@@ -173,15 +173,15 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
   const getImportanceIcon = (level?: string | null) => {
     switch (level) {
       case 'protagonist':
-        return <Star className="h-3 w-3" />;
+        return <Star className="h-2.5 w-2.5" />;
       case 'major':
-        return <Award className="h-3 w-3" />;
+        return <Award className="h-2.5 w-2.5" />;
       case 'supporting':
-        return <User className="h-3 w-3" />;
+        return <User className="h-2.5 w-2.5" />;
       case 'minor':
-        return <Hash className="h-3 w-3" />;
+        return <Hash className="h-2.5 w-2.5" />;
       default:
-        return <Hash className="h-3 w-3" />;
+        return <Hash className="h-2.5 w-2.5" />;
     }
   };
 
@@ -260,6 +260,12 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
 
   const phase = getRelationshipPhase();
 
+  // Impact on the user: user-set override wins over computed analytics
+  const impactOverride = (character.metadata as any)?.impact_override;
+  const impactOnUser = typeof impactOverride === 'number'
+    ? impactOverride
+    : (character.analytics?.character_influence_on_user ?? 0);
+
   return (
     <Card 
       className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden h-full ${
@@ -311,7 +317,7 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
             if (standing?.tier === 'inner_circle') extras.push('Inner circle');
             if (standing?.connector) extras.push('Connector');
             if (hasMet === false) extras.push('Unmet');
-            if ((character.analytics?.character_influence_on_user ?? 0) >= 70 &&
+            if (impactOnUser >= 70 &&
                 (character.importance_level === 'minor' || character.importance_level === 'background'))
               extras.push('High impact');
             if (proximity && proximity !== 'direct') extras.push(getProximityLabel(proximity));
@@ -394,35 +400,39 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
         {/* Importance and Archetype Badges - Hide on mobile, show on desktop */}
         <div className="hidden sm:flex flex-wrap gap-0.5 sm:gap-1.5 items-center">
           {character.importance_level && (
-            <Badge 
-              variant="outline" 
-              className={`${getImportanceColor(character.importance_level)} text-xs w-fit flex items-center gap-1`}
+            <Badge
+              variant="outline"
+              className={`${getImportanceColor(character.importance_level)} text-[10px] px-1.5 py-0 w-fit flex items-center gap-1`}
+              title={`${getImportanceLabel(character.importance_level)}${
+                character.importance_score !== null && character.importance_score !== undefined
+                  ? ` (${Math.round(character.importance_score)})`
+                  : ''
+              }`}
             >
               {getImportanceIcon(character.importance_level)}
               {getImportanceLabel(character.importance_level)}
-              {character.importance_score !== null && character.importance_score !== undefined && (
-                <span className="text-[10px] opacity-70">({Math.round(character.importance_score)})</span>
-              )}
             </Badge>
           )}
           {/* Distant but high impact: rare in your story, high impact on you */}
           {(character.importance_level === 'minor' || character.importance_level === 'background') &&
-           (character.analytics?.character_influence_on_user ?? 0) >= 70 && (
+           impactOnUser >= 70 && (
             <Badge
               variant="outline"
-              className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs w-fit flex items-center gap-1"
-              title="Rare in your story, but high impact on you"
+              className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px] px-1.5 py-0 w-fit flex items-center gap-1"
+              title={typeof impactOverride === 'number'
+                ? 'Rare in your story, but high impact on you (set by you)'
+                : 'Rare in your story, but high impact on you'}
             >
-              <Zap className="h-3 w-3" />
-              Rare in story, high impact on you
+              <Zap className="h-2.5 w-2.5" />
+              High impact
             </Badge>
           )}
           {character.archetype && (
-            <Badge 
-              variant="outline" 
-              className={`${getArchetypeColor(character.archetype)} text-xs w-fit`}
+            <Badge
+              variant="outline"
+              className={`${getArchetypeColor(character.archetype)} text-[10px] px-1.5 py-0 w-fit`}
             >
-              <Sparkles className="h-3 w-3 mr-1" />
+              <Sparkles className="h-2.5 w-2.5 mr-0.5" />
               {character.archetype}
             </Badge>
           )}
@@ -432,9 +442,9 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
         {relationship && (
           <div className="space-y-1.5 sm:space-y-2 pt-1 border-t border-border/30">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge 
-                variant="outline" 
-                className={`text-[10px] sm:text-xs ${
+              <Badge
+                variant="outline"
+                className={`text-[9px] sm:text-[10px] px-1.5 py-0 ${
                   relationship.status === 'active' 
                     ? 'bg-green-500/20 text-green-300 border-green-500/30' 
                     : relationship.status === 'ended'
@@ -444,8 +454,8 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
                     : 'bg-white/10 text-white/70 border-white/20'
                 }`}
               >
-                <Heart 
-                  className="w-3 h-3 mr-1" 
+                <Heart
+                  className="w-2.5 h-2.5 mr-1"
                   style={{
                     fill: relationship.is_current && relationship.status === 'active' 
                       ? `rgba(244, 114, 182, ${relationship.affection_score})` 
@@ -457,7 +467,7 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
                 {relationship.relationship_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </Badge>
               {relationship.is_situationship && (
-                <Badge variant="outline" className="text-[10px] sm:text-xs bg-purple-500/20 text-purple-300 border-purple-500/30">
+                <Badge variant="outline" className="text-[9px] sm:text-[10px] px-1.5 py-0 bg-purple-500/20 text-purple-300 border-purple-500/30">
                   Situationship
                 </Badge>
               )}
@@ -511,14 +521,14 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
               <Badge
                 key={tag}
                 variant="outline"
-                className="px-1 sm:px-2 py-0 sm:py-0.5 text-[8px] sm:text-xs bg-primary/5 text-primary/80 border-primary/20 hover:bg-primary/10 transition-colors"
+                className="px-1 sm:px-1.5 py-0 text-[8px] sm:text-[9px] bg-primary/5 text-primary/80 border-primary/20 hover:bg-primary/10 transition-colors"
                 title={tag}
               >
                 {tag}
               </Badge>
             ))}
             {character.tags.length > 3 && (
-              <Badge variant="outline" className="px-1 sm:px-2 py-0 sm:py-0.5 text-[8px] sm:text-xs text-white/40 border-border/30" title={`${character.tags.length - 3} more tags`}>
+              <Badge variant="outline" className="px-1 sm:px-1.5 py-0 text-[8px] sm:text-[9px] text-white/40 border-border/30" title={`${character.tags.length - 3} more tags`}>
                 +{character.tags.length - 3}
               </Badge>
             )}
@@ -661,7 +671,7 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
                   <Badge
                     key={attr.id}
                     variant="outline"
-                    className={`${getAttributeColor(attr.attributeType)} text-[10px] px-1.5 py-0.5 flex items-center gap-1`}
+                    className={`${getAttributeColor(attr.attributeType)} text-[9px] px-1 py-0 flex items-center gap-1`}
                     title={`${attr.attributeType}: ${attr.attributeValue} (${Math.round(attr.confidence * 100)}% confidence)`}
                   >
                     {getAttributeIcon(attr.attributeType)}
@@ -670,7 +680,7 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
                 );
               })}
               {attributes.length > 3 && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 text-white/40 border-border/30">
+                <Badge variant="outline" className="text-[9px] px-1 py-0 text-white/40 border-border/30">
                   +{attributes.length - 3}
                 </Badge>
               )}

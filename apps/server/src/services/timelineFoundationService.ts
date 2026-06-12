@@ -23,6 +23,7 @@
 
 import { v4 as uuid } from 'uuid';
 import { logger } from '../logger';
+import { ruleBasedTitleGenerationService } from './ruleBasedTitleGeneration';
 import { supabaseAdmin } from './supabaseClient';
 
 // ── Event type classification ─────────────────────────────────────────────────
@@ -73,6 +74,15 @@ function isBadContent(content: string): boolean {
   return BAD_CONTENT_PATTERNS.some(p => p.test(trimmed));
 }
 
+// Title preference: user's own summary → contextual rule-based title from the
+// entry content → generic event-type label. Keeps "Untitled"/bare type names
+// off the timeline whenever there is any content to name the event from.
+function eventTitle(summary: string | null, content: string, fallback: string): string {
+  if (summary && summary.trim().length > 0) return summary;
+  const generated = ruleBasedTitleGenerationService.generateTitle(content);
+  return generated && generated.length >= 8 ? generated : fallback;
+}
+
 function classifyEntry(
   content: string,
   tags: string[],
@@ -92,7 +102,7 @@ function classifyEntry(
     return {
       eventType: 'relationship_separation',
       timelineType: 'shared_experience',
-      title: summary ?? 'Relationship ended — blocked and no contact',
+      title: eventTitle(summary, content, 'Relationship ended — blocked and no contact'),
       summary: content.slice(0, 400),
       confidence: 0.9,
       emotionalImpact: impact,
@@ -107,7 +117,7 @@ function classifyEntry(
     return {
       eventType: 'relationship_conflict',
       timelineType: 'shared_experience',
-      title: summary ?? 'Romantic conflict',
+      title: eventTitle(summary, content, 'Romantic conflict'),
       summary: content.slice(0, 400),
       confidence: 0.85,
       emotionalImpact: impact,
@@ -119,7 +129,7 @@ function classifyEntry(
     return {
       eventType: 'relationship_event',
       timelineType: 'shared_experience',
-      title: summary ?? 'Relationship update',
+      title: eventTitle(summary, content, 'Relationship update'),
       summary: content.slice(0, 400),
       confidence: 0.8,
       emotionalImpact: impact,
@@ -131,7 +141,7 @@ function classifyEntry(
     return {
       eventType: 'career_event',
       timelineType: 'lore',
-      title: summary ?? 'Career event',
+      title: eventTitle(summary, content, 'Career event'),
       summary: content.slice(0, 400),
       confidence: 0.85,
       emotionalImpact: impact,
@@ -146,7 +156,7 @@ function classifyEntry(
     return {
       eventType: 'living_situation',
       timelineType: 'lore',
-      title: summary ?? 'Living situation',
+      title: eventTitle(summary, content, 'Living situation'),
       summary: content.slice(0, 400),
       confidence: 0.85,
       emotionalImpact: impact,
@@ -162,7 +172,7 @@ function classifyEntry(
     return {
       eventType: 'activity',
       timelineType: 'lore',
-      title: summary ?? 'Activity',
+      title: eventTitle(summary, content, 'Activity'),
       summary: content.slice(0, 400),
       confidence: 0.85,
       emotionalImpact: impact,
@@ -173,7 +183,7 @@ function classifyEntry(
   return {
     eventType: 'life_context',
     timelineType: 'lore',
-    title: summary ?? 'Life update',
+    title: eventTitle(summary, content, 'Life update'),
     summary: content.slice(0, 400),
     confidence: 0.75,
     emotionalImpact: impact,

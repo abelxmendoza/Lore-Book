@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home } from 'lucide-react';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -1800,6 +1800,28 @@ User's message: ${message}`;
                 )}
               </div>
             </div>
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                const confirmed = window.confirm(
+                  `Delete ${editedCharacter.name}? This removes them and their facts, relationships, and memories. Events they appear in are kept. This cannot be undone.`
+                );
+                if (!confirmed) return;
+                try {
+                  await fetchJson(`/api/characters/${character.id}`, { method: 'DELETE' });
+                  onUpdate();
+                  onClose();
+                } catch (err) {
+                  console.error('Failed to delete character:', err);
+                  alert('Failed to delete character');
+                }
+              }}
+              className="flex-shrink-0 hover:bg-red-500/15 text-white/40 hover:text-red-400 h-8 w-8 sm:h-10 sm:w-10 p-0"
+              aria-label="Delete character"
+              title="Delete character"
+            >
+              <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
+            </Button>
             <Button variant="ghost" onClick={onClose} className="flex-shrink-0 hover:bg-white/10 h-8 w-8 sm:h-10 sm:w-10 p-0" aria-label="Close">
               <X className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
@@ -2312,7 +2334,9 @@ User's message: ${message}`;
                     </div>
                       {/* Rare in story but high impact on you */}
                       {((editedCharacter.importance_level === 'minor' || editedCharacter.importance_level === 'background') &&
-                        (editedCharacter.analytics?.character_influence_on_user ?? 0) >= 70) && (
+                        ((typeof (editedCharacter.metadata as any)?.impact_override === 'number'
+                          ? (editedCharacter.metadata as any).impact_override
+                          : editedCharacter.analytics?.character_influence_on_user) ?? 0) >= 70) && (
                         <div className="mb-4 flex items-center gap-2 rounded-lg border border-purple-500/40 bg-purple-500/10 px-4 py-3">
                           <Zap className="h-5 w-5 text-purple-400 flex-shrink-0" />
                           <p className="text-sm font-medium text-purple-200">
@@ -2329,6 +2353,127 @@ User's message: ${message}`;
                     </CardContent>
                   </Card>
                 )}
+
+                {/* Your Ranking — user overrides for computed standing + impact */}
+                {(() => {
+                  const meta = (editedCharacter.metadata ?? {}) as Record<string, any>;
+                  const standing = meta.social_standing as { tier?: string; score?: number } | undefined;
+                  const overrideTier: string | null = meta.standing_override?.tier ?? null;
+                  const impactOverride: number | null = typeof meta.impact_override === 'number' ? meta.impact_override : null;
+                  const tierLabels: Record<string, string> = {
+                    inner_circle: 'Inner circle', close: 'Close', regular: 'Regular',
+                    peripheral: 'Peripheral', public_figure: 'Public figure',
+                  };
+                  const setMeta = (key: string, value: unknown) => {
+                    setEditedCharacter((prev) => ({
+                      ...prev,
+                      metadata: { ...((prev.metadata ?? {}) as Record<string, any>), [key]: value },
+                    }));
+                  };
+                  // Persist right away — the Info tab has no save button; the
+                  // server merges metadata and treats null as "clear override".
+                  const persistOverride = async (key: string, value: unknown) => {
+                    setMeta(key, value);
+                    try {
+                      await fetchJson(`/api/characters/${character.id}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ metadata: { [key]: value } }),
+                      });
+                      onUpdate();
+                    } catch (err) {
+                      console.error('Failed to save ranking override:', err);
+                    }
+                  };
+                  return (
+                    <Card className="bg-gradient-to-br from-emerald-500/20 via-emerald-600/15 to-emerald-500/20 border-2 border-emerald-500/40 shadow-lg">
+                      <CardContent className="p-6">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="p-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40">
+                            <Star className="h-5 w-5 text-emerald-300" />
+                          </div>
+                          <h3 className="text-xl font-bold text-white">Your Ranking</h3>
+                        </div>
+                        <p className="text-sm text-white/70 mb-5">
+                          You know your people better than the math does. Pin where this person stands
+                          and how much impact they have on you — your choice always wins over the computed ranking.
+                        </p>
+
+                        <div className="grid sm:grid-cols-2 gap-6">
+                          <div>
+                            <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Standing</label>
+                            <select
+                              data-testid="standing-override-select"
+                              aria-label="Standing tier override"
+                              title="Standing tier override"
+                              value={overrideTier ?? 'auto'}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                void persistOverride('standing_override', v === 'auto'
+                                  ? null
+                                  : { tier: v, set_at: new Date().toISOString() });
+                              }}
+                              className="w-full bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-sm focus:border-emerald-500/60 focus:outline-none"
+                            >
+                              <option value="auto">
+                                Auto{standing?.tier ? ` — computed: ${tierLabels[standing.tier] ?? standing.tier}` : ''}
+                              </option>
+                              <option value="inner_circle">Inner circle</option>
+                              <option value="close">Close</option>
+                              <option value="regular">Regular</option>
+                              <option value="peripheral">Peripheral</option>
+                            </select>
+                            {overrideTier && (
+                              <p className="text-xs text-emerald-300/80 mt-2">Set by you — overrides the computed tier.</p>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">
+                              Impact on me
+                              {impactOverride !== null && <span className="ml-2 text-emerald-300">{impactOverride}/100</span>}
+                            </label>
+                            {impactOverride === null ? (
+                              <button
+                                type="button"
+                                data-testid="impact-override-enable"
+                                onClick={() => void persistOverride('impact_override',
+                                  Math.round(editedCharacter.analytics?.character_influence_on_user ?? 50))}
+                                className="w-full bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white/70 text-sm text-left hover:border-emerald-500/60 transition-colors"
+                              >
+                                Auto ({Math.round(editedCharacter.analytics?.character_influence_on_user ?? 0)}/100 computed) — click to set your own
+                              </button>
+                            ) : (
+                              <div className="bg-black/80 border-2 border-emerald-500/40 rounded-lg px-4 py-3">
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  value={impactOverride}
+                                  aria-label="Impact on me"
+                                  title="Impact on me"
+                                  data-testid="impact-override-slider"
+                                  onChange={(e) => setMeta('impact_override', Number(e.target.value))}
+                                  onPointerUp={(e) => void persistOverride('impact_override', Number((e.currentTarget as HTMLInputElement).value))}
+                                  className="w-full accent-emerald-400"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void persistOverride('impact_override', null)}
+                                  className="text-xs text-white/50 hover:text-white/80 mt-1"
+                                >
+                                  Reset to auto
+                                </button>
+                              </div>
+                            )}
+                            <p className="text-xs text-white/50 mt-2">
+                              Someone can be a minor presence in your story and still shape you deeply.
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
 
                 {/* Relationship Proximity Section */}
                 <Card className="bg-gradient-to-br from-orange-500/20 via-orange-600/15 to-orange-500/20 border-2 border-orange-500/40 shadow-lg">

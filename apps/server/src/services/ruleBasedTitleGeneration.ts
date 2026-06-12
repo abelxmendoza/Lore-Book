@@ -9,8 +9,11 @@ class RuleBasedTitleGenerationService {
    * Generate title from content using rule-based extraction
    */
   generateTitle(content: string, maxLength: number = 60): string {
-    // Remove extra whitespace
-    const cleaned = content.trim().replace(/\s+/g, ' ');
+    // Remove extra whitespace and conversational greeting prefixes
+    const cleaned = content
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/^(hi|hey|hello|yo|so|okay|ok|um|well)[,!.\s]+/i, '');
 
     // Try to extract first sentence (often contains the main idea)
     const firstSentenceMatch = cleaned.match(/^[^.!?]+[.!?]/);

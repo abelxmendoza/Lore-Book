@@ -24,13 +24,19 @@ export interface SocialStanding {
   degree: number;       // unique co-participants across events
   connector: boolean;   // bridges several people (degree >= 3)
   computed_at: string;
+  overridden?: boolean; // tier pinned by the user (metadata.standing_override)
 }
+
+const VALID_TIERS: ReadonlyArray<SocialStanding['tier']> = [
+  'inner_circle', 'close', 'regular', 'peripheral', 'public_figure',
+];
 
 type CharRow = {
   id: string;
   name: string;
   relationship_depth: string | null;
   importance_level: string | null;
+  has_met: boolean | null;
   updated_at: string | null;
   metadata: Record<string, any> | null;
 };
@@ -51,7 +57,7 @@ class SocialStandingService {
   async recompute(userId: string): Promise<{ updated: number }> {
     const { data: charData } = await supabaseAdmin
       .from('characters')
-      .select('id, name, relationship_depth, importance_level, updated_at, metadata')
+      .select('id, name, relationship_depth, importance_level, has_met, updated_at, metadata')
       .eq('user_id', userId);
     const chars = (charData ?? []) as CharRow[];
     if (chars.length === 0) return { updated: 0 };
@@ -96,7 +102,11 @@ class SocialStandingService {
     for (const c of chars) {
       const mentions = Number(c.metadata?.mention_count ?? 0);
       const facts = factCount.get(c.id) ?? 0;
-      const depth = DEPTH_SCORE[c.relationship_depth ?? ''] ?? 0;
+      let depth = DEPTH_SCORE[c.relationship_depth ?? ''] ?? 0;
+      // Kinship floor: family you've actually met shouldn't decay to
+      // peripheral just because they're rarely written about.
+      const isFamily = c.metadata?.relationship_type === 'family';
+      if (isFamily && c.has_met !== false) depth = Math.max(depth, DEPTH_SCORE.close);
       const degree = coParticipants.get(c.id)?.size ?? 0;
       const events = eventCount.get(c.id) ?? 0;
       const daysSince = c.updated_at ? (now - new Date(c.updated_at).getTime()) / 86_400_000 : 365;
@@ -113,19 +123,25 @@ class SocialStandingService {
       );
 
       const isPublicFigure = Boolean(c.metadata?.public_figure);
-      const tier: SocialStanding['tier'] =
+      const computedTier: SocialStanding['tier'] =
         isPublicFigure && score < 0.6 ? 'public_figure'
         : score >= 0.6 ? 'inner_circle'
         : score >= 0.4 ? 'close'
         : score >= 0.2 ? 'regular'
         : 'peripheral';
 
+      // User override wins over the computed tier; computed score is kept so
+      // the organic signal stays visible alongside the pin.
+      const overrideTier = c.metadata?.standing_override?.tier as SocialStanding['tier'] | undefined;
+      const hasOverride = Boolean(overrideTier && VALID_TIERS.includes(overrideTier));
+
       const standing: SocialStanding = {
         score: Math.round(score * 100) / 100,
-        tier,
+        tier: hasOverride ? overrideTier! : computedTier,
         degree,
         connector: degree >= 3,
         computed_at: new Date().toISOString(),
+        ...(hasOverride ? { overridden: true } : {}),
       };
 
       await supabaseAdmin
