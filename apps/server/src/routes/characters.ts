@@ -1074,7 +1074,12 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       .select('*')
       .or(`source_character_id.eq.${character.id},target_character_id.eq.${character.id}`);
 
-    // Get character names for relationships
+    const associatedCharacterIds = new Set<string>([
+      ...(Array.isArray(character.associated_with_character_ids) ? character.associated_with_character_ids : []),
+      ...(Array.isArray(character.mentioned_by_character_ids) ? character.mentioned_by_character_ids : []),
+    ].filter((id): id is string => typeof id === 'string' && id.length > 0 && id !== character.id));
+
+    // Get character names for relationships and inferred story associations
     const relationshipCharacterIds = new Set<string>();
     relationships?.forEach((rel) => {
       if (rel.source_character_id === character.id) {
@@ -1083,6 +1088,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         relationshipCharacterIds.add(rel.source_character_id);
       }
     });
+    associatedCharacterIds.forEach((characterId) => relationshipCharacterIds.add(characterId));
 
     const { data: relatedCharacters } = relationshipCharacterIds.size > 0
       ? await supabaseAdmin
@@ -1115,6 +1121,31 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     const metadata = (character.metadata || {}) as Record<string, unknown>;
     const social_media = metadata.social_media as Record<string, string> | undefined;
+    const directRelationships = relationships?.map((rel) => {
+      const relatedCharId = rel.source_character_id === character.id ? rel.target_character_id : rel.source_character_id;
+      return {
+        id: rel.id,
+        character_id: relatedCharId,
+        character_name: characterNameMap.get(relatedCharId) || 'Unknown',
+        relationship_type: rel.relationship_type,
+        closeness_score: rel.closeness_score,
+        summary: rel.summary,
+        status: rel.status
+      };
+    }) || [];
+    const directlyRelatedIds = new Set(directRelationships.map((rel) => rel.character_id));
+    const inferredStoryRelationships = Array.from(associatedCharacterIds)
+      .filter((characterId) => !directlyRelatedIds.has(characterId))
+      .map((characterId) => ({
+        id: `story-association-${character.id}-${characterId}`,
+        character_id: characterId,
+        character_name: characterNameMap.get(characterId) || 'Unknown',
+        relationship_type: 'story_association',
+        closeness_score: 3,
+        summary: 'Connected through shared story context, mentions, or scene grouping.',
+        status: 'inferred'
+      }));
+    const allRelationships = [...directRelationships, ...inferredStoryRelationships];
 
     res.json({
       id: character.id,
@@ -1132,20 +1163,21 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       metadata: metadata,
       created_at: character.created_at,
       updated_at: character.updated_at,
+      first_name: character.first_name ?? null,
+      last_name: character.last_name ?? null,
+      is_nickname: character.is_nickname ?? null,
+      importance_level: character.importance_level ?? null,
+      importance_score: character.importance_score ?? null,
+      proximity_level: character.proximity_level ?? null,
+      has_met: character.has_met ?? null,
+      relationship_depth: character.relationship_depth ?? null,
+      associated_with_character_ids: character.associated_with_character_ids ?? [],
+      mentioned_by_character_ids: character.mentioned_by_character_ids ?? [],
+      context_of_mention: character.context_of_mention ?? null,
+      likelihood_to_meet: character.likelihood_to_meet ?? null,
       memory_count: memoryCount || 0,
-      relationship_count: relationshipCount || 0,
-      relationships: relationships?.map((rel) => {
-        const relatedCharId = rel.source_character_id === character.id ? rel.target_character_id : rel.source_character_id;
-        return {
-          id: rel.id,
-          character_id: relatedCharId,
-          character_name: characterNameMap.get(relatedCharId) || 'Unknown',
-          relationship_type: rel.relationship_type,
-          closeness_score: rel.closeness_score,
-          summary: rel.summary,
-          status: rel.status
-        };
-      }) || [],
+      relationship_count: Math.max(relationshipCount || 0, allRelationships.length),
+      relationships: allRelationships,
       shared_memories: memories?.map((mem) => ({
         id: mem.id,
         entry_id: mem.journal_entry_id,

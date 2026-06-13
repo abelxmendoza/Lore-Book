@@ -705,6 +705,52 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     };
   };
 
+  const deriveAnalyticsFromCharacter = (character: CharacterDetail) => {
+    const memoryCount = Math.max(character.memory_count ?? 0, character.shared_memories?.length ?? 0, sharedMemoryCards.length);
+    const relationshipCount = Math.max(character.relationship_count ?? 0, character.relationships?.length ?? 0);
+    const importanceScore = Math.round(character.importance_score ?? Math.min(100, 20 + memoryCount * 8 + relationshipCount * 6));
+    const closenessBase = character.relationship_depth === 'close' ? 75
+      : character.relationship_depth === 'moderate' ? 55
+      : character.relationship_depth === 'casual' ? 35
+      : character.relationship_depth === 'acquaintance' ? 20
+      : 15;
+    const closenessScore = Math.min(100, closenessBase + Math.min(25, memoryCount * 4));
+    const activityLevel = Math.min(100, memoryCount * 10 + relationshipCount * 5);
+    const engagementScore = Math.min(100, activityLevel + (character.status === 'active' ? 15 : 0));
+    const relationshipDepth = Math.min(100, closenessScore + Math.min(15, relationshipCount * 3));
+    const influence = Math.min(100, importanceScore + (['family', 'romantic', 'mentor'].includes(character.archetype ?? '') ? 15 : 0));
+
+    return {
+      closeness_score: closenessScore,
+      importance_score: importanceScore,
+      priority_score: Math.min(100, Math.round((importanceScore + engagementScore) / 2)),
+      engagement_score: engagementScore,
+      relationship_depth: relationshipDepth,
+      interaction_frequency: Math.min(100, memoryCount * 12),
+      recency_score: memoryCount > 0 ? 55 : 20,
+      relevance_score: Math.min(100, importanceScore + (character.status === 'active' ? 10 : 0)),
+      value_score: Math.min(100, importanceScore + 10),
+      character_influence_on_user: influence,
+      user_influence_over_character: Math.max(10, Math.min(100, Math.round(influence * 0.75))),
+      sentiment_score: 20,
+      trust_score: character.relationship_depth === 'close' ? 75 : character.relationship_depth === 'moderate' ? 55 : 35,
+      support_score: character.archetype === 'ally' || character.archetype === 'mentor' || character.archetype === 'family' ? 70 : 45,
+      conflict_score: 10,
+      activity_level: activityLevel,
+      shared_experiences: memoryCount,
+      relationship_duration_days: 0,
+      trend: memoryCount >= 3 ? 'deepening' as const : 'stable' as const,
+      strengths: [
+        relationshipCount > 0 ? 'Connected in your social graph' : null,
+        memoryCount > 0 ? 'Appears in recorded memories' : null,
+        character.archetype ? `Known as ${character.archetype}` : null,
+      ].filter((item): item is string => Boolean(item)),
+      weaknesses: [],
+      opportunities: ['Add more stories to improve confidence'],
+      risks: [],
+    };
+  };
+
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(true);
   const [loadingMemories, setLoadingMemories] = useState(false);
@@ -1572,7 +1618,16 @@ User's message: ${message}`;
           return memoryEntryToCard(entry);
         } catch (error) {
           console.error(`Failed to load entry ${memory.entry_id}:`, error);
-          return null;
+          return {
+            id: memory.id,
+            title: memory.summary || `Memory with ${character.name}`,
+            content: memory.summary || `Mentioned ${character.name}`,
+            date: memory.date,
+            tags: ['character-memory'],
+            source: 'journal',
+            sourceIcon: '📖',
+            characters: [character.name],
+          } satisfies MemoryCard;
         }
       });
 
@@ -1689,6 +1744,11 @@ User's message: ${message}`;
       name: rel.character_name || 'Unknown',
     } as Character);
   };
+  const strongestConnections = [...(editedCharacter.relationships ?? [])]
+    .filter(rel => rel.character_name && rel.character_name !== 'You')
+    .sort((left, right) => (right.closeness_score ?? 0) - (left.closeness_score ?? 0))
+    .slice(0, 5);
+  const storyGroups = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm" data-testid="character-modal" role="dialog" aria-modal="true">
@@ -2156,6 +2216,73 @@ User's message: ${message}`;
                       </CardContent>
                     </Card>
                   </div>
+
+                  {(strongestConnections.length > 0 || storyGroups.length > 0) && (
+                    <div className="grid lg:grid-cols-2 gap-4">
+                      {strongestConnections.length > 0 && (
+                        <Card className="bg-gradient-to-br from-emerald-950/20 via-black/45 to-black/70 border border-emerald-500/20">
+                          <CardHeader className="pb-2">
+                            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                              <Users className="h-4 w-4 text-emerald-300" />
+                              Strongest Connections
+                            </h3>
+                          </CardHeader>
+                          <CardContent className="space-y-2">
+                            {strongestConnections.map(rel => (
+                              <button
+                                key={rel.id ?? rel.character_id}
+                                type="button"
+                                onClick={() => void openCharacterByRelationship(rel)}
+                                className="w-full rounded-lg border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-left hover:border-emerald-400/45 hover:bg-emerald-500/10 transition-colors"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-sm font-medium text-white">{rel.character_name}</span>
+                                  <span className="text-xs text-emerald-300">{rel.closeness_score ?? 0}/10</span>
+                                </div>
+                                <p className="text-[11px] text-white/40 capitalize">
+                                  {rel.relationship_type.replace(/_/g, ' ')}{rel.status ? ` · ${rel.status}` : ''}
+                                </p>
+                              </button>
+                            ))}
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {storyGroups.length > 0 && (
+                        <Card className="bg-gradient-to-br from-blue-950/20 via-black/45 to-black/70 border border-blue-500/20">
+                          <CardHeader className="pb-2">
+                            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                              <Building2 className="h-4 w-4 text-blue-300" />
+                              Story Groups & Organizations
+                            </h3>
+                          </CardHeader>
+                          <CardContent className="space-y-2">
+                            {storyGroups.slice(0, 6).map((org: any) => (
+                              <button
+                                key={org.id}
+                                type="button"
+                                onClick={() => setSelectedOrganization(org)}
+                                className="w-full rounded-lg border border-blue-500/15 bg-blue-500/5 px-3 py-2 text-left hover:border-blue-400/45 hover:bg-blue-500/10 transition-colors"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-sm font-medium text-white truncate">{org.name}</span>
+                                  <span className="text-[10px] text-blue-300 capitalize">{String(org.group_type ?? org.type ?? 'group').replace(/_/g, ' ')}</span>
+                                </div>
+                                {(org.character_role || org.character_member_notes) && (
+                                  <p className="text-[11px] text-white/40 line-clamp-1">
+                                    {org.character_role ?? org.character_member_notes}
+                                  </p>
+                                )}
+                              </button>
+                            ))}
+                            <p className="text-[11px] text-white/35 pt-1">
+                              Groups are inferred from shared scenes, repeated co-mentions, organizations, communities, venues, and story clusters.
+                            </p>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  )}
 
                   <Card className="bg-gradient-to-br from-cyan-950/20 via-black/45 to-violet-950/20 border border-cyan-500/20">
                     <CardContent className="p-4">
@@ -3579,13 +3706,7 @@ User's message: ${message}`;
             {!loadingDetails && activeTab === 'insights' && (
               <div className="space-y-6">
                 {(() => {
-                  const analytics = editedCharacter.analytics ?? (isMockDataEnabled ? generateMockAnalytics(editedCharacter) : null);
-                  if (!analytics) return (
-                    <div className="text-center py-12 text-white/40">
-                      <BarChart3 className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                      <p className="text-sm">No analytics data yet — keep journaling about {editedCharacter.name.split(' ')[0]}.</p>
-                    </div>
-                  );
+                  const analytics = editedCharacter.analytics ?? (isMockDataEnabled ? generateMockAnalytics(editedCharacter) : deriveAnalyticsFromCharacter(editedCharacter));
                   const firstName = editedCharacter.name.split(' ')[0];
 
                   // ── 1. Relationship Sentence ────────────────────────────────
