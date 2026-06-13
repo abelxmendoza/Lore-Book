@@ -998,52 +998,48 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   useEffect(() => {
     const loadFullDetails = async () => {
       setLoadingDetails(true);
+      if (isMockDataEnabled) {
+        const mockMemories = createMockMemories(character.name);
+        const mockRelationshipData = generateMockRelationshipData(character as CharacterDetail);
+        const demoCharacter = {
+          ...character,
+          ...mockRelationshipData,
+          memory_count: Math.max(character.memory_count ?? 0, mockMemories.length),
+          relationship_count: Math.max(character.relationship_count ?? 0, character.relationships?.length ?? 0),
+          shared_memories: mockMemories.map((memory) => ({
+            id: memory.id,
+            entry_id: memory.id,
+            date: memory.date,
+            summary: memory.title,
+          })),
+        } as CharacterDetail;
+        setEditedCharacter(demoCharacter);
+        setSharedMemoryCards(mockMemories);
+        setLoadingDetails(false);
+        return;
+      }
+
       try {
         const response = await fetchJson<CharacterDetail>(`/api/characters/${character.id}`);
 
-        // In DEMO mode only: fill gaps with synthetic relationship data
-        if (isMockDataEnabled) {
-          const mockRelationshipData = generateMockRelationshipData(response);
-          setEditedCharacter({ ...response, ...mockRelationshipData });
-        } else {
-          setEditedCharacter(response);
-        }
+        setEditedCharacter(response);
         
         // Load full entry details for shared memories
         if (response.shared_memories && response.shared_memories.length > 0) {
           await loadSharedMemories(response.shared_memories);
         } else {
-          // If no shared memories, show mock memories only if toggle is enabled
-          if (isMockDataEnabled) {
-            const mockMemories = createMockMemories(character.name);
-            setSharedMemoryCards(mockMemories);
-          } else {
-            setSharedMemoryCards([]);
-          }
+          setSharedMemoryCards([]);
         }
       } catch (error) {
         console.error('Failed to load character details:', error);
-        // In DEMO mode only: fill gaps with synthetic relationship data on error
-        if (isMockDataEnabled) {
-          const mockRelationshipData = generateMockRelationshipData(character as CharacterDetail);
-          setEditedCharacter({ ...character, ...mockRelationshipData } as CharacterDetail);
-        } else {
-          setEditedCharacter(character as CharacterDetail);
-        }
-        
-        // On error, show mock memories only if toggle is enabled
-        if (isMockDataEnabled) {
-          const mockMemories = createMockMemories(character.name);
-          setSharedMemoryCards(mockMemories);
-        } else {
-          setSharedMemoryCards([]);
-        }
+        setEditedCharacter(character as CharacterDetail);
+        setSharedMemoryCards([]);
       } finally {
         setLoadingDetails(false);
       }
     };
     void loadFullDetails();
-  }, [character.id, character.name]);
+  }, [character, character.id, character.name, isMockDataEnabled]);
 
   // Generate mock attributes for demonstration
   const generateMockAttributes = (characterName: string): Array<{
@@ -1730,6 +1726,23 @@ User's message: ${message}`;
   const socialStanding = (editedCharacter.metadata as any)?.social_standing as { tier?: string; score?: number; connector?: boolean } | undefined;
 
   const openCharacterByRelationship = async (rel: Relationship) => {
+    if (isMockDataEnabled) {
+      setSelectedCharacterForModal({
+        id: rel.character_id || `temp-${rel.character_name}`,
+        name: rel.character_name || 'Unknown',
+        archetype: rel.relationship_type,
+        role: rel.relationship_type.replace(/_/g, ' '),
+        status: rel.status ?? 'inferred',
+        summary: rel.summary,
+        importance_level: rel.closeness_score && rel.closeness_score >= 8 ? 'major' : 'supporting',
+        importance_score: Math.min(100, Math.max(35, (rel.closeness_score ?? 5) * 10)),
+        relationship_depth: rel.closeness_score && rel.closeness_score >= 8 ? 'close' : 'moderate',
+        memory_count: 4,
+        relationship_count: 1,
+      } as Character);
+      return;
+    }
+
     try {
       if (rel.character_id) {
         const related = await fetchJson<Character>(`/api/characters/${rel.character_id}`);

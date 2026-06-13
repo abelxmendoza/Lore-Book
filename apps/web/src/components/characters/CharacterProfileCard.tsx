@@ -44,6 +44,21 @@ export type Character = {
   direct_memory_count?: number;
   knowledge_count?: number;
   relationship_count?: number;
+  relationships?: Array<{
+    id?: string;
+    character_id: string;
+    character_name?: string;
+    relationship_type: string;
+    closeness_score?: number;
+    summary?: string;
+    status?: string;
+  }>;
+  shared_memories?: Array<{
+    id: string;
+    entry_id: string;
+    date: string;
+    summary?: string;
+  }>;
   importance_level?: 'protagonist' | 'major' | 'supporting' | 'minor' | 'background' | null;
   importance_score?: number | null;
   is_nickname?: boolean | null;

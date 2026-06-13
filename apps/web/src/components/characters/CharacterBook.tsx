@@ -51,11 +51,55 @@ function withFilterDefaults(char: Character): Character {
   };
 }
 
+type DemoRelationshipValue = {
+  type?: string;
+  closeness?: number;
+};
+
+function isDemoRelationshipMap(value: unknown): value is Record<string, DemoRelationshipValue> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function withDemoRelationships(char: Character): Character {
+  const relationshipMap = char.metadata?.relationships;
+  if (char.relationships?.length || !isDemoRelationshipMap(relationshipMap)) return char;
+
+  const relationships = Object.entries(relationshipMap)
+    .map(([relatedId, relationship]) => {
+      const relatedCharacter = dummyCharacters.find((candidate) => candidate.id === relatedId);
+      if (!relatedCharacter) return null;
+      const closenessScore = Math.max(1, Math.min(10, Math.round((relationship.closeness ?? 30) / 10)));
+
+      return {
+        id: `demo-${char.id}-${relatedId}`,
+        character_id: relatedId,
+        character_name: relatedCharacter.name,
+        relationship_type: relationship.type ?? 'story_association',
+        closeness_score: closenessScore,
+        summary: `Demo inference: ${relatedCharacter.name} is connected to ${char.name} through shared memories, scenes, or social context.`,
+        status: relationship.type === 'romantic' ? 'active' : 'inferred',
+      };
+    })
+    .filter((relationship): relationship is NonNullable<typeof relationship> => Boolean(relationship));
+
+  if (relationships.length === 0) return char;
+
+  return {
+    ...char,
+    relationships,
+    relationship_count: Math.max(char.relationship_count ?? 0, relationships.length),
+    associated_with_character_ids: Array.from(new Set([
+      ...(char.associated_with_character_ids ?? []),
+      ...relationships.map((relationship) => relationship.character_id),
+    ])),
+  };
+}
+
 // ── Demo analytics normalization ─────────────────────────────────────────────
 // Derives a full analytics object from metadata fields so demo cards render
 // correctly without touching every mock character object individually.
 function withDemoAnalytics(rawChar: Character): Character {
-  const char = withFilterDefaults(rawChar);
+  const char = withDemoRelationships(withFilterDefaults(rawChar));
   if (char.analytics) return char;
   const closeness  = Number((char.metadata?.closeness_score as number | undefined) ?? (char.importance_score ?? 0));
   const importance = char.importance_score ?? 0;
