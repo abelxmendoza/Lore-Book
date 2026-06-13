@@ -12,6 +12,7 @@ import {
 } from './bayesian/beliefUpdater';
 import { openai } from '../lib/openai';
 import { jaroWinkler } from '../utils/jaroWinkler';
+import { normalizeNameKey } from '../utils/nameNormalization';
 import type {
   Entity,
   Claim,
@@ -283,15 +284,15 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
 
     for (const candidate of candidates) {
       const pool = typeEntities.get(candidate.type) ?? [];
-      const nameLower = candidate.name.toLowerCase().trim();
+      const nameLower = normalizeNameKey(candidate.name);
 
-      // Exact / alias match (in-memory)
+      // Exact / alias match (in-memory, accent/case-insensitive)
       let match: Entity | null =
         pool.find(
           e =>
-            e.primary_name.toLowerCase() === nameLower ||
+            normalizeNameKey(e.primary_name) === nameLower ||
             (Array.isArray(e.aliases) &&
-              e.aliases.some((a: string) => a.toLowerCase() === nameLower))
+              e.aliases.some((a: string) => normalizeNameKey(a) === nameLower))
         ) ?? null;
 
       if (match) {
@@ -312,7 +313,7 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
 
           const score = Math.max(
             ...namesToCheck.map((n: string) =>
-              jaroWinkler(nameLower, n.toLowerCase().trim())
+              jaroWinkler(nameLower, normalizeNameKey(n))
             )
           );
 
@@ -456,15 +457,20 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
     type: EntityType,
     aliases: string[] = []
   ): Promise<Entity> {
-    // Race condition guard: a concurrent request may have just created this entity
-    const { data: existing } = await supabaseAdmin
+    // Race condition guard: a concurrent request may have just created this
+    // entity. ilike is case- but not accent-insensitive ("Tía" vs "Tia"), so
+    // fetch the user's entities of this type and compare normalized keys.
+    const nameKey = normalizeNameKey(name);
+    const { data: existingRows } = await supabaseAdmin
       .from('omega_entities')
       .select('*')
       .eq('user_id', userId)
-      .eq('type', type)
-      .ilike('primary_name', name)
-      .limit(1)
-      .single();
+      .eq('type', type);
+    const existing = (existingRows ?? []).find(
+      (e: any) =>
+        normalizeNameKey(e.primary_name) === nameKey ||
+        (Array.isArray(e.aliases) && e.aliases.some((a: string) => normalizeNameKey(a) === nameKey))
+    );
     if (existing) return existing as Entity;
 
     // Generate embedding for entity name
@@ -817,7 +823,7 @@ Only extract clear relationships. Include temporal context when available.`
     omegaEntityId: string,
     mentionCount: number
   ): Promise<void> {
-    const importanceLevel = mentionCount >= 6 ? 'major' : mentionCount >= 3 ? 'supporting' : 'minor';
+    const mentionBasedLevel = mentionCount >= 6 ? 'major' : mentionCount >= 3 ? 'supporting' : 'minor';
     const { data: rows } = await supabaseAdmin
       .from('characters')
       .select('id, importance_level, metadata')
@@ -829,6 +835,13 @@ Only extract clear relationships. Include temporal context when available.`
 
     // Only auto-raise, never lower — and never touch protagonist (manual)
     const rank: Record<string, number> = { background: 0, minor: 1, supporting: 2, major: 3, protagonist: 4 };
+    const categories = Array.isArray(character.metadata?.relationship_categories)
+      ? character.metadata.relationship_categories as string[]
+      : [];
+    const categoryBasedLevel = categories.some(category => ['family', 'romantic', 'mentor'].includes(String(category).toLowerCase()))
+      ? 'supporting'
+      : mentionBasedLevel;
+    const importanceLevel = rank[categoryBasedLevel] > rank[mentionBasedLevel] ? categoryBasedLevel : mentionBasedLevel;
     const current = rank[character.importance_level ?? 'minor'] ?? 1;
     const proposed = rank[importanceLevel];
     const metadata = { ...(character.metadata ?? {}), mention_count: mentionCount };
@@ -1612,4 +1625,3 @@ Propose updates that should be reviewed before applying.`
 }
 
 export const omegaMemoryService = new OmegaMemoryService();
-

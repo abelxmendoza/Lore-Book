@@ -1,4 +1,4 @@
-import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff, Briefcase, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Heart, TrendingUp, TrendingDown, Minus, Zap, Flame, Wind, Moon } from 'lucide-react';
+import { Calendar, MapPin, Users, Tag, Sparkles, Instagram, Twitter, Linkedin, Github, Globe, Mail, Phone, ChevronRight, Star, Award, User, Hash, UserX, Link2, Eye, EyeOff, Briefcase, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Heart, TrendingUp, TrendingDown, Minus, Zap, Flame, Wind, Moon, BookOpen } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -41,6 +41,8 @@ export type Character = {
   created_at?: string;
   updated_at?: string;
   memory_count?: number;
+  direct_memory_count?: number;
+  knowledge_count?: number;
   relationship_count?: number;
   importance_level?: 'protagonist' | 'major' | 'supporting' | 'minor' | 'background' | null;
   importance_score?: number | null;
@@ -120,9 +122,19 @@ type CharacterProfileCardProps = {
   character: Character;
   onClick?: () => void;
   relationship?: RomanticRelationship;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelected?: () => void;
 };
 
-export const CharacterProfileCard = ({ character, onClick, relationship }: CharacterProfileCardProps) => {
+export const CharacterProfileCard = ({
+  character,
+  onClick,
+  relationship,
+  selectionMode = false,
+  selected = false,
+  onToggleSelected,
+}: CharacterProfileCardProps) => {
   const [attributes, setAttributes] = useState<CharacterAttribute[]>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
 
@@ -271,8 +283,8 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
     <Card 
       className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden h-full ${
         isUnmet ? 'opacity-75 border-dashed border-2' : ''
-      }`}
-      onClick={onClick}
+      } ${selected ? 'ring-2 ring-primary border-primary/60' : ''}`}
+      onClick={selectionMode ? onToggleSelected : onClick}
       data-testid="character-card"
     >
       {/* Full card layout - same for mobile and desktop */}
@@ -281,6 +293,23 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
         <div className={`relative h-10 sm:h-14 bg-gradient-to-br from-primary/20 via-purple-500/20 to-pink-500/20 flex items-center justify-center ${
           isUnmet ? 'opacity-60' : ''
         }`}>
+          {selectionMode && (
+            <button
+              type="button"
+              className={`absolute top-1 left-1 z-20 h-5 w-5 rounded border text-[10px] font-bold transition-colors ${
+                selected
+                  ? 'border-primary bg-primary text-black'
+                  : 'border-white/30 bg-black/60 text-white/60'
+              }`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleSelected?.();
+              }}
+              aria-label={selected ? `Deselect ${displayName}` : `Select ${displayName}`}
+            >
+              {selected ? '✓' : ''}
+            </button>
+          )}
           <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
           <div className="relative z-10">
             <CharacterAvatar url={character.avatar_url} name={character.name} size={28} className="sm:w-9 sm:h-9" />
@@ -699,7 +728,13 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
               {character.memory_count !== undefined && (
                 <div className="flex items-center gap-1 text-white/50">
                   <Sparkles className="h-2.5 w-2.5" />
-                  <span>{character.memory_count} {character.memory_count === 1 ? 'memory' : 'memories'}</span>
+                  <span>{character.memory_count} {character.memory_count === 1 ? 'signal' : 'signals'}</span>
+                </div>
+              )}
+              {character.knowledge_count !== undefined && character.knowledge_count > 0 && (
+                <div className="flex items-center gap-1 text-white/50">
+                  <BookOpen className="h-2.5 w-2.5" />
+                  <span>{character.knowledge_count} facts</span>
                 </div>
               )}
               {character.relationship_count !== undefined && (
@@ -727,4 +762,3 @@ export const CharacterProfileCard = ({ character, onClick, relationship }: Chara
     </Card>
   );
 };
-

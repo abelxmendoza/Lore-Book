@@ -48,6 +48,16 @@ type Relationship = {
   status?: string;
 };
 
+type CharacterAttribute = {
+  attributeType: string;
+  attributeValue: string;
+  confidence: number;
+  isCurrent: boolean;
+  evidence?: string;
+  startTime?: string;
+  endTime?: string;
+};
+
 type CharacterDetail = Character & {
   first_name?: string | null;
   last_name?: string | null;
@@ -123,6 +133,9 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
 export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship }: CharacterDetailModalProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const getImportanceColor = (level?: string | null) => {
     const colors: Record<string, string> = {
@@ -147,6 +160,21 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         return <Hash className="h-4 w-4" />;
       default:
         return <Hash className="h-4 w-4" />;
+    }
+  };
+
+  const deleteCharacter = async () => {
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await fetchJson(`/api/characters/${character.id}`, { method: 'DELETE' });
+      onUpdate();
+      onClose();
+    } catch (err) {
+      console.error('Failed to delete character:', err);
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete character');
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -692,20 +720,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     setActiveTab('chat');
   };
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
-  const [characterOrganizations, setCharacterOrganizations] = useState<Array<Organization & { user_is_member: boolean; character_role?: string }>>([]);
+  const [characterOrganizations, setCharacterOrganizations] = useState<Array<Organization & { user_is_member: boolean; character_role?: string; character_member_notes?: string }>>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationProfile | null>(null);
   const [selectedPerception, setSelectedPerception] = useState<PerceptionEntry | null>(null);
   const [selectedCharacterForModal, setSelectedCharacterForModal] = useState<Character | null>(null);
-  const [characterAttributes, setCharacterAttributes] = useState<Array<{
-    attributeType: string;
-    attributeValue: string;
-    confidence: number;
-    isCurrent: boolean;
-    evidence?: string;
-    startTime?: string;
-    endTime?: string;
-  }>>([]);
+  const [characterAttributes, setCharacterAttributes] = useState<CharacterAttribute[]>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
   const [knowledgeClaims, setKnowledgeClaims] = useState<any[]>([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
@@ -1097,15 +1117,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     const loadAttributes = async () => {
       setLoadingAttributes(true);
       try {
-        const response = await fetchJson<{ attributes: Array<{
-          attributeType: string;
-          attributeValue: string;
-          confidence: number;
-          isCurrent: boolean;
-          evidence?: string;
-          startTime?: string;
-          endTime?: string;
-        }> }>(`/api/characters/${character.id}/attributes?currentOnly=true`);
+        const response = await fetchJson<{ attributes: CharacterAttribute[] }>(`/api/characters/${character.id}/attributes?currentOnly=true`);
         const realAttributes = response.attributes || [];
         if (realAttributes.length === 0 && isMockDataEnabled) {
           setCharacterAttributes(generateMockAttributes(character.name));
@@ -1356,14 +1368,18 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         if (res.success) {
           // Mark each org: user_is_member = true when user_relationship is an active role
           const activeRels = new Set(['founder','leader','member','collaborator','adjacent','alumnus']);
-          const withMeta = res.organizations.map(org => ({
-            ...org,
-            user_is_member: activeRels.has(org.user_relationship),
-            character_role: org.members?.find(m =>
+          const withMeta = res.organizations.map(org => {
+            const member = org.members?.find(m =>
               m.character_id === character.id ||
               m.character_name.toLowerCase() === character.name.toLowerCase()
-            )?.role,
-          }));
+            );
+            return {
+              ...org,
+              user_is_member: activeRels.has(org.user_relationship),
+              character_role: member?.role,
+              character_member_notes: member?.notes,
+            };
+          });
           setCharacterOrganizations(withMeta);
         }
       } catch {
@@ -1630,6 +1646,50 @@ User's message: ${message}`;
     }));
   };
 
+  const currentAttributes = characterAttributes.filter(attr => attr.isCurrent !== false);
+  const attributesByType = (types: string[]) => currentAttributes.filter(attr => types.includes(attr.attributeType));
+  const firstAttributeValue = (types: string[]) => attributesByType(types)[0]?.attributeValue;
+  const confidenceLabel = (confidence?: number) => confidence == null ? null : `${Math.round(confidence * 100)}% confidence`;
+  const prettyAttributeType = (type: string) => type.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+  const firstName = editedCharacter.first_name || editedCharacter.name.split(' ')[0] || editedCharacter.name;
+  const isRomanticRelationshipType = (type = '') => /\b(romantic|dating|date|boyfriend|girlfriend|partner|spouse|wife|husband|fianc|lover|crush|situationship|ex)\b/i.test(type);
+  const romanticConnections = (editedCharacter.relationships ?? [])
+    .filter(rel => rel.character_name && rel.character_name !== 'You' && isRomanticRelationshipType(rel.relationship_type));
+  const relationshipStatus = firstAttributeValue(['relationship_status']) ??
+    (romanticConnections.length > 0 ? romanticConnections[0].relationship_type.replace(/_/g, ' ') : undefined);
+  const workAttributes = attributesByType(['employment_status', 'occupation', 'workplace', 'company', 'industry', 'job', 'side_hustle', 'brand', 'business', 'skill', 'certification', 'education']);
+  const occupations = attributesByType(['occupation', 'job']).map(attr => attr.attributeValue);
+  const workplaces = attributesByType(['workplace', 'company']).map(attr => attr.attributeValue);
+  const sideHustles = attributesByType(['side_hustle', 'brand', 'business']).map(attr => attr.attributeValue);
+  const companyOrganizations = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations)
+    .filter(org => ['company', 'brand', 'business', 'affiliation'].includes(String(org.group_type ?? org.type ?? '').toLowerCase()));
+  const lifeMap = [
+    { label: 'Location', value: firstAttributeValue(['location', 'living_situation', 'hometown']), prompt: `Where ${editedCharacter.name} lives or is from: ` },
+    { label: 'Culture', value: firstAttributeValue(['nationality', 'cultural_background', 'ethnicity']), prompt: `${editedCharacter.name}'s cultural background: ` },
+    { label: 'Education', value: firstAttributeValue(['education', 'school', 'degree', 'certification']), prompt: `${editedCharacter.name}'s education or certifications: ` },
+    { label: 'Values', value: firstAttributeValue(['core_value', 'values', 'motivation']), prompt: `What ${editedCharacter.name} cares about: ` },
+    { label: 'Goals', value: firstAttributeValue(['goal', 'career_goal', 'personal_goal', 'dream']), prompt: `${editedCharacter.name}'s goals: ` },
+    { label: 'Interests', value: firstAttributeValue(['interest', 'hobby', 'music', 'sport', 'favorite_activity']), prompt: `${editedCharacter.name}'s interests and hobbies: ` },
+  ];
+  const behaviorAttributes = attributesByType(['personality_trait', 'communication_style', 'temperament', 'lifestyle_pattern', 'habit', 'decision_style', 'stress_response']);
+  const socialStanding = (editedCharacter.metadata as any)?.social_standing as { tier?: string; score?: number; connector?: boolean } | undefined;
+
+  const openCharacterByRelationship = async (rel: Relationship) => {
+    try {
+      if (rel.character_id) {
+        const related = await fetchJson<Character>(`/api/characters/${rel.character_id}`);
+        setSelectedCharacterForModal(related);
+        return;
+      }
+    } catch {
+      // Fall through to minimal modal seed.
+    }
+    setSelectedCharacterForModal({
+      id: rel.character_id || `temp-${rel.character_name}`,
+      name: rel.character_name || 'Unknown',
+    } as Character);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm" data-testid="character-modal" role="dialog" aria-modal="true">
       <div className="bg-gradient-to-br from-black via-black/95 to-black border-0 sm:border-2 border-primary/30 rounded-none sm:rounded-2xl w-full h-full sm:h-[95vh] sm:max-w-5xl overflow-hidden flex flex-col shadow-2xl shadow-primary/20">
@@ -1810,20 +1870,7 @@ User's message: ${message}`;
             </div>
             <Button
               variant="ghost"
-              onClick={async () => {
-                const confirmed = window.confirm(
-                  `Delete ${editedCharacter.name}? This removes them and their facts, relationships, and memories. Events they appear in are kept. This cannot be undone.`
-                );
-                if (!confirmed) return;
-                try {
-                  await fetchJson(`/api/characters/${character.id}`, { method: 'DELETE' });
-                  onUpdate();
-                  onClose();
-                } catch (err) {
-                  console.error('Failed to delete character:', err);
-                  alert('Failed to delete character');
-                }
-              }}
+              onClick={() => setShowDeleteConfirm(true)}
               className="flex-shrink-0 hover:bg-red-500/15 text-white/40 hover:text-red-400 h-8 w-8 sm:h-10 sm:w-10 p-0"
               aria-label="Delete character"
               title="Delete character"
@@ -1895,6 +1942,240 @@ User's message: ${message}`;
                             />
                           </div>
                         )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Profile Intelligence — identity, work, relationships, behavior */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-cyan-500/20 border border-cyan-500/40">
+                      <Brain className="h-5 w-5 text-cyan-300" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white">Profile Intelligence</h2>
+                      <p className="text-sm text-white/60 mt-0.5">
+                        The living character sheet LoreBook builds from conversations, facts, and relationships.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid lg:grid-cols-2 gap-4">
+                    <Card className="bg-gradient-to-br from-rose-950/25 via-black/50 to-black/70 border border-rose-500/25">
+                      <CardHeader className="pb-2">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <Heart className="h-4 w-4 text-rose-300" />
+                          Relationship Status
+                        </h3>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {relationshipStatus ? (
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-white/35 mb-1">Current status</p>
+                            <Badge variant="outline" className="bg-rose-500/15 text-rose-300 border-rose-500/30 px-3 py-1 capitalize">
+                              {relationshipStatus}
+                            </Badge>
+                          </div>
+                        ) : (
+                          <UnknownField
+                            label="Relationship status"
+                            prompt={`${editedCharacter.name}'s relationship status is `}
+                            onAskInChat={askInChat}
+                          />
+                        )}
+
+                        {romanticConnections.length > 0 ? (
+                          <div>
+                            <p className="text-xs uppercase tracking-wide text-white/35 mb-2">Romantic links</p>
+                            <div className="space-y-2">
+                              {romanticConnections.map(rel => (
+                                <button
+                                  key={rel.id ?? rel.character_id}
+                                  type="button"
+                                  onClick={() => void openCharacterByRelationship(rel)}
+                                  className="w-full rounded-lg border border-rose-500/20 bg-black/35 px-3 py-2 text-left hover:border-rose-400/50 hover:bg-rose-500/10 transition-colors"
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="text-sm font-medium text-white">{rel.character_name}</span>
+                                    <span className="text-[10px] uppercase tracking-wide text-rose-300">{rel.relationship_type.replace(/_/g, ' ')}</span>
+                                  </div>
+                                  {rel.summary && <p className="text-xs text-white/45 mt-1 line-clamp-2">{rel.summary}</p>}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-white/35">
+                            No partner, dating, spouse, or crush connection is linked yet. When learned, the person appears here as a clickable card.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-br from-amber-950/25 via-black/50 to-black/70 border border-amber-500/25">
+                      <CardHeader className="pb-2">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <Briefcase className="h-4 w-4 text-amber-300" />
+                          Work, Brands & Occupations
+                        </h3>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {workAttributes.length > 0 || companyOrganizations.length > 0 ? (
+                          <>
+                            {occupations.length > 0 && (
+                              <div>
+                                <p className="text-xs uppercase tracking-wide text-white/35 mb-1">What they do</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {occupations.map(value => (
+                                    <Badge key={value} variant="outline" className="bg-amber-500/15 text-amber-300 border-amber-500/30">{value}</Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {(workplaces.length > 0 || companyOrganizations.length > 0) && (
+                              <div>
+                                <p className="text-xs uppercase tracking-wide text-white/35 mb-1">Where / companies</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {workplaces.map(value => (
+                                    <Badge key={value} variant="outline" className="bg-orange-500/15 text-orange-300 border-orange-500/30">{value}</Badge>
+                                  ))}
+                                  {companyOrganizations.map(org => (
+                                    <button
+                                      key={org.id}
+                                      type="button"
+                                      onClick={() => setSelectedOrganization(org)}
+                                      className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-xs text-orange-200 hover:bg-orange-500/20 transition-colors"
+                                    >
+                                      {org.name}{org.character_role ? ` — ${org.character_role}` : ''}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {sideHustles.length > 0 && (
+                              <div>
+                                <p className="text-xs uppercase tracking-wide text-white/35 mb-1">Side hustles / brands</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {sideHustles.map(value => (
+                                    <Badge key={value} variant="outline" className="bg-yellow-500/15 text-yellow-200 border-yellow-500/30">{value}</Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {workAttributes.slice(0, 3).map(attr => attr.evidence && (
+                              <p key={`${attr.attributeType}-${attr.attributeValue}`} className="text-[11px] text-white/35 italic line-clamp-2">
+                                {attr.evidence}
+                              </p>
+                            ))}
+                          </>
+                        ) : (
+                          <UnknownField
+                            label="Work"
+                            prompt={`What ${editedCharacter.name} does for work, brands, side hustles, or occupations: `}
+                            onAskInChat={askInChat}
+                          />
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="grid lg:grid-cols-3 gap-4">
+                    <Card className="bg-black/45 border border-white/10">
+                      <CardHeader className="pb-2">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <UserCircle className="h-4 w-4 text-cyan-300" />
+                          Identity & Life
+                        </h3>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {lifeMap.map(item => (
+                          <div key={item.label} className="flex items-start justify-between gap-3 rounded-lg bg-white/[0.03] border border-white/8 px-3 py-2">
+                            <span className="text-xs text-white/35">{item.label}</span>
+                            {item.value ? (
+                              <span className="text-xs text-white/80 text-right">{item.value}</span>
+                            ) : (
+                              <button type="button" onClick={() => askInChat(item.prompt)} className="text-xs text-primary hover:text-primary/80">Add</button>
+                            )}
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-black/45 border border-white/10">
+                      <CardHeader className="pb-2">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <Smile className="h-4 w-4 text-violet-300" />
+                          Personality & Patterns
+                        </h3>
+                      </CardHeader>
+                      <CardContent>
+                        {behaviorAttributes.length > 0 ? (
+                          <div className="space-y-2">
+                            {behaviorAttributes.slice(0, 8).map(attr => (
+                              <div key={`${attr.attributeType}-${attr.attributeValue}`} className="rounded-lg border border-violet-500/15 bg-violet-500/5 px-3 py-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="text-sm text-white/85">{attr.attributeValue}</span>
+                                  <span className="text-[10px] text-violet-300/70">{prettyAttributeType(attr.attributeType)}</span>
+                                </div>
+                                {attr.evidence && <p className="text-[10px] text-white/35 mt-1 line-clamp-2">{attr.evidence}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <UnknownField
+                            label="Personality"
+                            prompt={`How ${editedCharacter.name} behaves, communicates, and reacts under stress: `}
+                            onAskInChat={askInChat}
+                          />
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-black/45 border border-white/10">
+                      <CardHeader className="pb-2">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <Network className="h-4 w-4 text-emerald-300" />
+                          Social Standing
+                        </h3>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="rounded-lg bg-white/[0.03] border border-white/8 px-3 py-2">
+                          <p className="text-xs text-white/35 mb-1">Role in your network</p>
+                          <p className="text-sm text-white/85 capitalize">
+                            {socialStanding?.tier?.replace(/_/g, ' ') ?? editedCharacter.importance_level ?? 'Still learning'}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-white/[0.03] border border-white/8 px-3 py-2">
+                          <p className="text-xs text-white/35 mb-1">Connections</p>
+                          <p className="text-sm text-white/85">{editedCharacter.relationship_count ?? editedCharacter.relationships?.length ?? 0} known links</p>
+                        </div>
+                        <p className="text-[11px] text-white/35 leading-relaxed">
+                          Calculated from mentions, relationship links, organizations, influence, reputation signals, and how often they shape your story.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card className="bg-gradient-to-br from-cyan-950/20 via-black/45 to-violet-950/20 border border-cyan-500/20">
+                    <CardContent className="p-4">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-3">
+                        <Lightbulb className="h-4 w-4 text-cyan-300" />
+                        How LoreBook will build this profile
+                      </h3>
+                      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs text-white/55">
+                        {[
+                          'Who they are: names, aliases, pronouns, location, culture',
+                          'Who matters to them: partners, family, friends, coworkers',
+                          'What they do: jobs, industries, companies, brands, side hustles',
+                          'What they care about: values, interests, goals, preferences',
+                          'What happened: life events, accomplishments, failures, history',
+                          'How they behave: personality, communication, habits, stress patterns',
+                          'How they are seen: reputation, influence, community role',
+                          'How they change: timeline, old attributes, current state',
+                        ].map(item => (
+                          <div key={item} className="rounded-lg border border-white/8 bg-white/[0.03] p-2 leading-snug">{item}</div>
+                        ))}
                       </div>
                     </CardContent>
                   </Card>
@@ -2897,21 +3178,7 @@ User's message: ${message}`;
                           <Card 
                             key={rel.id} 
                             className="bg-black/40 border-border/50 cursor-pointer hover:border-primary/50 hover:bg-black/60 transition-all"
-                            onClick={async () => {
-                              try {
-                                // Try to fetch character by name or ID
-                                const char = await fetchJson<Character>(`/api/characters/search?name=${encodeURIComponent(rel.character_name || '')}`);
-                                if (char) {
-                                  setSelectedCharacterForModal(char);
-                                }
-                              } catch (error) {
-                                // If fetch fails, create a minimal character object
-                                setSelectedCharacterForModal({
-                                  id: rel.character_id || `temp-${rel.character_name}`,
-                                  name: rel.character_name || 'Unknown',
-                                } as Character);
-                              }
-                            }}
+                            onClick={() => void openCharacterByRelationship(rel)}
                           >
                             <CardContent className="p-4">
                               <div className="flex items-center justify-between">
@@ -2965,12 +3232,13 @@ User's message: ${message}`;
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium text-white/90 truncate">{org.name}</p>
                           <Badge variant="outline" className={`text-[10px] py-0 ${
-                            org.type === 'club' ? 'border-blue-500/25 text-blue-300' :
-                            org.type === 'affiliation' ? 'border-purple-500/25 text-purple-300' :
-                            org.type === 'company' ? 'border-orange-500/25 text-orange-300' :
-                            org.type === 'sports_team' ? 'border-cyan-500/25 text-cyan-300' :
+                            org.group_type === 'community' ? 'border-emerald-500/25 text-emerald-300' :
+                            org.group_type === 'club' ? 'border-blue-500/25 text-blue-300' :
+                            org.group_type === 'institution' ? 'border-purple-500/25 text-purple-300' :
+                            org.group_type === 'company' ? 'border-orange-500/25 text-orange-300' :
+                            org.group_type === 'sports_team' ? 'border-cyan-500/25 text-cyan-300' :
                             'border-white/15 text-white/45'
-                          }`}>{org.type?.replace(/_/g, ' ')}</Badge>
+                          }`}>{(org.group_type ?? org.type)?.replace(/_/g, ' ')}</Badge>
                         </div>
                         {org.description && <p className="text-xs text-white/45 mt-0.5 truncate">{org.description}</p>}
                         <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/30">
@@ -2978,6 +3246,9 @@ User's message: ${message}`;
                           {org.member_count > 0 && <span>{org.member_count} members</span>}
                           {org.confidence != null && <span>{Math.round(org.confidence * 100)}% confidence</span>}
                         </div>
+                        {org.character_member_notes && (
+                          <p className="text-[10px] text-white/35 mt-1 line-clamp-1">{org.character_member_notes}</p>
+                        )}
                       </div>
                       <Badge variant="outline" className={`flex-shrink-0 text-[10px] py-0 mt-0.5 ${
                         isShared
@@ -4216,6 +4487,44 @@ User's message: ${message}`;
 
       </div>
 
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4">
+          <div className="w-full max-w-md rounded-xl border border-red-500/25 bg-neutral-950 p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <h3 className="text-lg font-semibold text-white">Delete {editedCharacter.name}?</h3>
+                <p className="text-sm text-white/60 mt-1">
+                  This removes the character card, facts, relationships, and memory links. Events stay, but this action cannot be undone.
+                </p>
+              </div>
+            </div>
+            {deleteError && (
+              <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                {deleteError}
+              </div>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleteBusy}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void deleteCharacter()}
+                disabled={deleteBusy}
+                className="bg-red-500/20 hover:bg-red-500/30 text-red-100 border border-red-500/30"
+                leftIcon={<Trash2 className="h-4 w-4" />}
+              >
+                {deleteBusy ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Memory Detail Modal */}
       {selectedMemory && (
         <MemoryDetailModal
@@ -4273,4 +4582,3 @@ User's message: ${message}`;
     </div>
   );
 };
-

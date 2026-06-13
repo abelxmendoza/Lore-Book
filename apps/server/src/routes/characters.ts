@@ -9,11 +9,14 @@ import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { characterAnalyticsService } from '../services/characterAnalyticsService';
 import { findSimilarCharacter } from '../services/characterDeduplicationService';
+import { characterMergeService } from '../services/characterMergeService';
+import { characterRegistry } from '../services/characterRegistry';
 import { entityAttributeDetector } from '../services/conversationCentered/entityAttributeDetector';
 import { peoplePlacesService } from '../services/peoplePlacesService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
+import { normalizeNameKey, namesOverlapByContainment, splitPersonName } from '../utils/nameNormalization';
 
 const router = Router();
 
@@ -46,7 +49,7 @@ const createCharacterSchema = z.object({
       phone: z.string().optional()
     })
     .optional(),
-  metadata: z.record(z.unknown()).optional()
+  metadata: z.record(z.string(), z.unknown()).optional()
 });
 
 const updateCharacterSchema = z.object({
@@ -78,8 +81,318 @@ const updateCharacterSchema = z.object({
       phone: z.string().optional()
     })
     .optional(),
-  metadata: z.record(z.unknown()).optional()
+  metadata: z.record(z.string(), z.unknown()).optional()
 });
+
+const resolveEntityQuestionSchema = z.object({
+  selected_character_ids: z.array(z.string().uuid()).default([]),
+  create_new: z.boolean().default(false),
+  skip: z.boolean().default(false),
+});
+
+const mergeCharactersSchema = z.object({
+  source_id: z.string().uuid(),
+  target_id: z.string().uuid(),
+  reason: z.string().optional(),
+});
+
+const NON_PERSON_NAME_PATTERNS = [
+  /\b(?:street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?|drive|dr\.?|lane|ln\.?|way)\b/i,
+  /\b(?:pool|billiards|bar|club|venue|theater|theatre|restaurant|cafe|coffee|lounge|park|beach|arena|stadium)\b/i,
+  /\b(?:show|event|anniversary|party|night|set)\b/i,
+  /\b(?:dj|band|artist|performer)\s+for\b/i,
+];
+
+function parseName(fullName: string): { firstName: string; lastName?: string } {
+  return splitPersonName(fullName);
+}
+
+function cleanEntityName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.trim().replace(/\s+/g, ' ').replace(/[.,;:!?]+$/, '').trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function uniqueNames(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const cleaned = cleanEntityName(value);
+    if (!cleaned) continue;
+    const key = normalizeNameKey(cleaned);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(cleaned);
+  }
+  return out;
+}
+
+function looksLikeNonPersonName(name: string): boolean {
+  const normalized = normalizeNameKey(name);
+  if (normalized.split(' ').length > 5) return true;
+  return NON_PERSON_NAME_PATTERNS.some(pattern => pattern.test(name));
+}
+
+function extractAliasPairs(message: string): Array<{ name: string; alias: string }> {
+  const pairs: Array<{ name: string; alias: string }> = [];
+  const akaPattern = /\b([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3})\s+(?:aka|a\.k\.a\.|also known as)\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3})/gi;
+  for (const match of message.matchAll(akaPattern)) {
+    const before = message.slice(Math.max(0, match.index - 12), match.index);
+    if (/\bfor\s+$/i.test(before)) continue;
+    const name = cleanEntityName(match[1]);
+    const alias = cleanEntityName(match[2]);
+    if (name && alias && !looksLikeNonPersonName(name) && !looksLikeNonPersonName(alias)) {
+      pairs.push({ name, alias });
+    }
+  }
+
+  const realNamePattern = /\b([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3})'?s?\s+name\s+is\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,2})/gi;
+  for (const match of message.matchAll(realNamePattern)) {
+    const alias = cleanEntityName(match[1]);
+    const name = cleanEntityName(match[2]);
+    if (name && alias && !looksLikeNonPersonName(name) && !looksLikeNonPersonName(alias)) {
+      pairs.push({ name, alias });
+    }
+  }
+
+  return pairs;
+}
+
+function nameHasMultipleParts(name: string): boolean {
+  return normalizeNameKey(name).split(' ').filter(Boolean).length > 1;
+}
+
+function withAliasDisambiguatedName(name: string, aliases: string[]): string {
+  if (nameHasMultipleParts(name) || aliases.length === 0) return name;
+  return `${name} / ${aliases[0]}`;
+}
+
+function normalizeSignalText(value: unknown): string {
+  return typeof value === 'string'
+    ? value.toLowerCase().replace(/[._@-]+/g, ' ').replace(/\s+/g, ' ').trim()
+    : '';
+}
+
+function displayNameHasFamilyTitle(name: string): boolean {
+  const normalized = normalizeSignalText(name);
+  return /^(?:my\s+)?(?:t[ií]o|t[ií]a|uncle|aunt|mom|mother|dad|father|grandma|grandpa|abuela|abuelo|cousin|sister|brother)(?:\s|$)/i.test(normalized);
+}
+
+function inferCharacterCategories(characterData: Partial<z.infer<typeof createCharacterSchema>>, displayName: string) {
+  const confirmed = new Set<string>();
+  const potential = new Set<string>();
+  const metadata = characterData.metadata ?? {};
+  const addKnown = (value: unknown) => {
+    if (typeof value === 'string' && value.trim()) confirmed.add(value.trim().toLowerCase());
+    if (Array.isArray(value)) value.forEach(addKnown);
+  };
+
+  addKnown(characterData.archetype);
+  addKnown(characterData.role);
+  addKnown(characterData.tags);
+  addKnown((metadata as any).relationship_type);
+  addKnown((metadata as any).relationship_types);
+  addKnown((metadata as any).categories);
+
+  if (displayNameHasFamilyTitle(displayName)) confirmed.add('family');
+
+  // Exclude raw display names/aliases from generic keyword scans. Stage names
+  // can contain family words ("Oscuri.dad", "Goth Tio", "Mom Jeans") without
+  // making the person family.
+  const text = [
+    characterData.summary,
+    characterData.role,
+    ...(characterData.tags ?? []),
+    (characterData as any).context,
+  ].map(normalizeSignalText).filter(Boolean).join(' ');
+
+  if (/\b(?:my|his|her|their|our)\s+(?:grandmother|grandfather|mom|dad|mother|father|sister|brother|cousin|aunt|uncle|grandma|grandpa|abuela|abuelo|t[ií]o|t[ií]a|family)\b/.test(text) || /\bfamily\s+(?:member|side|relative)\b/.test(text)) confirmed.add('family');
+  if (/\b(dated|dating|date|romantic|girlfriend|boyfriend|situationship|crush|ex|hooked up|went out|partner|wife|husband)\b/.test(text)) confirmed.add('romantic');
+  if (/\b(mentor|mentorship|teacher|instructor|bootcamp|coach|professor|advisor|taught me|guided me)\b/.test(text)) confirmed.add('mentor');
+  if (/\b(brighthire|northstar logistics|agency|recruiter|onboarding|hiring|background check|identity verification|paperwork|professional|colleague|coworker|co worker|job|career|client|manager|boss)\b/.test(text)) confirmed.add('professional');
+  if (/\b(bandmate|creative|collaborator|collab|co founder|cofounder|artist|music|writing|producer|dj|show|set|song|studio|make music|record|perform)\b/.test(text)) confirmed.add('creative');
+  if (/\b(friend|ally|buddy|roommate|homie|new friends?)\b/.test(text)) confirmed.add('friend');
+  if (/\b(asked|might|could|potential(?:ly)?|want(?:ed)? to|trying to)\b.{0,40}\b(collab|collaborate|work together|make music|record|hire|book)\b/.test(text)) {
+    potential.add('professional');
+    confirmed.add('creative');
+  }
+
+  return {
+    confirmed: [...confirmed],
+    potential: [...potential].filter(category => !confirmed.has(category)),
+  };
+}
+
+function inferInitialImportance(characterData: Partial<z.infer<typeof createCharacterSchema>>, categories: string[]) {
+  let score = 10;
+  if (characterData.proximity === 'direct') score += 18;
+  if (characterData.proximity === 'indirect') score += 8;
+  if (characterData.hasMet) score += 10;
+  if (characterData.relationshipDepth === 'close') score += 30;
+  if (characterData.relationshipDepth === 'moderate') score += 18;
+  if (characterData.relationshipDepth === 'casual') score += 8;
+  if (characterData.summary && characterData.summary.length > 80) score += 14;
+  if (categories.some(category => ['family', 'romantic', 'mentor'].includes(category))) score += 18;
+  if (categories.some(category => ['friend', 'creative', 'professional'].includes(category))) score += 8;
+
+  const importanceScore = Math.max(0, Math.min(100, score));
+  const importanceLevel =
+    importanceScore >= 70 ? 'major' :
+    importanceScore >= 40 ? 'supporting' :
+    'minor';
+  return { importanceLevel, importanceScore };
+}
+
+function mergeCharacterPayloads(characters: any[]): any[] {
+  const merged: any[] = [];
+  const keyToIndex = new Map<string, number>();
+
+  for (const character of characters) {
+    const name = cleanEntityName(character.name);
+    if (!name || looksLikeNonPersonName(name)) continue;
+    const aliases = uniqueNames(character.alias ?? []).filter(alias => normalizeNameKey(alias) !== normalizeNameKey(name));
+    const keys = [name, ...aliases].map(normalizeNameKey);
+    const existingIndex = keys.map(key => keyToIndex.get(key)).find(index => index !== undefined);
+
+    if (existingIndex === undefined) {
+      const next = { ...character, name, alias: aliases };
+      merged.push(next);
+      const index = merged.length - 1;
+      for (const key of keys) keyToIndex.set(key, index);
+      continue;
+    }
+
+    const existing = merged[existingIndex];
+    existing.alias = uniqueNames([...(existing.alias ?? []), ...aliases, name])
+      .filter(alias => normalizeNameKey(alias) !== normalizeNameKey(existing.name));
+    existing.summary = [existing.summary, character.summary].filter(Boolean).join(' ');
+    existing.tags = uniqueNames([...(existing.tags ?? []), ...(character.tags ?? [])]);
+    for (const field of ['pronouns', 'archetype', 'role', 'proximity', 'hasMet', 'relationshipDepth', 'likelihoodToMeet']) {
+      if (existing[field] === undefined && character[field] !== undefined) existing[field] = character[field];
+    }
+    existing.associatedWith = uniqueNames([...(existing.associatedWith ?? []), ...(character.associatedWith ?? [])]);
+  }
+
+  return merged;
+}
+
+async function findExistingByAnyName(userId: string, names: string[]) {
+  if (names.length === 0) return null;
+  const normalized = new Set(names.map(normalizeNameKey));
+  const { data } = await supabaseAdmin
+    .from('characters')
+    .select('*')
+    .eq('user_id', userId);
+  return (data ?? []).find((row: any) => {
+    const rowNames = [row.name, ...((row.alias ?? []) as string[])].map(normalizeNameKey);
+    return rowNames.some(name => normalized.has(name));
+  }) ?? null;
+}
+
+async function findExistingByAlias(userId: string, aliases: string[]) {
+  if (aliases.length === 0) return null;
+  const normalized = new Set(aliases.map(normalizeNameKey));
+  const { data } = await supabaseAdmin
+    .from('characters')
+    .select('*')
+    .eq('user_id', userId);
+  return (data ?? []).find((row: any) => {
+    const rowAliases = ((row.alias ?? []) as string[]).map(normalizeNameKey);
+    return normalizeNameKey(row.name) !== normalizeNameKey(aliases[0] ?? '')
+      && rowAliases.some(alias => normalized.has(alias));
+  }) ?? null;
+}
+
+async function hasSameBarePrimaryName(userId: string, name: string) {
+  if (nameHasMultipleParts(name)) return false;
+  const nameKey = normalizeNameKey(name);
+  const { data } = await supabaseAdmin
+    .from('characters')
+    .select('id, name')
+    .eq('user_id', userId);
+  return (data ?? []).some((row: any) => normalizeNameKey(row.name).split(' ').includes(nameKey));
+}
+
+async function mergeExtractedCharacterData(
+  userId: string,
+  characterId: string,
+  characterData: z.infer<typeof createCharacterSchema>,
+  opts: { preferIncomingName?: boolean; matchedMention?: string } = {}
+) {
+  const { data: existing } = await supabaseAdmin
+    .from('characters')
+    .select('*')
+    .eq('id', characterId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (!existing) return null;
+
+  const incomingName = cleanEntityName(characterData.name);
+  const existingAliases = Array.isArray(existing.alias) ? existing.alias : [];
+  const inferredCategories = inferCharacterCategories(characterData, incomingName ?? existing.name);
+  const aliases = uniqueNames([
+    ...existingAliases,
+    ...(characterData.alias ?? []),
+    opts.matchedMention,
+    opts.preferIncomingName ? existing.name : undefined,
+  ]).filter(alias => normalizeNameKey(alias) !== normalizeNameKey(opts.preferIncomingName && incomingName ? incomingName : existing.name));
+
+  const metadata = {
+    ...((existing.metadata ?? {}) as Record<string, unknown>),
+    ...(characterData.metadata ?? {}),
+    ...(characterData.social_media ? { social_media: characterData.social_media } : {}),
+    relationship_categories: uniqueNames([
+      ...(((existing.metadata as any)?.relationship_categories ?? []) as string[]),
+      ...inferredCategories.confirmed,
+    ]),
+    potential_relationship_categories: uniqueNames([
+      ...(((existing.metadata as any)?.potential_relationship_categories ?? []) as string[]),
+      ...inferredCategories.potential,
+    ]),
+    mention_count: Number((existing.metadata as any)?.mention_count ?? 0) + 1,
+  };
+
+  const payload: Record<string, unknown> = {
+    alias: aliases,
+    metadata,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (opts.preferIncomingName && incomingName && normalizeNameKey(incomingName) !== normalizeNameKey(existing.name)) {
+    const nameParts = characterData.firstName
+      ? { firstName: characterData.firstName, lastName: characterData.lastName }
+      : parseName(incomingName);
+    payload.name = incomingName;
+    payload.first_name = nameParts.firstName || null;
+    payload.last_name = nameParts.lastName || null;
+    payload.is_nickname = false;
+  } else if (!existing.first_name && characterData.firstName) {
+    payload.first_name = characterData.firstName;
+    if (characterData.lastName) payload.last_name = characterData.lastName;
+  }
+
+  if (!existing.role && characterData.role) payload.role = characterData.role;
+  if (!existing.pronouns && characterData.pronouns) payload.pronouns = characterData.pronouns;
+  if (!existing.archetype && characterData.archetype) payload.archetype = characterData.archetype;
+  if (!existing.summary && characterData.summary) {
+    payload.summary = characterData.summary;
+  } else if (existing.summary && characterData.summary && !existing.summary.includes(characterData.summary)) {
+    payload.summary = `${existing.summary}\n\n${characterData.summary}`;
+  }
+  if (Array.isArray(characterData.tags) && characterData.tags.length > 0) {
+    payload.tags = uniqueNames([...(existing.tags ?? []), ...characterData.tags]);
+  }
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('characters')
+    .update(payload)
+    .eq('id', characterId)
+    .eq('user_id', userId)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return updated;
+}
 
 /**
  * @swagger
@@ -139,133 +452,320 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     const characterData = parsed.data;
     const userId = req.user!.id;
-    const id = randomUUID();
-
-    // Determine avatar style based on character type/archetype
-    const style = avatarStyleFor(characterData.archetype || characterData.role);
-    const dicebearUrl = characterAvatarUrl(id, style);
-
-    // Try to cache avatar (optional - failures are handled gracefully)
-    let avatarUrl = dicebearUrl;
-    try {
-      avatarUrl = await cacheAvatar(id, dicebearUrl);
-    } catch (error) {
-      logger.warn({ error, characterId: id }, 'Avatar caching failed, using direct URL');
-    }
-
-    // Parse name if first/last not provided
-    const parseName = (fullName: string): { firstName: string; lastName?: string } => {
-      const parts = fullName.trim().split(/\s+/);
-      if (parts.length === 1) {
-        return { firstName: parts[0] };
+    const createResult = await characterRegistry.runExclusive(userId, async () => {
+      if (looksLikeNonPersonName(characterData.name)) {
+        return { type: 'reject' as const, reason: 'non_person_name' };
       }
-      return {
-        firstName: parts[0],
-        lastName: parts.slice(1).join(' ')
+      const hasExplicitAlias = (characterData.alias ?? []).length > 0;
+      if (hasExplicitAlias && !nameHasMultipleParts(characterData.name)) {
+        const existingByAlias = await findExistingByAlias(userId, characterData.alias ?? []);
+        if (existingByAlias) {
+          const updated = await mergeExtractedCharacterData(userId, existingByAlias.id, characterData, {
+            preferIncomingName: true,
+          });
+          return { type: 'merge' as const, character: updated ?? existingByAlias };
+        }
+        if (await hasSameBarePrimaryName(userId, characterData.name)) {
+          const realName = characterData.name;
+          characterData.name = withAliasDisambiguatedName(characterData.name, characterData.alias ?? []);
+          characterData.firstName = realName;
+          characterData.lastName = undefined;
+        }
+      }
+      const existingByName = await findExistingByAnyName(userId, [characterData.name, ...(characterData.alias ?? [])]);
+      if (existingByName) {
+        const existingNames = [existingByName.name, ...((existingByName.alias ?? []) as string[])].map(normalizeNameKey);
+        const primaryAlreadyKnown = existingNames.includes(normalizeNameKey(characterData.name));
+        const updated = await mergeExtractedCharacterData(userId, existingByName.id, characterData, {
+          preferIncomingName: !primaryAlreadyKnown && (characterData.alias ?? []).some(alias => existingNames.includes(normalizeNameKey(alias))),
+          matchedMention: primaryAlreadyKnown ? characterData.name : undefined,
+        });
+        return { type: 'merge' as const, character: updated ?? existingByName };
+      }
+
+      const decision = await characterRegistry.classifyForCreation(userId, characterData.name);
+      if (decision.action === 'reject') {
+        return { type: 'reject' as const, reason: decision.reason };
+      }
+      if (decision.action === 'merge') {
+        const updated = await mergeExtractedCharacterData(userId, decision.characterId, characterData, {
+          matchedMention: decision.cleanName,
+        });
+        const { data: existingChar } = await supabaseAdmin
+          .from('characters')
+          .select('*')
+          .eq('id', decision.characterId)
+          .eq('user_id', userId)
+          .single();
+        return { type: 'merge' as const, character: updated ?? existingChar };
+      }
+      if (decision.action === 'defer') {
+        await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, null, decision.rawName);
+        return { type: 'defer' as const, decision };
+      }
+
+      const id = randomUUID();
+
+      // Determine avatar style based on character type/archetype
+      const style = avatarStyleFor(characterData.archetype || characterData.role);
+      const dicebearUrl = characterAvatarUrl(id, style);
+
+      // Try to cache avatar (optional - failures are handled gracefully)
+      let avatarUrl = dicebearUrl;
+      try {
+        avatarUrl = await cacheAvatar(id, dicebearUrl);
+      } catch (error) {
+        logger.warn({ error, characterId: id }, 'Avatar caching failed, using direct URL');
+      }
+
+      const nameParts = characterData.firstName
+        ? { firstName: characterData.firstName, lastName: characterData.lastName }
+        : parseName(decision.cleanName);
+
+      // Determine if this is a nickname (if not explicitly set, check if it looks like a real name)
+      const isNickname = characterData.isNickname ?? (!characterData.firstName && !characterData.lastName && !decision.cleanName.includes(' '));
+
+      // Find associated character IDs if provided
+      let associatedWithIds: string[] = [];
+      if (characterData.associatedWith && characterData.associatedWith.length > 0) {
+        const { data: associatedChars } = await supabaseAdmin
+          .from('characters')
+          .select('id')
+          .eq('user_id', userId)
+          .in('name', characterData.associatedWith);
+
+        if (associatedChars) {
+          associatedWithIds = associatedChars.map(c => c.id);
+        }
+      }
+
+      // Fuzzy dedup remains as a last compatibility guard for manually entered
+      // odd shapes after the registry has already rejected high-risk cases.
+      const { data: existingForDedup } = await supabaseAdmin
+        .from('characters')
+        .select('id, name, alias')
+        .eq('user_id', userId);
+      const similar = findSimilarCharacter(decision.cleanName, existingForDedup || []);
+      if (similar) {
+        logger.info({ userId, existingId: similar.id, incomingName: decision.cleanName }, 'Dedup: returning existing character');
+        const { data: existingChar } = await supabaseAdmin
+          .from('characters')
+          .select('*')
+          .eq('id', similar.id)
+          .eq('user_id', userId)
+          .single();
+        return { type: 'merge' as const, character: existingChar };
+      }
+
+      // Merge social_media into metadata
+      const inferredCategories = inferCharacterCategories(characterData, decision.cleanName);
+      const inferredImportance = inferInitialImportance(characterData, inferredCategories.confirmed);
+      const metadata: Record<string, unknown> = {
+        ...(characterData.metadata || {}),
+        ...(characterData.social_media ? { social_media: characterData.social_media } : {}),
+        relationship_categories: inferredCategories.confirmed,
+        potential_relationship_categories: inferredCategories.potential,
+        importance_inference: {
+          source: 'initial_context',
+          reason: 'Inferred from proximity, relationship depth, summary, and category signals',
+          calculated_at: new Date().toISOString(),
+        },
       };
-    };
 
-    const nameParts = characterData.firstName 
-      ? { firstName: characterData.firstName, lastName: characterData.lastName }
-      : parseName(characterData.name);
-
-    // Determine if this is a nickname (if not explicitly set, check if it looks like a real name)
-    const isNickname = characterData.isNickname ?? (!characterData.firstName && !characterData.lastName && !characterData.name.includes(' '));
-
-    // Find associated character IDs if provided
-    let associatedWithIds: string[] = [];
-    if (characterData.associatedWith && characterData.associatedWith.length > 0) {
-      const { data: associatedChars } = await supabaseAdmin
+      // Insert character with avatar
+      const { data: character, error } = await supabaseAdmin
         .from('characters')
-        .select('id')
-        .eq('user_id', userId)
-        .in('name', characterData.associatedWith);
-      
-      if (associatedChars) {
-        associatedWithIds = associatedChars.map(c => c.id);
-      }
-    }
-
-    // Fuzzy dedup: return the existing character if a similar one already exists.
-    // Catches "my mom" vs "Mom", "Jerry" vs "Jerry Smith", "Sara" vs "Sarah".
-    const { data: existingForDedup } = await supabaseAdmin
-      .from('characters')
-      .select('id, name, alias')
-      .eq('user_id', userId);
-    const similar = findSimilarCharacter(characterData.name, existingForDedup || []);
-    if (similar) {
-      logger.info({ userId, existingId: similar.id, incomingName: characterData.name }, 'Dedup: returning existing character');
-      const { data: existingChar } = await supabaseAdmin
-        .from('characters')
+        .insert({
+          id,
+          user_id: userId,
+          name: decision.cleanName,
+          first_name: nameParts.firstName,
+          last_name: nameParts.lastName || null,
+          alias: characterData.alias || [],
+          pronouns: characterData.pronouns || null,
+          archetype: characterData.archetype || null,
+          role: characterData.role || null,
+          status: characterData.status || 'active',
+          summary: characterData.summary || null,
+          tags: characterData.tags || [],
+          avatar_url: avatarUrl,
+          is_nickname: isNickname,
+          importance_level: inferredImportance.importanceLevel,
+          importance_score: inferredImportance.importanceScore,
+          proximity_level: characterData.proximity || 'direct',
+          has_met: characterData.hasMet ?? true,
+          relationship_depth: characterData.relationshipDepth || 'moderate',
+          associated_with_character_ids: associatedWithIds,
+          mentioned_by_character_ids: [],
+          context_of_mention: null,
+          likelihood_to_meet: characterData.likelihoodToMeet || 'likely',
+          metadata,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
         .select('*')
-        .eq('id', similar.id)
         .single();
-      return res.status(200).json({ character: existingChar, deduplicated: true });
-    }
 
-    // Merge social_media into metadata
-    const metadata: Record<string, unknown> = {
-      ...(characterData.metadata || {}),
-      ...(characterData.social_media ? { social_media: characterData.social_media } : {})
-    };
-
-    // Insert character with avatar
-    const { data: character, error } = await supabaseAdmin
-      .from('characters')
-      .insert({
-        id,
-        user_id: userId,
-        name: characterData.name,
-        first_name: nameParts.firstName,
-        last_name: nameParts.lastName || null,
-        alias: characterData.alias || [],
-        pronouns: characterData.pronouns || null,
-        archetype: characterData.archetype || null,
-        role: characterData.role || null,
-        status: characterData.status || 'active',
-        summary: characterData.summary || null,
-        tags: characterData.tags || [],
-        avatar_url: avatarUrl,
-        is_nickname: isNickname,
-        importance_level: 'minor', // Will be calculated
-        importance_score: 0,
-        proximity_level: characterData.proximity || 'direct',
-        has_met: characterData.hasMet ?? true,
-        relationship_depth: characterData.relationshipDepth || 'moderate',
-        associated_with_character_ids: associatedWithIds,
-        mentioned_by_character_ids: [],
-        context_of_mention: null,
-        likelihood_to_meet: characterData.likelihoodToMeet || 'likely',
-        metadata,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .select('*')
-      .single();
-
-    if (error) {
-      // Handle unique constraint violation (user_id, name)
-      if (error.code === '23505') {
-        return res.status(409).json({ error: 'Character with this name already exists' });
+      if (error) {
+        // Handle unique constraint violation (user_id, canonical_name/name)
+        if (error.code === '23505') {
+          const incomingKey = normalizeNameKey(decision.cleanName);
+          const { data: existingRows } = await supabaseAdmin
+            .from('characters')
+            .select('*')
+            .eq('user_id', userId);
+          const existing = (existingRows ?? []).find((row: any) => normalizeNameKey(row.name) === incomingKey);
+          if (existing) {
+            return { type: 'merge' as const, character: existing };
+          }
+          return { type: 'conflict' as const };
+        }
+        logger.error({ err: error }, 'Failed to create character');
+        throw error;
       }
-      logger.error({ err: error }, 'Failed to create character');
-      return res.status(500).json({ error: 'Failed to create character' });
+
+      return { type: 'created' as const, character };
+    });
+
+    if (createResult.type === 'reject') {
+      return res.status(400).json({ error: 'Character name was rejected', reason: createResult.reason });
+    }
+    if (createResult.type === 'defer') {
+      return res.status(409).json({
+        error: 'Character name is ambiguous',
+        candidates: createResult.decision.candidates,
+        question_queued: true,
+      });
+    }
+    if (createResult.type === 'conflict') {
+      return res.status(409).json({ error: 'Character with this canonical name already exists' });
+    }
+    if (createResult.type === 'merge') {
+      return res.status(200).json({ character: createResult.character, deduplicated: true });
     }
 
     // Calculate importance asynchronously
     const { characterImportanceService } = await import('../services/characterImportanceService');
-    characterImportanceService.calculateImportance(userId, character.id, {})
+    characterImportanceService.calculateImportance(userId, createResult.character.id, {})
       .then(importance => {
-        return characterImportanceService.updateCharacterImportance(userId, character.id, importance);
+        return characterImportanceService.updateCharacterImportance(userId, createResult.character.id, importance);
       })
       .catch(err => {
-        logger.debug({ err, characterId: character.id }, 'Failed to calculate initial importance');
+        logger.debug({ err, characterId: createResult.character.id }, 'Failed to calculate initial importance');
       });
 
-    res.status(201).json({ character });
+    res.status(201).json({ character: createResult.character });
   } catch (error) {
     logger.error({ err: error }, 'Failed to create character');
     res.status(500).json({ error: 'Failed to create character' });
+  }
+});
+
+router.get('/duplicates', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { data, error } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, alias, metadata, created_at, updated_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+
+    const rows = data ?? [];
+    const byKey = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const key = normalizeNameKey(row.name);
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key)!.push(row);
+    }
+
+    const groups = [...byKey.entries()]
+      .filter(([, chars]) => chars.length > 1)
+      .map(([canonical_name, characters]) => ({
+        match_type: 'exact',
+        canonical_name,
+        characters,
+      }));
+
+    const seenPairs = new Set<string>();
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length; j++) {
+        const left = rows[i];
+        const right = rows[j];
+        const leftKey = normalizeNameKey(left.name);
+        const rightKey = normalizeNameKey(right.name);
+        if (leftKey === rightKey || !namesOverlapByContainment(leftKey, rightKey)) continue;
+        const pairKey = [left.id, right.id].sort().join(':');
+        if (seenPairs.has(pairKey)) continue;
+        seenPairs.add(pairKey);
+        groups.push({
+          match_type: 'containment',
+          canonical_name: leftKey.length <= rightKey.length ? leftKey : rightKey,
+          characters: [left, right],
+        });
+      }
+    }
+
+    res.json({ duplicate_groups: groups });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to list duplicate characters');
+    res.status(500).json({ error: 'Failed to list duplicate characters' });
+  }
+});
+
+router.post('/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = mergeCharactersSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid merge request', details: parsed.error.flatten() });
+    }
+    const { source_id, target_id, reason } = parsed.data;
+    const report = await characterMergeService.merge(req.user!.id, source_id, target_id, {
+      mergedBy: 'USER',
+      reason,
+    });
+    const { data: mergedCharacter } = await supabaseAdmin
+      .from('characters')
+      .select('*')
+      .eq('id', target_id)
+      .eq('user_id', req.user!.id)
+      .maybeSingle();
+    const { socialStandingService } = await import('../services/socialStandingService');
+    socialStandingService.recompute(req.user!.id).catch(err => {
+      logger.debug({ err }, 'Failed to recompute standing after character merge');
+    });
+    res.json({ merged: true, report, character: mergedCharacter ?? null });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to merge characters');
+    const message = error?.message ?? 'Failed to merge characters';
+    const status = message.includes('not found') ? 404 : message.includes('itself') ? 400 : 500;
+    res.status(status).json({ error: message });
+  }
+});
+
+router.post('/questions/:id/resolve', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = resolveEntityQuestionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: 'Invalid request' });
+    }
+    const { selected_character_ids, create_new, skip } = parsed.data;
+    if (!skip && !create_new && selected_character_ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'Pick at least one option, create new, or skip' });
+    }
+
+    const result = await characterRegistry.resolveQuestion(req.user!.id, String(req.params.id), {
+      selectedCharacterIds: selected_character_ids,
+      createNew: create_new,
+      skip,
+    });
+    if (!result.ok) {
+      return res.status(404).json({ success: false, error: 'Question not found or already answered' });
+    }
+    res.json({ success: true, created_character_id: result.createdCharacterId ?? null });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to resolve character question');
+    res.status(500).json({ success: false, error: 'Failed to resolve character question' });
   }
 });
 
@@ -325,6 +825,41 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
         memoryCounts.set(mem.character_id, (memoryCounts.get(mem.character_id) || 0) + 1);
       });
 
+      const { data: timelineCountsData } = await supabaseAdmin
+        .from('character_timeline_events')
+        .select('character_id')
+        .in('character_id', characterIds);
+
+      const { data: factCountsData } = await supabaseAdmin
+        .from('entity_facts')
+        .select('entity_id')
+        .eq('entity_type', 'character')
+        .in('entity_id', characterIds);
+
+      const { data: perceptionCountsData } = await supabaseAdmin
+        .from('perception_entries')
+        .select('subject_person_id, source_character_id')
+        .eq('user_id', req.user!.id)
+        .or(`subject_person_id.in.(${characterIds.join(',')}),source_character_id.in.(${characterIds.join(',')})`);
+
+      const evidenceCounts = new Map<string, number>();
+      const addEvidence = (id: string | null | undefined, amount = 1) => {
+        if (!id) return;
+        evidenceCounts.set(id, (evidenceCounts.get(id) || 0) + amount);
+      };
+      memoryCountsData?.forEach(mem => addEvidence(mem.character_id));
+      timelineCountsData?.forEach(event => addEvidence(event.character_id));
+      factCountsData?.forEach(fact => addEvidence(fact.entity_id));
+      perceptionCountsData?.forEach(perception => {
+        addEvidence(perception.subject_person_id);
+        addEvidence(perception.source_character_id);
+      });
+
+      const knowledgeCounts = new Map<string, number>();
+      factCountsData?.forEach(fact => {
+        knowledgeCounts.set(fact.entity_id, (knowledgeCounts.get(fact.entity_id) || 0) + 1);
+      });
+
       // Batch query relationships for all characters (ONE query instead of N)
       const { data: allRelationships } = await supabaseAdmin
         .from('character_relationships')
@@ -333,7 +868,12 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
 
       // Group relationships by character
       const relationshipsByCharacter = new Map<string, typeof allRelationships>();
-      const relationshipCounts = new Map<string, number>();
+      const relationshipSets = new Map<string, Set<string>>();
+      const addConnection = (fromId: string | null | undefined, toId: string | null | undefined) => {
+        if (!fromId || !toId || fromId === toId) return;
+        if (!relationshipSets.has(fromId)) relationshipSets.set(fromId, new Set());
+        relationshipSets.get(fromId)!.add(toId);
+      };
       
       allRelationships?.forEach(rel => {
         // Add to source character
@@ -341,14 +881,25 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
           relationshipsByCharacter.set(rel.source_character_id, []);
         }
         relationshipsByCharacter.get(rel.source_character_id)!.push(rel);
-        relationshipCounts.set(rel.source_character_id, (relationshipCounts.get(rel.source_character_id) || 0) + 1);
+        addConnection(rel.source_character_id, rel.target_character_id);
 
         // Add to target character
         if (!relationshipsByCharacter.has(rel.target_character_id)) {
           relationshipsByCharacter.set(rel.target_character_id, []);
         }
         relationshipsByCharacter.get(rel.target_character_id)!.push(rel);
-        relationshipCounts.set(rel.target_character_id, (relationshipCounts.get(rel.target_character_id) || 0) + 1);
+        addConnection(rel.target_character_id, rel.source_character_id);
+      });
+
+      charactersData.forEach(char => {
+        (char.associated_with_character_ids ?? []).forEach((id: string) => addConnection(char.id, id));
+        (char.mentioned_by_character_ids ?? []).forEach((id: string) => addConnection(char.id, id));
+      });
+      charactersData.forEach(char => {
+        charactersData.forEach(other => {
+          if ((other.associated_with_character_ids ?? []).includes(char.id)) addConnection(char.id, other.id);
+          if ((other.mentioned_by_character_ids ?? []).includes(char.id)) addConnection(char.id, other.id);
+        });
       });
 
       // Get all unique character IDs from relationships
@@ -366,8 +917,8 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
             .in('id', Array.from(relatedCharacterIds))
         : { data: [] };
 
-      const characterNameMap = new Map(
-        relatedCharacters?.map((c) => [c.id, c.name]) || []
+      const characterNameMap = new Map<string, string>(
+        relatedCharacters?.map((c) => [c.id, c.name] as [string, string]) || []
       );
 
       // Batch query memories for all characters (ONE query instead of N)
@@ -414,8 +965,20 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
           metadata: metadata,
           created_at: char.created_at,
           updated_at: char.updated_at,
-          memory_count: memoryCounts.get(char.id) || 0,
-          relationship_count: relationshipCounts.get(char.id) || 0,
+          first_name: char.first_name ?? null,
+          last_name: char.last_name ?? null,
+          is_nickname: char.is_nickname ?? null,
+          proximity_level: char.proximity_level ?? null,
+          has_met: char.has_met ?? null,
+          relationship_depth: char.relationship_depth ?? null,
+          associated_with_character_ids: char.associated_with_character_ids ?? [],
+          mentioned_by_character_ids: char.mentioned_by_character_ids ?? [],
+          context_of_mention: char.context_of_mention ?? null,
+          likelihood_to_meet: char.likelihood_to_meet ?? null,
+          memory_count: Math.max(memoryCounts.get(char.id) || 0, evidenceCounts.get(char.id) || 0),
+          direct_memory_count: memoryCounts.get(char.id) || 0,
+          knowledge_count: knowledgeCounts.get(char.id) || 0,
+          relationship_count: relationshipSets.get(char.id)?.size || 0,
           relationships: relationships.slice(0, 50).map((rel) => {
             const relatedCharId = rel.source_character_id === char.id ? rel.target_character_id : rel.source_character_id;
             return {
@@ -528,8 +1091,8 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
           .in('id', Array.from(relationshipCharacterIds))
       : { data: [] };
 
-    const characterNameMap = new Map(
-      relatedCharacters?.map((char) => [char.id, char.name]) || []
+    const characterNameMap = new Map<string, string>(
+      relatedCharacters?.map((char) => [char.id, char.name] as [string, string]) || []
     );
 
     // Get shared memories
@@ -640,18 +1203,6 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       .eq('user_id', userId)
       .single();
 
-    // Parse name if first/last not provided but name is updated
-    const parseName = (fullName: string): { firstName: string; lastName?: string } => {
-      const parts = fullName.trim().split(/\s+/);
-      if (parts.length === 1) {
-        return { firstName: parts[0] };
-      }
-      return {
-        firstName: parts[0],
-        lastName: parts.slice(1).join(' ')
-      };
-    };
-
     // If real name is being provided for a nickname character, move nickname to alias
     let nameToUpdate = updateData.name;
     let firstNameToUpdate = updateData.firstName;
@@ -714,6 +1265,9 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       .single();
 
     if (error) {
+      if (error.code === '23505') {
+        return res.status(409).json({ error: 'Character with this canonical name already exists' });
+      }
       logger.error({ err: error }, 'Failed to update character');
       return res.status(500).json({ error: 'Failed to update character' });
     }
@@ -801,6 +1355,13 @@ router.post('/extract-from-chat', requireAuth, async (req: AuthenticatedRequest,
 - Nicknames or alternative names used
 - Whether the user has met them
 - How they're connected (directly, through someone else, etc.)
+- Multiple relationship/category signals when context supports them (friend, romantic, family, mentor, professional, creative), but do not force one primary category.
+
+Do not extract locations, venues, events, shows, clubs, bars, streets, restaurants, songs, bands, organizations, or generic roles as characters.
+Examples:
+- "First Street Pool and Billiards" is a location, not a character.
+- "Club Metro 2 year anniversary" is an event/location context, not a character.
+- "DJ for Hell Fairy's show" is a role/context for Mr. Chino, not a new character.
 
 Return JSON:
 {
@@ -856,6 +1417,17 @@ IMPORTANT: Pay attention to possessive phrases like "Sarah's friend", "Marcus's 
 Also detect phrases like "I've never met", "mentioned by", "talked about" - these indicate unmet or third_party.
 
 For named characters, try to parse first and last names if the full name is provided (e.g., "John Smith" -> firstName: "John", lastName: "Smith").
+When the user says "real name aka stage name" or "stage name's name is real name", return one character with the real name as "name" and the stage name/nickname in "alias".
+Examples:
+- "Daisy aka Hell Fairy" -> {"name":"Daisy","firstName":"Daisy","alias":["Hell Fairy"]}
+- "Juan aka Oscuri.dad" -> {"name":"Juan","firstName":"Juan","alias":["Oscuri.dad","Oscuridad"]}
+Stage names or handles can contain kinship words without being family:
+- "Oscuri.dad" is a stage name/handle, not a father/dad relationship.
+- "Goth Tio" can be a stage name unless the user says "my tio/uncle".
+- "Mom Jeans", "Soccer Mommy", "Daddy Yankee", "Father John Misty", "Sister Nancy", "Brother Ali" are artist/stage names, not family relationships.
+Only infer family from relationship language like "my dad", "her brother", "his cousin", "my tio Juan", not from arbitrary names or aliases.
+If a sentence gives details about an already named person, put the details on that person's summary/role. Do not create a role-shaped character.
+If the user says they might collaborate, asked someone to make music, or could work together, treat that as a potential professional/creative signal, not confirmed employment or coworker status.
 For unnamed characters, extract them even if they don't have names - we'll generate nicknames for them.
 If no characters are found, return {"namedCharacters": [], "unnamedCharacters": []}.`
         },
@@ -875,23 +1447,27 @@ If no characters are found, return {"namedCharacters": [], "unnamedCharacters": 
     const namedCharacters = Array.isArray(parsed.namedCharacters) ? parsed.namedCharacters : [];
     const unnamedCharacters = Array.isArray(parsed.unnamedCharacters) ? parsed.unnamedCharacters : [];
 
-    // Helper function to parse name into first/last
-    const parseName = (fullName: string): { firstName: string; lastName?: string } => {
-      const parts = fullName.trim().split(/\s+/);
-      if (parts.length === 1) {
-        return { firstName: parts[0] };
-      }
-      return {
-        firstName: parts[0],
-        lastName: parts.slice(1).join(' ')
-      };
-    };
+    const aliasPairs = extractAliasPairs(message);
+    const aliasNames = new Map(aliasPairs.map(pair => [normalizeNameKey(pair.alias), pair.name]));
+    const explicitAliasCharacters = aliasPairs.map(pair => ({
+      name: pair.name,
+      firstName: parseName(pair.name).firstName,
+      lastName: parseName(pair.name).lastName,
+      alias: [pair.alias],
+      summary: undefined,
+      tags: [],
+    }));
 
     // Validate and clean named character data
-    const validatedNamedCharacters = namedCharacters
+    const validatedNamedCharacters = [...explicitAliasCharacters, ...namedCharacters]
       .filter(char => char.name && typeof char.name === 'string' && char.name.trim().length > 0)
       .map(char => {
-        const fullName = char.name.trim();
+        const rawName = char.name.trim();
+        const fullName = aliasNames.get(normalizeNameKey(rawName)) ?? rawName;
+        const aliases = uniqueNames([
+          ...(Array.isArray(char.alias) ? char.alias.filter((a: any) => typeof a === 'string') : []),
+          rawName !== fullName ? rawName : undefined,
+        ]).filter(alias => normalizeNameKey(alias) !== normalizeNameKey(fullName));
         // Use provided first/last names or parse from full name
         const nameParts = char.firstName 
           ? { firstName: char.firstName, lastName: char.lastName }
@@ -901,7 +1477,7 @@ If no characters are found, return {"namedCharacters": [], "unnamedCharacters": 
           name: fullName,
           firstName: nameParts.firstName,
           lastName: nameParts.lastName,
-          alias: Array.isArray(char.alias) ? char.alias.filter((a: any) => typeof a === 'string').map((a: string) => a.trim()) : [],
+          alias: aliases,
           pronouns: typeof char.pronouns === 'string' ? char.pronouns.trim() : undefined,
           archetype: typeof char.archetype === 'string' ? char.archetype.trim() : undefined,
           role: typeof char.role === 'string' ? char.role.trim() : undefined,
@@ -926,7 +1502,7 @@ If no characters are found, return {"namedCharacters": [], "unnamedCharacters": 
     );
 
     // Combine named characters with generated nicknames
-    const allCharacters = [
+    const allCharacters = mergeCharacterPayloads([
       ...validatedNamedCharacters,
       ...charactersWithNicknames.map(char => ({
         name: char.name,
@@ -948,7 +1524,7 @@ If no characters are found, return {"namedCharacters": [], "unnamedCharacters": 
         _autoGenerated: true,
         _context: char.context
       }))
-    ];
+    ]);
 
     res.json({ 
       characters: allCharacters,
@@ -989,7 +1565,7 @@ If no characters are found, return {"namedCharacters": [], "unnamedCharacters": 
  */
 router.get('/:id/attributes', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const currentOnly = req.query.currentOnly === 'true';
 
     // Verify character exists and belongs to user
@@ -1033,7 +1609,7 @@ router.get('/:id/attributes', requireAuth, async (req: AuthenticatedRequest, res
 
 router.get('/:id/provenance', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
-  const entityId = req.params.id;
+  const entityId = String(req.params.id);
 
   try {
     const { provenanceEdgeService } = await import('../services/provenance/provenanceEdgeService');
@@ -1192,7 +1768,7 @@ router.post('/:id/contradictions/resolve', requireAuth, async (req: Authenticate
 
 router.get('/:id/lifecycle', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
-  const entityId = req.params.id;
+  const entityId = String(req.params.id);
 
   try {
     const { entityLifecycleDiagnostics } = await import('../services/entityLifecycleDiagnostics');
@@ -1242,7 +1818,7 @@ router.post('/classify-backfill', requireAuth, async (req: AuthenticatedRequest,
 // Facts are grouped by category and include confidence, status, and update history.
 router.get('/:id/facts', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user?.id;
-  const characterId = req.params.id;
+  const characterId = String(req.params.id);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
@@ -1259,7 +1835,7 @@ router.get('/:id/facts', requireAuth, async (req: AuthenticatedRequest, res) => 
 // Returns recurring event candidates involving this character (for "Moments with X" UI).
 router.get('/:id/scene-candidates', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user?.id;
-  const characterId = req.params.id;
+  const characterId = String(req.params.id);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {

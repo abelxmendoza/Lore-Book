@@ -135,10 +135,11 @@ function classifyByRoleKeyword(role: string): RelationshipRole | null {
   const r = role.toLowerCase();
 
   const quickMap: Array<[RegExp, SocialDomain, string, HierarchyDirection]> = [
-    [/parent|father|mother|mom|dad/, 'family', 'parent', 'above'],
-    [/sibling|brother|sister/, 'family', 'sibling', 'lateral'],
-    [/cousin/, 'family', 'cousin', 'lateral'],
-    [/grandparent|grandma|grandpa/, 'family', 'grandparent', 'above'],
+    [/^(?:my\s+)?(?:parent|father|mother|mom|dad)\b/, 'family', 'parent', 'above'],
+    [/^(?:my\s+)?(?:sibling|brother|sister)\b/, 'family', 'sibling', 'lateral'],
+    [/^(?:my\s+)?(?:cousin)\b/, 'family', 'cousin', 'lateral'],
+    [/^(?:my\s+)?(?:grandparent|grandma|grandpa|abuela|abuelo)\b/, 'family', 'grandparent', 'above'],
+    [/^(?:my\s+)?(?:t[ií]o|t[ií]a|uncle|aunt)\b/, 'family', 'aunt_uncle', 'above'],
     [/boss|manager|supervisor|lead|director/, 'workplace', 'supervisor', 'above'],
     [/coworker|colleague|teammate/, 'workplace', 'peer', 'same'],
     [/professor|teacher|instructor/, 'education', 'teacher', 'above'],

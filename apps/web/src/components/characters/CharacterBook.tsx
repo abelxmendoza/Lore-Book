@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, LayoutGrid, LayoutList, Flame, Wind, Moon, GitBranch } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, LayoutGrid, LayoutList, Flame, Wind, Moon, GitBranch, AlertTriangle, GitMerge } from 'lucide-react';
 import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { CharacterBookPage } from './CharacterBookPage';
@@ -13,13 +13,13 @@ import { CharacterCardSkeleton } from '../ui/skeleton';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
-import { supabase } from '../../lib/supabase';
+import { apiCache } from '../../lib/cache';
+import { supabase, useAuth } from '../../lib/supabase';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { useCharacterExtraction } from '../../hooks/useCharacterExtraction';
 import { useConversationStore } from '../../features/chat/hooks/useConversationStore';
 import { generateNicknames } from '../../utils/nicknameGenerator';
-import { useAuth } from '../../lib/supabase';
 import { mockDataService } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
@@ -100,6 +100,12 @@ function withDemoAnalytics(rawChar: Character): Character {
     },
   };
 }
+
+type DuplicateGroup = {
+  match_type: 'exact' | 'containment';
+  canonical_name: string;
+  characters: Character[];
+};
 
 // Comprehensive mock character data showcasing all app capabilities
 // Export for use in mock data service
@@ -562,7 +568,7 @@ export const dummyCharacters: Character[] = [
   {
     id: 'dummy-15',
     name: 'Sam Taylor',
-    first_name: 'Sam',
+    first_name: 'Reese',
     last_name: 'Taylor',
     alias: generateNicknames('Sam Taylor', 'My workout partner and accountability buddy. We motivate each other to stay active and healthy, and our gym sessions are always filled with great conversations.', 'Gym Buddy', ['fitness', 'health', 'friendship', 'accountability']),
     pronouns: 'they/them',
@@ -1884,8 +1890,8 @@ export const dummyCharacters: Character[] = [
   },
   {
     id: 'char-003',
-    name: 'Sam',
-    first_name: 'Sam',
+    name: 'Reese',
+    first_name: 'Reese',
     last_name: null,
     alias: ['Sam'],
     pronouns: 'they/them',
@@ -1989,12 +1995,300 @@ export const dummyCharacters: Character[] = [
     social_media: {},
     memory_count: 12,
     relationship_count: 1
+  },
+  {
+    id: 'char-007',
+    name: 'Nova',
+    first_name: 'Nova',
+    last_name: null,
+    alias: ['Nova'],
+    pronouns: 'she/her',
+    archetype: 'past_romantic',
+    role: 'Past romantic connection',
+    status: 'inactive',
+    importance_level: 'supporting',
+    importance_score: 68,
+    is_nickname: false,
+    proximity_level: 'direct',
+    has_met: true,
+    relationship_depth: 'close',
+    summary: 'A past romantic connection with a blocked/no-contact boundary. Demo Mode classifies Nova as Past, No Contact, and High Risk rather than active reconciliation.',
+    tags: ['romantic', 'past', 'blocked', 'ghosted', 'high-risk'],
+    metadata: {
+      relationship_type: 'ex_lover',
+      relationship_types: ['romantic', 'past'],
+      categories: ['romantic'],
+      closeness_score: 68,
+      affection_score: 0.68,
+      compatibility_score: 0.58,
+      relationship_health: 0.18,
+      no_contact: true
+    },
+    social_media: {},
+    memory_count: 18,
+    relationship_count: 1
+  },
+  {
+    id: 'demo-family-aunt-maribel',
+    name: 'Aunt Maribel',
+    first_name: 'Maribel',
+    last_name: null,
+    alias: ['Aunt Maribel', 'Hallway Guardian'],
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Aunt',
+    status: 'active',
+    importance_level: 'supporting',
+    importance_score: 72,
+    is_nickname: false,
+    proximity_level: 'direct',
+    has_met: true,
+    relationship_depth: 'close',
+    summary: 'Family member from the Ashford-Luna side. Her contextual nickname, Hallway Guardian, demonstrates the app’s story-aware extra-name feature.',
+    tags: ['family', 'aunt', 'ashford-luna', 'nickname'],
+    metadata: {
+      relationship_type: 'family',
+      relationship_types: ['family'],
+      categories: ['family'],
+      group_memberships: ['The Ashford-Luna Family'],
+      contextual_title: 'Hallway Guardian',
+      closeness_score: 78
+    },
+    social_media: {},
+    memory_count: 16,
+    relationship_count: 5
+  },
+  {
+    id: 'demo-family-nico',
+    name: 'Nico',
+    first_name: 'Nico',
+    last_name: null,
+    alias: ['Nico'],
+    pronouns: 'he/him',
+    archetype: 'family',
+    role: 'Cousin',
+    status: 'active',
+    importance_level: 'supporting',
+    importance_score: 55,
+    is_nickname: false,
+    proximity_level: 'direct',
+    has_met: true,
+    relationship_depth: 'moderate',
+    summary: 'Family member grouped under the Ashford-Luna Family demo card.',
+    tags: ['family', 'cousin', 'ashford-luna'],
+    metadata: {
+      relationship_type: 'family',
+      relationship_types: ['family'],
+      categories: ['family'],
+      group_memberships: ['The Ashford-Luna Family'],
+      closeness_score: 64
+    },
+    social_media: {},
+    memory_count: 9,
+    relationship_count: 4
+  },
+  {
+    id: 'demo-family-nana-elena',
+    name: 'Nana Elena',
+    first_name: null,
+    last_name: null,
+    alias: ['Grandma', 'Nana'],
+    pronouns: 'she/her',
+    archetype: 'family',
+    role: 'Grandmother',
+    status: 'active',
+    importance_level: 'major',
+    importance_score: 90,
+    is_nickname: false,
+    proximity_level: 'direct',
+    has_met: true,
+    relationship_depth: 'close',
+    summary: 'Family elder and memory keeper for the Ashford-Luna Family demo group.',
+    tags: ['family', 'grandmother', 'elder', 'ashford-luna'],
+    metadata: {
+      relationship_type: 'family',
+      relationship_types: ['family'],
+      categories: ['family'],
+      group_memberships: ['The Ashford-Luna Family'],
+      closeness_score: 88
+    },
+    social_media: {},
+    memory_count: 32,
+    relationship_count: 8
+  },
+  {
+    id: 'demo-adrian-patel',
+    name: 'Adrian Patel',
+    first_name: 'Adrian',
+    last_name: 'Patel',
+    alias: ['Adrian', 'Code Harbor'],
+    pronouns: 'he/him',
+    archetype: 'mentor',
+    role: 'Teacher and mentor',
+    status: 'active',
+    importance_level: 'major',
+    importance_score: 84,
+    is_nickname: false,
+    proximity_level: 'direct',
+    has_met: true,
+    relationship_depth: 'moderate',
+    summary: 'Teacher and mentor from the Code Harbor Academy coding bootcamp. Demo Mode stores Adrian as the first name and Patel as the last name while also recognizing Code Harbor Academy as an organization/community.',
+    tags: ['mentor', 'teacher', 'bootcamp', 'coding', 'professional', 'community'],
+    metadata: {
+      relationship_type: 'professional',
+      relationship_types: ['mentor', 'teacher', 'professional'],
+      categories: ['mentors', 'professional'],
+      group_memberships: ['Code Harbor Academy'],
+      group_role: 'Founder / teacher / mentor',
+      closeness_score: 74
+    },
+    social_media: {},
+    memory_count: 21,
+    relationship_count: 3
+  },
+  {
+    id: 'demo-brighthire-dana',
+    name: 'Dana',
+    first_name: 'Dana',
+    last_name: null,
+    alias: ['Dana from BrightHire'],
+    pronouns: 'she/her',
+    archetype: 'professional',
+    role: 'BrightHire recruiting contact',
+    status: 'active',
+    importance_level: 'supporting',
+    importance_score: 63,
+    is_nickname: false,
+    proximity_level: 'direct',
+    has_met: true,
+    relationship_depth: 'professional',
+    summary: 'Professional contact from BrightHire tied to identity verification, paperwork, background checks, and Northstar Logistics onboarding.',
+    tags: ['professional', 'recruiter', 'brighthire', 'northstar logistics', 'onboarding'],
+    metadata: {
+      relationship_type: 'professional',
+      relationship_types: ['professional', 'recruiter'],
+      categories: ['professional'],
+      group_memberships: ['BrightHire Staffing', 'Northstar Logistics'],
+      group_role: 'Recruiting contact',
+      closeness_score: 42
+    },
+    social_media: {},
+    memory_count: 5,
+    relationship_count: 2
+  },
+  {
+    id: 'demo-brighthire-reese',
+    name: 'Reese',
+    first_name: 'Reese',
+    last_name: null,
+    alias: ['Reese from BrightHire'],
+    pronouns: 'they/them',
+    archetype: 'professional',
+    role: 'BrightHire agency contact',
+    status: 'active',
+    importance_level: 'minor',
+    importance_score: 46,
+    is_nickname: false,
+    proximity_level: 'direct',
+    has_met: true,
+    relationship_depth: 'professional',
+    summary: 'Professional connection from the BrightHire agency hiring pipeline for Northstar Logistics.',
+    tags: ['professional', 'agency', 'brighthire', 'northstar logistics'],
+    metadata: {
+      relationship_type: 'professional',
+      relationship_types: ['professional'],
+      categories: ['professional'],
+      group_memberships: ['BrightHire Staffing', 'Northstar Logistics'],
+      group_role: 'Agency contact',
+      closeness_score: 35
+    },
+    social_media: {},
+    memory_count: 4,
+    relationship_count: 2
   }
 ];
 
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 
-type CharacterCategory = 'all' | 'family' | 'friends' | 'mentors' | 'professional' | 'creative' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
+type CharacterCategory = 'all' | 'family' | 'friends' | 'romantic' | 'mentors' | 'professional' | 'creative' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
+
+const normalizeSignalText = (value: unknown): string => (
+  typeof value === 'string' ? value.toLowerCase().replace(/[._@-]+/g, ' ').trim() : ''
+);
+
+const displayNameHasFamilyTitle = (name: string): boolean => {
+  const normalized = normalizeSignalText(name);
+  return /^(?:my\s+)?(?:t[ií]o|t[ií]a|uncle|aunt|mom|mother|dad|father|grandma|grandpa|abuela|abuelo|cousin|sister|brother)(?:\s|$)/i.test(normalized);
+};
+
+const relationshipSignalsFor = (char: Character): Set<string> => {
+  const signals = new Set<string>();
+  const metadata = char.metadata ?? {};
+  const add = (value: unknown) => {
+    if (typeof value === 'string' && value.trim()) signals.add(value.trim().toLowerCase());
+  };
+  const addMany = (value: unknown) => {
+    if (Array.isArray(value)) value.forEach(add);
+    else add(value);
+  };
+
+  add(char.archetype);
+  add(char.role);
+  addMany(char.tags);
+  add(metadata.relationship_type);
+  addMany(metadata.relationship_types);
+  addMany(metadata.categories);
+  addMany((metadata as any).relationship_categories);
+  addMany((metadata as any).confirmed_categories);
+  addMany(metadata.group_types);
+
+  if (displayNameHasFamilyTitle(char.name)) signals.add('family');
+
+  // Deliberately exclude display name and aliases here. Stage names/handles can
+  // contain kinship words ("Oscuri.dad", "Goth Tio", "Mom Jeans") without being
+  // family. Family is inferred from relationship context, not arbitrary names.
+  const text = [char.summary, char.role, char.context_of_mention, ...(char.tags ?? [])]
+    .filter(Boolean)
+    .map(normalizeSignalText)
+    .join(' ');
+
+  if (/\b(?:my|his|her|their|our)\s+(?:grandmother|grandfather|mom|dad|mother|father|sister|brother|cousin|aunt|uncle|grandma|grandpa|abuela|abuelo|t[ií]o|t[ií]a|family)\b/.test(text) || /\bfamily\s+(?:member|side|relative)\b/.test(text)) signals.add('family');
+  if (/\b(dated|dating|date|romantic|girlfriend|boyfriend|situationship|crush|ex|hooked up|went out|partner|wife|husband)\b/.test(text)) signals.add('romantic');
+  if (/\b(mentor|mentorship|teacher|instructor|bootcamp|coach|professor|advisor|taught me|guided me)\b/.test(text)) signals.add('mentor');
+  if (/\b(brighthire|northstar logistics|agency|recruiter|onboarding|hiring|background check|identity verification|paperwork|professional|colleague|coworker|co worker|job|career|client|manager|boss)\b/.test(text)) signals.add('professional');
+  if (/\b(bandmate|creative|collaborator|collab|co founder|cofounder|artist|music|writing|producer|dj|show|set|song|studio|make music|record|perform)\b/.test(text)) signals.add('creative');
+  if (/\b(friend|ally|buddy|roommate|homie|new friends?)\b/.test(text)) signals.add('friend');
+
+  // Potential categories explain "maybe later" cases without promoting them to
+  // confirmed filters too early.
+  if (/\b(asked|might|could|potential(?:ly)?|want(?:ed)? to|trying to)\b.{0,40}\b(collab|collaborate|work together|make music|record|hire|book)\b/.test(text)) {
+    signals.add('potential_professional');
+    signals.add('creative');
+  }
+
+  return signals;
+};
+
+const characterMatchesRelationshipCategory = (char: Character, category: CharacterCategory): boolean => {
+  const signals = relationshipSignalsFor(char);
+  const met = char.status !== 'unmet';
+  switch (category) {
+    case 'family':
+      return signals.has('family');
+    case 'friends':
+      return met && (signals.has('friend') || signals.has('ally'));
+    case 'romantic':
+      return met && (signals.has('romantic') || signals.has('past_romantic') || signals.has('dating') || signals.has('ex_girlfriend') || signals.has('ex_boyfriend') || signals.has('situationship') || signals.has('crush'));
+    case 'mentors':
+      return met && (signals.has('mentor') || signals.has('coach') || signals.has('teacher') || signals.has('instructor'));
+    case 'professional':
+      return met && (signals.has('professional') || signals.has('colleague') || signals.has('coworker') || signals.has('co-worker') || signals.has('recruiter'));
+    case 'creative':
+      return met && (signals.has('creative') || signals.has('collaborator') || signals.has('bandmate'));
+    default:
+      return true;
+  }
+};
 type ImportanceFilter = 'all' | 'important' | 'high_impact' | 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
 type SortOrder = 'role' | 'impact' | 'standing';
 
@@ -2219,6 +2513,13 @@ export const CharacterBook = () => {
   const [loading, setLoading] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
+  const [showMergeDialog, setShowMergeDialog] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
+  const [mergeNotice, setMergeNotice] = useState<string | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const { entries = [], chapters = [], refreshEntries } = useLoreKeeper();
@@ -2240,7 +2541,7 @@ export const CharacterBook = () => {
   });
 
   // Realtime: refresh whenever the server-side ingestion pipeline promotes a
-  // person entity to a character record (e.g. "tío Juan" mentioned in chat).
+  // person entity to a character record (e.g. "uncle Nico" mentioned in chat).
   useEffect(() => {
     if (!user?.id) return;
     const channel = supabase
@@ -2282,6 +2583,96 @@ export const CharacterBook = () => {
     }
   };
 
+  const loadDuplicateGroups = async () => {
+    if (!user?.id || isMockDataEnabled) {
+      setDuplicateGroups([]);
+      return;
+    }
+    try {
+      const response = await fetchJson<{ duplicate_groups: DuplicateGroup[] }>('/api/characters/duplicates');
+      setDuplicateGroups(response.duplicate_groups ?? []);
+    } catch {
+      setDuplicateGroups([]);
+    }
+  };
+
+  const mergeDuplicateGroup = async (group: DuplicateGroup, targetId: string) => {
+    setMergeBusy(true);
+    setMergeError(null);
+    setMergeNotice(null);
+    try {
+      const sources = group.characters.filter(character => character.id !== targetId);
+      let lastMergedName = group.characters.find(character => character.id === targetId)?.name ?? 'the selected character';
+      for (const source of sources) {
+        const result = await fetchJson<{ character?: Character | null; report?: { canonicalName?: string; memoriesMoved?: number; relationshipsMoved?: number; factsMoved?: number; aliases?: string[] } }>('/api/characters/merge', {
+          method: 'POST',
+          body: JSON.stringify({
+            source_id: source.id,
+            target_id: targetId,
+            reason: `Merged from duplicate review (${group.match_type})`,
+          }),
+        });
+        lastMergedName = result.character?.name ?? result.report?.canonicalName ?? lastMergedName;
+      }
+      apiCache.deletePattern(/\/api\/(characters|entity-resolution|omega-memory|knowledge)/);
+      await loadCharacters();
+      await loadDuplicateGroups();
+      setMergeNotice(`Merged ${sources.length} duplicate ${sources.length === 1 ? 'card' : 'cards'} into ${lastMergedName}. Aliases, memories, facts, relationships, and knowledge links were consolidated.`);
+    } catch (error) {
+      setMergeError(error instanceof Error ? error.message : 'Failed to merge duplicate characters');
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
+  const toggleSelectedForMerge = (characterId: string) => {
+    setSelectedForMerge(prev => {
+      const next = new Set(prev);
+      if (next.has(characterId)) next.delete(characterId);
+      else next.add(characterId);
+      return next;
+    });
+  };
+
+  const cancelManualMerge = () => {
+    setSelectionMode(false);
+    setSelectedForMerge(new Set());
+    setMergeError(null);
+  };
+
+  const mergeSelectedCharacters = async (targetId: string) => {
+    const sources = Array.from(selectedForMerge).filter(id => id !== targetId);
+    if (sources.length === 0) return;
+    setMergeBusy(true);
+    setMergeError(null);
+    setMergeNotice(null);
+    try {
+      let mergedName = characters.find(character => character.id === targetId)?.name ?? 'the selected character';
+      for (const sourceId of sources) {
+        const result = await fetchJson<{ character?: Character | null; report?: { canonicalName?: string; memoriesMoved?: number; relationshipsMoved?: number; factsMoved?: number; aliases?: string[] } }>('/api/characters/merge', {
+          method: 'POST',
+          body: JSON.stringify({
+            source_id: sourceId,
+            target_id: targetId,
+            reason: 'Merged from manual character selection',
+          }),
+        });
+        mergedName = result.character?.name ?? result.report?.canonicalName ?? mergedName;
+      }
+      apiCache.deletePattern(/\/api\/(characters|entity-resolution|omega-memory|knowledge)/);
+      cancelManualMerge();
+      await loadCharacters();
+      await loadDuplicateGroups();
+      setRecentlyUpdatedIds(new Set([targetId]));
+      setTimeout(() => setRecentlyUpdatedIds(new Set()), 4000);
+      setMergeNotice(`Merged ${sources.length + 1} selected cards into ${mergedName}. The kept card now combines aliases, details, memories, facts, relationships, and knowledge links.`);
+    } catch (error) {
+      setMergeError(error instanceof Error ? error.message : 'Failed to merge selected characters');
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
   // Load romantic relationships
   const loadRelationships = async () => {
     try {
@@ -2319,6 +2710,7 @@ export const CharacterBook = () => {
   useEffect(() => {
     void loadCharacters();
     void loadRelationships();
+    void loadDuplicateGroups();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isMockDataEnabled]);
 
@@ -2391,19 +2783,14 @@ export const CharacterBook = () => {
     // in the right tab. Unmet people only appear under Mentioned / Unmet.
     if (activeCategory !== 'all') {
       filtered = filtered.filter(char => {
-        const relType = char.metadata?.relationship_type as string | undefined;
-        const met = char.status !== 'unmet';
         switch (activeCategory) {
           case 'family':
-            return char.archetype === 'family' || relType === 'family';
           case 'friends':
-            return met && (char.archetype === 'friend' || char.archetype === 'ally' || relType === 'friend');
+          case 'romantic':
           case 'mentors':
-            return met && (char.archetype === 'mentor' || relType === 'mentor');
           case 'professional':
-            return met && (char.archetype === 'colleague' || relType === 'professional');
           case 'creative':
-            return met && (char.archetype === 'collaborator' || relType === 'creative');
+            return characterMatchesRelationshipCategory(char, activeCategory);
           case 'mentioned':
             return char.status === 'unmet' || char.relationship_depth === 'mentioned_only';
           case 'direct':
@@ -2467,6 +2854,11 @@ export const CharacterBook = () => {
     const score = (c: Character) => Number(standing(c)?.score ?? 0);
     return [...filteredCharacters].sort((a, b) => (rank(b) - rank(a)) || (score(b) - score(a)));
   }, [filteredCharacters]);
+
+  const selectedCharacters = useMemo(
+    () => characters.filter(character => selectedForMerge.has(character.id)),
+    [characters, selectedForMerge]
+  );
 
   const levelLabels: Record<string, string> = {
     protagonist: 'Protagonist',
@@ -2533,6 +2925,36 @@ export const CharacterBook = () => {
       <div className="space-y-3 sm:space-y-4">
         <UserProfile characters={characters} />
       </div>
+
+      {duplicateGroups.length > 0 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-4 w-4 text-amber-300 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-amber-100">
+                {duplicateGroups.length} possible duplicate character {duplicateGroups.length === 1 ? 'group' : 'groups'}
+              </p>
+              <p className="text-xs text-amber-100/65">
+                Review before merging. Exact matches are usually safe; containment matches need judgment.
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setShowMergeDialog(true)}
+            leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+            className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-100 border border-amber-500/30"
+          >
+            Review duplicates
+          </Button>
+        </div>
+      )}
+
+      {mergeNotice && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          {mergeNotice}
+        </div>
+      )}
 
       {/* People On Your Mind Lately */}
       {(() => {
@@ -2630,9 +3052,80 @@ export const CharacterBook = () => {
               <option value="standing">By standing</option>
             </select>
           </div>
+          {!isMockDataEnabled && (
+            <div className="flex flex-col items-start gap-1">
+              <p className="text-[11px] leading-tight text-white/45">
+                If the app creates duplicate or incorrect character cards, select them here to merge their details.
+              </p>
+              <Button
+                size="sm"
+                variant={selectionMode ? 'subtle' : 'outline'}
+                leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+                onClick={() => {
+                  if (selectionMode) cancelManualMerge();
+                  else setSelectionMode(true);
+                }}
+                className="text-xs"
+              >
+                {selectionMode ? 'Cancel merge' : 'Select to merge'}
+              </Button>
+            </div>
+          )}
         </div>
 
+        {selectionMode && (
+          <div className="rounded-lg border border-primary/25 bg-primary/10 px-3 py-3 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-white">Manual character merge</p>
+                <p className="text-xs text-white/55">
+                  Select duplicate cards, then choose which card keeps the combined aliases, details, memories, and knowledge.
+                </p>
+              </div>
+              <span className="text-xs text-white/45">{selectedForMerge.size} selected</span>
+            </div>
+            <div className="grid gap-2 text-xs text-white/55 sm:grid-cols-3">
+              <div className="rounded-md border border-white/10 bg-black/20 p-2">
+                <span className="font-semibold text-white/75">Keeps one identity</span>
+                <p>The card you choose becomes the survivor and gets a smarter display name.</p>
+              </div>
+              <div className="rounded-md border border-white/10 bg-black/20 p-2">
+                <span className="font-semibold text-white/75">Combines knowledge</span>
+                <p>Aliases, summaries, tags, facts, memories, perceptions, and timeline moments move together.</p>
+              </div>
+              <div className="rounded-md border border-white/10 bg-black/20 p-2">
+                <span className="font-semibold text-white/75">Refreshes learning</span>
+                <p>The character card reloads with updated signals, facts, and connections after merge.</p>
+              </div>
+            </div>
+            {mergeError && (
+              <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+                {mergeError}
+              </div>
+            )}
+            {selectedCharacters.length >= 2 && (
+              <div className="flex flex-wrap gap-2">
+                {selectedCharacters.map(character => (
+                  <Button
+                    key={character.id}
+                    size="sm"
+                    disabled={mergeBusy}
+                    onClick={() => void mergeSelectedCharacters(character.id)}
+                    leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+                    className="text-xs"
+                  >
+                    Keep {character.name}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Navigation Tabs */}
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/50">
+          Characters can appear in multiple filters based on context. Confirmed signals show in filters now; tentative signals like “might collaborate” are learned but won&apos;t become professional until the story confirms it.
+        </div>
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as CharacterCategory)}>
           <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1">
             <TabsTrigger 
@@ -2655,6 +3148,13 @@ export const CharacterBook = () => {
             >
               <Users className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Friends</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="romantic"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-rose-500/20 data-[state=active]:text-rose-400 text-xs sm:text-sm flex-shrink-0"
+            >
+              <HeartIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span>Romantic</span>
             </TabsTrigger>
             <TabsTrigger 
               value="mentors"
@@ -2727,7 +3227,7 @@ export const CharacterBook = () => {
           </div>
           <div className="flex items-center gap-2">
             {/* Family Tree toggle — only shown in family category */}
-            {activeCategory === 'family' && (
+            {isMockDataEnabled && activeCategory === 'family' && (
               <button
                 type="button"
                 onClick={() => setShowFamilyTree(f => !f)}
@@ -2791,7 +3291,7 @@ export const CharacterBook = () => {
             </>
           )}
         </div>
-      ) : activeCategory === 'family' && showFamilyTree ? (
+      ) : isMockDataEnabled && activeCategory === 'family' && showFamilyTree ? (
         /* ── Family Tree View ── */
         <div className="space-y-4">
           {/* User's own family tree */}
@@ -2800,7 +3300,7 @@ export const CharacterBook = () => {
               <Heart className="h-3.5 w-3.5" /> Your Family Tree
             </p>
             <FamilyTreeView
-              tree={isMockDataEnabled ? createMockUserFamilyTree() : createMockUserFamilyTree()}
+              tree={createMockUserFamilyTree()}
               onMemberClick={(member) => {
                 const match = characters.find(c =>
                   c.name.toLowerCase().includes(member.first_name?.toLowerCase() ?? member.name.toLowerCase()) ||
@@ -2851,9 +3351,23 @@ export const CharacterBook = () => {
               <button
                 key={c.id}
                 type="button"
-                onClick={() => setSelectedCharacter(c)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
+                onClick={() => selectionMode ? toggleSelectedForMerge(c.id) : setSelectedCharacter(c)}
+                className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left ${
+                  selectedForMerge.has(c.id) ? 'bg-primary/10 ring-1 ring-primary/40' : ''
+                }`}
               >
+                {selectionMode && (
+                  <span
+                    className={`h-5 w-5 rounded border flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                      selectedForMerge.has(c.id)
+                        ? 'border-primary bg-primary text-black'
+                        : 'border-white/30 bg-black/50 text-white/50'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {selectedForMerge.has(c.id) ? '✓' : ''}
+                  </span>
+                )}
                 {/* Avatar */}
                 <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/25 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0 overflow-hidden">
                   {c.avatar_url
@@ -2934,6 +3448,9 @@ export const CharacterBook = () => {
                               <CharacterProfileCard
                                 character={character}
                                 relationship={relationships.get(character.id)}
+                                selectionMode={selectionMode}
+                                selected={selectedForMerge.has(character.id)}
+                                onToggleSelected={() => toggleSelectedForMerge(character.id)}
                                 onClick={() => {
                                   setSelectedCharacter(character);
                                 }}
@@ -2965,6 +3482,9 @@ export const CharacterBook = () => {
                               <CharacterProfileCard
                                 character={character}
                                 relationship={relationships.get(character.id)}
+                                selectionMode={selectionMode}
+                                selected={selectedForMerge.has(character.id)}
+                                onToggleSelected={() => toggleSelectedForMerge(character.id)}
                                 onClick={() => {
                                   setSelectedCharacter(character);
                                 }}
@@ -3020,6 +3540,9 @@ export const CharacterBook = () => {
                                       <CharacterProfileCard
                                         character={character}
                                         relationship={relationships.get(character.id)}
+                                        selectionMode={selectionMode}
+                                        selected={selectedForMerge.has(character.id)}
+                                        onToggleSelected={() => toggleSelectedForMerge(character.id)}
                                         onClick={() => {
                                           setSelectedCharacter(character);
                                         }}
@@ -3121,6 +3644,74 @@ export const CharacterBook = () => {
         />
       )}
 
+      {showMergeDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-2xl rounded-xl border border-white/10 bg-neutral-950 shadow-2xl max-h-[85vh] overflow-hidden">
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Merge Duplicate Characters</h3>
+                <p className="text-xs text-white/50">Choose the card to keep for each group. The survivor inherits the other card's aliases, memories, facts, relationships, and knowledge links.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMergeDialog(false)}
+                className="text-white/50 hover:text-white text-sm"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto max-h-[65vh]">
+              <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+                Merging is for duplicate cards that describe the same real person. Use the name with the best official identity as the survivor. Lorekeeper keeps the other names as aliases and records merge history so the app keeps learning from the combined evidence.
+              </div>
+              {mergeError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                  {mergeError}
+                </div>
+              )}
+              {duplicateGroups.map((group, index) => (
+                <div key={`${group.canonical_name}-${index}`} className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        {group.match_type === 'exact' ? 'Exact duplicate' : 'Possible duplicate'}
+                      </p>
+                      <p className="text-xs text-white/45">{group.canonical_name}</p>
+                    </div>
+                    <span className="text-[10px] uppercase tracking-wider text-white/35">
+                      {group.characters.length} cards
+                    </span>
+                  </div>
+                  <div className="grid gap-2">
+                    {group.characters.map(character => (
+                      <div key={character.id} className="rounded-lg border border-white/10 bg-black/25 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-white">{character.name}</p>
+                          <p className="text-xs text-white/45">
+                            {(character.alias ?? []).length > 0 ? `Aliases: ${(character.alias ?? []).join(', ')}` : 'No aliases'}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          disabled={mergeBusy || group.characters.length < 2}
+                          onClick={() => void mergeDuplicateGroup(group, character.id)}
+                          leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+                        >
+                          Keep this
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {duplicateGroups.length === 0 && (
+                <p className="text-sm text-white/55">No duplicate groups found.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedMemory && (
         <MemoryDetailModal
           memory={selectedMemory}
@@ -3137,4 +3728,3 @@ export const CharacterBook = () => {
     </div>
   );
 };
-

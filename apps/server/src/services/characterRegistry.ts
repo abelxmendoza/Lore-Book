@@ -3,8 +3,8 @@
  *
  * Multiple pipelines create characters (people_places foundation, omega
  * promotion), each deduping only against its own source key. That guaranteed
- * one card per pipeline per person, plus LLM phrase-names like "Kelly who's
- * handling onboarding" and compounds like "Sam the Recruiter and Kelly
+ * one card per pipeline per person, plus LLM phrase-names like "Dana who's
+ * handling onboarding" and compounds like "Reese the Recruiter and Dana
  * Onboarding Contact". Every creation path must call classifyForCreation()
  * before inserting.
  *
@@ -25,6 +25,7 @@
 
 import { logger } from '../logger';
 import { jaroWinkler } from '../utils/jaroWinkler';
+import { normalizeNameKey, namesOverlapByContainment, containmentIsPossessive } from '../utils/nameNormalization';
 
 import { supabaseAdmin } from './supabaseClient';
 
@@ -33,10 +34,17 @@ const JUNK_NAMES = new Set([
   'i', 'me', 'my', 'mine', 'you', 'your', 'yours', 'he', 'him', 'his', 'she',
   'her', 'hers', 'they', 'them', 'their', 'we', 'us', 'our', 'it', 'its',
   'ive', 'im', 'id', 'ill', 'youre', 'youve', 'hes', 'shes', 'theyre',
-  'the', 'a', 'an', 'this', 'that', 'these', 'those',
+  'the', 'a', 'an', 'this', 'that', 'these', 'those', 'just', 'from',
   'someone', 'somebody', 'anyone', 'anybody', 'everyone', 'everybody',
   'people', 'person', 'guy', 'girl', 'man', 'woman', 'narrator', 'user',
 ]);
+
+const NON_PERSON_NAME_PATTERNS = [
+  /\b(?:street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?|drive|dr\.?|lane|ln\.?|way)\b/i,
+  /\b(?:pool|billiards|bar|club|venue|theater|theatre|restaurant|cafe|coffee|lounge|park|beach|arena|stadium)\b/i,
+  /\b(?:show|event|anniversary|party|night|set)\b/i,
+  /\b(?:dj|band|artist|performer)\s+for\b/i,
+];
 
 export type NameGateResult =
   | { ok: true; cleanName: string; parts?: undefined }
@@ -58,26 +66,50 @@ type CharacterRow = {
 
 class CharacterRegistry {
   /**
+   * Per-user creation lock. Character classify→insert is check-then-insert
+   * without a transaction; two extractions in one message used to race and
+   * create the same person twice. Serializing per user closes that window in
+   * this process; the canonical_name unique index is the cross-process
+   * backstop.
+   */
+  private creationLocks = new Map<string, Promise<unknown>>();
+
+  async runExclusive<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.creationLocks.get(userId) ?? Promise.resolve();
+    const run = prev.then(fn, fn);
+    const gate = run.then(() => undefined, () => undefined);
+    this.creationLocks.set(userId, gate);
+    try {
+      return await run;
+    } finally {
+      if (this.creationLocks.get(userId) === gate) this.creationLocks.delete(userId);
+    }
+  }
+
+  /**
    * Clean a raw extracted name and reject junk.
-   * "Kelly who's handling onboarding" → "Kelly"
-   * "Sam the Recruiter and Kelly Onboarding Contact" → parts: ["Sam", "Kelly Onboarding Contact"→cleaned recursively]
+   * "Dana who's handling onboarding" → "Dana"
+   * "Reese the Recruiter and Dana Onboarding Contact" → parts: ["Reese", "Dana Onboarding Contact"→cleaned recursively]
    */
   gateName(raw: string): NameGateResult {
     let name = (raw ?? '').trim().replace(/\s+/g, ' ');
     if (!name) return { ok: false, reason: 'empty' };
 
-    // Strip descriptive clauses: "Kelly who's handling onboarding" → "Kelly"
+    // Strip descriptive clauses: "Dana who's handling onboarding" → "Dana"
     name = name.replace(/\s+(?:who(?:'s|’s|se)?|whom|that|which)\b.*$/i, '').trim();
+    // Strip comma appositives: "Adrian Patel, My Coding Mentor" → "Adrian Patel"
+    name = name.replace(/,\s+.*$/, '').trim();
     // Strip leading articles
     name = name.replace(/^(?:the|a|an)\s+/i, '').trim();
-    // Strip trailing role descriptors: "Sam the Recruiter" → "Sam"
-    name = name.replace(/\s+the\s+[a-z][\w ]*$/i, '').trim();
+    // Strip trailing role descriptors: "Reese the Recruiter" → "Reese",
+    // "Aunt Maribel the Hallway Guardian" → "Aunt Maribel" (any case)
+    name = name.replace(/\s+the\s+[\w][\w ]*$/i, '').trim();
     // Strip trailing punctuation
     name = name.replace(/[.,;:!?]+$/, '').trim();
 
     if (!name) return { ok: false, reason: 'empty_after_cleaning' };
 
-    // Compound: "Sam and Kelly" — two people in one mention
+    // Compound: "Reese and Dana" — two people in one mention
     const compoundParts = name.split(/\s+(?:and|&)\s+/i).map(p => p.trim()).filter(Boolean);
     if (compoundParts.length > 1 && compoundParts.every(p => /^[A-ZÀ-Ý]/.test(p))) {
       return { ok: true, cleanName: name, parts: compoundParts };
@@ -85,6 +117,7 @@ class CharacterRegistry {
 
     if (name.length < 2) return { ok: false, reason: 'too_short' };
     if (JUNK_NAMES.has(name.toLowerCase())) return { ok: false, reason: 'junk_word' };
+    if (NON_PERSON_NAME_PATTERNS.some(pattern => pattern.test(name))) return { ok: false, reason: 'non_person_name' };
     // More than 5 tokens after cleaning is a sentence fragment, not a name
     if (name.split(' ').length > 5) return { ok: false, reason: 'phrase_not_name' };
 
@@ -129,19 +162,21 @@ class CharacterRegistry {
       .eq('user_id', userId);
     const existing = (data ?? []) as CharacterRow[];
 
-    const mentionLower = cleanName.toLowerCase();
-    const mentionFirst = mentionLower.split(' ')[0];
-    const mentionHasSurname = mentionLower.includes(' ');
+    const mentionNorm = normalizeNameKey(cleanName);
+    const mentionFirst = mentionNorm.split(' ')[0];
+    const mentionHasSurname = mentionNorm.includes(' ');
 
-    // Distinctness cue: "Derrik the OTHER manager", "a DIFFERENT Kelly" — the
+    // Distinctness cue: "Derrik the OTHER manager", "a DIFFERENT Dana" — the
     // user is telling us this is not the person we know. When a same-name card
     // exists, the cue makes exact-merge ineligible and forces a question.
     const hasDistinctnessCue = /\b(other|another|different|second|new)\b/i.test(rawName);
 
-    // 1. Exact name or alias matches. Multiple exact matches (two people
+    // 1. Exact name or alias matches (accent/case-insensitive: "Aunt Maribel"
+    //    must match "Aunt Maribel"). Multiple exact matches (two people
     //    genuinely named "Derrik") can never auto-resolve — always ask.
     const exactMatches = existing.filter(
-      c => c.name.toLowerCase() === mentionLower || (c.alias ?? []).some(a => a.toLowerCase() === mentionLower)
+      c => normalizeNameKey(c.name) === mentionNorm
+        || (c.alias ?? []).some(a => normalizeNameKey(a) === mentionNorm)
     );
     if (exactMatches.length === 1 && !hasDistinctnessCue) {
       const c = exactMatches[0];
@@ -152,43 +187,60 @@ class CharacterRegistry {
       return await this.deferWith(userId, cleanName, rawName, exactMatches);
     }
 
-    // 2. Candidate set: shared first name, or strong fuzzy on the full name.
-    //    "Not the same person" memory applies only to materially different
-    //    mentions ("Kel" vs "Kelly") — for same-first-name people the
-    //    ambiguity is real on every mention and must not be blanket-excluded.
+    // 2. Candidate set: shared first name, whole-token containment ("Nico" ⊂
+    //    "Tío Nico", "Dana" ⊂ "Dana's Meeting Colleague"), or strong fuzzy
+    //    on the full name. "Not the same person" memory applies only to
+    //    materially different mentions ("Kel" vs "Dana") — for
+    //    same-first-name people the ambiguity is real on every mention and
+    //    must not be blanket-excluded.
+    let possessiveAmbiguity = false;
     const candidates = existing.filter(c => {
-      const nameLower = c.name.toLowerCase();
-      const candFirst = nameLower.split(' ')[0];
-      const candHasSurname = nameLower.includes(' ');
+      const candNorm = normalizeNameKey(c.name);
+      const candFirst = candNorm.split(' ')[0];
+      const candHasSurname = candNorm.includes(' ');
       if (candFirst !== mentionFirst) {
-        // Fuzzy full-name match (typos: Quintesa/Quintessa). Guarded by a high
-        // threshold — JW on short names is noisy (Abuela vs Abel).
         const distinct: string[] = c.metadata?.distinct_from_mentions ?? [];
-        if (distinct.includes(mentionLower)) return false;
-        return jaroWinkler(mentionLower, nameLower) >= 0.93;
+        if (distinct.includes(mentionNorm)) return false;
+        // Containment: kinship prefixes and descriptive tails share no first
+        // token but are the same person. Possessive forms ("Dana's …")
+        // grammatically describe a DIFFERENT person — flag to force a question.
+        if (namesOverlapByContainment(mentionNorm, candNorm)) {
+          if (containmentIsPossessive(candNorm, mentionNorm) || containmentIsPossessive(mentionNorm, candNorm)) {
+            possessiveAmbiguity = true;
+          }
+          return true;
+        }
+        // Fuzzy full-name match (typos: Quintesa/Quintessa). Guarded by a high
+        // threshold — JW on short names is noisy (Nana Elena vs Abel).
+        return jaroWinkler(mentionNorm, candNorm) >= 0.93;
       }
-      // Same first name but BOTH have different surnames → different people
-      if (mentionHasSurname && candHasSurname && nameLower !== mentionLower) return false;
+      // Reesee first name but BOTH have different surnames → different people
+      if (mentionHasSurname && candHasSurname && candNorm !== mentionNorm) return false;
       return true;
     });
 
     if (candidates.length === 0) return { action: 'create', cleanName };
 
-    // 3. Single candidate, one side is first-name-only → certain enough to
-    //    merge ("Quintessa" ↔ "Quintessa Vexworth"). Asking here would spam.
-    //    A distinctness cue overrides the certainty.
-    if (candidates.length === 1 && !hasDistinctnessCue) {
+    // 3. Single candidate, one side is first-name-only or one name contains
+    //    the other → certain enough to merge ("Quintessa" ↔ "Quintessa
+    //    Vexworth", "Nico" ↔ "Tío Nico"). Asking here would spam. A
+    //    distinctness cue or possessive form overrides the certainty.
+    if (candidates.length === 1 && !hasDistinctnessCue && !possessiveAmbiguity) {
       const cand = candidates[0];
-      const nameLower = cand.name.toLowerCase();
-      const oneSideFirstNameOnly = !mentionHasSurname || !nameLower.includes(' ');
-      const jw = jaroWinkler(mentionLower, nameLower);
-      if (oneSideFirstNameOnly || jw >= 0.97) {
+      const candNorm = normalizeNameKey(cand.name);
+      const candFirst = candNorm.split(' ')[0];
+      const oneSideFirstNameOnly = !mentionHasSurname || !candNorm.includes(' ');
+      const contained = namesOverlapByContainment(mentionNorm, candNorm);
+      const jw = jaroWinkler(mentionNorm, candNorm);
+      const bareNameInsideContextualName = !mentionHasSurname && candFirst !== mentionFirst && contained;
+      if (!bareNameInsideContextualName && (oneSideFirstNameOnly || contained || jw >= 0.97)) {
         return { action: 'merge', characterId: cand.id, matchedName: cand.name, cleanName };
       }
     }
 
     // 4. Gray zone — multiple plausible people, a fuzzy-but-not-certain
-    //    match, or an explicit distinctness cue. Don't create; ask in chat.
+    //    match, a possessive form, or an explicit distinctness cue. Don't
+    //    create; ask in chat.
     return await this.deferWith(userId, cleanName, rawName, candidates);
   }
 
@@ -250,7 +302,9 @@ class CharacterRegistry {
     const row = data as CharacterRow;
 
     const aliases = new Set((row.alias ?? []).map(a => a));
-    if (addAlias && mention.toLowerCase() !== row.name.toLowerCase()) aliases.add(mention);
+    const alreadyKnown = normalizeNameKey(mention) === normalizeNameKey(row.name)
+      || (row.alias ?? []).some(a => normalizeNameKey(a) === normalizeNameKey(mention));
+    if (addAlias && !alreadyKnown) aliases.add(mention);
 
     const metadata = {
       ...(row.metadata ?? {}),
@@ -262,8 +316,8 @@ class CharacterRegistry {
     // "Derrik Halvorsen"), promote the card's primary name and demote the old
     // name to an alias so earlier mentions still match.
     const update: Record<string, unknown> = { metadata, updated_at: new Date().toISOString() };
-    const mentionFirst = mention.toLowerCase().split(' ')[0];
-    const rowFirst = row.name.toLowerCase().split(' ')[0];
+    const mentionFirst = normalizeNameKey(mention).split(' ')[0];
+    const rowFirst = normalizeNameKey(row.name).split(' ')[0];
     const mentionIsFuller = mention.includes(' ') && !row.name.includes(' ') && mentionFirst === rowFirst;
     if (addAlias && mentionIsFuller) {
       aliases.delete(mention);
@@ -427,7 +481,7 @@ class CharacterRegistry {
       });
     }
     // "Not the same person" memory — but only for materially different names
-    // ("Kel" ≠ Kelly). For same-first-name people the ambiguity is real on
+    // ("Kel" ≠ Dana). For same-first-name people the ambiguity is real on
     // every future mention and must be asked/context-resolved, not blanket-
     // excluded, or every later "Derrik" story silently routes to one Derrik.
     const rejectedIds = candidateIds.filter(id => !selected.includes(id));
@@ -472,7 +526,7 @@ class CharacterRegistry {
    * candidates so this mention never matches them again.
    */
   async recordDistinctFrom(userId: string, mention: string, characterIds: string[]): Promise<void> {
-    const mentionLower = mention.toLowerCase();
+    const mentionLower = normalizeNameKey(mention);
     for (const id of characterIds) {
       const { data } = await supabaseAdmin
         .from('characters')
