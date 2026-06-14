@@ -3,7 +3,7 @@ import { Button } from '../../../components/ui/button';
 import { Textarea } from '../../../components/ui/textarea';
 import { Card } from '../../../components/ui/card';
 import { useChatComposer } from '../hooks/useChatComposer';
-import { CommandSuggestions } from './CommandSuggestions';
+import { ComposerEntityChips } from './ComposerEntityChips';
 import { ComposerHints } from './ComposerHints';
 import { MoodIndicator } from './MoodIndicator';
 import { TagSuggestions } from './TagSuggestions';
@@ -11,8 +11,10 @@ import { useState, useRef, useEffect } from 'react';
 import { DocumentUpload } from '../components/DocumentUpload';
 import { ChatGPTImport } from '../components/ChatGPTImport';
 
+import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
+
 type ChatComposerProps = {
-  onSubmit: (message: string) => void;
+  onSubmit: (message: string, certifiedEntities?: CertifiedEntityMatch[]) => void;
   loading: boolean;
   disabled?: boolean;
   onUploadComplete?: () => void;
@@ -90,6 +92,9 @@ export const ChatComposer = ({
           </div>
         </div>
       )}
+
+      {/* Certified entity chips — detected from book index, load KB into pipeline */}
+      <ComposerEntityChips entities={entityIndexer.matches} />
 
       {/* Hints Bar */}
       {showHints && (

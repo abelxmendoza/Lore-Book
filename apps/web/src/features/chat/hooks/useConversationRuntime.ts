@@ -108,7 +108,31 @@ export const useConversationRuntime = ({
 
   /** Remove a thread with no saved conversation and navigate to a safe fallback. */
   const removeEmptyThread = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      try {
+        const statusRes = await fetchJson<{
+          success: boolean;
+          status?: { protected?: boolean; messageCount?: number };
+        }>(`/api/conversation/threads/${id}/status`);
+        if (
+          statusRes.success &&
+          (statusRes.status?.protected || (statusRes.status?.messageCount ?? 0) > 0)
+        ) {
+          runtimeDiagnostics.record('thread_delete_blocked', {
+            threadId: id,
+            meta: { reason: 'protected_or_has_messages' },
+          });
+          return;
+        }
+      } catch {
+        // If we cannot verify, do not delete — avoids losing threads with chat_messages only in DB
+        runtimeDiagnostics.record('thread_delete_blocked', {
+          threadId: id,
+          meta: { reason: 'status_check_failed' },
+        });
+        return;
+      }
+
       runtimeDiagnostics.record('thread_delete', { threadId: id, meta: { reason: 'empty_on_open' } });
       deleteThread(id);
       hydratedByHandlerRef.current = null;

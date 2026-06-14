@@ -17,9 +17,12 @@ import { analytics } from '../../../lib/monitoring';
 
 type LoadingStage = 'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'generating';
 
+import { mergeThreadEntities, toComposerThreadEntity, type CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
+
 export type ChatSendOptions = {
   entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'ENTITY'; id: string };
   threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
+  composerEntities?: CertifiedEntityMatch[];
 };
 
 // Returns true for network errors that indicate the backend is simply not running.
@@ -224,6 +227,11 @@ export const useChat = () => {
     let metadata: any = null;
     let hasReceivedMetadata = false;
 
+    const composerThread = (options?.composerEntities ?? [])
+      .map(toComposerThreadEntity)
+      .filter((e): e is { id: string; name: string; type: 'character' | 'location' | 'organization' } => e !== null);
+    const mergedThreadEntities = mergeThreadEntities(options?.threadEntities ?? [], composerThread);
+
     try {
       await streamChat(
         messageText.trim(),
@@ -366,7 +374,8 @@ export const useChat = () => {
           updateMessage(assistantMessageId, { cognitionFeedback: feedback });
         },
         activeThreadId,
-        options?.threadEntities
+        mergedThreadEntities.length > 0 ? mergedThreadEntities : undefined,
+        options?.composerEntities
       );
     } catch (error) {
       if (progressIntervalRef.current) {

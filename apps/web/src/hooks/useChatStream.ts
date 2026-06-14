@@ -83,7 +83,8 @@ export const useChatStream = () => {
     soulProfileContext?: SoulProfileContext | null,
     onMemoryFeedback?: (feedback: MemoryFeedbackEvent) => void,
     threadId?: string,
-    threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>
+    threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
+    composerEntities?: Array<{ id: string; name: string; type: string; aliases?: string[] }>
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -112,6 +113,15 @@ export const useChatStream = () => {
           conversationHistory,
           ...(threadId ? { threadId } : {}),
           ...(threadEntities && threadEntities.length > 0 ? { threadEntities } : {}),
+          ...(composerEntities && composerEntities.length > 0
+            ? {
+                composerEntities: composerEntities.map((e) => ({
+                  id: e.id,
+                  name: e.name,
+                  type: e.type,
+                })),
+              }
+            : {}),
           ...(entityContext ? { entityContext } : {}),
           ...(currentContext && currentContext.kind !== 'none' ? { currentContext } : {}),
           ...(soulProfileContext && (soulProfileContext.lastReferencedInsightId || ((soulProfileContext.lastSurfacedInsights?.length ?? 0) > 0)) ? { soulProfileContext } : {})

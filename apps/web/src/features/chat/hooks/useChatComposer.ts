@@ -4,7 +4,12 @@ import { useAutoTagger } from '../../../hooks/useAutoTagger';
 import { useEntityIndexer } from '../../../hooks/useEntityIndexer';
 import { getCommandSuggestions, parseSlashCommand } from '../../../utils/slashCommands';
 
-export const useChatComposer = (onSubmit: (message: string) => void, initialValue?: string | null) => {
+import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
+
+export const useChatComposer = (
+  onSubmit: (message: string, certifiedEntities?: CertifiedEntityMatch[]) => void,
+  initialValue?: string | null
+) => {
   const [input, setInput] = useState(initialValue || '');
   const [showCommandSuggestions, setShowCommandSuggestions] = useState(false);
   const [commandSuggestions, setCommandSuggestions] = useState<Array<{ command: string; description: string }>>([]);
@@ -58,12 +63,12 @@ export const useChatComposer = (onSubmit: (message: string) => void, initialValu
     const parsed = parseSlashCommand(input);
     if (parsed) {
       // Slash commands are handled in useChat
-      onSubmit(input.trim());
+      onSubmit(input.trim(), entityIndexer.matches);
     } else {
-      onSubmit(input.trim());
+      onSubmit(input.trim(), entityIndexer.matches);
     }
     setInput('');
-  }, [input, onSubmit]);
+  }, [input, onSubmit, entityIndexer.matches]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

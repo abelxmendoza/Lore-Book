@@ -39,8 +39,10 @@ import type { PerceptionEntry } from '../../types/perception';
 import { EntityProvenancePanel } from './EntityProvenancePanel';
 import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
 import { CharacterTimelinePanel } from './CharacterTimelinePanel';
+import { CharacterKnowledgeBase } from './CharacterKnowledgeBase';
 import { isSelfCharacter, isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
+import { useChatStream } from '../../hooks/useChatStream';
 
 type SocialMedia = {
   instagram?: string;
@@ -925,9 +927,11 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     sourceIcon: memory.source === 'chat' ? '💬' : '📖',
     characters: [characterName],
   });
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const { streamChat, isStreaming } = useChatStream();
   const [insights, setInsights] = useState<any>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1388,12 +1392,40 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  // Restore per-character chat history from localStorage
+  useEffect(() => {
+    if (!character.id || character.id.startsWith('dummy-')) return;
+    try {
+      const raw = localStorage.getItem(`lk:character-chat:${character.id}`);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Array<{ id: string; role: 'user' | 'assistant'; content: string; timestamp: string }>;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatMessages(parsed.map((m) => ({ ...m, timestamp: new Date(m.timestamp) })));
+        }
+      }
+    } catch {
+      // ignore corrupt storage
+    }
+  }, [character.id]);
+
+  useEffect(() => {
+    if (!character.id || character.id.startsWith('dummy-') || chatMessages.length === 0) return;
+    try {
+      localStorage.setItem(
+        `lk:character-chat:${character.id}`,
+        JSON.stringify(chatMessages.map((m) => ({ ...m, timestamp: m.timestamp.toISOString() })))
+      );
+    } catch {
+      // storage full — non-fatal
+    }
+  }, [chatMessages, character.id]);
+
   // Auto-scroll chat to bottom
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [chatMessages, chatLoading]);
+  }, [chatMessages, chatLoading, streamingMessageId]);
 
   // Fetch real organizations for this character
   useEffect(() => {
@@ -1432,188 +1464,161 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     void load();
   }, [character.id, character.name, isMockDataEnabled, orgsLoaded]);
 
-  const handleChatSubmit = async (message: string) => {
-    if (!message.trim() || chatLoading) return;
+  const buildThreadEntities = () => {
+    const entities: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }> = [
+      { id: character.id, name: editedCharacter.name, type: 'character' },
+    ];
+    for (const rel of editedCharacter.relationships ?? []) {
+      if (rel.character_id && rel.character_name) {
+        entities.push({ id: rel.character_id, name: rel.character_name, type: 'character' });
+      }
+    }
+    for (const org of characterOrganizations) {
+      if (org.id && org.name) {
+        entities.push({ id: org.id, name: org.name, type: 'organization' });
+      }
+    }
+    const seen = new Set<string>();
+    return entities.filter((e) => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    });
+  };
 
-    const userMessage = { role: 'user' as const, content: message, timestamp: new Date() };
-    setChatMessages(prev => [...prev, userMessage]);
+  const handleChatSubmit = async (message: string) => {
+    if (!message.trim() || chatLoading || isStreaming) return;
+
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user' as const,
+      content: message,
+      timestamp: new Date(),
+    };
+    setChatMessages((prev) => [...prev, userMessage]);
     setChatLoading(true);
 
+    const assistantMessageId = `assistant-${Date.now()}`;
+    setChatMessages((prev) => [
+      ...prev,
+      { id: assistantMessageId, role: 'assistant', content: '', timestamp: new Date() },
+    ]);
+    setStreamingMessageId(assistantMessageId);
+
+    const conversationHistory = chatMessages.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+
+    const threadEntities = buildThreadEntities();
+    const composerEntities = [
+      {
+        id: character.id,
+        name: editedCharacter.name,
+        type: 'character',
+        aliases: editedCharacter.alias ?? [],
+      },
+      ...(editedCharacter.relationships ?? [])
+        .filter((rel) => rel.character_id && rel.character_name)
+        .map((rel) => ({
+          id: rel.character_id,
+          name: rel.character_name!,
+          type: 'character',
+        })),
+    ];
+
+    let accumulatedContent = '';
+
     try {
-      // Build character context from real analytics only — do NOT fabricate
-      const analytics = editedCharacter.analytics ?? null;
-      const analyticsContext = analytics ? `
-RELATIONSHIP ANALYTICS (calculated from conversations, journal entries, and shared memories):
-- Closeness Score: ${analytics.closeness_score}/100 (how close the relationship is)
-- Relationship Depth: ${analytics.relationship_depth}/100 (depth of emotional connection)
-- Interaction Frequency: ${analytics.interaction_frequency}/100 (how often you interact)
-- Recency Score: ${analytics.recency_score}/100 (how recently you interacted)
-- Importance Score: ${analytics.importance_score}/100 (overall importance to you)
-- Priority Score: ${analytics.priority_score}/100 (urgency/priority level)
-- Relevance Score: ${analytics.relevance_score}/100 (current relevance in your life)
-- Value Score: ${analytics.value_score}/100 (value they provide to you)
-- Their Influence on You: ${analytics.character_influence_on_user}/100
-- Your Influence Over Them: ${analytics.user_influence_over_character}/100
-- Sentiment Score: ${analytics.sentiment_score} (positive to negative, -100 to +100)
-- Trust Score: ${analytics.trust_score}/100
-- Support Score: ${analytics.support_score}/100
-- Conflict Score: ${analytics.conflict_score}/100
-- Engagement Score: ${analytics.engagement_score}/100
-- Activity Level: ${analytics.activity_level}/100
-- Shared Experiences: ${analytics.shared_experiences} memories/events
-- Relationship Duration: ${analytics.relationship_duration_days} days
-- Relationship Trend: ${analytics.trend} (deepening/stable/weakening)
-${analytics.strengths && analytics.strengths.length > 0 ? `- Strengths: ${analytics.strengths.join(', ')}` : ''}
-${analytics.weaknesses && analytics.weaknesses.length > 0 ? `- Weaknesses: ${analytics.weaknesses.join(', ')}` : ''}
-${analytics.opportunities && analytics.opportunities.length > 0 ? `- Opportunities: ${analytics.opportunities.join(', ')}` : ''}
-${analytics.risks && analytics.risks.length > 0 ? `- Risks: ${analytics.risks.join(', ')}` : ''}
+      await streamChat(
+        message,
+        conversationHistory,
+        (chunk: string) => {
+          accumulatedContent += chunk;
+          setChatMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId ? { ...msg, content: accumulatedContent } : msg
+            )
+          );
+        },
+        () => {},
+        async () => {
+          setStreamingMessageId(null);
+          setChatLoading(false);
 
-You can explain these analytics to the user when asked. For example:
-- "Your closeness score of ${analytics.closeness_score}% indicates ${analytics.closeness_score >= 70 ? 'a very close relationship' : analytics.closeness_score >= 40 ? 'a moderate closeness' : 'a developing relationship'}"
-- "The relationship trend is ${analytics.trend}, meaning ${analytics.trend === 'deepening' ? 'your connection is growing stronger over time' : analytics.trend === 'weakening' ? 'your connection may be fading' : 'your relationship is stable'}"
-- "With ${analytics.shared_experiences} shared experiences, this relationship has ${analytics.shared_experiences >= 10 ? 'significant depth' : analytics.shared_experiences >= 5 ? 'moderate depth' : 'developing depth'}"
-` : '';
-
-      const relationshipIntelligenceContext = `
-RELATIONSHIP INTELLIGENCE CONTEXT:
-${influenceProfile ? `- Net Influence: ${Math.round((influenceProfile.net_influence ?? 0) * 100)}%
-- Emotional Impact: ${Math.round(Math.abs(influenceProfile.emotional_impact ?? 0) * 100)}%
-- Behavioral Impact: ${Math.round(Math.abs(influenceProfile.behavioral_impact ?? 0) * 100)}%
-- Uplift Score: ${Math.round(Math.abs(influenceProfile.uplift_score ?? 0) * 100)}%
-- Toxicity Signal: ${Math.round(Math.abs(influenceProfile.toxicity_score ?? 0) * 100)}%
-- Recorded Interactions: ${influenceProfile.interaction_count ?? 0}` : '- Influence profile: Not enough data yet'}
-${dynamics?.health ? `- Relationship Health: ${dynamics.health.health_score ?? 0}/100 (${dynamics.health.overall_health ?? 'unknown'})
-- Health Trend: ${dynamics.health.trends?.health_trend ?? 'unknown'}
-${dynamics.health.strengths?.length ? `- Strengths: ${dynamics.health.strengths.join(', ')}` : ''}
-${dynamics.health.concerns?.length ? `- Concerns: ${dynamics.health.concerns.join(', ')}` : ''}` : '- Relationship health: Not enough data yet'}
-${dynamics?.metrics ? `- Interaction Frequency: ${dynamics.metrics.interaction_frequency?.toFixed(1) ?? 'unknown'} per month
-- Average Sentiment: ${Math.round((dynamics.metrics.average_sentiment ?? 0) * 100)}%
-- Positive Ratio: ${Math.round((dynamics.metrics.positive_ratio ?? 0) * 100)}%` : ''}
-${influenceInsights.length > 0 ? `- Influence Insights: ${influenceInsights.slice(0, 4).map((insight: any) => insight.message).join(' | ')}` : ''}
-`;
-
-      const characterContext = `You are helping the user discuss and update information about a specific character in their personal journal system.
-
-CHARACTER CONTEXT:
-- Name: ${editedCharacter.name}
-- Aliases: ${editedCharacter.alias?.join(', ') || 'None'}
-- Pronouns: ${editedCharacter.pronouns || 'Not specified'}
-- Role: ${editedCharacter.role || 'Not specified'}
-- Archetype: ${editedCharacter.archetype || 'Not specified'}
-- Status: ${editedCharacter.status || 'active'}
-- Summary: ${editedCharacter.summary || 'No summary available'}
-- Tags: ${editedCharacter.tags?.join(', ') || 'None'}
-- Shared Memories: ${editedCharacter.shared_memories?.length || 0}
-- Relationships: ${editedCharacter.relationships?.length || 0}
-${analyticsContext}
-${relationshipIntelligenceContext}
-INSTRUCTIONS:
-1. Answer questions about this character based on the context above
-2. If the user asks about analytics, explain what the scores mean and why they might be at that level
-3. If the user shares new information or stories about the character, acknowledge it and offer to update the character profile
-4. If the user asks to update something (role, summary, tags, etc.), extract the update and respond naturally
-5. Be conversational and helpful
-6. When updates are needed, format them as JSON in your response like: {"updates": {"summary": "new summary", "tags": ["tag1", "tag2"]}}
-7. Use analytics to provide insights based on the scores provided above
-
-User's message: ${message}`;
-
-      const conversationHistory = [
-        ...chatMessages.map(msg => ({ role: msg.role, content: msg.content }))
-      ];
-
-      const response = await fetchJson<{ answer: string; metadata?: any }>('/api/chat', {
-        method: 'POST',
-        body: JSON.stringify({
-          message: characterContext,
-          conversationHistory,
-          entityContext: {
-            type: 'CHARACTER',
-            id: character.id
-          }
-        })
-      });
-
-      let assistantContent = response.answer || response.metadata?.answer || 'I understand. How can I help you with this character?';
-      
-      // Try to parse updates from response
-      let updates = null;
-      try {
-        // Look for JSON updates in the response
-        const jsonMatch = assistantContent.match(/\{[\s\S]*"updates"[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          updates = parsed.updates;
-          assistantContent = assistantContent.replace(jsonMatch[0], '').trim();
-        }
-        
-        // Also check metadata for updates
-        if (response.metadata?.characterUpdates) {
-          updates = response.metadata.characterUpdates;
-        }
-      } catch (e) {
-        // Ignore JSON parsing errors
-      }
-
-      const assistantMessage = { 
-        role: 'assistant' as const, 
-        content: assistantContent, 
-        timestamp: new Date() 
-      };
-      setChatMessages(prev => [...prev, assistantMessage]);
-
-      schedulePostChatRefresh({
-        scopes: ['all'],
-        characterIds: character.id ? [character.id] : undefined,
-      });
-
-      // If updates are provided, apply them
-      if (updates) {
-        try {
-          // Update local state immediately for better UX
-          setEditedCharacter(prev => ({
-            ...prev,
-            ...updates,
-            tags: updates.tags || prev.tags,
-            alias: updates.alias || prev.alias,
-            social_media: updates.social_media || prev.social_media
-          }));
-
-          // Save to backend
-          await fetchJson(`/api/characters/${character.id}`, {
-            method: 'PATCH',
-            body: JSON.stringify(updates)
+          schedulePostChatRefresh({
+            scopes: ['all'],
+            characterIds: character.id ? [character.id] : undefined,
           });
-          
-          const successMessage = { 
-            role: 'assistant' as const, 
-            content: '✓ Character information updated successfully!', 
-            timestamp: new Date() 
-          };
-          setChatMessages(prev => [...prev, successMessage]);
-          
-          // Refresh character data
-          onUpdate();
-        } catch (updateError) {
-          console.error('Update error:', updateError);
-          const errorMsg = { 
-            role: 'assistant' as const, 
-            content: 'I understood the update, but there was an error saving. Please try again or use the Save button.', 
-            timestamp: new Date() 
-          };
-          setChatMessages(prev => [...prev, errorMsg]);
-        }
-      }
+
+          // Refresh knowledge after chat enriches the entity
+          setKnowledgeLoaded(false);
+          setFactsLoaded(false);
+          setScenesLoaded(false);
+
+          try {
+            const jsonMatch = accumulatedContent.match(/\{[\s\S]*"updates"[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              const updates = parsed.updates;
+              if (updates) {
+                setEditedCharacter((prev) => ({
+                  ...prev,
+                  ...updates,
+                  tags: updates.tags || prev.tags,
+                  alias: updates.alias || prev.alias,
+                  social_media: updates.social_media || prev.social_media,
+                }));
+                await fetchJson(`/api/characters/${character.id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify(updates),
+                });
+                setChatMessages((prev) => [
+                  ...prev,
+                  {
+                    id: `sys-${Date.now()}`,
+                    role: 'assistant',
+                    content: '✓ Character information updated successfully!',
+                    timestamp: new Date(),
+                  },
+                ]);
+                onUpdate();
+              }
+            }
+          } catch {
+            // non-fatal parse error
+          }
+        },
+        (error: string) => {
+          setStreamingMessageId(null);
+          setChatLoading(false);
+          setChatMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: error || 'Sorry, something went wrong.' }
+                : msg
+            )
+          );
+        },
+        { type: 'CHARACTER', id: character.id },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        threadEntities,
+        composerEntities
+      );
     } catch (error) {
       console.error('Chat error:', error);
-      const errorMessage = { 
-        role: 'assistant' as const, 
-        content: 'Sorry, I encountered an error. Please try again.', 
-        timestamp: new Date() 
-      };
-      setChatMessages(prev => [...prev, errorMessage]);
-    } finally {
+      setStreamingMessageId(null);
       setChatLoading(false);
+      setChatMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: 'Sorry, I encountered an error. Please try again.' }
+            : msg
+        )
+      );
     }
   };
 
@@ -2004,38 +2009,36 @@ User's message: ${message}`;
           </div>
         </div>
 
-        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          {/* Tab Navigation — horizontal scroll on mobile, wrap on larger screens */}
-          <div className="flex-shrink-0 border-b border-border/60 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex min-w-max sm:min-w-0 sm:flex-wrap">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium transition whitespace-nowrap flex-shrink-0 ${
-                    activeTab === tab.key
-                      ? 'border-b-2 border-primary text-white bg-primary/5'
-                      : 'text-white/60 hover:text-white hover:bg-white/5'
-                  }`}
-                  aria-current={activeTab === tab.key ? 'page' : undefined}
-                  aria-label={tab.label}
-                >
-                  <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
-                  {tab.shortLabel === tab.label ? (
-                    <span>{tab.label}</span>
-                  ) : (
-                    <>
-                      <span className="sm:hidden">{tab.shortLabel}</span>
-                      <span className="hidden sm:inline">{tab.label}</span>
-                    </>
-                  )}
-                </button>
-              );
-            })}
+        <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
+          {/* Tab Navigation — vertical stack, no horizontal scroll */}
+          <nav
+            className="flex-shrink-0 border-b md:border-b-0 md:border-r border-border/60 md:w-44 lg:w-48 overflow-y-auto overflow-x-hidden bg-black/20"
+            aria-label="Character sections"
+          >
+            <div className="flex flex-col">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`flex items-center gap-2 w-full px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium transition text-left border-l-2 ${
+                      isActive
+                        ? 'border-l-primary bg-primary/10 text-white'
+                        : 'border-l-transparent text-white/60 hover:text-white hover:bg-white/5'
+                    }`}
+                    aria-current={isActive ? 'page' : undefined}
+                    aria-label={tab.label}
+                  >
+                    <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+                    <span className="truncate">{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
-          </div>
+          </nav>
 
           <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-8 bg-black/40 min-h-0 pb-[max(5rem,env(safe-area-inset-bottom,0px))] sm:pb-32">
             {loadingDetails && (
@@ -3760,6 +3763,9 @@ User's message: ${message}`;
 	                  <p className="text-base text-white/70">
 	                    Ask questions, share stories, correct facts, or talk through relationship intelligence in one focused conversation.
 	                  </p>
+	                  <p className="text-xs text-white/40 mt-2">
+	                    This chat is scoped to {displayName} — LoreBook loads their knowledge base, connected people, timeline, and relationship signals into every reply.
+	                  </p>
 	                </div>
 
 	                <Card className="bg-yellow-500/10 border-yellow-500/25">
@@ -3839,23 +3845,23 @@ User's message: ${message}`;
                       </div>
                     </div>
                   ) : (
-                    chatMessages.map((msg, idx) => {
+                    chatMessages.map((msg) => {
                       const message: Message = {
-                        id: `msg-${idx}`,
+                        id: msg.id,
                         role: msg.role,
                         content: msg.content,
                         timestamp: msg.timestamp
                       };
                       return (
                         <ChatMessage
-                          key={idx}
+                          key={msg.id}
                           message={message}
                           onCopy={() => navigator.clipboard.writeText(msg.content)}
                         />
                       );
                     })
                   )}
-                  {chatLoading && (
+                  {(chatLoading || isStreaming) && !streamingMessageId && (
                     <div className="flex justify-start">
                       <Card className="bg-black/40 border-border/50 max-w-[80%]">
                         <CardContent className="p-4">
@@ -3874,7 +3880,7 @@ User's message: ${message}`;
                 <div className="sticky bottom-0 z-10 -mx-4 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-t border-white/10 bg-black/95 backdrop-blur-md">
                   <ChatComposer
                     onSubmit={handleChatSubmit}
-                    loading={chatLoading}
+                    loading={chatLoading || isStreaming}
                     initialPrompt={chatPrefill}
                   />
                 </div>
@@ -4487,235 +4493,15 @@ User's message: ${message}`;
               </div>
             )}
 
-            {/* ── What LoreBook Knows ── */}
+            {/* ── Entity Knowledge Base ── */}
             {!loadingDetails && activeTab === 'knowledge' && (
-              <div className="space-y-6">
-                {/* ── Character Facts (from conversations) ── */}
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
-                      <Brain className="h-4 w-4 text-violet-400" />
-                      Facts From Conversations
-                    </h3>
-                    <p className="text-xs text-white/45">
-                      Extracted directly from chats — updated as new information comes in.
-                    </p>
-                  </div>
-
-                  {factsLoading && (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="h-5 w-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  )}
-
-                  {!factsLoading && characterFacts.length === 0 && (
-                    <InsufficientData
-                      compact
-                      icon={Brain}
-                      accent="violet"
-                      title={`No facts about ${editedCharacter.name.split(' ')[0]} yet`}
-                      description={`Facts are pulled straight from your conversations. Chat about ${editedCharacter.name.split(' ')[0]} and they'll start appearing here.`}
-                      action={{
-                        label: 'Start a chat',
-                        icon: MessageSquare,
-                        onClick: () => askInChat(`Let me tell you about ${editedCharacter.name}: `),
-                      }}
-                    />
-                  )}
-
-                  {!factsLoading && characterFacts.length > 0 && (
-                    <div className="space-y-4">
-                      {Object.entries(
-                        characterFacts.reduce((acc: Record<string, any[]>, f: any) => {
-                          if (!acc[f.category]) acc[f.category] = [];
-                          acc[f.category].push(f);
-                          return acc;
-                        }, {})
-                      ).map(([category, facts]) => {
-                        const catLabel: Record<string, string> = {
-                          personality: 'Personality', appearance: 'Appearance',
-                          relationship: 'Relationship', history: 'History',
-                          career: 'Career', location: 'Location', goals: 'Goals', general: 'General',
-                        };
-                        const statusBadge: Record<string, { label: string; cls: string }> = {
-                          updated:      { label: 'Updated',      cls: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
-                          corrected:    { label: 'Corrected',    cls: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
-                          contradicted: { label: 'Contradicted', cls: 'bg-red-500/20 text-red-300 border-red-500/30' },
-                        };
-                        return (
-                          <div key={category}>
-                            <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">
-                              {catLabel[category] ?? category}
-                            </p>
-                            <div className="space-y-2">
-                              {(facts as any[]).map((fact: any) => {
-                                const pct = Math.round((fact.confidence ?? 0.7) * 100);
-                                const badge = statusBadge[fact.status as string];
-                                return (
-                                  <div key={fact.id} className="flex items-start gap-2.5 p-3 rounded-lg border border-white/6 bg-white/3">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm text-white/85 leading-snug">{fact.fact}</p>
-                                      {fact.previous_value && (
-                                        <p className="text-[11px] text-white/35 mt-1 line-through">{fact.previous_value}</p>
-                                      )}
-                                    </div>
-                                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                      {badge && (
-                                        <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${badge.cls}`}>
-                                          {badge.label}
-                                        </span>
-                                      )}
-                                      <span className={`text-[10px] tabular-nums font-semibold ${pct >= 80 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
-                                        {pct}%
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* ── Crystallized Knowledge ── */}
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
-                      <Brain className="h-4 w-4 text-indigo-400" />
-                      Crystallized Knowledge
-                    </h3>
-                    <p className="text-xs text-white/45">
-                      Patterns crystallized from your entries, arcs, and interactions.
-                    </p>
-                  </div>
-
-                {knowledgeLoading && (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="h-6 w-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-                  </div>
-                )}
-
-                {!knowledgeLoading && knowledgeClaims.length === 0 && (
-                  <InsufficientData
-                    icon={Brain}
-                    accent="indigo"
-                    title="No crystallized knowledge yet"
-                    description={`Knowledge claims form once a pattern shows up repeatedly across your entries about ${editedCharacter.name.split(' ')[0]}. They'll appear here as LoreBook gains confidence.`}
-                  />
-                )}
-
-                {!knowledgeLoading && knowledgeClaims.length > 0 && (
-                  <div className="space-y-3">
-                    {knowledgeClaims.map((claim: any) => {
-                      const pct = Math.round((claim.confidence ?? 0) * 100);
-                      const confColor = pct >= 75 ? 'text-green-400' : pct >= 50 ? 'text-yellow-400' : 'text-orange-400';
-                      const evidenceCount = claim.evidence_count ?? claim.evidence_links?.length ?? 0;
-
-                      return (
-                        <div key={claim.id} className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-950/15 space-y-3">
-                          {/* Claim text */}
-                          <p className="text-sm text-white/90 leading-relaxed">
-                            {claim.human_readable_claim}
-                          </p>
-
-                          {/* Confidence + evidence row */}
-                          <div className="flex items-center gap-4 flex-wrap">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-20 h-1.5 bg-white/8 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full ${pct >= 75 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-orange-500'}`}
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                              <span className={`text-xs font-semibold tabular-nums ${confColor}`}>{pct}%</span>
-                              <span className="text-xs text-white/30">confidence</span>
-                            </div>
-                            {evidenceCount > 0 && (
-                              <span className="text-xs text-white/35">
-                                {evidenceCount} evidence item{evidenceCount !== 1 ? 's' : ''}
-                              </span>
-                            )}
-                            {claim.knowledge_type && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full border border-indigo-500/25 text-indigo-300/70 bg-indigo-950/30">
-                                {claim.knowledge_type.replace(/_/g, ' ')}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Evidence summaries */}
-                          {claim.evidence_links?.length > 0 && (
-                            <div className="space-y-1.5 pt-1 border-t border-white/8">
-                              <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider">Supporting evidence</p>
-                              {(claim.evidence_links as any[]).slice(0, 3).map((link: any, i: number) => (
-                                <div key={i} className="flex items-start gap-2">
-                                  <div className="h-1.5 w-1.5 rounded-full bg-indigo-400/40 flex-shrink-0 mt-1.5" />
-                                  <p className="text-xs text-white/55 leading-snug">{link.evidence_summary}</p>
-                                </div>
-                              ))}
-                              {claim.evidence_links.length > 3 && (
-                                <p className="text-[10px] text-white/25 pl-3.5">
-                                  +{claim.evidence_links.length - 3} more evidence items
-                                </p>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Last reinforced */}
-                          {claim.last_reinforced_at && (
-                            <p className="text-[10px] text-white/25">
-                              Last reinforced {new Date(claim.last_reinforced_at).toLocaleDateString()}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                </div>
-
-                {/* ── Recurring Moments ── */}
-                {sceneCandidates.length > 0 && (
-                  <div className="space-y-3">
-                    <div>
-                      <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
-                        <span className="h-4 w-4 text-amber-400">⟳</span>
-                        Recurring Moments
-                      </h3>
-                      <p className="text-xs text-white/45">
-                        Patterns LoreBook has noticed across multiple conversations.
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      {sceneCandidates.map((c: any) => {
-                        const strength = Math.round((c.continuity_strength ?? 0) * 100);
-                        return (
-                          <div key={c.id} className="p-3 rounded-lg border border-amber-500/15 bg-amber-500/5 space-y-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm text-white/85 leading-snug font-medium">
-                                {c.canonical_title ?? c.recurring_activities?.[0] ?? 'Recurring moment'}
-                              </p>
-                              <span className={`text-[10px] tabular-nums font-semibold flex-shrink-0 ${strength >= 80 ? 'text-green-400' : strength >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
-                                {strength}%
-                              </span>
-                            </div>
-                            {c.recurring_activities?.length > 0 && (
-                              <p className="text-xs text-white/45 leading-snug">
-                                {c.recurring_activities.slice(0, 3).join(' · ')}
-                              </p>
-                            )}
-                            <p className="text-[10px] text-white/25">
-                              Seen {c.occurrence_count ?? 1}× · last {c.last_seen_at ? new Date(c.last_seen_at).toLocaleDateString() : 'recently'}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <CharacterKnowledgeBase
+                characterId={character.id}
+                characterName={editedCharacter.name}
+                mockMode={isMockDataEnabled}
+                active={activeTab === 'knowledge'}
+                onAskInChat={askInChat}
+              />
             )}
 
             {!loadingDetails && activeTab === 'metadata' && (

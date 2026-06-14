@@ -1,5 +1,5 @@
-import { Users, MapPin, Building2, Zap } from 'lucide-react';
-import type { EntityMatch, EntityType } from '../../../hooks/useEntityIndexer';
+import { Users, MapPin, Building2, Zap, Calendar } from 'lucide-react';
+import type { EntityType } from '../../../hooks/useEntityIndexer';
 
 type Mood = {
   score: number;
@@ -9,7 +9,7 @@ type Mood = {
 
 type ComposerHintsProps = {
   mood: Mood;
-  entities: EntityMatch[];
+  entities: Array<{ name: string; type: EntityType }>;
   tagCount: number;
 };
 
@@ -18,20 +18,21 @@ const ENTITY_CONFIG: Record<EntityType, { icon: React.ComponentType<{ className?
   location:  { icon: MapPin, color: 'text-emerald-400' },
   organization: { icon: Building2, color: 'text-amber-400' },
   skill:     { icon: Zap, color: 'text-sky-400' },
+  event:     { icon: Calendar, color: 'text-orange-400' },
 };
 
 const MAX_PER_TYPE = 2;
 
 export const ComposerHints = ({ mood, entities, tagCount }: ComposerHintsProps) => {
   // Group by type, cap per type
-  const grouped = (['character', 'location', 'organization', 'skill'] as EntityType[]).reduce<
+  const grouped = (['character', 'location', 'organization', 'skill', 'event'] as EntityType[]).reduce<
     Record<EntityType, EntityMatch[]>
   >(
     (acc, type) => {
       acc[type] = entities.filter(e => e.type === type).slice(0, MAX_PER_TYPE);
       return acc;
     },
-    { character: [], location: [], organization: [], skill: [] }
+    { character: [], location: [], organization: [], skill: [], event: [] }
   );
 
   const hasEntities = entities.length > 0;
@@ -47,7 +48,7 @@ export const ComposerHints = ({ mood, entities, tagCount }: ComposerHintsProps) 
 
       {hasEntities && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {(['character', 'location', 'organization', 'skill'] as EntityType[]).map(type => {
+          {(['character', 'location', 'organization', 'skill', 'event'] as EntityType[]).map(type => {
             const matches = grouped[type];
             if (matches.length === 0) return null;
             const { icon: Icon, color } = ENTITY_CONFIG[type];

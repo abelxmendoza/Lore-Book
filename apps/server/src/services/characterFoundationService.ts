@@ -398,6 +398,16 @@ class CharacterFoundationService {
     if (decision.action === 'merge') {
       await characterRegistry.mergeMention(userId, decision.characterId, decision.cleanName, { omega_entity_id: entity.id });
       logger.info({ mention: entity.primary_name, mergedInto: decision.matchedName }, 'Registry merged chat mention into existing character');
+      if (threadId) {
+        import('./conversationCentered/entityConversationLinkService').then(({ entityConversationLinkService }) => {
+          entityConversationLinkService
+            .linkEntity(userId, 'character', decision.characterId, threadId, {
+              linkKind: 'mention',
+              entityName: decision.cleanName,
+            })
+            .catch(() => {});
+        }).catch(() => {});
+      }
       return decision.characterId;
     }
     if (decision.action === 'defer') {
@@ -443,6 +453,17 @@ class CharacterFoundationService {
     if (error) {
       logger.error({ error, name: entity.primary_name }, 'Failed to promote omega entity to character');
       return null;
+    }
+
+    if (threadId) {
+      import('./conversationCentered/entityConversationLinkService').then(({ entityConversationLinkService }) => {
+        entityConversationLinkService
+          .linkEntity(userId, 'character', characterId, threadId, {
+            linkKind: 'origin',
+            entityName: cleanedName,
+          })
+          .catch((err) => logger.warn({ err, characterId, threadId }, 'Failed to link origin thread (non-blocking)'));
+      }).catch(() => {});
     }
 
     logger.info({ characterId, name: entity.primary_name }, 'Promoted chat entity to character');

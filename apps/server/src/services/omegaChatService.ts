@@ -460,6 +460,23 @@ class OmegaChatService {
     return context;
   }
 
+  private buildComposerEntitiesContext(
+    composerEntities?: Array<{ id: string; name: string; type: string }>
+  ): string {
+    if (!composerEntities?.length) return '';
+    const lines = composerEntities.map((e) => {
+      const tag =
+        e.type === 'character' ? 'person'
+          : e.type === 'location' ? 'place'
+            : e.type === 'organization' ? 'group'
+              : e.type === 'skill' ? 'skill'
+                : e.type === 'event' ? 'event'
+                  : e.type;
+      return `- ${e.name} (${tag}, id: ${e.id})`;
+    });
+    return `\n\n**COMPOSER CERTIFIED ENTITIES**: The user explicitly mentioned these book entities in their message. Load each entity's knowledge base (character record, relationships, timeline, location profile, group roster, skill progress, or event context) by id before responding:\n${lines.join('\n')}\nTreat these as confirmed references — not new extractions.`;
+  }
+
   private buildThreadEntitiesContext(
     threadEntities?: Array<{ id: string; name: string; type: string }>,
     focusedEntityId?: string
@@ -484,7 +501,8 @@ class OmegaChatService {
     currentContext?: CurrentContext,
     soulProfileContext?: SoulProfileContext,
     threadId?: string,
-    threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>
+    threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
+    composerEntities?: Array<{ id: string; name: string; type: string }>
   ): Promise<StreamingChatResponse> {
     // Use the UI thread as the session so messages, recall scoping, and
     // ingestion all stay attached to the thread the user is actually in.
@@ -1089,6 +1107,11 @@ class OmegaChatService {
     const threadEntitiesContext = this.buildThreadEntitiesContext(threadEntities, entityContext?.id);
     if (threadEntitiesContext) {
       systemPrompt += threadEntitiesContext;
+    }
+
+    const composerEntitiesContext = this.buildComposerEntitiesContext(composerEntities);
+    if (composerEntitiesContext) {
+      systemPrompt += composerEntitiesContext;
     }
 
     if (refinementClarificationRequest) {

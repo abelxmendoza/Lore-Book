@@ -21,6 +21,7 @@ export type RuntimePhase =
   | 'thread_switch'
   | 'thread_create'
   | 'thread_delete'
+  | 'thread_delete_blocked'
   | 'sync_write'
   | 'flush_save'
   | 'title_start'

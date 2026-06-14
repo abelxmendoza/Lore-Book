@@ -13,6 +13,14 @@ vi.mock('../../features/chat/composer/ChatComposer', () => ({
   ChatComposer: () => <div data-testid="chat-composer">Chat Composer</div>,
 }));
 
+vi.mock('../../hooks/useChatStream', () => ({
+  useChatStream: () => ({
+    streamChat: vi.fn().mockResolvedValue(undefined),
+    isStreaming: false,
+    cancel: vi.fn(),
+  }),
+}));
+
 vi.mock('../../lib/api', () => ({
   // Reject by default so the component's catch blocks preserve the initial character state.
   // Individual tests can override with vi.mocked(fetchJson).mockResolvedValue(...).

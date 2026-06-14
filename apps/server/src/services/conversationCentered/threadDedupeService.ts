@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../supabaseClient';
 import { isGenericThreadTitle, DRAFT_THREAD_TITLE } from '../../utils/threadTitleUtils';
+import { loadThreadMessages, isThreadProtected } from './threadContentService';
 
 type SessionRow = {
   id: string;
@@ -37,20 +38,7 @@ function pickSurvivorIds(rows: SessionRow[], scores: Map<string, number>): strin
 }
 
 async function loadMessagesForSession(sessionId: string, userId: string, row: SessionRow) {
-  const meta = metadataMessages(row);
-  if (meta.length > 0) return meta;
-
-  const { data } = await supabaseAdmin
-    .from('conversation_messages')
-    .select('role, content')
-    .eq('session_id', sessionId)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true });
-
-  return (data ?? []).map((m) => ({
-    role: m.role === 'assistant' ? 'assistant' : 'user',
-    content: String(m.content ?? ''),
-  }));
+  return loadThreadMessages(userId, sessionId);
 }
 
 async function deleteSessions(userId: string, ids: string[]) {
@@ -118,7 +106,10 @@ export async function dedupeUserConversationThreads(userId: string): Promise<{
     if (group.length <= 1) continue;
     const keepId = pickSurvivorIds(group, scores);
     for (const row of group) {
-      if (row.id !== keepId) toDelete.add(row.id);
+      if (row.id !== keepId) {
+        const protectedThread = await isThreadProtected(userId, row.id);
+        if (!protectedThread) toDelete.add(row.id);
+      }
     }
   }
 
@@ -129,7 +120,10 @@ export async function dedupeUserConversationThreads(userId: string): Promise<{
   if (emptyDrafts.length > 1) {
     const keepId = pickSurvivorIds(emptyDrafts, scores);
     for (const row of emptyDrafts) {
-      if (row.id !== keepId) toDelete.add(row.id);
+      if (row.id !== keepId) {
+        const protectedThread = await isThreadProtected(userId, row.id);
+        if (!protectedThread) toDelete.add(row.id);
+      }
     }
   }
 

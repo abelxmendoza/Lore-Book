@@ -26,6 +26,7 @@ import { ChatLoadingPulse } from './ChatLoadingPulse';
 import { ChatComposer } from '../composer/ChatComposer';
 import { ThreadEntityChips } from './ThreadEntityChips';
 import { collectThreadEntities, toEntityContext } from '../utils/collectThreadEntities';
+import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
@@ -121,7 +122,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   }, [focusedEntityId, threadEntities]);
 
   // Wrap sendMessage: clear the greeting and track analytics before sending.
-  const handleSubmit = (msg: string) => {
+  const handleSubmit = (msg: string, certifiedEntities?: CertifiedEntityMatch[]) => {
     if (greetingMessage) {
       analytics.track('greeting_responded', {
         threadId: activeThreadId,
@@ -129,7 +130,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       });
       clearGreeting();
     }
-    sendMessage(msg, chatSendOptions);
+    sendMessage(msg, { ...chatSendOptions, composerEntities: certifiedEntities });
   };
 
   // Track greeting_shown when the greeting first appears.

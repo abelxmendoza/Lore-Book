@@ -1,84 +1,73 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { CharacterProfile } from '../api/characters';
+import type { CertifiedEntity } from '../types/certifiedEntity';
+import { matchCertifiedEntities, type CertifiedEntityMatch } from '../lib/certifiedEntityMatch';
 import { fetchJson } from '../lib/api';
-import { findCharacterMentions } from '../utils/characterLinking';
+import { apiCache } from '../lib/cache';
+import { dispatchStoryDataUpdated } from '../lib/storyRefresh';
 
-export type EntityType = 'character' | 'location' | 'organization' | 'skill';
+export type EntityType = CertifiedEntity['type'];
+export type EntityMatch = CertifiedEntityMatch;
 
-export type EntityMatch = {
-  id?: string;
-  name: string;
-  type: EntityType;
-  confidence: number;
-};
-
-type SlimEntity = { id: string; name: string };
-
-function findEntityMentions(text: string, entities: SlimEntity[], type: EntityType): EntityMatch[] {
-  if (!text.trim() || entities.length === 0) return [];
-  const textLower = text.toLowerCase();
-  return entities
-    .filter(e => e.name.length > 2 && textLower.includes(e.name.toLowerCase()))
-    .map(e => ({ id: e.id, name: e.name, type, confidence: 0.9 }));
-}
+const INDEX_CACHE_KEY = '/api/entities/certified-index';
 
 export const useEntityIndexer = () => {
-  const [characters, setCharacters] = useState<CharacterProfile[]>([]);
-  const [locations, setLocations] = useState<SlimEntity[]>([]);
-  const [organizations, setOrganizations] = useState<SlimEntity[]>([]);
-  const [skills, setSkills] = useState<SlimEntity[]>([]);
+  const [index, setIndex] = useState<CertifiedEntity[]>([]);
+  const [matches, setMatches] = useState<CertifiedEntityMatch[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [characterMatches, setCharacterMatches] = useState<EntityMatch[]>([]);
-  const [locationMatches, setLocationMatches] = useState<EntityMatch[]>([]);
-  const [orgMatches, setOrgMatches] = useState<EntityMatch[]>([]);
-  const [skillMatches, setSkillMatches] = useState<EntityMatch[]>([]);
+  const loadIndex = useCallback(async () => {
+    try {
+      const data = await fetchJson<{ entities: CertifiedEntity[] }>(INDEX_CACHE_KEY);
+      setIndex(data.entities ?? []);
+    } catch {
+      setIndex([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    void Promise.allSettled([
-      fetchJson<{ characters: CharacterProfile[] }>('/api/characters/list')
-        .then(r => setCharacters(r.characters ?? []))
-        .catch(() => {}),
-      fetchJson<{ locations: any[] }>('/api/locations')
-        .then(r => setLocations((r.locations ?? []).map((l: any) => ({ id: l.id, name: l.name }))))
-        .catch(() => {}),
-      fetchJson<{ organizations: any[] }>('/api/organizations')
-        .then(r => setOrganizations((r.organizations ?? []).map((o: any) => ({ id: o.id, name: o.name }))))
-        .catch(() => {}),
-      fetchJson<{ skills: any[] }>('/api/skills')
-        .then(r => setSkills((r.skills ?? []).map((s: any) => ({ id: s.id, name: s.skill_name }))))
-        .catch(() => {}),
-    ]);
-  }, []);
+    void loadIndex();
+  }, [loadIndex]);
+
+  // Refresh when story data changes (new character, org, etc.)
+  useEffect(() => {
+    const handler = () => {
+      apiCache.delete(INDEX_CACHE_KEY);
+      void loadIndex();
+    };
+    window.addEventListener('lk:story-data-updated', handler);
+    return () => window.removeEventListener('lk:story-data-updated', handler);
+  }, [loadIndex]);
 
   const analyze = useCallback(
     (text: string) => {
       if (!text.trim()) {
-        setCharacterMatches([]);
-        setLocationMatches([]);
-        setOrgMatches([]);
-        setSkillMatches([]);
+        setMatches([]);
         return;
       }
-
-      const charMentions = findCharacterMentions(text, characters);
-      setCharacterMatches(charMentions.map(m => ({ ...m, type: 'character' as const })));
-      setLocationMatches(findEntityMentions(text, locations, 'location'));
-      setOrgMatches(findEntityMentions(text, organizations, 'organization'));
-      setSkillMatches(findEntityMentions(text, skills, 'skill'));
+      setMatches(matchCertifiedEntities(text, index));
     },
-    [characters, locations, organizations, skills]
+    [index]
   );
 
-  const matches: EntityMatch[] = [...characterMatches, ...locationMatches, ...orgMatches, ...skillMatches];
+  const characterMatches = matches.filter((m) => m.type === 'character');
+  const locationMatches = matches.filter((m) => m.type === 'location');
+  const orgMatches = matches.filter((m) => m.type === 'organization');
+  const skillMatches = matches.filter((m) => m.type === 'skill');
+  const eventMatches = matches.filter((m) => m.type === 'event');
 
   return {
+    index,
+    loading,
     matches,
     characterMatches,
     locationMatches,
     orgMatches,
     skillMatches,
+    eventMatches,
     analyze,
-    linkedCharacters: characterMatches.filter(m => m.id).map(m => m.name),
+    linkedCharacters: characterMatches.map((m) => m.name),
     toggleLink: () => {},
   };
 };

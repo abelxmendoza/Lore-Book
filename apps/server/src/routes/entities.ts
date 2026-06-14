@@ -6,8 +6,42 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { embeddingService } from '../services/embeddingService';
 import { inferPlaceType } from '../constants/placeTypes';
 import { supabaseAdmin } from '../services/supabaseClient';
+import {
+  listCertifiedEntities,
+  matchCertifiedEntitiesInText,
+} from '../services/entities/certifiedEntityIndexService';
 
 const router = Router();
+
+/**
+ * GET /api/entities/certified-index
+ * All book entities with UI cards/modals — indexed by id + mention keys.
+ */
+router.get(
+  '/certified-index',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const entities = await listCertifiedEntities(userId);
+    res.json({ entities, count: entities.length });
+  })
+);
+
+/**
+ * POST /api/entities/match
+ * Match certified entities in composer text (server-side validation).
+ */
+router.post(
+  '/match',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const text = String(req.body?.text ?? '').slice(0, 5000);
+    const index = await listCertifiedEntities(userId);
+    const matches = matchCertifiedEntitiesInText(text, index);
+    res.json({ matches });
+  })
+);
 
 /**
  * POST /api/entities/auto-update

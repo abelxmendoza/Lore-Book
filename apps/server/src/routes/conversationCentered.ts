@@ -159,6 +159,46 @@ router.get(
 );
 
 /**
+ * POST /api/conversation/threads/backfill-entity-links
+ * Recover orphaned sessions and link characters to their origin conversations.
+ */
+router.post(
+  '/threads/backfill-entity-links',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const schema = z.object({
+      characterId: z.string().uuid().optional(),
+      characterName: z.string().min(1).max(200).optional(),
+    });
+    const body = schema.parse(req.body ?? {});
+    const { backfillEntityConversationLinksForUser } = await import(
+      '../services/conversationCentered/entityConversationBackfillService'
+    );
+    const result = await backfillEntityConversationLinksForUser(userId, {
+      characterId: body.characterId,
+      characterName: body.characterName,
+    });
+    res.json({ success: true, ...result });
+  })
+);
+
+/**
+ * POST /api/conversation/threads/recover-orphans
+ * Recreate conversation_sessions rows for chat_messages whose session was accidentally deleted.
+ */
+router.post(
+  '/threads/recover-orphans',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { recoverOrphanedChatSessions } = await import('../services/conversationCentered/threadContentService');
+    const recovered = await recoverOrphanedChatSessions(userId);
+    res.json({ success: true, recovered });
+  })
+);
+
+/**
  * DELETE /api/conversation/threads/empty
  * Purge stale threads that were created but never had any messages saved.
  * Safe to call on every boot — only deletes threads older than 1 hour with no messages.
@@ -188,12 +228,21 @@ router.delete(
     });
 
     const emptyIds: string[] = [];
+    const { isThreadProtected } = await import('../services/conversationCentered/threadContentService');
     for (const t of metadataEmpty) {
+      const protectedThread = await isThreadProtected(userId, t.id);
+      if (protectedThread) continue;
+
       const { count } = await supabaseAdmin
         .from('conversation_messages')
         .select('id', { count: 'exact', head: true })
         .eq('session_id', t.id);
-      if (!count || count === 0) emptyIds.push(t.id);
+      const { count: chatCount } = await supabaseAdmin
+        .from('chat_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', t.id)
+        .eq('user_id', userId);
+      if ((!count || count === 0) && (!chatCount || chatCount === 0)) emptyIds.push(t.id);
     }
 
     if (emptyIds.length === 0) {
@@ -356,6 +405,22 @@ router.get(
 );
 
 /**
+ * GET /api/conversation/threads/:id/status
+ * Whether a thread has recoverable content or is protected from auto-deletion.
+ */
+router.get(
+  '/threads/:id/status',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { getThreadStatus } = await import('../services/conversationCentered/threadContentService');
+    const status = await getThreadStatus(userId, id);
+    res.json({ success: true, status });
+  })
+);
+
+/**
  * GET /api/conversation/threads/:id/messages
  * Get all messages in a thread
  */
@@ -378,39 +443,17 @@ router.get(
       return res.status(404).json({ error: 'Thread not found' });
     }
 
-    const { data: messages, error } = await supabaseAdmin
-      .from('conversation_messages')
-      .select('*')
-      .eq('session_id', id)
-      .order('created_at', { ascending: true });
+    const { loadThreadMessages } = await import('../services/conversationCentered/threadContentService');
+    const messages = await loadThreadMessages(userId, id);
 
-    if (error) {
-      throw error;
-    }
-
-    if (messages && messages.length > 0) {
-      res.json({ success: true, messages });
-      return;
-    }
-
-    // Messages are often persisted in session metadata (PATCH /threads) rather than
-    // conversation_messages — fall back so thread clicks always load the saved conversation.
-    const { data: session } = await supabaseAdmin
-      .from('conversation_sessions')
-      .select('metadata')
-      .eq('id', id)
-      .eq('user_id', userId)
-      .single();
-
-    const metaMsgs = (session?.metadata as Record<string, unknown> | null)?.messages;
-    if (Array.isArray(metaMsgs) && metaMsgs.length > 0) {
+    if (messages.length > 0) {
       res.json({
         success: true,
-        messages: metaMsgs.map((m: Record<string, unknown>, idx: number) => ({
-          id: (m.id as string) ?? `meta-${idx}`,
-          role: m.role === 'assistant' ? 'assistant' : 'user',
-          content: (m.content as string) ?? '',
-          created_at: (m.timestamp as string) ?? new Date().toISOString(),
+        messages: messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          created_at: m.created_at,
           metadata: m.metadata ?? null,
         })),
       });
@@ -2803,9 +2846,40 @@ router.delete(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const { id } = req.params;
     const userId = req.user!.id;
+    const force = req.query.force === 'true';
+
+    const { isThreadProtected } = await import('../services/conversationCentered/threadContentService');
+    const { count: linkCount } = await supabaseAdmin
+      .from('entity_conversation_links')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('session_id', id);
+
+    if (!force && ((await isThreadProtected(userId, id)) || (linkCount ?? 0) > 0)) {
+      return res.status(409).json({
+        success: false,
+        error: 'Thread is linked to remembered entity knowledge and cannot be deleted. Pass ?force=true to override.',
+        protected: true,
+        linkedEntityCount: linkCount ?? 0,
+      });
+    }
+
+    if (force && (linkCount ?? 0) > 0) {
+      await supabaseAdmin
+        .from('entity_conversation_links')
+        .delete()
+        .eq('user_id', userId)
+        .eq('session_id', id);
+    }
 
     await supabaseAdmin
       .from('conversation_messages')
+      .delete()
+      .eq('session_id', id)
+      .eq('user_id', userId);
+
+    await supabaseAdmin
+      .from('chat_messages')
       .delete()
       .eq('session_id', id)
       .eq('user_id', userId);

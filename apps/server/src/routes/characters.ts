@@ -1928,6 +1928,41 @@ router.post('/classify-backfill', requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
+// GET /api/characters/:id/conversations
+// Conversation threads where this character was mentioned (origin + subsequent).
+router.get('/:id/conversations', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { entityConversationLinkService } = await import('../services/conversationCentered/entityConversationLinkService');
+    const conversations = await entityConversationLinkService.getThreadsForEntity(userId, 'character', characterId);
+    res.json({ success: true, conversations });
+  } catch (error) {
+    logger.error({ error, characterId }, 'Failed to get character conversations');
+    res.status(500).json({ error: 'Failed to get character conversations' });
+  }
+});
+
+// GET /api/characters/:id/knowledge-base
+// Unified entity knowledge bundle: facts, crystallized claims, timeline, identity merges, related entities.
+router.get('/:id/knowledge-base', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  const characterId = String(req.params.id);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { getCharacterKnowledgeBase } = await import('../services/characterKnowledgeBaseService');
+    const knowledgeBase = await getCharacterKnowledgeBase(userId, characterId);
+    if (!knowledgeBase) return res.status(404).json({ error: 'Character not found' });
+    res.json({ success: true, knowledgeBase });
+  } catch (error) {
+    logger.error({ error, characterId }, 'Failed to get character knowledge base');
+    res.status(500).json({ error: 'Failed to get character knowledge base' });
+  }
+});
+
 // GET /api/characters/:id/facts
 // Returns all known facts about this character extracted from conversations.
 // Facts are grouped by category and include confidence, status, and update history.

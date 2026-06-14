@@ -939,6 +939,15 @@ export class ConversationIngestionPipeline {
                 characterFoundationService.promoteOmegaEntityToCharacter(userId, entity as any, threadId).then(
                   async (characterId) => {
                     if (!characterId) return;
+                    if (threadId) {
+                      const { entityConversationLinkService } = await import('./entityConversationLinkService');
+                      entityConversationLinkService
+                        .linkEntity(userId, 'character', characterId, threadId, {
+                          linkKind: 'mention',
+                          entityName: (entity as any).primary_name,
+                        })
+                        .catch(() => {});
+                    }
                     const { entityFactsService } = await import('../entityFactsService');
                     entityFactsService.extractAndPersistFacts(
                       userId,
@@ -952,6 +961,14 @@ export class ConversationIngestionPipeline {
                   err => logger.warn({ err, name: (entity as any).primary_name }, 'Character promotion failed (non-blocking)')
                 );
               });
+            }).catch(() => {});
+          }
+
+          if (threadId && resolved.length > 0) {
+            import('./entityConversationLinkService').then(({ entityConversationLinkService }) => {
+              entityConversationLinkService
+                .linkResolvedEntities(userId, threadId, resolved as any[], { markOrigin: sender === 'USER' })
+                .catch((err) => logger.warn({ err, threadId }, 'Entity-thread link failed (non-blocking)'));
             }).catch(() => {});
           }
 

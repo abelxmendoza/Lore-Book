@@ -201,6 +201,20 @@ export const useChatThreads = () => {
       runtimeDiagnostics.recordTimed('backend_load_complete', 'backend_load', {
         meta: { threadCount: loaded.length },
       });
+      // Recover sessions deleted while chat_messages still exist (e.g. empty-on-open race)
+      fetchJson<{ success: boolean; recovered?: number }>('/api/conversation/threads/recover-orphans', {
+        method: 'POST',
+      })
+        .then(async (r) => {
+          if ((r.recovered ?? 0) > 0) {
+            const data = await fetchJson<{ threads: any[]; success: boolean }>('/api/conversation/threads');
+            const reloaded = dedupeThreads(
+              (data.threads || []).map(dbRowToThread).filter(isUsableThread)
+            );
+            setThreads(reloaded);
+          }
+        })
+        .catch(() => {});
       // Purge stale empty threads from the DB (fire-and-forget — failures are silent).
       fetchJson('/api/conversation/threads/empty', { method: 'DELETE' }).catch(() => {});
     } catch (err: unknown) {
@@ -517,6 +531,13 @@ export const useChatThreads = () => {
       if (isAuthenticated) {
         fetchJson(`/api/conversation/threads/${id}`, { method: 'DELETE' }).catch((err: unknown) => {
           const errMsg = err instanceof Error ? err.message : String(err);
+          if (errMsg.includes('409') || errMsg.includes('protected')) {
+            runtimeDiagnostics.record('thread_delete_blocked', {
+              threadId: id,
+              meta: { reason: 'entity_linked', error: errMsg },
+            });
+            return;
+          }
           runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'delete_thread', error: errMsg } });
           console.error('[useChatThreads] deleteThread failed:', errMsg);
         });
