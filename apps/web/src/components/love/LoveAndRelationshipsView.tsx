@@ -46,7 +46,19 @@ type RomanticRelationship = {
   created_at: string;
   rank_among_all?: number;
   rank_among_active?: number;
+  // Sprint AD: deterministic dynamics persisted under metadata.signals.
+  metadata?: {
+    signals?: {
+      obsession_score?: number;
+      attachment_intensity?: number;
+      evidence_strength?: number;
+      signal_strength?: 'low' | 'moderate' | 'high';
+    };
+  } & Record<string, unknown>;
 };
+
+// Sprint AD: read the persisted obsession signal (0..1).
+const obsessionScore = (r: RomanticRelationship) => r.metadata?.signals?.obsession_score ?? 0;
 
 type CharacterListItem = {
   name: string;
@@ -85,11 +97,12 @@ const isNoContactRelationship = (relationship: RomanticRelationship) =>
   NO_CONTACT_STATUSES.has(relationshipStatus(relationship));
 const hasReconnectionPotential = (relationship: RomanticRelationship) =>
   RECONNECTION_STATUSES.has(relationshipStatus(relationship)) ||
-  relationship.green_flags.length > relationship.red_flags.length + 1 ||
-  (relationship.compatibility_score >= 0.7 && relationship.relationship_health >= 0.45 && !isNoContactRelationship(relationship));
+  (relationship.green_flags?.length ?? 0) > (relationship.red_flags?.length ?? 0) ||
+  (relationship.compatibility_score >= 0.6 && relationship.relationship_health >= 0.45 && obsessionScore(relationship) < 0.6 && !isNoContactRelationship(relationship));
 const isHighRiskRelationship = (relationship: RomanticRelationship) =>
-  relationship.red_flags.length >= 2 ||
-  relationship.relationship_health < 0.35 ||
+  (relationship.red_flags?.length ?? 0) >= 2 ||
+  relationship.relationship_health < 0.4 ||
+  obsessionScore(relationship) >= 0.6 ||
   ['blocked', 'ghosted', 'obsession', 'complicated'].includes(relationshipStatus(relationship)) ||
   relationshipType(relationship) === 'obsession';
 

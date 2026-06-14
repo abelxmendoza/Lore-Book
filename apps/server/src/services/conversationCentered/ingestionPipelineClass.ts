@@ -266,6 +266,12 @@ export class ConversationIngestionPipeline {
             'Detected romantic relationships'
           );
 
+          // Sprint AD: re-enrich all relationships with deterministic
+          // scores/flags/obsession signals + re-rank (no LLM, fire-and-forget).
+          void import('./romanticRelationshipScoring')
+            .then(({ romanticRelationshipScoring }) => romanticRelationshipScoring.scoreAllForUser(userId))
+            .catch(err => logger.debug({ err, userId }, 'Relationship scoring failed'));
+
           // For each detected relationship, try to detect date events
           for (const rel of relationships) {
             // Get relationship ID

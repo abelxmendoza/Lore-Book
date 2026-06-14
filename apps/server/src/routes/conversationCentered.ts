@@ -2112,12 +2112,15 @@ router.post(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
 
-    const { romanticRelationshipRanking } = await import('../services/conversationCentered/romanticRelationshipRanking');
-    await romanticRelationshipRanking.calculateRankings(userId);
+    // Sprint AD: deterministically re-score all relationships first, then rank
+    // (scoreAllForUser also calls calculateRankings internally).
+    const { romanticRelationshipScoring } = await import('../services/conversationCentered/romanticRelationshipScoring');
+    const result = await romanticRelationshipScoring.scoreAllForUser(userId);
 
     res.json({
       success: true,
-      message: 'Rankings calculated',
+      message: 'Relationships scored and rankings calculated',
+      scored: result.scored,
     });
   })
 );

@@ -30,6 +30,14 @@ type RomanticRelationship = {
   created_at: string;
   rank_among_all?: number;
   rank_among_active?: number;
+  metadata?: {
+    signals?: {
+      obsession_score?: number;
+      attachment_intensity?: number;
+      evidence_strength?: number;
+      signal_strength?: 'low' | 'moderate' | 'high';
+    };
+  } & Record<string, unknown>;
 };
 
 interface RelationshipCardProps {
@@ -87,6 +95,16 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
 
   const heartFill = relationship.affection_score;
   const isActive = relationship.is_current && relationship.status === 'active';
+
+  // Sprint AD: deterministic dynamics. When evidence is thin, show "Still
+  // Learning" instead of fake-precise 0.5 scores.
+  const sig = relationship.metadata?.signals;
+  // Only show "Still Learning" when we POSITIVELY know evidence is thin. Rows
+  // without signals (demo mock / legacy) keep showing their scores as before.
+  const stillLearning = sig?.signal_strength === 'low';
+  const attachment = sig?.attachment_intensity ?? 0;
+  const obsession = sig?.obsession_score ?? 0;
+  const attachmentLabel = attachment >= 0.66 ? 'High' : attachment >= 0.4 ? 'Moderate' : 'Low';
 
   return (
     <Card
@@ -147,6 +165,30 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
           {relationship.exclusivity_status && ` · ${relationship.exclusivity_status}`}
         </p>
 
+        {/* Still Learning — not enough evidence to score honestly yet */}
+        {stillLearning ? (
+          <div className="mb-4 rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-3 py-2.5">
+            <p className="text-xs font-medium text-white/55">Still learning</p>
+            <p className="text-[11px] text-white/35 mt-0.5">
+              Mention {relationship.person_name?.split(' ')[0] || 'them'} more in chat — scores sharpen as evidence grows.
+            </p>
+          </div>
+        ) : (
+        <>
+        {/* Attachment + fixation signals (only when we have real signals) */}
+        {sig && (
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="text-[11px] px-2 py-0.5 rounded-full border border-pink-500/25 bg-pink-500/10 text-pink-200">
+              Attachment: {attachmentLabel}
+            </span>
+            {obsession >= 0.6 && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> Fixation signal
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
@@ -180,6 +222,8 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
             </div>
           </div>
         </div>
+        </>
+        )}
 
         {/* Duration */}
         {relationship.start_date && (
