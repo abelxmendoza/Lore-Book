@@ -16,8 +16,8 @@ export const featureFlags: Record<FeatureFlag, boolean> = {
   timelinePlayback: false,
   memoryClusters: false,
   characterGraph: false,
-  // Admin console only enabled in development or for admins
-  adminConsole: !config.isProduction,
+  // Admin console route is always available; access is enforced by role checks.
+  adminConsole: true,
   // Dev diagnostics completely disabled in production
   devDiagnostics: !config.isProduction,
 };

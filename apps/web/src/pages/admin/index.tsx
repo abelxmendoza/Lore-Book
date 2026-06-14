@@ -100,6 +100,22 @@ function classifyAdminFailure(messages: string[]): AdminLoadIssue {
 
 const ADMIN_FETCH_OPTS = { timeoutMs: config.api.adminTimeout } as const;
 
+function getSectionTitle(view: AdminView): string {
+  switch (view) {
+    case 'dashboard': return 'Dashboard';
+    case 'users': return 'All Users';
+    case 'subscribers': return 'Subscribers';
+    case 'login-activity': return 'Login Activity';
+    case 'logs': return 'System Logs';
+    case 'ai-events': return 'AI Events';
+    case 'engine-health': return 'Engine Health';
+    case 'tools': return 'Admin Tools';
+    case 'feature-flags': return 'Feature Flags';
+    case 'finance': return 'Finance';
+    default: return 'Admin Console';
+  }
+}
+
 export const AdminPage = () => {
   const { user, loading: authLoading } = useAuth();
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
@@ -269,21 +285,30 @@ export const AdminPage = () => {
     <div className="flex min-h-screen bg-[#080510]">
       <AdminSidebar
         activeSection={currentView}
-        onSectionChange={setCurrentView}
+        onSectionChange={(section) => {
+          setCurrentView(section);
+          setMobileSidebarOpen(false);
+        }}
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
       />
-      <main className="flex-1 p-4 sm:p-6 text-white overflow-auto min-w-0">
+      <main className="flex-1 p-4 sm:p-6 text-white overflow-auto min-w-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {/* Header row */}
-        <div className="flex items-center gap-3 mb-6">
-          <AdminMenuButton onClick={() => setMobileSidebarOpen(true)} />
-          <AdminHeader title="Admin Console" subtitle="Production Administration" badge="ADMIN" />
-          <div className="ml-auto flex items-center gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center mb-6">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <AdminMenuButton onClick={() => setMobileSidebarOpen(true)} />
+            <AdminHeader
+              title={getSectionTitle(currentView)}
+              subtitle={currentView === 'dashboard' ? 'Production Administration' : 'Admin Console'}
+              badge="ADMIN"
+            />
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto sm:ml-auto shrink-0">
             {/* Back to app — prominent, always visible */}
             <button
               type="button"
               onClick={() => window.location.href = '/'}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/20 bg-white/[0.07] hover:bg-white/12 text-white/70 hover:text-white text-sm transition"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-white/20 bg-white/[0.07] hover:bg-white/12 text-white/70 hover:text-white text-sm transition"
             >
               ← App
             </button>
@@ -291,10 +316,10 @@ export const AdminPage = () => {
               type="button"
               onClick={handleRefresh}
               disabled={refreshing}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm transition disabled:opacity-50"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm transition disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Refresh</span>
+              Refresh
             </button>
           </div>
         </div>
@@ -518,8 +543,8 @@ export const AdminPage = () => {
                   {filteredUsers.length === 0 ? (
                     <p className="text-white/40 text-sm py-8 text-center">No users match filters.</p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
+                    <div className="overflow-x-auto -mx-4 sm:mx-0">
+                      <table className="w-full min-w-[640px] text-sm">
                         <thead>
                           <tr className="border-b border-white/10">
                             <th className="text-left py-3 px-3 text-white/50 font-medium">Email</th>
@@ -580,8 +605,8 @@ export const AdminPage = () => {
 
                 <div className="rounded-lg border border-purple-500/30 bg-black/40 p-4">
                   <h2 className="text-xl font-semibold mb-4">All Subscribers</h2>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <table className="w-full min-w-[560px] text-sm">
                       <thead>
                         <tr className="border-b border-white/10">
                           <th className="text-left py-3 px-3 text-white/50 font-medium">Email</th>
@@ -626,8 +651,8 @@ export const AdminPage = () => {
                   {recentLogins.length === 0 ? (
                     <p className="text-white/40 text-sm py-8 text-center">No login activity recorded yet.</p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
+                    <div className="overflow-x-auto -mx-4 sm:mx-0">
+                      <table className="w-full min-w-[640px] text-sm">
                         <thead>
                           <tr className="border-b border-white/10">
                             <th className="text-left py-3 px-3 text-white/50 font-medium">Email</th>
@@ -673,8 +698,8 @@ export const AdminPage = () => {
                 {logs.length === 0 ? (
                   <p className="text-white/40 text-sm">No logs available — logging service not yet connected.</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <table className="w-full min-w-[560px] text-sm">
                       <thead>
                         <tr className="border-b border-white/10">
                           <th className="text-left py-3 px-3 text-white/50 font-medium">Timestamp</th>
@@ -710,8 +735,8 @@ export const AdminPage = () => {
                 {aiEvents.length === 0 ? (
                   <p className="text-white/40 text-sm">No AI events recorded — AI event tracking not yet connected.</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <table className="w-full min-w-[560px] text-sm">
                       <thead>
                         <tr className="border-b border-white/10">
                           <th className="text-left py-3 px-3 text-white/50 font-medium">Timestamp</th>

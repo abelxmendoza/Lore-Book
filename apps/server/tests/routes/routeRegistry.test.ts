@@ -45,4 +45,14 @@ describe('Route Registry', () => {
       seen.add(p);
     }
   });
+
+  it('registers production-critical groups and admin routes as CORE_RUNTIME', () => {
+    const corePaths = routeRegistry
+      .filter((entry) => entry.classification === 'CORE_RUNTIME')
+      .map((entry) => entry.path);
+    expect(corePaths).toContain('/api/organizations');
+    expect(corePaths).toContain('/api/group-candidates');
+    expect(corePaths).toContain('/api/family-trees');
+    expect(corePaths).toContain('/api/admin');
+  });
 });

@@ -567,19 +567,19 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/organizations',
     router: organizationsRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Organization entity management',
+    classification: 'CORE_RUNTIME',
+    description: 'Organization and group entity management',
   },
   {
     path: '/api/family-trees',
     router: familyTreesRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Family trees and character group affiliations',
   },
   {
     path: '/api/group-candidates',
     router: groupCandidatesRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Group candidate review queue — detected groups awaiting user confirmation',
   },
   {
@@ -1107,12 +1107,12 @@ export const routeRegistry: RouteEntry[] = [
     description: 'Personal strategy training',
   },
 
-  // ---- ADMIN --------------------------------------------------------------
+  // ---- ADMIN (production-facing; protected by requireAdmin on the router) --
   {
     path: '/api/admin',
     router: adminRouter,
-    classification: 'ADMIN',
-    description: 'Admin panel',
+    classification: 'CORE_RUNTIME',
+    description: 'Admin panel — metrics, users, finance, system tools',
   },
   {
     path: '/api/dev',

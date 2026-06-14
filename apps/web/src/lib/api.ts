@@ -153,6 +153,10 @@ export const fetchJson = async <T>(
         if (isSchemaIncomplete) {
           errorMessage = error.message || 'Database schema incomplete. Run: ./scripts/run-base-migrations.sh';
         }
+        if (res.status === 503 && typeof error.message === 'string' && error.message.includes('EXPERIMENTAL')) {
+          errorMessage =
+            'This feature is not enabled on the production API yet. Contact support if this persists after deploy.';
+        }
         const backendDownStatus = res.status === 0 || res.status === 503 || res.status === 502 ||
           (res.status === 500 && !config.api.url);
         if ((config.dev.allowMockData || globalMockEnabled) && backendDownStatus) {
