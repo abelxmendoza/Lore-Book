@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { config } from '../config/env';
+import { dispatchStoryDataUpdated } from '../lib/storyRefresh';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
 
 type StreamChunk = {
@@ -58,6 +59,9 @@ export const useChatStream = () => {
         if (res.status === 200) {
           const feedback: MemoryFeedbackEvent = await res.json();
           onMemoryFeedback(feedback);
+          if (feedback.pipelineComplete) {
+            dispatchStoryDataUpdated({ scopes: ['all'], delayMs: 500 });
+          }
           return;
         }
         // 204 = not ready yet — retry once, then give up

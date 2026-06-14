@@ -22,7 +22,10 @@ class APICache {
 
   trackInflight<T>(key: string, promise: Promise<T>): Promise<T> {
     this.inflight.set(key, promise);
-    void promise.finally(() => this.inflight.delete(key));
+    promise.then(
+      () => this.inflight.delete(key),
+      () => this.inflight.delete(key)
+    );
     return promise;
   }
 
@@ -195,5 +198,4 @@ export const cachedFetch = async <T>(
 
   return data;
 };
-
 

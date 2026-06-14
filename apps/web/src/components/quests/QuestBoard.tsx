@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { QuestDetailPanel } from './QuestDetailPanel';
+import { DetectedQuestSuggestions } from './DetectedQuestSuggestions';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { useQuestBoard, useStartQuest, useCompleteQuest, usePauseQuest } from '../../hooks/useQuests';
 import type { Quest, QuestStatus, QuestType } from '../../types/quest';
@@ -66,7 +67,7 @@ export const QuestBoard = () => {
   const completeQuest = useCompleteQuest();
   const pauseQuest = usePauseQuest();
 
-  const { data: board, isLoading, error } = useQuestBoard();
+  const { data: board, isLoading, error, refetch: refetchBoard } = useQuestBoard();
 
   // Get all unique categories from quests
   const allCategories = useMemo(() => {
@@ -467,6 +468,11 @@ export const QuestBoard = () => {
         </div>
       )}
 
+      {/* Detected quest suggestions — pulled from your chats + journal */}
+      <div className="flex-shrink-0">
+        <DetectedQuestSuggestions onQuestAdded={() => void refetchBoard()} />
+      </div>
+
       {/* Main Content - Side by Side */}
       <div className="flex-1 flex overflow-hidden min-h-0 gap-0 px-0 sm:gap-4 sm:px-4">
         {/* Left Panel - Quest List */}
@@ -518,7 +524,7 @@ export const QuestBoard = () => {
                       setSelectedQuestId(displayedQuests[0]?.id || null);
                     }
                   }}
-                  className={`flex-shrink-0 whitespace-nowrap min-h-[44px] sm:flex-1 sm:min-w-[33.333%] sm:min-h-0 px-3 py-2 sm:px-4 sm:py-3 text-[10px] sm:text-sm font-mono transition-all ${getTabClasses()}`}
+                  className={`flex-shrink-0 whitespace-nowrap min-h-[44px] sm:flex-1 sm:min-w-[33.333%] sm:min-h-0 px-3 py-2 sm:px-4 sm:py-3 text-xs sm:text-sm font-mono transition-all ${getTabClasses()}`}
                 >
                   <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                     <span>{tab.label}</span>
@@ -532,7 +538,7 @@ export const QuestBoard = () => {
           </div>
 
           {/* Quest List */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden p-1.5 sm:p-2 sm:p-4 space-y-1.5 sm:space-y-2 min-h-0 scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-2.5 sm:p-4 space-y-2.5 sm:space-y-3 min-h-0 scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent" style={{ WebkitOverflowScrolling: 'touch' }}>
             {displayedQuests.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-6 sm:p-8 gap-3">
                 <div className="text-primary/20 font-mono text-[10px] leading-relaxed select-none whitespace-pre">
@@ -563,7 +569,7 @@ export const QuestBoard = () => {
                     type="button"
                     key={quest.id}
                     onClick={() => setSelectedQuestId(quest.id)}
-                    className={`relative w-full text-left p-2 sm:p-3 rounded border transition-all overflow-hidden ${
+                    className={`relative w-full text-left p-3 sm:p-4 rounded-lg border transition-all overflow-hidden ${
                       selectedQuestId === quest.id
                         ? 'border-primary/70 bg-primary/20 shadow-neon'
                         : `${getStatusColor(quest.status)} hover:border-primary/50 hover:bg-primary/10`
@@ -620,14 +626,14 @@ export const QuestBoard = () => {
                       </div>
                     </div>
 
-                    {/* Title */}
-                    <h3 className="text-xs sm:text-sm font-bold text-white mb-1 font-mono truncate pl-1">
+                    {/* Title — wraps (no truncate) so the full goal is readable */}
+                    <h3 className="text-sm sm:text-base font-bold text-white mb-1 leading-snug line-clamp-2 pl-1">
                       {quest.title}
                     </h3>
 
                     {/* Description */}
                     {quest.description && (
-                      <p className="text-[10px] sm:text-xs text-white/60 line-clamp-2 mb-2 pl-1">
+                      <p className="text-xs sm:text-sm text-white/65 line-clamp-2 mb-2 pl-1 leading-relaxed">
                         {quest.description}
                       </p>
                     )}
@@ -642,7 +648,7 @@ export const QuestBoard = () => {
 
                     {/* Footer: stats + last activity */}
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-[9px] sm:text-[10px] text-white/50 font-mono">
+                      <div className="flex items-center gap-2 text-[10px] sm:text-xs text-white/55 font-mono">
                         <span>PRI:{quest.priority}</span>
                         <span>IMP:{quest.importance}</span>
                         <span>{Math.round(quest.progress_percentage)}%</span>

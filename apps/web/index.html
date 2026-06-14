@@ -114,7 +114,22 @@
       }, 2000);
       
       // Log any errors that occur before main.tsx loads
+      function isExtensionErrorSource(filename) {
+        return !!filename && /(?:chrome-extension|moz-extension|safari-extension|contentscript|content\.js|Worlds\.js|installHook\.js)/i.test(filename);
+      }
+
+      function isExtensionRejection(reason) {
+        if (!reason || typeof reason !== 'object') return false;
+        var text = [
+          String(reason.message || ''),
+          String(reason.stack || ''),
+          String(reason.filename || '')
+        ].join(' ');
+        return isExtensionErrorSource(text);
+      }
+
       window.addEventListener('error', function(e) {
+        if (isExtensionErrorSource(e.filename)) return;
         console.error('[HTML] Global error caught:', e.error, e.message, e.filename, e.lineno);
         // Store error for diagnostics
         try {
@@ -134,7 +149,7 @@
         } catch (err) { /* localStorage may not be available */ }
         
         // Show error on page if it's from our code (not browser extensions)
-        if (!e.filename || (!e.filename.includes('content-scripts') && !e.filename.includes('moz-extension'))) {
+        if (!e.filename || !isExtensionErrorSource(e.filename)) {
           const root = document.getElementById('root');
           if (root && !root.hasChildNodes()) {
             root.innerHTML = '<div style="padding: 20px; color: white; text-align: center; background: black; min-height: 100vh; font-family: monospace;"><h1 style="color: #ef4444;">🚨 JavaScript Error</h1><p style="color: #fbbf24; font-size: 18px; margin: 20px 0;">' + e.message + '</p><pre style="text-align: left; background: rgba(255,0,0,0.2); padding: 15px; border-radius: 4px; overflow: auto; max-width: 800px; margin: 0 auto; color: #fca5a5;">' + (e.error?.stack || e.message) + '</pre><p style="margin-top: 20px; color: #94a3b8; font-size: 14px;">File: ' + (e.filename || 'unknown') + ' | Line: ' + (e.lineno || 'unknown') + '</p></div>';
@@ -164,6 +179,7 @@
       
       // Log unhandled promise rejections — suppress backend-unavailable noise (main.tsx handles it)
       window.addEventListener('unhandledrejection', function(e) {
+        if (isExtensionRejection(e.reason)) return;
         var reason = String(e.reason || '');
         var isBackendDown = reason.includes('Backend unavailable') ||
           reason.includes('Backend server is not running') ||

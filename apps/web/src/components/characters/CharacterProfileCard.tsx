@@ -356,6 +356,12 @@ export const CharacterProfileCard = ({
             const standing = (character.metadata as any)?.social_standing as { tier?: string; connector?: boolean } | undefined;
             const isPublicFigure = Boolean((character.metadata as any)?.public_figure);
             const figureType = ((character.metadata as any)?.figure_type as string | undefined) ?? 'public figure';
+            const cloutLevel = (character.metadata as any)?.clout_level as string | undefined;
+            // Stars scale with clout so reach reads at a glance.
+            const cloutStars: Record<string, string> = {
+              local: '★', emerging: '★', rising: '★★', established: '★★★', prominent: '★★★★', global: '★★★★★',
+            };
+            const cloutMark = cloutLevel ? (cloutStars[cloutLevel] ?? '★') : '★';
 
             // Count secondary signals for "+N" badge
             const extras: string[] = [];
@@ -377,9 +383,10 @@ export const CharacterProfileCard = ({
                   <Badge
                     variant="outline"
                     className="bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5"
-                    title={`Public figure: ${figureType}`}
+                    title={`Public figure: ${figureType}${cloutLevel ? ` · clout: ${cloutLevel}` : ''}`}
                   >
-                    ★<span className="hidden sm:inline ml-0.5">{figureType}</span>
+                    {cloutMark}
+                    <span className="hidden sm:inline ml-0.5">{cloutLevel ? `${figureType} · ${cloutLevel}` : figureType}</span>
                   </Badge>
                 )}
                 {extras.length > 0 && (

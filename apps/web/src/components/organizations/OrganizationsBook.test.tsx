@@ -102,6 +102,104 @@ describe('OrganizationsBook', () => {
     }, { timeout: 3000 });
   });
 
+  it('renders sparse group rows and opens the detail modal', async () => {
+    const { fetchJson } = await import('../../lib/api');
+    vi.mocked(fetchJson).mockResolvedValue({
+      success: true,
+      organizations: [{
+        id: 'org-sparse',
+        name: 'Known Studio Crew',
+        type: 'other',
+        description: 'Mentioned from account data with older organization fields.',
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-02T00:00:00.000Z',
+      }],
+    });
+
+    wrap(<OrganizationsBook />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Known Studio Crew/i)).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    fireEvent.click(screen.getByText(/Known Studio Crew/i));
+    expect(screen.getByTestId('org-detail-modal')).toBeInTheDocument();
+  });
+
+  it('renders pending group candidates as preview organization cards', async () => {
+    const { fetchJson } = await import('../../lib/api');
+    vi.mocked(fetchJson).mockImplementation(async (url) => {
+      if (String(url).includes('/api/group-candidates')) {
+        return {
+          success: true,
+          candidates: [{
+            id: 'candidate-1',
+            proposed_name: 'Abel Studio Circle',
+            detected_members: ['Abel Mendoza', 'Maya'],
+            suggested_group_type: 'crew',
+            suggested_user_relationship: 'member',
+            suggested_membership_model: 'fuzzy',
+            confidence: 0.88,
+            occurrence_count: 3,
+            context: 'Detected from repeated co-mentions in creative work memories.',
+          }],
+        };
+      }
+      return { success: true, organizations: [] };
+    });
+
+    wrap(<OrganizationsBook />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Abel Studio Circle/i)).toBeInTheDocument();
+    }, { timeout: 3000 });
+    expect(screen.getByText(/Showing 1-1 of 1 organizations/i)).toBeInTheDocument();
+  });
+
+  it('renders pending candidates when accepted organizations time out', async () => {
+    const { fetchJson } = await import('../../lib/api');
+    vi.mocked(fetchJson).mockImplementation(async (url) => {
+      if (String(url).includes('/api/organizations')) {
+        throw new Error('Request timed out. Please try again.');
+      }
+      if (String(url).includes('/api/group-candidates')) {
+        return {
+          success: true,
+          candidates: [{
+            id: 'candidate-timeout',
+            proposed_name: 'Late Night Build Crew',
+            detected_members: ['Abel Mendoza', 'Sam'],
+            suggested_group_type: 'crew',
+            suggested_user_relationship: 'member',
+            suggested_membership_model: 'fuzzy',
+            confidence: 0.82,
+            occurrence_count: 4,
+            context: 'Detected from repeated mentions while the accepted organizations request timed out.',
+          }],
+        };
+      }
+      return { success: true };
+    });
+
+    wrap(<OrganizationsBook />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Late Night Build Crew/i)).toBeInTheDocument();
+    }, { timeout: 3000 });
+    expect(screen.getByText(/Showing 1-1 of 1 organizations/i)).toBeInTheDocument();
+  });
+
+  it('shows a sane zero range when no organizations or candidates exist', async () => {
+    const { fetchJson } = await import('../../lib/api');
+    vi.mocked(fetchJson).mockResolvedValue({ success: true, organizations: [], candidates: [] });
+
+    wrap(<OrganizationsBook />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Showing 0-0 of 0 organizations/i)).toBeInTheDocument();
+    }, { timeout: 3000 });
+  });
+
   it('renders search input', async () => {
     const { fetchJson } = await import('../../lib/api');
     vi.mocked(fetchJson).mockResolvedValue({ success: true, organizations: [] });

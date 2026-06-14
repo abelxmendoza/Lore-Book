@@ -9,6 +9,7 @@ import type { PerceptionEntry } from '../../types/perception';
 import { PerceptionEntryModal } from './PerceptionEntryModal';
 import { GossipChatModal } from './GossipChatModal';
 import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { InsufficientData } from '../ui/InsufficientData';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -334,23 +335,17 @@ export const CharacterPerceptionsTab = ({ personId, personName }: Props) => {
 
       {/* Empty state */}
       {active.length === 0 && (
-        <div className="text-center py-14 space-y-4">
-          <Eye className="h-10 w-10 text-white/15 mx-auto" />
-          <div>
-            <p className="text-sm font-medium text-white/40">No beliefs recorded yet</p>
-            <p className="text-xs text-white/25 mt-1">
-              What do you think, believe, or sense about {firstName}?
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowDebrief(true)}
-            className="inline-flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-500/50 rounded-xl px-4 py-2 transition"
-          >
-            <MessageSquareHeart className="h-4 w-4" />
-            Tell LoreBook what you've noticed
-          </button>
-        </div>
+        <InsufficientData
+          icon={Eye}
+          accent="purple"
+          title="No beliefs recorded yet"
+          description={`What do you think, believe, or sense about ${firstName}? Perceptions are how your understanding of them is tracked over time.`}
+          action={{
+            label: "Tell LoreBook what you've noticed",
+            icon: MessageSquareHeart,
+            onClick: () => setShowDebrief(true),
+          }}
+        />
       )}
 
       {/* Current beliefs */}

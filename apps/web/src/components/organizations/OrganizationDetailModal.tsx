@@ -4,8 +4,8 @@
 // Features: Info, Chat, Members, Stories, Events, Locations, Timeline
 // =====================================================
 
-import { useState, useEffect, useRef } from 'react';
-import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, Brain } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Save, Users, BookOpen, Calendar, MapPin, MessageSquare, Clock, FileText, Building2, Plus, Edit2, Trash2, Sparkles, TrendingUp, TrendingDown, Minus, Award, Star, Info, Loader2, Link2, ArrowRight, ArrowLeft, Brain, TreePine } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -18,8 +18,12 @@ import { LocationDetailModal } from '../locations/LocationDetailModal';
 import { fetchJson } from '../../lib/api';
 import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
+import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
-import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
+import { EventTimelineSwimlanes, type SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
+import { OrganizationProfilePanel } from './OrganizationProfilePanel';
+import { FamilyTreePanel } from '../family/FamilyTreePanel';
+import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import type { Organization, OrganizationMember, OrganizationStory, OrganizationEvent, OrganizationLocation, OrganizationRelationship, OrgRelationshipType } from './OrganizationProfileCard';
 import type { Character } from '../characters/CharacterProfileCard';
 import type { LocationProfile } from '../locations/LocationProfileCard';
@@ -30,7 +34,47 @@ type OrganizationDetailModalProps = {
   onUpdate?: () => void;
 };
 
-type TabKey = 'info' | 'chat' | 'members' | 'stories' | 'events' | 'locations' | 'relationships' | 'timeline' | 'knowledge';
+type TabKey = 'info' | 'chat' | 'members' | 'stories' | 'events' | 'locations' | 'relationships' | 'timeline' | 'family' | 'knowledge';
+
+// Events & locations inferred from the group's members across chat threads /
+// journal entries (served by GET /api/organizations/:id/derived-context).
+type DerivedEvent = {
+  id: string;
+  title: string;
+  date: string | null;
+  type: string;
+  summary?: string;
+  involved: string[];
+  user_was_present?: boolean;
+  audience?: 'with_user' | 'without_user' | 'group_wide';
+  scope?: 'direct' | 'subgroup' | 'hierarchy';
+  subgroup_names?: string[];
+  source: 'conversation';
+};
+
+type DerivedHierarchyNode = {
+  id: string;
+  name: string;
+  group_type?: string;
+  relationship_type?: OrgRelationshipType;
+  member_count?: number;
+  inferred?: boolean;
+};
+
+type DerivedHierarchy = {
+  parent?: DerivedHierarchyNode;
+  subgroups: DerivedHierarchyNode[];
+  related: DerivedHierarchyNode[];
+};
+
+type DerivedLocation = {
+  id: string;
+  name: string;
+  type?: string;
+  importance_score?: number;
+  involved: string[];
+  source: 'conversation';
+};
 
 type ChatMessage = {
   id: string;
@@ -49,9 +93,21 @@ const REL_TYPE_LABELS: Record<OrgRelationshipType, string> = {
   merged_with: 'Merged with',
 };
 
+const AUDIENCE_LABELS: Record<NonNullable<DerivedEvent['audience']>, string> = {
+  with_user: 'With you',
+  without_user: 'Without you',
+  group_wide: 'Group-wide',
+};
+
+const AUDIENCE_BADGE: Record<NonNullable<DerivedEvent['audience']>, string> = {
+  with_user: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+  without_user: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
+  group_wide: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+};
+
 const ORG_REL_TYPE_OPTIONS = Object.keys(REL_TYPE_LABELS) as OrgRelationshipType[];
 
-const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
+const BASE_TABS: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'info', label: 'Info', icon: FileText },
   { key: 'knowledge', label: 'What I Know', icon: Brain },
   { key: 'chat', label: 'Chat', icon: MessageSquare },
@@ -65,6 +121,13 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
 
 export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: OrganizationDetailModalProps) => {
   const [editedOrg, setEditedOrg] = useState<Organization>(organization);
+  const tabs = useMemo(() => {
+    const list = [...BASE_TABS];
+    if (editedOrg.group_type === 'family') {
+      list.splice(4, 0, { key: 'family', label: 'Family Tree', icon: TreePine });
+    }
+    return list;
+  }, [editedOrg.group_type]);
   const [activeTab, setActiveTab] = useState<TabKey>('info');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -101,10 +164,23 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
   const [newLocation, setNewLocation] = useState({ location_name: '' });
   const [locationLoading, setLocationLoading] = useState(false);
 
+  // Conversation-derived events & locations (auto-extracted from chat threads)
+  const [derivedEvents, setDerivedEvents] = useState<DerivedEvent[]>([]);
+  const [derivedLocations, setDerivedLocations] = useState<DerivedLocation[]>([]);
+  const [derivedHierarchy, setDerivedHierarchy] = useState<DerivedHierarchy>({ subgroups: [], related: [] });
+  const [derivedLoading, setDerivedLoading] = useState(false);
+  const [derivedLoaded, setDerivedLoaded] = useState(false);
+  const [familyRefreshKey, setFamilyRefreshKey] = useState(0);
+  const [memberAffiliations, setMemberAffiliations] = useState<
+    Record<string, Array<{ id: string; name: string; group_type?: string }>>
+  >({});
+  const [affiliationsLoading, setAffiliationsLoading] = useState(false);
+
   // Relationships state
   const [relationships, setRelationships] = useState<OrganizationRelationship[]>([]);
   const [relationshipsLoaded, setRelationshipsLoaded] = useState(false);
   const [relationshipsLoading, setRelationshipsLoading] = useState(false);
+  const [reconcilingRelationships, setReconcilingRelationships] = useState(false);
   const [relatedOrgs, setRelatedOrgs] = useState<Organization[]>([]);
   const [showAddRelationship, setShowAddRelationship] = useState(false);
   const [newRelationship, setNewRelationship] = useState<{ to_org_id: string; relationship_type: OrgRelationshipType; notes: string }>({
@@ -124,6 +200,7 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
 
   // Modal states for nested entities
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
+  const [selectedLinkedOrg, setSelectedLinkedOrg] = useState<Organization | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<LocationProfile | null>(null);
   
   useEffect(() => {
@@ -149,6 +226,23 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
   }, [activeTab, relationshipsLoaded]);
 
   useEffect(() => {
+    if ((activeTab !== 'events' && activeTab !== 'locations' && activeTab !== 'timeline' && activeTab !== 'relationships') || derivedLoaded || !organization.id) return;
+    setDerivedLoading(true);
+    fetchJson<{ success: boolean; events: DerivedEvent[]; locations: DerivedLocation[]; hierarchy?: DerivedHierarchy }>(
+      `/api/organizations/${organization.id}/derived-context`
+    )
+      .then(r => {
+        if (r.success) {
+          setDerivedEvents(r.events || []);
+          setDerivedLocations(r.locations || []);
+          setDerivedHierarchy(r.hierarchy ?? { subgroups: [], related: [] });
+        }
+      })
+      .catch(() => {})
+      .finally(() => { setDerivedLoading(false); setDerivedLoaded(true); });
+  }, [activeTab, organization.id, derivedLoaded]);
+
+  useEffect(() => {
     if (activeTab !== 'knowledge' || factsLoaded || !organization.id) return;
     setFactsLoading(true);
     fetchJson<{ success: boolean; facts: any[] }>(`/api/organizations/${organization.id}/facts`)
@@ -156,6 +250,35 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
       .catch(() => {})
       .finally(() => { setFactsLoading(false); setFactsLoaded(true); });
   }, [activeTab, organization.id, factsLoaded]);
+
+  const loadMemberAffiliations = async () => {
+    if (!organization.id || organization.id.startsWith('org-')) return;
+    setAffiliationsLoading(true);
+    try {
+      const r = await fetchJson<{
+        success: boolean;
+        affiliations: Record<string, Array<{ id: string; name: string; group_type?: string }>>;
+      }>(`/api/family-trees/organization/${organization.id}/member-affiliations`);
+      if (r.success) setMemberAffiliations(r.affiliations ?? {});
+    } catch {
+      setMemberAffiliations({});
+    } finally {
+      setAffiliationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'members') void loadMemberAffiliations();
+  }, [activeTab, organization.id, members.length]);
+
+  useEffect(() => {
+    return onStoryDataUpdated(() => {
+      setDerivedLoaded(false);
+      setFamilyRefreshKey(k => k + 1);
+      setRelationshipsLoaded(false);
+      void loadMemberAffiliations();
+    });
+  }, [organization.id]);
 
   const loadRelationships = async () => {
     setRelationshipsLoading(true);
@@ -179,6 +302,32 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
   const orgNameById = (id: string): string => {
     if (id === organization.id) return organization.name;
     return relatedOrgs.find(o => o.id === id)?.name || 'Unknown organization';
+  };
+
+  const openLinkedOrg = (orgId: string) => {
+    void fetchJson<{ success: boolean; organization: Organization }>(`/api/organizations/${orgId}`)
+      .then(r => { if (r.success && r.organization) setSelectedLinkedOrg(r.organization); })
+      .catch(() => {});
+  };
+
+  const handleReconcileRelationships = async () => {
+    setReconcilingRelationships(true);
+    try {
+      await fetchJson('/api/organizations/reconcile-relationships', { method: 'POST', body: JSON.stringify({}) });
+      setRelationshipsLoaded(false);
+      setDerivedLoaded(false);
+      await loadRelationships();
+    } catch (error) {
+      console.error('Failed to reconcile relationships:', error);
+    } finally {
+      setReconcilingRelationships(false);
+    }
+  };
+
+  const laneKeyForEvent = (e: DerivedEvent): string => {
+    if (e.audience === 'with_user' || e.user_was_present) return 'with';
+    if (e.audience === 'group_wide') return 'group_wide';
+    return 'without';
   };
 
   const handleAddRelationship = async () => {
@@ -335,6 +484,9 @@ ORGANIZATION CONTEXT:
 - Location: ${editedOrg.location || 'Not specified'}
 - Founded: ${editedOrg.founded_date ? formatDate(editedOrg.founded_date) : 'Unknown'}
 - Members: ${members.map(m => `${m.character_name}${m.role ? ` (${m.role})` : ''}`).join(', ') || 'None'}
+${derivedHierarchy.parent ? `- Part of (parent group): ${derivedHierarchy.parent.name}` : ''}
+${derivedHierarchy.subgroups.length > 0 ? `- Subgroups: ${derivedHierarchy.subgroups.map(s => s.name).join(', ')}` : ''}
+${derivedHierarchy.related.length > 0 ? `- Related groups: ${derivedHierarchy.related.map(r => `${r.name} (${REL_TYPE_LABELS[r.relationship_type ?? 'affiliated_with']})`).join(', ')}` : ''}
 - Stories: ${stories.length} recorded
 - Events: ${events.length} recorded
 - Locations: ${locations.map(l => l.location_name).join(', ') || 'None'}
@@ -379,19 +531,68 @@ User's message: ${currentInput}`;
           setStreamingMessageId(null);
           setChatLoading(false);
           
-          // Try to extract JSON updates from response
+          // Extract JSON updates from the response and PERSIST them (not just
+          // local state) so the chatbot can actually CRUD the organization.
           try {
             const jsonMatch = accumulatedContent.match(/\{[\s\S]*"updates"[\s\S]*\}/);
             if (jsonMatch) {
-              const updates = JSON.parse(jsonMatch[0]);
-              if (updates.updates) {
-                // Apply updates
-                setEditedOrg(prev => ({ ...prev, ...updates.updates }));
+              const parsed = JSON.parse(jsonMatch[0]);
+              if (parsed.updates) {
+                const { members: newMembers, ...scalars } = parsed.updates as Record<string, any>;
+                const persistable = Boolean(organization.id) && !organization.id.startsWith('org-');
+
+                // Scalar fields → optimistic local update + PATCH.
+                if (Object.keys(scalars).length > 0) {
+                  setEditedOrg(prev => ({ ...prev, ...scalars }));
+                  const allowed = ['name', 'description', 'location', 'founded_date', 'status', 'aliases', 'type', 'group_type'];
+                  const patch: Record<string, any> = {};
+                  for (const k of allowed) if (k in scalars) patch[k] = scalars[k];
+                  if (persistable && Object.keys(patch).length > 0) {
+                    try {
+                      await fetchJson(`/api/organizations/${organization.id}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify(patch),
+                      });
+                    } catch (err) {
+                      console.error('Failed to persist org updates from chat:', err);
+                    }
+                  }
+                }
+
+                // New members → optimistic add + POST (skip existing by name).
+                if (Array.isArray(newMembers)) {
+                  for (const raw of newMembers) {
+                    const name = typeof raw === 'string' ? raw : (raw?.character_name || raw?.name);
+                    if (!name?.trim()) continue;
+                    if (members.some(m => m.character_name.toLowerCase() === name.toLowerCase())) continue;
+                    const member: OrganizationMember = {
+                      id: `member-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      character_name: name,
+                      role: typeof raw === 'object' ? raw?.role : undefined,
+                      status: 'active',
+                    };
+                    setMembers(prev => [...prev, member]);
+                    if (persistable) {
+                      try {
+                        await fetchJson(`/api/organizations/${organization.id}/members`, {
+                          method: 'POST',
+                          body: JSON.stringify(member),
+                        });
+                      } catch (err) {
+                        console.error('Failed to persist member from chat:', err);
+                      }
+                    }
+                  }
+                }
               }
             }
-          } catch (e) {
-            // No updates to extract
+          } catch {
+            // No parseable updates in the response — nothing to persist.
           }
+          schedulePostChatRefresh({
+            scopes: ['all'],
+            organizationIds: organization.id ? [organization.id] : undefined,
+          });
         },
         (error: string) => {
           setStreamingMessageId(null);
@@ -587,10 +788,16 @@ User's message: ${currentInput}`;
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)} className="flex-1 flex flex-col overflow-hidden">
           <div className="px-6 pt-4 border-b border-border/50">
-            <TabsList className="w-full bg-black/40">
+            {/* Wrapping, auto-height tab bar so every tab stays fully visible
+                (no horizontal scroll / clipped labels), with a clear active state. */}
+            <TabsList className="flex flex-wrap h-auto w-full justify-start gap-1.5 bg-black/40 p-1.5">
               {tabs.map(tab => (
-                <TabsTrigger key={tab.key} value={tab.key} className="flex items-center gap-2">
-                  <tab.icon className="h-4 w-4" />
+                <TabsTrigger
+                  key={tab.key}
+                  value={tab.key}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm text-white/55 hover:text-white/80 data-[state=active]:bg-purple-500/25 data-[state=active]:text-white data-[state=active]:border data-[state=active]:border-purple-400/40 data-[state=active]:shadow-sm rounded-md"
+                >
+                  <tab.icon className="h-3.5 w-3.5 shrink-0" />
                   {tab.label}
                 </TabsTrigger>
               ))}
@@ -785,6 +992,12 @@ User's message: ${currentInput}`;
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Rich organization profile — mission, culture, structure, reputation, … */}
+              <OrganizationProfilePanel
+                organization={editedOrg}
+                onAddInfo={() => setActiveTab('chat')}
+              />
 
               {/* Stats */}
               <div className="grid grid-cols-4 gap-4">
@@ -1106,9 +1319,37 @@ User's message: ${currentInput}`;
                             {member.role && (
                               <div className="text-sm text-white/60">{member.role}</div>
                             )}
+                            {member.notes && (
+                              <div className="text-xs text-white/40 mt-1">{member.notes}</div>
+                            )}
                             <Badge variant="outline" className="mt-2">
                               {member.status}
                             </Badge>
+                            {member.character_id && memberAffiliations[member.character_id]?.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-2" onClick={e => e.stopPropagation()}>
+                                {memberAffiliations[member.character_id].map(org => (
+                                  <Badge
+                                    key={org.id}
+                                    variant="outline"
+                                    className="text-[10px] border-purple-500/35 bg-purple-500/10 text-purple-200 cursor-pointer hover:bg-purple-500/20"
+                                    onClick={() => {
+                                      void fetchJson<{ success: boolean; organization: Organization }>(
+                                        `/api/organizations/${org.id}`
+                                      )
+                                        .then(r => {
+                                          if (r.success && r.organization) setSelectedLinkedOrg(r.organization);
+                                        })
+                                        .catch(() => {});
+                                    }}
+                                  >
+                                    {org.name}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                            {affiliationsLoading && member.character_id && !memberAffiliations[member.character_id] && (
+                              <p className="text-[10px] text-white/30 mt-1">Loading other groups…</p>
+                            )}
                           </div>
                           <Button
                             variant="ghost"
@@ -1275,6 +1516,72 @@ User's message: ${currentInput}`;
                   ))}
                 </div>
               )}
+
+              {/* Conversation-derived events */}
+              <div className="pt-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="h-4 w-4 text-purple-400" />
+                  <h4 className="text-sm font-semibold text-white/80">From your conversations</h4>
+                  {derivedEvents.length > 0 && (
+                    <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/40">
+                      {derivedEvents.length}
+                    </Badge>
+                  )}
+                </div>
+                {derivedLoading ? (
+                  <div className="flex items-center gap-2 text-white/50 text-sm py-4">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Scanning chat threads…
+                  </div>
+                ) : derivedEvents.length === 0 ? (
+                  <p className="text-xs text-white/40 py-2">
+                    No events involving these members were found in your conversations yet.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {derivedEvents.map((event) => (
+                      <Card key={event.id} className="bg-purple-500/5 border-purple-500/20">
+                        <CardContent className="pt-4 pb-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-semibold text-white">{event.title}</div>
+                              {event.summary && (
+                                <p className="text-sm text-white/60 mt-1 line-clamp-2">{event.summary}</p>
+                              )}
+                              <div className="flex flex-wrap items-center gap-2 mt-2">
+                                {event.date && (
+                                  <span className="text-xs text-white/40">{formatDate(event.date)}</span>
+                                )}
+                                {event.involved.length > 0 && (
+                                  <span className="text-xs text-white/50">
+                                    with {event.involved.slice(0, 4).join(', ')}
+                                    {event.involved.length > 4 ? ` +${event.involved.length - 4}` : ''}
+                                  </span>
+                                )}
+                                {event.user_was_present && (
+                                  <Badge variant="outline" className="bg-green-500/15 text-green-300 border-green-500/30 text-[10px]">
+                                    You were there
+                                  </Badge>
+                                )}
+                                {event.audience && (
+                                  <Badge variant="outline" className={`text-[10px] ${AUDIENCE_BADGE[event.audience]}`}>
+                                    {AUDIENCE_LABELS[event.audience]}
+                                  </Badge>
+                                )}
+                                {event.subgroup_names && event.subgroup_names.length > 0 && (
+                                  <Badge variant="outline" className="text-[10px] border-indigo-500/30 text-indigo-300/80">
+                                    {event.subgroup_names.join(', ')}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="shrink-0">{event.type}</Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
             </TabsContent>
 
             {/* Locations Tab */}
@@ -1339,17 +1646,136 @@ User's message: ${currentInput}`;
                   ))}
                 </div>
               )}
+
+              {/* Conversation-derived locations */}
+              <div className="pt-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="h-4 w-4 text-purple-400" />
+                  <h4 className="text-sm font-semibold text-white/80">From your conversations</h4>
+                  {derivedLocations.length > 0 && (
+                    <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/40">
+                      {derivedLocations.length}
+                    </Badge>
+                  )}
+                </div>
+                {derivedLoading ? (
+                  <div className="flex items-center gap-2 text-white/50 text-sm py-4">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Scanning chat threads…
+                  </div>
+                ) : derivedLocations.length === 0 ? (
+                  <p className="text-xs text-white/40 py-2">
+                    No places tied to these members were found in your conversations yet.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {derivedLocations.map((loc) => (
+                      <Card key={loc.id} className="bg-purple-500/5 border-purple-500/20">
+                        <CardContent className="pt-4 pb-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-semibold text-white flex items-center gap-2">
+                                <MapPin className="h-3.5 w-3.5 text-yellow-400 shrink-0" />
+                                {loc.name}
+                              </div>
+                              {loc.involved.length > 0 && (
+                                <div className="text-xs text-white/50 mt-1.5">
+                                  with {loc.involved.slice(0, 4).join(', ')}
+                                  {loc.involved.length > 4 ? ` +${loc.involved.length - 4}` : ''}
+                                </div>
+                              )}
+                            </div>
+                            {loc.type && (
+                              <Badge variant="outline" className="shrink-0">{loc.type}</Badge>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
             </TabsContent>
 
             {/* Relationships Tab */}
             <TabsContent value="relationships" className="mt-4 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <h3 className="text-lg font-semibold text-white">Relationships</h3>
-                <Button variant="outline" size="sm" onClick={() => setShowAddRelationship(v => !v)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Relationship
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleReconcileRelationships()}
+                    disabled={reconcilingRelationships}
+                    title="Re-scan conversations for subgroup and hierarchy links"
+                  >
+                    {reconcilingRelationships
+                      ? <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      : <Sparkles className="h-4 w-4 mr-1" />}
+                    Learn from chat
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setShowAddRelationship(v => !v)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Relationship
+                  </Button>
+                </div>
               </div>
+
+              {/* Hierarchy learned from chat */}
+              {(derivedHierarchy.parent || derivedHierarchy.subgroups.length > 0) && (
+                <Card className="bg-indigo-500/5 border-indigo-500/25">
+                  <CardContent className="pt-4 pb-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-indigo-400" />
+                      <p className="text-sm font-semibold text-white/85">Group structure</p>
+                    </div>
+                    {derivedHierarchy.parent && (
+                      <div className="text-sm">
+                        <span className="text-white/45">Part of </span>
+                        <button
+                          type="button"
+                          onClick={() => openLinkedOrg(derivedHierarchy.parent!.id)}
+                          className="font-semibold text-indigo-300 hover:text-indigo-200 underline-offset-2 hover:underline"
+                        >
+                          {derivedHierarchy.parent.name}
+                        </button>
+                        {derivedHierarchy.parent.inferred && (
+                          <Badge variant="outline" className="ml-2 text-[10px] border-indigo-500/30 text-indigo-300/70">
+                            from chat
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                    {derivedHierarchy.subgroups.length > 0 && (
+                      <div>
+                        <p className="text-xs text-white/45 mb-2">Subgroups</p>
+                        <div className="flex flex-wrap gap-2">
+                          {derivedHierarchy.subgroups.map(sg => (
+                            <button
+                              key={sg.id}
+                              type="button"
+                              onClick={() => openLinkedOrg(sg.id)}
+                              className="px-2.5 py-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-xs text-indigo-200 hover:bg-indigo-500/20 transition text-left"
+                            >
+                              {sg.name}
+                              {sg.member_count != null && (
+                                <span className="ml-1.5 text-indigo-300/50">· {sg.member_count} members</span>
+                              )}
+                              {sg.inferred && <span className="ml-1 text-indigo-300/40">· learned</span>}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              <OrganizationGroupNetwork
+                rootOrgId={organization.id}
+                compact
+                title={`${organization.name} in context`}
+                onOrgClick={openLinkedOrg}
+              />
 
               {showAddRelationship && (
                 <Card className="bg-black/40 border-border/50">
@@ -1416,25 +1842,48 @@ User's message: ${currentInput}`;
                     const outgoing = rel.from_org_id === organization.id;
                     const otherOrgId = outgoing ? rel.to_org_id : rel.from_org_id;
                     const otherOrgName = orgNameById(otherOrgId);
+                    const inferred = rel.notes?.startsWith('[auto-inferred]');
                     return (
                       <Card key={rel.id} className="bg-black/40 border-border/50">
                         <CardContent className="pt-4 pb-4">
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="font-semibold text-white truncate">{outgoing ? organization.name : otherOrgName}</span>
+                              <div className="flex items-center gap-2 text-sm flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => openLinkedOrg(outgoing ? organization.id : otherOrgId)}
+                                  className="font-semibold text-white truncate hover:text-indigo-300 transition"
+                                >
+                                  {outgoing ? organization.name : otherOrgName}
+                                </button>
                                 {outgoing
                                   ? <ArrowRight className="h-3.5 w-3.5 text-white/40 shrink-0" />
                                   : <ArrowLeft className="h-3.5 w-3.5 text-white/40 shrink-0" />}
-                                <span className="font-semibold text-white truncate">{outgoing ? otherOrgName : organization.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => openLinkedOrg(outgoing ? otherOrgId : organization.id)}
+                                  className="font-semibold text-white truncate hover:text-indigo-300 transition"
+                                >
+                                  {outgoing ? otherOrgName : organization.name}
+                                </button>
                               </div>
-                              <div className="mt-1.5">
+                              <div className="mt-1.5 flex flex-wrap items-center gap-2">
                                 <Badge variant="outline" className="bg-indigo-500/20 text-indigo-300 border-indigo-500/40">
                                   {REL_TYPE_LABELS[rel.relationship_type]}
                                 </Badge>
+                                {inferred && (
+                                  <Badge variant="outline" className="text-[10px] border-purple-500/30 text-purple-300/80">
+                                    learned from chat
+                                  </Badge>
+                                )}
                               </div>
-                              {rel.notes && (
+                              {rel.notes && !inferred && (
                                 <div className="text-xs text-white/50 mt-1.5">{rel.notes}</div>
+                              )}
+                              {rel.notes && inferred && (
+                                <div className="text-xs text-white/40 mt-1.5 italic">
+                                  {rel.notes.replace(/^\[auto-inferred\]\s*/, '')}
+                                </div>
                               )}
                             </div>
                             <Button variant="ghost" size="sm" onClick={() => void handleRemoveRelationship(rel.id)}>
@@ -1449,9 +1898,67 @@ User's message: ${currentInput}`;
               )}
             </TabsContent>
 
+            {/* Family Tree Tab (family groups) */}
+            <TabsContent value="family" className="mt-4 space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <TreePine className="h-5 w-5 text-emerald-400" />
+                  {editedOrg.name} — Family Tree
+                </h3>
+                <p className="text-xs text-white/45 mt-1">
+                  Positions inferred from your conversations. Updates as you share more about who is related to whom.
+                </p>
+              </div>
+              <FamilyTreePanel
+                scope="organization"
+                entityId={organization.id}
+                refreshKey={familyRefreshKey}
+                title={`No family structure for ${editedOrg.name} yet`}
+                hint="Talk about who is related — parents, siblings, cousins — and LoreBook builds the tree."
+                onMemberClick={(id, name) => {
+                  if (id.startsWith('name-')) return;
+                  void fetchJson<Character>(`/api/characters/${id}`)
+                    .then(c => setSelectedCharacter(c))
+                    .catch(() => setSelectedCharacter({ id, name } as Character));
+                }}
+              />
+            </TabsContent>
+
             {/* Timeline Tab */}
-            <TabsContent value="timeline" className="mt-4">
-              <ColorCodedTimeline />
+            <TabsContent value="timeline" className="mt-4 space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-purple-400" />
+                  Event Timeline
+                </h3>
+                <p className="text-xs text-white/45 mt-1">
+                  Events involving {organization.name}'s members (including subgroups), split by your involvement and group-wide impact.
+                </p>
+              </div>
+              <EventTimelineSwimlanes
+                loading={derivedLoading}
+                lanes={[
+                  { key: 'with', label: 'With you', accent: 'emerald', hint: 'You were there' },
+                  { key: 'without', label: 'Without you', accent: 'violet', hint: 'Member-only — you weren\'t present' },
+                  { key: 'group_wide', label: 'Group-wide', accent: 'amber', hint: 'Affects the whole group or multiple members' },
+                ]}
+                events={derivedEvents.map((e): SwimlaneEvent => ({
+                  id: e.id,
+                  title: e.title,
+                  date: e.date ?? '',
+                  laneKey: laneKeyForEvent(e),
+                  type: e.type,
+                  summary: e.summary,
+                  meta: [
+                    e.involved.length > 0
+                      ? `with ${e.involved.slice(0, 4).join(', ')}${e.involved.length > 4 ? ` +${e.involved.length - 4}` : ''}`
+                      : null,
+                    e.subgroup_names?.length ? `via ${e.subgroup_names.join(', ')}` : null,
+                  ].filter(Boolean).join(' · ') || undefined,
+                }))}
+                emptyTitle="No events yet"
+                emptyHint={`Events show up here as ${organization.name}'s members come up in your conversations.`}
+              />
             </TabsContent>
 
             {/* Knowledge Tab */}
@@ -1593,7 +2100,14 @@ User's message: ${currentInput}`;
         onClose={() => setSelectedLocation(null)}
       />
     )}
+
+    {selectedLinkedOrg && (
+      <OrganizationDetailModal
+        organization={selectedLinkedOrg}
+        onClose={() => setSelectedLinkedOrg(null)}
+        onUpdate={onUpdate}
+      />
+    )}
   </>
   );
 };
-

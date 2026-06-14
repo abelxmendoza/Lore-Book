@@ -16,16 +16,14 @@
 
 import { v4 as uuid } from 'uuid';
 import { logger } from '../logger';
+import { splitPersonName } from '../utils/nameNormalization';
 import { characterRegistry } from './characterRegistry';
 import { supabaseAdmin } from './supabaseClient';
 import type { PeoplePlaceEntity } from '../types';
 
 function parseNameParts(fullName: string): { firstName: string; lastName: string } {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  return {
-    firstName: parts[0] ?? '',
-    lastName: parts.length > 1 ? parts.slice(1).join(' ') : '',
-  };
+  const parts = splitPersonName(fullName);
+  return { firstName: parts.firstName, lastName: parts.lastName ?? '' };
 }
 
 type CharacterRow = {
@@ -106,6 +104,7 @@ class CharacterFoundationService {
       return null;
     }
 
+    return characterRegistry.runExclusive(userId, async () => {
     // ── 1. Dedup check: look up by source_entity_id (primary key) ───────────
     const { data: existingByEntityId } = await supabaseAdmin
       .from('characters')
@@ -184,6 +183,7 @@ class CharacterFoundationService {
 
     logger.info({ characterId, name: entity.name, aliases }, 'Created new character');
     return characterId;
+    });
   }
 
   /**
@@ -421,7 +421,7 @@ class CharacterFoundationService {
     const { error } = await supabaseAdmin.from('characters').insert({
       id: characterId,
       user_id: userId,
-      name: entity.primary_name,
+      name: cleanedName,
       alias: aliases.length > 0 ? aliases : null,
       status: 'active',
       tags: [],

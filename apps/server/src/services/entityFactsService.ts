@@ -17,6 +17,9 @@ import { supabaseAdmin } from './supabaseClient';
 
 export type EntityType = 'character' | 'organization' | 'location';
 
+/** Language that signals a strained/estranged family bond (lowers closeness). */
+const ESTRANGEMENT_SIGNALS = /\b(estranged|cut (?:them |him |her )?off|cut ties|no contact|don'?t (?:talk|speak)|haven'?t spoken|doesn'?t (?:talk|speak)|disowned|fell out|not close|distant relationship|abusive|toxic|complicated relationship)\b/i;
+
 export type FactStatus = 'active' | 'updated' | 'corrected' | 'contradicted';
 
 // Per-entity category vocabularies
@@ -254,9 +257,9 @@ class EntityFactsService {
     const ARCHETYPE_RULES: Array<{ archetype: string; relType: string; keywords: string[] }> = [
       // 'my partner' (not bare 'partner') — otherwise "climbing partner" /
       // "business partner" misclassify as romantic
-      { archetype: 'romantic',     relType: 'romantic',     keywords: ['girlfriend', 'boyfriend', 'my partner', 'fiancé', 'fiancee', 'dating', 'romantic', 'situationship', 'hooked up', 'hooking up', 'slept with', 'slept together', 'made out', 'went on a date', 'our date', 'friends with benefits', 'my ex', 'crush on'] },
-      { archetype: 'mentor',       relType: 'mentor',       keywords: ['mentor', 'coach', 'teacher', 'professor', 'advisor', 'therapist'] },
-      { archetype: 'colleague',    relType: 'professional', keywords: ['boss', 'coworker', 'co-worker', 'colleague', 'manager', 'client', 'business partner', 'works with', 'work together', 'recruiter', 'onboarding', 'hiring', 'interviewer', 'staffing'] },
+      { archetype: 'romantic',     relType: 'romantic',     keywords: ['girlfriend', 'boyfriend', 'my partner', 'fiancé', 'fiancee', 'dating', 'dated', 'romantic', 'situationship', 'hooked up', 'hooking up', 'slept with', 'slept together', 'made out', 'went on a date', 'went out with', 'our date', 'friends with benefits', 'my ex', 'ex girlfriend', 'ex boyfriend', 'crush on'] },
+      { archetype: 'mentor',       relType: 'mentor',       keywords: ['mentor', 'coach', 'teacher', 'professor', 'advisor', 'therapist', 'instructor', 'coding bootcamp', 'bootcamp teacher', 'bootcamp instructor', 'taught me'] },
+      { archetype: 'colleague',    relType: 'professional', keywords: ['boss', 'coworker', 'co-worker', 'colleague', 'manager', 'client', 'business partner', 'works with', 'work together', 'recruiter', 'onboarding', 'hiring', 'interviewer', 'staffing', 'kforce', 'amazon', 'agency', 'identity verification', 'background check', 'paperwork', 'start date'] },
       { archetype: 'collaborator', relType: 'creative',     keywords: ['bandmate', 'collaborator', 'co-founder', 'cofounder', 'creative partner'] },
       { archetype: 'friend',       relType: 'friend',       keywords: ['best friend', 'friend', 'roommate', 'buddy', 'climbing partner', 'workout partner', 'training partner', 'gym partner'] },
     ];
@@ -265,7 +268,7 @@ class EntityFactsService {
     let relType: string | undefined;
     let romanticType: string | undefined;
     let relStatus: string | undefined;
-    let publicFigure: { is: boolean; type?: string } | undefined;
+    let publicFigure: { is: boolean; type?: string; clout?: string } | undefined;
 
     const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // Word-boundary matching, not substring: short kinship terms otherwise
@@ -307,7 +310,7 @@ class EntityFactsService {
       if (llm && llm.confidence >= 0.6) {
         romanticType = llm.romantic_type ?? romanticType;
         relStatus = llm.status;
-        if (llm.public_figure) publicFigure = { is: true, type: llm.figure_type };
+        if (llm.public_figure) publicFigure = { is: true, type: llm.figure_type, clout: llm.clout_level };
       }
     }
 
@@ -323,7 +326,7 @@ class EntityFactsService {
           romanticType = llm.romantic_type;
           relStatus = llm.status;
         }
-        if (llm.public_figure) publicFigure = { is: true, type: llm.figure_type };
+        if (llm.public_figure) publicFigure = { is: true, type: llm.figure_type, clout: llm.clout_level };
       }
     }
 
@@ -331,7 +334,7 @@ class EntityFactsService {
     if (publicFigure?.is) {
       await supabaseAdmin
         .from('characters')
-        .update({ metadata: await this.mergedMetadata(userId, characterId, { public_figure: true, figure_type: publicFigure.type ?? 'influencer' }) })
+        .update({ metadata: await this.mergedMetadata(userId, characterId, { public_figure: true, figure_type: publicFigure.type ?? 'influencer', clout_level: publicFigure.clout ?? 'emerging' }) })
         .eq('id', characterId)
         .eq('user_id', userId);
     }
@@ -347,15 +350,39 @@ class EntityFactsService {
     if (!character || character.archetype) return false; // never overwrite an existing archetype
 
     const metadata = { ...(character.metadata ?? {}), relationship_type: relType };
+
+    // Family members are core-circle figures: when we confirm someone is a
+    // relative, treat them as close and significant by default. Estrangement
+    // language ("we don't talk", "cut off") lowers the closeness but never
+    // demotes them to a minor/background character.
+    const isFamily = archetype === 'family';
+    const estranged = isFamily && ESTRANGEMENT_SIGNALS.test(rawText.toLowerCase());
+    const update: Record<string, unknown> = {
+      archetype,
+      metadata,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (isFamily) {
+      update.relationship_depth = estranged
+        ? (character.relationship_depth && character.relationship_depth !== 'mentioned_only'
+            ? character.relationship_depth
+            : 'casual')
+        : 'close';
+      update.proximity_level = 'direct';
+      update.has_met = true;
+      update.importance_level = estranged ? 'supporting' : 'major';
+      update.importance_score = estranged ? 45 : 65;
+    } else {
+      // A confirmed relationship fact means this is more than a passing mention
+      update.relationship_depth = character.relationship_depth === 'mentioned_only'
+        ? 'moderate'
+        : character.relationship_depth;
+    }
+
     await supabaseAdmin
       .from('characters')
-      .update({
-        archetype,
-        // A confirmed relationship fact means this is more than a passing mention
-        relationship_depth: character.relationship_depth === 'mentioned_only' ? 'moderate' : character.relationship_depth,
-        metadata,
-        updated_at: new Date().toISOString(),
-      })
+      .update(update)
       .eq('id', characterId)
       .eq('user_id', userId);
 
@@ -395,7 +422,7 @@ class EntityFactsService {
   private async llmClassifyRelationship(
     entityName: string,
     text: string
-  ): Promise<{ archetype: string; relationship_type: string; romantic_type?: string; status?: string; public_figure?: boolean; figure_type?: string; confidence: number } | null> {
+  ): Promise<{ archetype: string; relationship_type: string; romantic_type?: string; status?: string; public_figure?: boolean; figure_type?: string; clout_level?: string; confidence: number } | null> {
     try {
       const response = await openai.chat.completions.create({
         model: config.extractionModel,
@@ -421,9 +448,18 @@ If romantic, also pick:
 - romantic_type: dating, situationship, hooking_up, talking, crush, ex_girlfriend, ex_boyfriend, friends_with_benefits, one_night_stand, lover
 - status: read the CURRENT state from ending signals. "she blocked me" → blocked; "ghosted me"/"left me on read and disappeared" → ghosted; broke up → ended; "we're on a break" → on_break; one-sided feelings → unrequited; losing steam → fading; back together → rekindled; otherwise active.
 
-Also detect public figures: if the person is an influencer, celebrity, artist, or content creator the user follows or encountered (rather than an intimate connection), set public_figure true and figure_type (influencer|celebrity|artist|creator|other).
+Also detect public figures: if the person is an influencer, celebrity, artist, or content creator the user follows or encountered (rather than an intimate connection), set public_figure true and figure_type (influencer|celebrity|artist|creator|other). A user CAN have a real relationship with a public figure (a fan, a collaborator, an up-and-comer they know) — public_figure and a relationship archetype are not mutually exclusive.
 
-Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|professional|creative|friend|unknown", "romantic_type": "...or omit", "status": "...or omit", "public_figure": false, "figure_type": "...or omit", "confidence": 0.0-1.0}`,
+When public_figure is true, also infer clout_level from context — how much reach/fame they signal:
+- local: tiny/local following, just starting out
+- emerging: up-and-coming, building early buzz
+- rising: clear momentum, recognized within their niche
+- established: well-known in their field
+- prominent: broad mainstream recognition
+- global: A-list / household name
+Infer from cues (follower counts, venues, labels, "everyone knows", "blowing up", "small shows", "verified", press). When unsure, prefer the lower tier.
+
+Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|professional|creative|friend|unknown", "romantic_type": "...or omit", "status": "...or omit", "public_figure": false, "figure_type": "...or omit", "clout_level": "...or omit", "confidence": 0.0-1.0}`,
           },
           { role: 'user', content: `Person: ${entityName}\n\nWhat the user has said:\n${text.slice(0, 1500)}` },
         ],

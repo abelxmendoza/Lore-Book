@@ -12,7 +12,7 @@ import { format, parseISO } from 'date-fns';
 export type GroupType =
   | 'friend_group' | 'band' | 'sports_team' | 'company' | 'club' | 'nonprofit'
   | 'family' | 'martial_arts' | 'scene' | 'crew' | 'collective'
-  | 'institution' | 'public_entity' | 'other';
+  | 'community' | 'institution' | 'public_entity' | 'other';
 
 export type MembershipModel = 'strict' | 'fuzzy' | 'none';
 
@@ -112,6 +112,10 @@ export type Organization = {
   created_at: string;
   updated_at: string;
   metadata?: Record<string, any>;
+
+  // Rich "personality" profile (mission, culture, structure, reputation, …).
+  // Canonically stored under metadata.profile; mirrored here for convenience.
+  profile?: import('../../lib/organizationProfile').OrganizationProfile;
 
   // Analytics
   analytics?: {
@@ -333,6 +337,11 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
                   {REL_LABELS[rel]}
                 </span>
               )}
+              {(organization.hierarchy_enabled || organization.metadata?.hierarchy_enabled) && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded border bg-emerald-500/15 text-emerald-300 border-emerald-500/25">
+                  hierarchy
+                </span>
+              )}
             </div>
           </div>
           <ChevronRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-white/30 group-hover:text-primary group-hover:translate-x-1 transition-all flex-shrink-0 hidden sm:block" />
@@ -380,6 +389,11 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
           {isPublic && (
             <span className="text-[9px] px-1.5 py-0.5 rounded border bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
               Public
+            </span>
+          )}
+          {(organization.hierarchy_enabled || organization.metadata?.hierarchy_enabled) && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded border bg-emerald-500/15 text-emerald-300 border-emerald-500/25">
+              hierarchy
             </span>
           )}
           <span className="text-white/30">•</span>

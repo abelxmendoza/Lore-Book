@@ -4,8 +4,8 @@
 // Enhanced with advanced filters and optimized for large datasets
 // =====================================================
 
-import { useState, useEffect, useMemo } from 'react';
-import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart, TreePine, Network } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -13,21 +13,199 @@ import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { OrganizationProfileCard, type Organization, type OrganizationMember, type OrganizationStory, type OrganizationEvent, type OrganizationLocation } from './OrganizationProfileCard';
 import { OrganizationDetailModal } from './OrganizationDetailModal';
+import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import { GroupSuggestions } from '../groups/GroupSuggestions';
+import { deriveOrganizationProfile } from '../../lib/organizationProfile';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { fetchJson } from '../../lib/api';
+import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
+import { FamilyTreePanel } from '../family/FamilyTreePanel';
+import { Modal } from '../ui/modal';
 import { subDays } from 'date-fns';
 
 const ITEMS_PER_PAGE = 24;
 
 type OrganizationCategory =
   | 'all' | 'recent'
-  | 'crews' | 'bands' | 'scenes'
+  | 'crews' | 'bands' | 'scenes' | 'communities'
   | 'companies' | 'clubs' | 'nonprofits'
   | 'sports_teams' | 'family' | 'public_entities';
 
 type SortOption = 'name_asc' | 'name_desc' | 'usage_desc' | 'usage_asc' | 'confidence_desc' | 'confidence_asc' | 'recent' | 'importance_desc' | 'involvement_desc' | 'priority_desc' | 'value_desc';
+
+type GroupCandidate = {
+  id: string;
+  proposed_name?: string;
+  detected_members?: string[];
+  detected_member_ids?: string[];
+  suggested_group_type?: Organization['group_type'];
+  suggested_user_relationship?: Organization['user_relationship'];
+  suggested_membership_model?: Organization['membership_model'];
+  is_public_entity?: boolean;
+  confidence?: number;
+  occurrence_count?: number;
+  context?: string;
+  created_organization_id?: string;
+  updated_at?: string;
+  created_at?: string;
+};
+
+const GROUP_TYPES: Organization['group_type'][] = [
+  'friend_group', 'band', 'sports_team', 'company', 'club', 'nonprofit',
+  'family', 'martial_arts', 'scene', 'crew', 'collective', 'community',
+  'institution', 'public_entity', 'other',
+];
+
+const LEGACY_TYPES: Organization['type'][] = [
+  'friend_group', 'company', 'sports_team', 'club', 'nonprofit',
+  'affiliation', 'family', 'martial_arts', 'other',
+];
+
+const MEMBERSHIP_MODELS: Organization['membership_model'][] = ['strict', 'fuzzy', 'none'];
+const USER_RELATIONSHIPS: Organization['user_relationship'][] = [
+  'founder', 'leader', 'member', 'former_member', 'collaborator',
+  'adjacent', 'fan', 'aware_of', 'referenced', 'alumnus',
+];
+const ORG_STATUSES: Organization['status'][] = ['active', 'inactive', 'dissolved'];
+
+const isGroupType = (value: unknown): value is Organization['group_type'] =>
+  typeof value === 'string' && GROUP_TYPES.includes(value as Organization['group_type']);
+
+const isLegacyType = (value: unknown): value is Organization['type'] =>
+  typeof value === 'string' && LEGACY_TYPES.includes(value as Organization['type']);
+
+const isMembershipModel = (value: unknown): value is Organization['membership_model'] =>
+  typeof value === 'string' && MEMBERSHIP_MODELS.includes(value as Organization['membership_model']);
+
+const isUserRelationship = (value: unknown): value is Organization['user_relationship'] =>
+  typeof value === 'string' && USER_RELATIONSHIPS.includes(value as Organization['user_relationship']);
+
+const isOrgStatus = (value: unknown): value is Organization['status'] =>
+  typeof value === 'string' && ORG_STATUSES.includes(value as Organization['status']);
+
+const groupTypeFrom = (org: Partial<Organization>): Organization['group_type'] => {
+  if (isGroupType(org.group_type)) return org.group_type;
+  if (isGroupType(org.type)) return org.type;
+  if (org.is_public_entity) return 'public_entity';
+  return 'other';
+};
+
+const normalizeOrganization = (raw: Partial<Organization>): Organization => {
+  const now = new Date().toISOString();
+  const groupType = groupTypeFrom(raw);
+  const members = Array.isArray(raw.members) ? raw.members : [];
+  const stories = Array.isArray(raw.stories) ? raw.stories : [];
+  const events = Array.isArray(raw.events) ? raw.events : [];
+  const locations = Array.isArray(raw.locations) ? raw.locations : [];
+  const metadata = raw.metadata ?? {};
+  let profile = raw.profile ?? metadata.profile;
+
+  if (!profile) {
+    try {
+      profile = deriveOrganizationProfile({
+        name: raw.name ?? 'Untitled Group',
+        group_type: groupType,
+        members: members.map(member => member.character_name),
+        context: raw.description,
+      });
+    } catch {
+      profile = undefined;
+    }
+  }
+
+  return {
+    id: raw.id ?? `org-${raw.name ?? 'unknown'}`,
+    name: raw.name ?? 'Untitled Group',
+    aliases: Array.isArray(raw.aliases) ? raw.aliases : [],
+    type: isLegacyType(raw.type) ? raw.type : isLegacyType(groupType) ? groupType : 'other',
+    group_type: groupType,
+    membership_model: isMembershipModel(raw.membership_model) ? raw.membership_model : groupType === 'public_entity' ? 'none' : 'strict',
+    user_relationship: isUserRelationship(raw.user_relationship) ? raw.user_relationship : groupType === 'public_entity' ? 'referenced' : 'member',
+    is_public_entity: raw.is_public_entity ?? groupType === 'public_entity',
+    founded_year: raw.founded_year,
+    dissolved_year: raw.dissolved_year,
+    generations: raw.generations,
+    family_branches: raw.family_branches,
+    hierarchy_system_id: raw.hierarchy_system_id,
+    hierarchy_enabled: raw.hierarchy_enabled,
+    description: raw.description,
+    location: raw.location,
+    founded_date: raw.founded_date,
+    status: isOrgStatus(raw.status) ? raw.status : 'active',
+    members,
+    stories,
+    events,
+    locations,
+    member_count: raw.member_count ?? members.length,
+    usage_count: raw.usage_count ?? events.length + stories.length,
+    confidence: raw.confidence ?? 1,
+    last_seen: raw.last_seen ?? raw.updated_at ?? raw.created_at ?? now,
+    created_at: raw.created_at ?? now,
+    updated_at: raw.updated_at ?? raw.created_at ?? now,
+    metadata,
+    profile,
+    analytics: raw.analytics,
+  };
+};
+
+const candidateToPreviewOrganization = (candidate: GroupCandidate): Organization => {
+  const now = new Date().toISOString();
+  const groupType = isGroupType(candidate.suggested_group_type) ? candidate.suggested_group_type : 'other';
+  const members = (candidate.detected_members ?? []).map((name, index): OrganizationMember => ({
+    id: `candidate-${candidate.id}-member-${index}`,
+    character_id: candidate.detected_member_ids?.[index],
+    character_name: name,
+    status: 'active',
+  }));
+  const fallbackName = members.length >= 2
+    ? `${members.slice(0, 2).map(member => member.character_name.split(' ')[0]).join(' & ')} Group`
+    : 'Detected Group';
+
+  return normalizeOrganization({
+    id: candidate.created_organization_id ?? `candidate-${candidate.id}`,
+    name: candidate.proposed_name ?? fallbackName,
+    aliases: [],
+    type: 'other',
+    group_type: groupType,
+    membership_model: isMembershipModel(candidate.suggested_membership_model)
+      ? candidate.suggested_membership_model
+      : candidate.is_public_entity ? 'none' : 'fuzzy',
+    user_relationship: isUserRelationship(candidate.suggested_user_relationship)
+      ? candidate.suggested_user_relationship
+      : candidate.is_public_entity ? 'referenced' : 'aware_of',
+    is_public_entity: candidate.is_public_entity ?? groupType === 'public_entity',
+    description: candidate.context,
+    status: 'active',
+    members,
+    member_count: members.length,
+    usage_count: candidate.occurrence_count ?? 0,
+    confidence: candidate.confidence ?? 0.6,
+    last_seen: candidate.updated_at ?? candidate.created_at ?? now,
+    created_at: candidate.created_at ?? now,
+    updated_at: candidate.updated_at ?? candidate.created_at ?? now,
+    metadata: {
+      preview_candidate: true,
+      group_candidate_id: candidate.id,
+    },
+  });
+};
+
+const mergeOrganizationsAndCandidates = (
+  organizations: Organization[],
+  candidates: GroupCandidate[]
+): Organization[] => {
+  const normalizedOrgs = organizations.map(normalizeOrganization);
+  const orgIds = new Set(normalizedOrgs.map(org => org.id));
+  const orgNames = new Set(normalizedOrgs.map(org => org.name.toLowerCase()));
+  const candidatePreviews = candidates
+    .filter(candidate => !candidate.created_organization_id || !orgIds.has(candidate.created_organization_id))
+    .map(candidateToPreviewOrganization)
+    .filter(candidateOrg => !orgIds.has(candidateOrg.id) && !orgNames.has(candidateOrg.name.toLowerCase()));
+
+  return [...normalizedOrgs, ...candidatePreviews];
+};
 
 // ── Mock analytics helpers ─────────────────────────────────────────────
 const mkAnalytics = (
@@ -138,7 +316,7 @@ const MOCK_ORGANIZATIONS: Organization[] = [
     members: [
       { id: 'm1', character_name: 'Emma Wilson', role: 'Group chat admin', status: 'active' },
       { id: 'm2', character_name: 'Chris Taylor', role: 'Trip planner', status: 'active' },
-      { id: 'm3', character_name: 'Sam Martinez', role: 'Photographer', status: 'active' },
+      { id: 'm3', character_name: 'Reese Martinez', role: 'Photographer', status: 'active' },
       { id: 'm4', character_name: 'Lisa Park', role: 'The responsible one', status: 'active' },
       { id: 'm5', character_name: 'David Lee', role: 'Chaos agent', status: 'active' },
     ],
@@ -311,12 +489,12 @@ const MOCK_ORGANIZATIONS: Organization[] = [
 
   {
     id: 'mock-8',
-    name: 'The Mendoza Family',
-    aliases: ['Family', 'Home'],
+    name: 'The Ashford-Luna Family',
+    aliases: ['Family', 'Home', 'My family', 'Ashford Family', 'Luna Family'],
     type: 'family', group_type: 'family',
     membership_model: 'strict', user_relationship: 'member', is_public_entity: false,
-    description: 'Three generations. My parents, my sister and her husband, the kids, and the aunts and uncles who show up for every holiday whether invited or not.',
-    location: 'San Bernardino, CA',
+    description: 'Three generations across the Ashford and Luna sides. Aunt Maribel, Nico, Nana Elena, parents, cousins, and the relatives who turn ordinary family stories into lore.',
+    location: 'Cedar Falls, CA',
     founded_year: 1968,
     generations: 3,
     family_branches: ['maternal', 'paternal'],
@@ -329,10 +507,11 @@ const MOCK_ORGANIZATIONS: Organization[] = [
     updated_at: subDays(new Date(), 6).toISOString(),
     metadata: {},
     members: [
-      { id: 'm1', character_name: 'Mom', role: 'Matriarch', status: 'active' },
-      { id: 'm2', character_name: 'Dad', role: 'Patriarch', status: 'active' },
-      { id: 'm3', character_name: 'Sofia', role: 'Sister', status: 'active' },
-      { id: 'm4', character_name: 'Tía Rosa', role: 'The one with opinions', status: 'active' },
+      { id: 'm1', character_name: 'Nana Elena', role: 'Elder / family memory keeper', status: 'active' },
+      { id: 'm2', character_name: 'Aunt Maribel', role: 'Aunt / Hallway Guardian', status: 'active' },
+      { id: 'm3', character_name: 'Nico', role: 'Cousin', status: 'active' },
+      { id: 'm4', character_name: 'Mom', role: 'Matriarch', status: 'active' },
+      { id: 'm5', character_name: 'Dad', role: 'Patriarch', status: 'active' },
     ],
     stories: [
       { id: 's1', title: 'Christmas dinner disaster, 2022', summary: 'The oven broke at 3pm. We pivoted to tamales from the neighbor. Honestly better than anything we planned.', date: subDays(new Date(), 365).toISOString() },
@@ -341,8 +520,109 @@ const MOCK_ORGANIZATIONS: Organization[] = [
     events: [
       { id: 'e1', title: 'Sunday call with Mom', date: subDays(new Date(), 6).toISOString(), type: 'social' },
     ],
-    locations: [{ id: 'l1', location_name: 'San Bernardino, CA', visit_count: 12, last_visited: subDays(new Date(), 60).toISOString() }],
+    locations: [{ id: 'l1', location_name: 'Cedar Falls, CA', visit_count: 12, last_visited: subDays(new Date(), 60).toISOString() }],
     analytics: mkAnalytics(85, 97, 'stable', ['Unconditional foundation', 'Longest relationship of my life'], ['Distance', 'Old dynamics']),
+  },
+
+  // ── PROFESSIONAL / COMPANIES ───────────────────────────────────────
+
+  {
+    id: 'mock-19',
+    name: 'BrightHire Staffing',
+    aliases: ['BrightHire Staffing agency', 'BrightHire Staffing recruiting'],
+    type: 'company', group_type: 'company',
+    membership_model: 'fuzzy', user_relationship: 'adjacent', is_public_entity: false,
+    description: 'Recruiting and staffing agency connected to the Northstar Logistics hiring process. Dana and Reese are professional contacts tied to onboarding, paperwork, identity verification, and background check updates.',
+    location: 'Remote / recruiting pipeline',
+    status: 'active',
+    member_count: 2,
+    usage_count: 14,
+    confidence: 0.94,
+    last_seen: subDays(new Date(), 2).toISOString(),
+    created_at: subDays(new Date(), 60).toISOString(),
+    updated_at: subDays(new Date(), 2).toISOString(),
+    metadata: {
+      hierarchy: [
+        { name: 'Dana', role: 'Recruiting contact', importance: 'primary_contact' },
+        { name: 'Reese', role: 'Agency contact', importance: 'supporting_contact' },
+      ],
+    },
+    members: [
+      { id: 'm1', character_name: 'Dana', role: 'Recruiting contact', status: 'active', notes: 'Sent paperwork and handled identity verification follow-up.' },
+      { id: 'm2', character_name: 'Reese', role: 'Agency contact', status: 'active', notes: 'Professional connection from the BrightHire Staffing hiring pipeline.' },
+    ],
+    stories: [
+      { id: 's1', title: 'Identity verification call', summary: 'Dana said the rest of the paperwork would come soon while the background check continued.', date: subDays(new Date(), 2).toISOString(), related_members: ['Dana'] },
+    ],
+    events: [{ id: 'e1', title: 'Identity verification video call', date: subDays(new Date(), 2).toISOString(), type: 'work' }],
+    locations: [],
+    analytics: mkAnalytics(62, 78, 'increasing', ['Clear professional context', 'Hiring pipeline signal'], ['Temporary relationship', 'Dependent on onboarding updates']),
+  },
+
+  {
+    id: 'mock-20',
+    name: 'Northstar Logistics',
+    aliases: ['Northstar Logistics job', 'Northstar Logistics onboarding'],
+    type: 'company', group_type: 'company',
+    membership_model: 'fuzzy', user_relationship: 'adjacent', is_public_entity: false,
+    description: 'The company tied to the expected start date, background check, and onboarding pipeline. Connected to BrightHire Staffing through the recruiting workflow.',
+    location: 'Work / onboarding',
+    status: 'active',
+    member_count: 0,
+    usage_count: 12,
+    confidence: 0.92,
+    last_seen: subDays(new Date(), 2).toISOString(),
+    created_at: subDays(new Date(), 45).toISOString(),
+    updated_at: subDays(new Date(), 2).toISOString(),
+    metadata: {
+      related_groups: ['BrightHire Staffing'],
+      hiring_status: 'background_check_pending',
+    },
+    members: [],
+    stories: [
+      { id: 's1', title: 'Background check still processing', summary: 'Expected start date depends on the remaining paperwork and background check clearing.', date: subDays(new Date(), 2).toISOString() },
+    ],
+    events: [{ id: 'e1', title: 'Expected onboarding follow-up', date: subDays(new Date(), 7).toISOString(), type: 'work' }],
+    locations: [],
+    analytics: mkAnalytics(48, 82, 'increasing', ['Important career opportunity', 'Strong recency'], ['Unconfirmed start state']),
+  },
+
+  // ── COMMUNITIES / SCHOOLS ──────────────────────────────────────────
+
+  {
+    id: 'mock-21',
+    name: 'Code Harbor Academy',
+    aliases: ['Code Harbor', 'Code Harbor bootcamp', 'Adrian Patel community'],
+    type: 'other', group_type: 'community',
+    membership_model: 'fuzzy', user_relationship: 'alumnus', is_public_entity: false,
+    description: 'Coding bootcamp, creator-led school, and developer community associated with Adrian Patel. The demo shows the hierarchy between core leadership, teachers/mentors, and broader community members.',
+    location: 'Online',
+    status: 'active',
+    member_count: 1200,
+    usage_count: 24,
+    confidence: 0.96,
+    last_seen: subDays(new Date(), 20).toISOString(),
+    created_at: subDays(new Date(), 365 * 4).toISOString(),
+    updated_at: subDays(new Date(), 20).toISOString(),
+    metadata: {
+      hierarchy: [
+        { name: 'Adrian Patel', role: 'Founder / teacher / mentor', influence: 'core' },
+        { name: 'Core team', role: 'Operations and curriculum', influence: 'core' },
+        { name: 'Students and alumni', role: 'Developer community', influence: 'community' },
+      ],
+      community_type: 'developer_bootcamp',
+    },
+    members: [
+      { id: 'm1', character_name: 'Adrian Patel', role: 'Founder / teacher / mentor', status: 'active', notes: 'Adrian is the first name; Patel is the last name.' },
+      { id: 'm2', character_name: 'Core team', role: 'Bootcamp operations', status: 'active' },
+      { id: 'm3', character_name: 'Students and alumni', role: 'Developer community', status: 'active' },
+    ],
+    stories: [
+      { id: 's1', title: 'Coding bootcamp chapter', summary: 'A school and community context where Adrian Patel was a teacher and mentor.', date: subDays(new Date(), 365 * 3).toISOString(), related_members: ['Adrian Patel'] },
+    ],
+    events: [{ id: 'e1', title: 'Bootcamp cohort', date: subDays(new Date(), 365 * 3).toISOString(), type: 'meeting' }],
+    locations: [{ id: 'l1', location_name: 'Online bootcamp', visit_count: 40, last_visited: subDays(new Date(), 365 * 3).toISOString() }],
+    analytics: mkAnalytics(74, 86, 'stable', ['Teacher/mentor relationship', 'Developer community identity', 'Clear hierarchy']),
   },
 
   // ── MARTIAL ARTS ──────────────────────────────────────────────────
@@ -660,36 +940,184 @@ export const OrganizationsBook: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortOption>('name_asc');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [newOrg, setNewOrg] = useState({ name: '', type: 'other' as Organization['type'], description: '' });
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
+  const [duplicates, setDuplicates] = useState<Array<{ primary_id: string; primary_name: string; duplicate_ids: string[]; names: string[]; reason: string }>>([]);
+  const [dupChecking, setDupChecking] = useState(false);
+  const [dupChecked, setDupChecked] = useState(false);
+  const [merging, setMerging] = useState<string | null>(null);
+  const [newOrg, setNewOrg] = useState({ name: '', groupType: 'other' as Organization['group_type'], description: '' });
+  const [showMyFamily, setShowMyFamily] = useState(false);
+  const [showGroupNetwork, setShowGroupNetwork] = useState(false);
+  const [myFamilyCount, setMyFamilyCount] = useState<number | null>(null);
+  const [myFamilyRefreshKey, setMyFamilyRefreshKey] = useState(0);
   const isMockDataEnabled = useShouldUseMockData();
+  // Groups accepted from suggestions this session — kept so they survive the
+  // periodic reloads (in demo mode the backend has no record to refetch).
+  const createdOrgsRef = useRef<Organization[]>([]);
 
   useEffect(() => {
     void loadOrganizations();
   }, [isMockDataEnabled]);
 
+  useEffect(() => {
+    if (isMockDataEnabled) return;
+    fetchJson<{ success: boolean; tree: { members: unknown[] } }>('/api/family-trees/mine')
+      .then(r => { if (r.success) setMyFamilyCount(r.tree.members?.length ?? 0); })
+      .catch(() => setMyFamilyCount(null));
+  }, [isMockDataEnabled, myFamilyRefreshKey]);
+
+  useEffect(() => {
+    return onStoryDataUpdated(() => setMyFamilyRefreshKey(k => k + 1), 'family');
+  }, []);
+
   const loadOrganizations = async () => {
     setLoading(true);
     setError(null);
 
-    if (isMockDataEnabled) {
-      setOrganizations(MOCK_ORGANIZATIONS);
-      setLoading(false);
-      return;
-    }
+    const mergeCreated = (base: Organization[]) => {
+      const created = createdOrgsRef.current;
+      if (created.length === 0) return base;
+      const createdById = new Map(created.map(o => [o.id, normalizeOrganization(o)]));
+      // For orgs present in both, enrich the backend row with locally-known
+      // members/profile when richer — so a reload never wipes detected members
+      // that the backend may have failed to persist.
+      const enriched = base.map(o => {
+        const local = createdById.get(o.id);
+        if (!local) return o;
+        const members = (o.members?.length ?? 0) >= (local.members?.length ?? 0) ? o.members : local.members;
+        return normalizeOrganization({
+          ...o,
+          members,
+          member_count: members?.length ?? o.member_count,
+          profile: o.profile ?? o.metadata?.profile ?? local.profile,
+        });
+      });
+      const baseIds = new Set(base.map(o => o.id));
+      const createdOnly = created.filter(o => !baseIds.has(o.id));
+      return [...createdOnly.map(normalizeOrganization), ...enriched];
+    };
 
+    // Single try/finally so `loading` ALWAYS resolves — a throw in the demo
+    // branch or in profile derivation must never leave the UI on skeletons.
     try {
-      const result = await fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations');
-      if (result.success) {
-        setOrganizations(result.organizations || []);
-      } else {
-        setOrganizations([]);
+      if (isMockDataEnabled) {
+        const withProfiles = MOCK_ORGANIZATIONS.map(o => {
+          let profile = o.profile ?? o.metadata?.profile;
+          if (!profile) {
+            try {
+              profile = deriveOrganizationProfile({
+                name: o.name,
+                group_type: o.group_type,
+                members: o.members?.map(m => m.character_name),
+                context: o.description,
+              });
+            } catch {
+              profile = undefined; // never block the card on a bad profile
+            }
+          }
+          return normalizeOrganization({ ...o, profile });
+        });
+        setOrganizations(mergeCreated(withProfiles));
+        return;
+      }
+
+      const [orgResult, candidateResult] = await Promise.allSettled([
+        fetchJson<{ success: boolean; organizations: Organization[] }>('/api/organizations'),
+        fetchJson<{ success: boolean; candidates: GroupCandidate[] }>('/api/group-candidates?status=pending')
+          .catch(() => ({ success: false, candidates: [] })),
+      ]);
+      const organizationsResult =
+        orgResult.status === 'fulfilled' && orgResult.value.success ? (orgResult.value.organizations || []) : [];
+      const candidatesResult =
+        candidateResult.status === 'fulfilled' && candidateResult.value.success ? (candidateResult.value.candidates || []) : [];
+      const merged = mergeOrganizationsAndCandidates(
+        organizationsResult,
+        candidatesResult
+      );
+      setOrganizations(mergeCreated(merged));
+      if (orgResult.status === 'rejected') {
+        const message = orgResult.reason instanceof Error ? orgResult.reason.message : 'Failed to load accepted organizations';
+        const cleanMessage = message.replace(/[.]+$/, '');
+        if (merged.length > 0) {
+          setScanNote(`${cleanMessage}. Showing detected group suggestions instead.`);
+        } else {
+          setError(message);
+        }
       }
     } catch (err: any) {
       console.error('Failed to load organizations:', err);
-      setOrganizations([]);
+      setOrganizations(mergeCreated([]));
       setError(err.message || 'Failed to load organizations');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleScan = async () => {
+    if (isMockDataEnabled) {
+      // Demo mode has no backend threads — suggestions are already seeded.
+      setScanNote('Demo mode: suggestions are pre-loaded above.');
+      window.dispatchEvent(new Event('group-candidates-updated'));
+      return;
+    }
+    setScanning(true);
+    setScanNote(null);
+    try {
+      const res = await fetchJson<{ success: boolean; candidates: unknown[] }>(
+        '/api/group-candidates/scan',
+        { method: 'POST', body: JSON.stringify({ days: 180, cap: 160 }) }
+      );
+      const found = res.candidates?.length ?? 0;
+      setScanNote(
+        found > 0
+          ? `Found ${found} group suggestion${found === 1 ? '' : 's'} — review them above.`
+          : 'No new groups found yet. Keep journaling and chatting — detection runs automatically too.'
+      );
+      // Refresh the suggestions surface and the org list.
+      window.dispatchEvent(new Event('group-candidates-updated'));
+      await loadOrganizations();
+    } catch {
+      setScanNote('Scan failed — please try again.');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleFindDuplicates = async () => {
+    if (isMockDataEnabled) {
+      setDupChecked(true);
+      setDuplicates([]);
+      return;
+    }
+    setDupChecking(true);
+    try {
+      const res = await fetchJson<{ success: boolean; clusters: typeof duplicates }>(
+        '/api/organizations/duplicates'
+      );
+      setDuplicates(res.clusters ?? []);
+      setDupChecked(true);
+    } catch {
+      setDuplicates([]);
+      setDupChecked(true);
+    } finally {
+      setDupChecking(false);
+    }
+  };
+
+  const handleMerge = async (cluster: { primary_id: string; duplicate_ids: string[] }) => {
+    setMerging(cluster.primary_id);
+    try {
+      await fetchJson('/api/organizations/merge', {
+        method: 'POST',
+        body: JSON.stringify({ primary_id: cluster.primary_id, duplicate_ids: cluster.duplicate_ids }),
+      });
+      setDuplicates(prev => prev.filter(c => c.primary_id !== cluster.primary_id));
+      await loadOrganizations();
+    } catch {
+      // keep the cluster visible so the user can retry
+    } finally {
+      setMerging(null);
     }
   };
 
@@ -701,13 +1129,16 @@ export const OrganizationsBook: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({
           name: newOrg.name.trim(),
-          type: newOrg.type,
+          type: ['friend_group', 'company', 'sports_team', 'club', 'nonprofit', 'family', 'martial_arts', 'other'].includes(newOrg.groupType)
+            ? newOrg.groupType
+            : 'other',
+          group_type: newOrg.groupType,
           description: newOrg.description.trim() || undefined,
           status: 'active',
         }),
       });
       setShowCreateForm(false);
-      setNewOrg({ name: '', type: 'other', description: '' });
+      setNewOrg({ name: '', groupType: 'other', description: '' });
       await loadOrganizations();
     } catch (err: any) {
       console.error('Failed to create organization:', err);
@@ -718,19 +1149,21 @@ export const OrganizationsBook: React.FC = () => {
 
   // Categories derived from canonical group_type field
   const availableCategories = useMemo((): OrganizationCategory[] => {
-    const has = (types: string[]) => organizations.some(o => types.includes(o.group_type));
-    const cats: OrganizationCategory[] = ['all', 'recent'];
-    if (has(['friend_group', 'crew']))           cats.push('crews');
-    if (has(['band']))                           cats.push('bands');
-    if (has(['scene']))                          cats.push('scenes');
-    if (has(['company']))                        cats.push('companies');
-    if (has(['club', 'collective']))             cats.push('clubs');
-    if (has(['sports_team', 'martial_arts']))    cats.push('sports_teams');
-    if (has(['nonprofit']))                      cats.push('nonprofits');
-    if (has(['family']))                         cats.push('family');
-    if (has(['public_entity', 'institution']))   cats.push('public_entities');
-    return cats;
-  }, [organizations]);
+    return [
+      'all',
+      'crews',
+      'bands',
+      'scenes',
+      'communities',
+      'companies',
+      'sports_teams',
+      'clubs',
+      'nonprofits',
+      'family',
+      'public_entities',
+      'recent',
+    ];
+  }, []);
 
   const filteredOrganizations = useMemo(() => {
     let filtered = [...organizations];
@@ -742,6 +1175,7 @@ export const OrganizationsBook: React.FC = () => {
           case 'crews':          return gt === 'friend_group' || gt === 'crew';
           case 'bands':          return gt === 'band';
           case 'scenes':         return gt === 'scene';
+          case 'communities':    return gt === 'community';
           case 'companies':      return gt === 'company';
           case 'clubs':          return gt === 'club' || gt === 'collective';
           case 'sports_teams':   return gt === 'sports_team' || gt === 'martial_arts';
@@ -820,6 +1254,8 @@ export const OrganizationsBook: React.FC = () => {
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedOrganizations = filteredOrganizations.slice(startIndex, endIndex);
+  const visibleStart = filteredOrganizations.length === 0 ? 0 : startIndex + 1;
+  const visibleEnd = Math.min(endIndex, filteredOrganizations.length);
 
   // Auto-open modal when navigated here from an entity chip (chat → organizations).
   useEffect(() => {
@@ -897,8 +1333,89 @@ export const OrganizationsBook: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Group Suggestions — surfaces detected group candidates for review */}
+      <GroupSuggestions
+        categoryFilter={activeCategory}
+        searchTerm={searchTerm}
+        demoMode={isMockDataEnabled}
+        onGroupCreated={(created) => {
+          if (created) {
+            const normalizedCreated = normalizeOrganization(created);
+            createdOrgsRef.current = [
+              normalizedCreated,
+              ...createdOrgsRef.current.filter(o => o.id !== created.id),
+            ];
+            setOrganizations(prev => [normalizedCreated, ...prev.filter(o => o.id !== created.id)]);
+            // Guarantee the new card is visible: clear filters, sort newest-first,
+            // jump to page 1. Otherwise it can land off the current tab/page.
+            setActiveCategory('all');
+            setSearchTerm('');
+            setSortBy('recent');
+            setCurrentPage(1);
+            setSelectedOrganization(normalizedCreated); // also open it in the modal
+          } else {
+            void loadOrganizations();
+          }
+        }}
+      />
+
       {!isMockDataEnabled && (
-        <GroupSuggestions onGroupCreated={() => void loadOrganizations()} />
+        <>
+        <Card
+          className="bg-gradient-to-r from-emerald-950/50 via-black/40 to-black/40 border-emerald-500/35 cursor-pointer hover:border-emerald-400/55 transition-colors"
+          onClick={() => setShowMyFamily(true)}
+        >
+          <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 rounded-xl bg-emerald-500/15 shrink-0">
+                <TreePine className="h-6 w-6 text-emerald-400" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-white">My Family</h2>
+                <p className="text-xs text-white/45 mt-0.5">
+                  {myFamilyCount != null && myFamilyCount > 0
+                    ? `${myFamilyCount} relative${myFamilyCount !== 1 ? 's' : ''} inferred from your conversations`
+                    : 'Your personal family tree — grows as you share stories in chat'}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-emerald-500/40 text-emerald-200 shrink-0"
+              onClick={e => { e.stopPropagation(); setShowMyFamily(true); }}
+            >
+              View tree
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="bg-gradient-to-r from-indigo-950/50 via-black/40 to-black/40 border-indigo-500/35 cursor-pointer hover:border-indigo-400/55 transition-colors"
+          onClick={() => setShowGroupNetwork(true)}
+        >
+          <CardContent className="py-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 rounded-xl bg-indigo-500/15 shrink-0">
+                <Network className="h-6 w-6 text-indigo-400" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-white">Group Network</h2>
+                <p className="text-xs text-white/45 mt-0.5">
+                  Subgroups, inner circles, and affiliations — learned from your conversations
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-indigo-500/40 text-indigo-200 shrink-0"
+              onClick={e => { e.stopPropagation(); setShowGroupNetwork(true); }}
+            >
+              View network
+            </Button>
+          </CardContent>
+        </Card>
+        </>
       )}
 
       {/* Search and Controls — two rows on mobile: row 1 = search, row 2 = sort + refresh */}
@@ -911,7 +1428,7 @@ export const OrganizationsBook: React.FC = () => {
               placeholder="Search organizations by name, alias, or type..."
               items={organizations}
               getSearchableText={(o) =>
-                [o.name, ...(o.aliases ?? []), o.type, o.description].filter(Boolean).join(' ')
+                [o.name, ...(o.aliases ?? []), o.type, o.group_type, o.description].filter(Boolean).join(' ')
               }
               getDisplayLabel={(o) => o.name}
               maxSuggestions={8}
@@ -949,6 +1466,28 @@ export const OrganizationsBook: React.FC = () => {
             </Button>
 
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleScan()}
+              disabled={scanning}
+              title="Scan your conversations and journal for groups"
+            >
+              <Sparkles className="h-4 w-4 mr-1" />
+              {scanning ? 'Scanning...' : 'Scan for groups'}
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleFindDuplicates()}
+              disabled={dupChecking}
+              title="Find and merge duplicate groups"
+            >
+              <RefreshCw className="h-4 w-4 mr-1" />
+              {dupChecking ? 'Checking...' : 'Find duplicates'}
+            </Button>
+
+            <Button
               size="sm"
               onClick={() => setShowCreateForm(v => !v)}
             >
@@ -957,6 +1496,45 @@ export const OrganizationsBook: React.FC = () => {
             </Button>
           </div>
         </div>
+
+        {scanNote && (
+          <p className="text-xs text-white/60 flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+            {scanNote}
+          </p>
+        )}
+
+        {dupChecked && (
+          <div className="space-y-2">
+            {duplicates.length === 0 ? (
+              <p className="text-xs text-white/50">No duplicate groups found.</p>
+            ) : (
+              duplicates.map(cluster => (
+                <Card key={cluster.primary_id} className="bg-black/60 border border-amber-500/30">
+                  <CardContent className="py-3 px-4 flex items-center justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <p className="text-sm text-white/85">
+                        {cluster.names.join(' · ')}
+                      </p>
+                      <p className="text-[11px] text-white/45">
+                        {cluster.duplicate_ids.length + 1} likely the same group
+                        {cluster.reason === 'member_overlap' ? ' (shared members)' : ' (same name)'} — keeping
+                        “{cluster.primary_name}”.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => void handleMerge(cluster)}
+                      disabled={merging === cluster.primary_id}
+                    >
+                      {merging === cluster.primary_id ? 'Merging...' : 'Merge'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
 
         {/* Create form */}
         {showCreateForm && (
@@ -972,18 +1550,25 @@ export const OrganizationsBook: React.FC = () => {
                   onKeyDown={e => e.key === 'Enter' && void handleCreate()}
                 />
                 <select
-                  value={newOrg.type}
-                  onChange={e => setNewOrg(v => ({ ...v, type: e.target.value as Organization['type'] }))}
+                  value={newOrg.groupType}
+                  onChange={e => setNewOrg(v => ({ ...v, groupType: e.target.value as Organization['group_type'] }))}
                   className="px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 >
                   <option value="friend_group">Friend Group</option>
+                  <option value="crew">Crew</option>
+                  <option value="band">Band</option>
+                  <option value="scene">Scene</option>
+                  <option value="community">Community</option>
                   <option value="company">Company</option>
                   <option value="sports_team">Sports Team</option>
                   <option value="club">Club</option>
+                  <option value="collective">Collective</option>
                   <option value="nonprofit">Nonprofit</option>
                   <option value="affiliation">Affiliation</option>
                   <option value="family">Family</option>
                   <option value="martial_arts">Martial Arts</option>
+                  <option value="institution">Institution</option>
+                  <option value="public_entity">Public Entity</option>
                   <option value="other">Other</option>
                 </select>
                 <Input
@@ -1043,6 +1628,15 @@ export const OrganizationsBook: React.FC = () => {
                 Scenes
               </TabsTrigger>
             )}
+            {availableCategories.includes('communities') && (
+              <TabsTrigger
+                value="communities"
+                className="flex items-center gap-2 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400"
+              >
+                <Users className="h-4 w-4" />
+                Communities
+              </TabsTrigger>
+            )}
             {availableCategories.includes('companies') && (
               <TabsTrigger 
                 value="companies" 
@@ -1085,7 +1679,7 @@ export const OrganizationsBook: React.FC = () => {
                 className="flex items-center gap-2 data-[state=active]:bg-rose-500/20 data-[state=active]:text-rose-400"
               >
                 <Heart className="h-4 w-4" />
-                Family
+                Families
               </TabsTrigger>
             )}
             {availableCategories.includes('public_entities') && (
@@ -1112,7 +1706,7 @@ export const OrganizationsBook: React.FC = () => {
         {/* Results Summary */}
         <div className="flex items-center justify-between text-sm text-white/60">
           <div>
-            Showing {startIndex + 1}-{Math.min(endIndex, filteredOrganizations.length)} of {filteredOrganizations.length} organizations
+            Showing {visibleStart}-{visibleEnd} of {filteredOrganizations.length} organizations
             {filteredOrganizations.length !== organizations.length && (
               <span className="ml-2 text-primary">({organizations.length} total)</span>
             )}
@@ -1157,15 +1751,26 @@ export const OrganizationsBook: React.FC = () => {
               </div>
 
               {/* Organizations Grid — two columns on mobile; List stays single column */}
-              <div className="flex-1 grid gap-2 sm:gap-4 mb-4 sm:mb-6 grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {paginatedOrganizations.map((org) => (
-                  <OrganizationProfileCard
-                    key={org.id}
-                    organization={org}
-                    onClick={() => setSelectedOrganization(org)}
-                  />
-                ))}
-              </div>
+              <ErrorBoundary
+                fallback={
+                  <div className="flex-1 text-center py-12 text-white/60">
+                    <p className="text-sm mb-3">Something went wrong displaying these cards.</p>
+                    <Button variant="outline" size="sm" onClick={() => void loadOrganizations()}>
+                      Reload
+                    </Button>
+                  </div>
+                }
+              >
+                <div className="flex-1 grid gap-2 sm:gap-4 mb-4 sm:mb-6 grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {paginatedOrganizations.map((org) => (
+                    <OrganizationProfileCard
+                      key={org.id}
+                      organization={org}
+                      onClick={() => setSelectedOrganization(normalizeOrganization(org))}
+                    />
+                  ))}
+                </div>
+              </ErrorBoundary>
 
               {/* Page Footer with Navigation */}
               <div className="flex items-center justify-between pt-4 border-t border-purple-800/20">
@@ -1210,7 +1815,7 @@ export const OrganizationsBook: React.FC = () => {
                     })}
                   </div>
                   <span className="text-sm text-purple-700/50">
-                    {startIndex + 1}-{Math.min(endIndex, filteredOrganizations.length)} of {filteredOrganizations.length}
+                    {visibleStart}-{visibleEnd} of {filteredOrganizations.length}
                   </span>
                 </div>
 
@@ -1252,7 +1857,41 @@ export const OrganizationsBook: React.FC = () => {
           }}
         />
       )}
+
+      {showMyFamily && (
+        <Modal isOpen onClose={() => setShowMyFamily(false)} title="My Family" size="3xl">
+          <div className="p-4 sm:p-6 overflow-y-auto max-h-[75vh]">
+            <p className="text-xs text-white/45 mb-4">
+              Positions inferred from kinship mentioned in your conversations. Updates automatically after you chat.
+            </p>
+            <FamilyTreePanel
+              scope="mine"
+              refreshKey={myFamilyRefreshKey}
+              title="No family tree yet"
+              hint="Tell LoreBook about your parents, siblings, partner, or kids — the tree builds from what you share."
+            />
+          </div>
+        </Modal>
+      )}
+
+      {showGroupNetwork && (
+        <Modal isOpen onClose={() => setShowGroupNetwork(false)} title="Group Network" size="3xl">
+          <div className="p-4 sm:p-6 overflow-y-auto max-h-[80vh]">
+            <OrganizationGroupNetwork
+              onOrgClick={(id) => {
+                void fetchJson<{ success: boolean; organization: Organization }>(`/api/organizations/${id}`)
+                  .then(r => {
+                    if (r.success && r.organization) {
+                      setShowGroupNetwork(false);
+                      setSelectedOrganization(r.organization);
+                    }
+                  })
+                  .catch(() => {});
+              }}
+            />
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
-

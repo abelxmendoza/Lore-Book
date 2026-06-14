@@ -108,6 +108,11 @@ Status types:
 - "ended": Relationship has ended
 - "complicated": Status is unclear
 - "paused": Temporarily on hold
+- "ghosted": They stopped responding or disappeared without closure
+- "blocked": One person blocked the other or no contact is possible
+- "unrequited": Feelings are one-sided
+- "fading": Connection is still present but weakening
+- "rekindled": A past connection is becoming active again
 
 Return JSON:
 {
@@ -115,7 +120,7 @@ Return JSON:
     {
       "personName": "entity name",
       "relationshipType": "boyfriend" | "girlfriend" | etc.,
-      "status": "active" | "ended" | etc.,
+      "status": "active" | "ended" | "blocked" | "ghosted" | "on_break" | "complicated" | "paused" | "unrequited" | "fading" | "rekindled",
       "confidence": 0.0-1.0,
       "evidence": "quote from message",
       "startDate": "YYYY-MM-DD" (if mentioned),
@@ -125,7 +130,7 @@ Return JSON:
   ]
 }
 
-Only include relationships with confidence >= 0.7. Be conservative.`,
+If the message says they blocked the user or ghosted the user, classify status as "blocked" or "ghosted" and treat it as not current. Only include relationships with confidence >= 0.7. Be conservative.`,
           },
           {
             role: 'user',

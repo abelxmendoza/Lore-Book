@@ -61,4 +61,15 @@ describe('apiCache', () => {
     expect(s.total).toBe(2);
     expect(s.active).toBe(2);
   });
+
+  it('clears rejected in-flight requests without creating an extra unhandled rejection', async () => {
+    const rejected = Promise.reject(new Error('timeout'));
+    apiCache.trackInflight('GET:/api/slow:', rejected);
+
+    expect(apiCache.getInflight('GET:/api/slow:')).toBe(rejected);
+    await expect(rejected).rejects.toThrow('timeout');
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(apiCache.getInflight('GET:/api/slow:')).toBeNull();
+  });
 });

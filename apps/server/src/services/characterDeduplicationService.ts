@@ -1,4 +1,5 @@
 import { namesSimilar } from '../utils/jaroWinkler';
+import { normalizeNameKey } from '../utils/nameNormalization';
 
 export interface CharacterRecord {
   id: string;
@@ -13,8 +14,7 @@ const DEDUP_THRESHOLD = 0.85;
  * "my mom" → "mom", "Sarah's friend" → "sarah"
  */
 function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
+  return normalizeNameKey(name) // accent/case/whitespace normalization
     .replace(/^(my|her|his|their|our|the)\s+/i, '')
     .replace(/'s\s.*$/, '') // strip possessive tails ("sarah's friend" → "sarah")
     .trim();

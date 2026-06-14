@@ -220,6 +220,11 @@ export function useQuestBoard() {
 
   useEffect(() => {
     fetchBoard();
+    // Refresh when a quest is created/changed anywhere (e.g. accepting a
+    // detected suggestion) so the board stays in sync without a manual reload.
+    const onUpdated = () => { void fetchBoard(); };
+    window.addEventListener('lk:quests-updated', onUpdated);
+    return () => window.removeEventListener('lk:quests-updated', onUpdated);
   }, [fetchBoard]);
 
   return { data: board, isLoading: loading, error, refetch: fetchBoard };
@@ -350,6 +355,15 @@ export function useQuestSuggestions() {
 
   useEffect(() => {
     fetchSuggestions();
+    // Re-read conversations periodically so new hopes/dreams/plans surface as
+    // suggestions without the user having to refresh.
+    const interval = setInterval(() => { void fetchSuggestions(); }, 5 * 60 * 1000);
+    const onRefresh = () => { void fetchSuggestions(); };
+    window.addEventListener('lk:quests-updated', onRefresh);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('lk:quests-updated', onRefresh);
+    };
   }, [fetchSuggestions]);
 
   return { data: suggestions, isLoading: loading, error, refetch: fetchSuggestions };

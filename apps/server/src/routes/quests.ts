@@ -131,15 +131,37 @@ router.get('/analytics', requireAuth, async (req: AuthenticatedRequest, res) => 
  */
 router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    // Get recent journal entries
-    const { data: entries } = await supabaseAdmin
-      .from('journal_entries')
-      .select('*')
-      .eq('user_id', req.user!.id)
-      .order('date', { ascending: false })
-      .limit(50);
+    const userId = req.user!.id;
 
-    const suggestions = await questExtractor.extractQuests(req.user!.id, entries || []);
+    // Suggestions come from BOTH journal entries and chat conversations, since
+    // hopes/dreams/plans surface in chat just as much as in journaling.
+    const [entriesRes, messagesRes] = await Promise.all([
+      supabaseAdmin
+        .from('journal_entries')
+        .select('content, date')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(40),
+      supabaseAdmin
+        .from('chat_messages')
+        .select('content, created_at')
+        .eq('user_id', userId)
+        .eq('role', 'user')
+        .order('created_at', { ascending: false })
+        .limit(60),
+    ]);
+
+    const chatAsEntries = (messagesRes.data || []).map((m: { content: string; created_at: string }) => ({
+      content: m.content,
+      date: m.created_at,
+    }));
+
+    // Newest-first across both sources so the extractor sees recent intent.
+    const combined = [...(entriesRes.data || []), ...chatAsEntries]
+      .filter(e => e.content?.trim())
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    const suggestions = await questExtractor.extractQuests(userId, combined);
     res.json({ suggestions, count: suggestions.length });
   } catch (error) {
     logger.error({ err: error }, 'Failed to get quest suggestions');

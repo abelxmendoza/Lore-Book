@@ -83,6 +83,18 @@ export class QuestService {
         created_at: new Date().toISOString(),
       });
 
+      // Extract the skills this quest develops and grant pursuit XP (non-blocking).
+      void import('../skills/skillExtractionService')
+        .then(({ skillExtractionService }) =>
+          skillExtractionService.processQuestForSkills(
+            userId,
+            savedQuest.id,
+            `${savedQuest.title}\n${savedQuest.description ?? ''}`,
+            { completed: false }
+          )
+        )
+        .catch(err => logger.debug({ err, userId, questId: savedQuest.id }, 'Quest skill extraction failed'));
+
       logger.debug({ questId: savedQuest.id, userId }, 'Created quest');
       return savedQuest;
     } catch (error) {
@@ -208,6 +220,18 @@ export class QuestService {
         notes: notes,
         created_at: now,
       });
+
+      // Completing a quest levels up the skills it developed (non-blocking).
+      void import('../skills/skillExtractionService')
+        .then(({ skillExtractionService }) =>
+          skillExtractionService.processQuestForSkills(
+            userId,
+            questId,
+            `${quest.title}\n${quest.description ?? ''}`,
+            { completed: true }
+          )
+        )
+        .catch(err => logger.debug({ err, userId, questId }, 'Quest-completion skill leveling failed'));
 
       logger.debug({ questId, userId }, 'Quest completed');
       return updatedQuest;

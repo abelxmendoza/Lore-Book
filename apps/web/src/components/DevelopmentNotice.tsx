@@ -57,7 +57,7 @@ export function DevelopmentNotice() {
       aria-labelledby="dev-notice-title"
       aria-describedby="dev-notice-description"
     >
-      <div className="relative w-full max-w-2xl bg-gradient-to-br from-purple-900/95 via-black/95 to-purple-950/95 border-2 border-primary/50 rounded-lg sm:rounded-2xl shadow-2xl p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6 animate-in fade-in zoom-in duration-300 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-2xl bg-gradient-to-br from-purple-900/95 via-black/95 to-purple-950/95 border border-primary/50 rounded-lg sm:rounded-2xl shadow-2xl p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6 animate-in fade-in zoom-in duration-300 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
         {/* Close Button */}
         <button
           onClick={handleDismiss}
@@ -69,10 +69,13 @@ export function DevelopmentNotice() {
 
         {/* Header */}
         <div className="flex items-start gap-3 sm:gap-4 pr-8 sm:pr-0">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
             <Rocket className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
           </div>
           <div className="flex-1 min-w-0">
+            <div className="mb-2 inline-flex items-center rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-amber-200">
+              Proof of Concept · Near Alpha
+            </div>
             <h2
               id="dev-notice-title"
               className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2"
@@ -80,22 +83,22 @@ export function DevelopmentNotice() {
               Early Access — Lore Book
             </h2>
             <p id="dev-notice-description" className="text-white/70 text-sm sm:text-base">
-              The core experience is live. You can journal, chat, and watch your story take shape.
-              We're still building — some features are further along than others.
+              Lore Book is open for early testing while the core experience is still being proven.
+              Chat, journaling, and story-building are the focus right now.
             </p>
           </div>
         </div>
 
         {/* Content */}
         <div className="space-y-3 sm:space-y-4 text-white/70">
-          <div className="bg-black/40 border border-white/10 rounded-lg p-3 sm:p-4 space-y-3">
+          <div className="grid gap-3">
             <div className="flex items-start gap-2 sm:gap-3">
               <Rocket className="h-4 w-4 sm:h-5 sm:w-5 text-green-400 mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">What's live</p>
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Ready to test</p>
                 <p className="text-xs sm:text-sm">
-                  Chat, journaling, and memory extraction are fully active. Characters, events,
-                  locations, and groups are tracked in real time from your conversations.
+                  Chat, journaling, memory extraction, and story organization are active.
+                  Characters, events, locations, and groups can start forming from your conversations.
                 </p>
               </div>
             </div>
@@ -103,10 +106,10 @@ export function DevelopmentNotice() {
             <div className="flex items-start gap-2 sm:gap-3">
               <Database className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Some panels use sample data</p>
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Still being proven</p>
                 <p className="text-xs sm:text-sm">
-                  A few analytical surfaces — mood, goals, perceptions — show sample data
-                  to preview what they'll look like as your story grows. The data will fill in over time.
+                  Some analytical views, including mood, goals, and perceptions, may use sample or partial data
+                  until your own story has enough signal.
                 </p>
               </div>
             </div>
@@ -114,19 +117,19 @@ export function DevelopmentNotice() {
             <div className="flex items-start gap-2 sm:gap-3">
               <Code className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Actively evolving</p>
+                <p className="font-semibold text-white mb-1 text-sm sm:text-base">Expect change</p>
                 <p className="text-xs sm:text-sm">
-                  Features ship frequently. Things may shift, improve, or occasionally break.
-                  That's the deal with early access — you're part of shaping this.
+                  Features are shipping quickly. Screens may shift, improve, or occasionally break as the alpha takes shape.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4">
+          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4 flex items-start gap-2 sm:gap-3">
+            <Info className="h-4 w-4 sm:h-5 sm:w-5 text-primary mt-0.5 flex-shrink-0" />
             <p className="text-xs sm:text-sm text-primary/90">
-              <strong>Start by chatting.</strong> Tell the app about your day, the people in your life,
-              or something that happened. Lore Book listens and builds your story from there.
+              <strong>Start in Chat.</strong> Tell Lore Book about your day, someone in your life,
+              or a moment you want remembered. The app builds the rest from there.
             </p>
           </div>
         </div>
@@ -148,4 +151,3 @@ export function DevelopmentNotice() {
     </div>
   );
 }
-

@@ -19,6 +19,7 @@ export type GroupType =
   | 'family'
   | 'martial_arts'
   | 'scene'
+  | 'community'
   | 'crew'
   | 'collective'
   | 'institution'
@@ -116,6 +117,59 @@ export interface OrganizationLocation {
   last_visited?: string;
 }
 
+// ── Conversation-derived context ──────────────────────────────────────
+// Events & locations inferred from a group's MEMBERS appearing in the
+// user's chat threads / journal entries (character_timeline_events +
+// locations.associated_character_ids). Read-only; recomputed on demand so
+// they always reflect the latest conversations without manual entry.
+export interface DerivedGroupEvent {
+  id: string;
+  title: string;
+  date: string | null;
+  type: string;
+  summary?: string;
+  involved: string[]; // member names tied to this event
+  user_was_present?: boolean;
+  /** with_user | without_user | group_wide — how the event relates to you & the group */
+  audience?: GroupEventAudience;
+  /** direct roster vs subgroup-only vs spans hierarchy */
+  scope?: 'direct' | 'subgroup' | 'hierarchy';
+  subgroup_names?: string[];
+  source: 'conversation';
+}
+
+export type GroupEventAudience = 'with_user' | 'without_user' | 'group_wide';
+
+export interface DerivedGroupHierarchyNode {
+  id: string;
+  name: string;
+  group_type?: string;
+  relationship_type?: OrgRelationshipType;
+  member_count?: number;
+  inferred?: boolean;
+}
+
+export interface DerivedGroupHierarchy {
+  parent?: DerivedGroupHierarchyNode;
+  subgroups: DerivedGroupHierarchyNode[];
+  related: DerivedGroupHierarchyNode[];
+}
+
+export interface DerivedGroupLocation {
+  id: string;
+  name: string;
+  type?: string;
+  importance_score?: number;
+  involved: string[]; // member names tied to this location
+  source: 'conversation';
+}
+
+export interface DerivedGroupContext {
+  events: DerivedGroupEvent[];
+  locations: DerivedGroupLocation[];
+  hierarchy: DerivedGroupHierarchy;
+}
+
 export interface Organization {
   id: string;
   user_id: string;
@@ -171,46 +225,71 @@ export class OrganizationService {
 
       if (error) throw error;
 
-      // Load related data for each organization
-      const organizations = await Promise.all(
-        (orgs || []).map(async (org) => {
-          const [members, stories, events, locations] = await Promise.all([
-            this.getMembers(org.id),
-            this.getStories(org.id),
-            this.getEvents(org.id),
-            this.getLocations(org.id),
-          ]);
+      const organizationRows = orgs || [];
+      if (organizationRows.length === 0) return [];
 
-      // Calculate analytics
-      let analytics: GroupAnalytics | undefined;
-      try {
-        analytics = await groupAnalyticsService.calculateAnalytics(userId, org.id, {
+      const organizationIds = organizationRows.map(org => org.id);
+      const [membersResult, storiesResult, eventsResult, locationsResult] = await Promise.all([
+        supabaseAdmin
+          .from('organization_members')
+          .select('*')
+          .in('organization_id', organizationIds)
+          .order('joined_date', { ascending: true }),
+        supabaseAdmin
+          .from('organization_stories')
+          .select('*')
+          .in('organization_id', organizationIds)
+          .order('date', { ascending: false }),
+        supabaseAdmin
+          .from('organization_events')
+          .select('*')
+          .in('organization_id', organizationIds)
+          .order('date', { ascending: false }),
+        supabaseAdmin
+          .from('organization_locations')
+          .select('*')
+          .in('organization_id', organizationIds)
+          .order('last_visited', { ascending: false }),
+      ]);
+
+      if (membersResult.error) logger.warn({ error: membersResult.error, userId }, 'Failed to batch load organization members');
+      if (storiesResult.error) logger.warn({ error: storiesResult.error, userId }, 'Failed to batch load organization stories');
+      if (eventsResult.error) logger.warn({ error: eventsResult.error, userId }, 'Failed to batch load organization events');
+      if (locationsResult.error) logger.warn({ error: locationsResult.error, userId }, 'Failed to batch load organization locations');
+
+      const groupByOrganizationId = <T extends { organization_id: string }>(rows: T[] | null | undefined) => {
+        const grouped = new Map<string, T[]>();
+        for (const row of rows || []) {
+          const existing = grouped.get(row.organization_id) || [];
+          existing.push(row);
+          grouped.set(row.organization_id, existing);
+        }
+        return grouped;
+      };
+
+      const membersByOrg = groupByOrganizationId<OrganizationMember>(membersResult.error ? [] : membersResult.data);
+      const storiesByOrg = groupByOrganizationId<OrganizationStory>(storiesResult.error ? [] : storiesResult.data);
+      const eventsByOrg = groupByOrganizationId<OrganizationEvent>(eventsResult.error ? [] : eventsResult.data);
+      const locationsByOrg = groupByOrganizationId<OrganizationLocation>(locationsResult.error ? [] : locationsResult.data);
+
+      return organizationRows.map((org) => {
+        const members = membersByOrg.get(org.id) || [];
+        const stories = storiesByOrg.get(org.id) || [];
+        const events = eventsByOrg.get(org.id) || [];
+        const locations = locationsByOrg.get(org.id) || [];
+
+        return {
           ...org,
           members,
           stories,
           events,
           locations,
-        });
-      } catch (error) {
-        logger.debug({ error, organizationId: org.id }, 'Failed to calculate analytics, continuing without');
-      }
-
-      return {
-        ...org,
-        members,
-        stories,
-        events,
-        locations,
-        member_count: members.length,
-        usage_count: events.length + stories.length,
-        confidence: 1.0,
-        last_seen: org.updated_at,
-        analytics,
-      };
-        })
-      );
-
-      return organizations;
+          member_count: members.length,
+          usage_count: events.length + stories.length,
+          confidence: 1.0,
+          last_seen: org.updated_at,
+        };
+      });
     } catch (error) {
       logger.error({ error, userId }, 'Failed to list organizations');
       throw error;
@@ -483,6 +562,241 @@ export class OrganizationService {
   }
 
   /**
+   * Derive a group's events & locations from its MEMBERS' appearances across
+   * the user's chat threads / journal entries. Unlike organization_events /
+   * organization_locations (manual overlays), this reads the auto-extracted
+   * character timelines + canonical locations so the modal always reflects
+   * what was actually discussed. Read-only and recomputed per request.
+   */
+  async getDerivedContext(userId: string, organizationId: string): Promise<DerivedGroupContext> {
+    try {
+      const hierarchy = await this.getGroupHierarchy(userId, organizationId);
+      const members = await this.getMembers(organizationId);
+      const idToName = new Map<string, string>();
+      const directCharIds = new Set<string>();
+      for (const m of members) {
+        if (m.character_id) {
+          idToName.set(m.character_id, m.character_name);
+          directCharIds.add(m.character_id);
+        }
+      }
+
+      // Include subgroup rosters so parent groups inherit their events.
+      const charToSubgroups = new Map<string, Array<{ id: string; name: string }>>();
+      const subgroupMemberSets = new Map<string, Set<string>>();
+      for (const sg of hierarchy.subgroups) {
+        const sgMembers = await this.getMembers(sg.id);
+        const sgSet = new Set<string>();
+        for (const m of sgMembers) {
+          if (!m.character_id) continue;
+          sgSet.add(m.character_id);
+          idToName.set(m.character_id, m.character_name);
+          const list = charToSubgroups.get(m.character_id) ?? [];
+          if (!list.some(x => x.id === sg.id)) list.push({ id: sg.id, name: sg.name });
+          charToSubgroups.set(m.character_id, list);
+        }
+        subgroupMemberSets.set(sg.id, sgSet);
+      }
+
+      const characterIds = [...idToName.keys()];
+      if (characterIds.length === 0) {
+        return { events: [], locations: [], hierarchy };
+      }
+
+      const [rawEvents, locations] = await Promise.all([
+        this.deriveEvents(userId, characterIds, idToName),
+        this.deriveLocations(userId, characterIds, idToName),
+      ]);
+
+      const events = rawEvents.map(ev => {
+        const involvedIds = ev.involved
+          .map(name => {
+            for (const [id, n] of idToName) if (n === name) return id;
+            return null;
+          })
+          .filter((id): id is string => Boolean(id));
+
+        const subgroupNames = new Set<string>();
+        let fromDirect = false;
+        let fromSubgroup = false;
+        for (const id of involvedIds) {
+          if (directCharIds.has(id)) fromDirect = true;
+          for (const sg of charToSubgroups.get(id) ?? []) subgroupNames.add(sg.name);
+          for (const [sgId, sgSet] of subgroupMemberSets) {
+            if (sgSet.has(id)) {
+              fromSubgroup = true;
+              const sgNode = hierarchy.subgroups.find(s => s.id === sgId);
+              if (sgNode) subgroupNames.add(sgNode.name);
+            }
+          }
+        }
+
+        let scope: DerivedGroupEvent['scope'] = 'direct';
+        if (fromDirect && fromSubgroup) scope = 'hierarchy';
+        else if (fromSubgroup && !fromDirect) scope = 'subgroup';
+
+        return {
+          ...ev,
+          audience: this.classifyGroupEventAudience(ev),
+          scope,
+          subgroup_names: subgroupNames.size > 0 ? [...subgroupNames] : undefined,
+        };
+      });
+
+      return { events, locations, hierarchy };
+    } catch (error) {
+      logger.error({ error, userId, organizationId }, 'Failed to derive group context');
+      return {
+        events: [],
+        locations: [],
+        hierarchy: { subgroups: [], related: [] },
+      };
+    }
+  }
+
+  /** Parent / subgroups / affiliated groups for an organization. */
+  async getGroupHierarchy(userId: string, organizationId: string): Promise<DerivedGroupHierarchy> {
+    const orgs = await this.listOrganizations(userId);
+    const orgById = new Map(orgs.map(o => [o.id, o]));
+    const rels = await this.getRelationships(userId, organizationId);
+    const inferred = (notes?: string) => Boolean(notes?.startsWith('[auto-inferred]'));
+
+    let parent: DerivedGroupHierarchyNode | undefined;
+    const subgroups: DerivedGroupHierarchyNode[] = [];
+    const related: DerivedGroupHierarchyNode[] = [];
+
+    for (const rel of rels) {
+      const otherId = rel.from_org_id === organizationId ? rel.to_org_id : rel.from_org_id;
+      const other = orgById.get(otherId);
+      if (!other) continue;
+      const node: DerivedGroupHierarchyNode = {
+        id: other.id,
+        name: other.name,
+        group_type: other.group_type ?? other.type,
+        relationship_type: rel.relationship_type,
+        inferred: inferred(rel.notes),
+      };
+
+      if (rel.relationship_type === 'part_of' || rel.relationship_type === 'spawned_from') {
+        if (rel.from_org_id === organizationId) {
+          // this org is part of other → parent
+          parent = { ...node, relationship_type: rel.relationship_type };
+        } else {
+          // other is part of this org → subgroup
+          const sgMembers = await this.getMembers(other.id);
+          subgroups.push({ ...node, member_count: sgMembers.length });
+        }
+      } else {
+        related.push(node);
+      }
+    }
+
+    subgroups.sort((a, b) => a.name.localeCompare(b.name));
+    related.sort((a, b) => a.name.localeCompare(b.name));
+    return { parent, subgroups, related };
+  }
+
+  classifyGroupEventAudience(event: Pick<DerivedGroupEvent, 'user_was_present' | 'involved' | 'type' | 'title' | 'summary'>): GroupEventAudience {
+    if (event.user_was_present) return 'with_user';
+
+    const GROUP_WIDE_TYPES = /\b(meeting|gathering|show|game|party|concert|tournament|match|launch|festival|protest|strike|scandal|election|reunion|trip|tour|retreat|summit|assembly|rally)\b/i;
+    const GROUP_WIDE_TEXT = /\b(the group|everyone|whole team|all of us|the band|the scene|the community|the crew|the family|group-wide|entire group)\b/i;
+
+    if (event.involved.length >= 2) return 'group_wide';
+    if (GROUP_WIDE_TYPES.test(event.type) || GROUP_WIDE_TYPES.test(event.title)) return 'group_wide';
+    if (event.summary && GROUP_WIDE_TEXT.test(event.summary)) return 'group_wide';
+    return 'without_user';
+  }
+
+  /** Events members took part in, from character_timeline_events. */
+  private async deriveEvents(
+    userId: string,
+    characterIds: string[],
+    idToName: Map<string, string>
+  ): Promise<DerivedGroupEvent[]> {
+    const { data, error } = await supabaseAdmin
+      .from('character_timeline_events')
+      .select('event_id, character_id, event_title, event_date, event_summary, event_type, user_was_present')
+      .eq('user_id', userId)
+      .in('character_id', characterIds)
+      .order('event_date', { ascending: false })
+      .limit(400);
+    if (error || !data) return [];
+
+    // Collapse rows that describe the SAME event (multiple members → one card).
+    const byEvent = new Map<string, DerivedGroupEvent>();
+    for (const row of data as Array<{
+      event_id: string | null;
+      character_id: string;
+      event_title: string | null;
+      event_date: string | null;
+      event_summary: string | null;
+      event_type: string | null;
+      user_was_present: boolean | null;
+    }>) {
+      const title = (row.event_title ?? '').trim();
+      if (!title) continue;
+      const key = row.event_id ?? `${title.toLowerCase()}|${row.event_date ?? ''}`;
+      const memberName = idToName.get(row.character_id);
+      const existing = byEvent.get(key);
+      if (existing) {
+        if (memberName && !existing.involved.includes(memberName)) existing.involved.push(memberName);
+        if (row.user_was_present) existing.user_was_present = true;
+      } else {
+        byEvent.set(key, {
+          id: key,
+          title,
+          date: row.event_date ?? null,
+          type: row.event_type ?? 'other',
+          summary: row.event_summary ?? undefined,
+          involved: memberName ? [memberName] : [],
+          user_was_present: row.user_was_present ?? undefined,
+          source: 'conversation',
+        });
+      }
+    }
+
+    return [...byEvent.values()]
+      .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+      .slice(0, 50);
+  }
+
+  /** Locations tied to members, from locations.associated_character_ids. */
+  private async deriveLocations(
+    userId: string,
+    characterIds: string[],
+    idToName: Map<string, string>
+  ): Promise<DerivedGroupLocation[]> {
+    const { data, error } = await supabaseAdmin
+      .from('locations')
+      .select('id, name, type, importance_score, associated_character_ids')
+      .eq('user_id', userId)
+      .overlaps('associated_character_ids', characterIds)
+      .order('importance_score', { ascending: false })
+      .limit(50);
+    if (error || !data) return [];
+
+    return (data as Array<{
+      id: string;
+      name: string | null;
+      type: string | null;
+      importance_score: number | null;
+      associated_character_ids: string[] | null;
+    }>)
+      .filter(row => (row.name ?? '').trim().length > 0)
+      .map(row => ({
+        id: row.id,
+        name: (row.name ?? '').trim(),
+        type: row.type ?? undefined,
+        importance_score: row.importance_score ?? undefined,
+        involved: (row.associated_character_ids ?? [])
+          .map(id => idToName.get(id))
+          .filter((n): n is string => Boolean(n)),
+        source: 'conversation' as const,
+      }));
+  }
+
+  /**
    * Delete an organization (cascades to members, stories, events, locations via FK)
    */
   async deleteOrganization(userId: string, organizationId: string): Promise<void> {
@@ -677,6 +991,33 @@ export class OrganizationService {
     }
   }
 
+  /** Idempotent insert — returns true if created, false if already existed. */
+  async ensureRelationship(
+    userId: string,
+    fromOrgId: string,
+    toOrgId: string,
+    relationshipType: OrgRelationshipType,
+    notes?: string
+  ): Promise<boolean> {
+    if (fromOrgId === toOrgId) return false;
+    try {
+      const { data: existing } = await supabaseAdmin
+        .from('organization_relationships')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('from_org_id', fromOrgId)
+        .eq('to_org_id', toOrgId)
+        .eq('relationship_type', relationshipType)
+        .maybeSingle();
+      if (existing) return false;
+      await this.addRelationship(userId, fromOrgId, toOrgId, relationshipType, notes);
+      return true;
+    } catch (error) {
+      logger.debug({ error, userId, fromOrgId, toOrgId }, 'ensureRelationship skipped');
+      return false;
+    }
+  }
+
   async removeRelationship(userId: string, relationshipId: string): Promise<void> {
     try {
       const { error } = await supabaseAdmin
@@ -746,7 +1087,55 @@ export class OrganizationService {
       return [];
     }
   }
+
+  /** Other group memberships for each roster member (excludes the current org). */
+  async getMemberAffiliationsBatch(
+    userId: string,
+    organizationId: string
+  ): Promise<Record<string, Array<{ id: string; name: string; group_type?: string }>>> {
+    try {
+      const org = await this.getOrganization(userId, organizationId);
+      if (!org?.members?.length) return {};
+
+      const characterIds = [...new Set(
+        org.members.map(m => m.character_id).filter((id): id is string => Boolean(id))
+      )];
+      if (characterIds.length === 0) return {};
+
+      const { data: rows, error } = await supabaseAdmin
+        .from('organization_members')
+        .select('character_id, organization_id')
+        .eq('user_id', userId)
+        .in('character_id', characterIds)
+        .neq('organization_id', organizationId);
+
+      if (error) throw error;
+      if (!rows?.length) return {};
+
+      const orgIds = [...new Set(rows.map(r => r.organization_id as string))];
+      const orgs = await Promise.all(orgIds.map(id => this.getOrganization(userId, id)));
+      const orgById = new Map(
+        orgs.filter((o): o is Organization => o !== null).map(o => [o.id, o])
+      );
+
+      const result: Record<string, Array<{ id: string; name: string; group_type?: string }>> = {};
+      for (const row of rows as Array<{ character_id: string; organization_id: string }>) {
+        const other = orgById.get(row.organization_id);
+        if (!other) continue;
+        const list = result[row.character_id] ?? (result[row.character_id] = []);
+        if (list.some(o => o.id === other.id)) continue;
+        list.push({
+          id: other.id,
+          name: other.name,
+          group_type: other.group_type ?? other.type,
+        });
+      }
+      return result;
+    } catch (error) {
+      logger.error({ error, userId, organizationId }, 'Failed to get member affiliations batch');
+      return {};
+    }
+  }
 }
 
 export const organizationService = new OrganizationService();
-

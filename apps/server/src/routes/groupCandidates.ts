@@ -14,7 +14,7 @@ const router = Router();
 
 const GROUP_TYPES = [
   'friend_group','band','sports_team','company','club','nonprofit',
-  'family','martial_arts','scene','crew','collective','institution',
+  'family','martial_arts','scene','community','crew','collective','institution',
   'public_entity','other',
 ] as const;
 
@@ -37,6 +37,24 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ error, userId }, 'Failed to get group candidates');
     res.status(500).json({ success: false, error: 'Failed to get group candidates' });
+  }
+});
+
+// POST /api/group-candidates/scan
+// On-demand scan of the user's recent threads + journals for group signals.
+// Lets the UI surface groups immediately instead of waiting for the cycle.
+router.post('/scan', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const days = Math.min(Math.max(Number(req.body?.days) || 90, 1), 365);
+  const cap = Math.min(Math.max(Number(req.body?.cap) || 120, 10), 300);
+  try {
+    const { groupDetectionWorker } = await import('../workers/groupDetectionWorker');
+    await groupDetectionWorker.runForUser(userId, days, cap);
+    const candidates = await groupCandidateService.getCandidates(userId, 'pending');
+    res.json({ success: true, candidates, scanned_days: days, scanned_cap: cap });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to scan for group candidates');
+    res.status(500).json({ success: false, error: 'Failed to scan for groups' });
   }
 });
 
@@ -78,6 +96,28 @@ router.post('/:id/accept', requireAuth, async (req: AuthenticatedRequest, res) =
   } catch (error) {
     logger.error({ error, userId, candidateId }, 'Failed to accept group candidate');
     res.status(500).json({ success: false, error: 'Failed to accept candidate' });
+  }
+});
+
+// POST /api/group-candidates/:id/merge
+// Merge a candidate into an existing organization instead of creating a new one.
+router.post('/:id/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const candidateId = String(req.params.id);
+
+  const schema = z.object({ organization_id: z.string().min(1) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+
+  try {
+    const result = await groupCandidateService.mergeCandidate(userId, candidateId, parsed.data.organization_id);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ error, userId, candidateId }, 'Failed to merge group candidate');
+    res.status(500).json({ success: false, error: 'Failed to merge candidate' });
   }
 });
 

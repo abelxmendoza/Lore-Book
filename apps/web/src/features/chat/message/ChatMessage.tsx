@@ -205,12 +205,14 @@ export const ChatMessage = ({
           <Bot className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />
         </div>
       )}
-      <div className={`flex-1 max-w-full ${isUser ? 'flex justify-end' : ''}`}>
+      <div className={`min-w-0 ${isUser ? 'flex justify-end max-w-full' : 'flex-1'}`}>
         <div
-          className={`relative inline-block max-w-full ${
+          className={`relative ${
             isUser
-              ? 'bg-white/10 rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
-              : 'bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
+              ? 'inline-block max-w-full bg-white/10 rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
+              // Assistant: fill the available width so responses read full-width,
+              // especially on mobile (previously shrink-wrapped via inline-block).
+              : 'block w-full bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
           }`}
         >
           {/* Message Actions Menu */}

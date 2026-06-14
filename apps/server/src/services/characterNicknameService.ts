@@ -2,8 +2,10 @@ import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
 import { logger } from '../logger';
+import { splitPersonName } from '../utils/nameNormalization';
 
 import { supabaseAdmin } from './supabaseClient';
+import { characterRegistry } from './characterRegistry';
 
 import { openai } from './openaiClient';
 
@@ -501,14 +503,7 @@ Only include mappings with confidence > 0.6. If no nicknames detected, return {"
    * Parse name into first and last name
    */
   private parseName(fullName: string): { firstName: string; lastName?: string } {
-    const parts = fullName.trim().split(/\s+/);
-    if (parts.length === 1) {
-      return { firstName: parts[0] };
-    }
-    return {
-      firstName: parts[0],
-      lastName: parts.slice(1).join(' ')
-    };
+    return splitPersonName(fullName);
   }
 
   /**
@@ -519,12 +514,28 @@ Only include mappings with confidence > 0.6. If no nicknames detected, return {"
     character: CharacterWithNickname
   ): Promise<{ id: string; name: string } | null> {
     try {
+      const decision = await characterRegistry.classifyForCreation(userId, character.name);
+      if (decision.action === 'reject') {
+        logger.debug({ name: character.name, reason: decision.reason }, 'Registry rejected nickname character creation');
+        return null;
+      }
+      if (decision.action === 'merge') {
+        await characterRegistry.mergeMention(userId, decision.characterId, decision.cleanName, {
+          nickname_context: character.context,
+        });
+        return { id: decision.characterId, name: decision.matchedName };
+      }
+      if (decision.action === 'defer') {
+        await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, null, decision.rawName);
+        return null;
+      }
+
       // Check if character with this name already exists
       const { data: existing } = await supabaseAdmin
         .from('characters')
         .select('id, name, first_name, last_name')
         .eq('user_id', userId)
-        .eq('name', character.name)
+        .eq('name', decision.cleanName)
         .single();
 
       if (existing) {
@@ -534,7 +545,7 @@ Only include mappings with confidence > 0.6. If no nicknames detected, return {"
       // Parse name if not already parsed
       const nameParts = character.firstName 
         ? { firstName: character.firstName, lastName: character.lastName }
-        : this.parseName(character.name);
+        : this.parseName(decision.cleanName);
 
       // Determine if this is a nickname
       const isNickname = character.isNickname ?? (!character.firstName && !character.lastName);
@@ -566,7 +577,7 @@ Only include mappings with confidence > 0.6. If no nicknames detected, return {"
         .insert({
           id,
           user_id: userId,
-          name: character.name,
+          name: decision.cleanName,
           first_name: nameParts.firstName,
           last_name: nameParts.lastName || null,
           alias: character.alias || [],

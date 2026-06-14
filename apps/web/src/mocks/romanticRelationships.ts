@@ -175,7 +175,7 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
 
     // Ghosted — real endings aren't always clean breakups
     {
-      id: 'rel-005',
+      id: 'rel-007',
       person_id: 'char-005',
       person_type: 'character',
       person_name: 'Riley',
@@ -406,6 +406,102 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
       created_at: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString(),
       rank_among_all: 2,
       rank_among_active: undefined
+    },
+
+    // Past + No Contact + High Risk
+    {
+      id: 'rel-008',
+      person_id: 'char-008',
+      person_type: 'character',
+      person_name: 'Nova',
+      relationship_type: 'ex_lover',
+      status: 'blocked',
+      is_current: false,
+      affection_score: 0.68,
+      emotional_intensity: 0.92,
+      compatibility_score: 0.58,
+      relationship_health: 0.18,
+      is_situationship: false,
+      exclusivity_status: undefined,
+      strengths: [
+        'Strong emotional memory',
+        'Meaningful history',
+        'Real chemistry'
+      ],
+      weaknesses: [
+        'No current communication',
+        'Blocked and unresolved',
+        'High emotional volatility'
+      ],
+      pros: [
+        'The connection felt important in the moment',
+        'There were moments of genuine closeness',
+        'The story has enough context for reflection'
+      ],
+      cons: [
+        'Blocked and unavailable',
+        'Ghosting created uncertainty',
+        'Reaching out would not respect the current boundary'
+      ],
+      red_flags: [
+        'Blocked communication',
+        'Ghosted after emotional intensity',
+        'Unresolved ending'
+      ],
+      green_flags: [
+        'The connection revealed what mattered emotionally'
+      ],
+      start_date: new Date(now.getTime() - 420 * 24 * 60 * 60 * 1000).toISOString(),
+      end_date: new Date(now.getTime() - 120 * 24 * 60 * 60 * 1000).toISOString(),
+      created_at: new Date(now.getTime() - 420 * 24 * 60 * 60 * 1000).toISOString(),
+      rank_among_all: 7,
+      rank_among_active: undefined
+    },
+
+    // Past with possible reconciliation
+    {
+      id: 'rel-009',
+      person_id: 'char-009',
+      person_type: 'character',
+      person_name: 'Elena',
+      relationship_type: 'ex_girlfriend',
+      status: 'rekindled',
+      is_current: false,
+      affection_score: 0.62,
+      emotional_intensity: 0.66,
+      compatibility_score: 0.76,
+      relationship_health: 0.64,
+      is_situationship: false,
+      exclusivity_status: undefined,
+      strengths: [
+        'Respectful communication',
+        'Good shared values',
+        'Healthy closure'
+      ],
+      weaknesses: [
+        'Timing was difficult',
+        'Distance made consistency hard'
+      ],
+      pros: [
+        'Ended without major harm',
+        'Still has mutual respect',
+        'Compatibility stayed relatively strong'
+      ],
+      cons: [
+        'Needs better timing',
+        'Would require a real conversation before reopening anything'
+      ],
+      red_flags: [],
+      green_flags: [
+        'Mutual respect remained after the ending',
+        'Healthy communication patterns',
+        'No current no-contact boundary'
+      ],
+      start_date: new Date(now.getTime() - 640 * 24 * 60 * 60 * 1000).toISOString(),
+      end_date: new Date(now.getTime() - 250 * 24 * 60 * 60 * 1000).toISOString(),
+      created_at: new Date(now.getTime() - 640 * 24 * 60 * 60 * 1000).toISOString(),
+      rank_among_all: 8,
+      rank_among_active: undefined
     }
   ];
 }
@@ -551,26 +647,89 @@ export function getMockRomanticRelationships(): MockRomanticRelationship[] {
  * Get mock relationships by filter
  */
 export function getMockRomanticRelationshipsByFilter(
-  filter: 'all' | 'active' | 'past' | 'situationships' | 'crushes'
+  filter: 'all' | 'active' | 'past' | 'no_contact' | 'reconnection' | 'situationships' | 'dating' | 'crushes' | 'high_risk' | 'rankings'
 ): MockRomanticRelationship[] {
   const all = getMockRomanticRelationships();
   
   switch (filter) {
     case 'active':
-      return all.filter(r => r.is_current && r.status === 'active');
+      return all.filter(isActiveMockRelationship);
     case 'past':
-      return all.filter(r => !r.is_current || r.status === 'ended');
+      return all.filter(isEndedMockRelationship);
+    case 'no_contact':
+      return all.filter(isNoContactMockRelationship);
+    case 'reconnection':
+      return all.filter(r => isEndedMockRelationship(r) && hasMockReconnectionPotential(r));
     case 'situationships':
       return all.filter(r => r.is_situationship);
+    case 'dating':
+      return all.filter(isDatingMockRelationship);
     case 'crushes':
-      return all.filter(r => 
-        r.relationship_type === 'crush' || 
-        r.relationship_type === 'obsession' || 
-        r.relationship_type === 'infatuation'
-      );
+      return all.filter(isCrushMockRelationship);
+    case 'high_risk':
+      return all.filter(isHighRiskMockRelationship);
     default:
       return all;
   }
+}
+
+const END_STATE_STATUSES = new Set(['ended', 'broken_up', 'separated', 'ghosted', 'blocked']);
+const NO_CONTACT_STATUSES = new Set(['ghosted', 'blocked']);
+const RECONNECTION_STATUSES = new Set(['rekindled', 'fading']);
+const CRUSH_TYPES = new Set(['crush', 'obsession', 'infatuation']);
+const DATING_TYPES = new Set(['dating', 'girlfriend', 'boyfriend', 'partner', 'romantic_interest']);
+
+function normalizedMockStatus(relationship: MockRomanticRelationship): string {
+  return relationship.status.toLowerCase();
+}
+
+function normalizedMockType(relationship: MockRomanticRelationship): string {
+  return relationship.relationship_type.toLowerCase();
+}
+
+function isEndedMockRelationship(relationship: MockRomanticRelationship): boolean {
+  const status = normalizedMockStatus(relationship);
+  const type = normalizedMockType(relationship);
+  return !relationship.is_current || END_STATE_STATUSES.has(status) || type.startsWith('ex_');
+}
+
+function isActiveMockRelationship(relationship: MockRomanticRelationship): boolean {
+  return relationship.is_current && !isEndedMockRelationship(relationship);
+}
+
+function isCrushMockRelationship(relationship: MockRomanticRelationship): boolean {
+  return CRUSH_TYPES.has(normalizedMockType(relationship));
+}
+
+function isDatingMockRelationship(relationship: MockRomanticRelationship): boolean {
+  return isActiveMockRelationship(relationship) && DATING_TYPES.has(normalizedMockType(relationship));
+}
+
+function isNoContactMockRelationship(relationship: MockRomanticRelationship): boolean {
+  return NO_CONTACT_STATUSES.has(normalizedMockStatus(relationship));
+}
+
+function hasMockReconnectionPotential(relationship: MockRomanticRelationship): boolean {
+  if (isNoContactMockRelationship(relationship)) return false;
+
+  return (
+    RECONNECTION_STATUSES.has(normalizedMockStatus(relationship)) ||
+    (relationship.compatibility_score >= 0.7 &&
+      relationship.relationship_health >= 0.45 &&
+      relationship.green_flags.length > relationship.red_flags.length)
+  );
+}
+
+function isHighRiskMockRelationship(relationship: MockRomanticRelationship): boolean {
+  const status = normalizedMockStatus(relationship);
+  const type = normalizedMockType(relationship);
+  return (
+    relationship.red_flags.length >= 2 ||
+    relationship.relationship_health < 0.35 ||
+    NO_CONTACT_STATUSES.has(status) ||
+    status === 'complicated' ||
+    type === 'obsession'
+  );
 }
 
 /**

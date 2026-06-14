@@ -17,6 +17,7 @@ import { rateLimitMiddleware } from './middleware/rateLimit';
 import { validateRequestSize, validateCommonPatterns } from './middleware/requestValidation';
 import { inputSanitizer } from './middleware/sanitize';
 import { secureHeaders } from './middleware/secureHeaders';
+import { userIsolationGuard } from './middleware/userIsolationGuard';
 import { registerRoutes, getDisabledRoutePaths } from './routes/routeRegistry';
 import { runtimeRouter } from './routes/runtime';
 import { subscriptionRouter } from './routes/subscription';
@@ -222,6 +223,7 @@ apiRouter.use(schemaGuard);
 // Security middleware stack - ALWAYS enabled in production
 apiRouter.use(intrusionDetection); // Intrusion detection (blocks suspicious activity)
 apiRouter.use(authMiddleware); // Authentication required for all API routes
+apiRouter.use(userIsolationGuard); // Fail closed if a response contains another user's user_id
 apiRouter.use(csrfTokenMiddleware); // Generate CSRF tokens
 apiRouter.use(validateRequestSize); // Validate request sizes
 if (isProduction) {
@@ -307,13 +309,15 @@ app.use(errorHandler);
     // CORE jobs — always run
     registerSyncJob();
     memoryExtractionWorker.start();
+    const { groupDetectionWorker } = await import('./workers/groupDetectionWorker');
+    groupDetectionWorker.start();
     const { continuityEngineJob } = await import('./jobs/continuityEngineJob');
     continuityEngineJob.register();
     const { accessibilityDecayJob } = await import('./jobs/accessibilityDecayJob');
     accessibilityDecayJob.register();
     const { arcStabilityDecayJob } = await import('./jobs/arcStabilityDecayJob');
     arcStabilityDecayJob.register();
-    logger.info('Core background jobs registered: sync, memoryExtraction, continuityEngine, accessibilityDecay, arcStabilityDecay');
+    logger.info('Core background jobs registered: sync, memoryExtraction, groupDetection, continuityEngine, accessibilityDecay, arcStabilityDecay');
 
     // EXPERIMENTAL jobs — gated behind ENABLE_EXPERIMENTAL_RUNTIME
     if (process.env.ENABLE_EXPERIMENTAL_RUNTIME === 'true') {

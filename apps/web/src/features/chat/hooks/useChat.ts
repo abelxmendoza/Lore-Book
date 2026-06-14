@@ -10,6 +10,7 @@ import { getGlobalMockDataEnabled } from '../../../contexts/MockDataContext';
 import { useAuth } from '../../../lib/supabase';
 import { apiCache } from '../../../lib/cache';
 import { fetchJson } from '../../../lib/api';
+import { dispatchStoryDataUpdated } from '../../../lib/storyRefresh';
 import type { Message, ChatSource } from '../message/ChatMessage';
 import { parseSlashCommand, handleSlashCommand } from '../../../utils/chatCommands';
 import { analytics } from '../../../lib/monitoring';
@@ -314,7 +315,7 @@ export const useChat = () => {
           // and a second at 11s (catches slow LLM-backed steps: event assembly, interest extraction).
           // The 3s fixed delay was too short; pipeline can take 8-15s end-to-end.
           const doRefresh = () => {
-            apiCache.deletePattern(/\/api\/(entries|timeline|chapters|characters|entity-resolution)/);
+            apiCache.deletePattern(/\/api\/(entries|timeline|chapters|characters|entity-resolution|family-trees|organizations)/);
             Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]).catch(() => {});
             const ids: string[] | undefined = metadata?.characterIds;
             if (ids && ids.length > 0) {
@@ -330,6 +331,10 @@ export const useChat = () => {
                 new CustomEvent('lk:locations-updated', { detail: { ids: locationIds } })
               );
             }
+            dispatchStoryDataUpdated({
+              scopes: ['all'],
+              characterIds: ids,
+            });
           };
           setTimeout(doRefresh, 4000);
           setTimeout(doRefresh, 11000);

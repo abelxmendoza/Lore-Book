@@ -8,6 +8,7 @@ import { openai } from '../lib/openai';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { characterAnalyticsService } from '../services/characterAnalyticsService';
+import { characterIdentityIndexService } from '../services/characterIdentityIndexService';
 import { findSimilarCharacter } from '../services/characterDeduplicationService';
 import { characterMergeService } from '../services/characterMergeService';
 import { characterRegistry } from '../services/characterRegistry';
@@ -1052,6 +1053,31 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
     logger.error({ err: error }, 'Failed to list characters');
     // Return empty array instead of error - better UX
     res.json({ characters: [] });
+  }
+});
+
+router.get('/registry', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+    const rawLimit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+    const entries = await characterIdentityIndexService.list(req.user!.id, {
+      search,
+      limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
+    });
+    res.json({ success: true, entries });
+  } catch (error) {
+    logger.error({ err: error, userId: req.user?.id }, 'Failed to list character registry');
+    res.status(500).json({ success: false, error: 'Failed to list character registry' });
+  }
+});
+
+router.post('/registry/rebuild', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const result = await characterIdentityIndexService.rebuild(req.user!.id);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ err: error, userId: req.user?.id }, 'Failed to rebuild character registry');
+    res.status(500).json({ success: false, error: 'Failed to rebuild character registry' });
   }
 });
 

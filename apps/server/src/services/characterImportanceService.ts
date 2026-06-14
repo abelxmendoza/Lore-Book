@@ -9,6 +9,12 @@ const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type ImportanceLevel = 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
 
+/** Family closeness signal used to floor importance for relatives. */
+type FamilySignal = { isFamily: boolean; isClose: boolean; isEstranged: boolean };
+
+/** Language that signals a strained/estranged family bond (lowers closeness). */
+const ESTRANGEMENT_SIGNALS = /\b(estranged|cut (?:them |him |her )?off|cut ties|no contact|don'?t (?:talk|speak)|haven'?t spoken|doesn'?t (?:talk|speak)|disowned|fell out|not close|distant relationship|abusive|toxic|complicated relationship)\b/i;
+
 export type ImportanceCriteria = {
   mentionCount: number;
   relationshipDepth: number;
@@ -40,11 +46,16 @@ class CharacterImportanceService {
       // Get full criteria by fetching from database if not provided
       const fullCriteria = await this.gatherCriteria(userId, characterId, criteria);
 
+      // Family signal: relatives are part of the core circle and almost never
+      // truly "minor", even when rarely mentioned. We read it once here and use
+      // it both to seed the base score and to enforce a floor on the result.
+      const family = await this.detectFamilySignal(userId, characterId);
+
       // Calculate base score
-      const baseScore = this.calculateBaseScore(fullCriteria);
+      const baseScore = this.calculateBaseScore(fullCriteria, family);
 
       // Use AI to determine importance level with context
-      const importanceLevel = await this.determineImportanceLevel(
+      let importanceLevel = await this.determineImportanceLevel(
         userId,
         characterId,
         fullCriteria,
@@ -52,13 +63,28 @@ class CharacterImportanceService {
       );
 
       // Final score (0-100)
-      const importanceScore = Math.min(100, Math.max(0, baseScore));
+      let importanceScore = Math.min(100, Math.max(0, baseScore));
+
+      // Family floor — relatives are lifelong figures in the user's story, so
+      // they never fall to minor/background just because the chat hasn't named
+      // them much. Estrangement lowers closeness, not their significance, so
+      // even difficult/estranged family keep a supporting floor.
+      if (family.isFamily) {
+        if (family.isEstranged) {
+          importanceScore = Math.max(importanceScore, 40);
+          importanceLevel = this.atLeastLevel(importanceLevel, 'supporting');
+        } else {
+          const floorLevel: ImportanceLevel = family.isClose ? 'major' : 'supporting';
+          importanceScore = Math.max(importanceScore, family.isClose ? 65 : 50);
+          importanceLevel = this.atLeastLevel(importanceLevel, floorLevel);
+        }
+      }
 
       return {
         importanceLevel,
         importanceScore,
         criteria: fullCriteria,
-        reasoning: this.generateReasoning(fullCriteria, importanceLevel)
+        reasoning: this.generateReasoning(fullCriteria, importanceLevel, family)
       };
     } catch (error) {
       logger.error({ error, characterId }, 'Failed to calculate character importance');
@@ -162,7 +188,7 @@ class CharacterImportanceService {
   /**
    * Calculate base importance score (0-100)
    */
-  private calculateBaseScore(criteria: ImportanceCriteria): number {
+  private calculateBaseScore(criteria: ImportanceCriteria, family?: FamilySignal): number {
     let score = 0;
 
     // Mention count (0-30 points)
@@ -183,7 +209,70 @@ class CharacterImportanceService {
     // Timeline presence (0-5 points)
     score += Math.min(5, criteria.timelinePresence * 0.5);
 
+    // Family bonus — lifelong relatives carry weight beyond raw mention count.
+    if (family?.isFamily) {
+      score += family.isEstranged ? 12 : family.isClose ? 30 : 22;
+    }
+
     return score;
+  }
+
+  /**
+   * Detect whether a character is family and how close, using archetype,
+   * relationship metadata, the kinship title in their name, and any
+   * estrangement language captured in their facts/summary.
+   */
+  private async detectFamilySignal(userId: string, characterId: string): Promise<FamilySignal> {
+    const none: FamilySignal = { isFamily: false, isClose: false, isEstranged: false };
+    try {
+      const { data: character } = await supabaseAdmin
+        .from('characters')
+        .select('name, archetype, role, relationship_depth, summary, tags, metadata')
+        .eq('id', characterId)
+        .eq('user_id', userId)
+        .single();
+      if (!character) return none;
+
+      const metadata = (character.metadata ?? {}) as Record<string, unknown>;
+      const categories = [
+        ...(Array.isArray(metadata.relationship_categories) ? metadata.relationship_categories : []),
+        metadata.relationship_type,
+        character.archetype,
+        character.role,
+      ].map(value => String(value ?? '').toLowerCase());
+
+      // Kinship is only a family signal when the term is how the user ADDRESSES
+      // the person — i.e. it starts their name ("Abuela", "Tío Juan", "Tía
+      // Lourdes"). A kinship word buried in a stage name ("Goth Tio") does not
+      // make someone family.
+      const kinshipStart = /^(?:my\s+)?(mom|mother|dad|father|sister|brother|cousin|aunt|uncle|grandma|grandmother|grandpa|grandfather|niece|nephew|abuel[ao]|t[ií][ao]|nonn[ao]|oma|opa|lola|lolo|halmoni|nana)\b/i;
+      const nameHasKinship = kinshipStart.test(String(character.name ?? '').trim());
+      const isFamily =
+        categories.some(c => c === 'family' || c === 'kin') ||
+        nameHasKinship;
+
+      if (!isFamily) return none;
+
+      const depth = String(character.relationship_depth ?? '').toLowerCase();
+      const text = [
+        character.summary,
+        ...(Array.isArray(character.tags) ? character.tags : []),
+        ...(Array.isArray(metadata.notes) ? metadata.notes : []),
+      ].map(value => String(value ?? '').toLowerCase()).join(' ');
+
+      const isEstranged = ESTRANGEMENT_SIGNALS.test(text);
+      const isClose = !isEstranged && (depth === 'close' || depth === '' || depth === 'moderate');
+
+      return { isFamily: true, isClose, isEstranged };
+    } catch {
+      return none;
+    }
+  }
+
+  /** Return the more-important of two levels (used to enforce a floor). */
+  private atLeastLevel(current: ImportanceLevel, floor: ImportanceLevel): ImportanceLevel {
+    const order: ImportanceLevel[] = ['background', 'minor', 'supporting', 'major', 'protagonist'];
+    return order.indexOf(current) >= order.indexOf(floor) ? current : floor;
   }
 
   /**
@@ -276,14 +365,16 @@ Determine importance level:`
     const roleLower = (role || '').toLowerCase();
     const archetypeLower = (archetype || '').toLowerCase();
 
-    // High significance roles
+    // High significance roles — family belongs here: relatives are core-circle
+    // figures, not background players.
     if (roleLower.includes('partner') || roleLower.includes('spouse') || roleLower.includes('best friend') ||
+        roleLower.includes('family') || archetypeLower.includes('family') || archetypeLower.includes('kin') ||
         archetypeLower.includes('mentor') || archetypeLower.includes('guide') || archetypeLower.includes('companion')) {
       return 0.9;
     }
 
     // Medium-high significance
-    if (roleLower.includes('friend') || roleLower.includes('family') || roleLower.includes('colleague') ||
+    if (roleLower.includes('friend') || roleLower.includes('colleague') ||
         archetypeLower.includes('ally') || archetypeLower.includes('rival')) {
       return 0.7;
     }
@@ -301,8 +392,18 @@ Determine importance level:`
   /**
    * Generate reasoning for importance level
    */
-  private generateReasoning(criteria: ImportanceCriteria, level: ImportanceLevel): string {
+  private generateReasoning(criteria: ImportanceCriteria, level: ImportanceLevel, family?: FamilySignal): string {
     const reasons: string[] = [];
+
+    if (family?.isFamily) {
+      reasons.push(
+        family.isEstranged
+          ? 'family member (estranged, but lifelong significance)'
+          : family.isClose
+            ? 'close family member in the core circle'
+            : 'family member'
+      );
+    }
 
     if (criteria.mentionCount > 10) {
       reasons.push(`mentioned ${criteria.mentionCount} times`);

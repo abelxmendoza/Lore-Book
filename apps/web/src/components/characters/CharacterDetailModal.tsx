@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2 } from 'lucide-react';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -9,8 +9,8 @@ import { Badge } from '../ui/badge';
 import { Tooltip } from '../ui/tooltip';
 import { MemoryCardComponent } from '../memory-explorer/MemoryCard';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
-import { RelationshipTreeView } from '../relationshipTree/RelationshipTreeView';
 import { FamilyTreeView, createMockFamilyTreeForCharacter, createMockUserFamilyTree } from '../family/FamilyTreeView';
+import { FamilyTreePanel, CharacterAffiliationsPanel } from '../family/FamilyTreePanel';
 import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
 import { OrganizationDetailModal } from '../organizations/OrganizationDetailModal';
@@ -18,14 +18,27 @@ import type { Organization } from '../organizations/OrganizationProfileCard';
 import { LocationDetailModal, type LocationProfile } from '../locations/LocationDetailModal';
 import { PerceptionDetailModal } from '../perceptions/PerceptionDetailModal';
 import { fetchJson } from '../../lib/api';
+import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefresh';
 import { UnknownField } from '../ui/UnknownField';
+import { InsufficientData } from '../ui/InsufficientData';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import type { Character } from './CharacterProfileCard';
 import { CharacterAvatar } from './CharacterAvatar';
 import { useMockData } from '../../contexts/MockDataContext';
+import {
+  getMockAttributes,
+  getMockAllAttributes,
+  getMockDynamics,
+  getMockInfluenceProfile,
+  getMockInfluenceInsights,
+  getMockFacts,
+  getMockKnowledgeClaims,
+  getMockSceneCandidates,
+} from '../../mocks/characterIntelligence';
 import type { PerceptionEntry } from '../../types/perception';
 import { EntityProvenancePanel } from './EntityProvenancePanel';
 import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
+import { EventTimelineSwimlanes, type SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 
 type SocialMedia = {
   instagram?: string;
@@ -115,7 +128,7 @@ type CharacterDetailModalProps = {
   relationship?: RomanticRelationship;
 };
 
-type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'intelligence';
+type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'intelligence';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'info',         label: 'Info',            icon: FileText },
@@ -124,6 +137,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'chat',         label: 'Chat',            icon: MessageSquare },
   { key: 'relationships', label: 'Connections',   icon: Network },
   { key: 'history',      label: 'History',         icon: Calendar },
+  { key: 'timeline',     label: 'Timeline',        icon: Clock },
   { key: 'insights',     label: 'Insights',        icon: BarChart3 },
   { key: 'perceptions',  label: 'Perceptions',     icon: Eye },
   { key: 'social',       label: 'Social',          icon: Globe },
@@ -795,6 +809,25 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [provenance, setProvenance] = useState<any | null>(null);
   const [provenanceLoaded, setProvenanceLoaded] = useState(false);
 
+  // ── Timeline (events with you / things they went through without you) ───────
+  type CharTimelineEvent = {
+    id: string;
+    eventTitle: string;
+    eventDate: string;
+    eventSummary?: string;
+    eventType?: string;
+    userWasPresent: boolean;
+    characterRole?: string;
+    connectionCharacter?: string;
+    emotionalImpact?: string;
+  };
+  const [sharedExperiences, setSharedExperiences] = useState<CharTimelineEvent[]>([]);
+  const [loreEvents, setLoreEvents] = useState<CharTimelineEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineLoaded, setTimelineLoaded] = useState(false);
+  const [timelineRebuilding, setTimelineRebuilding] = useState(false);
+  const [familyRefreshKey, setFamilyRefreshKey] = useState(0);
+
   // ── Temporal attributes (all historical, not just current) ─────────────────
   const [allAttributes, setAllAttributes] = useState<any[]>([]);
   const [allAttributesLoaded, setAllAttributesLoaded] = useState(false);
@@ -1041,119 +1074,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     void loadFullDetails();
   }, [character, character.id, character.name, isMockDataEnabled]);
 
-  // Generate mock attributes for demonstration
-  const generateMockAttributes = (characterName: string): Array<{
-    attributeType: string;
-    attributeValue: string;
-    confidence: number;
-    isCurrent: boolean;
-    evidence?: string;
-    startTime?: string;
-    endTime?: string;
-  }> => {
-    type AttrEntry = { attributeType: string; attributeValue: string; confidence: number; isCurrent: boolean; evidence?: string; startTime?: string; endTime?: string };
-    // Character-specific attribute profiles — each person has a distinct life
-    const profiles: Record<string, AttrEntry[]> = {
-      'Sarah Chen': [
-        { attributeType: 'occupation',         attributeValue: 'Product Manager',         confidence: 0.92, isCurrent: true,  evidence: 'Mentioned transitioning from engineering to product management at her tech company', startTime: '2022-06-01' },
-        { attributeType: 'employment_status',  attributeValue: 'Full-time employed',       confidence: 0.95, isCurrent: true  },
-        { attributeType: 'workplace',          attributeValue: 'Mid-size Tech Company',    confidence: 0.80, isCurrent: true,  evidence: 'Works at a mid-size tech company in the city' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Coffee shop regular',      confidence: 0.91, isCurrent: true,  evidence: `Meets you at coffee shops for writing sessions frequently` },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Evening socializer',       confidence: 0.78, isCurrent: true  },
-        { attributeType: 'personality_trait',  attributeValue: 'Honest and direct',        confidence: 0.88, isCurrent: true,  evidence: 'Described as someone who says what she thinks, even when it is hard to hear' },
-        { attributeType: 'personality_trait',  attributeValue: 'Loyal',                    confidence: 0.93, isCurrent: true,  evidence: 'Has been a consistent presence since college' },
-        { attributeType: 'relationship_status',attributeValue: 'In a relationship',        confidence: 0.85, isCurrent: true,  evidence: 'Mentioned her partner in recent conversations', startTime: '2023-01-01' },
-        { attributeType: 'living_situation',   attributeValue: 'City apartment',           confidence: 0.76, isCurrent: true  },
-      ],
-      'Marcus Johnson': [
-        { attributeType: 'employment_status',  attributeValue: 'Self-employed',            confidence: 0.95, isCurrent: true  },
-        { attributeType: 'occupation',         attributeValue: 'Executive Coach',          confidence: 0.97, isCurrent: true,  evidence: 'Runs his own executive coaching practice — has been doing this for over a decade' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Early riser',              confidence: 0.82, isCurrent: true,  evidence: 'Often references morning routines and starting the day early' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Meditation practitioner',  confidence: 0.78, isCurrent: true,  evidence: 'Frequently mentions mindfulness practices in your conversations' },
-        { attributeType: 'personality_trait',  attributeValue: 'Patient and deliberate',   confidence: 0.90, isCurrent: true,  evidence: 'Never rushes advice — always listens fully before responding' },
-        { attributeType: 'personality_trait',  attributeValue: 'Wise and experienced',     confidence: 0.94, isCurrent: true  },
-        { attributeType: 'relationship_status',attributeValue: 'Married',                  confidence: 0.88, isCurrent: true,  evidence: 'Has mentioned his wife in passing during conversations' },
-        { attributeType: 'living_situation',   attributeValue: 'Homeowner',                confidence: 0.72, isCurrent: true  },
-      ],
-      'Alex Rivera': [
-        { attributeType: 'employment_status',  attributeValue: 'Freelance / Independent',  confidence: 0.89, isCurrent: true  },
-        { attributeType: 'occupation',         attributeValue: 'Music Producer',           confidence: 0.96, isCurrent: true,  evidence: `Has produced numerous tracks with you in your home studio` },
-        { attributeType: 'occupation',         attributeValue: 'Audio Engineer',           confidence: 0.88, isCurrent: true,  evidence: 'Also works as an audio engineer — how you both met through Marcus' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Night studio sessions',    confidence: 0.85, isCurrent: true,  evidence: 'Most of your studio sessions together run late into the night' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Tech-savvy creator',       confidence: 0.80, isCurrent: true  },
-        { attributeType: 'personality_trait',  attributeValue: 'Detail-oriented',          confidence: 0.87, isCurrent: true,  evidence: 'Spends hours perfecting a single track element — very meticulous' },
-        { attributeType: 'personality_trait',  attributeValue: 'Collaborative',            confidence: 0.91, isCurrent: true,  evidence: 'Described as someone who brings out the best in creative partners' },
-        { attributeType: 'relationship_status',attributeValue: 'Single',                   confidence: 0.65, isCurrent: true  },
-        { attributeType: 'living_situation',   attributeValue: 'Home studio setup',        confidence: 0.84, isCurrent: true,  evidence: 'Has their own home studio in addition to your sessions together' },
-      ],
-      'Alex': [
-        { attributeType: 'occupation',         attributeValue: 'Environmental Scientist',  confidence: 0.88, isCurrent: true,  evidence: 'Works in environmental research — you have talked about her work on sustainability projects' },
-        { attributeType: 'employment_status',  attributeValue: 'Full-time employed',       confidence: 0.91, isCurrent: true  },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Outdoor enthusiast',       confidence: 0.94, isCurrent: true,  evidence: 'Hiking, trail running, and nature trips are a regular part of her life' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Early riser',              confidence: 0.81, isCurrent: true,  evidence: 'Frequently up before dawn for trail runs' },
-        { attributeType: 'personality_trait',  attributeValue: 'Grounded and present',     confidence: 0.89, isCurrent: true,  evidence: 'Described as someone who makes you feel calm just by being in the room' },
-        { attributeType: 'personality_trait',  attributeValue: 'Adventurous',              confidence: 0.92, isCurrent: true  },
-        { attributeType: 'personality_trait',  attributeValue: 'Deeply caring',            confidence: 0.90, isCurrent: true,  evidence: 'Remembers the small details — what you said weeks ago, what you need without being asked' },
-        { attributeType: 'relationship_status',attributeValue: 'In a relationship with you', confidence: 0.99, isCurrent: true, startTime: new Date(Date.now() - 180 * 86400000).toISOString() },
-        { attributeType: 'living_situation',   attributeValue: 'Own apartment',            confidence: 0.82, isCurrent: true  },
-      ],
-      'Jordan Kim': [
-        { attributeType: 'occupation',         attributeValue: 'Healthcare Professional',  confidence: 0.84, isCurrent: true,  evidence: 'Works in the healthcare sector — exact role not specified but clearly meaningful to them' },
-        { attributeType: 'employment_status',  attributeValue: 'Full-time employed',       confidence: 0.90, isCurrent: true  },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Regular runner',           confidence: 0.88, isCurrent: true,  evidence: 'You run together in Golden Gate Park — it is a recurring ritual' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Health-conscious',         confidence: 0.82, isCurrent: true  },
-        { attributeType: 'personality_trait',  attributeValue: 'Dependable',               confidence: 0.96, isCurrent: true,  evidence: 'Has been there for every major moment without being asked' },
-        { attributeType: 'personality_trait',  attributeValue: 'Empathetic',               confidence: 0.91, isCurrent: true  },
-        { attributeType: 'personality_trait',  attributeValue: 'Quietly strong',           confidence: 0.87, isCurrent: true,  evidence: 'Does not make noise about it — just shows up' },
-        { attributeType: 'relationship_status',attributeValue: 'In a relationship',        confidence: 0.73, isCurrent: true  },
-        { attributeType: 'living_situation',   attributeValue: 'Lives in the city',        confidence: 0.79, isCurrent: true  },
-      ],
-      'Dr. Amara Wells': [
-        { attributeType: 'employment_status',  attributeValue: 'Self-employed',            confidence: 0.92, isCurrent: true  },
-        { attributeType: 'occupation',         attributeValue: 'Life & Wellness Coach',    confidence: 0.95, isCurrent: true,  evidence: 'Licensed life coach with a gentle, question-based approach' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Mindfulness-based',        confidence: 0.86, isCurrent: true  },
-        { attributeType: 'personality_trait',  attributeValue: 'Empowering',               confidence: 0.91, isCurrent: true,  evidence: 'Creates space for you to find your own answers rather than giving them' },
-        { attributeType: 'personality_trait',  attributeValue: 'Calm and steady',          confidence: 0.88, isCurrent: true  },
-      ],
-      'Dr. James Mitchell': [
-        { attributeType: 'employment_status',  attributeValue: 'Private practice',         confidence: 0.94, isCurrent: true  },
-        { attributeType: 'occupation',         attributeValue: 'Licensed Therapist',       confidence: 0.97, isCurrent: true,  evidence: 'Your therapist — uses evidence-based approaches, primarily CBT and ACT' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Structured and consistent', confidence: 0.80, isCurrent: true },
-        { attributeType: 'personality_trait',  attributeValue: 'Compassionate',            confidence: 0.89, isCurrent: true  },
-        { attributeType: 'personality_trait',  attributeValue: 'Non-judgmental',           confidence: 0.93, isCurrent: true,  evidence: 'Has never made you feel judged, even when sharing difficult things' },
-      ],
-      'Luna Martinez': [
-        { attributeType: 'employment_status',  attributeValue: 'Freelance',                confidence: 0.78, isCurrent: true  },
-        { attributeType: 'occupation',         attributeValue: 'Travel Blogger',           confidence: 0.82, isCurrent: true,  evidence: 'Documents her adventures online — has a following' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Spontaneous traveler',     confidence: 0.93, isCurrent: true,  evidence: 'Plans trips on 24-hour notice — somehow they always work out' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Adventure-seeker',         confidence: 0.90, isCurrent: true  },
-        { attributeType: 'personality_trait',  attributeValue: 'Free-spirited',            confidence: 0.88, isCurrent: true  },
-        { attributeType: 'personality_trait',  attributeValue: 'Infectious energy',        confidence: 0.85, isCurrent: true,  evidence: 'Being around Luna makes you want to say yes to things' },
-        { attributeType: 'relationship_status',attributeValue: 'Single',                   confidence: 0.70, isCurrent: true  },
-      ],
-      'Sophia Anderson': [
-        { attributeType: 'employment_status',  attributeValue: 'Self-employed',            confidence: 0.88, isCurrent: true  },
-        { attributeType: 'occupation',         attributeValue: 'Author & Writing Instructor', confidence: 0.94, isCurrent: true, evidence: 'Has published two novels and teaches writing workshops' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Early morning writer',     confidence: 0.89, isCurrent: true,  evidence: 'Writes for 3 hours every morning before anything else' },
-        { attributeType: 'personality_trait',  attributeValue: 'Precise with language',    confidence: 0.87, isCurrent: true,  evidence: 'Her feedback always zeros in on the exact word or sentence that is not working' },
-        { attributeType: 'personality_trait',  attributeValue: 'Encouraging but honest',   confidence: 0.83, isCurrent: true  },
-      ],
-      'Emma Thompson': [
-        { attributeType: 'occupation',         attributeValue: 'Fiction Writer',           confidence: 0.79, isCurrent: true,  evidence: 'Working on her first novel — you exchange drafts regularly' },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Cafe writer',              confidence: 0.82, isCurrent: true  },
-        { attributeType: 'lifestyle_pattern',  attributeValue: 'Avid reader',              confidence: 0.88, isCurrent: true,  evidence: 'Always has a book recommendation ready' },
-        { attributeType: 'personality_trait',  attributeValue: 'Thoughtful listener',      confidence: 0.84, isCurrent: true  },
-        { attributeType: 'personality_trait',  attributeValue: 'Quietly creative',         confidence: 0.80, isCurrent: true  },
-      ],
-    };
-
-    return profiles[characterName] ?? [
-      { attributeType: 'personality_trait',  attributeValue: 'Supportive',              confidence: 0.78, isCurrent: true, evidence: `Based on how ${characterName} appears in your journal entries` },
-      { attributeType: 'lifestyle_pattern',  attributeValue: 'Social',                  confidence: 0.72, isCurrent: true },
-      { attributeType: 'relationship_status',attributeValue: 'Status unknown',          confidence: 0.45, isCurrent: true, evidence: 'Not enough data to determine with confidence' },
-    ];
-  };
-
   // Load character attributes
   useEffect(() => {
     const loadAttributes = async () => {
@@ -1162,14 +1082,14 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         const response = await fetchJson<{ attributes: CharacterAttribute[] }>(`/api/characters/${character.id}/attributes?currentOnly=true`);
         const realAttributes = response.attributes || [];
         if (realAttributes.length === 0 && isMockDataEnabled) {
-          setCharacterAttributes(generateMockAttributes(character.name));
+          setCharacterAttributes(getMockAttributes(character));
         } else {
           setCharacterAttributes(realAttributes);
         }
       } catch (error) {
         console.error('Failed to load character attributes:', error);
         if (isMockDataEnabled) {
-          setCharacterAttributes(generateMockAttributes(character.name));
+          setCharacterAttributes(getMockAttributes(character));
         } else {
           setCharacterAttributes([]);
         }
@@ -1240,31 +1160,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     const name = encodeURIComponent(character.name);
 
     if (isMockDataEnabled) {
-      // Mock dynamics
-      const mockDynamicsMap: Record<string, any> = {
-        'Sarah Chen':    { person_name: 'Sarah Chen',    metrics: { interaction_frequency: 8.2, average_sentiment: 0.82, positive_ratio: 0.91, conflict_frequency: 0.1, support_frequency: 3.1, last_interaction_days_ago: 7, interaction_consistency: 0.88 }, health: { overall_health: 'excellent', health_score: 91, factors: { sentiment: 94, frequency: 88, consistency: 90, conflict_level: 97, support_level: 85 }, trends: { health_trend: 'improving', sentiment_trend: 'improving', frequency_trend: 'stable' }, strengths: ['Consistent support', 'High mutual trust', 'Deep conversation quality'] }, lifecycle: { current_stage: 'deepening', stage_confidence: 0.93, stage_history: [{ stage: 'forming', start_date: '2018-09-15', duration_days: 90 }, { stage: 'developing', start_date: '2018-12-15', duration_days: 365 }, { stage: 'established', start_date: '2019-12-15', duration_days: 730 }, { stage: 'deepening', start_date: '2021-12-15', duration_days: 900 }] }, common_topics: ['creative work', 'relationships', 'career growth'], total_interactions: 156 },
-        'Alex':          { person_name: 'Alex',          metrics: { interaction_frequency: 12.5, average_sentiment: 0.89, positive_ratio: 0.95, conflict_frequency: 0.05, support_frequency: 5.2, last_interaction_days_ago: 2, interaction_consistency: 0.94 }, health: { overall_health: 'excellent', health_score: 96, factors: { sentiment: 97, frequency: 95, consistency: 94, conflict_level: 99, support_level: 96 }, trends: { health_trend: 'improving', sentiment_trend: 'improving', frequency_trend: 'increasing' }, strengths: ['Emotional intimacy', 'Frequent contact', 'Shared growth'] }, lifecycle: { current_stage: 'deepening', stage_confidence: 0.97, stage_history: [{ stage: 'forming', start_date: '2023-06-01', duration_days: 60 }, { stage: 'developing', start_date: '2023-08-01', duration_days: 120 }, { stage: 'deepening', start_date: '2023-12-01', duration_days: 180 }] }, common_topics: ['creativity', 'future', 'nature', 'music'], total_interactions: 210 },
-        'Marcus Johnson': { person_name: 'Marcus Johnson', metrics: { interaction_frequency: 4.1, average_sentiment: 0.76, positive_ratio: 0.88, conflict_frequency: 0.05, support_frequency: 2.8, last_interaction_days_ago: 14, interaction_consistency: 0.72 }, health: { overall_health: 'good', health_score: 82, factors: { sentiment: 84, frequency: 72, consistency: 74, conflict_level: 96, support_level: 88 }, trends: { health_trend: 'stable', sentiment_trend: 'stable', frequency_trend: 'stable' }, strengths: ['Trusted guidance', 'Career impact', 'Long-term consistency'] }, lifecycle: { current_stage: 'established', stage_confidence: 0.88, stage_history: [{ stage: 'forming', start_date: '2020-03-10', duration_days: 120 }, { stage: 'developing', start_date: '2020-07-10', duration_days: 365 }, { stage: 'established', start_date: '2021-07-10', duration_days: 1100 }] }, common_topics: ['career', 'creativity', 'self-improvement'], total_interactions: 98 },
-        'Jordan Kim':     { person_name: 'Jordan Kim', metrics: { interaction_frequency: 6.8, average_sentiment: 0.85, positive_ratio: 0.93, conflict_frequency: 0.02, support_frequency: 4.1, last_interaction_days_ago: 5, interaction_consistency: 0.85 }, health: { overall_health: 'excellent', health_score: 93, factors: { sentiment: 93, frequency: 86, consistency: 87, conflict_level: 99, support_level: 94 }, trends: { health_trend: 'stable', sentiment_trend: 'stable', frequency_trend: 'stable' }, strengths: ['Unconditional support', 'Lifelong bond', 'Emotional safety'] }, lifecycle: { current_stage: 'established', stage_confidence: 0.98, stage_history: [{ stage: 'forming', start_date: '1995-01-01', duration_days: 3650 }, { stage: 'established', start_date: '2005-01-01', duration_days: 7300 }] }, common_topics: ['family', 'life goals', 'support', 'health'], total_interactions: 312 },
-      };
-      const mockInfluenceMap: Record<string, any> = {
-        'Sarah Chen':    { person: 'Sarah Chen',    emotional_impact: 0.78, behavioral_impact: 0.65, toxicity_score: 0.04, uplift_score: 0.88, net_influence: 0.82, interaction_count: 156 },
-        'Alex':          { person: 'Alex',          emotional_impact: 0.91, behavioral_impact: 0.72, toxicity_score: 0.02, uplift_score: 0.94, net_influence: 0.91, interaction_count: 210 },
-        'Marcus Johnson': { person: 'Marcus Johnson', emotional_impact: 0.62, behavioral_impact: 0.81, toxicity_score: 0.06, uplift_score: 0.79, net_influence: 0.74, interaction_count: 98 },
-        'Jordan Kim':     { person: 'Jordan Kim',    emotional_impact: 0.84, behavioral_impact: 0.55, toxicity_score: 0.01, uplift_score: 0.93, net_influence: 0.88, interaction_count: 312 },
-      };
-      const mockInsightsMap: Record<string, any[]> = {
-        'Sarah Chen':    [{ type: 'positive_influence', message: 'Sarah consistently brings out your creative confidence', confidence: 0.89 }, { type: 'uplifting_person', message: 'Interactions with Sarah correlate with increased journaling output', confidence: 0.82 }],
-        'Alex':          [{ type: 'positive_influence', message: 'Alex has been the most stabilizing presence during your creative transition', confidence: 0.95 }, { type: 'uplifting_person', message: 'Your emotional wellbeing scores are consistently higher after time with Alex', confidence: 0.93 }],
-        'Marcus Johnson': [{ type: 'positive_influence', message: 'Marcus shaped your decision to pursue creative work full-time', confidence: 0.87 }, { type: 'behavior_shift_detected', message: 'Your risk tolerance for career decisions increased after mentorship sessions', confidence: 0.78 }],
-        'Jordan Kim':     [{ type: 'positive_influence', message: 'Jordan provides your most consistent source of unconditional support', confidence: 0.94 }, { type: 'uplifting_person', message: 'Interactions with Jordan correlate with improved emotional regulation', confidence: 0.86 }],
-      };
-      const dyn = mockDynamicsMap[character.name] ?? null;
-      const inf = mockInfluenceMap[character.name] ?? { person: character.name, emotional_impact: 0.5, behavioral_impact: 0.4, toxicity_score: 0.1, uplift_score: 0.6, net_influence: 0.55, interaction_count: 20 };
-      const ins = mockInsightsMap[character.name] ?? [{ type: 'influence_score', message: `LoreBook is still building intelligence about your relationship with ${character.name}`, confidence: 0.5 }];
-      setDynamics(dyn);
-      setInfluenceProfile(inf);
-      setInfluenceInsights(ins);
+      // Centralized demo intelligence — covers the full roster, not just heroes.
+      setDynamics(getMockDynamics(character));
+      setInfluenceProfile(getMockInfluenceProfile(character));
+      setInfluenceInsights(getMockInfluenceInsights(character));
       setDynamicsLoaded(true);
       setInfluenceLoaded(true);
       return;
@@ -1294,6 +1193,30 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     });
   }, [activeTab, character.name, character.id, dynamicsLoaded, isMockDataEnabled]);
 
+  // ── Load chronological event timeline when Timeline tab opens ───────────────
+  useEffect(() => {
+    if (activeTab !== 'timeline' || timelineLoaded || !character.id) return;
+    setTimelineLoading(true);
+    fetchJson<{ success: boolean; timelines: { sharedExperiences: CharTimelineEvent[]; lore: CharTimelineEvent[] } }>(
+      `/api/conversation/characters/${character.id}/timelines`
+    )
+      .then(r => {
+        if (r.success) {
+          setSharedExperiences(r.timelines.sharedExperiences || []);
+          setLoreEvents(r.timelines.lore || []);
+        }
+      })
+      .catch(() => {})
+      .finally(() => { setTimelineLoading(false); setTimelineLoaded(true); });
+  }, [activeTab, character.id, timelineLoaded]);
+
+  useEffect(() => {
+    return onStoryDataUpdated(() => {
+      setTimelineLoaded(false);
+      setFamilyRefreshKey(k => k + 1);
+    });
+  }, [character.id]);
+
   // ── Load provenance ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (provenanceLoaded || isMockDataEnabled) return;
@@ -1308,24 +1231,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   useEffect(() => {
     if (allAttributesLoaded) return;
     if (isMockDataEnabled) {
-      const mockAllAttrsMap: Record<string, any[]> = {
-        'Sarah Chen': [
-          { attributeType: 'occupation', attributeValue: 'Software Engineer', confidence: 0.92, isCurrent: false, startTime: '2018-09-01', endTime: '2022-06-01' },
-          { attributeType: 'occupation', attributeValue: 'Product Manager', confidence: 0.88, isCurrent: true, startTime: '2022-06-01' },
-          { attributeType: 'lifestyle_pattern', attributeValue: 'Coffee shop writer', confidence: 0.85, isCurrent: true },
-          { attributeType: 'relationship_status', attributeValue: 'Single', confidence: 0.9, isCurrent: false, endTime: '2023-01-01' },
-          { attributeType: 'relationship_status', attributeValue: 'In a relationship', confidence: 0.91, isCurrent: true, startTime: '2023-01-01' },
-        ],
-        'Marcus Johnson': [
-          { attributeType: 'occupation', attributeValue: 'Executive Coach', confidence: 0.95, isCurrent: true },
-          { attributeType: 'lifestyle_pattern', attributeValue: 'Meditation practitioner', confidence: 0.82, isCurrent: true },
-        ],
-        'Alex': [
-          { attributeType: 'lifestyle_pattern', attributeValue: 'Outdoor enthusiast', confidence: 0.93, isCurrent: true },
-          { attributeType: 'personality_trait', attributeValue: 'Emotionally supportive', confidence: 0.91, isCurrent: true },
-        ],
-      };
-      setAllAttributes(mockAllAttrsMap[character.name] ?? characterAttributes);
+      setAllAttributes(getMockAllAttributes(character));
       setAllAttributesLoaded(true);
       return;
     }
@@ -1338,7 +1244,25 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
 
   // Load knowledge claims + character facts when Knowledge tab opens
   useEffect(() => {
-    if (activeTab !== 'knowledge' || isMockDataEnabled) return;
+    if (activeTab !== 'knowledge') return;
+
+    if (isMockDataEnabled) {
+      // Demo mode: hydrate the "What I Know" tab from centralized mock intelligence
+      // so it is congruent with the rest of the demo card instead of rendering empty.
+      if (!factsLoaded) {
+        setCharacterFacts(getMockFacts(character));
+        setFactsLoaded(true);
+      }
+      if (!knowledgeLoaded) {
+        setKnowledgeClaims(getMockKnowledgeClaims(character));
+        setKnowledgeLoaded(true);
+      }
+      if (!scenesLoaded) {
+        setSceneCandidates(getMockSceneCandidates(character));
+        setScenesLoaded(true);
+      }
+      return;
+    }
 
     if (!knowledgeLoaded) {
       setKnowledgeLoading(true);
@@ -1543,6 +1467,11 @@ User's message: ${message}`;
         timestamp: new Date() 
       };
       setChatMessages(prev => [...prev, assistantMessage]);
+
+      schedulePostChatRefresh({
+        scopes: ['all'],
+        characterIds: character.id ? [character.id] : undefined,
+      });
 
       // If updates are provided, apply them
       if (updates) {
@@ -3214,6 +3143,24 @@ User's message: ${message}`;
 
             {!loadingDetails && activeTab === 'relationships' && (
               <div className="space-y-6">
+                {/* Groups & affiliations (teams, cliques, employers — can be many) */}
+                {!isMockDataEnabled && editedCharacter.id && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                      <Building2 className="h-5 w-5 text-purple-400" />
+                      Groups & Affiliations
+                    </h3>
+                    <p className="text-xs text-white/40 mb-3">
+                      Teams, cliques, workplaces, and scenes this person belongs to — including opposing sides in the same story.
+                    </p>
+                    <CharacterAffiliationsPanel
+                      characterId={editedCharacter.id}
+                      characterName={editedCharacter.name}
+                      onOrgClick={(org) => setSelectedOrganization(org as Organization)}
+                    />
+                  </div>
+                )}
+
                 {/* Relationship to You */}
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
@@ -3294,10 +3241,23 @@ User's message: ${message}`;
                           />
                         );
                       })() : (
-                        <RelationshipTreeView
+                        <FamilyTreePanel
+                          scope="character"
                           entityId={editedCharacter.id}
-                          entityType="character"
-                          defaultCategory="family"
+                          refreshKey={familyRefreshKey}
+                          title={`No family tree for ${editedCharacter.name.split(' ')[0]} yet`}
+                          hint="Share how they're related to you or others in chat — LoreBook infers positions and keeps updating."
+                          onMemberClick={(id, name) => {
+                            if (id.startsWith('name-')) return;
+                            void (async () => {
+                              try {
+                                const c = await fetchJson<Character>(`/api/characters/${id}`);
+                                setSelectedCharacterForModal(c);
+                              } catch {
+                                setSelectedCharacterForModal({ id, name } as Character);
+                              }
+                            })();
+                          }}
                         />
                       )}
                     </CardContent>
@@ -3644,6 +3604,81 @@ User's message: ${message}`;
                 })()}
               </div>
             )}
+
+            {/* Timeline Tab */}
+            {!loadingDetails && activeTab === 'timeline' && (() => {
+              const firstName = editedCharacter.name.split(' ')[0];
+              const toSwim = (e: CharTimelineEvent, laneKey: string): SwimlaneEvent => ({
+                id: e.id,
+                title: e.eventTitle,
+                date: e.eventDate,
+                laneKey,
+                type: e.eventType,
+                summary: e.eventSummary,
+                meta: [e.characterRole, e.connectionCharacter ? `with ${e.connectionCharacter}` : null, e.emotionalImpact]
+                  .filter(Boolean)
+                  .join(' · ') || undefined,
+              });
+              const events: SwimlaneEvent[] = [
+                ...sharedExperiences.map(e => toSwim(e, 'with')),
+                ...loreEvents.map(e => toSwim(e, 'without')),
+              ];
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                        <Clock className="h-5 w-5 text-primary" />
+                        {firstName}'s Timeline
+                      </h3>
+                      <p className="text-xs text-white/45 mt-1">
+                        Events you lived through together, and things {firstName} went through without you — in chronological order.
+                      </p>
+                    </div>
+                    {!isMockDataEnabled && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 text-xs"
+                        disabled={timelineRebuilding}
+                        onClick={() => {
+                          setTimelineRebuilding(true);
+                          setTimelineLoaded(false);
+                          fetchJson(`/api/conversation/characters/${character.id}/rebuild-timelines`, { method: 'POST', body: JSON.stringify({}) })
+                            .then(() => fetchJson<{ success: boolean; timelines: { sharedExperiences: CharTimelineEvent[]; lore: CharTimelineEvent[] } }>(
+                              `/api/conversation/characters/${character.id}/timelines`
+                            ))
+                            .then(r => {
+                              if (r.success) {
+                                setSharedExperiences(r.timelines.sharedExperiences || []);
+                                setLoreEvents(r.timelines.lore || []);
+                              }
+                            })
+                            .finally(() => { setTimelineRebuilding(false); setTimelineLoaded(true); });
+                        }}
+                      >
+                        {timelineRebuilding ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
+                        Rescan conversations
+                      </Button>
+                    )}
+                  </div>
+                  <EventTimelineSwimlanes
+                    loading={timelineLoading}
+                    lanes={[
+                      { key: 'with', label: 'With you', accent: 'emerald' },
+                      { key: 'without', label: 'Without you', accent: 'sky' },
+                    ]}
+                    events={events}
+                    emptyTitle={`No timeline events for ${firstName} yet`}
+                    emptyHint={`As you mention ${firstName} in your conversations, shared experiences and their own story will plot here.`}
+                  />
+                  <div className="flex items-center gap-4 text-xs text-white/40 pt-1">
+                    <span><span className="text-emerald-300 font-medium">{sharedExperiences.length}</span> with you</span>
+                    <span><span className="text-sky-300 font-medium">{loreEvents.length}</span> without you</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Chat Tab */}
             {!loadingDetails && activeTab === 'chat' && (
@@ -4304,13 +4339,17 @@ User's message: ${message}`;
                     )}
 
                     {!influenceProfile && !dynamics && (
-                      <div className="text-center py-12 text-white/30">
-                        <Zap className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                        <p className="text-sm font-medium mb-1">No intelligence data yet</p>
-                        <p className="text-xs max-w-xs mx-auto">
-                          Keep journaling about {editedCharacter.name.split(' ')[0]} — LoreBook builds relationship intelligence from your entries over time.
-                        </p>
-                      </div>
+                      <InsufficientData
+                        icon={Zap}
+                        accent="yellow"
+                        title={`Still learning about ${editedCharacter.name.split(' ')[0]}`}
+                        description={`LoreBook builds relationship intelligence — influence, health, and dynamics — from your entries over time. A few more mentions of ${editedCharacter.name.split(' ')[0]} will fill this in.`}
+                        action={{
+                          label: `Tell LoreBook about ${editedCharacter.name.split(' ')[0]}`,
+                          icon: MessageSquare,
+                          onClick: () => askInChat(`Here's what's going on with ${editedCharacter.name}: `),
+                        }}
+                      />
                     )}
                   </>
                 )}
@@ -4339,9 +4378,18 @@ User's message: ${message}`;
                   )}
 
                   {!factsLoading && characterFacts.length === 0 && (
-                    <div className="text-center py-8 text-white/30">
-                      <p className="text-xs">Chat about {editedCharacter.name.split(' ')[0]} to start building their profile.</p>
-                    </div>
+                    <InsufficientData
+                      compact
+                      icon={Brain}
+                      accent="violet"
+                      title={`No facts about ${editedCharacter.name.split(' ')[0]} yet`}
+                      description={`Facts are pulled straight from your conversations. Chat about ${editedCharacter.name.split(' ')[0]} and they'll start appearing here.`}
+                      action={{
+                        label: 'Start a chat',
+                        icon: MessageSquare,
+                        onClick: () => askInChat(`Let me tell you about ${editedCharacter.name}: `),
+                      }}
+                    />
                   )}
 
                   {!factsLoading && characterFacts.length > 0 && (
@@ -4420,14 +4468,12 @@ User's message: ${message}`;
                 )}
 
                 {!knowledgeLoading && knowledgeClaims.length === 0 && (
-                  <div className="text-center py-12 text-white/35">
-                    <Brain className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                    <p className="text-sm font-medium mb-1">No knowledge claims yet</p>
-                    <p className="text-xs max-w-xs mx-auto">
-                      As you journal about {editedCharacter.name.split(' ')[0]}, LoreBook will crystallize
-                      patterns into verified knowledge claims that appear here.
-                    </p>
-                  </div>
+                  <InsufficientData
+                    icon={Brain}
+                    accent="indigo"
+                    title="No crystallized knowledge yet"
+                    description={`Knowledge claims form once a pattern shows up repeatedly across your entries about ${editedCharacter.name.split(' ')[0]}. They'll appear here as LoreBook gains confidence.`}
+                  />
                 )}
 
                 {!knowledgeLoading && knowledgeClaims.length > 0 && (

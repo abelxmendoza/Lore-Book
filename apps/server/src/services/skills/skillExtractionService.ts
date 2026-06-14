@@ -155,6 +155,61 @@ ${content.substring(0, 2000)}`;
       return [];
     }
   }
+
+  /**
+   * Extract the skills a quest develops and create/level them. Pursuing a quest
+   * grants XP; completing it grants more — so the skills you're actively working
+   * toward visibly level up in the UI.
+   */
+  async processQuestForSkills(
+    userId: string,
+    questId: string,
+    questText: string,
+    opts: { completed?: boolean } = {}
+  ): Promise<Array<{ skill: any; created: boolean; leveledUp: boolean }>> {
+    try {
+      const text = questText?.trim();
+      if (!text) return [];
+
+      const extractedSkills = await this.extractSkillsFromEntry(userId, questId, text);
+      const xp = opts.completed ? 60 : 15; // completing a quest is worth far more
+      const reason = opts.completed ? 'Completed a related quest' : 'Pursuing a related quest';
+      const results: Array<{ skill: any; created: boolean; leveledUp: boolean }> = [];
+
+      const existingSkills = await skillService.getSkills(userId, { active_only: true });
+
+      for (const extracted of extractedSkills) {
+        const existing = existingSkills.find(
+          s => s.skill_name.toLowerCase() === extracted.skill_name.toLowerCase()
+        );
+
+        if (existing) {
+          const r = await skillService.addXP(userId, existing.id, xp, 'achievement', questId, reason);
+          results.push({ skill: r.skill, created: false, leveledUp: r.leveledUp });
+          skillDetailsExtractionService.extractSkillDetails(userId, existing.id)
+            .catch(err => logger.error({ err, userId, skillId: existing.id }, 'Failed to auto-extract skill details'));
+        } else {
+          const newSkill = await skillService.createSkill(userId, {
+            skill_name: extracted.skill_name,
+            skill_category: extracted.skill_category,
+            description: extracted.description,
+            auto_detected: true,
+            confidence_score: extracted.confidence,
+          });
+          const r = await skillService.addXP(userId, newSkill.id, xp, 'achievement', questId, reason);
+          results.push({ skill: r.skill, created: true, leveledUp: r.leveledUp });
+          skillDetailsExtractionService.extractSkillDetails(userId, newSkill.id)
+            .then(details => skillService.updateSkillDetails(userId, newSkill.id, details))
+            .catch(err => logger.error({ err, userId, skillId: newSkill.id }, 'Failed to auto-extract skill details'));
+        }
+      }
+
+      return results;
+    } catch (error) {
+      logger.error({ error, userId, questId }, 'Failed to process quest for skills');
+      return [];
+    }
+  }
 }
 
 export const skillExtractionService = new SkillExtractionService();

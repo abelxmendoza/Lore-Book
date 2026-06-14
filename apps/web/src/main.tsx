@@ -1,5 +1,22 @@
 // Global error handlers — must be first, before any imports, to catch early errors
+const isExtensionErrorSource = (filename?: string): boolean => {
+  if (!filename) return false;
+  return /(?:chrome-extension|moz-extension|safari-extension|contentscript|content\.js|Worlds\.js|installHook\.js)/i.test(filename);
+};
+
+const isExtensionRejection = (reason: unknown): boolean => {
+  if (!reason || typeof reason !== 'object') return false;
+  const text = [
+    String((reason as { message?: unknown }).message ?? ''),
+    String((reason as { stack?: unknown }).stack ?? ''),
+    String((reason as { filename?: unknown }).filename ?? ''),
+  ].join(' ');
+  return isExtensionErrorSource(text);
+};
+
 window.addEventListener('error', (event) => {
+  if (isExtensionErrorSource(event.filename)) return;
+
   console.error('[LoreBook] Uncaught error', event.error ?? event.message, {
     filename: event.filename,
     lineno: event.lineno,
@@ -19,6 +36,8 @@ window.addEventListener('error', (event) => {
 });
 
 window.addEventListener('unhandledrejection', (event) => {
+  if (isExtensionRejection(event.reason)) return;
+
   const reason = String(event.reason ?? '');
   const isBackendDown =
     reason.includes('Backend unavailable') ||

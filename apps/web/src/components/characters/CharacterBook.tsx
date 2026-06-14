@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, LayoutGrid, LayoutList, Flame, Wind, Moon, GitBranch, AlertTriangle, GitMerge } from 'lucide-react';
+import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, LayoutGrid, LayoutList, Flame, Wind, Moon, GitBranch, AlertTriangle, GitMerge, Star } from 'lucide-react';
 import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { CharacterBookPage } from './CharacterBookPage';
@@ -149,6 +149,34 @@ type DuplicateGroup = {
   match_type: 'exact' | 'containment';
   canonical_name: string;
   characters: Character[];
+};
+
+const mergeCharactersLocally = (
+  currentCharacters: Character[],
+  targetId: string,
+  sourceIds: string[]
+): Character[] => {
+  const target = currentCharacters.find(character => character.id === targetId);
+  if (!target) return currentCharacters;
+
+  const sources = currentCharacters.filter(character => sourceIds.includes(character.id));
+  const aliases = new Set([
+    ...(target.alias ?? []),
+    ...sources.flatMap(character => [character.name, ...(character.alias ?? [])]),
+  ].filter(Boolean));
+  aliases.delete(target.name);
+
+  const mergedTarget: Character = {
+    ...target,
+    alias: Array.from(aliases),
+    memory_count: (target.memory_count ?? 0) + sources.reduce((sum, character) => sum + (character.memory_count ?? 0), 0),
+    relationship_count: (target.relationship_count ?? 0) + sources.reduce((sum, character) => sum + (character.relationship_count ?? 0), 0),
+    summary: `${target.summary ?? ''} Demo merge preview: this card now keeps aliases, memories, facts, and relationship signals from ${sources.map(character => character.name).join(', ')}.`.trim(),
+  };
+
+  return currentCharacters
+    .filter(character => !sourceIds.includes(character.id))
+    .map(character => character.id === targetId ? withDemoAnalytics(mergedTarget) : character);
 };
 
 // Comprehensive mock character data showcasing all app capabilities
@@ -2252,9 +2280,39 @@ export const dummyCharacters: Character[] = [
   }
 ];
 
+const findDemoCharacter = (id: string) => dummyCharacters.find(character => character.id === id);
+
+const getDemoDuplicateGroups = (): DuplicateGroup[] => [
+  {
+    match_type: 'exact',
+    canonical_name: 'Alex',
+    characters: ['char-001', 'char-alex-boyfriend']
+      .map(findDemoCharacter)
+      .filter((character): character is Character => Boolean(character))
+      .map(withDemoAnalytics),
+  },
+  {
+    match_type: 'containment',
+    canonical_name: 'Alex / Alex Rivera',
+    characters: ['dummy-3', 'char-alex-boyfriend']
+      .map(findDemoCharacter)
+      .filter((character): character is Character => Boolean(character))
+      .map(withDemoAnalytics),
+  },
+].filter(group => group.characters.length >= 2);
+
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 
-type CharacterCategory = 'all' | 'family' | 'friends' | 'romantic' | 'mentors' | 'professional' | 'creative' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
+type CharacterCategory = 'all' | 'family' | 'friends' | 'romantic' | 'mentors' | 'professional' | 'creative' | 'public_figure' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
+
+// A public figure is an influencer/celebrity/artist/creator the user follows or
+// encountered rather than an intimate connection. Flagged by the pipeline
+// (entityFactsService sets metadata.public_figure / figure_type).
+const isPublicFigure = (char: Character): boolean =>
+  Boolean((char.metadata as any)?.public_figure) ||
+  Boolean((char.metadata as any)?.figure_type) ||
+  String(char.importance_level ?? '') === 'public_figure' ||
+  (char.metadata as any)?.social_standing?.tier === 'public_figure';
 
 const normalizeSignalText = (value: unknown): string => (
   typeof value === 'string' ? value.toLowerCase().replace(/[._@-]+/g, ' ').trim() : ''
@@ -2628,7 +2686,15 @@ export const CharacterBook = () => {
   };
 
   const loadDuplicateGroups = async () => {
-    if (!user?.id || isMockDataEnabled) {
+    if (isMockDataEnabled) {
+      const activeIds = new Set(characters.length > 0 ? characters.map(character => character.id) : dummyCharacters.map(character => character.id));
+      setDuplicateGroups(getDemoDuplicateGroups().map(group => ({
+        ...group,
+        characters: group.characters.filter(character => activeIds.has(character.id)),
+      })).filter(group => group.characters.length >= 2));
+      return;
+    }
+    if (!user?.id) {
       setDuplicateGroups([]);
       return;
     }
@@ -2647,6 +2713,12 @@ export const CharacterBook = () => {
     try {
       const sources = group.characters.filter(character => character.id !== targetId);
       let lastMergedName = group.characters.find(character => character.id === targetId)?.name ?? 'the selected character';
+      if (isMockDataEnabled) {
+        setCharacters(prev => mergeCharactersLocally(prev, targetId, sources.map(source => source.id)));
+        setDuplicateGroups(prev => prev.filter(existing => existing.canonical_name !== group.canonical_name));
+        setMergeNotice(`Demo merge preview: consolidated ${sources.length} duplicate ${sources.length === 1 ? 'card' : 'cards'} into ${lastMergedName}. Aliases, memories, facts, relationships, and knowledge links are shown as combined locally.`);
+        return;
+      }
       for (const source of sources) {
         const result = await fetchJson<{ character?: Character | null; report?: { canonicalName?: string; memoriesMoved?: number; relationshipsMoved?: number; factsMoved?: number; aliases?: string[] } }>('/api/characters/merge', {
           method: 'POST',
@@ -2692,6 +2764,21 @@ export const CharacterBook = () => {
     setMergeNotice(null);
     try {
       let mergedName = characters.find(character => character.id === targetId)?.name ?? 'the selected character';
+      if (isMockDataEnabled) {
+        setCharacters(prev => mergeCharactersLocally(prev, targetId, sources));
+        cancelManualMerge();
+        setDuplicateGroups(prev => prev
+          .map(group => ({
+            ...group,
+            characters: group.characters.filter(character => character.id === targetId || !sources.includes(character.id)),
+          }))
+          .filter(group => group.characters.length >= 2)
+        );
+        setRecentlyUpdatedIds(new Set([targetId]));
+        setTimeout(() => setRecentlyUpdatedIds(new Set()), 4000);
+        setMergeNotice(`Demo merge preview: merged ${sources.length + 1} selected cards into ${mergedName}. The kept card now shows combined aliases, details, memories, facts, relationships, and knowledge links.`);
+        return;
+      }
       for (const sourceId of sources) {
         const result = await fetchJson<{ character?: Character | null; report?: { canonicalName?: string; memoriesMoved?: number; relationshipsMoved?: number; factsMoved?: number; aliases?: string[] } }>('/api/characters/merge', {
           method: 'POST',
@@ -2834,7 +2921,10 @@ export const CharacterBook = () => {
           case 'mentors':
           case 'professional':
           case 'creative':
-            return characterMatchesRelationshipCategory(char, activeCategory);
+            // Public figures belong in their own tab, not personal relationships.
+            return !isPublicFigure(char) && characterMatchesRelationshipCategory(char, activeCategory);
+          case 'public_figure':
+            return isPublicFigure(char);
           case 'mentioned':
             return char.status === 'unmet' || char.relationship_depth === 'mentioned_only';
           case 'direct':
@@ -2874,7 +2964,7 @@ export const CharacterBook = () => {
   const groupedByImportance = useMemo(() => {
     const groups: Record<string, Character[]> = {};
     filteredCharacters.forEach(char => {
-      const level = char.importance_level || 'minor';
+      const level = isPublicFigure(char) ? 'public_figure' : char.importance_level || 'minor';
       if (!groups[level]) groups[level] = [];
       groups[level].push(char);
     });
@@ -2908,6 +2998,7 @@ export const CharacterBook = () => {
     protagonist: 'Protagonist',
     major: 'Major Characters',
     supporting: 'Supporting Characters',
+    public_figure: 'Public Figures',
     minor: 'Minor Characters',
     background: 'Background Characters'
   };
@@ -3096,25 +3187,24 @@ export const CharacterBook = () => {
               <option value="standing">By standing</option>
             </select>
           </div>
-          {!isMockDataEnabled && (
-            <div className="flex flex-col items-start gap-1">
-              <p className="text-[11px] leading-tight text-white/45">
-                If the app creates duplicate or incorrect character cards, select them here to merge their details.
-              </p>
-              <Button
-                size="sm"
-                variant={selectionMode ? 'subtle' : 'outline'}
-                leftIcon={<GitMerge className="h-3.5 w-3.5" />}
-                onClick={() => {
-                  if (selectionMode) cancelManualMerge();
-                  else setSelectionMode(true);
-                }}
-                className="text-xs"
-              >
-                {selectionMode ? 'Cancel merge' : 'Select to merge'}
-              </Button>
-            </div>
-          )}
+          <div className="flex flex-col items-start gap-1">
+            <p className="text-[11px] leading-tight text-white/45">
+              If the app creates duplicate or incorrect character cards, select them here to merge their details.
+              {isMockDataEnabled ? ' Demo Mode previews the consolidation locally.' : ''}
+            </p>
+            <Button
+              size="sm"
+              variant={selectionMode ? 'subtle' : 'outline'}
+              leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+              onClick={() => {
+                if (selectionMode) cancelManualMerge();
+                else setSelectionMode(true);
+              }}
+              className="text-xs"
+            >
+              {selectionMode ? 'Cancel merge' : 'Select to merge'}
+            </Button>
+          </div>
         </div>
 
         {selectionMode && (
@@ -3221,6 +3311,14 @@ export const CharacterBook = () => {
             >
               <Palette className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Creative</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="public_figure"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400 text-xs sm:text-sm flex-shrink-0"
+            >
+              <Star className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Public Figures</span>
+              <span className="sm:hidden">Public</span>
             </TabsTrigger>
             <TabsTrigger 
               value="mentioned"
@@ -3548,8 +3646,9 @@ export const CharacterBook = () => {
                         protagonist: 0,
                         major: 1,
                         supporting: 2,
-                        minor: 3,
-                        background: 4
+                        public_figure: 3,
+                        minor: 4,
+                        background: 5
                       };
                       return (order[a] ?? 5) - (order[b] ?? 5);
                     })

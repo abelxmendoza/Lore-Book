@@ -1,7 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { useState, useEffect } from 'react';
-import { Heart, Search, Filter, TrendingUp, Users, Sparkles } from 'lucide-react';
+import { Heart, Search, Filter, TrendingUp, Users, Sparkles, Ban, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -45,7 +45,45 @@ type RomanticRelationship = {
   rank_among_active?: number;
 };
 
-type FilterType = 'all' | 'active' | 'past' | 'situationships' | 'crushes' | 'rankings';
+type FilterType =
+  | 'all'
+  | 'active'
+  | 'past'
+  | 'no_contact'
+  | 'reconnection'
+  | 'situationships'
+  | 'dating'
+  | 'crushes'
+  | 'high_risk'
+  | 'rankings';
+
+const END_STATE_STATUSES = new Set(['ended', 'ghosted', 'blocked']);
+const NO_CONTACT_STATUSES = new Set(['ghosted', 'blocked']);
+const RECONNECTION_STATUSES = new Set(['rekindled']);
+const CRUSH_TYPES = new Set(['crush', 'obsession', 'infatuation', 'lust']);
+const DATING_TYPES = new Set(['dating', 'boyfriend', 'girlfriend', 'lover', 'in_love', 'fiancé', 'fiancée', 'wife', 'husband']);
+
+const relationshipStatus = (relationship: RomanticRelationship) => relationship.status.toLowerCase();
+const relationshipType = (relationship: RomanticRelationship) => relationship.relationship_type.toLowerCase();
+const isEndedRelationship = (relationship: RomanticRelationship) =>
+  !relationship.is_current || END_STATE_STATUSES.has(relationshipStatus(relationship)) || relationshipType(relationship).startsWith('ex_');
+const isActiveRelationship = (relationship: RomanticRelationship) =>
+  relationship.is_current && !isEndedRelationship(relationship);
+const isCrushRelationship = (relationship: RomanticRelationship) =>
+  CRUSH_TYPES.has(relationshipType(relationship));
+const isDatingRelationship = (relationship: RomanticRelationship) =>
+  DATING_TYPES.has(relationshipType(relationship)) && isActiveRelationship(relationship);
+const isNoContactRelationship = (relationship: RomanticRelationship) =>
+  NO_CONTACT_STATUSES.has(relationshipStatus(relationship));
+const hasReconnectionPotential = (relationship: RomanticRelationship) =>
+  RECONNECTION_STATUSES.has(relationshipStatus(relationship)) ||
+  relationship.green_flags.length > relationship.red_flags.length + 1 ||
+  (relationship.compatibility_score >= 0.7 && relationship.relationship_health >= 0.45 && !isNoContactRelationship(relationship));
+const isHighRiskRelationship = (relationship: RomanticRelationship) =>
+  relationship.red_flags.length >= 2 ||
+  relationship.relationship_health < 0.35 ||
+  ['blocked', 'ghosted', 'obsession', 'complicated'].includes(relationshipStatus(relationship)) ||
+  relationshipType(relationship) === 'obsession';
 
 export const LoveAndRelationshipsView = () => {
   const { useMockData: shouldUseMockData } = useMockData();
@@ -72,33 +110,13 @@ export const LoveAndRelationshipsView = () => {
         return;
       }
 
-      // Load real data from API
-      const params = new URLSearchParams();
-      if (activeFilter === 'active') {
-        params.append('status', 'active');
-        params.append('isCurrent', 'true');
-      } else if (activeFilter === 'past') {
-        params.append('status', 'ended');
-      }
-
       const data = await fetchJson<{ success: boolean; relationships: RomanticRelationship[] }>(
-        `/api/conversation/romantic-relationships?${params.toString()}`
+        '/api/conversation/romantic-relationships'
       );
 
       if (data.success) {
-        let filtered = data.relationships;
+        const filtered = data.relationships;
         
-        // Filter by type
-        if (activeFilter === 'situationships') {
-          filtered = filtered.filter(r => r.is_situationship);
-        } else if (activeFilter === 'crushes') {
-          filtered = filtered.filter(r => 
-            r.relationship_type === 'crush' || 
-            r.relationship_type === 'obsession' || 
-            r.relationship_type === 'infatuation'
-          );
-        }
-
         // Load person names for each relationship
         const relationshipsWithNames = await Promise.all(
           filtered.map(async (rel) => {
@@ -146,15 +164,38 @@ export const LoveAndRelationshipsView = () => {
     );
   });
 
-  // ghosted/blocked are end-states; fading/rekindled/unrequited still count as current
-  const ENDED_STATUSES = ['ended', 'ghosted', 'blocked'];
-  const activeRelationships = filteredRelationships.filter(r => r.is_current && !ENDED_STATUSES.includes(r.status));
-  const pastRelationships = filteredRelationships.filter(r => !r.is_current || ENDED_STATUSES.includes(r.status));
-  const crushes = filteredRelationships.filter(r => 
-    r.relationship_type === 'crush' || 
-    r.relationship_type === 'obsession' || 
-    r.relationship_type === 'infatuation'
-  );
+  const activeRelationships = filteredRelationships.filter(isActiveRelationship);
+  const pastRelationships = filteredRelationships.filter(isEndedRelationship);
+  const noContactRelationships = filteredRelationships.filter(isNoContactRelationship);
+  const reconnectionRelationships = filteredRelationships.filter(r => isEndedRelationship(r) && hasReconnectionPotential(r));
+  const situationships = filteredRelationships.filter(r => r.is_situationship);
+  const datingRelationships = filteredRelationships.filter(isDatingRelationship);
+  const crushes = filteredRelationships.filter(isCrushRelationship);
+  const highRiskRelationships = filteredRelationships.filter(isHighRiskRelationship);
+  const visibleRelationships = (() => {
+    switch (activeFilter) {
+      case 'active':
+        return activeRelationships;
+      case 'past':
+        return pastRelationships;
+      case 'no_contact':
+        return noContactRelationships;
+      case 'reconnection':
+        return reconnectionRelationships;
+      case 'situationships':
+        return situationships;
+      case 'dating':
+        return datingRelationships;
+      case 'crushes':
+        return crushes;
+      case 'high_risk':
+        return highRiskRelationships;
+      case 'rankings':
+        return [];
+      default:
+        return filteredRelationships;
+    }
+  })();
 
   if (loading) {
     return (
@@ -185,6 +226,8 @@ export const LoveAndRelationshipsView = () => {
               <p className="text-white/70 text-xs sm:text-sm">
                 {relationships.length} relationship{relationships.length !== 1 ? 's' : ''} tracked
                 {activeRelationships.length > 0 && ` · ${activeRelationships.length} active`}
+                {pastRelationships.length > 0 && ` · ${pastRelationships.length} past`}
+                {noContactRelationships.length > 0 && ` · ${noContactRelationships.length} no contact`}
                 {crushes.length > 0 && ` · ${crushes.length} crush${crushes.length !== 1 ? 'es' : ''}`}
                 {shouldUseMockData && (
                   <span className="ml-2 text-[10px] sm:text-xs text-yellow-400/80">(Mock Data)</span>
@@ -244,6 +287,22 @@ export const LoveAndRelationshipsView = () => {
             <span>Past</span>
           </TabsTrigger>
           <TabsTrigger 
+            value="no_contact"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[90px] sm:min-w-0"
+          >
+            <Ban className="h-3 w-3 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">No Contact</span>
+            <span className="sm:hidden">No Contact</span>
+          </TabsTrigger>
+          <TabsTrigger 
+            value="reconnection"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[95px] sm:min-w-0"
+          >
+            <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">Reconnection</span>
+            <span className="sm:hidden">Reconnect</span>
+          </TabsTrigger>
+          <TabsTrigger 
             value="situationships"
             className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[100px] sm:min-w-0"
           >
@@ -251,11 +310,26 @@ export const LoveAndRelationshipsView = () => {
             <span className="sm:hidden">Situations</span>
           </TabsTrigger>
           <TabsTrigger 
+            value="dating"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-rose-500/20 data-[state=active]:text-rose-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[70px] sm:min-w-0"
+          >
+            <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
+            <span>Dating</span>
+          </TabsTrigger>
+          <TabsTrigger 
             value="crushes"
             className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-pink-500/20 data-[state=active]:text-pink-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[70px] sm:min-w-0"
           >
             <Sparkles className="h-3 w-3 sm:h-4 sm:w-4" />
             <span>Crushes</span>
+          </TabsTrigger>
+          <TabsTrigger 
+            value="high_risk"
+            className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-orange-500/20 data-[state=active]:text-orange-400 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0 min-w-[80px] sm:min-w-0"
+          >
+            <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">High Risk</span>
+            <span className="sm:hidden">Risk</span>
           </TabsTrigger>
           <TabsTrigger 
             value="rankings"
@@ -268,7 +342,7 @@ export const LoveAndRelationshipsView = () => {
 
         <TabsContent value={activeFilter} className="mt-6">
           {/* Active Relationships Section */}
-          {activeFilter === 'all' && activeRelationships.length > 0 && (
+          {(activeFilter === 'all' || activeFilter === 'active') && activeRelationships.length > 0 && (
             <div className="mb-8">
               <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
                 <Heart className="w-5 h-5 text-pink-400" />
@@ -326,7 +400,7 @@ export const LoveAndRelationshipsView = () => {
           {/* Situationships Section */}
           {activeFilter === 'situationships' && filteredRelationships.length > 0 && (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredRelationships.map((rel) => (
+              {situationships.map((rel) => (
                 <RelationshipCard
                   key={rel.id}
                   relationship={rel}
@@ -336,13 +410,83 @@ export const LoveAndRelationshipsView = () => {
             </div>
           )}
 
+          {/* Dating Section */}
+          {activeFilter === 'dating' && datingRelationships.length > 0 && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {datingRelationships.map((rel) => (
+                <RelationshipCard
+                  key={rel.id}
+                  relationship={rel}
+                  onClick={() => setSelectedRelationship(rel.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* No Contact Section */}
+          {activeFilter === 'no_contact' && noContactRelationships.length > 0 && (
+            <div>
+              <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                <Ban className="w-5 h-5 text-red-400" />
+                No Contact
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {noContactRelationships.map((rel) => (
+                  <RelationshipCard
+                    key={rel.id}
+                    relationship={rel}
+                    onClick={() => setSelectedRelationship(rel.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Reconnection Section */}
+          {activeFilter === 'reconnection' && reconnectionRelationships.length > 0 && (
+            <div>
+              <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-blue-400" />
+                Possible Reconnection
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {reconnectionRelationships.map((rel) => (
+                  <RelationshipCard
+                    key={rel.id}
+                    relationship={rel}
+                    onClick={() => setSelectedRelationship(rel.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* High Risk Section */}
+          {activeFilter === 'high_risk' && highRiskRelationships.length > 0 && (
+            <div>
+              <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-orange-400" />
+                High Risk / Needs Care
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {highRiskRelationships.map((rel) => (
+                  <RelationshipCard
+                    key={rel.id}
+                    relationship={rel}
+                    onClick={() => setSelectedRelationship(rel.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Rankings Section */}
           {activeFilter === 'rankings' && (
             <RankingView />
           )}
 
           {/* Empty State */}
-          {activeFilter !== 'rankings' && filteredRelationships.length === 0 && (
+          {activeFilter !== 'rankings' && visibleRelationships.length === 0 && (
             <Card className="border-border/60 bg-black/40">
               <CardContent className="p-12 text-center">
                 <Heart className="w-16 h-16 mx-auto mb-4 text-pink-400/30" />

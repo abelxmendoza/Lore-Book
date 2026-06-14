@@ -8,6 +8,9 @@ import { z } from 'zod';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { organizationService, type OrgRelationshipType } from '../services/organizationService';
+import { organizationMergeService } from '../services/organizationMergeService';
+import { organizationRelationshipInferenceService } from '../services/organizationRelationshipInferenceService';
+import { organizationNetworkService } from '../services/organizationNetworkService';
 
 const router = Router();
 
@@ -17,7 +20,7 @@ const ORG_TYPES = ['friend_group', 'company', 'sports_team', 'club', 'nonprofit'
 // G1 canonical group types
 const GROUP_TYPES = [
   'friend_group', 'band', 'sports_team', 'company', 'club', 'nonprofit',
-  'family', 'martial_arts', 'scene', 'crew', 'collective', 'institution',
+  'family', 'martial_arts', 'scene', 'community', 'crew', 'collective', 'institution',
   'public_entity', 'other',
 ] as const;
 
@@ -64,6 +67,66 @@ router.get('/by-character', requireAuth, async (req: AuthenticatedRequest, res) 
   } catch (error) {
     logger.error({ error, userId }, 'Failed to get organizations by character');
     res.status(500).json({ success: false, error: 'Failed to fetch organizations' });
+  }
+});
+
+// GET /api/organizations/duplicates — clusters of likely-duplicate orgs
+// Must be registered BEFORE /:id to avoid matching "duplicates" as an ID
+router.get('/duplicates', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  try {
+    const clusters = await organizationMergeService.findDuplicates(userId);
+    res.json({ success: true, clusters });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to find duplicate organizations');
+    res.status(500).json({ success: false, error: 'Failed to find duplicates' });
+  }
+});
+
+// POST /api/organizations/merge — consolidate duplicates into a primary
+router.post('/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const schema = z.object({
+    primary_id: z.string().min(1),
+    duplicate_ids: z.array(z.string().min(1)).min(1),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, error: parsed.error.issues });
+    return;
+  }
+  try {
+    const report = await organizationMergeService.merge(userId, parsed.data.primary_id, parsed.data.duplicate_ids);
+    res.json({ success: true, report });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to merge organizations');
+    res.status(500).json({ success: false, error: 'Failed to merge organizations' });
+  }
+});
+
+// GET /api/organizations/network — G1 group hierarchy / affiliation graph
+router.get('/network', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const rootOrgId = typeof req.query.rootOrgId === 'string' ? req.query.rootOrgId : undefined;
+  const depth = parseInt(String(req.query.depth ?? '4'), 10) || 4;
+  try {
+    const network = await organizationNetworkService.buildNetwork(userId, rootOrgId, depth);
+    res.json({ success: true, network });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to build organization network');
+    res.status(500).json({ success: false, error: 'Failed to load group network' });
+  }
+});
+
+// POST /api/organizations/reconcile-relationships — re-scan all groups for hierarchy links
+router.post('/reconcile-relationships', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  try {
+    const result = await organizationRelationshipInferenceService.reconcileUserOrganizations(userId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to reconcile organization relationships');
+    res.status(500).json({ success: false, error: 'Failed to reconcile relationships' });
   }
 });
 
@@ -206,6 +269,23 @@ router.delete('/:id/members/:memberId', requireAuth, async (req: AuthenticatedRe
   } catch (error) {
     logger.error({ error, userId }, 'Failed to remove member');
     res.status(500).json({ success: false, error: 'Failed to remove member' });
+  }
+});
+
+// ── Conversation-derived context ──────────────────────
+
+// GET /api/organizations/:id/derived-context
+// Events & locations inferred from this group's members appearing across the
+// user's chat threads / journal entries. Read-only, recomputed per request.
+router.get('/:id/derived-context', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const organizationId = String(req.params.id);
+  try {
+    const context = await organizationService.getDerivedContext(userId, organizationId);
+    res.json({ success: true, ...context });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to get derived context');
+    res.status(500).json({ success: false, error: 'Failed to get derived context' });
   }
 });
 
@@ -390,7 +470,7 @@ router.delete('/:id/relationships/:relationshipId', requireAuth, async (req: Aut
 // Returns entity facts for this organization extracted from conversations.
 router.get('/:id/facts', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user?.id;
-  const orgId = req.params.id;
+  const orgId = String(req.params.id);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {

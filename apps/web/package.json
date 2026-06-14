@@ -24,6 +24,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:vitest": "vitest run && vitest run --config vitest.integration.config.ts",
     "test:build": "node scripts/build-validation.test.js",
+    "test:demo-privacy": "node scripts/check-demo-data-privacy.cjs",
     "test:chunk-deps": "node scripts/chunk-dependency-check.js",
     "test:black-screen": "vitest run --config vitest.integration.config.ts src/**/*.integration.test.tsx src/**/*.integration.test.ts",
     "test:e2e": "playwright test",
@@ -39,7 +40,7 @@
     "install:foreground-scripts": "npm install --foreground-scripts",
     "cypress:install-binary": "npx cypress install",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:black-screen && npm run test:e2e && npm run test:cypress",
-    "test:pre-deploy": "npm run test:unit && npm run test:black-screen && npm run build && npm run test:build && npm run test:chunk-deps"
+    "test:pre-deploy": "npm run test:unit && npm run test:black-screen && npm run test:demo-privacy && npm run build && npm run test:build && npm run test:chunk-deps"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.0",

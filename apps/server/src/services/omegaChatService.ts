@@ -759,25 +759,15 @@ class OmegaChatService {
         });
     }
 
-    // Detect groups in conversation (fire-and-forget)
-    import('./groupDetectionService').then(({ groupDetectionService }) => {
+    // Detect groups in conversation (fire-and-forget). Routes through the
+    // candidate service, which detects, dedups, and upserts review candidates.
+    import('./groupCandidateService').then(({ groupCandidateService }) => {
       const conversationTexts = conversationHistory.map(m => m.content);
-      groupDetectionService.detectGroupsInMessage(userId, message, conversationTexts)
-        .then(async (detectedGroups) => {
-          if (detectedGroups.length > 0) {
-            try {
-              await groupDetectionService.processDetectedGroups(userId, detectedGroups);
-              logger.info({ userId, groupCount: detectedGroups.length }, 'Detected and processed groups from conversation');
-            } catch (error) {
-              logger.debug({ error, userId }, 'Failed to process detected groups');
-            }
-          }
-        })
-        .catch(err => {
-          logger.debug({ err }, 'Failed to detect groups from conversation');
-        });
+      void groupCandidateService
+        .processChatMessage(userId, message, undefined, conversationTexts)
+        .catch(err => logger.debug({ err, userId }, 'Group detection failed'));
     }).catch(err => {
-      logger.debug({ err }, 'Failed to import group detection service');
+      logger.debug({ err }, 'Failed to import group candidate service');
     });
 
     // Check continuity with error handling
@@ -2109,25 +2099,15 @@ class OmegaChatService {
       logger.debug({ error }, 'Failed to detect memory suggestion, continuing');
     }
 
-    // Detect groups in conversation (fire-and-forget)
-    import('./groupDetectionService').then(({ groupDetectionService }) => {
+    // Detect groups in conversation (fire-and-forget). Routes through the
+    // candidate service, which detects, dedups, and upserts review candidates.
+    import('./groupCandidateService').then(({ groupCandidateService }) => {
       const conversationTexts = conversationHistory.map(m => m.content);
-      groupDetectionService.detectGroupsInMessage(userId, message, conversationTexts)
-        .then(async (detectedGroups) => {
-          if (detectedGroups.length > 0) {
-            try {
-              await groupDetectionService.processDetectedGroups(userId, detectedGroups);
-              logger.info({ userId, groupCount: detectedGroups.length }, 'Detected and processed groups from conversation');
-            } catch (error) {
-              logger.debug({ error, userId }, 'Failed to process detected groups');
-            }
-          }
-        })
-        .catch(err => {
-          logger.debug({ err }, 'Failed to detect groups from conversation');
-        });
+      void groupCandidateService
+        .processChatMessage(userId, message, undefined, conversationTexts)
+        .catch(err => logger.debug({ err, userId }, 'Group detection failed'));
     }).catch(err => {
-      logger.debug({ err }, 'Failed to import group detection service');
+      logger.debug({ err }, 'Failed to import group candidate service');
     });
 
     // Ingest message with entity context (fire-and-forget)
