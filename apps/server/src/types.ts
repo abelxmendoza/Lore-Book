@@ -348,11 +348,25 @@ export type LocationVisit = {
 export type LocationProfile = {
   id: string;
   name: string;
+  type?: string | null;
+  address?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  ownerOperator?: string | null;
+  operatingHours?: Record<string, unknown>;
+  purpose?: string[];
+  physicalAttributes?: Record<string, unknown>;
+  reputation?: Record<string, unknown>;
+  userRelationship?: Record<string, unknown>;
+  timeline?: unknown[];
+  currentState?: Record<string, unknown>;
+  socialGraph?: Record<string, unknown>;
   visitCount: number;
   firstVisited?: string;
   lastVisited?: string;
   coordinates?: LocationCoordinates | null;
-  relatedPeople: { id: string; name: string; total_mentions: number; entryCount: number }[];
+  relatedPeople: { id: string; name: string; total_mentions: number; entryCount: number; character_id?: string; relationship_type?: string }[];
   tagCounts: { tag: string; count: number }[];
   chapters: { id: string; title?: string; count: number }[];
   moods: { mood: string; count: number }[];

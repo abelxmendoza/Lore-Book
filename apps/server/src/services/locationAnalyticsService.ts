@@ -53,6 +53,18 @@ export interface LocationAnalytics {
 }
 
 export class LocationAnalyticsService {
+  private isMissingSchema(error?: { code?: string; message?: string } | null): boolean {
+    return Boolean(
+      error &&
+        (error.code === 'PGRST205' ||
+          error.code === '42P01' ||
+          (typeof error.message === 'string' &&
+            (error.message.includes('schema cache') ||
+              error.message.includes('Could not find the table') ||
+              error.message.includes('does not exist'))))
+    );
+  }
+
   /**
    * Calculate comprehensive analytics for a location
    */
@@ -90,6 +102,12 @@ export class LocationAnalyticsService {
       
       // Total visits (from location data or calculated)
       const total_visits = location.visitCount || visitCount;
+
+      const relevance_score = this.calculateRelevanceScore(
+        visits,
+        journalMentions,
+        calculationPeriod
+      );
       
       // Importance metrics
       const importance_score = this.calculateImportanceScore(
@@ -103,12 +121,6 @@ export class LocationAnalyticsService {
         recency_score,
         visit_frequency,
         location
-      );
-      
-      const relevance_score = this.calculateRelevanceScore(
-        visits,
-        journalMentions,
-        calculationPeriod
       );
       
       const value_score = this.calculateValueScore(
@@ -173,7 +185,7 @@ export class LocationAnalyticsService {
         associatedPeople
       );
 
-      return {
+      const result = {
         visit_frequency: Math.round(visit_frequency),
         recency_score: Math.round(recency_score),
         total_visits,
@@ -201,7 +213,6 @@ export class LocationAnalyticsService {
       };
 
       // Update entity confidence based on analytics (fire and forget)
-      const { entityConfidenceService } = await import('./entityConfidenceService');
       entityConfidenceService
         .updateEntityConfidenceFromAnalytics(userId, locationId, 'LOCATION', result)
         .catch(err => {
@@ -235,6 +246,7 @@ export class LocationAnalyticsService {
       if (error) throw error;
       return data || [];
     } catch (error) {
+      if (this.isMissingSchema(error as { code?: string; message?: string })) return [];
       logger.error({ error }, 'Failed to get visits');
       return [];
     }
@@ -311,24 +323,17 @@ export class LocationAnalyticsService {
     locationId: string
   ): Promise<any[]> {
     try {
-      // Get people mentioned in relation to this location
       const { data, error } = await supabaseAdmin
-        .from('location_visits')
-        .select('related_people')
+        .from('location_character_links')
+        .select('character_id, relationship_type')
         .eq('location_id', locationId)
         .eq('user_id', userId);
 
       if (error) throw error;
 
-      const peopleSet = new Set<string>();
-      (data || []).forEach(visit => {
-        if (visit.related_people && Array.isArray(visit.related_people)) {
-          visit.related_people.forEach((person: string) => peopleSet.add(person));
-        }
-      });
-
-      return Array.from(peopleSet).map(name => ({ name }));
+      return data || [];
     } catch (error) {
+      if (this.isMissingSchema(error as { code?: string; message?: string })) return [];
       logger.error({ error }, 'Failed to get associated people');
       return [];
     }
@@ -861,4 +866,3 @@ export class LocationAnalyticsService {
 }
 
 export const locationAnalyticsService = new LocationAnalyticsService();
-

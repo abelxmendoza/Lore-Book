@@ -3,11 +3,25 @@ import { MapPin, Clock, Users, ChevronRight, TrendingUp, TrendingDown } from 'lu
 export type LocationProfile = {
   id: string;
   name: string;
+  type?: string | null;
+  address?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  ownerOperator?: string | null;
+  operatingHours?: Record<string, unknown>;
+  purpose?: string[];
+  physicalAttributes?: Record<string, unknown>;
+  reputation?: Record<string, unknown>;
+  userRelationship?: Record<string, unknown>;
+  timeline?: unknown[];
+  currentState?: Record<string, unknown>;
+  socialGraph?: Record<string, unknown>;
   visitCount: number;
   firstVisited?: string;
   lastVisited?: string;
   coordinates?: { lat: number; lng: number } | null;
-  relatedPeople: { id: string; name: string; total_mentions: number; entryCount: number }[];
+  relatedPeople: { id: string; character_id?: string; name: string; total_mentions: number; entryCount: number; relationship_type?: string }[];
   tagCounts: { tag: string; count: number }[];
   chapters: { id: string; title?: string; count: number }[];
   moods: { mood: string; count: number }[];
@@ -78,6 +92,7 @@ export const LocationProfileCard = ({ location, onClick }: Props) => {
   const ago    = relativeTime(location.lastVisited);
   const accent = accentClass(location);
   const trend  = location.analytics?.trend;
+  const verifiedPeople = location.relatedPeople.filter(person => person.character_id);
 
   return (
     <button
@@ -115,13 +130,13 @@ export const LocationProfileCard = ({ location, onClick }: Props) => {
       </div>
 
       {/* People */}
-      {location.relatedPeople.length > 0 && (
+      {verifiedPeople.length > 0 && (
         <div className="flex items-center gap-1.5">
           <Users className="h-3 w-3 text-white/25 shrink-0" />
           <span className="text-xs text-white/45 truncate">
-            {location.relatedPeople.slice(0, 3).map(p => p.name.split(' ')[0]).join(', ')}
-            {location.relatedPeople.length > 3 && (
-              <span className="text-white/30"> +{location.relatedPeople.length - 3}</span>
+            {verifiedPeople.slice(0, 3).map(p => p.name.split(' ')[0]).join(', ')}
+            {verifiedPeople.length > 3 && (
+              <span className="text-white/30"> +{verifiedPeople.length - 3}</span>
             )}
           </span>
         </div>

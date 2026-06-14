@@ -253,6 +253,13 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
     iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 
   const a = location.analytics;
+  const verifiedPeople = location.relatedPeople.filter(person => person.character_id);
+  const placeLine = [location.address, location.city, location.region, location.country].filter(Boolean).join(', ');
+  const identityFields = [
+    { label: 'Type', value: location.type },
+    { label: 'Location', value: placeLine },
+    { label: 'Owner/operator', value: location.ownerOperator },
+  ].filter((field): field is { label: string; value: string } => Boolean(field.value));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -266,6 +273,7 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-bold text-white leading-tight">{location.name}</h2>
             <div className="flex flex-wrap items-center gap-3 mt-1">
+              {location.type && <span className="text-xs text-teal-300/80 capitalize">{location.type}</span>}
               <span className="text-xs text-white/45">{location.visitCount} visits</span>
               {location.coordinates && (
                 <span className="text-xs text-white/30 font-mono">
@@ -311,6 +319,38 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
           {/* ── OVERVIEW ── */}
           {activeTab === 'overview' && (
             <div className="space-y-5">
+              {/* Place identity */}
+              {identityFields.length > 0 && (
+                <div className="rounded-xl bg-white/4 border border-white/8 p-3">
+                  <p className="text-xs text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <MapPin className="h-3 w-3" /> Identity
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {identityFields.map(field => (
+                      <div key={field.label} className="rounded-lg bg-black/25 border border-white/6 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-white/30">{field.label}</p>
+                        <p className="text-xs font-medium text-white/75">{field.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {location.purpose && location.purpose.length > 0 && (
+                <div>
+                  <p className="text-xs text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Sparkles className="h-3 w-3" /> Purpose
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {location.purpose.map(purpose => (
+                      <span key={purpose} className="text-xs px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                        {purpose}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Stat row */}
               <div className="grid grid-cols-3 gap-3">
                 {[
@@ -438,19 +478,30 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
           {/* ── PEOPLE ── */}
           {activeTab === 'people' && (
             <div className="space-y-2">
-              {location.relatedPeople.length === 0 ? (
+              <div className="rounded-xl bg-teal-500/8 border border-teal-500/15 px-4 py-3">
+                <p className="text-xs font-semibold text-teal-200">Verified character links only</p>
+                <p className="text-xs text-white/40 mt-1">
+                  People shown here resolve to confirmed Character Book IDs. Raw extracted names are hidden until verified.
+                </p>
+              </div>
+              {verifiedPeople.length === 0 ? (
                 <div className="text-center py-16">
                   <Users className="h-10 w-10 mx-auto mb-3 text-white/15" />
-                  <p className="text-sm font-medium text-white/40">No people recorded yet</p>
+                  <p className="text-sm font-medium text-white/40">No verified people linked yet</p>
                 </div>
               ) : (
-                location.relatedPeople.map(person => (
+                verifiedPeople.map(person => (
                   <div key={person.id} className="flex items-center justify-between rounded-xl bg-white/4 border border-white/8 px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-teal-500/15 border border-teal-500/20 flex items-center justify-center text-xs font-bold text-teal-300">
                         {person.name.charAt(0).toUpperCase()}
                       </div>
-                      <span className="text-sm font-medium text-white">{person.name}</span>
+                      <div>
+                        <span className="text-sm font-medium text-white">{person.name}</span>
+                        {person.relationship_type && (
+                          <p className="text-[10px] text-teal-300/55 capitalize">{person.relationship_type.replace(/_/g, ' ')}</p>
+                        )}
+                      </div>
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-white/50">{person.entryCount} {person.entryCount === 1 ? 'visit' : 'visits'}</p>

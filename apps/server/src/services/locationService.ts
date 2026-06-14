@@ -8,6 +8,7 @@ import type {
   MemoryEntry,
   PeoplePlaceEntity
 } from '../types';
+import { normalizeNameKey } from '../utils/nameNormalization';
 
 import { chapterService } from './chapterService';
 import { locationAnalyticsService } from './locationAnalyticsService';
@@ -21,6 +22,45 @@ type LocationAccumulator = {
   entryIds: Set<string>;
   coordinates: LocationCoordinates | null;
   sources: Set<string>;
+  record?: LocationRecord;
+};
+
+type CharacterRecord = {
+  id: string;
+  name: string;
+  alias?: string[] | null;
+  total_mentions?: number | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+type LocationRecord = {
+  id: string;
+  name: string;
+  normalized_name?: string | null;
+  type?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  owner_operator?: string | null;
+  operating_hours?: Record<string, unknown> | null;
+  purpose?: string[] | null;
+  physical_attributes?: Record<string, unknown> | null;
+  reputation?: Record<string, unknown> | null;
+  user_relationship?: Record<string, unknown> | null;
+  timeline?: unknown[] | null;
+  current_state?: Record<string, unknown> | null;
+  social_graph?: Record<string, unknown> | null;
+  associated_character_ids?: string[] | null;
+};
+
+type LocationCharacterLink = {
+  location_id: string;
+  character_id: string;
+  relationship_type: string;
+  evidence_count: number | null;
 };
 
 class LocationService {
@@ -80,6 +120,91 @@ class LocationService {
     return Array.from(names);
   }
 
+  private isMissingSchema(error?: { code?: string; message?: string } | null): boolean {
+    return Boolean(
+      error &&
+        (error.code === 'PGRST205' ||
+          error.code === '42P01' ||
+          (typeof error.message === 'string' &&
+            (error.message.includes('schema cache') ||
+              error.message.includes('Could not find the table') ||
+              error.message.includes('does not exist'))))
+    );
+  }
+
+  private coordinatesFromLocation(location: LocationRecord): LocationCoordinates | null {
+    if (
+      typeof location.latitude === 'number' &&
+      typeof location.longitude === 'number' &&
+      Number.isFinite(location.latitude) &&
+      Number.isFinite(location.longitude)
+    ) {
+      return { lat: location.latitude, lng: location.longitude };
+    }
+    return null;
+  }
+
+  private async fetchCanonicalLocations(userId: string): Promise<LocationRecord[]> {
+    const { data, error } = await supabaseAdmin
+      .from('locations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      if (this.isMissingSchema(error)) return [];
+      logger.error({ error }, 'Failed to load canonical locations');
+      throw error;
+    }
+
+    return (data ?? []) as LocationRecord[];
+  }
+
+  private async fetchCharacters(userId: string): Promise<CharacterRecord[]> {
+    const { data, error } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, alias, metadata')
+      .eq('user_id', userId);
+
+    if (error) {
+      logger.error({ error }, 'Failed to load characters for location links');
+      throw error;
+    }
+
+    return (data ?? []) as CharacterRecord[];
+  }
+
+  private async fetchLocationCharacterLinks(userId: string): Promise<LocationCharacterLink[]> {
+    const { data, error } = await supabaseAdmin
+      .from('location_character_links')
+      .select('location_id, character_id, relationship_type, evidence_count')
+      .eq('user_id', userId);
+
+    if (error) {
+      if (this.isMissingSchema(error)) return [];
+      logger.debug({ error }, 'Verified location-character links unavailable');
+      return [];
+    }
+
+    return (data ?? []) as LocationCharacterLink[];
+  }
+
+  private buildCharacterIndex(characters: CharacterRecord[]): Map<string, CharacterRecord> {
+    const index = new Map<string, CharacterRecord>();
+    characters.forEach((character) => {
+      [character.name, ...(Array.isArray(character.alias) ? character.alias : [])].forEach((mention) => {
+        const key = normalizeNameKey(mention);
+        if (key && !index.has(key)) index.set(key, character);
+      });
+    });
+    return index;
+  }
+
+  private countCharacterMentions(metadata?: Record<string, unknown> | null): number {
+    const count = Number(metadata?.mention_count);
+    return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+  }
+
   private async fetchEntries(userId: string): Promise<MemoryEntry[]> {
     const { data, error } = await supabaseAdmin
       .from('journal_entries')
@@ -116,7 +241,8 @@ class LocationService {
     source: string,
     entryId?: string,
     coordinates?: LocationCoordinates | null,
-    fixedId?: string
+    fixedId?: string,
+    record?: LocationRecord
   ) {
     if (!name.trim()) return;
     const key = this.normalizeKey(name);
@@ -129,6 +255,7 @@ class LocationService {
       if (fixedId && existing.id.startsWith('location-')) {
         existing.id = fixedId;
       }
+      if (record) existing.record = { ...existing.record, ...record };
       return;
     }
 
@@ -137,23 +264,22 @@ class LocationService {
       name: name.trim(),
       entryIds: new Set(entryId ? [entryId] : []),
       coordinates: coordinates ?? null,
-      sources: new Set([source])
+      sources: new Set([source]),
+      record
     });
   }
 
   async listLocations(userId: string): Promise<LocationProfile[]> {
-    const [entries, entities, chapters] = await Promise.all([
+    const [entries, entities, chapters, canonicalLocations, characters, locationCharacterLinks] = await Promise.all([
       this.fetchEntries(userId),
       supabaseAdmin.from('people_places').select('*').eq('user_id', userId),
-      chapterService.listChapters(userId)
+      chapterService.listChapters(userId),
+      this.fetchCanonicalLocations(userId),
+      this.fetchCharacters(userId),
+      this.fetchLocationCharacterLinks(userId)
     ]);
 
-    const isTableMissing =
-      entities.error &&
-      ((entities.error as { code?: string }).code === 'PGRST205' ||
-        (typeof (entities.error as { message?: string }).message === 'string' &&
-          ((entities.error as { message: string }).message.includes('schema cache') ||
-            (entities.error as { message: string }).message.includes('Could not find the table'))));
+    const isTableMissing = this.isMissingSchema(entities.error);
     if (entities.error && !isTableMissing) {
       logger.error({ error: entities.error }, 'Failed to load places/people for location mapping');
       throw entities.error;
@@ -162,6 +288,14 @@ class LocationService {
     const chapterTitles = new Map(chapters.map((chapter) => [chapter.id, chapter.title]));
     const peoplePlaces = (isTableMissing ? [] : (entities.data as PeoplePlaceEntity[])) ?? [];
     const personMentions = this.mapPeopleByEntry(peoplePlaces);
+    const characterById = new Map(characters.map((character) => [character.id, character]));
+    const characterByMention = this.buildCharacterIndex(characters);
+    const verifiedLinksByLocation = locationCharacterLinks.reduce<Map<string, LocationCharacterLink[]>>((acc, link) => {
+      const links = acc.get(link.location_id) ?? [];
+      links.push(link);
+      acc.set(link.location_id, links);
+      return acc;
+    }, new Map());
     const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
     const accumulator = new Map<string, LocationAccumulator>();
 
@@ -183,6 +317,18 @@ class LocationService {
           this.upsertLocation(accumulator, place.name, 'entity', entryId, null, place.id);
         });
       });
+
+    canonicalLocations.forEach((location) => {
+      this.upsertLocation(
+        accumulator,
+        location.name,
+        'registry',
+        undefined,
+        this.coordinatesFromLocation(location),
+        location.id,
+        location
+      );
+    });
 
     const locations: LocationProfile[] = await Promise.all(
       Array.from(accumulator.values()).map(async (location) => {
@@ -223,17 +369,32 @@ class LocationService {
           return acc;
         }, new Map());
 
-        const relatedPeople = relatedEntries.reduce<Map<string, { entity: PeoplePlaceEntity; entryCount: number }>>(
+        const relatedPeople = relatedEntries.reduce<Map<string, { character: CharacterRecord; entryCount: number; relationship_type?: string }>>(
           (acc, entry) => {
             (personMentions.get(entry.id) ?? []).forEach((person) => {
-              const current = acc.get(person.id) ?? { entity: person, entryCount: 0 };
+              const character = characterByMention.get(normalizeNameKey(person.name));
+              if (!character) return;
+              const current = acc.get(character.id) ?? { character, entryCount: 0 };
               current.entryCount += 1;
-              acc.set(person.id, current);
+              acc.set(character.id, current);
             });
             return acc;
           },
           new Map()
         );
+
+        (verifiedLinksByLocation.get(location.id) ?? []).forEach((link) => {
+          const character = characterById.get(link.character_id);
+          if (!character) return;
+          const current = relatedPeople.get(character.id) ?? {
+            character,
+            entryCount: 0,
+            relationship_type: link.relationship_type
+          };
+          current.entryCount = Math.max(current.entryCount, link.evidence_count ?? 0);
+          current.relationship_type = current.relationship_type ?? link.relationship_type;
+          relatedPeople.set(character.id, current);
+        });
 
         const simplifiedEntries = relatedEntries
           .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime())
@@ -250,16 +411,32 @@ class LocationService {
         const locationProfile: LocationProfile = {
           id: location.id,
           name: location.name,
+          type: location.record?.type ?? null,
+          address: location.record?.address ?? null,
+          city: location.record?.city ?? null,
+          region: location.record?.region ?? null,
+          country: location.record?.country ?? null,
+          ownerOperator: location.record?.owner_operator ?? null,
+          operatingHours: location.record?.operating_hours ?? {},
+          purpose: location.record?.purpose ?? [],
+          physicalAttributes: location.record?.physical_attributes ?? {},
+          reputation: location.record?.reputation ?? {},
+          userRelationship: location.record?.user_relationship ?? {},
+          timeline: location.record?.timeline ?? [],
+          currentState: location.record?.current_state ?? {},
+          socialGraph: location.record?.social_graph ?? {},
           visitCount,
           firstVisited,
           lastVisited,
           coordinates: location.coordinates,
           relatedPeople: Array.from(relatedPeople.values())
-            .map(({ entity, entryCount }) => ({
-              id: entity.id,
-              name: entity.name,
-              total_mentions: entity.total_mentions,
-              entryCount
+            .map(({ character, entryCount, relationship_type }) => ({
+              id: character.id,
+              character_id: character.id,
+              name: character.name,
+              total_mentions: this.countCharacterMentions(character.metadata),
+              entryCount,
+              relationship_type
             }))
             .sort((a, b) => b.entryCount - a.entryCount),
           tagCounts: Array.from(tagCounts.entries())

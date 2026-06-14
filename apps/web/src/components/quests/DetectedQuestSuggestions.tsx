@@ -121,7 +121,7 @@ export const DetectedQuestSuggestions = ({ onQuestAdded }: Props) => {
           {isLoading && visible.length === 0 ? (
             <p className="text-xs text-white/50 font-mono py-3">Reading your conversations…</p>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3 max-h-52 sm:max-h-60 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent">
               {visible.map(s => {
                 const k = keyFor(s);
                 return (

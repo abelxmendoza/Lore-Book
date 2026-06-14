@@ -114,7 +114,7 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => updateProgress.mutate({ questId, progress: Math.max(0, quest.progress_percentage - 10) })}
+                onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.max(0, quest.progress_percentage - 10) }).catch(() => {}); }}
                 className="text-xs px-2 h-9 sm:h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px] sm:min-h-0"
               >
                 -10%
@@ -122,7 +122,7 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => updateProgress.mutate({ questId, progress: Math.min(100, quest.progress_percentage + 10) })}
+                onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.min(100, quest.progress_percentage + 10) }).catch(() => {}); }}
                 className="text-xs px-2 h-9 sm:h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px] sm:min-h-0"
               >
                 +10%
@@ -175,7 +175,7 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => updateProgress.mutate({ questId, progress: Math.max(0, quest.progress_percentage - 10) })}
+              onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.max(0, quest.progress_percentage - 10) }).catch(() => {}); }}
               className="text-xs px-2 h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px] flex-1"
             >
               -10%
@@ -183,7 +183,7 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => updateProgress.mutate({ questId, progress: Math.min(100, quest.progress_percentage + 10) })}
+              onClick={() => { void updateProgress.mutateAsync({ questId, progress: Math.min(100, quest.progress_percentage + 10) }).catch(() => {}); }}
               className="text-xs px-2 h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px] flex-1"
             >
               +10%
