@@ -6,6 +6,7 @@
 import { logger } from '../logger';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { isIndividualPersonName } from '../utils/personNameValidation';
+import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { collectNameKeys, isNameAlreadyInBook, type BookNameEntry } from '../utils/suggestionBookFilter';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -58,6 +59,7 @@ class CharacterSuggestionService {
       const key = normalizeNameKey(s.name);
       if (!key || key.length < 2 || JUNK.has(key) || seen.has(key)) return;
       if (!isIndividualPersonName(s.name)) return;
+      if (classifyMentionKind(s.name).kind !== 'person') return;
       if (isNameAlreadyInBook(s.name, bookExact, bookEntries)) return;
       seen.add(key);
       suggestions.push(s);

@@ -197,7 +197,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     setDeleteBusy(true);
     setDeleteError(null);
     try {
-      await fetchJson(`/api/characters/${character.id}`, { method: 'DELETE' });
+      await fetchJson(`/api/characters/${character.id}?redistribute=true`, { method: 'DELETE' });
       onUpdate();
       onClose();
     } catch (err) {

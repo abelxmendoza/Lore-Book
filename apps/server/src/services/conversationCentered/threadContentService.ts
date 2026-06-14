@@ -176,6 +176,91 @@ export async function recoverOrphanedChatSessions(userId: string): Promise<numbe
   return recovered;
 }
 
+/** Recover a single orphaned session if chat_messages exist but conversation_sessions row is missing. */
+export async function recoverOrphanSession(userId: string, sessionId: string): Promise<boolean> {
+  const { data: existing } = await supabaseAdmin
+    .from('conversation_sessions')
+    .select('id')
+    .eq('id', sessionId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existing) return false;
+
+  const messages = await loadThreadMessages(userId, sessionId);
+  if (messages.length === 0) return false;
+
+  const firstUser = messages.find((m) => m.role === 'user');
+  const titleSnippet = firstUser?.content?.slice(0, 60)?.trim() || 'Recovered conversation';
+  const now = new Date().toISOString();
+
+  const { error } = await supabaseAdmin.from('conversation_sessions').insert({
+    id: sessionId,
+    user_id: userId,
+    title: titleSnippet.length > 50 ? `${titleSnippet.slice(0, 47)}…` : titleSnippet,
+    started_at: messages[0]?.created_at ?? now,
+    created_at: messages[0]?.created_at ?? now,
+    updated_at: messages[messages.length - 1]?.created_at ?? now,
+    metadata: {
+      recovered: true,
+      messages: messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: m.created_at,
+      })),
+    },
+  });
+
+  return !error;
+}
+
+/** Bump updated_at so entity-linked origin threads surface in the thread list. */
+export async function touchThreadActivity(userId: string, sessionId: string): Promise<void> {
+  await supabaseAdmin
+    .from('conversation_sessions')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', sessionId)
+    .eq('user_id', userId);
+}
+
+export async function getLinkedSessionIds(userId: string): Promise<string[]> {
+  const ids = new Set<string>();
+
+  const { data: characters } = await supabaseAdmin
+    .from('characters')
+    .select('metadata')
+    .eq('user_id', userId)
+    .limit(500);
+
+  for (const row of characters ?? []) {
+    const meta = (row.metadata as Record<string, unknown>) ?? {};
+    const origin = meta.origin_thread_id;
+    if (typeof origin === 'string') ids.add(origin);
+    const threadIds = meta.thread_ids;
+    if (Array.isArray(threadIds)) {
+      for (const id of threadIds) {
+        if (typeof id === 'string') ids.add(id);
+      }
+    }
+  }
+
+  try {
+    const { data: links } = await supabaseAdmin
+      .from('entity_conversation_links')
+      .select('session_id')
+      .eq('user_id', userId)
+      .limit(200);
+    for (const link of links ?? []) {
+      if (typeof link.session_id === 'string') ids.add(link.session_id);
+    }
+  } catch {
+    // Table may not exist until migration is applied
+  }
+
+  return [...ids];
+}
+
 export async function getThreadStatus(userId: string, sessionId: string) {
   const [messages, hasLinks, protectedFlag, linkRows] = await Promise.all([
     loadThreadMessages(userId, sessionId),

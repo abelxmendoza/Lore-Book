@@ -145,9 +145,28 @@ router.get(
 
     if (error) throw error;
 
+    const { getLinkedSessionIds } = await import('../services/conversationCentered/threadContentService');
+    const linkedIds = await getLinkedSessionIds(userId);
+    const existingIds = new Set((threads ?? []).map((t) => t.id));
+    const missingLinked = linkedIds.filter((id) => !existingIds.has(id));
+
+    let extraRows: typeof threads = [];
+    if (missingLinked.length > 0) {
+      const { data: linkedThreads } = await supabaseAdmin
+        .from('conversation_sessions')
+        .select('id, title, updated_at, metadata')
+        .eq('user_id', userId)
+        .in('id', missingLinked.slice(0, 30));
+      extraRows = linkedThreads ?? [];
+    }
+
+    const merged = [...(threads ?? []), ...extraRows].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    );
+
     res.json({
       success: true,
-      threads: (threads || []).map((t) => ({
+      threads: merged.map((t) => ({
         id: t.id,
         title: t.title ?? DRAFT_THREAD_TITLE,
         subtitle: (t.metadata as Record<string, unknown>)?.subtitle as string | undefined,
@@ -405,6 +424,65 @@ router.get(
 );
 
 /**
+ * POST /api/conversation/threads/:id/ensure-visible
+ * Recover orphaned sessions and bump updated_at so origin threads appear in the sidebar.
+ */
+router.post(
+  '/threads/:id/ensure-visible',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { recoverOrphanSession, touchThreadActivity, loadThreadMessages } = await import(
+      '../services/conversationCentered/threadContentService'
+    );
+
+    await recoverOrphanSession(userId, id);
+
+    let { data: thread } = await supabaseAdmin
+      .from('conversation_sessions')
+      .select('id, title, updated_at, metadata')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!thread) {
+      const messages = await loadThreadMessages(userId, id);
+      if (messages.length === 0) {
+        return res.status(404).json({ success: false, error: 'Thread not found' });
+      }
+      await recoverOrphanSession(userId, id);
+      const { data: recovered } = await supabaseAdmin
+        .from('conversation_sessions')
+        .select('id, title, updated_at, metadata')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      thread = recovered;
+    }
+
+    if (!thread) {
+      return res.status(404).json({ success: false, error: 'Thread not found' });
+    }
+
+    await touchThreadActivity(userId, id);
+    const messages = await loadThreadMessages(userId, id);
+
+    res.json({
+      success: true,
+      thread: {
+        id: thread.id,
+        title: thread.title ?? DRAFT_THREAD_TITLE,
+        subtitle: (thread.metadata as Record<string, unknown>)?.subtitle as string | undefined,
+        updatedAt: new Date().toISOString(),
+        metadata: thread.metadata ?? {},
+        messageCount: messages.length,
+      },
+    });
+  })
+);
+
+/**
  * GET /api/conversation/threads/:id/status
  * Whether a thread has recoverable content or is protected from auto-deletion.
  */
@@ -431,19 +509,38 @@ router.get(
     const { id } = req.params;
     const userId = req.user!.id;
 
-    // Verify thread belongs to user
-    const { data: thread } = await supabaseAdmin
+    const { recoverOrphanSession, loadThreadMessages } = await import(
+      '../services/conversationCentered/threadContentService'
+    );
+
+    let { data: thread } = await supabaseAdmin
       .from('conversation_sessions')
-      .select('id')
+      .select('id, title, updated_at, metadata')
       .eq('id', id)
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
     if (!thread) {
-      return res.status(404).json({ error: 'Thread not found' });
+      const recovered = await recoverOrphanSession(userId, id);
+      if (recovered) {
+        const { data: recoveredThread } = await supabaseAdmin
+          .from('conversation_sessions')
+          .select('id, title, updated_at, metadata')
+          .eq('id', id)
+          .eq('user_id', userId)
+          .maybeSingle();
+        thread = recoveredThread;
+      }
     }
 
-    const { loadThreadMessages } = await import('../services/conversationCentered/threadContentService');
+    if (!thread) {
+      const messages = await loadThreadMessages(userId, id);
+      if (messages.length === 0) {
+        return res.status(404).json({ error: 'Thread not found' });
+      }
+      return res.status(404).json({ error: 'Thread not found', recoverable: true });
+    }
+
     const messages = await loadThreadMessages(userId, id);
 
     if (messages.length > 0) {

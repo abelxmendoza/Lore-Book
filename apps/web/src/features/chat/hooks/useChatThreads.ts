@@ -345,6 +345,23 @@ export const useChatThreads = () => {
   const hydrateThreadMessages = useCallback(
     async (id: string): Promise<ChatThread | null> => {
       const existing = threadsRef.current.find((t) => t.id === id);
+      let ensuredMeta: { title?: string; subtitle?: string; updatedAt?: string } = {};
+      try {
+        const ensured = await fetchJson<{
+          success: boolean;
+          thread?: { title?: string; subtitle?: string; updatedAt?: string };
+        }>(`/api/conversation/threads/${id}/ensure-visible`, { method: 'POST' });
+        if (ensured.success && ensured.thread) {
+          ensuredMeta = {
+            title: ensured.thread.title,
+            subtitle: ensured.thread.subtitle,
+            updatedAt: ensured.thread.updatedAt,
+          };
+        }
+      } catch {
+        // Non-fatal — messages fetch may still succeed
+      }
+
       try {
         const result = await fetchJson<{ success: boolean; messages: any[] }>(
           `/api/conversation/threads/${id}/messages`
@@ -357,22 +374,25 @@ export const useChatThreads = () => {
         }
         if (messages.length === 0) return null;
 
-        const updatedAt = messages[messages.length - 1].timestamp.toISOString();
+        const updatedAt =
+          ensuredMeta.updatedAt ??
+          messages[messages.length - 1].timestamp.toISOString();
 
         let hydratedThread: ChatThread | null = null;
         setThreads((prev) => {
           const row = prev.find((t) => t.id === id);
           hydratedThread = {
             id,
-            title: row?.title || existing?.title || 'Restored chat',
-            subtitle: row?.subtitle ?? existing?.subtitle,
+            title: ensuredMeta.title || row?.title || existing?.title || 'Restored chat',
+            subtitle: ensuredMeta.subtitle ?? row?.subtitle ?? existing?.subtitle,
             dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
             messages,
-            updatedAt: row?.updatedAt || existing?.updatedAt || updatedAt,
+            updatedAt: row?.updatedAt && row.updatedAt > updatedAt ? row.updatedAt : updatedAt,
           };
 
           if (row) {
-            return prev.map((t) => (t.id === id ? { ...t, messages, updatedAt: hydratedThread!.updatedAt } : t));
+            const next = prev.map((t) => (t.id === id ? { ...t, ...hydratedThread! } : t));
+            return [next.find((t) => t.id === id)!, ...next.filter((t) => t.id !== id)];
           }
           return [hydratedThread, ...prev];
         });

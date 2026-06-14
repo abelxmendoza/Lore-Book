@@ -18,6 +18,7 @@ import { supabaseAdmin } from '../services/supabaseClient';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
 import { normalizeNameKey, namesOverlapByContainment, splitPersonName } from '../utils/nameNormalization';
+import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { selfCharacterService } from '../services/selfCharacterService';
 import { asyncHandler } from '../utils/asyncHandler';
 
@@ -133,6 +134,7 @@ function uniqueNames(values: Array<string | null | undefined>): string[] {
 function looksLikeNonPersonName(name: string): boolean {
   const normalized = normalizeNameKey(name);
   if (normalized.split(' ').length > 5) return true;
+  if (classifyMentionKind(name).kind !== 'person') return true;
   return NON_PERSON_NAME_PATTERNS.some(pattern => pattern.test(name));
 }
 
@@ -1422,7 +1424,10 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
     const { characterDeletionService } = await import('../services/characterDeletionService');
-    const report = await characterDeletionService.deleteCharacter(userId, String(req.params.id));
+    const redistribute = req.query.redistribute !== 'false';
+    const report = await characterDeletionService.deleteCharacter(userId, String(req.params.id), {
+      redistribute,
+    });
     if (!report) {
       return res.status(404).json({ error: 'Character not found' });
     }

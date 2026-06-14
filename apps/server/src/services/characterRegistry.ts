@@ -31,6 +31,7 @@ import {
   threadUserHistoryReferencesMention,
   type DisambiguationCandidate,
 } from '../utils/disambiguationUtils';
+import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { isCollectivePersonName } from '../utils/personNameValidation';
 
 import { supabaseAdmin } from './supabaseClient';
@@ -125,6 +126,12 @@ class CharacterRegistry {
     if (JUNK_NAMES.has(name.toLowerCase())) return { ok: false, reason: 'junk_word' };
     if (isCollectivePersonName(name)) return { ok: false, reason: 'collective_not_individual' };
     if (NON_PERSON_NAME_PATTERNS.some(pattern => pattern.test(name))) return { ok: false, reason: 'non_person_name' };
+
+    const mentionKind = classifyMentionKind(name, raw);
+    if (mentionKind.kind !== 'person') {
+      return { ok: false, reason: mentionKind.reason ?? mentionKind.kind };
+    }
+
     // More than 5 tokens after cleaning is a sentence fragment, not a name
     if (name.split(' ').length > 5) return { ok: false, reason: 'phrase_not_name' };
 

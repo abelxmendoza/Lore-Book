@@ -17,6 +17,7 @@
 import { v4 as uuid } from 'uuid';
 import { logger } from '../logger';
 import { splitPersonName } from '../utils/nameNormalization';
+import { shouldDeferCharacterPromotion } from '../utils/entityMentionClassifier';
 import { characterRegistry } from './characterRegistry';
 import { supabaseAdmin } from './supabaseClient';
 import type { PeoplePlaceEntity } from '../types';
@@ -393,6 +394,14 @@ class CharacterFoundationService {
     const decision = await characterRegistry.classifyForCreation(userId, entity.primary_name);
     if (decision.action === 'reject') {
       logger.debug({ name: entity.primary_name, reason: decision.reason }, 'Registry rejected character creation (chat)');
+      import('./misclassifiedEntityRouter').then(({ misclassifiedEntityRouter }) => {
+        misclassifiedEntityRouter
+          .routeRejectedMention(userId, entity.primary_name, decision.reason, {
+            omegaEntityId: entity.id,
+            threadId,
+          })
+          .catch(() => {});
+      }).catch(() => {});
       return null;
     }
     if (decision.action === 'merge') {
@@ -414,6 +423,13 @@ class CharacterFoundationService {
       await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, threadId ?? null, decision.rawName);
       return null;
     }
+
+    const mentions = entity.mention_count ?? 1;
+    if (shouldDeferCharacterPromotion(decision.cleanName, mentions)) {
+      logger.debug({ name: entity.primary_name, mentions }, 'Deferring single-token mention to suggestions (not auto-creating character)');
+      return null;
+    }
+
     const cleanedName = decision.cleanName;
 
     const characterId = uuid();
@@ -427,7 +443,6 @@ class CharacterFoundationService {
     // the Mentioned tab until facts confirm a real relationship. Archetype and
     // proximity are NOT guessed here — entityFactsService upgrades them when
     // relationship facts arrive.
-    const mentions = entity.mention_count ?? 1;
     const importanceLevel = mentions >= 6 ? 'major' : mentions >= 3 ? 'supporting' : 'minor';
     const { error } = await supabaseAdmin.from('characters').insert({
       id: characterId,

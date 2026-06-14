@@ -24,13 +24,20 @@ export interface DeletionReport {
   eventsDeleted: number;
   eventsDetached: number;
   omegaEntityDeleted: boolean;
+  redistribution?: {
+    redistributed: boolean;
+    kind: string;
+    omegaEntityId: string | null;
+    factsMigrated: number;
+    claimsCreated: number;
+  };
 }
 
 class CharacterDeletionService {
   async deleteCharacter(
     userId: string,
     characterId: string,
-    opts: { deleteEvents?: boolean } = {}
+    opts: { deleteEvents?: boolean; redistribute?: boolean } = {}
   ): Promise<DeletionReport | null> {
     const { data: character } = await supabaseAdmin
       .from('characters')
@@ -49,6 +56,24 @@ class CharacterDeletionService {
       omegaEntityDeleted: false,
     };
 
+    const shouldRedistribute = opts.redistribute !== false;
+    if (shouldRedistribute) {
+      const { characterMisclassificationRedistributionService } = await import(
+        './characterMisclassificationRedistributionService'
+      );
+      const redistribution = await characterMisclassificationRedistributionService.redistributeBeforeDelete(
+        userId,
+        character as { id: string; name: string; metadata: Record<string, unknown> | null }
+      );
+      report.redistribution = {
+        redistributed: redistribution.redistributed,
+        kind: redistribution.kind,
+        omegaEntityId: redistribution.omegaEntityId,
+        factsMigrated: redistribution.factsMigrated,
+        claimsCreated: redistribution.claimsCreated,
+      };
+    }
+
     const { data: deletedFacts } = await supabaseAdmin
       .from('entity_facts')
       .delete()
@@ -59,6 +84,8 @@ class CharacterDeletionService {
     report.entityFactsDeleted = deletedFacts?.length ?? 0;
 
     const omegaId = (character.metadata as Record<string, any> | null)?.omega_entity_id as string | undefined;
+    const preserveOmega = report.redistribution?.redistributed === true;
+
     if (omegaId) {
       const { data: events } = await supabaseAdmin
         .from('resolved_events')
@@ -67,26 +94,27 @@ class CharacterDeletionService {
         .contains('people', [omegaId]);
 
       for (const ev of (events ?? []) as Array<{ id: string; people: string[] | null }>) {
-        if (opts.deleteEvents) {
-          await supabaseAdmin.from('resolved_events').delete().eq('id', ev.id).eq('user_id', userId);
-          report.eventsDeleted++;
-        } else {
+        if (preserveOmega || !opts.deleteEvents) {
           await supabaseAdmin
             .from('resolved_events')
             .update({ people: (ev.people ?? []).filter(p => p !== omegaId) })
             .eq('id', ev.id)
             .eq('user_id', userId);
           report.eventsDetached++;
+        } else if (opts.deleteEvents) {
+          await supabaseAdmin.from('resolved_events').delete().eq('id', ev.id).eq('user_id', userId);
+          report.eventsDeleted++;
         }
       }
 
-      // omega_claims / omega_relationships / omega_evidence cascade off this
-      const { error: omegaErr } = await supabaseAdmin
-        .from('omega_entities')
-        .delete()
-        .eq('id', omegaId)
-        .eq('user_id', userId);
-      report.omegaEntityDeleted = !omegaErr;
+      if (!preserveOmega) {
+        const { error: omegaErr } = await supabaseAdmin
+          .from('omega_entities')
+          .delete()
+          .eq('id', omegaId)
+          .eq('user_id', userId);
+        report.omegaEntityDeleted = !omegaErr;
+      }
     }
 
     const { error } = await supabaseAdmin
