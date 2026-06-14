@@ -332,7 +332,15 @@ export const CharacterProfileCard = ({
           )}
           <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
           <div className="relative z-10">
-            <CharacterAvatar url={character.avatar_url} name={character.name} size={28} className="sm:w-9 sm:h-9" />
+            <CharacterAvatar
+              url={character.avatar_url}
+              characterId={character.id}
+              archetype={character.archetype}
+              role={character.role}
+              name={character.name}
+              size={28}
+              className="sm:w-9 sm:h-9"
+            />
           </div>
           {/* Consolidated badge — one primary signal + overflow count */}
           {(() => {

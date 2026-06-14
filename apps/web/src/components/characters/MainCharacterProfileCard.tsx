@@ -162,6 +162,9 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
         <div className="relative flex sm:flex-col items-center justify-center gap-3 sm:w-36 md:w-44 px-4 py-4 sm:py-6 bg-gradient-to-br from-amber-500/15 via-primary/10 to-purple-600/10 border-b sm:border-b-0 sm:border-r border-amber-500/20">
           <CharacterAvatar
             url={avatarUrl}
+            characterId={character.id}
+            archetype={character.archetype}
+            role={character.role}
             name={displayName}
             size={56}
             className="sm:w-16 sm:h-16 ring-2 ring-amber-400/50 ring-offset-2 ring-offset-black/80"

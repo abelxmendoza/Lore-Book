@@ -31,6 +31,7 @@ import { DetectedCharacterSuggestions } from './DetectedCharacterSuggestions';
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
+import { CharacterAvatar } from './CharacterAvatar';
 
 // ── Demo filter-field normalization ──────────────────────────────────────────
 // Every category tab (proximity, mentioned, etc.) must have matches in demo
@@ -3051,10 +3052,15 @@ export const CharacterBook = () => {
                     className="flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 hover:border-white/20 transition-all w-28 text-center"
                     title={displayName}
                   >
-                    <div className="w-9 h-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-xs font-bold text-primary overflow-hidden">
-                      {c.avatar_url
-                        ? <img src={c.avatar_url} alt={displayName} className="w-full h-full object-cover" />
-                        : displayName.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                    <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
+                      <CharacterAvatar
+                        url={c.avatar_url}
+                        characterId={c.id}
+                        archetype={c.archetype}
+                        role={c.role}
+                        name={displayName}
+                        size={36}
+                      />
                     </div>
                     <span className="text-[10px] text-white/80 leading-tight line-clamp-2 w-full">{displayName}</span>
                     <span className={`flex items-center gap-0.5 text-[9px] ${phase.cls}`}>
@@ -3469,10 +3475,15 @@ export const CharacterBook = () => {
                   </span>
                 )}
                 {/* Avatar */}
-                <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/25 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0 overflow-hidden">
-                  {c.avatar_url
-                    ? <img src={c.avatar_url} alt={c.name} className="w-full h-full object-cover" />
-                    : c.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+                  <CharacterAvatar
+                    url={c.avatar_url}
+                    characterId={c.id}
+                    archetype={c.archetype}
+                    role={c.role}
+                    name={c.name}
+                    size={32}
+                  />
                 </div>
 
                 {/* Name + role */}

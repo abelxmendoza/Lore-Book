@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { Heart, User } from 'lucide-react';
+import { CharacterAvatar } from '../characters/CharacterAvatar';
 import type { FamilyMember, FamilyTree } from '../../types/socialRoles';
 
 interface FamilyTreeViewProps {
@@ -159,16 +160,18 @@ const PersonNode = ({
       title={`${member.name}${member.kinship_title && member.name.trim().toLowerCase() !== member.kinship_title.toLowerCase() ? ` (${member.kinship_title})` : ''} — ${member.relation_label}`}
     >
       <div className={`rounded-full border-2 ${borderCls} ${sideCls} ${closenessCls} overflow-hidden flex items-center justify-center transition-transform group-hover:scale-105 ${compact ? 'w-10 h-10' : 'w-12 h-12 sm:w-14 sm:h-14'}`}>
-        {member.avatar_url ? (
-          <img src={member.avatar_url} alt={member.name} className="w-full h-full object-cover" />
-        ) : member.is_self ? (
+        {member.is_self ? (
           <User className={`${compact ? 'h-5 w-5' : 'h-6 w-6'} text-primary`} />
         ) : member.is_placeholder ? (
           <User className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} text-white/35`} />
         ) : (
-          <span className={`font-bold text-white/70 ${compact ? 'text-xs' : 'text-sm'}`}>
-            {member.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-          </span>
+          <CharacterAvatar
+            url={member.avatar_url}
+            characterId={member.id}
+            name={member.name}
+            size={compact ? 40 : 56}
+            className="w-full h-full border-0"
+          />
         )}
       </div>
       <div className="text-center max-w-[86px]">

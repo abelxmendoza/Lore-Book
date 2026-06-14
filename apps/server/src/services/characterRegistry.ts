@@ -540,7 +540,9 @@ class CharacterRegistry {
       const displayName = sameNameExists ? this.qualifiedName(mention, (q.raw_text as string | null) ?? mention) : mention;
 
       const { v4: uuid } = await import('uuid');
+      const { assignCharacterAvatar } = await import('./characterAvatarService');
       createdCharacterId = uuid();
+      const avatarUrl = await assignCharacterAvatar(createdCharacterId);
       await supabaseAdmin.from('characters').insert({
         id: createdCharacterId,
         user_id: userId,
@@ -550,6 +552,7 @@ class CharacterRegistry {
         tags: [],
         importance_level: 'minor',
         relationship_depth: 'mentioned_only',
+        avatar_url: avatarUrl,
         metadata: { generated_by: 'user_clarification', generated_at: now, mention_count: 1 },
       });
     }

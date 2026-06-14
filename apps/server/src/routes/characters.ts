@@ -17,6 +17,7 @@ import { peoplePlacesService } from '../services/peoplePlacesService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
+import { displayAvatarUrl, backfillMissingAvatars } from '../services/characterAvatarService';
 import { normalizeNameKey, namesOverlapByContainment, splitPersonName } from '../utils/nameNormalization';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { selfCharacterService } from '../services/selfCharacterService';
@@ -965,7 +966,7 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
           first_appearance: char.first_appearance,
           summary: char.summary,
           tags: char.tags || [],
-          avatar_url: char.avatar_url || null,
+          avatar_url: displayAvatarUrl(char),
           social_media: social_media || undefined,
           metadata: metadata,
           created_at: char.created_at,
@@ -1018,6 +1019,10 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
 
         return characterData;
       }));
+
+      void backfillMissingAvatars(req.user!.id, charactersData, 25).catch((err) => {
+        logger.debug({ err }, 'Avatar backfill failed (non-blocking)');
+      });
 
       return res.json({ characters: charactersWithStats });
     }
@@ -1243,7 +1248,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       first_appearance: character.first_appearance,
       summary: character.summary,
       tags: character.tags || [],
-      avatar_url: character.avatar_url || null,
+      avatar_url: displayAvatarUrl(character),
       social_media: social_media || undefined,
       metadata: metadata,
       created_at: character.created_at,

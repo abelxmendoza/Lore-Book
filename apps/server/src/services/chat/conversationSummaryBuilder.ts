@@ -63,7 +63,17 @@ async function findMentionedCharacterNames(
     }
   }
 
-  return found.sort((a, b) => b.length - a.length);
+  // Dedupe by normalized name (capitalized-phrase pass can re-add same person)
+  const unique: string[] = [];
+  const finalSeen = new Set<string>();
+  for (const name of found) {
+    const key = normalizeNameKey(name);
+    if (finalSeen.has(key)) continue;
+    finalSeen.add(key);
+    unique.push(name);
+  }
+
+  return unique.sort((a, b) => b.length - a.length);
 }
 
 function extractPlaceHints(text: string): string[] {

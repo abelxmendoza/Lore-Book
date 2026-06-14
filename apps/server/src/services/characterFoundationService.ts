@@ -19,6 +19,7 @@ import { logger } from '../logger';
 import { splitPersonName } from '../utils/nameNormalization';
 import { shouldDeferCharacterPromotion } from '../utils/entityMentionClassifier';
 import { characterRegistry } from './characterRegistry';
+import { assignCharacterAvatar } from './characterAvatarService';
 import { supabaseAdmin } from './supabaseClient';
 import type { PeoplePlaceEntity } from '../types';
 
@@ -36,6 +37,7 @@ type CharacterRow = {
   first_appearance: string | null;
   metadata: Record<string, unknown>;
   tags: string[];
+  avatar_url?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -156,6 +158,7 @@ class CharacterFoundationService {
       : null;
 
     const { firstName, lastName } = parseNameParts(cleanedName);
+    const avatarUrl = await assignCharacterAvatar(characterId, { archetype: entity.type === 'person' ? 'human' : null });
     const character: CharacterRow = {
       id: characterId,
       user_id: userId,
@@ -164,6 +167,7 @@ class CharacterFoundationService {
       status: 'active',
       first_appearance: firstAppearance,
       tags: [],
+      avatar_url: avatarUrl,
       metadata: {
         source_entity_id: entity.id,
         mention_count: entity.total_mentions,
@@ -209,6 +213,7 @@ class CharacterFoundationService {
         alias: mergedAliases.length > 0 ? mergedAliases : null,
         first_appearance: firstAppearance,
         updated_at: new Date().toISOString(),
+        ...(existing.avatar_url ? {} : { avatar_url: await assignCharacterAvatar(existing.id) }),
         metadata: {
           ...(existing.metadata ?? {}),
           source_entity_id: entity.id,
@@ -444,6 +449,7 @@ class CharacterFoundationService {
     // proximity are NOT guessed here — entityFactsService upgrades them when
     // relationship facts arrive.
     const importanceLevel = mentions >= 6 ? 'major' : mentions >= 3 ? 'supporting' : 'minor';
+    const avatarUrl = await assignCharacterAvatar(characterId);
     const { error } = await supabaseAdmin.from('characters').insert({
       id: characterId,
       user_id: userId,
@@ -455,6 +461,7 @@ class CharacterFoundationService {
       last_name: lastName || null,
       importance_level: importanceLevel,
       relationship_depth: 'mentioned_only',
+      avatar_url: avatarUrl,
       metadata: {
         omega_entity_id: entity.id,
         mention_count: mentions,

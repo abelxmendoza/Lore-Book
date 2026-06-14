@@ -1835,6 +1835,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     <div className={`ring-2 ${ringColor} rounded-full`}>
                       <CharacterAvatar
                         url={editedCharacter.avatar_url}
+                        characterId={editedCharacter.id}
+                        archetype={editedCharacter.archetype}
+                        role={editedCharacter.role}
                         name={editedCharacter.name}
                         size={48}
                         className="sm:w-16 sm:h-16"
