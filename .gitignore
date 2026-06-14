@@ -61,6 +61,11 @@ vite.config.js
 .parcel-cache/
 .vercel
 
+# Local dev session tokens (never commit)
+.lk_session.json
+.lk_session.clean.json
+.lk_err.txt
+
 # Build / test / accidental artifacts in app roots
 # (empty files or launcher junk: often from scripts/tests writing to cwd with wrong path)
 apps/server/POST
