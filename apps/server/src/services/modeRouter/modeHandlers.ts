@@ -37,7 +37,7 @@ class ModeHandlers {
         return await this.handleEmotionalExistential(userId, message);
       
       case 'MEMORY_RECALL':
-        return await this.handleMemoryRecall(userId, message);
+        return await this.handleMemoryRecall(userId, message, options?.conversationHistory);
       
       case 'NARRATIVE_RECALL':
         return await this.handleNarrativeRecall(userId, message);
@@ -139,13 +139,32 @@ class ModeHandlers {
 
   /**
    * Mode 2: Memory Recall (Factual)
-   * Hard rule: If it doesn't know, say exactly that.
+   * Foundation lore first when the query matches structured recall patterns.
    */
   private async handleMemoryRecall(
     userId: string,
-    message: string
+    message: string,
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<ModeHandlerResponse> {
     try {
+      const { matchesFoundationRecallQuery } = await import('../chat/recallIntentPatterns');
+      if (matchesFoundationRecallQuery(message)) {
+        const { executeExplicitRecall } = await import('../chat/explicitRecallService');
+        const foundation = await executeExplicitRecall(
+          userId,
+          message,
+          conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? []
+        );
+        if (foundation.response_mode !== 'SILENCE') {
+          return {
+            content: foundation.content,
+            response_mode: foundation.response_mode,
+            confidence: foundation.confidence,
+            metadata: foundation.metadata,
+          };
+        }
+      }
+
       const { memoryRecallEngine } = await import('../memoryRecall/memoryRecallEngine');
       
       const recallResult = await memoryRecallEngine.executeRecall({

@@ -67,7 +67,30 @@ export class ConversationalOrchestrationService {
         }
       );
 
-      // ---- RECALL GATE: Check if this is a recall query ----
+      // ---- RECALL GATE: Foundation lore before journal vector search ----
+      const { matchesFoundationRecallQuery } = await import('./chat/recallIntentPatterns');
+      if (matchesFoundationRecallQuery(message)) {
+        const { executeExplicitRecall } = await import('./chat/explicitRecallService');
+        const foundation = await executeExplicitRecall(userId, message, []);
+        if (foundation.response_mode !== 'SILENCE') {
+          await this.saveMessage(
+            userId,
+            session.session_id,
+            'assistant',
+            foundation.content,
+            foundation.response_mode,
+            undefined,
+            foundation.confidence
+          );
+          return {
+            content: foundation.content,
+            response_mode: foundation.response_mode as ChatResponse['response_mode'],
+            confidence: foundation.confidence,
+            metadata: foundation.metadata,
+          };
+        }
+      }
+
       if (isRecallQuery(message)) {
         const forcedPersona = shouldForceArchivist(message) ? 'ARCHIVIST' : undefined;
 

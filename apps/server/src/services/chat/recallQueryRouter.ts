@@ -22,12 +22,15 @@ import {
   FAMILY_RECALL_RE,
   FAMILY_KIN_TERM_RE,
   ENTITY_PREFIX_RE,
+  CONVERSATION_RECALL_RE,
+  WHO_IS_RE,
   matchesEntityQuery,
   TEMPORAL_RE,
   THREAD_RE,
   LOCATION_RE,
   WORK_RE,
 } from './recallIntentPatterns';
+import { buildConversationSummaryWithRosterFallback } from './conversationSummaryBuilder';
 
 async function loadKnownEntities(userId: string): Promise<Map<string, { id: string; type: string }>> {
   const { data } = await supabaseAdmin
@@ -49,8 +52,10 @@ function extractEntityNameFromQuery(message: string): string | null {
   const m = message.trim().match(ENTITY_PREFIX_RE);
   if (!m || m.index === undefined) return null;
   const rest = message.slice(m.index + m[0].length).trim();
-  const name = rest.split(/[\s,?!.]+/)[0] ?? '';
-  if (!name || !/^[A-Z]/.test(name)) return null;
+  // Multi-word proper names: "Ashley De La Cruz", "Tío Juan"
+  const nameMatch = rest.match(/^([A-ZÁÉÍÓÚÑ][\w.'-]+(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|T[ií]o|T[ií]a)\s+[A-ZÁÉÍÓÚÑ][\w.'-]+)*)/);
+  const name = nameMatch?.[1]?.replace(/[?!.,]+$/, '').trim() ?? rest.split(/[\s,?!.]+/)[0] ?? '';
+  if (!name || !/^[A-ZÁÉÍÓÚÑ]/.test(name)) return null;
   return name;
 }
 
@@ -206,6 +211,7 @@ export type RecallIntent =
   | 'location'
   | 'work'
   | 'thread'
+  | 'conversation'
   | 'general';
 
 export type RecallResult = {
@@ -223,6 +229,17 @@ export async function routeRecallQuery(
   conversationHistory: Array<{ role: string; content: string }> = []
 ): Promise<RecallResult> {
   const knownEntities = await loadKnownEntities(userId);
+
+  if (CONVERSATION_RECALL_RE.test(message) && conversationHistory.length > 0) {
+    const block = await buildConversationSummaryWithRosterFallback(userId, conversationHistory);
+    return {
+      intent: 'conversation',
+      entityName: null,
+      contextBlock: block,
+      confidence: 0.95,
+      foundationPrimary: true,
+    };
+  }
 
   if (THREAD_RE.test(message) && conversationHistory.length > 0) {
     const recent = conversationHistory
@@ -302,15 +319,18 @@ export async function routeRecallQuery(
   }
 
   const mentionedEntity = await detectMentionedEntityName(message, userId, knownEntities);
-  if (mentionedEntity) {
-    const block = await fetchEntityContext(userId, mentionedEntity);
-    return {
-      intent: 'entity',
-      entityName: mentionedEntity,
-      contextBlock: block,
-      confidence: 0.95,
-      foundationPrimary: true,
-    };
+  if (mentionedEntity || (WHO_IS_RE.test(message) && matchesEntityQuery(message))) {
+    const entityName = mentionedEntity ?? extractEntityNameFromQuery(message);
+    if (entityName) {
+      const block = await fetchEntityContext(userId, entityName);
+      return {
+        intent: 'entity',
+        entityName,
+        contextBlock: block,
+        confidence: block.includes('No character record') ? 0.35 : 0.95,
+        foundationPrimary: true,
+      };
+    }
   }
 
   if (TEMPORAL_RE.test(message)) {

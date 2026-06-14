@@ -7,6 +7,7 @@
  */
 
 import { supabaseAdmin } from '../supabaseClient';
+import { normalizeNameKey } from '../../utils/nameNormalization';
 
 const FAMILY_REL_RE =
   /family|parent|child|sibling|spouse|cousin|mother|father|brother|sister|grand|in-law|partner|wife|husband|grandmother|grandfather|abuela|abuelo|aunt|uncle|niece|nephew/i;
@@ -35,6 +36,8 @@ export type EntityProfile = {
     date: string | null;
     summary: string | null;
   }>;
+  facts: string[];
+  romanticSummary: string | null;
 };
 
 type CharacterRow = {
@@ -207,15 +210,35 @@ export async function resolveCharacterByName(
   userId: string,
   name: string
 ): Promise<CharacterRow | null> {
-  const lower = name.toLowerCase().trim();
+  const lower = normalizeNameKey(name);
   const chars = await loadCharacters(userId);
-  return (
+
+  const exact =
     chars.find(
       (c) =>
-        c.name.toLowerCase() === lower ||
-        (c.alias ?? []).some((a) => a.toLowerCase() === lower)
-    ) ?? null
-  );
+        normalizeNameKey(c.name) === lower ||
+        (c.alias ?? []).some((a) => normalizeNameKey(a) === lower)
+    ) ?? null;
+  if (exact) return exact;
+
+  if (lower.length >= 3) {
+    const partial = chars.find((c) => {
+      const cn = normalizeNameKey(c.name);
+      return cn.includes(lower) || lower.includes(cn);
+    });
+    if (partial) return partial;
+
+    const tokens = lower.split(' ').filter(Boolean);
+    if (tokens.length >= 2) {
+      const byTokens = chars.find((c) => {
+        const cn = normalizeNameKey(c.name);
+        return tokens.every((t) => cn.includes(t));
+      });
+      if (byTokens) return byTokens;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -232,13 +255,43 @@ export async function fetchEntityProfile(userId: string, entityName: string): Pr
   ]);
   const self = findSelfCharacter(selfChars);
 
-  const { data: events } = await supabaseAdmin
-    .from('character_timeline_events')
-    .select('event_title, event_type, event_date, event_summary')
-    .eq('user_id', userId)
-    .eq('character_id', char.id)
-    .order('event_date', { ascending: true })
-    .limit(8);
+  const [{ data: events }, { data: facts }, { data: romantic }] = await Promise.all([
+    supabaseAdmin
+      .from('character_timeline_events')
+      .select('event_title, event_type, event_date, event_summary')
+      .eq('user_id', userId)
+      .eq('character_id', char.id)
+      .order('event_date', { ascending: true })
+      .limit(8),
+    supabaseAdmin
+      .from('entity_facts')
+      .select('fact, confidence')
+      .eq('user_id', userId)
+      .eq('entity_type', 'character')
+      .eq('entity_id', char.id)
+      .eq('status', 'active')
+      .order('confidence', { ascending: false })
+      .limit(8),
+    supabaseAdmin
+      .from('romantic_relationships')
+      .select('relationship_type, status, start_date, end_date, is_current, metadata')
+      .eq('user_id', userId)
+      .eq('person_id', char.id)
+      .eq('person_type', 'character')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  let romanticSummary: string | null = null;
+  if (romantic?.relationship_type) {
+    const type = String(romantic.relationship_type).replace(/_/g, ' ');
+    const status = romantic.status ? ` (${romantic.status})` : '';
+    romanticSummary = `${type}${status}`;
+    const meta = romantic.metadata as Record<string, unknown> | null;
+    const note = typeof meta?.summary === 'string' ? meta.summary : null;
+    if (note) romanticSummary += ` — ${note}`;
+  }
 
   return {
     characterId: char.id,
@@ -252,6 +305,8 @@ export async function fetchEntityProfile(userId: string, entityName: string): Pr
       date: ev.event_date,
       summary: ev.event_summary,
     })),
+    facts: (facts ?? []).map((f) => f.fact as string),
+    romanticSummary,
   };
 }
 
@@ -297,9 +352,17 @@ export function formatEntityProfileForChat(profile: EntityProfile): string {
   const lines: string[] = [`**${profile.name}**`];
   if (profile.aliases.length) lines.push(`Also known as: ${profile.aliases.join(', ')}`);
   if (profile.relationshipToUser) lines.push(`Relationship: ${profile.relationshipToUser}`);
+  if (profile.romanticSummary) lines.push(`Romantic: ${profile.romanticSummary}`);
   lines.push(
     `${profile.memoryCount} linked ${profile.memoryCount === 1 ? 'memory' : 'memories'} across your story`
   );
+
+  if (profile.facts.length) {
+    lines.push('', 'What I know:');
+    for (const fact of profile.facts.slice(0, 6)) {
+      lines.push(`• ${fact}`);
+    }
+  }
 
   if (profile.timelineEvents.length) {
     lines.push('', 'Timeline:');

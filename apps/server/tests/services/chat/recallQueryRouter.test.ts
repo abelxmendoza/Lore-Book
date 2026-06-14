@@ -120,6 +120,52 @@ describe('Sprint AF — foundation recall', () => {
     expect(text).toContain('2 memories');
     expect(text).toContain('1 timeline event');
   });
+
+  it('routes "Who is Ashley De La Cruz?" to entity profile', async () => {
+    tableResults = {
+      ...tableResults,
+      characters: {
+        data: [
+          ...CHARACTERS,
+          { id: 'c4', name: 'Ashley De La Cruz', alias: ['Ashley'], metadata: {} },
+        ],
+        error: null,
+      },
+      entity_facts: {
+        data: [
+          { fact: 'Met after Club Metro in DTLA', confidence: 0.9 },
+          { fact: 'Spent the night together', confidence: 0.85 },
+          { fact: 'Age 19', confidence: 0.8 },
+        ],
+        error: null,
+      },
+      romantic_relationships: {
+        data: { relationship_type: 'one_night_stand', status: 'ended', metadata: {} },
+        error: null,
+      },
+    };
+
+    const result = await routeRecallQuery('user-1', 'Who is Ashley De La Cruz?');
+    expect(result.intent).toBe('entity');
+    expect(result.entityName).toMatch(/Ashley/i);
+    expect(result.foundationPrimary).toBe(true);
+    expect(result.contextBlock).toContain('Ashley');
+  });
+
+  it('routes conversation recap without journal fallback flag', async () => {
+    const history = [
+      { role: 'user', content: 'Ashley De La Cruz was 19. We met after Club Metro in DTLA.' },
+      { role: 'assistant', content: 'Got it — I will remember Ashley.' },
+    ];
+    const result = await routeRecallQuery(
+      'user-1',
+      'What else did I say in this conversation?',
+      history
+    );
+    expect(result.intent).toBe('conversation');
+    expect(result.foundationPrimary).toBe(true);
+    expect(result.contextBlock).not.toContain('Relevant past entries');
+  });
 });
 
 describe('routeRecallQuery — character list intent (Sprint H fix)', () => {

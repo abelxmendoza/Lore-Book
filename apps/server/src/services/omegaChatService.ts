@@ -645,8 +645,29 @@ class OmegaChatService {
       // Fall through to existing chat flow
     }
 
-    // ---- RECALL GATE: Check if this is a recall query (non-streaming, immediate response) ----
+    // ---- RECALL GATE: Foundation lore before journal vector search ----
     try {
+      const { matchesFoundationRecallQuery } = await import('./chat/recallIntentPatterns');
+      if (matchesFoundationRecallQuery(message)) {
+        const { executeExplicitRecall } = await import('./chat/explicitRecallService');
+        const foundation = await executeExplicitRecall(
+          userId,
+          message,
+          conversationHistory.map((m) => ({ role: m.role, content: m.content }))
+        );
+        if (foundation.response_mode !== 'SILENCE') {
+          return formatModeResponse(
+            {
+              content: foundation.content,
+              response_mode: foundation.response_mode,
+              confidence: foundation.confidence,
+              metadata: foundation.metadata,
+            },
+            'FOUNDATION_RECALL'
+          );
+        }
+      }
+
       const { isRecallQuery, shouldForceArchivist } = await import('./memoryRecall/recallDetector');
       if (isRecallQuery(message)) {
         const { memoryRecallEngine } = await import('./memoryRecall/memoryRecallEngine');

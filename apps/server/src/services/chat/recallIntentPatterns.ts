@@ -15,16 +15,19 @@ export const FAMILY_KIN_TERM_RE =
   /\b(tell me about my (grandmother|grandfather|grandma|grandpa|mother|father|brother|sister|cousin|relatives)|my (grandmother|grandfather|grandma|grandpa|relatives))\b/i;
 
 const ENTITY_PREFIX_RE =
-  /\b(tell me about|what do you know about|what happened with|remember about|recall)\s+(?!my family|myself|me\b)/i;
+  /\b(tell me about|what do you know about|what happened with|remember about|recall|who (?:is|was))\s+(?!my family|myself|me\b|the characters|the people)\b/i;
+
+export { ENTITY_PREFIX_RE };
 
 /** True when message asks about a specific named person (capitalized proper noun). */
 export function matchesEntityQuery(message: string): boolean {
   const m = message.trim().match(ENTITY_PREFIX_RE);
   if (!m || m.index === undefined) return false;
   const rest = message.slice(m.index + m[0].length).trim();
-  const name = rest.split(/[\s,?!.]+/)[0] ?? '';
+  const nameMatch = rest.match(/^([A-ZÁÉÍÓÚÑ][\w.'-]+(?:\s+(?:de|del|la|los|las|y|van|von|di|da|le|el|the|a|an|T[ií]o|T[ií]a)\s+[A-ZÁÉÍÓÚÑ][\w.'-]+)*)/);
+  const name = nameMatch?.[1]?.replace(/[?!.,]+$/, '').trim() ?? rest.split(/[\s,?!.]+/)[0] ?? '';
   if (!name || /^(that|the|this|a|an|it|everything|anything)$/i.test(name)) return false;
-  return /^[A-Z]/.test(name);
+  return /^[A-ZÁÉÍÓÚÑ]/.test(name);
 }
 
 export const ENTITY_QUERY_RE = ENTITY_PREFIX_RE;
@@ -34,6 +37,12 @@ export const TEMPORAL_RE =
 
 export const THREAD_RE =
   /\b(earlier|this conversation|what we (discussed|talked|were talking)|remember what i (said|told)|in this (chat|thread))\b/i;
+
+/** User wants a structured recap of the current thread — not vector journal search. */
+export const CONVERSATION_RECALL_RE =
+  /\b(what else did i (say|tell|mention)|what did i (say|tell|mention) (in|during|about) (this|the|our) (conversation|chat|thread)|what else (did )?i tell you (in )?(this )?(conversation|chat|thread)|what (else )?(have|did) i (say|tell|share|mention) (in |during )?(this |the |our )?(conversation|chat|thread)|in this conversation what (did|have) i)\b/i;
+
+export const WHO_IS_RE = /\bwho (?:is|was|are|were)\b/i;
 
 export const LOCATION_RE =
   /\b(where (do|did) i live|where.s my (home|house|place)|where am i from|my (address|location|city|neighborhood))\b/i;
@@ -51,12 +60,17 @@ export function matchesFoundationRecallQuery(message: string): boolean {
   if (FAMILY_KIN_TERM_RE.test(text)) return true;
   if (LOCATION_RE.test(text)) return true;
   if (WORK_RE.test(text)) return true;
+  if (TEMPORAL_RE.test(text)) return true;
+  if (CONVERSATION_RECALL_RE.test(text)) return true;
+  if (THREAD_RE.test(text)) return true;
   if (matchesEntityQuery(text)) return true;
+  if (WHO_IS_RE.test(text)) return true;
   return false;
 }
 
 export type SyncRecallIntent =
   | 'character_list'
+  | 'character_roster'
   | 'family'
   | 'biography'
   | 'entity'
@@ -64,11 +78,13 @@ export type SyncRecallIntent =
   | 'work'
   | 'temporal'
   | 'thread'
+  | 'conversation'
   | null;
 
 export function detectSyncRecallIntent(message: string): SyncRecallIntent {
+  if (CONVERSATION_RECALL_RE.test(message)) return 'conversation';
   if (THREAD_RE.test(message)) return 'thread';
-  if (CHARACTER_LIST_RE.test(message)) return 'character_list';
+  if (CHARACTER_LIST_RE.test(message)) return 'character_roster';
   if (FAMILY_RECALL_RE.test(message) || FAMILY_KIN_TERM_RE.test(message)) return 'family';
   if (BIOGRAPHY_RE.test(message)) return 'biography';
   if (LOCATION_RE.test(message)) return 'location';
@@ -80,5 +96,17 @@ export function detectSyncRecallIntent(message: string): SyncRecallIntent {
 
 /** Foundation intents must not fall back to raw journal snippets. */
 export function isFoundationPrimaryIntent(intent: string): boolean {
-  return ['character_list', 'family', 'entity', 'relationship_summary'].includes(intent);
+  return [
+    'character_list',
+    'character_roster',
+    'family',
+    'entity',
+    'relationship_summary',
+    'biography',
+    'temporal',
+    'conversation',
+    'thread',
+    'location',
+    'work',
+  ].includes(intent);
 }

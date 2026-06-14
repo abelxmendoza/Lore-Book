@@ -117,7 +117,7 @@ function formatFoundationForChat(routed: RoutedRecall): string {
     return block;
   }
 
-  if (routed.intent === 'entity') {
+  if (routed.intent === 'entity' || routed.intent === 'conversation') {
     return block;
   }
 
