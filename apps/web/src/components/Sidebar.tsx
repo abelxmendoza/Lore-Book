@@ -148,7 +148,7 @@ const SidebarContent = ({
           <button
             type="button"
             onClick={() => handleSurfaceChange('events')}
-            aria-label="Open memories view"
+            aria-label="Open life log"
             aria-current={activeSurface === 'events' ? 'page' : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
@@ -158,7 +158,7 @@ const SidebarContent = ({
             )}
           >
             <Calendar className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Memories</span>
+            <span className="flex-1 text-left">Life Log</span>
             {counts && counts.events > 0 && (
               <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.events}</span>
             )}
@@ -166,7 +166,7 @@ const SidebarContent = ({
           <button
             type="button"
             onClick={() => handleSurfaceChange('search')}
-            aria-label="Open all entries"
+            aria-label="Open universal search"
             aria-current={activeSurface === 'search' ? 'page' : undefined}
             className={cn(
               "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ml-3",
@@ -176,7 +176,7 @@ const SidebarContent = ({
             )}
           >
             <BookOpen className="h-3.5 w-3.5 text-primary/70 shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">All Entries</span>
+            <span className="flex-1 text-left">Search</span>
           </button>
           <button
             type="button"

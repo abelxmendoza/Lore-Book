@@ -1,6 +1,11 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { skillDetailsExtractionService, type SkillMetadata } from './skillDetailsExtractionService';
+import {
+  buildSkillInsertPayload,
+  getSkillsDbSchema,
+  normalizeSkillRow,
+} from './skillSchemaAdapter';
 
 function isTableMissingError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
@@ -39,6 +44,7 @@ export interface CreateSkillInput {
   description?: string;
   auto_detected?: boolean;
   confidence_score?: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface UpdateSkillInput {
@@ -132,32 +138,21 @@ class SkillService {
    */
   async createSkill(userId: string, input: CreateSkillInput): Promise<Skill> {
     try {
-      const now = new Date().toISOString();
-      
+      const schema = await getSkillsDbSchema();
+      const payload = buildSkillInsertPayload(schema, userId, input);
+
       const { data, error } = await supabaseAdmin
         .from('skills')
-        .insert({
-          user_id: userId,
-          skill_name: input.skill_name,
-          skill_category: input.skill_category,
-          description: input.description || null,
-          auto_detected: input.auto_detected ?? false,
-          confidence_score: input.confidence_score ?? 0.5,
-          first_mentioned_at: now,
-          current_level: 1,
-          total_xp: 0,
-          xp_to_next_level: this.BASE_XP_PER_LEVEL,
-          is_active: true
-        })
+        .insert(payload)
         .select()
         .single();
 
       if (error) {
-        logger.error({ error, userId, input }, 'Failed to create skill');
+        logger.error({ error, userId, input, schema }, 'Failed to create skill');
         throw error;
       }
 
-      return data as Skill;
+      return normalizeSkillRow(data as Record<string, unknown>);
     } catch (error) {
       logger.error({ error, userId, input }, 'Failed to create skill');
       throw error;
@@ -169,18 +164,18 @@ class SkillService {
    */
   async getSkills(userId: string, filters?: { active_only?: boolean; category?: SkillCategory }): Promise<Skill[]> {
     try {
+      const schema = await getSkillsDbSchema();
       let query = supabaseAdmin
         .from('skills')
         .select('*')
-        .eq('user_id', userId)
-        .order('total_xp', { ascending: false });
+        .eq('user_id', userId);
 
-      if (filters?.active_only) {
-        query = query.eq('is_active', true);
-      }
-
-      if (filters?.category) {
-        query = query.eq('skill_category', filters.category);
+      if (schema === 'modern') {
+        query = query.order('total_xp', { ascending: false });
+        if (filters?.active_only) query = query.eq('is_active', true);
+        if (filters?.category) query = query.eq('skill_category', filters.category);
+      } else {
+        query = query.order('updated_at', { ascending: false });
       }
 
       const { data, error } = await query;
@@ -194,7 +189,12 @@ class SkillService {
         throw error;
       }
 
-      return (data || []) as Skill[];
+      let skills = (data || []).map((row) => normalizeSkillRow(row as Record<string, unknown>));
+      if (schema === 'legacy') {
+        if (filters?.active_only) skills = skills.filter((s) => s.is_active);
+        if (filters?.category) skills = skills.filter((s) => s.skill_category === filters.category);
+      }
+      return skills;
     } catch (error) {
       if (isTableMissingError(error)) {
         logger.warn({ userId }, 'skills table missing, returning empty list');
@@ -223,7 +223,7 @@ class SkillService {
         throw error;
       }
 
-      return data as Skill;
+      return normalizeSkillRow(data as Record<string, unknown>);
     } catch (error) {
       logger.error({ error, userId, skillId }, 'Failed to get skill');
       throw error;
@@ -235,12 +235,24 @@ class SkillService {
    */
   async updateSkill(userId: string, skillId: string, input: UpdateSkillInput): Promise<Skill> {
     try {
+      const schema = await getSkillsDbSchema();
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+      if (schema === 'legacy') {
+        if (input.skill_name !== undefined) patch.name = input.skill_name;
+        if (input.skill_category !== undefined) patch.category = input.skill_category;
+        if (input.description !== undefined) patch.description = input.description;
+        if (input.is_active !== undefined) {
+          const existing = await this.getSkill(userId, skillId);
+          patch.metadata = { ...(existing?.metadata ?? {}), is_active: input.is_active };
+        }
+      } else {
+        Object.assign(patch, input);
+      }
+
       const { data, error } = await supabaseAdmin
         .from('skills')
-        .update({
-          ...input,
-          updated_at: new Date().toISOString()
-        })
+        .update(patch)
         .eq('id', skillId)
         .eq('user_id', userId)
         .select()
@@ -251,7 +263,7 @@ class SkillService {
         throw error;
       }
 
-      return data as Skill;
+      return normalizeSkillRow(data as Record<string, unknown>);
     } catch (error) {
       logger.error({ error, userId, skillId, input }, 'Failed to update skill');
       throw error;
@@ -275,6 +287,7 @@ class SkillService {
         throw new Error('Skill not found');
       }
 
+      const schema = await getSkillsDbSchema();
       const levelBefore = skill.current_level;
       const newTotalXP = skill.total_xp + xpAmount;
       const newLevel = this.calculateLevelFromXP(newTotalXP);
@@ -283,20 +296,35 @@ class SkillService {
       // Calculate XP needed for next level
       const currentLevelXP = this.calculateXPForLevel(newLevel);
       const nextLevelXP = this.calculateXPForLevel(newLevel + 1);
-      const xpInCurrentLevel = newTotalXP - currentLevelXP;
       const xpToNextLevel = nextLevelXP - newTotalXP;
+      const now = new Date().toISOString();
+
+      const updatePayload =
+        schema === 'legacy'
+          ? {
+              metadata: {
+                ...(skill.metadata ?? {}),
+                total_xp: newTotalXP,
+                current_level: newLevel,
+                xp_to_next_level: Math.max(0, xpToNextLevel),
+                practice_count: skill.practice_count + 1,
+                last_practiced_at: now,
+              },
+              updated_at: now,
+            }
+          : {
+              total_xp: newTotalXP,
+              current_level: newLevel,
+              xp_to_next_level: Math.max(0, xpToNextLevel),
+              last_practiced_at: now,
+              practice_count: skill.practice_count + 1,
+              updated_at: now,
+            };
 
       // Update skill
       const { data: updatedSkill, error: updateError } = await supabaseAdmin
         .from('skills')
-        .update({
-          total_xp: newTotalXP,
-          current_level: newLevel,
-          xp_to_next_level: Math.max(0, xpToNextLevel),
-          last_practiced_at: new Date().toISOString(),
-          practice_count: skill.practice_count + 1,
-          updated_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .eq('id', skillId)
         .eq('user_id', userId)
         .select()
@@ -323,7 +351,7 @@ class SkillService {
         });
 
       return {
-        skill: updatedSkill as Skill,
+        skill: normalizeSkillRow(updatedSkill as Record<string, unknown>),
         leveledUp,
         newLevel: leveledUp ? newLevel : undefined
       };
@@ -500,6 +528,78 @@ class SkillService {
     } catch (error) {
       logger.error({ error, userId, skillId, updates }, 'Failed to update skill details');
       throw error;
+    }
+  }
+
+  /** Merge skill_profile (and other metadata keys) onto an existing skill row. */
+  async updateSkillMetadata(
+    userId: string,
+    skillId: string,
+    patch: Record<string, unknown>
+  ): Promise<Skill> {
+    const skill = await this.getSkill(userId, skillId);
+    if (!skill) throw new Error('Skill not found');
+
+    const metadata = { ...(skill.metadata ?? {}), ...patch };
+    const { data, error } = await supabaseAdmin
+      .from('skills')
+      .update({ metadata, updated_at: new Date().toISOString() })
+      .eq('id', skillId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      logger.error({ error, userId, skillId }, 'Failed to update skill metadata');
+      throw error;
+    }
+    return data as Skill;
+  }
+
+  /** Record a usage event and bump practice stats when table exists. */
+  async recordUsageEvent(
+    userId: string,
+    skillId: string,
+    opts: { context?: string; source_message_id?: string; enjoyment?: number }
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const skill = await this.getSkill(userId, skillId);
+    if (!skill) return;
+
+    const schema = await getSkillsDbSchema();
+    const usagePatch =
+      schema === 'legacy'
+        ? {
+            metadata: {
+              ...(skill.metadata ?? {}),
+              last_practiced_at: now,
+              practice_count: (skill.practice_count ?? 0) + 1,
+            },
+            updated_at: now,
+          }
+        : {
+            last_practiced_at: now,
+            practice_count: (skill.practice_count ?? 0) + 1,
+            updated_at: now,
+          };
+
+    await supabaseAdmin
+      .from('skills')
+      .update(usagePatch)
+      .eq('id', skillId)
+      .eq('user_id', userId);
+
+    const { error } = await supabaseAdmin.from('skill_usage_events').insert({
+      user_id: userId,
+      skill_id: skillId,
+      used_at: now,
+      context: opts.context ?? null,
+      source_message_id: opts.source_message_id ?? null,
+      enjoyment: opts.enjoyment ?? null,
+    });
+
+    if (error && !isTableMissingError(error)) {
+      logger.debug({ error, userId, skillId }, 'skill_usage_events insert failed');
     }
   }
 }

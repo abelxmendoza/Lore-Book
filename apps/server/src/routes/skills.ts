@@ -5,6 +5,8 @@ import { logger } from '../logger';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { skillExtractionService } from '../services/skills/skillExtractionService';
 import { skillService } from '../services/skills/skillService';
+import { skillSuggestionService } from '../services/skills/skillSuggestionService';
+import { skillRelationshipService } from '../services/skills/skillRelationshipService';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
@@ -31,66 +33,186 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 /**
- * Get detected skill SUGGESTIONS — skills found in recent chats + journal that
- * the user does NOT already track. Detection only (nothing is created); the user
- * chooses which to add. Must be registered before /:skillId.
+ * Get detected skill SUGGESTIONS — pending rows from DB. Full story scan only when
+ * ?rescan=true or on first visit (no suggestion rows yet).
  */
 router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
+    const rescan = req.query.rescan === 'true';
 
-    const [entriesRes, messagesRes, existing] = await Promise.all([
-      supabaseAdmin
-        .from('journal_entries')
-        .select('content, date')
-        .eq('user_id', userId)
-        .order('date', { ascending: false })
-        .limit(30),
-      supabaseAdmin
-        .from('chat_messages')
-        .select('content, created_at')
-        .eq('user_id', userId)
-        .eq('role', 'user')
-        .order('created_at', { ascending: false })
-        .limit(50),
+    const [existing, pending, everScanned] = await Promise.all([
       skillService.getSkills(userId, { active_only: false }),
+      skillSuggestionService.getPendingSuggestions(userId),
+      skillSuggestionService.hasAnySuggestions(userId),
     ]);
 
-    const haveNames = new Set(existing.map(s => s.skill_name.toLowerCase()));
+    const haveNames = new Set(existing.map((s) => s.skill_name.toLowerCase()));
 
-    // Combine recent chat + journal into one bounded blob for extraction.
-    const combined = [
-      ...((messagesRes.data as Array<{ content: string }> | null) ?? []).map(m => m.content),
-      ...((entriesRes.data as Array<{ content: string }> | null) ?? []).map(e => e.content),
-    ]
-      .filter(c => c?.trim())
-      .join('\n')
-      .slice(0, 9000);
+    const shouldScan = rescan || (!everScanned && pending.length === 0);
 
-    if (!combined.trim()) {
-      res.json({ suggestions: [], count: 0 });
-      return;
+    if (shouldScan) {
+      const [entriesRes, messagesRes] = await Promise.all([
+        supabaseAdmin
+          .from('journal_entries')
+          .select('content, date')
+          .eq('user_id', userId)
+          .order('date', { ascending: false })
+          .limit(30),
+        supabaseAdmin
+          .from('chat_messages')
+          .select('content, created_at')
+          .eq('user_id', userId)
+          .eq('role', 'user')
+          .order('created_at', { ascending: false })
+          .limit(50),
+      ]);
+
+      const combined = [
+        ...((messagesRes.data as Array<{ content: string }> | null) ?? []).map((m) => m.content),
+        ...((entriesRes.data as Array<{ content: string }> | null) ?? []).map((e) => e.content),
+      ]
+        .filter((c) => c?.trim())
+        .join('\n')
+        .slice(0, 12000);
+
+      if (combined.trim()) {
+        const detected = await skillExtractionService.extractSkillsFromEntry(userId, 'suggestions-scan', combined);
+        for (const s of detected) {
+          if (!s.skill_name?.trim() || haveNames.has(s.skill_name.toLowerCase())) continue;
+          await skillSuggestionService.upsertFromExtraction(userId, s, { source: 'llm_scan' });
+        }
+        await skillRelationshipService.resolvePendingParentLinks(userId);
+      }
     }
 
-    const detected = await skillExtractionService.extractSkillsFromEntry(userId, 'suggestions', combined);
+    const freshPending = shouldScan
+      ? await skillSuggestionService.getPendingSuggestions(userId)
+      : pending;
 
-    // Only suggest skills the user doesn't already have; de-dupe + rank by confidence.
-    const seen = new Set<string>();
-    const suggestions = detected
-      .filter(s => s.skill_name?.trim() && !haveNames.has(s.skill_name.toLowerCase()))
-      .filter(s => {
-        const k = s.skill_name.toLowerCase();
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      })
-      .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
+    const suggestions = freshPending
+      .filter((row) => !haveNames.has(row.skill_name.toLowerCase()))
+      .map((row) => ({
+        id: row.id,
+        skill_name: row.skill_name,
+        skill_category: row.skill_category,
+        skill_type: row.skill_type,
+        monetization: row.monetization,
+        proficiency: row.proficiency,
+        confidence: row.confidence,
+        enjoyment: row.enjoyment,
+        usage_frequency: row.usage_frequency,
+        trajectory: row.trajectory,
+        description: row.description,
+        origin_story: row.origin_story,
+        first_learned_context: row.first_learned_context,
+        related_jobs: row.related_jobs,
+        related_projects: row.related_projects,
+        parent_skill_name: row.parent_skill_name,
+        related_skill_names: row.related_skill_names,
+        evidence: row.evidence,
+        source: row.source ?? 'chat',
+      }))
+      .sort((a, b) => Number(b.confidence ?? 0) - Number(a.confidence ?? 0))
       .slice(0, 12);
 
-    res.json({ suggestions, count: suggestions.length });
+    res.json({ suggestions, count: suggestions.length, scanned: shouldScan });
   } catch (error) {
     logger.error({ err: error }, 'Failed to get skill suggestions');
     res.status(500).json({ error: 'Failed to get skill suggestions' });
+  }
+});
+
+router.post('/suggestions/materialize', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const schema = z.object({
+      skill_name: z.string().min(1).max(100),
+      skill_category: z.enum(['professional', 'creative', 'physical', 'social', 'intellectual', 'emotional', 'practical', 'artistic', 'technical', 'other']),
+      skill_type: z.string().optional(),
+      monetization: z.string().optional(),
+      proficiency: z.number().optional(),
+      confidence: z.number().min(0).max(1).optional(),
+      enjoyment: z.number().optional(),
+      usage_frequency: z.string().optional(),
+      trajectory: z.string().optional(),
+      description: z.string().optional(),
+      origin_story: z.string().optional(),
+      first_learned_context: z.string().optional(),
+      related_jobs: z.array(z.string()).optional(),
+      related_projects: z.array(z.string()).optional(),
+      parent_skill_name: z.string().optional(),
+      related_skill_names: z.array(z.string()).optional(),
+      evidence: z.array(z.union([z.string(), z.object({ text: z.string() })])).optional(),
+      suggestion_id: z.string().uuid().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid suggestion data', details: parsed.error.flatten() });
+    }
+    const d = parsed.data;
+    const skill = await skillSuggestionService.materializeSkill(userId, {
+      skill_name: d.skill_name,
+      skill_category: d.skill_category,
+      skill_type: d.skill_type,
+      monetization: d.monetization,
+      proficiency: d.proficiency,
+      confidence: d.confidence,
+      enjoyment: d.enjoyment,
+      usage_frequency: d.usage_frequency,
+      trajectory: d.trajectory,
+      description: d.description,
+      origin_story: d.origin_story,
+      first_learned_context: d.first_learned_context,
+      related_jobs: d.related_jobs,
+      related_projects: d.related_projects,
+      parent_skill_name: d.parent_skill_name,
+      related_skill_names: d.related_skill_names,
+      evidence: d.evidence,
+      suggestionId: d.suggestion_id,
+      source: 'suggestion',
+    });
+    res.json({ skill });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to materialize skill');
+    res.status(400).json({ error: 'Failed to add skill' });
+  }
+});
+
+router.post('/suggestions/reject-by-name', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { skill_name } = req.body as { skill_name?: string };
+    if (!skill_name?.trim()) {
+      return res.status(400).json({ error: 'skill_name is required' });
+    }
+    await skillSuggestionService.rejectByName(userId, skill_name);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to reject skill by name');
+    res.status(400).json({ error: 'Failed to dismiss suggestion' });
+  }
+});
+
+router.post('/suggestions/:id/confirm', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const skill = await skillSuggestionService.confirmSuggestion(userId, req.params.id);
+    res.json({ skill });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to confirm skill suggestion');
+    res.status(400).json({ error: 'Failed to confirm skill suggestion' });
+  }
+});
+
+router.post('/suggestions/:id/reject', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    await skillSuggestionService.rejectSuggestion(userId, req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to reject skill suggestion');
+    res.status(400).json({ error: 'Failed to reject skill suggestion' });
   }
 });
 
@@ -125,7 +247,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       skill_category: z.enum(['professional', 'creative', 'physical', 'social', 'intellectual', 'emotional', 'practical', 'artistic', 'technical', 'other']),
       description: z.string().optional(),
       auto_detected: z.boolean().optional(),
-      confidence_score: z.number().min(0).max(1).optional()
+      confidence_score: z.number().min(0).max(1).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
     });
 
     const parsed = schema.safeParse(req.body);

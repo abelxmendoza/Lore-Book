@@ -26,8 +26,8 @@ async function getUserRole(userId: string): Promise<UserRole> {
       return 'standard_user';
     }
 
-    // Email-based fallback — only if ADMIN_EMAIL env var is explicitly set.
-    const adminEmail = process.env.ADMIN_EMAIL;
+    // Email-based fallback — ADMIN_EMAIL env var (Railway / .env.production).
+    const adminEmail = config.adminEmail;
     if (adminEmail && userData.user.email?.toLowerCase() === adminEmail.toLowerCase()) {
       return 'admin';
     }

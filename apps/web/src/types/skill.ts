@@ -98,6 +98,7 @@ export interface Skill {
   is_active: boolean;
   metadata: Record<string, unknown> & {
     skill_details?: SkillMetadata;
+    skill_profile?: import('../lib/skillProfile').SkillProfile;
   };
   created_at: string;
   updated_at: string;
@@ -109,6 +110,7 @@ export interface CreateSkillInput {
   description?: string;
   auto_detected?: boolean;
   confidence_score?: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface UpdateSkillInput {

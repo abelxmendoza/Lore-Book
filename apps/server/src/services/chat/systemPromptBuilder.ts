@@ -30,6 +30,7 @@ export function buildSystemPrompt(
     workoutEvents?: any[];
     recentBiometrics?: any[];
     topInterests?: any[];
+    confirmedSkills?: Array<{ id: string; name: string; category: string; skill_key?: string }>;
     recentInterpretations?: any[];
     stableArcs?: any[];
     episodicEvents?: any[];
@@ -697,6 +698,10 @@ ${loreData.recentBiometrics.slice(0, 5).map((bio: any) => {
 When discussing workouts or fitness, reference their workout history, progress, and goals. Help them understand their progress, suggest improvements, and celebrate achievements.
 
 ` : ''}
+
+${loreData?.confirmedSkills && loreData.confirmedSkills.length > 0 ? `**CONFIRMED SKILLS (indexed by id — reference these when user mentions capabilities):**
+${loreData.confirmedSkills.slice(0, 20).map((s) => `- [skill:${s.id}] ${s.name} (${s.category})`).join('\n')}
+When the user mentions a skill above, tie your reply to their tracked skill card by name. Do not invent skills not listed unless they are clearly new.` : ''}
 
 ${loreData?.topInterests && loreData.topInterests.length > 0 ? `**INTERESTS & PASSIONS (${loreData.topInterests.length} tracked):**
 ${loreData.topInterests.slice(0, 20).map((interest: any) => {

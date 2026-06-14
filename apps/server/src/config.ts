@@ -69,6 +69,7 @@ type EnvConfig = {
   apiEnv: 'dev' | 'staging' | 'production';
   enableExperimental: boolean;
   adminUserId?: string;
+  adminEmail?: string;
 };
 
 const apiEnv = (process.env.API_ENV ?? 'dev') as 'dev' | 'staging' | 'production';
@@ -100,7 +101,8 @@ export const config: EnvConfig = {
   freeTierAiLimit: Number(process.env.FREE_TIER_AI_LIMIT ?? 100),
   apiEnv,
   enableExperimental,
-  adminUserId: process.env.ADMIN_USER_ID
+  adminUserId: process.env.ADMIN_USER_ID,
+  adminEmail: process.env.ADMIN_EMAIL,
 };
 
 export const assertConfig = () => {

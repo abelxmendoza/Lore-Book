@@ -52,6 +52,16 @@ function dbRowToThread(t: any): ChatThread {
   };
 }
 
+function dbMessageToMessage(row: any): Message {
+  return {
+    id: row.id,
+    role: row.role === 'assistant' ? 'assistant' : 'user',
+    content: row.content ?? '',
+    timestamp: row.created_at ? new Date(row.created_at) : new Date(),
+    ...(row.metadata ? { metadata: row.metadata } : {}),
+  };
+}
+
 const STALE_EMPTY_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /** Returns false for threads that are permanently broken: no messages and not recently created. */
@@ -301,6 +311,47 @@ export const useChatThreads = () => {
     [threads]
   );
 
+  const hydrateThreadMessages = useCallback(
+    async (id: string): Promise<ChatThread | null> => {
+      try {
+        const result = await fetchJson<{ success: boolean; messages: any[] }>(
+          `/api/conversation/threads/${id}/messages`
+        );
+        if (!result.success) return null;
+
+        const messages = (result.messages || []).map(dbMessageToMessage);
+        const updatedAt = messages.length > 0
+          ? messages[messages.length - 1].timestamp.toISOString()
+          : new Date().toISOString();
+
+        let hydratedThread: ChatThread | null = null;
+        setThreads((prev) => {
+          const existing = prev.find((t) => t.id === id);
+          hydratedThread = {
+            id,
+            title: existing?.title || 'Restored chat',
+            subtitle: existing?.subtitle,
+            dominantEntities: existing?.dominantEntities,
+            messages,
+            updatedAt: existing?.updatedAt || updatedAt,
+          };
+
+          if (existing) {
+            return prev.map((t) => (t.id === id ? { ...t, messages } : t));
+          }
+          return [hydratedThread, ...prev];
+        });
+
+        return hydratedThread;
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        runtimeDiagnostics.record('backend_load_error', { threadId: id, meta: { op: 'hydrate_thread_messages', error: errMsg } });
+        return null;
+      }
+    },
+    []
+  );
+
   const switchThread = useCallback(
     (id: string) => {
       setCurrentThreadIdState(id);
@@ -458,6 +509,7 @@ export const useChatThreads = () => {
     setCurrentThreadId,
     createThread,
     getThread,
+    hydrateThreadMessages,
     switchThread,
     updateThread,
     renameThread,

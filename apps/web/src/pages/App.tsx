@@ -10,7 +10,6 @@ import { AuthGate } from '../components/AuthGate';
 import { SkipLink } from '../components/SkipLink';
 import { AgentPanel } from '../components/AgentPanel';
 import { CreateChapterModal } from '../components/CreateChapterModal';
-import { MemoryExplorer } from '../components/memory-explorer/MemoryExplorer';
 import { TimelineSearch } from '../components/search/TimelineSearch';
 import { Sidebar } from '../components/Sidebar';
 import { Button } from '../components/ui/button';
@@ -193,12 +192,9 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel p-4 sm:p-6">
         <div className="mb-4">
           <h2 className="text-xl sm:text-2xl font-semibold mb-2">Universal Timeline Search</h2>
-          <p className="text-xs sm:text-sm text-white/60">Search across people, places, skills, jobs, projects, eras, and more</p>
+          <p className="text-xs sm:text-sm text-white/60">Search across people, places, skills, jobs, projects, eras, and more. Use Life Log for browsing memories and events.</p>
         </div>
         <TimelineSearch />
-      </div>
-      <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-20rem)] sm:h-[calc(100vh-24rem)]">
-        <MemoryExplorer />
       </div>
     </div>
   );
@@ -211,14 +207,14 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       home: 'Home',
       chat: 'Chat',
       timeline: 'Omni Timeline',
-      search: 'Memory Explorer',
+      search: 'Search',
       characters: 'Characters',
       locations: 'Locations',
       memoir: 'Biography Editor',
       lorebook: 'Lorebooks',
       photos: 'Photo Album',
       perceptions: 'Perceptions',
-      events: 'Events',
+      events: 'Life Log',
       entities: 'Entities',
       organizations: 'Organizations',
       skills: 'Skills',
@@ -332,7 +328,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                             <PhotoAlbum />
                           </div>
                         )}
-                        {/* 'memories' surface removed - use 'search' for Memory Explorer */}
+                        {/* Memories now live inside the Life Log surface. */}
                         {activeSurface === 'perceptions' && (
                           <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
                             <PerceptionsView showCreateButton={true} />

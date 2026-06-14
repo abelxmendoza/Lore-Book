@@ -15,13 +15,28 @@ import { SkillProfileCard } from './SkillProfileCard';
 import { SkillDetailModal } from './SkillDetailModal';
 import { DetectedSkillSuggestions } from './DetectedSkillSuggestions';
 import { skillsApi } from '../../api/skills';
-import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { useMockData } from '../../contexts/MockDataContext';
 import type { Skill, SkillCategory } from '../../types/skill';
+import { readSkillProfile } from '../../lib/skillProfile';
 import { format, subDays } from 'date-fns';
 
 const ITEMS_PER_PAGE = 12; // Fixed at 12 per page
 
-type SkillCategoryFilter = 'all' | SkillCategory | 'recent' | 'high_level' | 'low_level' | 'active' | 'inactive';
+type SkillCategoryFilter =
+  | 'all'
+  | SkillCategory
+  | 'recent'
+  | 'high_level'
+  | 'low_level'
+  | 'active'
+  | 'inactive'
+  | 'auto_detected'
+  | 'paid'
+  | 'hobby'
+  | 'improving'
+  | 'high_proficiency'
+  | 'physical_type'
+  | 'technical_type';
 type SortOption = 'name_asc' | 'name_desc' | 'level_desc' | 'level_asc' | 'xp_desc' | 'xp_asc' | 'practice_desc' | 'practice_asc' | 'recent';
 
 // Generate mock skills for demonstration
@@ -59,14 +74,50 @@ const generateMockSkills = (): Skill[] => {
       current_level: level,
       total_xp: Math.floor(totalXP),
       xp_to_next_level: Math.floor(xpToNext),
-      description: Math.random() > 0.5 ? `Skill description for ${skillNames[i % skillNames.length]}` : null,
+      description: i < 3
+        ? ['Building LoreBook in React and Supabase', '6-0 amateur Muay Thai record', 'Line cook experience at fast-casual restaurants'][i]
+        : Math.random() > 0.5 ? `Skill description for ${skillNames[i % skillNames.length]}` : null,
       first_mentioned_at: firstMentioned.toISOString(),
       last_practiced_at: lastPracticed?.toISOString() || null,
       practice_count: Math.floor(Math.random() * 50) + 1,
-      auto_detected: Math.random() > 0.3,
+      auto_detected: i < 5,
       confidence_score: Math.random() * 0.3 + 0.7,
       is_active: Math.random() > 0.2,
-      metadata: {},
+      metadata: i === 0 ? {
+        skill_profile: {
+          skill_type: 'technical',
+          monetization: 'paid',
+          proficiency: 72,
+          enjoyment: 78,
+          usage_frequency: 'daily',
+          trajectory: 'improving',
+          origin_story: 'Learned through CS projects; now building LoreBook frontend',
+          related_projects: ['LoreBook'],
+          evidence: [{ text: 'Building LoreBook in React and Supabase' }],
+        },
+      } : i === 1 ? {
+        skill_profile: {
+          skill_type: 'physical',
+          monetization: 'potentially_paid',
+          proficiency: 68,
+          enjoyment: 90,
+          usage_frequency: 'weekly',
+          trajectory: 'improving',
+          origin_story: 'Training for discipline and competition',
+          evidence: [{ text: '6-0 in Muay Thai' }],
+        },
+      } : i === 2 ? {
+        skill_profile: {
+          skill_type: 'professional',
+          monetization: 'paid',
+          proficiency: 75,
+          enjoyment: 55,
+          usage_frequency: 'rarely',
+          trajectory: 'stagnant',
+          origin_story: 'Worked line cook at Chipotle and El Pollo Loco',
+          related_jobs: ['Chipotle', 'El Pollo Loco'],
+        },
+      } : {},
       created_at: firstMentioned.toISOString(),
       updated_at: lastPracticed?.toISOString() || firstMentioned.toISOString(),
     });
@@ -86,7 +137,8 @@ export const SkillsBook: React.FC = () => {
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortOption>('name_asc');
-  const [showFilters, setShowFilters] = useState(false);
+  const [filterProficiencyMin, setFilterProficiencyMin] = useState(0);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [filterLevelMin, setFilterLevelMin] = useState(1);
   const [filterLevelMax, setFilterLevelMax] = useState(20);
   const [filterConfidenceMin, setFilterConfidenceMin] = useState(0);
@@ -95,7 +147,7 @@ export const SkillsBook: React.FC = () => {
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
-  const isMockDataEnabled = useShouldUseMockData();
+  const { useMockData: isMockDataEnabled } = useMockData();
 
   useEffect(() => {
     void loadSkills();
@@ -131,7 +183,21 @@ export const SkillsBook: React.FC = () => {
       categoryCounts.set(skill.skill_category, (categoryCounts.get(skill.skill_category) || 0) + 1);
     });
 
-    const categories: SkillCategoryFilter[] = ['all', 'recent', 'high_level', 'low_level', 'active', 'inactive'];
+    const categories: SkillCategoryFilter[] = [
+      'all',
+      'recent',
+      'active',
+      'inactive',
+      'auto_detected',
+      'paid',
+      'hobby',
+      'improving',
+      'high_proficiency',
+      'high_level',
+      'low_level',
+      'physical_type',
+      'technical_type',
+    ];
     
     // Add actual skill categories that exist
     const skillCategories: SkillCategory[] = ['professional', 'creative', 'physical', 'social', 'intellectual', 'emotional', 'practical', 'artistic', 'technical', 'other'];
@@ -147,13 +213,14 @@ export const SkillsBook: React.FC = () => {
   const filteredSkills = useMemo(() => {
     let filtered = [...skills];
 
-    // Filter by category
     if (activeCategory !== 'all') {
       filtered = filtered.filter(skill => {
+        const profile = readSkillProfile(skill.metadata);
         switch (activeCategory) {
-          case 'recent':
+          case 'recent': {
             const thirtyDaysAgo = subDays(new Date(), 30);
             return skill.last_practiced_at && new Date(skill.last_practiced_at) >= thirtyDaysAgo;
+          }
           case 'high_level':
             return skill.current_level >= 5;
           case 'low_level':
@@ -162,34 +229,56 @@ export const SkillsBook: React.FC = () => {
             return skill.is_active;
           case 'inactive':
             return !skill.is_active;
+          case 'auto_detected':
+            return skill.auto_detected;
+          case 'paid':
+            return profile?.monetization === 'paid' || profile?.monetization === 'potentially_paid';
+          case 'hobby':
+            return profile?.monetization === 'hobby_only' || profile?.skill_type === 'hobby';
+          case 'improving':
+            return profile?.trajectory === 'improving';
+          case 'high_proficiency':
+            return (profile?.proficiency ?? 0) >= 70;
+          case 'physical_type':
+            return profile?.skill_type === 'physical' || skill.skill_category === 'physical';
+          case 'technical_type':
+            return profile?.skill_type === 'technical' || skill.skill_category === 'technical';
           default:
             return skill.skill_category === activeCategory;
         }
       });
     }
 
-    // Filter by search term
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(skill =>
-        skill.skill_name.toLowerCase().includes(term) ||
-        skill.description?.toLowerCase().includes(term) ||
-        skill.skill_category.toLowerCase().includes(term)
-      );
+      filtered = filtered.filter(skill => {
+        const profile = readSkillProfile(skill.metadata);
+        return (
+          skill.skill_name.toLowerCase().includes(term) ||
+          skill.description?.toLowerCase().includes(term) ||
+          skill.skill_category.toLowerCase().includes(term) ||
+          profile?.origin_story?.toLowerCase().includes(term) ||
+          profile?.related_projects?.some(p => p.toLowerCase().includes(term)) ||
+          profile?.related_jobs?.some(j => j.toLowerCase().includes(term))
+        );
+      });
     }
 
-    // Filter by level range
     filtered = filtered.filter(skill =>
       skill.current_level >= filterLevelMin && skill.current_level <= filterLevelMax
     );
 
-    // Filter by confidence range
     filtered = filtered.filter(skill =>
       skill.confidence_score >= filterConfidenceMin && skill.confidence_score <= filterConfidenceMax
     );
 
+    filtered = filtered.filter(skill => {
+      const prof = readSkillProfile(skill.metadata)?.proficiency ?? 0;
+      return prof >= filterProficiencyMin;
+    });
+
     return filtered;
-  }, [skills, activeCategory, searchTerm, filterLevelMin, filterLevelMax, filterConfidenceMin, filterConfidenceMax]);
+  }, [skills, activeCategory, searchTerm, filterLevelMin, filterLevelMax, filterConfidenceMin, filterConfidenceMax, filterProficiencyMin]);
 
   const sortedSkills = useMemo(() => {
     const sorted = [...filteredSkills];
@@ -379,7 +468,11 @@ export const SkillsBook: React.FC = () => {
         </div>
 
         {/* Detected skill suggestions — pulled from your chats + journal */}
-        <DetectedSkillSuggestions onSkillAdded={() => void loadSkills()} />
+        <DetectedSkillSuggestions
+          demoMode={isMockDataEnabled}
+          existingSkillNames={skills.map(s => s.skill_name)}
+          onSkillAdded={() => void loadSkills()}
+        />
 
         {/* Search and Filters */}
         <Card className="bg-black/40 border-white/10">
@@ -416,6 +509,15 @@ export const SkillsBook: React.FC = () => {
                       <X className="h-4 w-4" />
                     </Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowAdvancedFilters(v => !v)}
+                    className={`h-8 w-8 p-0 ${showAdvancedFilters ? 'text-primary' : 'text-white/50'}`}
+                    title="Advanced filters"
+                  >
+                    <SlidersHorizontal className="h-4 w-4" />
+                  </Button>
                 </div>
 
                 {/* Autocomplete Suggestions Dropdown — mobile responsive: full width, touch-friendly items, scrollable */}
@@ -487,7 +589,7 @@ export const SkillsBook: React.FC = () => {
                 )}
               </div>
 
-              {showFilters && (
+              {showAdvancedFilters && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-white/10">
                   <div>
                     <label className="text-xs text-white/60 mb-1 block">Level Range</label>
@@ -534,6 +636,17 @@ export const SkillsBook: React.FC = () => {
                         className="bg-black/40 border-white/20 text-white"
                       />
                     </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-white/60 mb-1 block">Min Proficiency %</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={filterProficiencyMin}
+                      onChange={(e) => setFilterProficiencyMin(parseInt(e.target.value) || 0)}
+                      className="bg-black/40 border-white/20 text-white"
+                    />
                   </div>
                 </div>
               )}

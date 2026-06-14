@@ -45,6 +45,7 @@ import { interestTracker } from './interestTracker';
 // import { memoryReviewQueueService } from '../memoryReviewQueueService';
 import type { Message, Utterance, ExtractedUnit, NormalizationResult } from '../../types/conversationCentered';
 import { questExtractor } from '../quests/questExtractor';
+import { skillExtractionService } from '../skills/skillExtractionService';
 import { questService } from '../quests/questService';
 import { ingestConversationER } from '../unifiedErIngestion';
 import { eventCandidateService } from '../eventCandidates/eventCandidateService';
@@ -52,6 +53,7 @@ import { narrativeContinuityService } from '../narrativeContinuityService';
 import { groupCandidateService } from '../groupCandidateService';
 import { shadowModeOrchestrator } from '../ingestion/shadowMode';
 import { hybridExtractor } from './hybridExtractor';
+import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
 
 /**
  * Main ingestion pipeline for conversation messages
@@ -404,16 +406,20 @@ export class ConversationIngestionPipeline {
     originalText: string
   ): Promise<Array<{
     timestamp: Date;
+    endTimestamp?: Date;
     precision: import('../timeEngine').TimePrecision;
     confidence: number;
     originalText?: string;
+    label?: string;
   }>> {
     const { timeEngine } = await import('../timeEngine');
     const references: Array<{
       timestamp: Date;
+      endTimestamp?: Date;
       precision: import('../timeEngine').TimePrecision;
       confidence: number;
       originalText?: string;
+      label?: string;
     }> = [];
 
     // Look for temporal expressions in the text
@@ -448,6 +454,29 @@ export class ConversationIngestionPipeline {
       }
     }
 
+    const anchor = resolveAllTemporalAnchors(originalText || normalizedText, new Date());
+    if (anchor) {
+      const mappedPrecision: import('../timeEngine').TimePrecision =
+        anchor.precision === 'hour'
+          ? 'hour'
+          : anchor.precision === 'day'
+            ? 'day'
+            : anchor.precision === 'month'
+              ? 'month'
+              : anchor.precision === 'year'
+                ? 'year'
+                : 'day';
+
+      references.push({
+        timestamp: anchor.start,
+        endTimestamp: anchor.end,
+        precision: mappedPrecision,
+        confidence: anchor.confidence,
+        originalText: anchor.label,
+        label: anchor.label,
+      });
+    }
+
     // If no patterns found but text suggests real-time (present tense, "just happened", etc.)
     if (references.length === 0) {
       const presentTenseIndicators = /\b(just|recently|now|currently|happening|happened|occurred)\b/gi;
@@ -461,7 +490,7 @@ export class ConversationIngestionPipeline {
       }
     }
 
-    return references;
+    return references.sort((a, b) => b.confidence - a.confidence);
   }
 
   /**
@@ -1182,9 +1211,11 @@ export class ConversationIngestionPipeline {
                 temporalContext = {
                   ...temporalContext,
                   start_time: temporalRefs[0].timestamp.toISOString(),
+                  ...(temporalRefs[0].endTimestamp ? { end_time: temporalRefs[0].endTimestamp.toISOString() } : {}),
                   precision: temporalRefs[0].precision,
                   confidence: temporalRefs[0].confidence,
-                  original_text: temporalRefs[0].originalText
+                  original_text: temporalRefs[0].originalText,
+                  label: temporalRefs[0].label,
                 };
               } else {
                 // Default to current time for real-time chat
@@ -1250,9 +1281,11 @@ export class ConversationIngestionPipeline {
                 temporalContext = {
                   ...temporalContext,
                   start_time: temporalRefs[0].timestamp.toISOString(),
+                  ...(temporalRefs[0].endTimestamp ? { end_time: temporalRefs[0].endTimestamp.toISOString() } : {}),
                   precision: temporalRefs[0].precision,
                   confidence: temporalRefs[0].confidence,
-                  original_text: temporalRefs[0].originalText
+                  original_text: temporalRefs[0].originalText,
+                  label: temporalRefs[0].label,
                 };
               } else {
                 // Default to current time for real-time chat
@@ -1913,6 +1946,18 @@ export class ConversationIngestionPipeline {
             logger.warn({ err, userId, messageId }, 'Progress update extraction failed (non-blocking)');
           });
 
+        // 12.12.2b: Detect skills from chat → pending suggestions (user confirms in Skills book)
+        skillExtractionService
+          .processChatMessageForSkillSuggestions(userId, messageId, rawText)
+          .then((count) => {
+            if (count > 0) {
+              logger.debug({ userId, messageId, count }, 'Queued skill suggestions from chat');
+            }
+          })
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Skill suggestion extraction failed (non-blocking)');
+          });
+
         // 12.12.3: Detect life changes and handle conflicting quests
         questExtractor
           .detectLifeChanges(userId, rawText, conversationHistory)
@@ -2100,4 +2145,3 @@ export class ConversationIngestionPipeline {
     }
   }
 }
-

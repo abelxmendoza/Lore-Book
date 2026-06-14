@@ -18,7 +18,23 @@ const isDevelopment = () => process.env.NODE_ENV === 'development' ||
 
 // More lenient rate limits in development
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const getMaxRequests = () => isDevelopment() ? 10000 : 100; // Much higher limit in dev
+const DEFAULT_ANONYMOUS_MAX = 100;
+const AUTHENTICATED_READ_MAX = 1200;
+const AUTHENTICATED_WRITE_MAX = 300;
+
+const getMaxRequests = (req: Request) => {
+  if (isDevelopment()) return 10000;
+
+  const isAuthenticated = Boolean((req as any).user?.id);
+  if (!isAuthenticated) return DEFAULT_ANONYMOUS_MAX;
+
+  const method = req.method.toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return AUTHENTICATED_READ_MAX;
+  }
+
+  return AUTHENTICATED_WRITE_MAX;
+};
 
 // Factory for endpoint-specific rate limiters
 export function createRateLimiter(prodMax: number, windowMs = RATE_LIMIT_WINDOW_MS) {
@@ -53,12 +69,17 @@ const getClientId = (req: Request): string => {
   return (req as any).user?.id || req.ip || 'anonymous';
 };
 
+const getMethodBucket = (req: Request): 'read' | 'write' => {
+  const method = req.method.toUpperCase();
+  return method === 'GET' || method === 'HEAD' || method === 'OPTIONS' ? 'read' : 'write';
+};
+
 export const rateLimitMiddleware = (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  const clientId = getClientId(req);
+  const clientId = `${getClientId(req)}:${getMethodBucket(req)}`;
   const now = Date.now();
   const record = store[clientId];
 
@@ -71,7 +92,7 @@ export const rateLimitMiddleware = (
     return next();
   }
 
-  if (record.count >= getMaxRequests()) {
+  if (record.count >= getMaxRequests(req)) {
     logSecurityEvent('rate_limit_exceeded', {
       ip: req.ip,
       path: req.path,
@@ -79,10 +100,12 @@ export const rateLimitMiddleware = (
       userAgent: req.headers['user-agent'] || 'unknown',
     });
 
+    const retryAfter = Math.ceil((record.resetTime - now) / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
     return res.status(429).json({
       error: 'Too many requests',
       message: 'Rate limit exceeded. Please try again later.',
-      retryAfter: Math.ceil((record.resetTime - now) / 1000),
+      retryAfter,
     });
   }
 

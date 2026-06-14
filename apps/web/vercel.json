@@ -5,6 +5,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "https://lore-book-production.up.railway.app/api/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -23,8 +27,10 @@
   "env": {
     "NODE_VERSION": "20",
     "VITE_APP_URL": "https://lorebookai.com",
+    "VITE_API_URL": "",
     "VITE_USE_MOCK_DATA": "false",
     "VITE_SHOW_DEV_NOTICE": "false",
+    "VITE_ADMIN_EMAIL": "abelxmendoza@gmail.com",
     "VITE_SUPABASE_URL": "https://cshtthzpgkmrbcsfghyq.supabase.co",
     "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzaHR0aHpwZ2ttcmJjc2ZnaHlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2NjE0NjgsImV4cCI6MjA5NTIzNzQ2OH0.IzX4Q04kFMZeLBFiUv3Ga5GiAg9AS2898yfTeGG4md8"
   }

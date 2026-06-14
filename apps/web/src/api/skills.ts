@@ -1,12 +1,28 @@
 import { fetchJson } from '../lib/api';
 import type { Skill, CreateSkillInput, UpdateSkillInput, SkillProgress, SkillCategory, SkillMetadata } from '../types/skill';
 
+import type { SkillProfile } from '../lib/skillProfile';
+
 export interface SkillSuggestion {
+  id?: string;
   skill_name: string;
   skill_category: SkillCategory;
+  skill_type?: SkillProfile['skill_type'];
+  monetization?: SkillProfile['monetization'];
+  proficiency?: number;
   confidence: number;
+  enjoyment?: number;
+  usage_frequency?: SkillProfile['usage_frequency'];
+  trajectory?: SkillProfile['trajectory'];
   description?: string;
-  evidence?: string[];
+  origin_story?: string;
+  first_learned_context?: string;
+  related_jobs?: string[];
+  related_projects?: string[];
+  parent_skill_name?: string;
+  related_skill_names?: string[];
+  evidence?: string[] | Array<{ text: string }>;
+  source?: string;
 }
 
 export const skillsApi = {
@@ -24,11 +40,57 @@ export const skillsApi = {
   },
 
   /**
-   * Get detected skill suggestions from recent chats + journal (not yet tracked).
+   * Pending skill suggestions from DB. Pass rescan=true to re-read chats/journal (manual refresh only).
    */
-  async getSuggestions(): Promise<SkillSuggestion[]> {
-    const response = await fetchJson<{ suggestions: SkillSuggestion[] }>('/api/skills/suggestions');
+  async getSuggestions(opts?: { rescan?: boolean }): Promise<SkillSuggestion[]> {
+    const params = opts?.rescan ? '?rescan=true' : '';
+    const response = await fetchJson<{ suggestions: SkillSuggestion[] }>(`/api/skills/suggestions${params}`);
     return response.suggestions || [];
+  },
+
+  async materializeSuggestion(input: SkillSuggestion & { suggestion_id?: string }): Promise<Skill> {
+    const response = await fetchJson<{ skill: Skill }>('/api/skills/suggestions/materialize', {
+      method: 'POST',
+      body: JSON.stringify({
+        skill_name: input.skill_name,
+        skill_category: input.skill_category,
+        skill_type: input.skill_type,
+        monetization: input.monetization,
+        proficiency: input.proficiency,
+        confidence: input.confidence,
+        enjoyment: input.enjoyment,
+        usage_frequency: input.usage_frequency,
+        trajectory: input.trajectory,
+        description: input.description,
+        origin_story: input.origin_story,
+        first_learned_context: input.first_learned_context,
+        related_jobs: input.related_jobs,
+        related_projects: input.related_projects,
+        parent_skill_name: input.parent_skill_name,
+        related_skill_names: input.related_skill_names,
+        evidence: input.evidence,
+        suggestion_id: input.id ?? input.suggestion_id,
+      }),
+    });
+    return response.skill;
+  },
+
+  async rejectSuggestionByName(skillName: string): Promise<void> {
+    await fetchJson('/api/skills/suggestions/reject-by-name', {
+      method: 'POST',
+      body: JSON.stringify({ skill_name: skillName }),
+    });
+  },
+
+  async confirmSuggestion(suggestionId: string): Promise<Skill> {
+    const response = await fetchJson<{ skill: Skill }>(`/api/skills/suggestions/${suggestionId}/confirm`, {
+      method: 'POST',
+    });
+    return response.skill;
+  },
+
+  async rejectSuggestion(suggestionId: string): Promise<void> {
+    await fetchJson(`/api/skills/suggestions/${suggestionId}/reject`, { method: 'POST' });
   },
 
   /**

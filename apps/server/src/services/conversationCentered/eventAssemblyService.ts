@@ -12,6 +12,20 @@ import { metaControlService } from '../metaControlService';
 import { omegaMemoryService } from '../omegaMemoryService';
 import { ruleBasedTitleGenerationService } from '../ruleBasedTitleGeneration';
 import { supabaseAdmin } from '../supabaseClient';
+import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
+
+interface EventAssemblyOptions {
+  windowDays?: number;
+}
+
+interface AssembledWhen {
+  start: string;
+  end: string | null;
+  label?: string;
+  confidence?: number;
+  precision?: string;
+  source?: 'temporal_context' | 'content_inference' | 'created_at';
+}
 
 /**
  * Assembles structured events from EXPERIENCE units
@@ -21,12 +35,12 @@ export class EventAssemblyService {
    * Assemble events from extracted units
    * Groups EXPERIENCE units by WHO/WHERE/WHEN
    */
-  async assembleEvents(userId: string, threadId?: string): Promise<EventAssemblyResult[]> {
+  async assembleEvents(userId: string, threadId?: string, options: EventAssemblyOptions = {}): Promise<EventAssemblyResult[]> {
     try {
       // Load only recent EXPERIENCE units — units older than this window were already
       // assembled in a prior run. Loading all history is O(n_lifetime) per message,
       // which becomes catastrophic for long-term users.
-      const ASSEMBLY_WINDOW_DAYS = 30;
+      const ASSEMBLY_WINDOW_DAYS = Math.min(Math.max(options.windowDays ?? 30, 1), 3650);
       const windowStart = new Date(Date.now() - ASSEMBLY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
       const { data: allUnits, error } = await supabaseAdmin
@@ -202,6 +216,14 @@ export class EventAssemblyService {
             beliefs: beliefUnits.length,
             feelings: feelingUnits.length,
           },
+          temporal: when
+            ? {
+                label: when.label || null,
+                confidence: when.confidence ?? null,
+                precision: when.precision || null,
+                source: when.source || null,
+              }
+            : null,
         },
       })
       .select('*')
@@ -433,6 +455,14 @@ export class EventAssemblyService {
           ...(existingEvent.metadata || {}),
           assembled_from_units: validUnits.map(u => u.id),
           last_refined_at: new Date().toISOString(),
+          temporal: when
+            ? {
+                label: when.label || null,
+                confidence: when.confidence ?? null,
+                precision: when.precision || null,
+                source: when.source || null,
+              }
+            : existingEvent.metadata?.temporal || null,
         },
       })
       .eq('id', eventId)
@@ -610,6 +640,14 @@ export class EventAssemblyService {
             ...(event.metadata || {}),
             assembled_from_units: validUnits.map(u => u.id),
             last_reconciled_at: new Date().toISOString(),
+            temporal: updatedWhen
+              ? {
+                  label: updatedWhen.label || null,
+                  confidence: updatedWhen.confidence ?? null,
+                  precision: updatedWhen.precision || null,
+                  source: updatedWhen.source || null,
+                }
+              : event.metadata?.temporal || null,
           },
         })
         .eq('id', eventId)
@@ -644,6 +682,9 @@ export class EventAssemblyService {
     // Contextual title from unit content — never "Untitled Event"
     const source = units.map(u => u.content).join(' ').trim();
     if (source.length > 0) {
+      const eventSpecificTitle = this.inferEventTitleFromContent(source);
+      if (eventSpecificTitle) return eventSpecificTitle;
+
       const generated = ruleBasedTitleGenerationService.generateTitle(source);
       if (generated && generated.length >= 8 && !this.isWeakEventTitle(generated)) return generated;
       const sentences = this.cleanEventSourceText(source).split(/[.!?]+/).filter(s => s.trim().length > 0);
@@ -651,6 +692,50 @@ export class EventAssemblyService {
       if (firstSentence) return firstSentence;
     }
     return 'Captured Conversation';
+  }
+
+  private inferEventTitleFromContent(source: string): string | null {
+    const text = source.replace(/\s+/g, ' ').trim();
+    const lower = text.toLowerCase();
+
+    if (/\bex lover(?:\s+show)?\b/.test(lower)) return 'Ex Lover Show';
+    if (/\b(testing|tested|trying|tried)\s+lore\s*book\b/.test(lower)) return 'Testing LoreBook';
+    if (/\b(testing|tested|trying|tried)\s+lorebook\b/.test(lower)) return 'Testing LoreBook';
+
+    const interviewNames = this.extractNamesAfterConnector(text, /\binterviews?\s+(?:with\s+)?/i);
+    if (interviewNames.length > 0) return `Interview with ${this.joinNames(interviewNames)}`;
+
+    const runAtMatch = text.match(/\b(?:i\s+)?(?:ran|run|running|jogged|walked)\b[^.!?]{0,80}\b(?:at|in|around)\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,4}\s+(?:Park|Trail|Beach|Gym|Field|Center|Square))/);
+    if (runAtMatch?.[1]) return `Run at ${runAtMatch[1].trim()}`;
+    if (/\bsquare mile park\b/i.test(text) && /\b(ran|run|running|jogged|walked)\b/i.test(text)) return 'Run at Square Mile Park';
+
+    const visitHouseholdMatch = text.match(/\bvisit(?:ed|ing)?\b[^.!?]{0,100}\b(?:my\s+)?(Tia\s+[A-Z][\w'.-]+|Aunt\s+[A-Z][\w'.-]+|[A-Z][\w'.-]+)'?s?\s+(?:household|house|home)\b/i);
+    if (visitHouseholdMatch?.[1]) {
+      return `Visit to ${visitHouseholdMatch[1].replace(/^my\s+/i, '').trim()}'s Household`;
+    }
+
+    const showMatch = text.match(/\b(?:went\s+to|attended|saw|played|performed\s+at)\s+(?:the\s+)?(?:\"([^\"]{3,80})\"|'([^']{3,80})'|([A-Z][\w&'.-]*(?:\s+[A-Z][\w&'.-]*){0,5}))\s+(?:show|concert|gig|festival)\b/);
+    const showName = showMatch?.[1] || showMatch?.[2] || showMatch?.[3];
+    if (showName) return `${showName.trim()} Show`;
+
+    return null;
+  }
+
+  private extractNamesAfterConnector(source: string, connector: RegExp): string[] {
+    const match = source.match(connector);
+    if (!match?.index && match?.index !== 0) return [];
+    const rest = source.slice(match.index + match[0].length).split(/[.!?]/)[0] || '';
+    return rest
+      .split(/\s*(?:,|and|&)\s*/i)
+      .map(part => part.trim())
+      .filter(part => /^[A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3}$/.test(part))
+      .slice(0, 4);
+  }
+
+  private joinNames(names: string[]): string {
+    if (names.length <= 1) return names[0] || 'Someone';
+    if (names.length === 2) return `${names[0]} and ${names[1]}`;
+    return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
   }
 
   private chooseBetterEventTitle(existingTitle: string | null | undefined, candidateTitle: string): string {
@@ -721,21 +806,69 @@ export class EventAssemblyService {
   /**
    * Extract WHEN from unit group
    */
-  private extractWhen(units: ExtractedUnit[]): { start: string; end: string | null } | null {
-    const times = units
-      .map(u => u.temporal_context?.start_time || u.created_at)
-      .filter(Boolean)
-      .map(t => new Date(t as string).getTime())
-      .sort((a, b) => a - b);
+  private extractWhen(units: ExtractedUnit[]): AssembledWhen | null {
+    const sourceText = units.map(u => u.content).join(' ');
+    const referenceDate = this.getEarliestCreatedAt(units) || new Date();
+    const contentAnchor = resolveAllTemporalAnchors(sourceText, referenceDate);
 
-    if (times.length === 0) {
-      return null;
+    const contextWindows = units
+      .map(unit => {
+        const start = unit.temporal_context?.start_time;
+        if (!start) return null;
+        const startTime = new Date(start).getTime();
+        if (!Number.isFinite(startTime)) return null;
+        return {
+          start: startTime,
+          end: unit.temporal_context?.end_time ? new Date(unit.temporal_context.end_time).getTime() : null,
+          confidence: typeof unit.temporal_context?.confidence === 'number' ? unit.temporal_context.confidence : 0.7,
+          label: unit.temporal_context?.label || unit.temporal_context?.original_text,
+          precision: unit.temporal_context?.precision,
+          isCurrentFallback: unit.temporal_context?.source === 'current_time',
+        };
+      })
+      .filter((window): window is NonNullable<typeof window> => Boolean(window))
+      .sort((a, b) => a.start - b.start);
+
+    const bestContext = contextWindows.find(window => !window.isCurrentFallback) || contextWindows[0];
+    if (contentAnchor && (!bestContext || bestContext.isCurrentFallback || contentAnchor.confidence >= bestContext.confidence)) {
+      return {
+        start: contentAnchor.start.toISOString(),
+        end: contentAnchor.end.toISOString(),
+        label: contentAnchor.label,
+        confidence: contentAnchor.confidence,
+        precision: contentAnchor.precision,
+        source: 'content_inference',
+      };
     }
 
+    if (bestContext) {
+      return {
+        start: new Date(bestContext.start).toISOString(),
+        end: bestContext.end && Number.isFinite(bestContext.end) ? new Date(bestContext.end).toISOString() : null,
+        label: bestContext.label,
+        confidence: bestContext.confidence,
+        precision: bestContext.precision,
+        source: 'temporal_context',
+      };
+    }
+
+    const createdAt = referenceDate;
     return {
-      start: new Date(times[0]).toISOString(),
-      end: times.length > 1 ? new Date(times[times.length - 1]).toISOString() : null,
+      start: createdAt.toISOString(),
+      end: null,
+      confidence: 0.45,
+      precision: 'minute',
+      source: 'created_at',
     };
+  }
+
+  private getEarliestCreatedAt(units: ExtractedUnit[]): Date | null {
+    const timestamps = units
+      .map(unit => new Date(unit.created_at).getTime())
+      .filter(timestamp => Number.isFinite(timestamp))
+      .sort((a, b) => a - b);
+
+    return timestamps.length > 0 ? new Date(timestamps[0]) : null;
   }
 }
 

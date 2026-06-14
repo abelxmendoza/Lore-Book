@@ -7,24 +7,42 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
   RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
-  Music2, Building2, Briefcase, Plane, Heart, LayoutGrid, List,
+  Music2, Building2, Briefcase, Plane, Heart, List,
   CalendarDays, Repeat2, Star, TrendingUp, BookOpen,
 } from 'lucide-react';
-import { formatDistanceToNow, parseISO as dfParseISO } from 'date-fns';
+import {
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  formatDistanceToNow,
+  isSameDay,
+  isSameMonth,
+  isWithinInterval,
+  parseISO,
+  parseISO as dfParseISO,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
+  subDays,
+  subMonths,
+  endOfDay,
+} from 'date-fns';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { fetchJson } from '../../lib/api';
-import { parseISO, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { EventDetailModal } from './EventDetailModal';
 import { EventProfileCard, type Event } from './EventProfileCard';
 import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
-import { type MemoryCard } from '../../types/memory';
+import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
-import { MemoryExplorer } from '../memory-explorer/MemoryExplorer';
+import { MemoryExplorer, dummyMemoryCards } from '../memory-explorer/MemoryExplorer';
+import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 
 const ITEMS_PER_PAGE = 18;
 
@@ -44,7 +62,7 @@ type RecurringScene = {
   timeline_candidate?: boolean;
 };
 
-type ViewMode = 'moments' | 'timeline' | 'calendar' | 'recurring' | 'entries';
+type ViewMode = 'events' | 'memories' | 'timeline' | 'calendar' | 'recurring';
 type EventCategory = 'all' | 'recent' | 'birthdays' | 'parties' | 'concerts_shows' | 'conventions' | 'work' | 'travel' | 'family' | 'festivals' | 'with_people' | 'with_locations';
 type ImpactFilter = 'all' | 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
 type SignificanceFilter = 'all' | 'major' | 'moderate' | 'minor';
@@ -63,6 +81,20 @@ interface FilterState {
   locations: string[];
   hasLocation: boolean | null;
   hasPeople: boolean | null;
+}
+
+type CalendarItem =
+  | { id: string; kind: 'event'; date: Date; title: string; event: Event }
+  | { id: string; kind: 'memory'; date: Date; title: string; memory: MemoryCard };
+
+function safeDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dayKey(date: Date): string {
+  return format(date, 'yyyy-MM-dd');
 }
 
 // ─── Category config ─────────────────────────────────────────────────────────
@@ -99,11 +131,11 @@ const SIGNIFICANCE_CHIPS: { value: SignificanceFilter; label: string; activeClas
 ];
 
 const VIEWS: { value: ViewMode; label: string; icon: React.ElementType; soon?: boolean }[] = [
-  { value: 'moments', label: 'Moments', icon: LayoutGrid },
+  { value: 'events', label: 'Events', icon: Calendar },
+  { value: 'memories', label: 'Memories', icon: BookOpen },
   { value: 'timeline', label: 'Timeline', icon: List },
-  { value: 'calendar', label: 'Calendar', icon: CalendarDays, soon: true },
   { value: 'recurring', label: 'Recurring Scenes', icon: Repeat2 },
-  { value: 'entries', label: 'All Entries', icon: BookOpen },
+  { value: 'calendar', label: 'Calendar', icon: CalendarDays },
 ];
 
 // ─── Keyword matching ─────────────────────────────────────────────────────────
@@ -462,7 +494,8 @@ const MOCK_SCENES: RecurringScene[] = [
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const EventsBook: React.FC = () => {
-  const [viewMode, setViewMode] = useState<ViewMode>('moments');
+  const [viewMode, setViewMode] = useState<ViewMode>('events');
+  const { entries = [] } = useLoreKeeper();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [recurringScenes, setRecurringScenes] = useState<RecurringScene[]>([]);
@@ -477,6 +510,8 @@ export const EventsBook: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortOption>('date_desc');
   const [showFilters, setShowFilters] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => startOfDay(new Date()));
   const [filters, setFilters] = useState<FilterState>({
     dateRange: 'all',
     types: [],
@@ -490,10 +525,24 @@ export const EventsBook: React.FC = () => {
   });
 
   const isMockDataEnabled = useShouldUseMockData();
+  const memoryCards = useMemo<MemoryCard[]>(() => {
+    const realMemories = entries.map(entry => memoryEntryToCard({
+      id: entry.id,
+      date: entry.date,
+      content: entry.content,
+      summary: entry.summary || null,
+      tags: entry.tags || [],
+      mood: entry.mood || null,
+      chapter_id: entry.chapter_id || null,
+      source: entry.source || 'manual',
+      metadata: entry.metadata || {},
+    }));
+    return realMemories.length > 0 ? realMemories : (isMockDataEnabled ? dummyMemoryCards : []);
+  }, [entries, isMockDataEnabled]);
 
   useEffect(() => { void loadEvents(); }, [isMockDataEnabled]);
 
-  const loadEvents = async () => {
+  const loadEvents = async (options?: { assembleFromChats?: boolean }) => {
     setLoading(true);
     setError(null);
     if (isMockDataEnabled) {
@@ -502,6 +551,15 @@ export const EventsBook: React.FC = () => {
       return;
     }
     try {
+      if (options?.assembleFromChats) {
+        await fetchJson<{ success: boolean; windowDays: number; events: unknown[] }>(
+          '/api/conversation/assemble-events',
+          {
+            method: 'POST',
+            body: JSON.stringify({ windowDays: 3650 }),
+          }
+        );
+      }
       const result = await fetchJson<{ success: boolean; events: Event[] }>('/api/conversation/events');
       if (result.success && result.events && result.events.length > 0) {
         setEvents(result.events);
@@ -625,6 +683,59 @@ export const EventsBook: React.FC = () => {
   const totalPages = Math.ceil(filteredEvents.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedEvents = filteredEvents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const calendarDays = useMemo(() => eachDayOfInterval({
+    start: startOfWeek(startOfMonth(calendarMonth)),
+    end: endOfWeek(endOfMonth(calendarMonth)),
+  }), [calendarMonth]);
+  const calendarItems = useMemo<CalendarItem[]>(() => {
+    const items: CalendarItem[] = [];
+
+    for (const event of events) {
+      const start = safeDate(event.start_time);
+      if (!start) continue;
+      const end = safeDate(event.end_time) ?? start;
+      const normalizedStart = startOfDay(start);
+      const normalizedEnd = startOfDay(end);
+      const spanDays = eachDayOfInterval({
+        start: normalizedStart <= normalizedEnd ? normalizedStart : normalizedEnd,
+        end: normalizedEnd >= normalizedStart ? normalizedEnd : normalizedStart,
+      });
+      for (const date of spanDays) {
+        items.push({
+          id: `event-${event.id}-${dayKey(date)}`,
+          kind: 'event',
+          date,
+          title: event.title || 'Untitled event',
+          event,
+        });
+      }
+    }
+
+    for (const memory of memoryCards) {
+      const date = safeDate(memory.date);
+      if (!date) continue;
+      items.push({
+        id: `memory-${memory.id}`,
+        kind: 'memory',
+        date,
+        title: memory.title || 'Memory',
+        memory,
+      });
+    }
+
+    return items.sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [events, memoryCards]);
+  const itemsByDay = useMemo(() => {
+    const buckets = new Map<string, CalendarItem[]>();
+    for (const item of calendarItems) {
+      const key = dayKey(item.date);
+      const existing = buckets.get(key) ?? [];
+      existing.push(item);
+      buckets.set(key, existing);
+    }
+    return buckets;
+  }, [calendarItems]);
+  const selectedCalendarItems = itemsByDay.get(dayKey(selectedCalendarDate)) ?? [];
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -663,6 +774,38 @@ export const EventsBook: React.FC = () => {
     <div className="space-y-4">
       <ChatFirstViewHint />
 
+      <Card className="border-border/60 bg-black/40">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-primary/70">
+                Life Log
+              </p>
+              <h2 className="mt-1 text-xl sm:text-2xl font-semibold text-white">
+                Memories, events, and moments in one place
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm text-white/55">
+                Use Memories for raw chats and journal entries, Events for parties/festivals/weddings and other real-world happenings, and Recurring Scenes for patterns LoreBook detects over time.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[16rem]">
+              <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                <p className="text-lg font-semibold text-white">{events.length}</p>
+                <p className="text-[10px] uppercase tracking-wide text-white/35">Events</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                <p className="text-lg font-semibold text-white">{recurringScenes.length}</p>
+                <p className="text-[10px] uppercase tracking-wide text-white/35">Scenes</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                <p className="text-lg font-semibold text-white">{activeFilterCount}</p>
+                <p className="text-[10px] uppercase tracking-wide text-white/35">Filters</p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {error && (
         <Card className="border-amber-500/50 bg-amber-500/10">
           <CardContent className="py-3 px-4 flex flex-wrap items-center justify-between gap-2">
@@ -670,7 +813,7 @@ export const EventsBook: React.FC = () => {
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <p className="text-sm">{error}</p>
             </div>
-            <Button type="button" onClick={() => void loadEvents()} variant="outline" size="sm" disabled={loading}>
+            <Button type="button" onClick={() => void loadEvents({ assembleFromChats: true })} variant="outline" size="sm" disabled={loading}>
               {loading ? 'Loading…' : 'Retry'}
             </Button>
           </CardContent>
@@ -701,13 +844,13 @@ export const EventsBook: React.FC = () => {
         ))}
       </div>
 
-      {/* ── Search + Sort + Filters button ── */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      {/* ── Event search + filters ── */}
+      {viewMode === 'events' && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
           <Input
             type="text"
-            placeholder="Search by title, person, place, or activity…"
+            placeholder="Search events by title, person, place, or activity…"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/35 text-sm"
@@ -746,17 +889,18 @@ export const EventsBook: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void loadEvents()}
+            onClick={() => void loadEvents({ assembleFromChats: true })}
             disabled={loading}
             className="flex-shrink-0"
+            title="Sync events from chats"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
-      </div>
+      </div>}
 
       {/* ── Category filter chips ── */}
-      <div className="flex flex-wrap gap-1.5">
+      {viewMode === 'events' && <div className="flex flex-wrap gap-1.5">
         {CATEGORY_CHIPS.map(({ value, label, icon: Icon, shortLabel }) => (
           <button
             key={value}
@@ -774,10 +918,10 @@ export const EventsBook: React.FC = () => {
             <span className="sm:hidden">{shortLabel || label}</span>
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* ── Impact filter chips ── */}
-      <div className="flex flex-wrap gap-1.5">
+      {viewMode === 'events' && showFilters && <div className="flex flex-wrap gap-1.5">
         {IMPACT_CHIPS.map(({ value, label, activeClass }) => (
           <button
             key={value}
@@ -793,10 +937,10 @@ export const EventsBook: React.FC = () => {
             {label}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* ── Significance filter chips ── */}
-      <div className="flex flex-wrap gap-1.5 items-center">
+      {viewMode === 'events' && <div className="flex flex-wrap gap-1.5 items-center">
         <span className="text-[10px] text-white/25 font-medium uppercase tracking-wide">Scale</span>
         {SIGNIFICANCE_CHIPS.map(({ value, label, activeClass }) => (
           <button
@@ -813,10 +957,10 @@ export const EventsBook: React.FC = () => {
             {label}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* ── Advanced filters panel ── */}
-      {showFilters && (
+      {viewMode === 'events' && showFilters && (
         <Card className="bg-black/80 border border-primary/25">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-4">
@@ -974,16 +1118,16 @@ export const EventsBook: React.FC = () => {
       )}
 
       {/* ── Results summary ── */}
-      <div className="flex items-center justify-between text-xs text-white/40">
+      {viewMode === 'events' && <div className="flex items-center justify-between text-xs text-white/40">
         <span>
           {filteredEvents.length === 0 ? 'No events' : `${startIndex + 1}–${Math.min(startIndex + ITEMS_PER_PAGE, filteredEvents.length)} of ${filteredEvents.length}`}
           {filteredEvents.length !== events.length && <span className="ml-1 text-primary/60">({events.length} total)</span>}
         </span>
         {totalPages > 1 && <span>Page {currentPage} of {totalPages}</span>}
-      </div>
+      </div>}
 
-      {/* ══ MOMENTS VIEW ══ */}
-      {viewMode === 'moments' && (
+      {/* ══ EVENTS VIEW ══ */}
+      {viewMode === 'events' && (
         loading ? (
           <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
             {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
@@ -993,7 +1137,7 @@ export const EventsBook: React.FC = () => {
         ) : filteredEvents.length === 0 ? (
           <div className="text-center py-12 text-white/50">
             <Sparkles className="h-10 w-10 mx-auto mb-3 text-white/15" />
-            <p className="text-base font-medium mb-1">No moments found</p>
+            <p className="text-base font-medium mb-1">No events found</p>
             <p className="text-sm text-white/35">Try adjusting your filters or search</p>
             {(activeFilterCount > 0 || searchTerm || activeCategory !== 'all' || impactFilter !== 'all' || significanceFilter !== 'all') && (
               <Button variant="outline" size="sm" onClick={clearFilters} className="mt-4 text-xs">
@@ -1050,20 +1194,197 @@ export const EventsBook: React.FC = () => {
         </div>
       )}
 
-      {/* ══ ALL ENTRIES ══ */}
-      {viewMode === 'entries' && (
-        <div className="mt-2">
+      {/* ══ MEMORIES VIEW ══ */}
+      {viewMode === 'memories' && (
+        <div className="mt-2 rounded-xl border border-border/50 bg-black/25 p-3 sm:p-4">
           <MemoryExplorer />
         </div>
       )}
 
-      {/* ══ CALENDAR — still coming ══ */}
+      {/* ══ CALENDAR VIEW ══ */}
       {viewMode === 'calendar' && (
-        <div className="text-center py-16 text-white/40">
-          <CalendarDays className="h-10 w-10 mx-auto mb-3 text-white/15" />
-          <p className="text-base font-medium text-white/50">Calendar View</p>
-          <p className="text-sm text-white/30 mt-1">See your moments on a monthly calendar grid</p>
-          <Badge variant="outline" className="mt-3 text-xs text-white/25 border-border/25">Coming Soon</Badge>
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_22rem] gap-4">
+          <Card className="bg-black/35 border-border/50">
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.22em] text-white/35 font-semibold">
+                    Calendar
+                  </p>
+                  <h3 className="text-lg sm:text-xl font-semibold text-white">
+                    {format(calendarMonth, 'MMMM yyyy')}
+                  </h3>
+                  <p className="text-xs text-white/45 mt-0.5">
+                    Events span every active day. Memories appear on the day they were recorded.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void loadEvents({ assembleFromChats: true })}
+                    disabled={loading}
+                    title="Sync historical events from chats"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                    <span className="hidden sm:inline ml-1.5">Sync</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCalendarMonth(month => subMonths(month, 1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const today = new Date();
+                      setCalendarMonth(startOfMonth(today));
+                      setSelectedCalendarDate(startOfDay(today));
+                    }}
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCalendarMonth(month => addMonths(month, 1))}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1.5 text-center text-[10px] uppercase tracking-wide text-white/35 mb-2">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                  <div key={day} className="py-1">{day}</div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-7 gap-1.5">
+                {calendarDays.map(day => {
+                  const key = dayKey(day);
+                  const items = itemsByDay.get(key) ?? [];
+                  const eventCount = items.filter(item => item.kind === 'event').length;
+                  const memoryCount = items.length - eventCount;
+                  const selected = isSameDay(day, selectedCalendarDate);
+                  const inMonth = isSameMonth(day, calendarMonth);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedCalendarDate(startOfDay(day))}
+                      className={`
+                        min-h-[5.25rem] rounded-xl border p-2 text-left transition flex flex-col
+                        ${selected
+                          ? 'border-primary/70 bg-primary/15 shadow-lg shadow-primary/10'
+                          : 'border-white/8 bg-white/[0.03] hover:border-primary/30 hover:bg-white/[0.06]'
+                        }
+                        ${inMonth ? 'opacity-100' : 'opacity-35'}
+                      `}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className={`text-xs font-semibold ${selected ? 'text-primary' : 'text-white/75'}`}>
+                          {format(day, 'd')}
+                        </span>
+                        {items.length > 0 && (
+                          <span className="text-[10px] text-white/35 tabular-nums">
+                            {items.length}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-auto space-y-1">
+                        {eventCount > 0 && (
+                          <div className="flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+                            <span className="text-[10px] text-cyan-200 truncate">
+                              {eventCount} event{eventCount === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                        )}
+                        {memoryCount > 0 && (
+                          <div className="flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
+                            <span className="text-[10px] text-amber-200 truncate">
+                              {memoryCount} memor{memoryCount === 1 ? 'y' : 'ies'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/35 border-border/50 xl:sticky xl:top-4 xl:self-start">
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.22em] text-white/35 font-semibold">
+                    Selected Day
+                  </p>
+                  <h3 className="text-base font-semibold text-white">
+                    {format(selectedCalendarDate, 'EEEE, MMM d')}
+                  </h3>
+                </div>
+                <Badge variant="outline" className="border-white/15 text-white/45">
+                  {selectedCalendarItems.length}
+                </Badge>
+              </div>
+
+              {selectedCalendarItems.length === 0 ? (
+                <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4 text-sm text-white/45">
+                  No memories or events recorded for this day.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {selectedCalendarItems.map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => item.kind === 'event' ? setSelectedEvent(item.event) : setSelectedMemory(item.memory)}
+                      className="w-full rounded-xl border border-white/8 bg-white/[0.04] p-3 text-left hover:border-primary/35 hover:bg-primary/8 transition"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`h-2 w-2 rounded-full ${item.kind === 'event' ? 'bg-cyan-300' : 'bg-amber-300'}`} />
+                            <span className="text-[10px] uppercase tracking-wide text-white/35">
+                              {item.kind === 'event' ? 'Event' : 'Memory'}
+                            </span>
+                          </div>
+                          <p className="text-sm font-medium text-white truncate">{item.title}</p>
+                          {item.kind === 'event' ? (
+                            <p className="text-xs text-white/40 mt-1 truncate">
+                              {[item.event.type, ...item.event.people.slice(0, 2), ...item.event.locations.slice(0, 1)]
+                                .filter(Boolean)
+                                .join(' · ') || 'Detected event'}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-white/40 mt-1 truncate">
+                              {[item.memory.source, ...item.memory.tags.slice(0, 2)]
+                                .filter(Boolean)
+                                .join(' · ') || 'Memory entry'}
+                            </p>
+                          )}
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-white/25 flex-shrink-0 mt-1" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -1142,8 +1463,8 @@ export const EventsBook: React.FC = () => {
                     key={scene.id}
                     className="group bg-gradient-to-br from-slate-900/90 via-slate-800/60 to-slate-900/90 border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 transition-all duration-300 cursor-pointer"
                     onClick={() => {
-                      // Filter Moments view to show only events in this pattern
-                      setViewMode('moments');
+                      // Filter Events view to show only events in this pattern
+                      setViewMode('events');
                       setSearchTerm(scene.canonical_title.split(' ')[0]);
                     }}
                   >

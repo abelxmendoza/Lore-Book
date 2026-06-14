@@ -55,6 +55,19 @@ function addDays(d: Date, n: number): Date {
   return r;
 }
 
+function addYears(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setFullYear(r.getFullYear() + n);
+  return r;
+}
+
+function weekendWindow(d: Date): [Date, Date] {
+  const weekStart = startOf('week', d);
+  const saturday = addDays(weekStart, 6);
+  const sunday = addDays(weekStart, 7);
+  return [startOf('day', saturday), endOf('day', sunday)];
+}
+
 // ── Main resolver ─────────────────────────────────────────────────────────────
 
 /**
@@ -111,6 +124,14 @@ export function resolveTemporalAnchor(
     const d = addDays(now, -7);
     return { start: startOf('week', d), end: endOf('week', d), precision: 'week', label: 'last week', confidence: 1.0 };
   }
+  if (/\bthis weekend\b/.test(t)) {
+    const [start, end] = weekendWindow(now);
+    return { start, end, precision: 'week', label: 'this weekend', confidence: 0.95 };
+  }
+  if (/\blast weekend\b/.test(t)) {
+    const [start, end] = weekendWindow(addDays(now, -7));
+    return { start, end, precision: 'week', label: 'last weekend', confidence: 0.95 };
+  }
 
   // "this month" / "last month"
   if (/\bthis month\b/.test(t)) {
@@ -145,6 +166,22 @@ export function resolveTemporalAnchor(
       precision: unit === 'day' ? 'day' : unit === 'week' ? 'week' : unit === 'month' ? 'month' : 'year',
       label: `${n} ${agoMatch[2]} ago`,
       confidence: 0.9,
+    };
+  }
+
+  const fuzzyAgoMatch = t.match(/\b(?:a\s+)?(?:couple|few)\s+(day|days|week|weeks|month|months|year|years)\s+ago\b/);
+  if (fuzzyAgoMatch) {
+    const unit = fuzzyAgoMatch[1].replace(/s$/, '');
+    const amount = fuzzyAgoMatch[0].includes('couple') ? 2 : 3;
+    const multiplier = unit === 'day' ? 1 : unit === 'week' ? 7 : unit === 'month' ? 30 : 365;
+    const center = addDays(now, -(amount * multiplier));
+    const tolerance = unit === 'day' ? 1 : unit === 'week' ? 7 : unit === 'month' ? 15 : 90;
+    return {
+      start: addDays(center, -tolerance),
+      end: addDays(center, tolerance),
+      precision: unit === 'day' ? 'day' : unit === 'week' ? 'week' : unit === 'month' ? 'month' : 'year',
+      label: fuzzyAgoMatch[0],
+      confidence: 0.72,
     };
   }
 
@@ -193,6 +230,35 @@ export function resolveTemporalAnchor(
   // ── Named month ───────────────────────────────────────────────────────────
 
   const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const monthDayRe = new RegExp(`\\b(${months.join('|')}|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`);
+  const monthDayMatch = t.match(monthDayRe);
+  if (monthDayMatch) {
+    const shortMap: Record<string, number> = { jan:0,feb:1,mar:2,apr:3,jun:5,jul:6,aug:7,sep:8,sept:8,oct:9,nov:10,dec:11 };
+    const monthToken = monthDayMatch[1].replace(/\.$/, '');
+    const idx = months.indexOf(monthToken) !== -1 ? months.indexOf(monthToken) : shortMap[monthToken] ?? -1;
+    const day = parseInt(monthDayMatch[2], 10);
+    if (idx !== -1 && day >= 1 && day <= 31) {
+      const explicitYear = monthDayMatch[3] ? parseInt(monthDayMatch[3], 10) : null;
+      const yr = explicitYear ?? (idx > now.getMonth() ? y - 1 : y);
+      const d = new Date(yr, idx, day);
+      return { start: startOf('day', d), end: endOf('day', d), precision: 'day', label: `${monthToken} ${day}${explicitYear ? ` ${explicitYear}` : ''}`, confidence: explicitYear ? 0.98 : 0.88 };
+    }
+  }
+
+  const numericDateMatch = t.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/);
+  if (numericDateMatch) {
+    const month = parseInt(numericDateMatch[1], 10) - 1;
+    const day = parseInt(numericDateMatch[2], 10);
+    const yearToken = numericDateMatch[3];
+    const yr = yearToken
+      ? (yearToken.length === 2 ? 2000 + parseInt(yearToken, 10) : parseInt(yearToken, 10))
+      : y;
+    if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+      const d = new Date(yr, month, day);
+      return { start: startOf('day', d), end: endOf('day', d), precision: 'day', label: numericDateMatch[0], confidence: yearToken ? 0.96 : 0.82 };
+    }
+  }
+
   const monthRe = new RegExp(`\\b(${months.join('|')}|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)(?:\\s+(\\d{4}))?\\b`);
   const monthMatch = t.match(monthRe);
   if (monthMatch) {
@@ -212,6 +278,27 @@ export function resolveTemporalAnchor(
     const yr = parseInt(yearMatch[1] || yearMatch[2], 10);
     const d = new Date(yr, 0, 1);
     return { start: startOf('year', d), end: endOf('year', d), precision: 'year', label: `${yr}`, confidence: 0.85 };
+  }
+
+  const lifeStageMatch = t.match(/\b(?:when|back when|while)\s+i\s+was\s+(a kid|younger|young|in high school|in college|in university|in grad school|in middle school|in elementary school)\b/);
+  if (lifeStageMatch) {
+    const stage = lifeStageMatch[1];
+    let yearsAgo = 20;
+    let label = `when I was ${stage}`;
+    if (stage.includes('kid') || stage.includes('elementary')) yearsAgo = 25;
+    else if (stage.includes('middle school')) yearsAgo = 20;
+    else if (stage.includes('high school')) yearsAgo = 15;
+    else if (stage.includes('college') || stage.includes('university')) yearsAgo = 10;
+    else if (stage.includes('grad school')) yearsAgo = 5;
+
+    const center = addYears(now, -yearsAgo);
+    return {
+      start: startOf('year', addYears(center, -1)),
+      end: endOf('year', addYears(center, 1)),
+      precision: 'year',
+      label,
+      confidence: 0.58,
+    };
   }
 
   // ── Entity-anchored expressions ────────────────────────────────────────────

@@ -46,7 +46,7 @@ export const routeToSurface: Record<string, SurfaceKey> = {
   '/memoir': 'memoir',
   '/lorebook': 'lorebook',
   '/photos': 'photos',
-  '/memories': 'search', // Redirect /memories to search (Memory Explorer)
+  '/memories': 'events', // Legacy memory URL now lands in the consolidated Life Log
   '/perceptions': 'perceptions',
   '/events': 'events',
   '/entities': 'entities',
@@ -128,4 +128,3 @@ export function getSurfaceFromRoute(pathname: string): SurfaceKey {
 export function getRouteFromSurface(surface: SurfaceKey): string {
   return surfaceToRoute[surface] || '/chat';
 }
-

@@ -517,6 +517,17 @@ export async function buildRAGPacket(
     foundationTimeline = (data as any[]) ?? [];
   } catch (e) { logger.debug({ e }, 'RAGBuilder: foundation timeline fetch failed'); }
 
+  let confirmedSkills: Array<{ id: string; name: string; category: string; skill_key: string }> = [];
+  try {
+    const { skillIndexService } = await import('../skills/skillIndexService');
+    confirmedSkills = (await skillIndexService.listForContext(userId, 20)).map((s) => ({
+      ...s,
+      skill_key: s.name.toLowerCase().replace(/\s+/g, ' ').trim(),
+    }));
+  } catch (e) {
+    logger.debug({ e }, 'RAGBuilder: skills index fetch failed');
+  }
+
   const packet = {
     orchestratorSummary, hqiResults, relatedEntries, fabricNeighbors,
     extractedDates, sources,
@@ -537,6 +548,7 @@ export async function buildRAGPacket(
     foundationRecallBlock,
     foundationRelationships,
     foundationTimeline,
+    confirmedSkills,
   };
 
   ragPacketCacheService.cachePacket(userId, message, packet);

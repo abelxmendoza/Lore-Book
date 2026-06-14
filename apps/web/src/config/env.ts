@@ -122,8 +122,10 @@ export const ACCESSIBILITY = {
 
 // API Behavior Configuration
 export const API_CONFIG = {
-  // Timeout for API calls (longer in dev for debugging)
-  timeout: isDevelopment ? 30000 : 10000,
+  // Timeout for API calls — production uses 30s (mobile networks + admin aggregates are slow)
+  timeout: isDevelopment ? 30000 : 30000,
+  // Admin dashboard loads heavy aggregates; allow extra headroom on slow connections
+  adminTimeout: isDevelopment ? 45000 : 45000,
   
   // Retry failed requests (disabled in dev for faster feedback)
   retryOnFailure: isProduction,

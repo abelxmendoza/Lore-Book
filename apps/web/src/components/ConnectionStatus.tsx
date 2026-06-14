@@ -13,7 +13,9 @@ export const ConnectionStatus = ({ onDismiss }: ConnectionStatusProps) => {
   const [lastCheck, setLastCheck] = useState<Date | null>(null);
   const [isDismissed, setIsDismissed] = useState(false);
 
-  const isProductionNoApiUrl = config.env.isProduction && !config.api.url;
+  const isProductionNoApiUrl = false; // empty VITE_API_URL uses same-origin /api proxy on Vercel
+
+  const healthBase = config.api.url || (typeof window !== 'undefined' ? window.location.origin : '');
 
   const checkConnection = async () => {
     if (isProductionNoApiUrl) {
@@ -26,7 +28,7 @@ export const ConnectionStatus = ({ onDismiss }: ConnectionStatusProps) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-      const response = await fetch(`${config.api.url}/api/health`, {
+      const response = await fetch(`${healthBase}/api/health`, {
         method: 'GET',
         signal: controller.signal,
       });

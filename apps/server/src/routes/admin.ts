@@ -33,6 +33,36 @@ function logAdminAction(userId: string, action: string, details?: any) {
   logger.info({ userId, action, details, timestamp: new Date().toISOString() }, 'Admin action');
 }
 
+/** Aggregate journal entry counts per user without loading full row payloads. */
+async function getMemoryCountsByUser(): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  const pageSize = 5000;
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from('journal_entries')
+      .select('user_id')
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      logger.warn({ error }, 'Admin users: journal count pagination failed');
+      break;
+    }
+    if (!data?.length) break;
+
+    for (const row of data) {
+      if (!row.user_id) continue;
+      counts.set(row.user_id, (counts.get(row.user_id) ?? 0) + 1);
+    }
+
+    if (data.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return counts;
+}
+
 /**
  * GET /admin/metrics
  * Get admin dashboard metrics
@@ -66,18 +96,8 @@ router.get('/users', async (req: AuthenticatedRequest, res) => {
       return res.status(500).json({ error: 'Failed to fetch users' });
     }
 
-    // Get memory counts per user (no content visible)
-    const { data: memoryCounts } = await supabaseAdmin
-      .from('journal_entries')
-      .select('user_id')
-      .then(result => {
-        if (result.error) return { data: [] };
-        const counts = new Map<string, number>();
-        result.data?.forEach(entry => {
-          counts.set(entry.user_id, (counts.get(entry.user_id) || 0) + 1);
-        });
-        return { data: Array.from(counts.entries()).map(([user_id, count]) => ({ user_id, count })) };
-      });
+    // Get memory counts per user (paginated — avoids one giant payload on mobile admin loads)
+    const memoryCountMap = await getMemoryCountsByUser();
 
     // Get subscription status per user
     const { data: subscriptions } = await supabaseAdmin
@@ -107,7 +127,7 @@ router.get('/users', async (req: AuthenticatedRequest, res) => {
         email: user.email,
         createdAt: user.created_at,
         lastSignInAt: user.last_sign_in_at,
-        memoryCount: memoryCounts.find((m: any) => m.user_id === user.id)?.count || 0,
+        memoryCount: memoryCountMap.get(user.id) ?? 0,
         role: user.user_metadata?.role || user.app_metadata?.role || 'standard_user',
         providers: uniqueProviders,
         hasLinkedAccounts: uniqueProviders.length > 1,

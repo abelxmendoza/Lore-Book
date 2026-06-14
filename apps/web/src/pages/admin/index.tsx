@@ -13,6 +13,7 @@ import { UserProviderBadge } from '../../components/admin/UserProviderBadge';
 import { SubscriptionStatusBadge } from '../../components/admin/SubscriptionStatusBadge';
 import { canAccessAdmin } from '../../middleware/roleGuard';
 import { config } from '../../config/env';
+import { getUserFriendlyMessage } from '../../lib/errorHandler';
 import NotFound from '../../routes/NotFound';
 
 type AdminView = AdminSection;
@@ -68,6 +69,37 @@ function timeAgo(iso?: string | null) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+type AdminLoadIssue =
+  | 'network'
+  | 'auth'
+  | 'forbidden'
+  | 'timeout'
+  | 'routing'
+  | 'unknown';
+
+function rejectionMessage(result: PromiseRejectedResult): string {
+  return getUserFriendlyMessage(result.reason);
+}
+
+function classifyAdminFailure(messages: string[]): AdminLoadIssue {
+  const text = messages.join(' ').toLowerCase();
+  if (text.includes('sign in') || text.includes('authentication') || text.includes('401')) return 'auth';
+  if (text.includes('forbidden') || text.includes('permission') || text.includes('403')) return 'forbidden';
+  if (text.includes('timed out') || text.includes('timeout') || text.includes('abort')) return 'timeout';
+  if (text.includes('html') || text.includes('routing error') || text.includes('vite_api_url')) return 'routing';
+  if (
+    text.includes('connect') ||
+    text.includes('network') ||
+    text.includes('failed to fetch') ||
+    text.includes('unavailable')
+  ) {
+    return 'network';
+  }
+  return 'unknown';
+}
+
+const ADMIN_FETCH_OPTS = { timeoutMs: config.api.adminTimeout } as const;
+
 export const AdminPage = () => {
   const { user, loading: authLoading } = useAuth();
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
@@ -82,6 +114,7 @@ export const AdminPage = () => {
   const [providerFilter, setProviderFilter] = useState<string>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [loadIssue, setLoadIssue] = useState<AdminLoadIssue | null>(null);
 
   const isAdmin = canAccessAdmin(user || null);
 
@@ -99,12 +132,27 @@ export const AdminPage = () => {
     try {
       setLoading(true);
       setError(null);
+      setLoadIssue(null);
 
-      const [metricsResult, usersResult, logsResult, eventsResult] = await Promise.allSettled([
-        fetchJson<AdminMetrics>('/api/admin/metrics'),
-        fetchJson<{ users: AdminUser[]; total: number }>('/api/admin/users'),
-        fetchJson<{ logs: Log[] }>('/api/admin/logs'),
-        fetchJson<{ events: AIEvent[] }>('/api/admin/ai-events'),
+      // Load critical endpoints first (sequential) — mobile networks struggle with
+      // four heavy parallel cross-origin requests timing out together.
+      const metricsResult = await Promise.resolve(
+        fetchJson<AdminMetrics>('/api/admin/metrics', undefined, ADMIN_FETCH_OPTS)
+      ).then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        (reason) => ({ status: 'rejected' as const, reason })
+      );
+
+      const usersResult = await Promise.resolve(
+        fetchJson<{ users: AdminUser[]; total: number }>('/api/admin/users', undefined, ADMIN_FETCH_OPTS)
+      ).then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        (reason) => ({ status: 'rejected' as const, reason })
+      );
+
+      const [logsResult, eventsResult] = await Promise.allSettled([
+        fetchJson<{ logs: Log[] }>('/api/admin/logs', undefined, ADMIN_FETCH_OPTS),
+        fetchJson<{ events: AIEvent[] }>('/api/admin/ai-events', undefined, ADMIN_FETCH_OPTS),
       ]);
 
       if (metricsResult.status === 'fulfilled') setMetrics(metricsResult.value);
@@ -112,11 +160,19 @@ export const AdminPage = () => {
       if (logsResult.status === 'fulfilled') setLogs(logsResult.value.logs);
       if (eventsResult.status === 'fulfilled') setAiEvents(eventsResult.value.events);
 
-      if (metricsResult.status === 'rejected' && usersResult.status === 'rejected') {
-        setError('Failed to load admin data. Check server connectivity.');
+      const criticalFailures: string[] = [];
+      if (metricsResult.status === 'rejected') criticalFailures.push(rejectionMessage(metricsResult));
+      if (usersResult.status === 'rejected') criticalFailures.push(rejectionMessage(usersResult));
+
+      if (criticalFailures.length > 0) {
+        const issue = classifyAdminFailure(criticalFailures);
+        setLoadIssue(issue);
+        setError(criticalFailures[0] || 'Failed to load admin data.');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load admin data');
+      const message = getUserFriendlyMessage(err);
+      setLoadIssue(classifyAdminFailure([message]));
+      setError(message || 'Failed to load admin data');
     } finally {
       setLoading(false);
     }
@@ -131,10 +187,10 @@ export const AdminPage = () => {
   const handleAction = async (action: string) => {
     try {
       setError(null);
-      await fetchJson(`/api/admin/${action}`, { method: 'POST' });
+      await fetchJson(`/api/admin/${action}`, { method: 'POST' }, ADMIN_FETCH_OPTS);
       await loadDashboardData();
     } catch (err: any) {
-      setError(err.message || `Failed to execute ${action}`);
+      setError(getUserFriendlyMessage(err) || `Failed to execute ${action}`);
     }
   };
 
@@ -186,7 +242,28 @@ export const AdminPage = () => {
     return null;
   }
 
-  const isBackendDown = error?.includes('connectivity') || error?.includes('unavailable');
+  const isBackendDown =
+    loadIssue === 'network' ||
+    loadIssue === 'routing' ||
+    loadIssue === 'timeout' ||
+    (!loadIssue && (error?.includes('connectivity') || error?.includes('unavailable')));
+
+  const backendDownTitle = config.env.isProduction
+    ? 'Unable to reach the API server'
+    : 'Backend server is not running';
+
+  const backendDownBody = (() => {
+    if (loadIssue === 'timeout') {
+      return 'The admin API took too long to respond. This can happen on slow mobile connections — tap Refresh to retry.';
+    }
+    if (loadIssue === 'routing') {
+      return 'API requests are hitting the frontend instead of the backend. Redeploy after verifying Vercel rewrites proxy /api/* to Railway.';
+    }
+    if (config.env.isProduction) {
+      return 'The admin console could not load data from the production API. Check your connection and tap Refresh.';
+    }
+    return 'The admin console requires the LoreBook server to be running locally.';
+  })();
 
   return (
     <div className="flex min-h-screen bg-[#080510]">
@@ -222,27 +299,46 @@ export const AdminPage = () => {
           </div>
         </div>
 
-        {/* Backend offline banner — shows start command */}
+        {/* Backend offline banner */}
         {isBackendDown && (
           <div className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-semibold text-amber-300 mb-1">Backend server is not running</p>
-                <p className="text-xs text-white/50 mb-3">
-                  The admin console requires the LoreBook server to be running locally.
-                </p>
-                <div className="flex items-center gap-2 bg-black/40 rounded-lg px-3 py-2 border border-white/10 font-mono text-xs text-emerald-300">
-                  <Terminal className="h-3.5 w-3.5 text-white/30 shrink-0" />
-                  cd apps/server &amp;&amp; npm run dev
-                </div>
+                <p className="text-sm font-semibold text-amber-300 mb-1">{backendDownTitle}</p>
+                <p className="text-xs text-white/50 mb-3">{backendDownBody}</p>
+                {!config.env.isProduction && (
+                  <div className="flex items-center gap-2 bg-black/40 rounded-lg px-3 py-2 border border-white/10 font-mono text-xs text-emerald-300">
+                    <Terminal className="h-3.5 w-3.5 text-white/30 shrink-0" />
+                    cd apps/server &amp;&amp; npm run dev
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
 
+        {/* Permission / auth errors */}
+        {loadIssue === 'forbidden' && (
+          <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200 text-sm">
+            <p className="font-semibold mb-1">Admin access denied on the API</p>
+            <p className="text-xs text-red-200/80">
+              Your account can open this page but the server rejected admin requests. Set{' '}
+              <code className="text-red-100">ADMIN_EMAIL</code> on Railway or add{' '}
+              <code className="text-red-100">app_metadata.role = admin</code> in Supabase.
+            </p>
+          </div>
+        )}
+
+        {loadIssue === 'auth' && (
+          <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200 text-sm">
+            <p className="font-semibold mb-1">Session expired</p>
+            <p className="text-xs text-red-200/80">Sign in again, then return to the admin console.</p>
+          </div>
+        )}
+
         {/* Generic error (non-connectivity) */}
-        {error && !isBackendDown && (
+        {error && !isBackendDown && loadIssue !== 'forbidden' && loadIssue !== 'auth' && (
           <div className="mb-4 rounded-xl bg-red-500/15 border border-red-500/40 p-4 text-red-300 flex items-center gap-2 text-sm">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             {error}

@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { fetchJson } from '../../lib/api';
+import { config } from '../../config/env';
 import { RevenueGraph } from './RevenueGraph';
 import { SubscriptionTable } from './SubscriptionTable';
 import { PaymentEventsFeed } from './PaymentEventsFeed';
@@ -35,7 +36,11 @@ export const FinanceDashboard = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchJson<FinanceMetrics>('/api/admin/finance/metrics');
+      const data = await fetchJson<FinanceMetrics>(
+        '/api/admin/finance/metrics',
+        undefined,
+        { timeoutMs: config.api.adminTimeout }
+      );
       // Only use real data if toggle is off, or if we have data and toggle is on
       if (data && !isMockDataEnabled) {
         setMetrics(data);

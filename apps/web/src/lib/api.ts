@@ -16,6 +16,8 @@ export const fetchJson = async <T>(
     useMockData?: boolean;
     mockData?: T;
     onError?: (error: Error) => void;
+    /** Override default API timeout (ms). Use for heavy admin aggregates on mobile. */
+    timeoutMs?: number;
   }
 ): Promise<T> => {
   // Get session first so we can skip mock when user is logged in
@@ -113,7 +115,10 @@ export const fetchJson = async <T>(
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       });
 
-      timeoutId = setTimeout(() => controller.abort(), config.api.timeout);
+      timeoutId = setTimeout(
+        () => controller.abort(),
+        options?.timeoutMs ?? config.api.timeout
+      );
 
       const res = await fetch(url, { headers, signal: controller.signal, ...init });
 

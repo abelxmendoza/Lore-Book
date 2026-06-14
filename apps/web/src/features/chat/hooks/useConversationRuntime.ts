@@ -84,6 +84,7 @@ export const useConversationRuntime = ({
     setCurrentThreadId,
     createThread,
     getThread,
+    hydrateThreadMessages,
     switchThread,
     updateThread,
     renameThread,
@@ -114,6 +115,7 @@ export const useConversationRuntime = ({
 
   // Tracks which thread has already had a title generated this session.
   const titleGeneratedRef = useRef<string | null>(null);
+  const hydrationRequestRef = useRef<string | null>(null);
 
   // ── URL-driven hydration ────────────────────────────────────────────────────
   useEffect(() => {
@@ -151,7 +153,32 @@ export const useConversationRuntime = ({
         switchThread(threadIdParam);
         runtimeDiagnostics.recordTimed('hydration_complete', 'hydration', { threadId: threadIdParam });
       } else if (threadsReady) {
-        navigate('/chat', { replace: true });
+        if (hydrationRequestRef.current === threadIdParam) return;
+        hydrationRequestRef.current = threadIdParam;
+        runtimeDiagnostics.startTimer('hydration');
+        hydrateThreadMessages(threadIdParam)
+          .then((hydratedThread) => {
+            if (hydrationRequestRef.current !== threadIdParam) return;
+            hydrationRequestRef.current = null;
+            if (!hydratedThread) {
+              navigate('/chat', { replace: true });
+              return;
+            }
+            intendedThreadRef.current = threadIdParam;
+            isHydratedRef.current = true;
+            setMessages(hydratedThread.messages);
+            switchThread(threadIdParam);
+            runtimeDiagnostics.recordTimed('hydration_complete', 'hydration', {
+              threadId: threadIdParam,
+              meta: { source: 'on_demand_messages' },
+            });
+          })
+          .catch(() => {
+            if (hydrationRequestRef.current === threadIdParam) {
+              hydrationRequestRef.current = null;
+              navigate('/chat', { replace: true });
+            }
+          });
       }
       // else: first load still in flight — stay and wait
     } else {
@@ -160,7 +187,7 @@ export const useConversationRuntime = ({
       setMessages([]);
       setCurrentThreadId(null);
     }
-  }, [authLoading, threadsLoading, threadsReady, threadIdParam, getThread, setMessages, switchThread, setCurrentThreadId, navigate]);
+  }, [authLoading, threadsLoading, threadsReady, threadIdParam, getThread, hydrateThreadMessages, setMessages, switchThread, setCurrentThreadId, navigate]);
 
   // ── Reset title guard when active thread changes ────────────────────────────
   useEffect(() => {
@@ -316,31 +343,46 @@ export const useConversationRuntime = ({
 
   /** Switch to an existing thread: flush current, load messages, navigate */
   const handleSelectThread = useCallback(
-    (id: string) => {
+    async (id: string) => {
       if (currentThreadId && currentThreadId !== id) {
         runtimeDiagnostics.record('flush_save', { threadId: currentThreadId });
         flushSave(currentThreadId);
       }
       runtimeDiagnostics.startTimer('thread_switch');
-      const thread = getThread(id);
+      let thread = getThread(id);
+      intendedThreadRef.current = id;
+      isHydratedRef.current = false;
+      hydratedByHandlerRef.current = id;
       // Always clear first so stale messages from the previous thread never bleed
       // into the new thread's view during the navigation transition.
       clearMessages();
+      if (!thread || thread.messages.length === 0) {
+        const hydratedThread = await hydrateThreadMessages(id);
+        if (hydratedThread) thread = hydratedThread;
+      }
+      if (!thread) {
+        hydratedByHandlerRef.current = null;
+        intendedThreadRef.current = currentThreadId ?? null;
+        isHydratedRef.current = Boolean(currentThreadId);
+        runtimeDiagnostics.recordTimed('thread_switch', 'thread_switch', {
+          threadId: id,
+          meta: { result: 'hydrate_failed' },
+        });
+        return;
+      }
       if (thread) {
         // Set intendedThreadRef BEFORE setMessages to prevent sync contamination
         // during the intermediate render between setMessages and navigate processing.
         intendedThreadRef.current = id;
         isHydratedRef.current = true;
         hydratedByHandlerRef.current = id;
-        if (thread.messages.length > 0) {
-          setMessages(thread.messages);
-        }
+        setMessages(thread.messages);
       }
       switchThread(id);
       navigate(`/chat/${id}`);
       runtimeDiagnostics.recordTimed('thread_switch', 'thread_switch', { threadId: id });
     },
-    [currentThreadId, flushSave, getThread, setMessages, switchThread, navigate]
+    [currentThreadId, flushSave, getThread, clearMessages, hydrateThreadMessages, setMessages, switchThread, navigate]
   );
 
   /** Delete a thread: remove it and navigate to the next available thread or /chat */

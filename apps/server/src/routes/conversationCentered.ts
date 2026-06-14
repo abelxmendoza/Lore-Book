@@ -105,11 +105,16 @@ router.post(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
+    const requestedWindowDays = Number(req.body?.windowDays || req.query.windowDays || 30);
+    const windowDays = Number.isFinite(requestedWindowDays)
+      ? Math.min(Math.max(Math.floor(requestedWindowDays), 1), 3650)
+      : 30;
 
-    const events = await eventAssemblyService.assembleEvents(userId);
+    const events = await eventAssemblyService.assembleEvents(userId, undefined, { windowDays });
 
     res.json({
       success: true,
+      windowDays,
       events,
     });
   })
