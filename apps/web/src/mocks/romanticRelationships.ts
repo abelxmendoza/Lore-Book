@@ -26,7 +26,60 @@ export type MockRomanticRelationship = {
   created_at: string;
   rank_among_all?: number;
   rank_among_active?: number;
+  // Sprint AD: deterministic dynamics (attachment + obsession) for demo showcase.
+  metadata?: {
+    signals?: {
+      obsession_score?: number;
+      attachment_intensity?: number;
+      evidence_strength?: number;
+      signal_strength?: 'low' | 'moderate' | 'high';
+    };
+  } & Record<string, unknown>;
 };
+
+/**
+ * Sprint AD demo showcase: derive attachment + obsession signals from a mock
+ * relationship's own fields so demo cards/modals light up the new UI exactly
+ * like real, enriched relationships do.
+ */
+const FIXATION_TYPES = new Set(['crush', 'obsession', 'infatuation', 'lust', 'situationship']);
+function withDemoSignals(rel: MockRomanticRelationship): MockRomanticRelationship {
+  const status = rel.status.toLowerCase();
+  const type = rel.relationship_type.toLowerCase();
+  const clamp = (n: number) => Math.max(0, Math.min(1, Math.round(n * 100) / 100));
+
+  const attachment_intensity = clamp(
+    rel.emotional_intensity * 0.5 +
+    rel.affection_score * 0.3 +
+    (FIXATION_TYPES.has(type) ? 0.2 : 0)
+  );
+  const obsession_score = clamp(
+    (status === 'ghosted' || status === 'blocked' ? 0.4 : 0) +    // pining after cut-off
+    (type === 'obsession' || type === 'infatuation' ? 0.4 : 0) +
+    (rel.is_situationship && rel.relationship_health < 0.5 ? 0.3 : 0) +
+    (type === 'crush' ? 0.25 : 0) +
+    attachment_intensity * 0.25
+  );
+  // Most curated demo rows are evidence-rich; the early "talking/crush" ones are
+  // intentionally thin to showcase the "Still Learning" state.
+  const evidence_strength = clamp(
+    (rel.red_flags.length + rel.green_flags.length) * 0.15 +
+    (rel.is_current ? 0.3 : 0.2) +
+    rel.affection_score * 0.3
+  );
+  const signal_strength: 'low' | 'moderate' | 'high' =
+    type === 'talking' || (type === 'crush' && rel.green_flags.length === 0) ? 'low'
+    : evidence_strength >= 0.6 ? 'high'
+    : 'moderate';
+
+  return {
+    ...rel,
+    metadata: {
+      ...(rel.metadata ?? {}),
+      signals: { obsession_score, attachment_intensity, evidence_strength, signal_strength },
+    },
+  };
+}
 
 export type MockDateEvent = {
   id: string;
@@ -69,7 +122,7 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
   const twoYearsAgo = new Date(now.getTime() - 730 * 24 * 60 * 60 * 1000);
   const threeYearsAgo = new Date(now.getTime() - 1095 * 24 * 60 * 60 * 1000);
 
-  return [
+  const base: MockRomanticRelationship[] = [
     // Active Relationship - High Compatibility
     {
       id: 'rel-001',
@@ -504,6 +557,7 @@ export function generateMockRomanticRelationships(): MockRomanticRelationship[] 
       rank_among_active: undefined
     }
   ];
+  return base.map(withDemoSignals);
 }
 
 /**

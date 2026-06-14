@@ -46,6 +46,14 @@ type RelationshipData = {
   start_date?: string;
   end_date?: string;
   created_at: string;
+  metadata?: {
+    signals?: {
+      obsession_score?: number;
+      attachment_intensity?: number;
+      evidence_strength?: number;
+      signal_strength?: 'low' | 'moderate' | 'high';
+    };
+  } & Record<string, unknown>;
 };
 
 type RelationshipAnalyticsData = {
@@ -404,6 +412,52 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
                 </p>
               </div>
             </div>
+
+            {/* Attachment & Dynamics (Sprint AD signals) */}
+            {(() => {
+              const sig = relationship.metadata?.signals;
+              if (!sig) return null;
+              const attachment = sig.attachment_intensity ?? 0;
+              const obsession = sig.obsession_score ?? 0;
+              const lvl = (v: number) => (v >= 0.66 ? 'High' : v >= 0.4 ? 'Moderate' : 'Low');
+              const stillLearning = sig.signal_strength === 'low';
+              return (
+                <div className="p-4 rounded-lg border border-border/60 bg-black/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-white">Attachment & Dynamics</p>
+                    {stillLearning && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full border border-white/15 bg-white/[0.04] text-white/55">
+                        Still learning
+                      </span>
+                    )}
+                  </div>
+                  {/* Attachment intensity bar */}
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-white/50">Attachment intensity</span>
+                      <span className="text-pink-300 font-medium">{lvl(attachment)}</span>
+                    </div>
+                    <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-pink-500 to-rose-400 rounded-full" style={{ width: `${Math.round(attachment * 100)}%` }} />
+                    </div>
+                  </div>
+                  {/* Fixation / obsession signal */}
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-white/50">Fixation signal</span>
+                      <span className={obsession >= 0.6 ? 'text-orange-300 font-medium' : 'text-white/60'}>{lvl(obsession)}</span>
+                    </div>
+                    <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${obsession >= 0.6 ? 'bg-orange-500/70' : 'bg-white/25'}`} style={{ width: `${Math.round(obsession * 100)}%` }} />
+                    </div>
+                    {obsession >= 0.6 && (
+                      <p className="text-[11px] text-orange-300/70 mt-1">Strong fixation — intensity persists more than the connection returns.</p>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-white/30">A relationship dynamic inferred from your conversations — not a label.</p>
+                </div>
+              );
+            })()}
 
             {/* Status and Dates */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
