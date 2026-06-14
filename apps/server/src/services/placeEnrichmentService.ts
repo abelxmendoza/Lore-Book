@@ -37,6 +37,10 @@ const SIG_RULES: Array<{ re: RegExp; sig: string }> = [
   { re: /\b(training gym|where i train|bjj)\b/i, sig: 'training_gym' },
   { re: /\b(hangout|hang out spot)\b/i, sig: 'hangout_spot' },
   { re: /\b(creative space|my studio)\b/i, sig: 'creative_space' },
+  { re: /\b(where i live|live here|living here|currently live|staying here|where i stay)\b/i, sig: 'home' },
+  { re: /\b(live with|living with).*(family|relatives|roommates|people)\b/i, sig: 'home' },
+  { re: /\b(at|in)\s+(my\s+)?(grandma|grandmother|abuela|t[ií]a|aunt|mom|dad|parents?)['']?s?\s+(house|home|apartment|place)\b/i, sig: 'home' },
+  { re: /\b(building|working on|coding at|stayed in).*(abuela|grandma|grandmother)['']?s?\s+(house|home|place)\b/i, sig: 'home' },
 ];
 
 function mergeUnique(existing: string[], incoming: string[]): string[] {

@@ -52,7 +52,10 @@ function normalizeSlug(raw: string): string {
 }
 
 export function inferPlaceType(name: string, context?: string, storedType?: string | null): PlaceType | null {
-  const raw = (storedType ?? '').trim();
+  let raw = (storedType ?? '').trim();
+  // Generic slugs — infer from name/context instead of forcing a wrong category
+  if (/^(place|unknown|other)$/i.test(raw)) raw = '';
+
   if (raw) {
     const n = normalizeSlug(raw);
     if (ALL_TYPES.has(n)) return n as PlaceType;

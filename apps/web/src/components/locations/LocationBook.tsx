@@ -615,7 +615,7 @@ export const LocationBook = () => {
       const k = classifyLocation(loc);
       counts.set(k, (counts.get(k) ?? 0) + 1);
     }
-    const order: LocationKind[] = ['country', 'state', 'region', 'city', 'neighborhood', 'venue', 'landmark', 'nature', 'other'];
+    const order: LocationKind[] = ['country', 'state', 'region', 'city', 'neighborhood', 'residence', 'venue', 'landmark', 'nature', 'other'];
     return order
       .filter(k => (counts.get(k) ?? 0) > 0)
       .map(k => ({ kind: k, count: counts.get(k)!, meta: KIND_META[k] }));
