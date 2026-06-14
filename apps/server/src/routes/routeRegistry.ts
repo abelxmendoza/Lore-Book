@@ -992,8 +992,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/skills',
     router: skillsRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Skill tracking',
+    classification: 'CORE_RUNTIME',
+    description: 'Skill tracking, suggestions, and skill profile intelligence',
   },
   {
     path: '/api/achievements',

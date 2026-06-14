@@ -54,5 +54,6 @@ describe('Route Registry', () => {
     expect(corePaths).toContain('/api/group-candidates');
     expect(corePaths).toContain('/api/family-trees');
     expect(corePaths).toContain('/api/admin');
+    expect(corePaths).toContain('/api/skills');
   });
 });
