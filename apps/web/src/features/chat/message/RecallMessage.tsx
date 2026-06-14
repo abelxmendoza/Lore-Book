@@ -48,8 +48,8 @@ export const RecallMessage = ({ message }: RecallMessageProps) => {
   };
 
   return (
-    <div className="recall-message my-4">
-      <Card className="bg-black/40 border-primary/20">
+    <div className="recall-message my-4 w-full min-w-0">
+      <Card className="bg-black/40 border-primary/20 w-full">
         <CardContent className="p-4 space-y-3">
           {/* Header with confidence and persona badges */}
           <RecallHeader

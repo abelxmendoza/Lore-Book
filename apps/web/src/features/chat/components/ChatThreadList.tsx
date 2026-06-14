@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { MessageSquarePlus, MessageSquareText, Pencil, Trash2, PanelLeftClose, PanelLeft, X, Search, Brain, Sparkles, Loader2 } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import type { ChatThread } from '../hooks/useChatThreads';
+import { isGenericThreadTitle, resolveThreadDisplayTitle } from '../utils/threadTitleUtils';
+import { disambiguateThreadTitles } from '../utils/threadDedupeUtils';
 import { useThreadExplorer } from '../hooks/useThreadExplorer';
 import type { ThreadExploreHit } from '../../../api/threadExplorer';
 
@@ -79,6 +81,7 @@ function groupThreadsByDate(threads: ChatThread[]): ThreadGroup[] {
 
 function ThreadItem({
   thread,
+  displayTitle,
   isActive,
   isMobile,
   onSelect,
@@ -87,6 +90,7 @@ function ThreadItem({
   exploreHit,
 }: {
   thread: ChatThread;
+  displayTitle: string;
   isActive: boolean;
   isMobile: boolean;
   onSelect: () => void;
@@ -137,7 +141,7 @@ function ThreadItem({
   const commitEdit = () => {
     setEditing(false);
     const trimmed = editValue.trim();
-    if (trimmed && trimmed !== thread.title && onRename) {
+    if (trimmed && trimmed !== thread.title && !isGenericThreadTitle(trimmed) && onRename) {
       onRename(trimmed);
     }
   };
@@ -255,7 +259,7 @@ function ThreadItem({
               'text-sm leading-snug truncate',
               isActive ? 'font-semibold' : 'font-medium'
             )}>
-              {thread.title || 'New chat'}
+              {displayTitle}
             </p>
             {thread.subtitle && (
               <p className={cn(
@@ -411,6 +415,10 @@ export const ChatThreadList = ({
       : threads;
 
   const groups = groupThreadsByDate(displayThreads);
+  const titleLabels = useMemo(
+    () => disambiguateThreadTitles(displayThreads),
+    [displayThreads]
+  );
 
   const content = (
     <>
@@ -565,6 +573,7 @@ export const ChatThreadList = ({
                     <ThreadItem
                       key={t.id}
                       thread={t}
+                      displayTitle={titleLabels.get(t.id) ?? resolveThreadDisplayTitle(t)}
                       isActive={currentThreadId === t.id}
                       isMobile={isMobile}
                       exploreHit={hit}

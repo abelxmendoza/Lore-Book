@@ -11,6 +11,11 @@ import { z } from 'zod';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { generateReturnGreeting } from '../services/chat/returnGreetingService';
+import { DRAFT_THREAD_TITLE } from '../utils/threadTitleUtils';
+import {
+  dedupeUserConversationThreads,
+  findReusableEmptyDraft,
+} from '../services/conversationCentered/threadDedupeService';
 import { getWhatChangedSinceLastVisit, formatWhatChangedLines } from '../services/chat/whatChangedService';
 import { confidenceTrackingService } from '../services/confidenceTrackingService';
 import { affectionCalculator } from '../services/conversationCentered/affectionCalculator';
@@ -144,7 +149,7 @@ router.get(
       success: true,
       threads: (threads || []).map((t) => ({
         id: t.id,
-        title: t.title ?? 'New chat',
+        title: t.title ?? DRAFT_THREAD_TITLE,
         subtitle: (t.metadata as Record<string, unknown>)?.subtitle as string | undefined,
         updatedAt: t.updated_at,
         metadata: t.metadata ?? {},
@@ -177,17 +182,30 @@ router.delete(
       return;
     }
 
-    const emptyIds = (candidates ?? [])
-      .filter((t) => {
-        const msgs = (t.metadata as Record<string, unknown> | null)?.messages;
-        return !msgs || (Array.isArray(msgs) && msgs.length === 0);
-      })
-      .map((t) => t.id);
+    const metadataEmpty = (candidates ?? []).filter((t) => {
+      const msgs = (t.metadata as Record<string, unknown> | null)?.messages;
+      return !msgs || (Array.isArray(msgs) && msgs.length === 0);
+    });
+
+    const emptyIds: string[] = [];
+    for (const t of metadataEmpty) {
+      const { count } = await supabaseAdmin
+        .from('conversation_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', t.id);
+      if (!count || count === 0) emptyIds.push(t.id);
+    }
 
     if (emptyIds.length === 0) {
       res.json({ success: true, deleted: 0 });
       return;
     }
+
+    await supabaseAdmin
+      .from('conversation_messages')
+      .delete()
+      .eq('user_id', userId)
+      .in('session_id', emptyIds);
 
     await supabaseAdmin
       .from('conversation_sessions')
@@ -237,8 +255,22 @@ router.get(
 );
 
 /**
+ * DELETE /api/conversation/threads/dedupe
+ * Remove duplicate threads (identical conversations, extra empty drafts) and disambiguate duplicate titles.
+ */
+router.delete(
+  '/threads/dedupe',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const result = await dedupeUserConversationThreads(userId);
+    res.json({ success: true, ...result });
+  })
+);
+
+/**
  * POST /api/conversation/threads
- * Create a new conversation session
+ * Create a new conversation session — reuses an empty draft when possible.
  */
 router.post(
   '/threads',
@@ -251,20 +283,38 @@ router.post(
     });
     const { id, title } = schema.parse(req.body);
 
-    const sessionId = id ?? crypto.randomUUID();
+    if (!id) {
+      const reused = await findReusableEmptyDraft(userId);
+      if (reused) {
+        res.json({ success: true, id: reused, reused: true });
+        return;
+      }
+    }
+
+    const sessionId = id ?? randomUUID();
     const now = new Date().toISOString();
 
-    const { error } = await supabaseAdmin
+    const { data: existing } = await supabaseAdmin
       .from('conversation_sessions')
-      .insert({
-        id: sessionId,
-        user_id: userId,
-        title: title ?? 'New chat',
-        started_at: now,
-        created_at: now,
-        updated_at: now,
-        metadata: {},
-      });
+      .select('id')
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existing?.id) {
+      res.json({ success: true, id: sessionId, existing: true });
+      return;
+    }
+
+    const { error } = await supabaseAdmin.from('conversation_sessions').insert({
+      id: sessionId,
+      user_id: userId,
+      title: title ?? DRAFT_THREAD_TITLE,
+      started_at: now,
+      created_at: now,
+      updated_at: now,
+      metadata: { messages: [] },
+    });
 
     if (error) throw error;
     res.json({ success: true, id: sessionId });
@@ -338,10 +388,36 @@ router.get(
       throw error;
     }
 
-    res.json({
-      success: true,
-      messages: messages || [],
-    });
+    if (messages && messages.length > 0) {
+      res.json({ success: true, messages });
+      return;
+    }
+
+    // Messages are often persisted in session metadata (PATCH /threads) rather than
+    // conversation_messages — fall back so thread clicks always load the saved conversation.
+    const { data: session } = await supabaseAdmin
+      .from('conversation_sessions')
+      .select('metadata')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+
+    const metaMsgs = (session?.metadata as Record<string, unknown> | null)?.messages;
+    if (Array.isArray(metaMsgs) && metaMsgs.length > 0) {
+      res.json({
+        success: true,
+        messages: metaMsgs.map((m: Record<string, unknown>, idx: number) => ({
+          id: (m.id as string) ?? `meta-${idx}`,
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: (m.content as string) ?? '',
+          created_at: (m.timestamp as string) ?? new Date().toISOString(),
+          metadata: m.metadata ?? null,
+        })),
+      });
+      return;
+    }
+
+    res.json({ success: true, messages: [] });
   })
 );
 
@@ -2663,46 +2739,14 @@ router.patch(
     const { title } = z.object({ title: z.string().min(1).max(120) }).parse(req.body);
 
     const { conversationTitleService } = await import('../services/chat/conversationTitleService');
-    await conversationTitleService.renameTitle(userId, id, title);
+    try {
+      await conversationTitleService.renameTitle(userId, id, title);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return res.status(400).json({ success: false, error: msg });
+    }
 
     res.json({ success: true, title });
-  })
-);
-
-/**
- * POST /api/conversation/threads
- * Create a new conversation session (client may supply its own UUID)
- */
-router.post(
-  '/threads',
-  requireAuth,
-  asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const schema = z.object({
-      id: z.string().uuid().optional(),
-      title: z.string().optional(),
-    });
-    const body = schema.parse(req.body);
-    const userId = req.user!.id;
-
-    const id = body.id ?? randomUUID();
-    const now = new Date().toISOString();
-
-    const { data, error } = await supabaseAdmin
-      .from('conversation_sessions')
-      .insert({
-        id,
-        user_id: userId,
-        title: body.title ?? 'New chat',
-        started_at: now,
-        metadata: { messages: [] },
-        created_at: now,
-        updated_at: now,
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-    res.json({ success: true, thread: data });
   })
 );
 

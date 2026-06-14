@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ThreadEntityChips } from '../ThreadEntityChips';
@@ -44,5 +44,22 @@ describe('ThreadEntityChips', () => {
     const buttons = screen.getAllByRole('button');
     expect(buttons[0]).toHaveTextContent('San Diego');
     expect(buttons[1]).toHaveTextContent('Maya');
+  });
+
+  it('composer variant uses building-on label and focus mode', () => {
+    const onSelect = vi.fn();
+    render(
+      <MemoryRouter>
+        <ThreadEntityChips
+          messages={[makeMessage('m1', [maya])]}
+          variant="composer"
+          selectedEntityId="c1"
+          onSelectEntity={onSelect}
+        />
+      </MemoryRouter>
+    );
+    expect(screen.getByText('building on:')).toBeInTheDocument();
+    expect(screen.getByText(/focuses on/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Maya').length).toBeGreaterThanOrEqual(1);
   });
 });

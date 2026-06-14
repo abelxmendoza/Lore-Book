@@ -62,6 +62,12 @@ function makeStoredThread(id: string, title: string, messages: any[] = [makeMess
   return { id, title, messages, updatedAt: new Date(0).toISOString() };
 }
 
+function mockBackendThreadLoad(threads: ReturnType<typeof makeDbThread>[]) {
+  mockFetchJson.mockResolvedValueOnce({ success: true, deleted: 0, titlesUpdated: 0 });
+  mockFetchJson.mockResolvedValueOnce({ threads, success: true });
+  mockFetchJson.mockResolvedValue({ success: true });
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('useChatThreads', () => {
@@ -128,11 +134,10 @@ describe('useChatThreads', () => {
 
   it('loads threads from backend when authenticated', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
-    mockFetchJson.mockResolvedValueOnce({
-      threads: [makeDbThread('thread-a', 'Thread A'), makeDbThread('thread-b', 'Thread B')],
-      success: true,
-    });
-    mockFetchJson.mockResolvedValue({ success: true }); // purge of empty threads after load
+    mockBackendThreadLoad([
+      makeDbThread('thread-a', 'Thread A'),
+      makeDbThread('thread-b', 'Thread B'),
+    ]);
 
     const { result } = renderHook(() => useChatThreads());
 
@@ -153,6 +158,7 @@ describe('useChatThreads', () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     const stored = [makeStoredThread('local-1', 'Local thread')];
     localStorage.setItem('lorekeeper_chat_threads_user-1', JSON.stringify(stored));
+    mockFetchJson.mockResolvedValueOnce({ success: true, deleted: 0, titlesUpdated: 0 });
     mockFetchJson.mockRejectedValueOnce(new Error('Network error'));
 
     const { result } = renderHook(() => useChatThreads());
@@ -172,11 +178,9 @@ describe('useChatThreads', () => {
   it('deserialises message timestamps from strings to Date objects', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     const ts = '2025-01-01T00:00:00.000Z';
-    mockFetchJson.mockResolvedValueOnce({
-      threads: [makeDbThread('t1', 'Thread', [{ id: 'm1', role: 'user', content: 'hi', timestamp: ts }])],
-      success: true,
-    });
-    mockFetchJson.mockResolvedValue({ success: true }); // purge of empty threads after load
+    mockBackendThreadLoad([
+      makeDbThread('t1', 'Thread', [{ id: 'm1', role: 'user', content: 'hi', timestamp: ts }]),
+    ]);
 
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
@@ -200,7 +204,7 @@ describe('useChatThreads', () => {
 
     expect(result.current.threads).toHaveLength(1);
     expect(result.current.threads[0].id).toBe(newId!);
-    expect(result.current.threads[0].title).toBe('New chat');
+    expect(result.current.threads[0].title).toBe('Draft');
     expect(result.current.currentThreadId).toBe(newId!);
     expect(mockFetchJson).not.toHaveBeenCalled();
   });
@@ -226,9 +230,7 @@ describe('useChatThreads', () => {
 
   it('creates a thread via backend when authenticated', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
-    mockFetchJson.mockResolvedValueOnce({ threads: [], success: true });
-    // purge DELETE after load + POST for createThread
-    mockFetchJson.mockResolvedValue({ success: true });
+    mockBackendThreadLoad([]);
 
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
@@ -369,11 +371,7 @@ describe('useChatThreads', () => {
 
   it('getThread returns the correct thread by id', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
-    mockFetchJson.mockResolvedValueOnce({
-      threads: [makeDbThread('find-me', 'Found')],
-      success: true,
-    });
-    mockFetchJson.mockResolvedValue({ success: true }); // purge of empty threads after load
+    mockBackendThreadLoad([makeDbThread('find-me', 'Found')]);
 
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsReady).toBe(true));

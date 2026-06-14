@@ -12,6 +12,7 @@ import type { UserIntent } from '../types/conversationalOrchestration';
 import { jaroWinkler } from '../utils/jaroWinkler';
 
 import { entityResolutionService, type EntityCandidate } from './entityResolutionService';
+import { dedupeCandidatesById, collapseSameNameCandidates } from '../utils/disambiguationUtils';
 
 // -----------------------------
 // TYPES
@@ -97,8 +98,10 @@ export class EntityAmbiguityService {
       // Skip common words that are capitalized
       const skipWords = [
         'I', 'The', 'This', 'That', 'There', 'Here', 'When', 'Where', 'What', 'Who', 'Why', 'How',
+        'Yesterday', 'Today', 'Tomorrow',
         'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
-        'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'
+        'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December',
+        'Codex', 'Cursor', 'Claude', 'LoreBook', 'Lorekeeper',
       ];
 
       if (!skipWords.includes(text) && text.length > 2) {
@@ -254,6 +257,20 @@ export class EntityAmbiguityService {
       return false;
     }
 
+    // Must have at least 2 distinct candidates after dedupe
+    const uniqueCandidates = collapseSameNameCandidates(
+      dedupeCandidatesById(
+        ambiguity.candidates.map((c) => ({
+          ...c,
+          character_id: c.entity_id,
+          name: c.primary_name,
+        }))
+      )
+    );
+    if (uniqueCandidates.length < 2) {
+      return false;
+    }
+
     return true;
   }
 
@@ -261,7 +278,17 @@ export class EntityAmbiguityService {
    * Build disambiguation prompt for UI
    */
   buildDisambiguationPrompt(ambiguity: AmbiguitySignal): DisambiguationPrompt {
-    const options: DisambiguationPrompt['options'] = ambiguity.candidates.map(candidate => {
+    const uniqueCandidates = collapseSameNameCandidates(
+      dedupeCandidatesById(
+        ambiguity.candidates.map((c) => ({
+          ...c,
+          character_id: c.entity_id,
+          name: c.primary_name,
+        }))
+      )
+    );
+
+    const options: DisambiguationPrompt['options'] = uniqueCandidates.map((candidate) => {
       // Build subtitle with context hints
       const hints: string[] = [];
       

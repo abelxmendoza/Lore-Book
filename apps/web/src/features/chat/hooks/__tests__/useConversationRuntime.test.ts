@@ -65,6 +65,10 @@ function makeThreadsStore(opts: {
     setCurrentThreadId: vi.fn(),
     createThread: vi.fn(() => 'new-thread-id'),
     getThread: vi.fn((id: string) => threads.find((t) => t.id === id)),
+    hydrateThreadMessages: vi.fn(async (id: string) => {
+      const t = threads.find((th) => th.id === id);
+      return t && t.messages.length > 0 ? t : null;
+    }),
     switchThread: vi.fn(),
     updateThread: vi.fn(),
     renameThread: vi.fn(),
@@ -334,7 +338,7 @@ describe('useConversationRuntime', () => {
   });
 
   it('skips title generation when the thread already has a non-default title', async () => {
-    const thread = makeThread('t3', [], 'Custom Title');
+    const thread = makeThread('t3', [makeMessage('user', 'hello')], 'Custom Title');
     const store = makeThreadsStore({ threads: [thread] });
     mockUseChatThreads.mockReturnValue(store);
 

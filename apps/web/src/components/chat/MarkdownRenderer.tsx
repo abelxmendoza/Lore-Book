@@ -16,7 +16,7 @@ type MarkdownRendererProps = {
 
 export const MarkdownRenderer = ({ content, isStreaming, className }: MarkdownRendererProps) => {
   return (
-    <div className={`markdown-content prose prose-invert prose-sm max-w-none${className ? ` ${className}` : ''}`}>
+    <div className={`markdown-content prose prose-invert prose-sm max-w-none w-full min-w-0${className ? ` ${className}` : ''}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeHighlight]}

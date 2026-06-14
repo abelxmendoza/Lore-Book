@@ -26,6 +26,11 @@
 import { logger } from '../logger';
 import { jaroWinkler } from '../utils/jaroWinkler';
 import { normalizeNameKey, namesOverlapByContainment, containmentIsPossessive, splitPersonName } from '../utils/nameNormalization';
+import {
+  normalizeDisambiguationCandidates,
+  threadUserHistoryReferencesMention,
+  type DisambiguationCandidate,
+} from '../utils/disambiguationUtils';
 import { isCollectivePersonName } from '../utils/personNameValidation';
 
 import { supabaseAdmin } from './supabaseClient';
@@ -383,37 +388,96 @@ class CharacterRegistry {
    * Anti-spam: max one per response (caller invokes once), each question is
    * asked at most twice (then silently dismissed), and resolved/dismissed
    * questions are permanent memory.
+   *
+   * Only delivers when the current message actually references the mention —
+   * stale questions from ingestion must not attach to unrelated chat turns.
    */
-  async takeNextPendingQuestion(userId: string): Promise<{
+  async takeNextPendingQuestion(
+    userId: string,
+    context?: {
+      message?: string;
+      threadId?: string;
+      conversationHistory?: Array<{ role: string; content: string }>;
+    }
+  ): Promise<{
     question_id: string;
     mention_text: string;
     candidates: Array<{ character_id: string; name: string; subtitle?: string }>;
   } | null> {
     const { data } = await supabaseAdmin
       .from('entity_questions')
-      .select('id, mention_text, candidates, asked_count')
+      .select('id, mention_text, candidates, asked_count, thread_id')
       .eq('user_id', userId)
       .eq('status', 'pending')
       .order('created_at', { ascending: true })
-      .limit(3);
+      .limit(5);
 
     for (const q of data ?? []) {
       if ((q.asked_count as number) >= 2) {
-        // Asked twice without an answer — the user isn't interested; stop.
         await supabaseAdmin
           .from('entity_questions')
           .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
           .eq('id', q.id);
         continue;
       }
+
+      const mentionText = q.mention_text as string;
+      const questionThreadId = q.thread_id as string | null;
+
+      // Global questions (no thread) must never interrupt an unrelated chat thread.
+      if (!questionThreadId) continue;
+
+      if (context?.threadId && questionThreadId !== context.threadId) continue;
+
+      // The USER must have brought up this name earlier in THIS thread — assistant
+      // mentions from RAG/hallucination must not trigger a "who did you mean?" prompt.
+      if (
+        !threadUserHistoryReferencesMention(
+          context?.conversationHistory,
+          context?.message,
+          mentionText
+        )
+      ) {
+        continue;
+      }
+
+      let candidates = ((q.candidates as DisambiguationCandidate[]) ?? []).map((c) => ({
+        character_id: c.character_id ?? c.entity_id ?? '',
+        name: c.name,
+        subtitle: c.subtitle,
+      })).filter((c) => c.character_id);
+
+      const ids = candidates.map((c) => c.character_id);
+      let characterRows: CharacterRow[] = [];
+      if (ids.length > 0) {
+        const { data: chars } = await supabaseAdmin
+          .from('characters')
+          .select('id, name, alias')
+          .eq('user_id', userId)
+          .in('id', ids);
+        characterRows = (chars ?? []) as CharacterRow[];
+      }
+
+      candidates = normalizeDisambiguationCandidates(candidates, characterRows);
+
+      if (candidates.length <= 1) {
+        await supabaseAdmin
+          .from('entity_questions')
+          .update({ status: 'dismissed', resolved_at: new Date().toISOString(), resolution: { action: 'auto_dismissed_not_ambiguous' } })
+          .eq('id', q.id);
+        logger.debug({ userId, mention: mentionText, candidateCount: candidates.length }, 'Auto-dismissed non-ambiguous entity question');
+        continue;
+      }
+
       await supabaseAdmin
         .from('entity_questions')
         .update({ asked_count: (q.asked_count as number) + 1 })
         .eq('id', q.id);
+
       return {
         question_id: q.id as string,
-        mention_text: q.mention_text as string,
-        candidates: (q.candidates as any[]) ?? [],
+        mention_text: mentionText,
+        candidates,
       };
     }
     return null;

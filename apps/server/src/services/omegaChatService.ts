@@ -7,6 +7,7 @@ import type { MemoryEntry, ResolvedMemoryEntry } from '../types';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
 import type { ChatContextExtension } from '../types/timelineInsight';
 import { extractTags, shouldPersistMessage, isTrivialMessage } from '../utils/keywordDetector';
+import { messageReferencesMention } from '../utils/disambiguationUtils';
 
 import {
   isBeliefChallengeAllowed,
@@ -459,6 +460,22 @@ class OmegaChatService {
     return context;
   }
 
+  private buildThreadEntitiesContext(
+    threadEntities?: Array<{ id: string; name: string; type: string }>,
+    focusedEntityId?: string
+  ): string {
+    if (!threadEntities?.length) return '';
+    const lines = threadEntities.map((e) => {
+      const tag =
+        e.type === 'character' ? 'person'
+          : e.type === 'location' ? 'place'
+            : 'organization';
+      const focus = focusedEntityId === e.id ? ' ← current focus' : '';
+      return `- ${e.name} (${tag})${focus}`;
+    });
+    return `\n\n**THREAD CONFIRMED ENTITIES**: This conversation has established context with:\n${lines.join('\n')}\nBuild on what is already known about these entities from prior thread messages and their records. Do not treat them as newly discovered unless the user introduces genuinely new information.`;
+  }
+
   async chatStream(
     userId: string,
     message: string,
@@ -466,7 +483,8 @@ class OmegaChatService {
     entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'PERCEPTION' | 'MEMORY' | 'ENTITY' | 'GOSSIP' | 'ROMANTIC_RELATIONSHIP'; id: string },
     currentContext?: CurrentContext,
     soulProfileContext?: SoulProfileContext,
-    threadId?: string
+    threadId?: string,
+    threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>
   ): Promise<StreamingChatResponse> {
     // Use the UI thread as the session so messages, recall scoping, and
     // ingestion all stay attached to the thread the user is actually in.
@@ -884,12 +902,14 @@ class OmegaChatService {
         // If we found an ambiguity and should prompt, build the prompt
         if (ambiguities.length > 0) {
           const firstAmbiguity = ambiguities[0];
-          
-          // Check if we should prompt (skip for venting)
+
+          // Only prompt when the user actually typed this name — never on substring
+          // false positives or names the assistant introduced from RAG.
           if (
+            messageReferencesMention(message, firstAmbiguity.mention_text) &&
             entityAmbiguityService.shouldPromptDisambiguation(
               firstAmbiguity,
-              detectedIntent === 'VENTING' ? 'VENTING' : 'QUESTION' // Map to UserIntent
+              detectedIntent === 'VENTING' ? 'VENTING' : 'QUESTION'
             )
           ) {
             disambiguationPrompt = entityAmbiguityService.buildDisambiguationPrompt(firstAmbiguity);
@@ -1061,6 +1081,11 @@ class OmegaChatService {
 
     if (returnToThreadContext) {
       systemPrompt += returnToThreadContext;
+    }
+
+    const threadEntitiesContext = this.buildThreadEntitiesContext(threadEntities, entityContext?.id);
+    if (threadEntitiesContext) {
+      systemPrompt += threadEntitiesContext;
     }
 
     if (refinementClarificationRequest) {

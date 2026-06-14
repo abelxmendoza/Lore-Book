@@ -35,7 +35,13 @@ function makeSupabaseChain(returnData: unknown = null) {
     select: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    neq: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    not: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
     single: vi.fn().mockResolvedValue({ data: returnData, error: null }),
+    then: (resolve: (v: unknown) => void) => resolve({ data: [], error: null }),
   };
   return chain;
 }

@@ -140,7 +140,7 @@ class CharacterFoundationService {
       return decision.characterId;
     }
     if (decision.action === 'defer') {
-      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, null, decision.rawName);
+      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, threadId ?? null, decision.rawName);
       return null;
     }
     const cleanedName = decision.cleanName;
@@ -369,7 +369,8 @@ class CharacterFoundationService {
    */
   async promoteOmegaEntityToCharacter(
     userId: string,
-    entity: { id: string; primary_name: string; type: string; aliases?: string[] | null; mention_count?: number }
+    entity: { id: string; primary_name: string; type: string; aliases?: string[] | null; mention_count?: number },
+    threadId?: string | null
   ): Promise<string | null> {
     if (entity.type !== 'PERSON' && entity.type !== 'CHARACTER') return null;
 
@@ -400,7 +401,7 @@ class CharacterFoundationService {
       return decision.characterId;
     }
     if (decision.action === 'defer') {
-      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, null, decision.rawName);
+      await characterRegistry.recordPendingQuestion(userId, decision.cleanName, decision.candidates, threadId ?? null, decision.rawName);
       return null;
     }
     const cleanedName = decision.cleanName;

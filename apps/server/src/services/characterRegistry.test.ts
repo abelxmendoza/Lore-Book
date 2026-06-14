@@ -70,4 +70,34 @@ describe('characterRegistry', () => {
       cleanName: 'Oscuridad',
     });
   });
+
+  it('does not deliver global pending questions into unrelated threads', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'entity_questions') {
+        return chain([
+          {
+            id: 'q1',
+            mention_text: 'Fairy',
+            candidates: [
+              { character_id: 'a', name: 'Hell Fairy' },
+              { character_id: 'b', name: 'Mr. Chino' },
+            ],
+            asked_count: 0,
+            thread_id: null,
+          },
+        ]);
+      }
+      return chain([]);
+    });
+
+    const result = await characterRegistry.takeNextPendingQuestion('user-1', {
+      message: 'Testing LoreBook features',
+      threadId: 'thread-dev',
+      conversationHistory: [
+        { role: 'user', content: 'Building LoreBook with Codex' },
+      ],
+    });
+
+    expect(result).toBeNull();
+  });
 });

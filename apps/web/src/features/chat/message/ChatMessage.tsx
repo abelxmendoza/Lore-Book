@@ -177,26 +177,62 @@ export const ChatMessage = ({
   const responseMode = message.response_mode || message.metadata?.response_mode;
   if (!isUser && (responseMode === 'SILENCE' || responseMode === 'RECALL')) {
     if (responseMode === 'SILENCE') {
-      return <SilenceMessage message={message} />;
+      return (
+        <div className="flex gap-3 sm:gap-4 w-full mb-4 sm:mb-6 chat-message">
+          <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-primary/10 flex items-center justify-center mt-1">
+            <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0 w-full">
+            <SilenceMessage message={message} />
+          </div>
+        </div>
+      );
     }
     if (responseMode === 'RECALL') {
-      return <RecallMessage message={message} />;
+      return (
+        <div className="flex gap-3 sm:gap-4 w-full mb-4 sm:mb-6 chat-message">
+          <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-primary/10 flex items-center justify-center mt-1">
+            <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0 w-full">
+            <RecallMessage message={message} />
+          </div>
+        </div>
+      );
     }
   }
 
   // Memory Recall messages
   if (!isUser && (message.response_mode === 'SILENCE' || message.response_mode === 'RECALL')) {
     if (message.response_mode === 'SILENCE') {
-      return <SilenceMessage message={message} />;
+      return (
+        <div className="flex gap-3 sm:gap-4 w-full mb-4 sm:mb-6 chat-message">
+          <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-primary/10 flex items-center justify-center mt-1">
+            <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0 w-full">
+            <SilenceMessage message={message} />
+          </div>
+        </div>
+      );
     }
     if (message.response_mode === 'RECALL') {
-      return <RecallMessage message={message} />;
+      return (
+        <div className="flex gap-3 sm:gap-4 w-full mb-4 sm:mb-6 chat-message">
+          <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-primary/10 flex items-center justify-center mt-1">
+            <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0 w-full">
+            <RecallMessage message={message} />
+          </div>
+        </div>
+      );
     }
   }
 
   return (
     <div
-      className={`flex gap-3 sm:gap-4 lg:gap-6 ${isUser ? 'justify-end' : 'justify-start'} group chat-message w-full mb-4 sm:mb-6 lg:mb-8`}
+      className={`flex gap-3 sm:gap-4 lg:gap-6 items-start ${isUser ? 'justify-end' : 'justify-start'} group chat-message w-full mb-4 sm:mb-6 lg:mb-8`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
@@ -205,9 +241,9 @@ export const ChatMessage = ({
           <Bot className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />
         </div>
       )}
-      <div className={`min-w-0 ${isUser ? 'flex justify-end max-w-full' : 'flex-1'}`}>
+      <div className={`min-w-0 w-full ${isUser ? 'flex flex-col items-end max-w-full' : 'flex-1 flex flex-col'}`}>
         <div
-          className={`relative ${
+          className={`relative w-full ${
             isUser
               ? 'inline-block max-w-full bg-white/10 rounded-2xl rounded-tr-sm px-4 py-3 sm:px-5 sm:py-4 lg:px-7 lg:py-6 xl:px-8 xl:py-7'
               // Assistant: fill the available width so responses read full-width,
@@ -263,7 +299,7 @@ export const ChatMessage = ({
               </>
             )}
             {!isUser ? (
-              <div className="prose prose-invert prose-base sm:prose-lg lg:prose-xl max-w-none prose-headings:text-white prose-p:text-white/90 prose-p:leading-relaxed prose-p:my-3 sm:prose-p:my-4 prose-a:text-primary prose-strong:text-white prose-code:text-white prose-pre:bg-black/40">
+              <div className="w-full min-w-0 prose prose-invert prose-base sm:prose-lg lg:prose-xl max-w-none prose-headings:text-white prose-p:text-white/90 prose-p:leading-relaxed prose-p:my-3 sm:prose-p:my-4 prose-a:text-primary prose-strong:text-white prose-code:text-white prose-pre:bg-black/40">
                 {message.isStreaming && !message.content.trim() ? (
                   <ChatLoadingDots />
                 ) : (
@@ -541,48 +577,59 @@ export const ChatMessage = ({
               Story-of-self analysis lives on the dedicated Story page only. */}
           </div>
         </div>
+
+        {/* Entity chips — below assistant bubble (inside column so flex siblings don't squeeze width) */}
+        {!isUser && message.mentionedEntities && message.mentionedEntities.length > 0 && (
+          <div className="mt-2 w-full min-w-0">
+            <EntityChipsRow entities={message.mentionedEntities} />
+          </div>
+        )}
+
+        {/* Entity Ambiguity Clarification Chips - shown below user messages */}
+        {isUser && (message.ambiguities || message.disambiguation_prompt) && (
+          <div className="mt-3 space-y-2 w-full min-w-0">
+            {message.ambiguities?.map((ambiguity, idx) => (
+              <EntityClarificationChip
+                key={idx}
+                ambiguity={ambiguity}
+                messageId={message.id}
+              />
+            ))}
+            {message.disambiguation_prompt && (() => {
+              const seen = new Set<string>();
+              const candidates = message.disambiguation_prompt.options
+                .filter(opt => opt.entity_id && opt.label !== 'Someone else')
+                .filter(opt => {
+                  if (seen.has(opt.entity_id)) return false;
+                  seen.add(opt.entity_id);
+                  return true;
+                })
+                .map(opt => ({
+                  entity_id: opt.entity_id,
+                  name: opt.label,
+                  type: (opt.entity_type || 'CHARACTER') as 'CHARACTER' | 'LOCATION' | 'ORG' | 'PERSON',
+                  confidence: 0.8,
+                  last_seen: new Date().toISOString(),
+                  context_hint: opt.subtitle,
+                }));
+              if (candidates.length < 2) return null;
+              return (
+              <EntityClarificationChip
+                ambiguity={{
+                  surface_text: message.disambiguation_prompt.mention_text,
+                  candidates,
+                }}
+                messageId={message.id}
+                hasCreateNewOption={message.disambiguation_prompt.options.some(opt => opt.label === 'Someone else')}
+                questionId={message.disambiguation_prompt.question_id}
+                multiSelect={message.disambiguation_prompt.multi_select}
+              />
+              );
+            })()}
+          </div>
+        )}
       </div>
 
-      {/* Entity chips — shown below assistant messages when entities were matched */}
-      {!isUser && message.mentionedEntities && message.mentionedEntities.length > 0 && (
-        <div className="ml-8 sm:ml-10 lg:ml-12">
-          <EntityChipsRow entities={message.mentionedEntities} />
-        </div>
-      )}
-
-      {/* Entity Ambiguity Clarification Chips - shown below user messages */}
-      {isUser && (message.ambiguities || message.disambiguation_prompt) && (
-        <div className="mt-3 space-y-2">
-          {message.ambiguities?.map((ambiguity, idx) => (
-            <EntityClarificationChip
-              key={idx}
-              ambiguity={ambiguity}
-              messageId={message.id}
-            />
-          ))}
-          {message.disambiguation_prompt && (
-            <EntityClarificationChip
-              ambiguity={{
-                surface_text: message.disambiguation_prompt.mention_text,
-                candidates: message.disambiguation_prompt.options
-                  .filter(opt => opt.entity_id && opt.label !== 'Someone else') // Filter out "Someone else" option
-                  .map(opt => ({
-                    entity_id: opt.entity_id,
-                    name: opt.label,
-                    type: (opt.entity_type || 'CHARACTER') as 'CHARACTER' | 'LOCATION' | 'ORG' | 'PERSON',
-                    confidence: 0.8,
-                    last_seen: new Date().toISOString(),
-                    context_hint: opt.subtitle,
-                  })),
-              }}
-              messageId={message.id}
-              hasCreateNewOption={message.disambiguation_prompt.options.some(opt => opt.label === 'Someone else')}
-              questionId={message.disambiguation_prompt.question_id}
-              multiSelect={message.disambiguation_prompt.multi_select}
-            />
-          )}
-        </div>
-      )}
       {isUser && (
         <div className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 rounded-full bg-primary/10 flex items-center justify-center mt-1">
           <UserIcon className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />

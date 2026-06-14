@@ -927,14 +927,16 @@ export class ConversationIngestionPipeline {
           resolvedEntities.push(...resolved.map(e => ({ id: e.id, type: e.type })));
 
           // Promote PERSON/CHARACTER entities to characters table so they appear
-          // in the Characters Book. Fire-and-forget — never blocks chat response.
+          // in the Characters Book. USER messages only — assistant/RAG text must
+          // not queue entity questions the user never typed (e.g. Hell Fairy leaking
+          // into an unrelated LoreBook thread).
           const personEntities = resolved.filter(
             e => e.type === 'PERSON' || e.type === 'CHARACTER'
           );
-          if (personEntities.length > 0) {
+          if (sender === 'USER' && personEntities.length > 0) {
             import('../characterFoundationService').then(({ characterFoundationService }) => {
               personEntities.forEach(entity => {
-                characterFoundationService.promoteOmegaEntityToCharacter(userId, entity as any).then(
+                characterFoundationService.promoteOmegaEntityToCharacter(userId, entity as any, threadId).then(
                   async (characterId) => {
                     if (!characterId) return;
                     const { entityFactsService } = await import('../entityFactsService');

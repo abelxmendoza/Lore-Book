@@ -1,41 +1,73 @@
 import { useMemo } from 'react';
 import { EntityChipsRow } from '../message/EntityChipsRow';
 import type { Message } from '../message/ChatMessage';
+import { collectThreadEntities, type ThreadEntity } from '../utils/collectThreadEntities';
 
 interface ThreadEntityChipsProps {
   messages: Message[];
+  /** Inline above messages (legacy) vs sticky strip above the composer */
+  variant?: 'inline' | 'composer';
+  selectedEntityId?: string | null;
+  onSelectEntity?: (entity: ThreadEntity | null) => void;
 }
 
 /**
- * Thread-level entity accumulation strip — every entity any message in this
- * thread has surfaced, most-mentioned first. Makes continuity structural and
- * visible: the user watches the thread "learn" people/places as they talk,
- * and sees them still there when they return days later.
+ * Thread-level confirmed entity strip — every resolved entity the conversation
+ * has established. In composer mode, clicking a chip focuses the next message
+ * on that entity so LoreBook builds on existing knowledge.
  */
-export const ThreadEntityChips = ({ messages }: ThreadEntityChipsProps) => {
-  const entities = useMemo(() => {
-    const byId = new Map<string, { id: string; name: string; type: 'character' | 'location' | 'organization'; count: number; lastIndex: number }>();
-    messages.forEach((m, i) => {
-      for (const e of m.mentionedEntities ?? []) {
-        const existing = byId.get(e.id);
-        if (existing) {
-          existing.count += 1;
-          existing.lastIndex = i;
-        } else {
-          byId.set(e.id, { ...e, count: 1, lastIndex: i });
-        }
-      }
-    });
-    return [...byId.values()]
-      .sort((a, b) => b.count - a.count || b.lastIndex - a.lastIndex)
-      .map(({ id, name, type }) => ({ id, name, type }));
-  }, [messages]);
+export const ThreadEntityChips = ({
+  messages,
+  variant = 'inline',
+  selectedEntityId = null,
+  onSelectEntity,
+}: ThreadEntityChipsProps) => {
+  const entities = useMemo(() => collectThreadEntities(messages), [messages]);
 
   if (entities.length === 0) return null;
 
+  const isComposer = variant === 'composer';
+
   return (
-    <div className="px-4 pt-1 flex-shrink-0">
-      <EntityChipsRow entities={entities} label="this thread knows:" max={8} />
+    <div
+      className={
+        isComposer
+          ? 'flex-shrink-0 border-t border-white/10 bg-black/50 backdrop-blur-sm'
+          : 'px-4 pt-1 flex-shrink-0'
+      }
+    >
+      <div
+        className={
+          isComposer
+            ? 'mx-auto w-full max-w-5xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-3 sm:px-4 lg:px-10 xl:px-12 py-2'
+            : undefined
+        }
+      >
+        <EntityChipsRow
+          entities={entities}
+          label={isComposer ? 'building on:' : 'this thread knows:'}
+          max={isComposer ? 10 : 8}
+          mode={isComposer ? 'focus' : 'navigate'}
+          selectedId={selectedEntityId}
+          onSelect={
+            isComposer
+              ? (entity) => {
+                  if (!onSelectEntity) return;
+                  onSelectEntity(selectedEntityId === entity.id ? null : entity);
+                }
+              : undefined
+          }
+        />
+        {isComposer && selectedEntityId && (
+          <p className="mt-1 text-[10px] text-white/35">
+            Next message focuses on{' '}
+            <span className="text-white/55">
+              {entities.find((e) => e.id === selectedEntityId)?.name ?? 'this entity'}
+            </span>
+            . Click again to clear.
+          </p>
+        )}
+      </div>
     </div>
   );
 };

@@ -7,6 +7,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { DRAFT_THREAD_TITLE } from '../../utils/threadTitleUtils';
 
 export type ThreadSnippet = {
   role: 'user' | 'assistant';
@@ -124,7 +125,7 @@ function parseThread(row: {
     : [];
   return {
     id: row.id,
-    title: row.title ?? 'New chat',
+    title: row.title ?? DRAFT_THREAD_TITLE,
     subtitle: typeof meta.subtitle === 'string' ? meta.subtitle : undefined,
     updatedAt: row.updated_at,
     entities,

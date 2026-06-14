@@ -5,6 +5,13 @@ import { config } from '../../../config/env';
 import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
 import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
 import type { Message } from '../message/ChatMessage';
+import {
+  DRAFT_THREAD_TITLE,
+  isGenericThreadTitle,
+  normalizeThreadTitle,
+  deriveTitleFromMessages,
+} from '../utils/threadTitleUtils';
+import { dedupeConversationThreads, ensureLocalUniqueTitle } from '../utils/threadDedupeUtils';
 
 export type ChatThread = {
   id: string;
@@ -42,14 +49,15 @@ function messagesToJson(messages: Message[]) {
 
 function dbRowToThread(t: any): ChatThread {
   const msgs: any[] = t.metadata?.messages ?? [];
-  return {
+  const thread: ChatThread = {
     id: t.id,
-    title: t.title || 'New chat',
+    title: t.title || DRAFT_THREAD_TITLE,
     subtitle: t.metadata?.subtitle as string | undefined,
     dominantEntities: Array.isArray(t.metadata?.dominantEntities) ? t.metadata.dominantEntities : undefined,
     messages: msgs.map(parseStoredMessage),
     updatedAt: t.updated_at || t.created_at || new Date().toISOString(),
   };
+  return normalizeThreadTitle(thread);
 }
 
 function dbMessageToMessage(row: any): Message {
@@ -71,11 +79,9 @@ function isUsableThread(t: ChatThread): boolean {
   return age < STALE_EMPTY_THRESHOLD_MS;
 }
 
-/** Deduplicates threads by ID — last occurrence wins (most recent data). */
+/** Deduplicates threads by ID, identical conversations, and extra empty drafts. */
 function dedupeThreads(threads: ChatThread[]): ChatThread[] {
-  const seen = new Map<string, ChatThread>();
-  for (const t of threads) seen.set(t.id, t);
-  return Array.from(seen.values());
+  return dedupeConversationThreads(threads);
 }
 
 // ── Read Supabase access_token from localStorage synchronously (for keepalive saves) ──
@@ -168,12 +174,23 @@ export const useChatThreads = () => {
     runtimeDiagnostics.startTimer('backend_load');
     setThreadsLoading(true);
     try {
+      await fetchJson('/api/conversation/threads/dedupe', { method: 'DELETE' }).catch(() => {});
       const data = await fetchJson<{ threads: any[]; success: boolean }>('/api/conversation/threads');
       const loaded = dedupeThreads(
         (data.threads || []).map(dbRowToThread).filter(isUsableThread)
       );
       setThreads(loaded);
       for (const t of loaded) threadPersistenceTracker.markRestoredFromBackend(t.id);
+      // Upgrade legacy generic titles in the background.
+      for (const t of loaded) {
+        const rawTitle = (data.threads || []).find((row: any) => row.id === t.id)?.title;
+        if (isGenericThreadTitle(rawTitle) && !isGenericThreadTitle(t.title) && t.messages.length > 0) {
+          fetchJson(`/api/conversation/threads/${t.id}/title`, {
+            method: 'PATCH',
+            body: JSON.stringify({ title: t.title }),
+          }).catch(() => {});
+        }
+      }
       const last = localStorage.getItem(lastThreadKey(userId));
       if (last && loaded.some((t) => t.id === last)) {
         setCurrentThreadIdState(last);
@@ -266,7 +283,7 @@ export const useChatThreads = () => {
     // Reuse the most recent thread if it is still empty — prevents orphan accumulation
     // when the user navigates to /chat repeatedly before sending any message.
     const latest = threadsRef.current[0];
-    if (latest && latest.messages.length === 0 && latest.title === 'New chat') {
+    if (latest && latest.messages.length === 0 && isGenericThreadTitle(latest.title)) {
       setCurrentThreadIdState(latest.id);
       if (isAuthenticated) localStorage.setItem(lastThreadKey(userId), latest.id);
       return latest.id;
@@ -275,7 +292,7 @@ export const useChatThreads = () => {
     const id = crypto.randomUUID();
     const thread: ChatThread = {
       id,
-      title: 'New chat',
+      title: DRAFT_THREAD_TITLE,
       messages: [],
       updatedAt: new Date().toISOString(),
     };
@@ -290,7 +307,7 @@ export const useChatThreads = () => {
       localStorage.setItem(lastThreadKey(userId), id);
       fetchJson('/api/conversation/threads', {
         method: 'POST',
-        body: JSON.stringify({ id, title: 'New chat' }),
+        body: JSON.stringify({ id, title: DRAFT_THREAD_TITLE }),
       }).then(() => {
         threadPersistenceTracker.markPersisted(id);
       }).catch((err: unknown) => {
@@ -313,31 +330,35 @@ export const useChatThreads = () => {
 
   const hydrateThreadMessages = useCallback(
     async (id: string): Promise<ChatThread | null> => {
+      const existing = threadsRef.current.find((t) => t.id === id);
       try {
         const result = await fetchJson<{ success: boolean; messages: any[] }>(
           `/api/conversation/threads/${id}/messages`
         );
         if (!result.success) return null;
 
-        const messages = (result.messages || []).map(dbMessageToMessage);
-        const updatedAt = messages.length > 0
-          ? messages[messages.length - 1].timestamp.toISOString()
-          : new Date().toISOString();
+        let messages = (result.messages || []).map(dbMessageToMessage);
+        if (messages.length === 0 && existing?.messages.length) {
+          messages = existing.messages;
+        }
+        if (messages.length === 0) return null;
+
+        const updatedAt = messages[messages.length - 1].timestamp.toISOString();
 
         let hydratedThread: ChatThread | null = null;
         setThreads((prev) => {
-          const existing = prev.find((t) => t.id === id);
+          const row = prev.find((t) => t.id === id);
           hydratedThread = {
             id,
-            title: existing?.title || 'Restored chat',
-            subtitle: existing?.subtitle,
-            dominantEntities: existing?.dominantEntities,
+            title: row?.title || existing?.title || 'Restored chat',
+            subtitle: row?.subtitle ?? existing?.subtitle,
+            dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
             messages,
-            updatedAt: existing?.updatedAt || updatedAt,
+            updatedAt: row?.updatedAt || existing?.updatedAt || updatedAt,
           };
 
-          if (existing) {
-            return prev.map((t) => (t.id === id ? { ...t, messages } : t));
+          if (row) {
+            return prev.map((t) => (t.id === id ? { ...t, messages, updatedAt: hydratedThread!.updatedAt } : t));
           }
           return [hydratedThread, ...prev];
         });
@@ -346,6 +367,7 @@ export const useChatThreads = () => {
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
         runtimeDiagnostics.record('backend_load_error', { threadId: id, meta: { op: 'hydrate_thread_messages', error: errMsg } });
+        if (existing?.messages.length) return existing;
         return null;
       }
     },
@@ -374,12 +396,25 @@ export const useChatThreads = () => {
       updatedAt?: string;
     }) => {
       const updatedAt = payload.updatedAt ?? new Date().toISOString();
+      let derivedTitle: string | undefined;
+      if (payload.title === undefined && payload.messages !== undefined) {
+        const current = threadsRef.current.find((t) => t.id === id);
+        if (current && isGenericThreadTitle(current.title)) {
+          derivedTitle = deriveTitleFromMessages(payload.messages) ?? undefined;
+        }
+      }
+      const titleToApplyRaw = payload.title ?? derivedTitle;
+      const titleToApply =
+        titleToApplyRaw !== undefined
+          ? ensureLocalUniqueTitle(titleToApplyRaw, id, threadsRef.current)
+          : undefined;
+
       setThreads((prev) => {
         const next = prev.map((t) =>
           t.id === id
             ? {
                 ...t,
-                ...(payload.title !== undefined && { title: payload.title }),
+                ...(titleToApply !== undefined && { title: titleToApply }),
                 ...(payload.subtitle !== undefined && { subtitle: payload.subtitle }),
                 ...(payload.dominantEntities !== undefined && { dominantEntities: payload.dominantEntities }),
                 ...(payload.messages !== undefined && { messages: payload.messages }),
@@ -400,6 +435,11 @@ export const useChatThreads = () => {
             const errMsg = err instanceof Error ? err.message : String(err);
             runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'update_title', error: errMsg } });
           });
+        } else if (derivedTitle) {
+          fetchJson(`/api/conversation/threads/${id}/title`, {
+            method: 'PATCH',
+            body: JSON.stringify({ title: derivedTitle }),
+          }).catch(() => {});
         }
         // subtitle is NOT sent here — server already persisted it via the title service
         if (payload.messages !== undefined) {
@@ -437,13 +477,16 @@ export const useChatThreads = () => {
    */
   const renameThread = useCallback(
     (id: string, title: string) => {
+      const trimmed = title.trim();
+      if (!trimmed || isGenericThreadTitle(trimmed)) return;
+      const unique = ensureLocalUniqueTitle(trimmed, id, threadsRef.current);
       setThreads((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, title } : t))
+        prev.map((t) => (t.id === id ? { ...t, title: unique } : t))
       );
       if (isAuthenticated) {
         fetchJson(`/api/conversation/threads/${id}/title`, {
           method: 'PATCH',
-          body: JSON.stringify({ title }),
+          body: JSON.stringify({ title: unique }),
         }).catch((err: unknown) => {
           const errMsg = err instanceof Error ? err.message : String(err);
           runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'rename_thread', error: errMsg } });

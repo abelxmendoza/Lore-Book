@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 function useIsMobile(breakpoint = 640): boolean {
@@ -25,6 +25,7 @@ import { ChatMessageList } from '../message/ChatMessageList';
 import { ChatLoadingPulse } from './ChatLoadingPulse';
 import { ChatComposer } from '../composer/ChatComposer';
 import { ThreadEntityChips } from './ThreadEntityChips';
+import { collectThreadEntities, toEntityContext } from '../utils/collectThreadEntities';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
 import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
@@ -102,6 +103,23 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     ? [greetingDisplayMsg, ...messages]
     : messages;
 
+  const threadEntities = useMemo(() => collectThreadEntities(messages), [messages]);
+  const [focusedEntityId, setFocusedEntityId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFocusedEntityId(null);
+  }, [activeThreadId]);
+
+  const chatSendOptions = useMemo(() => {
+    const focused = focusedEntityId
+      ? threadEntities.find((e) => e.id === focusedEntityId)
+      : undefined;
+    return {
+      entityContext: focused ? toEntityContext(focused) : undefined,
+      threadEntities,
+    };
+  }, [focusedEntityId, threadEntities]);
+
   // Wrap sendMessage: clear the greeting and track analytics before sending.
   const handleSubmit = (msg: string) => {
     if (greetingMessage) {
@@ -111,7 +129,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       });
       clearGreeting();
     }
-    sendMessage(msg);
+    sendMessage(msg, chatSendOptions);
   };
 
   // Track greeting_shown when the greeting first appears.
@@ -277,7 +295,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     const index = messages.findIndex((m) => m.id === messageId);
     if (index >= 0) {
       setMessages(messages.slice(0, index));
-      setTimeout(() => { sendMessage(userMessage.content); }, 100);
+      setTimeout(() => { sendMessage(userMessage.content, chatSendOptions); }, 100);
     }
   };
 
@@ -545,9 +563,6 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         {/* What Changed Since Last Time — proves continuity before the user types anything */}
         <WhatChangedSinceLastTime thread={threads.find(t => t.id === activeThreadId)} />
 
-        {/* Accumulated entities for this thread — continuity made structural */}
-        <ThreadEntityChips messages={messages} />
-
         {/* Messages Area */}
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {messages.length === 0 ? (
@@ -593,6 +608,14 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
         {/* What LoreBook Knows strip — only shown when context panel is closed */}
         {!contextPanelOpen && <WhatLoreBookKnows />}
+
+        {/* Confirmed thread entities — focus to build on established knowledge */}
+        <ThreadEntityChips
+          messages={messages}
+          variant="composer"
+          selectedEntityId={focusedEntityId}
+          onSelectEntity={(entity) => setFocusedEntityId(entity?.id ?? null)}
+        />
 
         {/* Composer */}
         <div className="flex-shrink-0">

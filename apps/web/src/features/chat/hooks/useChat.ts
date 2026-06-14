@@ -17,6 +17,11 @@ import { analytics } from '../../../lib/monitoring';
 
 type LoadingStage = 'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'generating';
 
+export type ChatSendOptions = {
+  entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'ENTITY'; id: string };
+  threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
+};
+
 // Returns true for network errors that indicate the backend is simply not running.
 function isBackendUnavailable(error: string): boolean {
   return (
@@ -99,7 +104,7 @@ export const useChat = () => {
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Send message
-  const sendMessage = useCallback(async (messageText: string) => {
+  const sendMessage = useCallback(async (messageText: string, options?: ChatSendOptions) => {
     if (!messageText.trim() || loading) return;
 
     // Block unauthenticated users before hitting the backend
@@ -354,13 +359,14 @@ export const useChat = () => {
             isStreaming: false
           });
         },
-        undefined,
+        options?.entityContext,
         currentContext,
         soulProfileContext ?? undefined,
         (feedback) => {
           updateMessage(assistantMessageId, { cognitionFeedback: feedback });
         },
-        activeThreadId
+        activeThreadId,
+        options?.threadEntities
       );
     } catch (error) {
       if (progressIntervalRef.current) {
@@ -389,7 +395,7 @@ export const useChat = () => {
         });
       }
     }
-  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext]);
+  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext, user, activeThreadId]);
 
   const clearConversation = useCallback(() => {
     clearConversationStore();

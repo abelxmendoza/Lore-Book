@@ -80,7 +80,7 @@ export const ChatMessageList = ({
                     messageRefs.delete(message.id);
                   }
                 }}
-                className={message.id === searchMessageId ? 'ring-2 ring-primary/50 rounded-lg -mx-2 px-2' : ''}
+                className={`w-full min-w-0 ${message.id === searchMessageId ? 'ring-2 ring-primary/50 rounded-lg -mx-2 px-2' : ''}`}
               >
                 <ChatMessage
                   message={message}

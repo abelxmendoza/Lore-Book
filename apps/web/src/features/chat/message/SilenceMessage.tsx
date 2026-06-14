@@ -16,8 +16,8 @@ type SilenceMessageProps = {
 
 export const SilenceMessage = ({ message }: SilenceMessageProps) => {
   return (
-    <div className="silence-message my-4">
-      <Card className="bg-black/30 border-border/20 border-dashed">
+    <div className="silence-message my-4 w-full min-w-0">
+      <Card className="bg-black/30 border-border/20 border-dashed w-full">
         <CardContent className="p-4">
           <div className="flex items-start gap-2">
             <Info className="h-4 w-4 text-white/40 mt-0.5 flex-shrink-0" />
