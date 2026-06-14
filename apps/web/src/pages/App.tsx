@@ -381,7 +381,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           </div>
         )}
                         {activeSurface === 'quests' && (
-                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100vh-5rem)] sm:h-[calc(100vh-4rem)] lg:h-[calc(100vh-6rem)] xl:h-[calc(100vh-6rem)] overflow-hidden flex flex-col">
+                          <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel h-[calc(100dvh-3.5rem)] sm:h-[calc(100dvh-3rem)] lg:h-[calc(100dvh-3.5rem)] xl:h-[calc(100dvh-3.5rem)] overflow-hidden flex flex-col">
                             <div className="flex-1 min-h-0 flex flex-col">
                               <QuestBoard />
                             </div>
