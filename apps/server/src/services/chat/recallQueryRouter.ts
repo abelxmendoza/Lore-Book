@@ -1,37 +1,33 @@
 /**
- * Recall Query Router — Sprint G
+ * Recall Query Router — Sprint G / AF
  *
- * Routes incoming user queries to the appropriate foundation data layer
- * and returns a structured recall context block for injection into the
- * system prompt.
- *
- * Intent types:
- *   biography      — "What do you know about me?" "Who am I?"
- *   character_list — "Who do you remember?" "How many characters do you know?" "Who are the people in my story?"
- *   entity         — "What happened with Sol?" "Tell me about Abuela."
- *   temporal       — "What was I doing recently?" "What happened lately?"
- *   fact           — "Where do I live?" "What am I working on?"
- *   thread         — "What were we talking about?" "Earlier in this conversation"
- *
- * Uses foundation data from Sprints B–F:
- *   characters → character_relationships → character_timeline_events
- *   narrative_accounts (biography_snapshot)
- *   people_places (entity lookup)
- *   journal_entries (recent temporal recall)
+ * Routes recall queries to foundation tables first. Journal entries are a
+ * supplement for biography/general only — never the primary surface for
+ * character roster, family, or entity queries.
  */
 
 import { supabaseAdmin } from '../supabaseClient';
-
-// ── Intent patterns ───────────────────────────────────────────────────────────
-
-const BIOGRAPHY_RE = /\b(what do you know about me|who am i|what.s my story|tell me about myself|what have you learned|my biography|my life story|what do you remember about me)\b/i;
-const CHARACTER_LIST_RE = /\b(who do you remember|how many (characters|people) do you (remember|know)|who are the people in my (story|life)|who('?s| is) in my (story|life)|tell me (about )?(the )?(people|characters) (you know|in my story|i('?ve| have) (mentioned|talked about))|list (the )?(people|characters) (you know|i('?ve| have) mentioned)|who have i (told you about|mentioned))\b/i;
-const TEMPORAL_RE  = /\b(recently|lately|what.*(was|were|have) i (doing|up to|working|building)|what happened (lately|recently|this week|today)|just (did|told you|mentioned)|what.*(last|past) (few|couple|week|month))\b/i;
-const THREAD_RE    = /\b(earlier|this conversation|what we (discussed|talked|were talking)|remember what i (said|told)|in this (chat|thread))\b/i;
-const LOCATION_RE  = /\b(where (do|did) i live|where.s my (home|house|place)|where am i from|my (address|location|city|neighborhood))\b/i;
-const WORK_RE      = /\b(what am i working on|what.s my (job|work|project|career)|am i (employed|working)|what do i do (for work|for a living))\b/i;
-
-// ── Known entity name list (populated from people_places at runtime) ──────────
+import {
+  fetchCharacterRoster,
+  fetchFamilyMembers,
+  fetchEntityProfile,
+  formatCharacterRosterForChat,
+  formatFamilyRosterForChat,
+  formatEntityProfileForChat,
+  resolveCharacterByName,
+} from './foundationRecallDataService';
+import {
+  BIOGRAPHY_RE,
+  CHARACTER_LIST_RE,
+  FAMILY_RECALL_RE,
+  FAMILY_KIN_TERM_RE,
+  ENTITY_PREFIX_RE,
+  matchesEntityQuery,
+  TEMPORAL_RE,
+  THREAD_RE,
+  LOCATION_RE,
+  WORK_RE,
+} from './recallIntentPatterns';
 
 async function loadKnownEntities(userId: string): Promise<Map<string, { id: string; type: string }>> {
   const { data } = await supabaseAdmin
@@ -49,17 +45,50 @@ async function loadKnownEntities(userId: string): Promise<Map<string, { id: stri
   return map;
 }
 
-function detectMentionedEntityName(message: string, knownEntities: Map<string, { id: string; type: string }>): string | null {
+function extractEntityNameFromQuery(message: string): string | null {
+  const m = message.trim().match(ENTITY_PREFIX_RE);
+  if (!m || m.index === undefined) return null;
+  const rest = message.slice(m.index + m[0].length).trim();
+  const name = rest.split(/[\s,?!.]+/)[0] ?? '';
+  if (!name || !/^[A-Z]/.test(name)) return null;
+  return name;
+}
+
+async function detectMentionedEntityName(
+  message: string,
+  userId: string,
+  knownEntities: Map<string, { id: string; type: string }>
+): Promise<string | null> {
+  const fromPattern = extractEntityNameFromQuery(message);
+  if (fromPattern) {
+    const char = await resolveCharacterByName(userId, fromPattern);
+    if (char) return char.name;
+    if (knownEntities.has(fromPattern.toLowerCase())) return fromPattern;
+  }
+
   const lower = message.toLowerCase();
-  // Check longest names first to avoid partial matches
+  const { data: chars } = await supabaseAdmin
+    .from('characters')
+    .select('name, alias')
+    .eq('user_id', userId);
+
+  const names: string[] = [];
+  for (const c of chars ?? []) {
+    names.push(c.name);
+    for (const a of c.alias ?? []) names.push(a);
+  }
+  names.sort((a, b) => b.length - a.length);
+
+  for (const name of names) {
+    if (name.length >= 3 && lower.includes(name.toLowerCase())) return name;
+  }
+
   const sorted = [...knownEntities.keys()].sort((a, b) => b.length - a.length);
   for (const name of sorted) {
     if (name.length >= 3 && lower.includes(name)) return name;
   }
   return null;
 }
-
-// ── Recall data fetchers ──────────────────────────────────────────────────────
 
 async function fetchBiographyContext(userId: string): Promise<string> {
   const { data } = await supabaseAdmin
@@ -71,115 +100,40 @@ async function fetchBiographyContext(userId: string): Promise<string> {
 
   if (!data) return '';
 
-  const meta = data.metadata as any;
-  const themes: string[] = (meta.themes ?? []).map((t: any) => t.theme);
-  const period = (meta.periods ?? [])[0]?.label ?? null;
+  const meta = data.metadata as Record<string, unknown>;
+  const themes: string[] = ((meta.themes as Array<{ theme: string }>) ?? []).map((t) => t.theme);
+  const period = ((meta.periods as Array<{ label: string }>) ?? [])[0]?.label ?? null;
 
   return [
     '## BIOGRAPHY',
     data.narrative_text,
     themes.length ? `\n**Current themes:** ${themes.join(', ')}` : '',
     period ? `**Current life period:** ${period}` : '',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 async function fetchEntityContext(userId: string, entityName: string): Promise<string> {
-  const lower = entityName.toLowerCase();
-
-  // 1. Find the character record
-  const { data: chars } = await supabaseAdmin
-    .from('characters')
-    .select('id, name, alias, metadata')
-    .eq('user_id', userId);
-
-  const char = (chars ?? []).find(c =>
-    c.name.toLowerCase() === lower ||
-    (c.alias ?? []).some((a: string) => a.toLowerCase() === lower)
-  );
-
-  if (!char) return `No character record found for "${entityName}".`;
-
-  const lines: string[] = [`## ${char.name.toUpperCase()}`];
-  const meta = char.metadata as any;
-  if (meta?.mention_count) lines.push(`Mentioned ${meta.mention_count} times across ${meta.source_memory_count} memories.`);
-  if (char.alias?.length) lines.push(`Also known as: ${char.alias.join(', ')}`);
-
-  // 2. Find relationship with protagonist
-  const { data: rels } = await supabaseAdmin
-    .from('character_relationships')
-    .select('relationship_type, status, metadata')
-    .eq('user_id', userId)
-    .or(`source_character_id.eq.${char.id},target_character_id.eq.${char.id}`);
-
-  for (const rel of rels ?? []) {
-    const memCount = (rel.metadata as any)?.co_mention_count ?? 0;
-    lines.push(`**Relationship:** ${rel.relationship_type} (${rel.status}) — shared in ${memCount} memories`);
-  }
-
-  // 3. Pull timeline events for this character
-  const { data: events } = await supabaseAdmin
-    .from('character_timeline_events')
-    .select('event_title, event_type, event_date, event_summary, emotional_impact, confidence')
-    .eq('user_id', userId)
-    .eq('character_id', char.id)
-    .order('event_date', { ascending: true })
-    .limit(5);
-
-  if (events?.length) {
-    lines.push('\n**Timeline events:**');
-    for (const ev of events) {
-      const date = ev.event_date ? new Date(ev.event_date).toDateString() : 'Unknown date';
-      lines.push(`• ${date}: ${ev.event_title} [${ev.event_type}]`);
-      if (ev.event_summary) lines.push(`  ${ev.event_summary.slice(0, 150)}`);
-    }
-  }
-
-  // 4. Pull relevant journal entries
-  const sourceEntryIds: string[] = meta?.source_entry_ids ?? [];
-  if (sourceEntryIds.length) {
-    const { data: entries } = await supabaseAdmin
-      .from('journal_entries')
-      .select('content, date, mood')
-      .in('id', sourceEntryIds.slice(0, 3))
-      .order('date', { ascending: false });
-
-    if (entries?.length) {
-      lines.push('\n**From journal:**');
-      for (const e of entries) {
-        lines.push(`• ${e.content.slice(0, 400)}`);
-      }
-    }
-  }
-
-  return lines.join('\n');
+  const profile = await fetchEntityProfile(userId, entityName);
+  if (!profile) return `No character record found for "${entityName}".`;
+  return formatEntityProfileForChat(profile);
 }
 
 async function fetchCharacterListContext(userId: string): Promise<string> {
-  const { data: chars } = await supabaseAdmin
-    .from('characters')
-    .select('name, alias, metadata')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true });
+  const roster = await fetchCharacterRoster(userId);
+  return formatCharacterRosterForChat(roster);
+}
 
-  const list = chars ?? [];
-  if (list.length === 0) return 'No characters recorded yet.';
-
-  const lines: string[] = [`## PEOPLE IN THIS STORY (${list.length})`];
-  for (const char of list) {
-    const meta = char.metadata as any;
-    const mentions = meta?.mention_count ? ` — mentioned ${meta.mention_count} times` : '';
-    lines.push(`• ${char.name}${mentions}`);
-  }
-  lines.push(
-    '\nWhen answering, name these people directly and give the count. ' +
-    'Do not invent people who are not in this list.'
-  );
-
-  return lines.join('\n');
+async function fetchFamilyContext(userId: string): Promise<string> {
+  const [bioBlock, members] = await Promise.all([
+    fetchBiographyContext(userId),
+    fetchFamilyMembers(userId),
+  ]);
+  return formatFamilyRosterForChat(members, bioBlock || undefined);
 }
 
 async function fetchTemporalContext(userId: string): Promise<string> {
-  // Most recent timeline events
   const { data: events } = await supabaseAdmin
     .from('character_timeline_events')
     .select('event_title, event_type, event_date, event_summary')
@@ -187,34 +141,16 @@ async function fetchTemporalContext(userId: string): Promise<string> {
     .order('event_date', { ascending: false })
     .limit(5);
 
-  // Most recent journal entries
-  const { data: entries } = await supabaseAdmin
-    .from('journal_entries')
-    .select('content, date, mood, summary')
-    .eq('user_id', userId)
-    .not('metadata->>extractionMethod', 'is', null)
-    .order('date', { ascending: false })
-    .limit(5);
-
-  const lines: string[] = ['## RECENT ACTIVITY'];
-
+  const lines: string[] = ['## RECENT TIMELINE'];
   if (events?.length) {
-    lines.push('**Recent timeline events:**');
     for (const ev of events) {
       const date = ev.event_date ? new Date(ev.event_date).toDateString() : '';
       lines.push(`• ${date}: ${ev.event_title} [${ev.event_type}]`);
       if (ev.event_summary) lines.push(`  ${ev.event_summary.slice(0, 150)}`);
     }
+  } else {
+    lines.push('No timeline events recorded yet.');
   }
-
-  if (entries?.length) {
-    lines.push('\n**Recent memories:**');
-    for (const e of entries) {
-      const label = e.summary ?? e.content.slice(0, 100);
-      lines.push(`• ${label}`);
-    }
-  }
-
   return lines.join('\n');
 }
 
@@ -228,36 +164,43 @@ async function fetchFactContext(userId: string, factType: 'location' | 'work'): 
 
   if (!data) return '';
 
-  const facts = (data.metadata as any)?.facts;
+  const facts = (data.metadata as Record<string, unknown>)?.facts as Record<string, unknown> | undefined;
   if (!facts) return '';
 
   if (factType === 'location') {
-    const loc = facts.identity?.location;
-    const living = facts.livingSituation;
+    const identity = facts.identity as Record<string, string> | undefined;
+    const loc = identity?.location;
+    const living = facts.livingSituation as string | undefined;
     return loc
       ? `Location: ${loc}.${living ? `\nLiving situation: ${living.slice(0, 200)}` : ''}`
       : 'Location not yet recorded.';
   }
 
   if (factType === 'work') {
-    const employment = facts.identity?.employment;
-    const upcoming = facts.upcomingEvents ?? [];
-    const events = (facts.keyEvents ?? []).filter((e: any) => e.eventType === 'career_event');
+    const identity = facts.identity as Record<string, string> | undefined;
+    const employment = identity?.employment;
+    const upcoming = (facts.upcomingEvents as string[]) ?? [];
+    const events = ((facts.keyEvents as Array<{ eventType: string; title: string }>) ?? []).filter(
+      (e) => e.eventType === 'career_event'
+    );
     return [
       employment ? `Employment: ${employment}` : '',
       upcoming.length ? `Upcoming: ${upcoming.join('; ')}` : '',
-      events.length ? `Career events: ${events.map((e: any) => e.title).join('; ')}` : '',
-    ].filter(Boolean).join('\n');
+      events.length ? `Career events: ${events.map((e) => e.title).join('; ')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 
   return '';
 }
 
-// ── Public router ─────────────────────────────────────────────────────────────
-
 export type RecallIntent =
   | 'biography'
   | 'character_list'
+  | 'character_roster'
+  | 'family'
+  | 'relationship_summary'
   | 'entity'
   | 'temporal'
   | 'location'
@@ -270,12 +213,10 @@ export type RecallResult = {
   entityName: string | null;
   contextBlock: string;
   confidence: number;
+  /** When true, callers must not append raw journal snippets. */
+  foundationPrimary: boolean;
 };
 
-/**
- * Route a user message to the appropriate recall data layer.
- * Returns a formatted context block ready for injection into the system prompt.
- */
 export async function routeRecallQuery(
   userId: string,
   message: string,
@@ -283,46 +224,61 @@ export async function routeRecallQuery(
 ): Promise<RecallResult> {
   const knownEntities = await loadKnownEntities(userId);
 
-  // ── Thread recall (check conversation history first) ────────────────────────
   if (THREAD_RE.test(message) && conversationHistory.length > 0) {
     const recent = conversationHistory
       .slice(-6)
-      .map(m => `${m.role}: ${m.content.slice(0, 100)}`)
+      .map((m) => `${m.role}: ${m.content.slice(0, 100)}`)
       .join('\n');
     return {
       intent: 'thread',
       entityName: null,
       contextBlock: `## CURRENT THREAD CONTEXT\n${recent}`,
       confidence: 0.9,
+      foundationPrimary: false,
     };
   }
 
-  // ── Character list recall ────────────────────────────────────────────────────
-  // Checked before biography/entity so "how many characters do you remember?"
-  // routes to the actual character roster instead of falling through to a
-  // narrative surface that has nothing to do with the question.
   if (CHARACTER_LIST_RE.test(message)) {
     const block = await fetchCharacterListContext(userId);
     return {
-      intent: 'character_list',
+      intent: 'character_roster',
       entityName: null,
       contextBlock: block,
-      confidence: 0.9,
+      confidence: 0.95,
+      foundationPrimary: true,
     };
   }
 
-  // ── Biography recall ─────────────────────────────────────────────────────────
+  if (FAMILY_RECALL_RE.test(message) || FAMILY_KIN_TERM_RE.test(message)) {
+    const block = await fetchFamilyContext(userId);
+    return {
+      intent: 'family',
+      entityName: null,
+      contextBlock: block,
+      confidence: block.includes('No family members') ? 0.4 : 0.95,
+      foundationPrimary: true,
+    };
+  }
+
   if (BIOGRAPHY_RE.test(message)) {
-    const block = await fetchBiographyContext(userId);
+    const [bioBlock, roster] = await Promise.all([
+      fetchBiographyContext(userId),
+      fetchCharacterRoster(userId),
+    ]);
+    const relSummary =
+      roster.length > 0
+        ? `\n\n**People in your story (${roster.length}):** ${roster.map((r) => r.name).join(', ')}`
+        : '';
+    const block = (bioBlock || 'No biography snapshot yet.') + relSummary;
     return {
       intent: 'biography',
       entityName: null,
-      contextBlock: block || 'No biography data available yet.',
-      confidence: block ? 0.95 : 0.3,
+      contextBlock: block,
+      confidence: bioBlock ? 0.95 : 0.4,
+      foundationPrimary: true,
     };
   }
 
-  // ── Fact: location ───────────────────────────────────────────────────────────
   if (LOCATION_RE.test(message)) {
     const block = await fetchFactContext(userId, 'location');
     return {
@@ -330,10 +286,10 @@ export async function routeRecallQuery(
       entityName: null,
       contextBlock: block || 'Location not recorded.',
       confidence: block ? 0.9 : 0.3,
+      foundationPrimary: true,
     };
   }
 
-  // ── Fact: work/career ────────────────────────────────────────────────────────
   if (WORK_RE.test(message)) {
     const block = await fetchFactContext(userId, 'work');
     return {
@@ -341,42 +297,105 @@ export async function routeRecallQuery(
       entityName: null,
       contextBlock: block || 'Work/career information not recorded.',
       confidence: block ? 0.9 : 0.3,
+      foundationPrimary: true,
     };
   }
 
-  // ── Entity recall ────────────────────────────────────────────────────────────
-  const mentionedEntity = detectMentionedEntityName(message, knownEntities);
+  const mentionedEntity = await detectMentionedEntityName(message, userId, knownEntities);
   if (mentionedEntity) {
     const block = await fetchEntityContext(userId, mentionedEntity);
     return {
       intent: 'entity',
       entityName: mentionedEntity,
       contextBlock: block,
-      confidence: 0.9,
+      confidence: 0.95,
+      foundationPrimary: true,
     };
   }
 
-  // ── Temporal recall ──────────────────────────────────────────────────────────
   if (TEMPORAL_RE.test(message)) {
     const block = await fetchTemporalContext(userId);
     return {
       intent: 'temporal',
       entityName: null,
       contextBlock: block,
-      confidence: 0.8,
+      confidence: 0.85,
+      foundationPrimary: true,
     };
   }
 
-  // ── General: return biography + recent ───────────────────────────────────────
-  const [bioBlock, tempBlock] = await Promise.all([
+  const [bioBlock, tempBlock, roster] = await Promise.all([
     fetchBiographyContext(userId),
     fetchTemporalContext(userId),
+    fetchCharacterRoster(userId),
   ]);
+
+  const rosterLine =
+    roster.length > 0
+      ? `## PEOPLE (${roster.length})\n${roster.map((r) => `• ${r.name}`).join('\n')}`
+      : '';
 
   return {
     intent: 'general',
     entityName: null,
-    contextBlock: [bioBlock, tempBlock].filter(Boolean).join('\n\n'),
+    contextBlock: [bioBlock, rosterLine, tempBlock].filter(Boolean).join('\n\n'),
     confidence: 0.6,
+    foundationPrimary: false,
   };
+}
+
+/**
+ * Sprint AF — coverage report for each foundation layer.
+ */
+export async function buildRecallCoverageReport(userId: string): Promise<
+  Array<{ layer: string; stored: boolean; retrievable: boolean; sample: string }>
+> {
+  const [
+    bio,
+    roster,
+    family,
+    rels,
+    timeline,
+    memories,
+  ] = await Promise.all([
+    fetchBiographyContext(userId),
+    fetchCharacterRoster(userId),
+    fetchFamilyMembers(userId),
+    supabaseAdmin.from('character_relationships').select('id').eq('user_id', userId).limit(1),
+    supabaseAdmin.from('character_timeline_events').select('id').eq('user_id', userId).limit(1),
+    supabaseAdmin.from('character_memories').select('id').eq('user_id', userId).limit(1),
+  ]);
+
+  return [
+    {
+      layer: 'biography',
+      stored: bio.length > 0,
+      retrievable: bio.length > 0,
+      sample: bio.slice(0, 80),
+    },
+    {
+      layer: 'characters',
+      stored: roster.length > 0,
+      retrievable: roster.length > 0,
+      sample: roster.map((r) => r.name).join(', '),
+    },
+    {
+      layer: 'relationships',
+      stored: (rels.data?.length ?? 0) > 0,
+      retrievable: family.length > 0 || (rels.data?.length ?? 0) > 0,
+      sample: `${rels.data?.length ?? 0} relationship rows`,
+    },
+    {
+      layer: 'timeline',
+      stored: (timeline.data?.length ?? 0) > 0,
+      retrievable: (timeline.data?.length ?? 0) > 0,
+      sample: `${timeline.data?.length ?? 0} events`,
+    },
+    {
+      layer: 'journal_memories',
+      stored: (memories.data?.length ?? 0) > 0,
+      retrievable: (memories.data?.length ?? 0) > 0,
+      sample: `${memories.data?.length ?? 0} character_memory links`,
+    },
+  ];
 }

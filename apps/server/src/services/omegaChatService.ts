@@ -601,8 +601,11 @@ class OmegaChatService {
           { messageId, conversationHistory, continuityContext: returnToThreadContext || undefined }
         );
 
-        // Phase 4.5: persist assistant with recall_sources for MEMORY_RECALL
-        if (routing.mode === 'MEMORY_RECALL' && (handlerResponse.metadata?.recall_sources as unknown[] | undefined)?.length) {
+        // Phase 4.5: persist assistant with recall_sources for recall modes
+        if (
+          (routing.mode === 'MEMORY_RECALL' || routing.mode === 'FOUNDATION_RECALL') &&
+          (handlerResponse.metadata?.recall_sources as unknown[] | undefined)?.length
+        ) {
           supabaseAdmin
             .from('chat_messages')
             .insert({

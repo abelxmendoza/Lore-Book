@@ -14,12 +14,14 @@
 
 import { logger } from '../../logger';
 import { openai } from '../openaiClient';
+import { matchesFoundationRecallQuery } from '../chat/recallIntentPatterns';
 
 export type ChatMode =
   | 'EMOTIONAL_EXISTENTIAL'  // Mode 1: Thoughts, fears, insecurities
   | 'MEMORY_RECALL'          // Mode 2: Factual questions
   | 'NARRATIVE_RECALL'       // Mode 3: Complex stories
   | 'NARRATIVE_STORY'        // Mode 3b: Build/tell a narrative ("tell me the story of X")
+  | 'FOUNDATION_RECALL'      // Mode 3c: Explicit "Recall …" commands (biography, roster, family)
   | 'EXPERIENCE_INGESTION'   // Mode 4: Lived experiences (macro: duration, context, narrative arc)
   | 'ACTION_LOG'             // Mode 5: Atomic actions (micro: verb-forward, instant)
   | 'NEEDS_CLARIFICATION'    // Ambiguous milestone/achievement: ask what they mean before ingesting
@@ -107,6 +109,24 @@ class ModeRouterService {
         mode: 'UNKNOWN',
         confidence: 0.9,
         reasoning: 'Greeting, meta-question, or small talk; use normal chat',
+      };
+    }
+
+    // Foundation recall queries — structured lore, not LLM + journal fallback
+    if (matchesFoundationRecallQuery(message)) {
+      return {
+        mode: 'FOUNDATION_RECALL',
+        confidence: 0.95,
+        reasoning: 'Foundation recall query detected (biography, roster, family, or entity)',
+      };
+    }
+
+    // Explicit "Recall …" commands (caught by matchesFoundationRecallQuery too, kept for clarity)
+    if (this.isExplicitRecallCommand(text)) {
+      return {
+        mode: 'FOUNDATION_RECALL',
+        confidence: 0.95,
+        reasoning: 'Explicit recall command detected',
       };
     }
 
@@ -289,6 +309,22 @@ class ModeRouterService {
   }
 
   /**
+   * Explicit "Recall …" commands that should surface structured lore directly.
+   */
+  private isExplicitRecallCommand(text: string): boolean {
+    return /^recall\b/i.test(text.trim());
+  }
+
+  /**
+   * Character roster queries — must not route to narrative story recall.
+   */
+  private isCharacterListRecall(text: string): boolean {
+    return /\b(recall|list|show|tell me).*(all )?(the )?(characters|people).*(story|life|know|mentioned)\b/i.test(text)
+      || /\bhow many (characters|people) do you (remember|know)\b/i.test(text)
+      || /\bwho (are )?(the )?(people|characters) in my (story|life)\b/i.test(text);
+  }
+
+  /**
    * Check if message is a factual recall query
    */
   private isFactualRecall(text: string): boolean {
@@ -326,6 +362,8 @@ class ModeRouterService {
    * Check if message is a narrative/story recall query
    */
   private isNarrativeRecall(text: string): boolean {
+    if (this.isCharacterListRecall(text)) return false;
+
     const narrativePatterns = [
       /(what happened|tell me about|remember when|do you remember) (with|at|when|the)/i,
       /(story|narrative|account|version) (of|about|regarding)/i,
@@ -437,7 +475,7 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate mode
-      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
+      const validModes: ChatMode[] = ['EMOTIONAL_EXISTENTIAL', 'MEMORY_RECALL', 'NARRATIVE_RECALL', 'NARRATIVE_STORY', 'FOUNDATION_RECALL', 'EXPERIENCE_INGESTION', 'ACTION_LOG', 'NEEDS_CLARIFICATION', 'MIXED', 'UNKNOWN'];
       const mode = validModes.includes(result.mode) ? result.mode : 'UNKNOWN';
       
       return {

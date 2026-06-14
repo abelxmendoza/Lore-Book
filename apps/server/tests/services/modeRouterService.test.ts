@@ -37,6 +37,35 @@ describe('ModeRouterService', () => {
       expect(result.confidence).toBeGreaterThan(0.8);
     });
 
+    it('should detect FOUNDATION_RECALL for explicit Recall commands', async () => {
+      const queries = [
+        "Recall everything you've learned about me",
+        'Recall all the characters in my story',
+        "Recall things you've learned about me and my Family members",
+      ];
+
+      for (const query of queries) {
+        const result = await modeRouterService.routeMessage('user-1', query);
+        expect(result.mode).toBe('FOUNDATION_RECALL');
+        expect(result.confidence).toBeGreaterThan(0.8);
+      }
+    });
+
+    it('should detect FOUNDATION_RECALL for non-Recall foundation queries', async () => {
+      const queries = [
+        'What do you know about me?',
+        'Who are the characters in my story?',
+        'Tell me about my family',
+        'Tell me about Sol',
+      ];
+
+      for (const query of queries) {
+        const result = await modeRouterService.routeMessage('user-1', query);
+        expect(result.mode).toBe('FOUNDATION_RECALL');
+        expect(result.confidence).toBeGreaterThan(0.8);
+      }
+    });
+
     it('should detect MEMORY_RECALL for factual questions', async () => {
       const result = await modeRouterService.routeMessage(
         'user-1',

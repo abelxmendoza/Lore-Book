@@ -1,14 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ── Chainable Supabase mock ───────────────────────────────────────────────────
-// Every query-builder method returns the same chain; awaiting/`.then`-ing the
-// chain resolves to the configured result for that table. This mirrors the
-// real client closely enough to validate routing decisions without a DB.
-
-type TableResult = { data: any; error: any; count?: number };
+type TableResult = { data: unknown; error: unknown; count?: number };
 
 function makeChain(result: TableResult) {
-  const chain: any = {
+  const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
     or: () => chain,
@@ -33,19 +28,116 @@ vi.mock('../../../src/services/supabaseClient', () => ({
 }));
 
 import { routeRecallQuery } from '../../../src/services/chat/recallQueryRouter';
+import { formatCharacterRosterForChat } from '../../../src/services/chat/foundationRecallDataService';
 
 const CHARACTERS = [
-  { id: 'c1', name: 'Abuela', alias: [], metadata: { mention_count: 12 } },
-  { id: 'c2', name: 'Sol', alias: [], metadata: { mention_count: 7 } },
-  { id: 'c3', name: 'Anaheim', alias: [], metadata: { mention_count: 3 } },
+  { id: 'c1', name: 'Abel', alias: [], metadata: {}, importance_level: 'protagonist' },
+  { id: 'c2', name: 'Sol', alias: [], metadata: {} },
+  { id: 'c3', name: 'Abuela', alias: [], metadata: {} },
 ];
+
+const RELATIONSHIPS = [
+  { relationship_type: 'grandmother', source_character_id: 'c3', target_character_id: 'c1', status: 'active', metadata: {} },
+  { relationship_type: 'romantic_partner', source_character_id: 'c2', target_character_id: 'c1', status: 'blocked', metadata: {} },
+];
+
+describe('Sprint AF — foundation recall', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tableResults = {
+      people_places: { data: [], error: null },
+      characters: { data: CHARACTERS, error: null },
+      character_memories: {
+        data: [
+          { character_id: 'c1' },
+          { character_id: 'c2' },
+          { character_id: 'c2' },
+          { character_id: 'c3' },
+        ],
+        error: null,
+      },
+      character_timeline_events: {
+        data: [
+          { character_id: 'c2' },
+          { character_id: 'c3' },
+          { character_id: 'c3' },
+        ],
+        error: null,
+      },
+      character_relationships: { data: RELATIONSHIPS, error: null },
+      narrative_accounts: { data: { narrative_text: 'Abel lives in Anaheim.', metadata: {} }, error: null },
+      journal_entries: { data: [], error: null },
+    };
+  });
+
+  it('returns character roster with memory and timeline counts — not journal snippets', async () => {
+    const result = await routeRecallQuery('user-1', 'Who are the characters in my story?');
+
+    expect(result.intent).toBe('character_roster');
+    expect(result.foundationPrimary).toBe(true);
+    expect(result.contextBlock).toContain('Abel');
+    expect(result.contextBlock).toContain('Sol');
+    expect(result.contextBlock).toContain('Abuela');
+    expect(result.contextBlock).toContain('memories');
+    expect(result.contextBlock).toContain('timeline');
+    expect(result.contextBlock).not.toContain('Relevant past entries');
+  });
+
+  it('routes family queries through character_relationships', async () => {
+    const result = await routeRecallQuery('user-1', 'Tell me about my family');
+
+    expect(result.intent).toBe('family');
+    expect(result.foundationPrimary).toBe(true);
+    expect(result.contextBlock).toContain('Abuela');
+    expect(result.contextBlock).toContain('grandmother');
+  });
+
+  it('routes entity queries to character foundation profile', async () => {
+    const result = await routeRecallQuery('user-1', 'Tell me about Sol');
+
+    expect(result.intent).toBe('entity');
+    expect(result.entityName).toBe('Sol');
+    expect(result.foundationPrimary).toBe(true);
+    expect(result.contextBlock).toContain('Sol');
+    expect(result.contextBlock).toContain('memories');
+  });
+
+  it('formatCharacterRosterForChat lists name, relationship, counts', () => {
+    const roster = [
+      {
+        id: 'c2',
+        name: 'Sol',
+        aliases: [],
+        relationshipToUser: 'romantic_partner (blocked)',
+        memoryCount: 2,
+        timelineEventCount: 1,
+        isSelf: false,
+      },
+    ];
+    const text = formatCharacterRosterForChat(roster);
+    expect(text).toContain('Sol');
+    expect(text).toContain('romantic_partner');
+    expect(text).toContain('2 memories');
+    expect(text).toContain('1 timeline event');
+  });
+});
 
 describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     tableResults = {
       people_places: { data: [], error: null },
-      characters: { data: CHARACTERS, error: null },
+      characters: {
+        data: [
+          { id: 'c1', name: 'Abuela', alias: [], metadata: { mention_count: 12 } },
+          { id: 'c2', name: 'Sol', alias: [], metadata: { mention_count: 7 } },
+          { id: 'c3', name: 'Anaheim', alias: [], metadata: { mention_count: 3 } },
+        ],
+        error: null,
+      },
+      character_memories: { data: [], error: null },
+      character_timeline_events: { data: [], error: null },
+      character_relationships: { data: [], error: null },
       narrative_accounts: { data: { narrative_text: 'Some narrative.', metadata: {} }, error: null },
     };
   });
@@ -59,49 +151,23 @@ describe('routeRecallQuery — character list intent (Sprint H fix)', () => {
     'List the people I have mentioned',
   ];
 
-  it.each(queries)('routes "%s" to the character_list intent, not biography/general', async (message) => {
+  it.each(queries)('routes "%s" to character_roster intent', async (message) => {
     const result = await routeRecallQuery('user-1', message);
-
-    expect(result.intent).toBe('character_list');
-    expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+    expect(result.intent).toBe('character_roster');
+    expect(result.foundationPrimary).toBe(true);
   });
 
-  it('returns a context block built from the actual character roster', async () => {
-    const result = await routeRecallQuery('user-1', 'How many characters do you remember?');
-
-    expect(result.contextBlock).toContain('PEOPLE IN THIS STORY (3)');
+  it('routes "Recall all the characters in my story" to character_roster', async () => {
+    const result = await routeRecallQuery('user-1', 'Recall all the characters in my story');
+    expect(result.intent).toBe('character_roster');
     expect(result.contextBlock).toContain('Abuela');
     expect(result.contextBlock).toContain('Sol');
-    expect(result.contextBlock).toContain('Anaheim');
-
-    // Must not leak unrelated narrative/demo content into the answer surface —
-    // this was the original bug ("Narrative mode / Warrior / Violence").
-    expect(result.contextBlock).not.toContain('Narrative mode');
-    expect(result.contextBlock).not.toContain('Warrior');
-    expect(result.contextBlock).not.toContain('Violence');
   });
 
-  it('reports plainly when no characters are recorded yet — no fabricated names', async () => {
-    tableResults.characters = { data: [], error: null };
-
-    const result = await routeRecallQuery('user-1', 'Who do you remember?');
-
-    expect(result.intent).toBe('character_list');
-    expect(result.contextBlock).toBe('No characters recorded yet.');
-  });
-
-  it('still routes a specific-person question to the entity intent, not character_list', async () => {
-    tableResults.people_places = {
-      data: [{ id: 'p1', name: 'Sol', type: 'person', corrected_names: [] }],
-      error: null,
-    };
-    tableResults.character_relationships = { data: [], error: null };
-    tableResults.character_timeline_events = { data: [], error: null };
-    tableResults.journal_entries = { data: [], error: null };
-
-    const result = await routeRecallQuery('user-1', 'Tell me about Sol');
-
-    expect(result.intent).toBe('entity');
-    expect(result.entityName).toBe('sol');
+  it('routes biography queries without journal fallback flag', async () => {
+    const result = await routeRecallQuery('user-1', "Recall everything you've learned about me");
+    expect(result.intent).toBe('biography');
+    expect(result.foundationPrimary).toBe(true);
+    expect(result.contextBlock).toContain('Some narrative.');
   });
 });

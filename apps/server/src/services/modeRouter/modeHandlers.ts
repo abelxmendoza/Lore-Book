@@ -44,6 +44,9 @@ class ModeHandlers {
 
       case 'NARRATIVE_STORY':
         return await this.handleNarrativeStory(userId, message);
+
+      case 'FOUNDATION_RECALL':
+        return await this.handleFoundationRecall(userId, message, options?.conversationHistory);
       
       case 'EXPERIENCE_INGESTION':
         return await this.handleExperienceIngestion(userId, message, options?.messageId, options?.continuityContext);
@@ -103,6 +106,38 @@ class ModeHandlers {
   }
 
   /**
+   * Mode 2b: Foundation Recall — explicit "Recall …" commands
+   */
+  private async handleFoundationRecall(
+    userId: string,
+    message: string,
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<ModeHandlerResponse> {
+    try {
+      const { executeExplicitRecall } = await import('../chat/explicitRecallService');
+      const result = await executeExplicitRecall(
+        userId,
+        message,
+        conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? []
+      );
+
+      return {
+        content: result.content,
+        response_mode: result.response_mode,
+        confidence: result.confidence,
+        metadata: result.metadata,
+      };
+    } catch (error) {
+      logger.error({ err: error, userId }, 'Failed to handle foundation recall mode');
+      return {
+        content: "Something went wrong pulling that up — what were you trying to recall?",
+        response_mode: 'SILENCE',
+        confidence: 0.5,
+      };
+    }
+  }
+
+  /**
    * Mode 2: Memory Recall (Factual)
    * Hard rule: If it doesn't know, say exactly that.
    */
@@ -131,8 +166,18 @@ class ModeHandlers {
         };
       }
 
-      // If low confidence, surface what fragments exist — never apologise
-      if (recallResult.confidence < 0.5) {
+      // Surface journal fragments even when confidence is low — never hide matches
+      if (recallResult.confidence < 0.5 && recallResult.entries.length === 0) {
+        const { executeExplicitRecall } = await import('../chat/explicitRecallService');
+        const foundation = await executeExplicitRecall(userId, message);
+        if (foundation.response_mode !== 'SILENCE') {
+          return {
+            content: foundation.content,
+            response_mode: foundation.response_mode,
+            confidence: foundation.confidence,
+            metadata: foundation.metadata,
+          };
+        }
         return {
           content: "My record there is thin — I only have fragments. What specifically were you thinking of?",
           response_mode: 'LOW_CONFIDENCE_RECALL',
