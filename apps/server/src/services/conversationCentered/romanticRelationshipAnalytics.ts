@@ -6,6 +6,7 @@
 import { logger } from '../../logger';
 import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
+import { isDisplayablePersonName } from '../../utils/personNameValidation';
 
 import { affectionCalculator } from './affectionCalculator';
 
@@ -77,6 +78,10 @@ export class RomanticRelationshipAnalytics {
           .eq('id', relationship.person_id)
           .single();
         personName = entity?.primary_name || 'Unknown';
+      }
+
+      if (!isDisplayablePersonName(personName)) {
+        return null;
       }
 
       // Get all mentions and interactions

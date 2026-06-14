@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
 import { SkillProfileCard } from './SkillProfileCard';
 import { SkillDetailModal } from './SkillDetailModal';
+import { DetectedSkillSuggestions } from './DetectedSkillSuggestions';
 import { skillsApi } from '../../api/skills';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import type { Skill, SkillCategory } from '../../types/skill';
@@ -376,6 +377,9 @@ export const SkillsBook: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Detected skill suggestions — pulled from your chats + journal */}
+        <DetectedSkillSuggestions onSkillAdded={() => void loadSkills()} />
 
         {/* Search and Filters */}
         <Card className="bg-black/40 border-white/10">

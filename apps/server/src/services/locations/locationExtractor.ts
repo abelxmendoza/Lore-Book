@@ -4,8 +4,8 @@ import { openai } from '../openaiClient';
 import { logger } from '../../logger';
 import { embeddingService } from '../embeddingService';
 
+import { inferPlaceType } from '../../constants/placeTypes';
 import type { ExtractedLocation } from './types';
-
 
 /**
  * Extracts locations from journal entries
@@ -115,8 +115,10 @@ export class LocationExtractor {
   /**
    * Detect location type
    */
-  detectType(str: string | null): string | null {
+  detectType(str: string | null, context?: string): string | null {
     if (!str) return null;
+    const inferred = inferPlaceType(str, context ?? str);
+    if (inferred) return inferred;
 
     const s = str.toLowerCase();
 

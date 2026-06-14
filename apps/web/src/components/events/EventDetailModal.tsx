@@ -15,6 +15,7 @@ import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { EventConfidenceHistory } from './EventConfidenceHistory';
 import { EventActionsMenu } from './EventActionsMenu';
 import { EventMetaTags } from './EventMetaTags';
+import { getDisplayTitle } from '../../utils/displayTitle';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -736,6 +737,14 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
   const tone = eventData.impact?.emotionalImpact ? toneConfig[eventData.impact.emotionalImpact] : null;
   const peopleDisplay = formatNames(eventData.people, 4);
   const locationsDisplay = formatNames(eventData.locations, 3);
+  const displayTitle = getDisplayTitle({
+    title: eventData.title,
+    summary: eventData.summary,
+    date: eventData.start_time,
+    fallbackNoun: 'Event',
+    people: eventData.people,
+    locations: eventData.locations,
+  });
 
   // Memory strength — composite score 0-100
   const memoryStrength = Math.min(100, Math.round(
@@ -799,7 +808,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
               <span className="truncate max-w-[160px]">{breadcrumb}</span>
             </button>
             <span className="text-white/20">›</span>
-            <span className="text-white/60 truncate max-w-[200px]">{eventData.title}</span>
+            <span className="text-white/60 truncate max-w-[200px]">{displayTitle}</span>
           </div>
         )}
 
@@ -820,7 +829,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                   {eventData.type}
                 </p>
               )}
-              <h2 className="text-xl sm:text-2xl font-bold leading-tight text-white">{eventData.title}</h2>
+              <h2 className="text-xl sm:text-2xl font-bold leading-tight text-white">{displayTitle}</h2>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <EventActionsMenu eventId={eventData.id} onOverrideApplied={loadEvent} />
@@ -1025,7 +1034,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                     <Quote className="w-3.5 h-3.5 text-primary/60" />
                     Summary
                   </h3>
-                  <UnknownField label="What happened" prompt={`About the event "${eventData.title}": `} />
+                  <UnknownField label="What happened" prompt={`About the event "${displayTitle}": `} />
                 </section>
               )}
 
@@ -1036,7 +1045,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                     <UserCircle2 className="w-3.5 h-3.5 text-blue-400/70" />
                     Characters in this Story
                   </h3>
-                  <UnknownField label="Who was there" prompt={`Who was at "${eventData.title}": `} />
+                  <UnknownField label="Who was there" prompt={`Who was at "${displayTitle}": `} />
                 </section>
               )}
               {eventData.people.length > 0 && (
@@ -1164,7 +1173,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
                       ))}
                     </div>
                   ) : (
-                    <UnknownField label="Where" prompt={`The event "${eventData.title}" happened at `} />
+                    <UnknownField label="Where" prompt={`The event "${displayTitle}" happened at `} />
                   )}
                 </section>
                 <section>
@@ -1743,7 +1752,7 @@ export const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClo
         <EventDetailModal
           event={makeEventStub(linkedEvent)}
           onClose={() => setLinkedEvent(null)}
-          breadcrumb={eventData.title}
+          breadcrumb={displayTitle}
         />
       )}
     </div>

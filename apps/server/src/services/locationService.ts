@@ -38,6 +38,7 @@ type LocationRecord = {
   name: string;
   normalized_name?: string | null;
   type?: string | null;
+  metadata?: Record<string, unknown> | null;
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
@@ -425,6 +426,7 @@ class LocationService {
           timeline: location.record?.timeline ?? [],
           currentState: location.record?.current_state ?? {},
           socialGraph: location.record?.social_graph ?? {},
+          metadata: location.record?.metadata ?? {},
           visitCount,
           firstVisited,
           lastVisited,
@@ -472,6 +474,60 @@ class LocationService {
   async getLocationProfile(userId: string, id: string): Promise<LocationProfile | null> {
     const locations = await this.listLocations(userId);
     return locations.find((loc) => loc.id === id) ?? null;
+  }
+
+  async updateLocation(
+    userId: string,
+    locationId: string,
+    update: {
+      type?: string | null;
+      place_tags?: string[];
+      place_significance?: string[];
+      metadata?: Record<string, unknown>;
+    },
+  ): Promise<LocationProfile | null> {
+    const { data: existing, error: fetchErr } = await supabaseAdmin
+      .from('locations')
+      .select('id, metadata')
+      .eq('user_id', userId)
+      .eq('id', locationId)
+      .maybeSingle();
+
+    if (fetchErr || !existing) {
+      throw new Error('Location not found');
+    }
+
+    const metadata = {
+      ...((existing.metadata ?? {}) as Record<string, unknown>),
+      ...(update.metadata ?? {}),
+    };
+    if (update.place_tags !== undefined) {
+      metadata.place_tags = update.place_tags;
+    }
+    if (update.place_significance !== undefined) {
+      metadata.place_significance = update.place_significance;
+    }
+
+    const patch: Record<string, unknown> = {
+      metadata,
+      updated_at: new Date().toISOString(),
+    };
+    if (update.type !== undefined) {
+      patch.type = update.type;
+    }
+
+    const { error } = await supabaseAdmin
+      .from('locations')
+      .update(patch)
+      .eq('user_id', userId)
+      .eq('id', locationId);
+
+    if (error) {
+      logger.error({ error, locationId }, 'Failed to update location');
+      throw error;
+    }
+
+    return this.getLocationProfile(userId, locationId);
   }
 }
 

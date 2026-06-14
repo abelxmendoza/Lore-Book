@@ -9,14 +9,9 @@ import { z } from 'zod';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { groupCandidateService } from '../services/groupCandidateService';
+import { CANONICAL_GROUP_TYPES } from '../constants/groupTypes';
 
 const router = Router();
-
-const GROUP_TYPES = [
-  'friend_group','band','sports_team','company','club','nonprofit',
-  'family','martial_arts','scene','community','crew','collective','institution',
-  'public_entity','other',
-] as const;
 
 const USER_RELATIONSHIPS = [
   'founder','leader','member','former_member','collaborator',
@@ -77,7 +72,7 @@ router.post('/:id/accept', requireAuth, async (req: AuthenticatedRequest, res) =
 
   const schema = z.object({
     name: z.string().min(1).optional(),
-    group_type: z.enum(GROUP_TYPES).optional(),
+    group_type: z.enum(CANONICAL_GROUP_TYPES).optional(),
     user_relationship: z.enum(USER_RELATIONSHIPS).optional(),
     membership_model: z.enum(MEMBERSHIP_MODELS).optional(),
     description: z.string().optional(),

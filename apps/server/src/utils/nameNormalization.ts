@@ -70,7 +70,7 @@ export function splitPersonName(fullName: string): { firstName: string; lastName
   const cleaned = (fullName ?? '')
     .trim()
     .replace(/\s+/g, ' ')
-    .replace(/^(?:mr|mrs|ms|miss|dr|prof|dj)\.?\s+/i, '');
+    .replace(/^(?:mr|mrs|ms|miss|mx|dr|prof|professor|dj|sir|dame|lord|lady|rev|fr|father)\.?\s+/i, '');
   const parts = cleaned.split(' ').filter(Boolean);
   return {
     firstName: parts[0] ?? '',

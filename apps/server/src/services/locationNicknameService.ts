@@ -37,7 +37,8 @@ class LocationNicknameService {
   async detectAndGenerateNicknames(
     userId: string,
     message: string,
-    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    options?: { suggestionsMode?: boolean }
   ): Promise<LocationWithNickname[]> {
     try {
       // Use AI to detect unnamed locations
@@ -50,12 +51,14 @@ class LocationNicknameService {
             role: 'system',
             content: `You are analyzing a conversation to detect unnamed locations (places mentioned without specific names).
 
-Look for:
-- References to places without names (e.g., "this park", "that restaurant", "the pizza shop")
-- Generic place types (park, restaurant, shop, cafe, store, gym, etc.)
-- Locations described by proximity (e.g., "park by Nick's house", "cafe near the gym")
-- Locations described by events (e.g., "pizza shop where the fight happened")
-- Context clues about where they are
+IMPORTANT — skip these (they are NOT unnamed):
+- Proper nouns and brand names (Costco, Golden Gate Park, Abuela's house)
+- Possessive places ("Abuela's house", "Nick's apartment")
+- Any place that already has a usable name in the message
+
+Look for ONLY:
+- References to places without names (e.g., "this park", "that restaurant", "the pizza shop" with no owner/brand)
+- Generic place types with no anchor person or brand
 
 For each unnamed location, extract:
 - Type of place (park, restaurant, shop, cafe, store, gym, etc.)
@@ -118,11 +121,11 @@ If no unnamed locations are found, return {"unnamedLocations": []}.`
       for (const unnamedLoc of unnamedLocations) {
         // Check if this location already exists (by type/description match)
         const similarLocation = existingLocations?.find(loc => {
-          const locType = (loc.type || '').toLowerCase();
           const locSummary = (loc.summary || '').toLowerCase();
-          const descMatch = unnamedLoc.description && locSummary.includes(unnamedLoc.description.toLowerCase());
-          const typeMatch = unnamedLoc.type && locType === unnamedLoc.type.toLowerCase();
-          return descMatch || typeMatch;
+          const descMatch =
+            unnamedLoc.description &&
+            locSummary.includes(unnamedLoc.description.toLowerCase().slice(0, 40));
+          return descMatch;
         });
 
         if (similarLocation) {
@@ -140,7 +143,8 @@ If no unnamed locations are found, return {"unnamedLocations": []}.`
           unnamedLoc,
           existingNames,
           conversationContext,
-          message
+          message,
+          options?.suggestionsMode
         );
 
         if (nickname) {
@@ -177,7 +181,8 @@ If no unnamed locations are found, return {"unnamedLocations": []}.`
     location: UnnamedLocation,
     existingNames: Set<string>,
     conversationContext?: string,
-    currentMessage?: string
+    currentMessage?: string,
+    suggestionsMode?: boolean
   ): Promise<string | null> {
     try {
       // Get existing characters and locations to understand relationships
@@ -199,25 +204,28 @@ If no unnamed locations are found, return {"unnamedLocations": []}.`
       // Use AI to generate contextual nickname
       const completion = await openai.chat.completions.create({
         model: config.defaultModel,
-        temperature: 0.8,
+        temperature: suggestionsMode ? 0.3 : 0.8,
         messages: [
           {
             role: 'system',
-            content: `Generate a unique, contextual nickname for an unnamed location based on its type, description, and relationships.
+            content: suggestionsMode
+              ? `Generate a short place label for suggestions (2-4 words max).
+
+Rules:
+- Prefer anchor + type: "Abuela's House", "Friday Gym", "Neighborhood Bar"
+- NEVER use long event sentences ("The bar where Andrew bought adioses")
+- NEVER describe furniture or activities ("The couch at...")
+- If proximityTarget or associatedWith gives a person/place name, use it in the label
+- Generic types alone ("The Gym") are OK only when there is no named anchor
+
+Return only the label, no quotes.`
+              : `Generate a unique, contextual nickname for an unnamed location based on its type, description, and relationships.
 
 Guidelines:
-- Include relationship context when available (e.g., "The park by Nick's house", "The pizza shop where the fight happened")
-- Use descriptive phrases that capture the location's connection to other entities or events
-- Make it specific and memorable (3-6 words is ideal)
-- Include the character/location it's associated with in the nickname when relevant
-- Use action/relationship words (e.g., "by", "near", "where", "at")
-- Avoid generic names like "The Park" or "The Restaurant" - be more specific
-
-Examples:
-- "The park by Nick's house" (for a park near Nick's house)
-- "The pizza shop where the fight happened" (for a pizza shop with event context)
-- "The cafe near the gym" (for a cafe near another location)
-- "The restaurant where I met Sarah" (for a restaurant with character/event context)
+- Keep it short (2-5 words). Prefer "Abuela's House" over "The house where I built Lorebook"
+- Include relationship context when available (e.g., "Park by Nick's house")
+- Avoid long event-based sentences
+- If a proper name exists in the message, use that instead of inventing a nickname
 
 Return only the nickname, no quotes or explanation.`
           },
@@ -302,16 +310,29 @@ Generate a unique, contextual nickname that includes relationship information:`
     location: LocationWithNickname
   ): Promise<{ id: string; name: string } | null> {
     try {
-      // Check if location with this name already exists
-      const { data: existing } = await supabaseAdmin
+      const normalizedName = location.name.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+      if (!normalizedName) return null;
+
+      const { data: existingByName } = await supabaseAdmin
         .from('locations')
         .select('id, name')
         .eq('user_id', userId)
         .eq('name', location.name)
-        .single();
+        .maybeSingle();
 
-      if (existing) {
-        return existing;
+      if (existingByName) {
+        return existingByName;
+      }
+
+      const { data: existingByNorm } = await supabaseAdmin
+        .from('locations')
+        .select('id, name')
+        .eq('user_id', userId)
+        .eq('normalized_name', normalizedName)
+        .maybeSingle();
+
+      if (existingByNorm) {
+        return existingByNorm;
       }
 
       // Find associated character IDs if provided
@@ -328,43 +349,63 @@ Generate a unique, contextual nickname that includes relationship information:`
         }
       }
 
-      // Normalize name
-      const normalizedName = location.name.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+      let embedding: number[] = [];
+      try {
+        const { embeddingService } = await import('./embeddingService');
+        embedding = await embeddingService.embedText(location.name);
+      } catch (embedErr) {
+        logger.warn({ embedErr, name: location.name }, 'Embedding failed; creating location without vector');
+      }
 
-      // Get embedding
-      const { embeddingService } = await import('./embeddingService');
-      const embedding = await embeddingService.embedText(location.name);
+      const insertPayload: Record<string, unknown> = {
+        user_id: userId,
+        name: location.name,
+        normalized_name: normalizedName,
+        type: location.type || null,
+        is_nickname: location.isNickname ?? true,
+        associated_character_ids: associatedCharacterIds,
+        event_context: location.eventContext || null,
+        proximity_target: location.proximityTarget || null,
+        importance_level: 'minor',
+        importance_score: 0,
+        metadata: {
+          autoGenerated: true,
+          fromNickname: location.isNickname,
+          context: location.context,
+          description: location.description,
+        },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (embedding.length > 0) {
+        insertPayload.embedding = `[${embedding.join(',')}]`;
+      }
 
       const { data: newLocation, error } = await supabaseAdmin
         .from('locations')
-        .insert({
-          user_id: userId,
-          name: location.name,
-          normalized_name: normalizedName,
-          type: location.type || null,
-          is_nickname: location.isNickname ?? true,
-          associated_character_ids: associatedCharacterIds,
-          event_context: location.eventContext || null,
-          proximity_target: location.proximityTarget || null,
-          embedding: `[${embedding.join(',')}]`,
-          importance_level: 'minor', // Will be calculated later
-          importance_score: 0,
-          metadata: {
-            autoGenerated: true,
-            fromNickname: location.isNickname,
-            context: location.context,
-            description: location.description
-          },
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
+        .insert(insertPayload)
         .select('id, name')
         .single();
 
       if (error) {
+        if (error.code === '23505') {
+          const { data: dup } = await supabaseAdmin
+            .from('locations')
+            .select('id, name')
+            .eq('user_id', userId)
+            .eq('normalized_name', normalizedName)
+            .maybeSingle();
+          if (dup) return dup;
+        }
         logger.error({ error, location }, 'Failed to create location with nickname');
         return null;
       }
+
+      const contextText = [location.name, location.context, location.description, location.eventContext]
+        .filter(Boolean)
+        .join(' ');
+      const { placeEnrichmentService } = await import('./placeEnrichmentService');
+      await placeEnrichmentService.enrichFromText(userId, newLocation.id, contextText).catch(() => {});
 
       // Calculate importance asynchronously
       const { locationImportanceService } = await import('./locationImportanceService');

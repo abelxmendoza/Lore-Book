@@ -13,6 +13,7 @@
 import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
+import { isIndividualPersonName } from '../utils/personNameValidation';
 import { supabaseAdmin } from './supabaseClient';
 
 export type EntityType = 'character' | 'organization' | 'location';
@@ -121,6 +122,20 @@ Rules:
 - Skip vague facts. Max 6 facts. Return { "facts": [] } if none.`,
 };
 
+const SELF_EXTRACTION_PROMPT = `You extract factual claims about the narrator (the person speaking in first person) from their conversation text.
+
+Return JSON: { "facts": [ { "fact": "...", "category": "...", "confidence": 0.0-1.0, "contradicts": "..." } ] }
+
+Category options: personality, appearance, relationship, history, career, location, goals, general
+
+Rules:
+- ONLY extract facts the narrator states about THEIR OWN life, identity, feelings, or situation
+- Do NOT extract facts about other people they mention
+- Write facts in third person about the narrator: "Is unemployed", "Lives in Seattle", "Has anxiety"
+- confidence: 0.9 = directly stated, 0.7 = implied, 0.5 = speculative
+- contradicts: old fact text if this contradicts something (otherwise omit)
+- Skip vague facts. Max 6 facts. Return { "facts": [] } if none.`;
+
 // ── Category display labels per entity type ────────────────────────────────────
 
 export const CATEGORY_LABELS: Record<EntityType, Record<string, string>> = {
@@ -191,6 +206,41 @@ class EntityFactsService {
   }
 
   /**
+   * Extract facts about the narrator's own life from conversation text.
+   */
+  async extractAndPersistSelfFacts(
+    userId: string,
+    characterId: string,
+    conversationText: string
+  ): Promise<void> {
+    if (!conversationText.trim()) return;
+
+    let extracted: ExtractedFact[] = [];
+    try {
+      extracted = await this.extractSelfFacts(conversationText);
+    } catch (err) {
+      logger.warn({ err, characterId }, 'Self fact extraction failed (non-blocking)');
+      return;
+    }
+
+    if (extracted.length === 0) return;
+
+    const { data: existingRows } = await supabaseAdmin
+      .from('entity_facts')
+      .select('id, fact, category, confidence, mention_count, status, previous_value')
+      .eq('user_id', userId)
+      .eq('entity_id', characterId)
+      .eq('entity_type', 'character')
+      .eq('status', 'active');
+
+    const existing = (existingRows ?? []) as EntityFact[];
+
+    for (const incoming of extracted) {
+      await this.upsertFact(userId, characterId, 'character', incoming, existing);
+    }
+  }
+
+  /**
    * Sentences that talk about this person: any sentence naming them, plus the
    * sentence right after (pronoun continuation: "Had coffee with Maya. She's
    * my old college roommate.").
@@ -239,6 +289,7 @@ class EntityFactsService {
   ): Promise<boolean> {
     const text = rawText.toLowerCase();
     if (text.trim().length < 3) return false;
+    if (!isIndividualPersonName(entityName)) return false;
 
     // Kinship terms across cultures — "Abuela" IS the user's grandmother;
     // the book's Family filter must understand that without translation.
@@ -546,6 +597,32 @@ Respond JSON: {"archetype": "...", "relationship_type": "family|romantic|mentor|
         {
           role: 'user',
           content: `Entity: ${entityName}\n\nConversation:\n${text.slice(0, 2000)}\n\nJSON:`,
+        },
+      ],
+      max_tokens: 400,
+      temperature: 0.2,
+    });
+
+    const raw = response.choices[0]?.message?.content?.trim() ?? '';
+    if (!raw) return [];
+
+    try {
+      const parsed = JSON.parse(raw) as { facts?: ExtractedFact[] };
+      return Array.isArray(parsed.facts) ? parsed.facts.filter(f => f.fact && f.category) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async extractSelfFacts(text: string): Promise<ExtractedFact[]> {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-5.4-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SELF_EXTRACTION_PROMPT },
+        {
+          role: 'user',
+          content: `Conversation:\n${text.slice(0, 2000)}\n\nJSON:`,
         },
       ],
       max_tokens: 400,

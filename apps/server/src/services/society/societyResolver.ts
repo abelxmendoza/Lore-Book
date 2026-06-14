@@ -22,16 +22,14 @@ import { config } from '../../config';
 import { tracedCompletion } from '../../lib/openai';
 import { logger } from '../../logger';
 import type { GroupType, UserRelationship } from '../organizationService';
+import { CANONICAL_GROUP_TYPES } from '../../constants/groupTypes';
 import type { SocietyCluster } from './societyMapper';
 
 const ENABLED = process.env.SOCIETY_LLM_RESOLVER !== 'false';
 const MAX_CLUSTERS_PER_CALL = 12;
 const DAILY_CALL_BUDGET = Number(process.env.SOCIETY_LLM_DAILY_BUDGET ?? 500);
 
-const GROUP_TYPES: GroupType[] = [
-  'friend_group', 'band', 'sports_team', 'company', 'club', 'nonprofit', 'family',
-  'martial_arts', 'scene', 'community', 'crew', 'collective', 'institution', 'other',
-];
+const GROUP_TYPES: GroupType[] = [...CANONICAL_GROUP_TYPES];
 const USER_RELATIONSHIPS: UserRelationship[] = [
   'founder', 'leader', 'member', 'former_member', 'collaborator', 'adjacent',
   'fan', 'aware_of', 'referenced', 'alumnus',

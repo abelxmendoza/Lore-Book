@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { isIndividualPersonName } from '../../utils/personNameValidation';
 
 export interface AffectionScore {
   personId: string;
@@ -57,7 +58,7 @@ export class AffectionCalculator {
 
       for (const rel of relationships) {
         const score = await this.calculateForRelationship(userId, rel);
-        if (score) {
+        if (score && isIndividualPersonName(score.personName)) {
           scores.push(score);
         }
       }

@@ -1,4 +1,6 @@
 import { MapPin, Clock, Users, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
+import { classifyLocation, KIND_META, locationHierarchy } from '../../lib/locationTaxonomy';
+import { formatPlaceType, getPlaceTags, resolvePlaceType } from '../../lib/placeTypes';
 
 export type LocationProfile = {
   id: string;
@@ -35,6 +37,7 @@ export type LocationProfile = {
     source: string;
   }>;
   sources: string[];
+  metadata?: Record<string, unknown> | null;
   analytics?: {
     visit_frequency: number;
     recency_score: number;
@@ -86,20 +89,37 @@ function accentClass(location: LocationProfile): string {
   return 'text-teal-400 bg-teal-500/10 border-teal-500/25';
 }
 
-type Props = { location: LocationProfile; onClick?: () => void };
+type Props = { location: LocationProfile; onClick?: () => void; selectionMode?: boolean; selected?: boolean };
 
-export const LocationProfileCard = ({ location, onClick }: Props) => {
+export const LocationProfileCard = ({ location, onClick, selectionMode, selected }: Props) => {
   const ago    = relativeTime(location.lastVisited);
   const accent = accentClass(location);
   const trend  = location.analytics?.trend;
   const verifiedPeople = location.relatedPeople.filter(person => person.character_id);
+  const kindMeta = KIND_META[classifyLocation(location)];
+  const hierarchy = locationHierarchy(location);
+  const placeType = resolvePlaceType(location.type, location.name);
+  const placeTags = getPlaceTags(location);
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group w-full text-left rounded-xl border border-white/8 bg-black/40 hover:border-teal-500/30 hover:bg-teal-500/5 transition-all duration-200 p-4 flex flex-col gap-3"
+      className={`group relative w-full text-left rounded-xl border bg-black/40 transition-all duration-200 p-4 flex flex-col gap-3 ${
+        selected
+          ? 'border-teal-500/50 bg-teal-500/10 ring-1 ring-teal-500/40'
+          : 'border-white/8 hover:border-teal-500/30 hover:bg-teal-500/5'
+      }`}
     >
+      {selectionMode && (
+        <span
+          className={`absolute top-3 right-3 w-5 h-5 rounded border text-[10px] flex items-center justify-center ${
+            selected ? 'bg-teal-500 border-teal-400 text-black' : 'border-white/25 text-transparent'
+          }`}
+        >
+          ✓
+        </span>
+      )}
       {/* Name row */}
       <div className="flex items-start gap-3">
         <div className={`rounded-lg border p-2 shrink-0 mt-0.5 ${accent}`}>
@@ -109,7 +129,20 @@ export const LocationProfileCard = ({ location, onClick }: Props) => {
           <h3 className="text-sm font-semibold text-white group-hover:text-teal-300 transition-colors leading-snug line-clamp-2">
             {location.name}
           </h3>
+          {hierarchy.length > 0 && (
+            <p className="text-[11px] text-white/35 truncate mt-0.5">
+              {hierarchy.map(h => h.name).join(' › ')}
+            </p>
+          )}
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {placeType && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-teal-500/10 text-teal-300 border-teal-500/30">
+                {formatPlaceType(placeType)}
+              </span>
+            )}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${kindMeta.color}`}>
+              <span aria-hidden>{kindMeta.icon}</span> {kindMeta.label}
+            </span>
             <span className="text-xs text-white/50">
               {location.visitCount} {location.visitCount === 1 ? 'visit' : 'visits'}
             </span>
@@ -142,10 +175,18 @@ export const LocationProfileCard = ({ location, onClick }: Props) => {
         </div>
       )}
 
-      {/* Tags */}
-      {location.tagCounts.length > 0 && (
+      {/* Place tags (structured) + journal tags */}
+      {(placeTags.length > 0 || location.tagCounts.length > 0) && (
         <div className="flex flex-wrap gap-1">
-          {location.tagCounts.slice(0, 3).map(t => (
+          {placeTags.slice(0, 2).map(tag => (
+            <span
+              key={`pt-${tag}`}
+              className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-300/80"
+            >
+              {tag}
+            </span>
+          ))}
+          {location.tagCounts.slice(0, placeTags.length > 0 ? 2 : 3).map(t => (
             <span
               key={t.tag}
               className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/40"

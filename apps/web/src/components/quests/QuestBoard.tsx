@@ -211,7 +211,14 @@ export const QuestBoard = () => {
       case 'main': questsToFilter = mainQuests; break;
       case 'side': questsToFilter = sideQuests; break;
       case 'completed': questsToFilter = completedQuests; break;
-      default: questsToFilter = [...mainQuests, ...sideQuests, ...todaysQuests, ...thisWeeksQuests, ...completedQuests];
+      default: questsToFilter = [
+        ...mainQuests,
+        ...sideQuests,
+        ...dailyQuests,
+        ...todaysQuests,
+        ...thisWeeksQuests,
+        ...completedQuests,
+      ];
     }
     const byId = new Map<string, Quest>();
     questsToFilter.forEach(q => { if (!byId.has(q.id)) byId.set(q.id, q); });
@@ -234,7 +241,7 @@ export const QuestBoard = () => {
         default: return 0;
       }
     });
-  }, [selectedCategory, mainQuests, sideQuests, todaysQuests, thisWeeksQuests, completedQuests, filterQuests, sortKey]);
+  }, [selectedCategory, mainQuests, sideQuests, dailyQuests, todaysQuests, thisWeeksQuests, completedQuests, filterQuests, sortKey]);
 
   // Auto-select first quest if none selected or current selection is not in displayed quests
   // Only auto-select on desktop (not mobile) to avoid auto-opening modal
@@ -346,7 +353,7 @@ export const QuestBoard = () => {
         <ChatFirstViewHint />
       </div>
       {/* Cyberpunk Header */}
-      <div className="relative overflow-hidden neon-surface border-b border-primary/30 p-3 sm:p-4 sm:p-6 flex-shrink-0">
+      <div className="relative overflow-hidden neon-surface border-b border-primary/30 p-3 sm:p-4 lg:p-5 flex-shrink-0">
         <div className="relative z-10">
           <div className="flex items-center gap-2 sm:gap-3 mb-3">
             <div className="p-1.5 sm:p-2 rounded bg-primary/20 border border-primary/50 flex-shrink-0">
@@ -474,7 +481,7 @@ export const QuestBoard = () => {
       </div>
 
       {/* Main Content - Side by Side */}
-      <div className="flex-1 flex overflow-hidden min-h-0 gap-0 px-0 sm:gap-4 sm:px-4">
+      <div className="flex-1 flex overflow-hidden min-h-[520px] sm:min-h-[640px] gap-0 px-0 sm:gap-4 sm:px-4">
         {/* Left Panel - Quest List */}
         <div className="w-full sm:w-1/2 lg:w-2/5 border-r-0 sm:border-r border-primary/20 bg-black/20 flex flex-col min-h-0 pr-0 sm:pr-4">
           {/* Category Tabs */}

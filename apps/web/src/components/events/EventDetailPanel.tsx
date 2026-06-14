@@ -11,6 +11,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { fetchJson } from '../../lib/api';
 import { format, parseISO } from 'date-fns';
+import { getDisplayTitle } from '../../utils/displayTitle';
 
 interface EventDetail {
   id: string;
@@ -170,6 +171,15 @@ export const EventDetailPanel: React.FC<EventDetailPanelProps> = ({ eventId, onC
     );
   }
 
+  const displayTitle = getDisplayTitle({
+    title: event.title,
+    summary: event.summary,
+    date: event.start_time,
+    fallbackNoun: 'Event',
+    people: event.people,
+    locations: event.locations,
+  });
+
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
       {/* Header */}
@@ -181,7 +191,7 @@ export const EventDetailPanel: React.FC<EventDetailPanelProps> = ({ eventId, onC
               Back to Events
             </Button>
           </div>
-          <h1 className="text-2xl font-bold mb-2">{event.title}</h1>
+          <h1 className="text-2xl font-bold mb-2">{displayTitle}</h1>
           <p className="text-sm text-white/60 mb-4">
             This event was assembled from conversations
           </p>
@@ -407,4 +417,3 @@ export const EventDetailPanel: React.FC<EventDetailPanelProps> = ({ eventId, onC
     </div>
   );
 };
-

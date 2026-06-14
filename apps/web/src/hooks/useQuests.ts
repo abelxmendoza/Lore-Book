@@ -1,10 +1,18 @@
 import { useState, useCallback, useEffect } from 'react';
 import { fetchJson } from '../lib/api';
+import { apiCache } from '../lib/cache';
+import { clampQuestScore, normalizeQuestType, optionalQuestString } from '../lib/questNormalize';
 import { useMockData } from '../contexts/MockDataContext';
 import { useShouldUseMockData } from './useShouldUseMockData';
 import { mockDataService } from '../services/mockDataService';
-import { MOCK_QUESTS, MOCK_QUEST_BOARD, MOCK_QUEST_ANALYTICS, MOCK_QUEST_SUGGESTIONS } from '../mocks/quests';
+import { MOCK_QUESTS, MOCK_QUEST_BOARD, MOCK_QUEST_ANALYTICS, MOCK_QUEST_SUGGESTIONS, buildQuestBoardFromQuests } from '../mocks/quests';
 import type { Quest, QuestFilters, QuestBoard, QuestAnalytics, QuestHistory, QuestSuggestion } from '../types/quest';
+
+const notifyQuestUpdated = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('lk:quests-updated'));
+  }
+};
 
 /**
  * Hook to fetch quests with filters.
@@ -179,12 +187,16 @@ export function useQuestBoard() {
     try {
       if (shouldUseMock && isMockDataEnabled) {
         await new Promise(resolve => setTimeout(resolve, 100));
-        mockDataService.register.questBoard(MOCK_QUEST_BOARD);
-        setBoard(MOCK_QUEST_BOARD);
+        const registered = mockDataService.get.quests();
+        const quests = registered.length > 0 ? registered : MOCK_QUESTS;
+        const board = registered.length > 0 ? buildQuestBoardFromQuests(quests) : MOCK_QUEST_BOARD;
+        mockDataService.register.questBoard(board);
+        setBoard(board);
         setLoading(false);
         return;
       }
 
+      apiCache.deletePattern(/\/api\/quests(\/|\?|:)/);
       const result = await fetchJson<QuestBoard>('/api/quests/board');
       const emptyBoard: QuestBoard = {
         todays_quests: [],
@@ -373,26 +385,80 @@ export function useQuestSuggestions() {
  * Hook to create a quest
  */
 export function useCreateQuest() {
+  const { useMockData: isMockDataEnabled } = useMockData();
+  const shouldUseMock = useShouldUseMockData();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const mutateAsync = useCallback(async (questData: any) => {
+  const mutateAsync = useCallback(async (questData: {
+    title: string;
+    description?: string;
+    quest_type?: string;
+    priority?: number;
+    importance?: number;
+    impact?: number;
+    source?: Quest['source'];
+    category?: string;
+  }) => {
     setLoading(true);
     setError(null);
+
+    const payload = {
+      title: questData.title.trim(),
+      description: optionalQuestString(questData.description),
+      quest_type: normalizeQuestType(questData.quest_type),
+      priority: clampQuestScore(questData.priority),
+      importance: clampQuestScore(questData.importance),
+      impact: clampQuestScore(questData.impact),
+      source: questData.source ?? 'manual',
+      category: optionalQuestString(questData.category),
+    };
+
     try {
+      if (shouldUseMock && isMockDataEnabled) {
+        const now = new Date().toISOString();
+        const newQuest: Quest = {
+          id: `quest-mock-${Date.now()}`,
+          title: payload.title,
+          description: payload.description,
+          quest_type: payload.quest_type,
+          priority: payload.priority,
+          importance: payload.importance,
+          impact: payload.impact,
+          status: 'active',
+          progress_percentage: 0,
+          source: payload.source as Quest['source'],
+          category: payload.category,
+          created_at: now,
+          updated_at: now,
+          last_activity_at: now,
+        };
+        const existing = mockDataService.get.quests();
+        const quests = existing.length > 0 ? [...existing, newQuest] : [...MOCK_QUESTS, newQuest];
+        mockDataService.register.quests(quests);
+        mockDataService.register.questBoard(buildQuestBoardFromQuests(quests));
+        notifyQuestUpdated();
+        return newQuest;
+      }
+
       const result = await fetchJson<{ quest: Quest }>('/api/quests', {
         method: 'POST',
-        body: JSON.stringify(questData),
+        body: JSON.stringify(payload),
       });
+      if (!result?.quest?.id) {
+        throw new Error('Server did not return the new quest');
+      }
+      apiCache.deletePattern(/\/api\/quests(\/|\?|:)/);
+      notifyQuestUpdated();
       return result.quest;
     } catch (err) {
       console.error('Failed to create quest:', err);
-      setError('Failed to create quest');
+      setError(err instanceof Error ? err.message : 'Failed to create quest');
       throw err;
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isMockDataEnabled, shouldUseMock]);
 
   return { mutateAsync, isPending: loading, error };
 }
@@ -412,6 +478,7 @@ export function useUpdateQuest() {
         method: 'PUT',
         body: JSON.stringify(updates),
       });
+      notifyQuestUpdated();
       return result.quest;
     } catch (err) {
       console.error('Failed to update quest:', err);
@@ -439,6 +506,7 @@ export function useDeleteQuest() {
       await fetchJson(`/api/quests/${questId}`, {
         method: 'DELETE',
       });
+      notifyQuestUpdated();
     } catch (err) {
       console.error('Failed to delete quest:', err);
       setError('Failed to delete quest');
@@ -465,6 +533,7 @@ export function useStartQuest() {
       const result = await fetchJson<{ quest: Quest }>(`/api/quests/${questId}/start`, {
         method: 'POST',
       });
+      notifyQuestUpdated();
       return result.quest;
     } catch (err) {
       console.error('Failed to start quest:', err);
@@ -493,6 +562,7 @@ export function useCompleteQuest() {
         method: 'POST',
         body: JSON.stringify({ notes }),
       });
+      notifyQuestUpdated();
       return result.quest;
     } catch (err) {
       console.error('Failed to complete quest:', err);
@@ -521,6 +591,7 @@ export function useAbandonQuest() {
         method: 'POST',
         body: JSON.stringify({ reason }),
       });
+      notifyQuestUpdated();
       return result.quest;
     } catch (err) {
       console.error('Failed to abandon quest:', err);
@@ -548,6 +619,7 @@ export function usePauseQuest() {
       const result = await fetchJson<{ quest: Quest }>(`/api/quests/${questId}/pause`, {
         method: 'POST',
       });
+      notifyQuestUpdated();
       return result.quest;
     } catch (err) {
       console.error('Failed to pause quest:', err);
@@ -576,6 +648,7 @@ export function useUpdateQuestProgress() {
         method: 'POST',
         body: JSON.stringify({ progress }),
       });
+      notifyQuestUpdated();
       return result.quest;
     } catch (err) {
       console.error('Failed to update quest progress:', err);
@@ -604,6 +677,7 @@ export function useAddQuestReflection() {
         method: 'POST',
         body: JSON.stringify({ reflection }),
       });
+      notifyQuestUpdated();
       return result.history;
     } catch (err) {
       console.error('Failed to add reflection:', err);
@@ -632,6 +706,7 @@ export function useAddQuestDependency() {
         method: 'POST',
         body: JSON.stringify({ depends_on_quest_id: dependsOnQuestId }),
       });
+      notifyQuestUpdated();
       return result.dependency;
     } catch (err) {
       console.error('Failed to add quest dependency:', err);
@@ -660,6 +735,7 @@ export function useLinkQuestToGoal() {
         method: 'POST',
         body: JSON.stringify({ goal_id: goalId }),
       });
+      notifyQuestUpdated();
       return result.success;
     } catch (err) {
       console.error('Failed to link quest to goal:', err);
@@ -688,6 +764,7 @@ export function useLinkQuestToTask() {
         method: 'POST',
         body: JSON.stringify({ task_id: taskId }),
       });
+      notifyQuestUpdated();
       return result.success;
     } catch (err) {
       console.error('Failed to link quest to task:', err);
@@ -715,6 +792,7 @@ export function useConvertGoalToQuest() {
       const result = await fetchJson<{ quest: Quest }>(`/api/quests/convert/goal/${goalId}`, {
         method: 'POST',
       });
+      notifyQuestUpdated();
       return result.quest;
     } catch (err) {
       console.error('Failed to convert goal to quest:', err);
@@ -742,6 +820,7 @@ export function useConvertTaskToQuest() {
       const result = await fetchJson<{ quest: Quest }>(`/api/quests/convert/task/${taskId}`, {
         method: 'POST',
       });
+      notifyQuestUpdated();
       return result.quest;
     } catch (err) {
       console.error('Failed to convert task to quest:', err);

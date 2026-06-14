@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
+import { questRewardService } from './questRewardService';
 import { questStorage } from './questStorage';
 import type {
   Quest,
@@ -73,27 +74,23 @@ export class QuestService {
 
       const savedQuest = await questStorage.saveQuest(quest);
 
-      // Create history event
-      await questStorage.saveHistoryEvent({
-        id: uuid(),
-        quest_id: savedQuest.id,
-        user_id: userId,
-        event_type: 'created',
-        description: `Quest "${savedQuest.title}" created`,
-        created_at: new Date().toISOString(),
-      });
+      // History is best-effort — quest row should persist even if history table is missing.
+      try {
+        await questStorage.saveHistoryEvent({
+          id: uuid(),
+          quest_id: savedQuest.id,
+          user_id: userId,
+          event_type: 'created',
+          description: `Quest "${savedQuest.title}" created`,
+          created_at: new Date().toISOString(),
+        });
+      } catch (histErr) {
+        logger.warn({ histErr, questId: savedQuest.id }, 'Quest saved but history event failed');
+      }
 
-      // Extract the skills this quest develops and grant pursuit XP (non-blocking).
-      void import('../skills/skillExtractionService')
-        .then(({ skillExtractionService }) =>
-          skillExtractionService.processQuestForSkills(
-            userId,
-            savedQuest.id,
-            `${savedQuest.title}\n${savedQuest.description ?? ''}`,
-            { completed: false }
-          )
-        )
-        .catch(err => logger.debug({ err, userId, questId: savedQuest.id }, 'Quest skill extraction failed'));
+      void questRewardService
+        .awardCreated(userId, savedQuest)
+        .catch(err => logger.debug({ err, userId, questId: savedQuest.id }, 'Quest creation rewards failed'));
 
       logger.debug({ questId: savedQuest.id, userId }, 'Created quest');
       return savedQuest;
@@ -129,6 +126,20 @@ export class QuestService {
           progress_after: updatedQuest.progress_percentage,
           created_at: new Date().toISOString(),
         });
+
+        if (updates.status === 'completed') {
+          void questRewardService
+            .awardCompleted(userId, updatedQuest)
+            .catch(err => logger.debug({ err, userId, questId }, 'Quest completion rewards failed'));
+        } else if (updates.status === 'paused') {
+          void questRewardService
+            .awardPaused(userId, updatedQuest)
+            .catch(err => logger.debug({ err, userId, questId }, 'Quest pause rewards failed'));
+        } else if (updates.status === 'abandoned') {
+          void questRewardService
+            .awardAbandoned(userId, updatedQuest)
+            .catch(err => logger.debug({ err, userId, questId }, 'Quest abandon rewards failed'));
+        }
       }
 
       // Create history event if progress changed
@@ -144,6 +155,10 @@ export class QuestService {
           progress_after: updates.progress_percentage,
           created_at: new Date().toISOString(),
         });
+
+        void questRewardService
+          .awardProgress(userId, updatedQuest, existingQuest.progress_percentage, updates.progress_percentage)
+          .catch(err => logger.debug({ err, userId, questId }, 'Quest progress rewards failed'));
       }
 
       return updatedQuest;
@@ -221,17 +236,9 @@ export class QuestService {
         created_at: now,
       });
 
-      // Completing a quest levels up the skills it developed (non-blocking).
-      void import('../skills/skillExtractionService')
-        .then(({ skillExtractionService }) =>
-          skillExtractionService.processQuestForSkills(
-            userId,
-            questId,
-            `${quest.title}\n${quest.description ?? ''}`,
-            { completed: true }
-          )
-        )
-        .catch(err => logger.debug({ err, userId, questId }, 'Quest-completion skill leveling failed'));
+      void questRewardService
+        .awardCompleted(userId, updatedQuest)
+        .catch(err => logger.debug({ err, userId, questId }, 'Quest completion rewards failed'));
 
       logger.debug({ questId, userId }, 'Quest completed');
       return updatedQuest;
@@ -270,6 +277,10 @@ export class QuestService {
         created_at: now,
       });
 
+      void questRewardService
+        .awardAbandoned(userId, updatedQuest)
+        .catch(err => logger.debug({ err, userId, questId }, 'Quest abandon rewards failed'));
+
       return updatedQuest;
     } catch (error) {
       logger.error({ error, userId, questId }, 'Failed to abandon quest');
@@ -307,6 +318,10 @@ export class QuestService {
         created_at: new Date().toISOString(),
       });
 
+      void questRewardService
+        .awardPaused(userId, updatedQuest)
+        .catch(err => logger.debug({ err, userId, questId }, 'Quest pause rewards failed'));
+
       return updatedQuest;
     } catch (error) {
       logger.error({ error, userId, questId }, 'Failed to pause quest');
@@ -328,8 +343,13 @@ export class QuestService {
         throw new Error('Quest not found');
       }
 
+      if (progress >= 100 && quest.status !== 'completed') {
+        return this.completeQuest(userId, questId, 'Completed by progress reaching 100%');
+      }
+
       const updatedQuest = await questStorage.updateQuest(userId, questId, {
         progress_percentage: progress,
+        status: quest.status === 'paused' && progress > quest.progress_percentage ? 'active' : quest.status,
         last_activity_at: new Date().toISOString(),
       });
 
@@ -343,6 +363,10 @@ export class QuestService {
         progress_after: progress,
         created_at: new Date().toISOString(),
       });
+
+      void questRewardService
+        .awardProgress(userId, updatedQuest, quest.progress_percentage, progress)
+        .catch(err => logger.debug({ err, userId, questId }, 'Quest progress rewards failed'));
 
       return updatedQuest;
     } catch (error) {
@@ -658,8 +682,9 @@ export class QuestService {
     const results: Array<{ questId: string; updated: boolean; reason: string }> = [];
 
     try {
-      // Get all active quests for the user
-      const allQuests = await questStorage.getQuests(userId, { status: 'active' });
+      // Get active and paused quests. A progress update from chat can resume a
+      // paused quest, while reaching 100% completes it through updateProgress().
+      const allQuests = await questStorage.getQuests(userId, { status: ['active', 'paused'] });
 
       for (const update of progressUpdates) {
         if (update.confidence < 0.7) {
@@ -821,22 +846,7 @@ export class QuestService {
 
       // Import goal storage dynamically to avoid circular dependencies
       const { GoalStorage } = await import('../goals/goalStorage');
-      const { GoalStatus } = await import('../goals/types');
       const goalStorage = new GoalStorage();
-
-      // Map quest category to goal type
-      const goalTypeMap: Record<string, string> = {
-        career: 'CAREER',
-        health: 'HEALTH',
-        relationships: 'RELATIONSHIP',
-        creative: 'CREATIVE',
-        financial: 'FINANCIAL',
-        personal: 'PERSONAL',
-        personal_growth: 'PERSONAL',
-        education: 'PERSONAL',
-      };
-
-      const goalType = goalTypeMap[quest.category || ''] || 'PERSONAL';
 
       // Create abandoned goal
       const goal = {
@@ -847,7 +857,7 @@ export class QuestService {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         last_action_at: new Date().toISOString(),
-        status: 'abandoned' as GoalStatus,
+        status: 'abandoned' as const,
         milestones: quest.milestones?.map(m => ({
           id: uuid(),
           description: m.description,
@@ -856,7 +866,7 @@ export class QuestService {
         })) || [],
         probability: 0, // Abandoned goals have 0 probability
         dependencies: [],
-        source: 'quest' as const,
+        source: 'manual' as const,
         source_id: questId,
         metadata: {
           original_quest_id: questId,

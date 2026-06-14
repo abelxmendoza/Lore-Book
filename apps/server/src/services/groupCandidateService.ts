@@ -301,6 +301,8 @@ export class GroupCandidateService {
       sports_team: ['Squad', 'Club'],
       club: ['Club', 'Society'],
       company: ['Co.', 'Group'],
+      brand: ['Brand', 'Co.'],
+      vendor: ['Services', 'Supply'],
       community: ['Community', 'Collective'],
       collective: ['Collective', 'Co-op'],
       scene: ['Scene', 'Underground'],

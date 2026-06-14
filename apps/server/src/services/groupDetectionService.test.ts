@@ -123,4 +123,20 @@ describe('groupDetectionService', () => {
     expect(kforce?.is_public_entity).toBe(false);
     expect(kforce?.members).toEqual(expect.arrayContaining(['Sam', 'Kelly']));
   });
+
+  it('classifies suppliers and contractors as vendors', () => {
+    expect(groupDetectionService.suggestGroupType(
+      'Our print vendor delivered the new merch run yesterday.',
+      [],
+      'PrintCo',
+    )).toBe('vendor');
+  });
+
+  it('classifies product brands separately from employers', () => {
+    expect(groupDetectionService.suggestGroupType(
+      'I wear Nike almost every day — huge fan of the brand.',
+      [],
+      'Nike',
+    )).toBe('brand');
+  });
 });

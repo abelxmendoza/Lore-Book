@@ -18,6 +18,8 @@ import { supabaseAdmin } from '../services/supabaseClient';
 import { characterAvatarUrl, avatarStyleFor } from '../utils/avatar';
 import { cacheAvatar } from '../utils/cacheAvatar';
 import { normalizeNameKey, namesOverlapByContainment, splitPersonName } from '../utils/nameNormalization';
+import { selfCharacterService } from '../services/selfCharacterService';
+import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 
@@ -1080,6 +1082,61 @@ router.post('/registry/rebuild', requireAuth, async (req: AuthenticatedRequest, 
     res.status(500).json({ success: false, error: 'Failed to rebuild character registry' });
   }
 });
+
+// ─── Self character (protagonist) ───────────────────────────────────────────
+
+router.post(
+  '/ensure-self',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const character = await selfCharacterService.ensureSelfCharacter(userId);
+    if (!character) {
+      return res.status(500).json({ success: false, error: 'Failed to ensure self character' });
+    }
+    return res.json({ success: true, character });
+  })
+);
+
+router.post(
+  '/self/sync',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const bodySchema = z.object({
+      limit: z.number().int().min(1).max(200).optional(),
+      sinceDays: z.number().int().min(1).max(365).optional(),
+    });
+    const body = bodySchema.parse(req.body ?? {});
+    const result = await selfCharacterService.syncFromConversations(userId, body);
+    return res.json({ success: true, ...result });
+  })
+);
+
+router.get(
+  '/self/profile',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const profile = await selfCharacterService.getSelfProfile(userId);
+    if (!profile) {
+      return res.status(500).json({ success: false, error: 'Failed to load self profile' });
+    }
+    return res.json({ success: true, ...profile });
+  })
+);
+
+router.get(
+  '/suggestions',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const context = req.query.context === 'romantic' ? 'romantic' : 'general';
+    const { characterSuggestionService } = await import('../services/characterSuggestionService');
+    const suggestions = await characterSuggestionService.getSuggestions(userId, { context });
+    res.json({ success: true, suggestions, count: suggestions.length });
+  })
+);
 
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {

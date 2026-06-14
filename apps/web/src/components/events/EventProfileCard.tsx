@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tooltip } from '../ui/tooltip';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
+import { getDisplayTitle } from '../../utils/displayTitle';
 
 export type Event = {
   id: string;
@@ -155,6 +156,14 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
   const sigScore = getSignificanceScore(event);
   const isMajor = sigScore >= 60;
   const isMinor = sigScore < 25;
+  const displayTitle = getDisplayTitle({
+    title: event.title,
+    summary: event.summary,
+    date: event.start_time,
+    fallbackNoun: 'Event',
+    people: event.people,
+    locations: event.locations,
+  });
 
   return (
     <Card
@@ -218,7 +227,7 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <h3 className="text-xs sm:text-sm font-semibold text-white group-hover:text-primary transition-colors line-clamp-2">
-              {event.title}
+              {displayTitle}
             </h3>
             {event.type && (
               <Tooltip content={`Event category: ${event.type}. Lorekeeper detected this as a ${event.type} event based on the context of your conversations.`} side="top">

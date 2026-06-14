@@ -34,7 +34,7 @@ type OrganizationDetailModalProps = {
   onUpdate?: () => void;
 };
 
-type TabKey = 'info' | 'chat' | 'members' | 'stories' | 'events' | 'locations' | 'relationships' | 'timeline' | 'family' | 'knowledge';
+type TabKey = 'info' | 'chat' | 'members' | 'stories' | 'events' | 'locations' | 'relationships' | 'timeline' | 'family';
 
 // Events & locations inferred from the group's members across chat threads /
 // journal entries (served by GET /api/organizations/:id/derived-context).
@@ -109,8 +109,7 @@ const ORG_REL_TYPE_OPTIONS = Object.keys(REL_TYPE_LABELS) as OrgRelationshipType
 
 const BASE_TABS: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'info', label: 'Info', icon: FileText },
-  { key: 'knowledge', label: 'What I Know', icon: Brain },
-  { key: 'chat', label: 'Chat', icon: MessageSquare },
+  { key: 'chat', label: 'Knowledge Chat', icon: Brain },
   { key: 'members', label: 'Members', icon: Users },
   { key: 'stories', label: 'Stories', icon: BookOpen },
   { key: 'events', label: 'Events', icon: Calendar },
@@ -208,7 +207,7 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
       const welcomeMessage: ChatMessage = {
         id: 'welcome',
         role: 'assistant',
-        content: `Hi! I'm here to help you manage **${organization.name}**. I can help you:\n\n- Update organization information\n- Add or remove members\n- Record stories and events\n- Link locations\n- Answer questions about the organization\n\nWhat would you like to do?`,
+        content: `Hi! I'm here to help you discuss **${organization.name}** using what LoreBook already knows.\n\nYou can ask about known facts, correct details, add members, record stories/events, link locations, or explain how this group fits into your life.\n\nWhat should we focus on?`,
         timestamp: new Date()
       };
       setChatMessages([welcomeMessage]);
@@ -243,7 +242,7 @@ export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: Org
   }, [activeTab, organization.id, derivedLoaded]);
 
   useEffect(() => {
-    if (activeTab !== 'knowledge' || factsLoaded || !organization.id) return;
+    if (activeTab !== 'chat' || factsLoaded || !organization.id) return;
     setFactsLoading(true);
     fetchJson<{ success: boolean; facts: any[] }>(`/api/organizations/${organization.id}/facts`)
       .then(r => { if (r.success) setOrgFacts(r.facts); })
@@ -474,6 +473,17 @@ You can explain these analytics to the user when asked. For example:
 ` : '';
 
       // Build organization context
+      const knownFactsContext = orgFacts.length > 0
+        ? `
+KNOWN FACTS ABOUT THIS ORGANIZATION:
+${orgFacts.slice(0, 30).map((fact: any) => {
+  const confidence = Math.round((fact.confidence ?? 0.7) * 100);
+  const category = fact.category ? `[${fact.category}] ` : '';
+  return `- ${category}${fact.fact} (${confidence}% confidence${fact.status ? `, ${fact.status}` : ''})`;
+}).join('\n')}
+`
+        : '\nKNOWN FACTS ABOUT THIS ORGANIZATION: No extracted facts yet. Use the conversation to clarify and build them.\n';
+
       const orgContext = `You are helping the user discuss and update information about an organization in their personal journal system.
 
 ORGANIZATION CONTEXT:
@@ -490,16 +500,18 @@ ${derivedHierarchy.related.length > 0 ? `- Related groups: ${derivedHierarchy.re
 - Stories: ${stories.length} recorded
 - Events: ${events.length} recorded
 - Locations: ${locations.map(l => l.location_name).join(', ') || 'None'}
+${knownFactsContext}
 ${analyticsContext}
 INSTRUCTIONS:
 1. Answer questions about this organization naturally
-2. If the user asks about analytics, explain what the scores mean and why they might be at that level
+2. Use the known facts as context, but call out uncertainty when confidence is low or a fact may be stale
 3. If user mentions new members, offer to add them: "I can add [name] as a member. What role should they have?"
 4. If user shares stories/events, acknowledge and offer to record them
 5. If user wants to update info (description, location, etc.), extract the update and confirm
 6. Be conversational and helpful
 7. When updates are needed, format them as JSON in your response: {"updates": {"description": "...", "members": [...]}}
-8. Use analytics to provide insights about involvement, importance, and group dynamics
+8. If the user asks about analytics, explain what the scores mean and why they might be at that level
+9. Use analytics to provide insights about involvement, importance, and group dynamics
 
 User's message: ${currentInput}`;
 
@@ -970,6 +982,15 @@ User's message: ${currentInput}`;
                       </Badge>
                     </div>
 
+                    {typeof editedOrg.metadata?.subcategory === 'string' && editedOrg.metadata.subcategory && (
+                      <div>
+                        <p className="text-xs text-white/50 mb-1.5 uppercase tracking-wide">Subcategory</p>
+                        <Badge variant="outline" className="bg-white/10 text-white/60 border-white/20">
+                          {String(editedOrg.metadata.subcategory).replace(/_/g, ' ')}
+                        </Badge>
+                      </div>
+                    )}
+
                     {/* Public Entity */}
                     {editedOrg.is_public_entity && (
                       <div>
@@ -1193,10 +1214,88 @@ User's message: ${currentInput}`;
               )}
             </TabsContent>
 
-            {/* Chat Tab */}
+            {/* Knowledge Chat Tab */}
             <TabsContent value="chat" className="mt-4">
-              {/* Chat messages only - input moved to sticky area */}
               <div className="space-y-4">
+                <Card className="bg-violet-500/10 border-violet-500/25">
+                  <CardContent className="pt-4 pb-4">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                          <Brain className="h-4 w-4 text-violet-300" />
+                          What LoreBook knows
+                        </h3>
+                        <p className="text-xs text-white/45 mt-1">
+                          These facts are loaded into this conversation. Ask questions, correct them, or add missing context.
+                        </p>
+                      </div>
+                      {factsLoading && <Loader2 className="h-4 w-4 animate-spin text-violet-300 flex-shrink-0" />}
+                    </div>
+
+                    {!factsLoading && orgFacts.length === 0 && (
+                      <div className="rounded-lg border border-white/8 bg-black/25 p-3 text-sm text-white/45">
+                        No extracted facts yet. Use the chat below to explain what {organization.name} is, who belongs, and why it matters.
+                      </div>
+                    )}
+
+                    {!factsLoading && orgFacts.length > 0 && (
+                      <div className="max-h-56 overflow-y-auto pr-1 space-y-3">
+                        {Object.entries(
+                          orgFacts.reduce((acc: Record<string, any[]>, fact: any) => {
+                            const category = fact.category || 'general';
+                            if (!acc[category]) acc[category] = [];
+                            acc[category].push(fact);
+                            return acc;
+                          }, {})
+                        ).map(([category, facts]) => {
+                          const catLabel: Record<string, string> = {
+                            role: 'Your Role', purpose: 'Purpose', dynamics: 'Dynamics',
+                            people: 'People', status: 'Status', history: 'History', general: 'General',
+                          };
+                          const statusBadge: Record<string, { label: string; cls: string }> = {
+                            updated:      { label: 'Updated',      cls: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+                            corrected:    { label: 'Corrected',    cls: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+                            contradicted: { label: 'Contradicted', cls: 'bg-red-500/20 text-red-300 border-red-500/30' },
+                          };
+                          return (
+                            <div key={category}>
+                              <p className="text-[10px] font-semibold text-white/35 uppercase tracking-wider mb-2">
+                                {catLabel[category] ?? category}
+                              </p>
+                              <div className="space-y-2">
+                                {(facts as any[]).map((fact: any) => {
+                                  const pct = Math.round((fact.confidence ?? 0.7) * 100);
+                                  const badge = statusBadge[fact.status as string];
+                                  return (
+                                    <div key={fact.id} className="flex items-start gap-2.5 p-2.5 rounded-lg border border-white/6 bg-black/25">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm text-white/85 leading-snug">{fact.fact}</p>
+                                        {fact.previous_value && (
+                                          <p className="text-[11px] text-white/35 mt-1 line-through">{fact.previous_value}</p>
+                                        )}
+                                      </div>
+                                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                        {badge && (
+                                          <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${badge.cls}`}>
+                                            {badge.label}
+                                          </span>
+                                        )}
+                                        <span className={`text-[10px] tabular-nums font-semibold ${pct >= 80 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
+                                          {pct}%
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
                 {chatMessages.map((msg) => (
                   <div
                     key={msg.id}
@@ -1961,91 +2060,6 @@ User's message: ${currentInput}`;
               />
             </TabsContent>
 
-            {/* Knowledge Tab */}
-            <TabsContent value="knowledge" className="mt-4">
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-base font-semibold text-white mb-1 flex items-center gap-2">
-                    <Brain className="h-4 w-4 text-violet-400" />
-                    What LoreBook Knows About {organization.name}
-                  </h3>
-                  <p className="text-xs text-white/45">
-                    Facts extracted from your conversations — updated as new details come in.
-                  </p>
-                </div>
-
-                {factsLoading && (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="h-5 w-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
-                  </div>
-                )}
-
-                {!factsLoading && orgFacts.length === 0 && (
-                  <div className="text-center py-12 text-white/30">
-                    <Brain className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                    <p className="text-sm font-medium mb-1">No facts yet</p>
-                    <p className="text-xs max-w-xs mx-auto">
-                      Mention {organization.name} in a chat to start building knowledge about this group.
-                    </p>
-                  </div>
-                )}
-
-                {!factsLoading && orgFacts.length > 0 && (
-                  <div className="space-y-4">
-                    {Object.entries(
-                      orgFacts.reduce((acc: Record<string, any[]>, f: any) => {
-                        if (!acc[f.category]) acc[f.category] = [];
-                        acc[f.category].push(f);
-                        return acc;
-                      }, {})
-                    ).map(([category, facts]) => {
-                      const catLabel: Record<string, string> = {
-                        role: 'Your Role', purpose: 'Purpose', dynamics: 'Dynamics',
-                        people: 'People', status: 'Status', history: 'History', general: 'General',
-                      };
-                      const statusBadge: Record<string, { label: string; cls: string }> = {
-                        updated:      { label: 'Updated',      cls: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
-                        corrected:    { label: 'Corrected',    cls: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
-                        contradicted: { label: 'Contradicted', cls: 'bg-red-500/20 text-red-300 border-red-500/30' },
-                      };
-                      return (
-                        <div key={category}>
-                          <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">
-                            {catLabel[category] ?? category}
-                          </p>
-                          <div className="space-y-2">
-                            {(facts as any[]).map((fact: any) => {
-                              const pct = Math.round((fact.confidence ?? 0.7) * 100);
-                              const badge = statusBadge[fact.status as string];
-                              return (
-                                <div key={fact.id} className="flex items-start gap-2.5 p-3 rounded-lg border border-white/6 bg-white/3">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm text-white/85 leading-snug">{fact.fact}</p>
-                                    {fact.previous_value && (
-                                      <p className="text-[11px] text-white/35 mt-1 line-through">{fact.previous_value}</p>
-                                    )}
-                                  </div>
-                                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                    {badge && (
-                                      <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold ${badge.cls}`}>
-                                        {badge.label}
-                                      </span>
-                                    )}
-                                    <span className={`text-[10px] tabular-nums font-semibold ${pct >= 80 ? 'text-green-400' : pct >= 60 ? 'text-yellow-400' : 'text-orange-400'}`}>
-                                      {pct}%
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </TabsContent>
           </div>
         </Tabs>
 

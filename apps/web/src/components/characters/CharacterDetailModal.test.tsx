@@ -120,7 +120,7 @@ describe('CharacterDetailModal', () => {
 
     // Switch to the Chat tab (composer only renders on the chat tab).
     // Tabs are plain <button> elements; find by the visible label text.
-    const chatTab = screen.getByText(/^chat$/i).closest('button')!;
+    const chatTab = screen.getByText(/intelligence chat/i).closest('button')!;
     await user.click(chatTab);
 
     expect(screen.getByTestId('chat-composer')).toBeInTheDocument();

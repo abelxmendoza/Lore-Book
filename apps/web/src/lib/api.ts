@@ -200,7 +200,14 @@ export const fetchJson = async <T>(
 
       if (init?.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(init.method)) {
         const urlPattern = urlStr.split('?')[0];
+        if (urlPattern.includes('/api/quests')) {
+          apiCache.deletePattern(/\/api\/quests(\/|\?|:)/);
+        }
         apiCache.deletePattern(new RegExp(urlPattern.replace(/\/[^/]+$/, '/.*')));
+        const collectionPath = urlPattern.replace(/\/[^/]+\/[^/]+$/, '');
+        if (collectionPath && collectionPath !== urlPattern) {
+          apiCache.deletePattern(new RegExp(`${collectionPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(/|$|\\?)`));
+        }
       }
 
       return data;

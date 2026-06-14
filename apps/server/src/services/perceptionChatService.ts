@@ -1,5 +1,6 @@
 import { config } from '../config';
 import { logger } from '../logger';
+import { splitPersonName } from '../utils/nameNormalization';
 
 import { findSimilarCharacter } from './characterDeduplicationService';
 import { openai } from './openaiClient';
@@ -146,7 +147,7 @@ IMPORTANT:
 
           const characterId = uuid();
           const now = new Date().toISOString();
-          const nameParts = newChar.name.split(' ');
+          const nameParts = splitPersonName(newChar.name);
 
           const { data: created, error } = await supabaseAdmin
             .from('characters')
@@ -154,8 +155,8 @@ IMPORTANT:
               id: characterId,
               user_id: userId,
               name: newChar.name,
-              first_name: nameParts[0] || newChar.name,
-              last_name: nameParts.length > 1 ? nameParts.slice(1).join(' ') : null,
+              first_name: nameParts.firstName || newChar.name,
+              last_name: nameParts.lastName || null,
               summary: newChar.description || null,
               role: newChar.role || 'other',
               importance_level: 'minor',

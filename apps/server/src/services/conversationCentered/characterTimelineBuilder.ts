@@ -44,7 +44,7 @@ export class CharacterTimelineBuilder {
         .select('*')
         .eq('user_id', userId)
         .eq('character_id', characterId)
-        .order('event_date', { ascending: false });
+        .order('event_date', { ascending: true });
 
       if (error) {
         throw error;
@@ -89,10 +89,10 @@ export class CharacterTimelineBuilder {
 
       return {
         sharedExperiences: sharedExperiences.sort((a, b) =>
-          new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime()
+          new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime()
         ),
         lore: lore.sort((a, b) =>
-          new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime()
+          new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime()
         ),
       };
     } catch (error) {

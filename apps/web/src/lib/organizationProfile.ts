@@ -241,6 +241,26 @@ const TEMPLATES: Partial<Record<GroupType, TypeTemplate>> = {
     decision_making: 'Organic and decentralized',
     publicImage: () => 'A recognizable local scene',
   },
+  brand: {
+    purpose: (n) => `${n} as a product or lifestyle identity you interact with as a customer or fan.`,
+    values: ['Quality', 'Identity', 'Trust'],
+    traditions: ['New drops and campaigns', 'Seasonal collections'],
+    norms: ['Stay on-brand', 'Deliver on promises'],
+    activities: ['Purchases', 'Campaigns', 'Product launches'],
+    defaultRoles: [{ role: 'Customer community' }],
+    decision_making: 'Market-driven, top-down brand strategy',
+    publicImage: (n) => `${n} is a recognizable brand in its category`,
+  },
+  vendor: {
+    purpose: (n) => `${n} provides goods or services you rely on — supplier, contractor, or partner.`,
+    values: ['Reliability', 'Value', 'Responsiveness'],
+    traditions: ['Renewals and reorders', 'Quarterly reviews'],
+    norms: ['Deliver on scope', 'Clear invoicing'],
+    activities: ['Deliveries', 'Service calls', 'Contract work'],
+    defaultRoles: [{ role: 'Account contact' }],
+    decision_making: 'Contract and procurement driven',
+    publicImage: (n) => `${n} is a trusted vendor in your network`,
+  },
 };
 
 const GENERIC: TypeTemplate = {

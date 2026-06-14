@@ -6,6 +6,7 @@
 import { logger } from '../../logger';
 import { openai } from '../openaiClient';
 import { supabaseAdmin } from '../supabaseClient';
+import { isIndividualPersonName } from '../../utils/personNameValidation';
 
 export type RomanticRelationshipType =
   | 'boyfriend'
@@ -64,11 +65,16 @@ export class RomanticRelationshipDetector {
         return [];
       }
 
+      const individualEntities = mentionedEntities.filter((e) => isIndividualPersonName(e.name));
+      if (individualEntities.length === 0) {
+        return [];
+      }
+
       // Use LLM to detect romantic relationships
       const { config } = await import('../../config');
       const OpenAI = (await import('openai')).default;
 
-      const entityList = mentionedEntities.map(e => `${e.name} (${e.type})`).join('\n');
+      const entityList = individualEntities.map(e => `${e.name} (${e.type})`).join('\n');
 
       const completion = await openai.chat.completions.create({
         model: config.defaultModel,
@@ -130,7 +136,9 @@ Return JSON:
   ]
 }
 
-If the message says they blocked the user or ghosted the user, classify status as "blocked" or "ghosted" and treat it as not current. Only include relationships with confidence >= 0.7. Be conservative.`,
+If the message says they blocked the user or ghosted the user, classify status as "blocked" or "ghosted" and treat it as not current. Only include relationships with confidence >= 0.7. Be conservative.
+
+IMPORTANT: Only detect romantic relationships with INDIVIDUAL people. Never classify groups, teams, departments, companies, or plural collective references (e.g. "Amazon Engineers", "the recruiters", "my coworkers") as romantic partners. Those belong in group/organization tracking, not Love & Relationships.`,
           },
           {
             role: 'user',
@@ -149,11 +157,11 @@ If the message says they blocked the user or ghosted the user, classify status a
 
       for (const rel of parsed.relationships || []) {
         if (rel.confidence >= 0.7) {
-          const entity = mentionedEntities.find(
+          const entity = individualEntities.find(
             e => e.name.toLowerCase() === rel.personName.toLowerCase()
           );
 
-          if (entity) {
+          if (entity && isIndividualPersonName(entity.name)) {
             detected.push({
               personId: entity.id,
               personType: entity.type,

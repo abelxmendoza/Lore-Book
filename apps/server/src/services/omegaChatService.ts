@@ -1372,6 +1372,13 @@ class OmegaChatService {
         logger.debug({ err }, 'Failed to extract location nicknames from conversation');
       });
 
+    // Enrich named places mentioned in this message (type, tags, significance)
+    const { placeEnrichmentService } = await import('./placeEnrichmentService');
+    placeEnrichmentService.enrichMentionedInText(userId, message)
+      .catch(err => {
+        logger.debug({ err }, 'Failed to enrich mentioned places from conversation');
+      });
+
     // Detect memory suggestion (proactive memory capture)
     let memorySuggestion: MemorySuggestion | null = null;
     try {

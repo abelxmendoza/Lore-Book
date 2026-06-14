@@ -641,3 +641,176 @@ export function getMockKnowledgeClaims(character: Character): MockKnowledgeClaim
 export function getMockSceneCandidates(character: Character): MockSceneCandidate[] {
   return genSceneCandidates(extractSignals(character));
 }
+
+// ── Timeline (shared experiences + lore without you) ─────────────────────────
+export interface MockTimelineEvent {
+  id: string;
+  eventId: string;
+  eventTitle: string;
+  eventDate: string;
+  eventSummary?: string;
+  eventType?: string;
+  userWasPresent: boolean;
+  characterRole?: string;
+  connectionCharacter?: string;
+  emotionalImpact?: string;
+}
+
+const CURATED_TIMELINES: Record<string, { sharedExperiences: MockTimelineEvent[]; lore: MockTimelineEvent[] }> = {
+  'Sarah Chen': {
+    sharedExperiences: [
+      {
+        id: 'tl-sc-shared-1',
+        eventId: 'ev-sc-1',
+        eventTitle: 'Coffee shop writing session',
+        eventDate: daysAgoIso(420),
+        eventSummary: 'Weekly writing meetup at the corner cafe — Sarah shared a draft chapter.',
+        eventType: 'social',
+        userWasPresent: true,
+        characterRole: 'participant',
+        emotionalImpact: 'positive',
+      },
+      {
+        id: 'tl-sc-shared-2',
+        eventId: 'ev-sc-2',
+        eventTitle: 'Creative Writing Circle launch',
+        eventDate: daysAgoIso(180),
+        eventSummary: 'Co-founded the writing group together with Emma.',
+        eventType: 'milestone',
+        userWasPresent: true,
+        characterRole: 'co-founder',
+        connectionCharacter: 'Emma Thompson',
+        emotionalImpact: 'positive',
+      },
+      {
+        id: 'tl-sc-shared-3',
+        eventId: 'ev-sc-3',
+        eventTitle: 'Birthday dinner',
+        eventDate: daysAgoIso(45),
+        eventSummary: 'Celebrated her birthday at the new Italian place downtown.',
+        eventType: 'social',
+        userWasPresent: true,
+        characterRole: 'guest of honor',
+        emotionalImpact: 'positive',
+      },
+    ],
+    lore: [
+      {
+        id: 'tl-sc-lore-1',
+        eventId: 'ev-sc-4',
+        eventTitle: 'Promoted to Product Manager',
+        eventDate: daysAgoIso(900),
+        eventSummary: 'Sarah moved from engineering into product leadership at her company.',
+        eventType: 'career',
+        userWasPresent: false,
+        characterRole: 'subject',
+        emotionalImpact: 'positive',
+      },
+      {
+        id: 'tl-sc-lore-2',
+        eventId: 'ev-sc-5',
+        eventTitle: 'Tech conference keynote',
+        eventDate: daysAgoIso(120),
+        eventSummary: 'Spoke on narrative design in product — you heard about it afterward.',
+        eventType: 'career',
+        userWasPresent: false,
+        characterRole: 'speaker',
+        emotionalImpact: 'positive',
+      },
+    ],
+  },
+  'Marcus Johnson': {
+    sharedExperiences: [
+      {
+        id: 'tl-mj-shared-1',
+        eventId: 'ev-mj-1',
+        eventTitle: 'Founders brunch',
+        eventDate: daysAgoIso(300),
+        eventSummary: 'Met with the creative entrepreneurs network over brunch.',
+        eventType: 'social',
+        userWasPresent: true,
+        characterRole: 'organizer',
+        emotionalImpact: 'positive',
+      },
+      {
+        id: 'tl-mj-shared-2',
+        eventId: 'ev-mj-2',
+        eventTitle: 'Goal-setting workshop',
+        eventDate: daysAgoIso(60),
+        eventSummary: 'Marcus ran a quarterly planning session you attended.',
+        eventType: 'workshop',
+        userWasPresent: true,
+        characterRole: 'facilitator',
+        emotionalImpact: 'positive',
+      },
+    ],
+    lore: [
+      {
+        id: 'tl-mj-lore-1',
+        eventId: 'ev-mj-3',
+        eventTitle: 'Executive coaching certification',
+        eventDate: daysAgoIso(730),
+        eventSummary: 'Completed advanced certification — mentioned in passing later.',
+        eventType: 'career',
+        userWasPresent: false,
+        characterRole: 'subject',
+        emotionalImpact: 'positive',
+      },
+    ],
+  },
+};
+
+function genTimeline(s: Signals): { sharedExperiences: MockTimelineEvent[]; lore: MockTimelineEvent[] } {
+  const seed = hashName(s.name);
+  const sharedCount = 2 + (seed % 3);
+  const loreCount = 1 + (seed % 2);
+  const spanDays = Math.max(Math.round(s.yearsKnown * 365), 90);
+
+  const sharedExperiences: MockTimelineEvent[] = [];
+  for (let i = 0; i < sharedCount; i++) {
+    const dayOffset = Math.round(((i + 1) / (sharedCount + 1)) * spanDays);
+    sharedExperiences.push({
+      id: `tl-gen-${s.name}-shared-${i}`,
+      eventId: `ev-gen-${s.name}-shared-${i}`,
+      eventTitle: i === 0 ? `First time you really connected` : `Shared ${s.archetype === 'family' ? 'family gathering' : 'hangout'} #${i + 1}`,
+      eventDate: daysAgoIso(spanDays - dayOffset),
+      eventSummary: `A meaningful moment with ${s.firstName} from your conversations.`,
+      eventType: 'social',
+      userWasPresent: true,
+      characterRole: 'participant',
+      emotionalImpact: 'positive',
+    });
+  }
+
+  const lore: MockTimelineEvent[] = [];
+  for (let i = 0; i < loreCount; i++) {
+    const dayOffset = Math.round(((i + 1) / (loreCount + 2)) * spanDays * 0.8);
+    lore.push({
+      id: `tl-gen-${s.name}-lore-${i}`,
+      eventId: `ev-gen-${s.name}-lore-${i}`,
+      eventTitle: `${s.firstName}'s ${s.archetype === 'colleague' ? 'work milestone' : 'life update'}`,
+      eventDate: daysAgoIso(spanDays - dayOffset - 30),
+      eventSummary: `Something ${s.firstName} went through that you learned about later.`,
+      eventType: s.archetype === 'colleague' ? 'career' : 'personal',
+      userWasPresent: false,
+      characterRole: 'subject',
+      emotionalImpact: 'neutral',
+    });
+  }
+
+  const sortAsc = (events: MockTimelineEvent[]) =>
+    events.sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime());
+
+  return {
+    sharedExperiences: sortAsc(sharedExperiences),
+    lore: sortAsc(lore),
+  };
+}
+
+export function getMockCharacterTimeline(character: Character): {
+  sharedExperiences: MockTimelineEvent[];
+  lore: MockTimelineEvent[];
+} {
+  if (CURATED_TIMELINES[character.name]) return CURATED_TIMELINES[character.name];
+  return genTimeline(extractSignals(character));
+}

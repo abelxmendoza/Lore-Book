@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageSquarePlus, MessageSquareText, Pencil, Trash2, PanelLeftClose, PanelLeft, X, Search } from 'lucide-react';
+import { MessageSquarePlus, MessageSquareText, Pencil, Trash2, PanelLeftClose, PanelLeft, X, Search, Brain, Sparkles, Loader2 } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import type { ChatThread } from '../hooks/useChatThreads';
+import { useThreadExplorer } from '../hooks/useThreadExplorer';
+import type { ThreadExploreHit } from '../../../api/threadExplorer';
 
 type ChatThreadListProps = {
   threads: ChatThread[];
   currentThreadId: string | null;
   onNewChat: () => void;
-  onSelectThread: (id: string) => void;
+  onSelectThread: (id: string, options?: { messageId?: string; messageIndex?: number }) => void;
   onDeleteThread: (id: string, e: React.MouseEvent) => void;
   onRenameThread?: (id: string, newTitle: string) => void;
   collapsed: boolean;
@@ -82,6 +84,7 @@ function ThreadItem({
   onSelect,
   onDelete,
   onRename,
+  exploreHit,
 }: {
   thread: ChatThread;
   isActive: boolean;
@@ -89,6 +92,7 @@ function ThreadItem({
   onSelect: () => void;
   onDelete: (e: React.MouseEvent) => void;
   onRename?: (newTitle: string) => void;
+  exploreHit?: ThreadExploreHit;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -274,6 +278,29 @@ function ThreadItem({
                 ))}
               </div>
             )}
+            {exploreHit?.snippets[0] && (
+              <p className="text-[10px] text-white/45 line-clamp-2 mt-0.5 leading-relaxed">
+                {exploreHit.snippets[0].excerpt}
+              </p>
+            )}
+            {exploreHit?.knowledge[0] && (
+              <p className="text-[9px] text-indigo-300/65 line-clamp-1 mt-0.5 flex items-center gap-1">
+                <Brain className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{exploreHit.knowledge[0].claim}</span>
+              </p>
+            )}
+            {exploreHit?.matchReasons && exploreHit.matchReasons.length > 0 && exploreHit.matchReasons[0] !== 'recent' && (
+              <div className="flex gap-1 mt-1 flex-wrap">
+                {exploreHit.matchReasons.slice(0, 3).map((reason) => (
+                  <span
+                    key={reason}
+                    className="text-[8px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-200/70 border border-amber-500/15"
+                  >
+                    {reason.startsWith('entity:') ? reason.slice(7) : reason}
+                  </span>
+                ))}
+              </div>
+            )}
             <p className={cn(
               'text-[10px] mt-0.5',
               isActive ? 'text-white/50' : 'text-white/25'
@@ -341,24 +368,49 @@ export const ChatThreadList = ({
 }: ChatThreadListProps) => {
   const drawerSwipeStartX = useRef<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const {
+    hits: exploreHits,
+    facets,
+    entityFilter,
+    setEntityFilter,
+    loading: exploreLoading,
+    active: exploreActive,
+    clearFilters,
+  } = useThreadExplorer(searchQuery, !collapsed);
 
   const handleNewChat = () => {
     setSearchQuery('');
+    clearFilters();
     onNewChat();
     onMobileClose?.();
   };
 
-  const handleSelectThread = (id: string) => {
+  const handleSelectThread = (id: string, options?: { messageId?: string; messageIndex?: number }) => {
     setSearchQuery('');
-    onSelectThread(id);
+    clearFilters();
+    onSelectThread(id, options);
     onMobileClose?.();
   };
 
-  const filteredThreads = searchQuery.trim()
-    ? threads.filter((t) => t.title.toLowerCase().includes(searchQuery.toLowerCase()))
-    : threads;
+  const hitByThreadId = new Map(exploreHits.map(h => [h.threadId, h]));
 
-  const groups = groupThreadsByDate(filteredThreads);
+  const displayThreads: ChatThread[] = exploreActive
+    ? exploreHits.map(hit => {
+        const existing = threads.find(t => t.id === hit.threadId);
+        return existing ?? {
+          id: hit.threadId,
+          title: hit.title,
+          subtitle: hit.subtitle,
+          dominantEntities: hit.entities,
+          messages: [],
+          updatedAt: hit.updatedAt,
+        };
+      })
+    : searchQuery.trim()
+      ? threads.filter((t) => t.title.toLowerCase().includes(searchQuery.toLowerCase()))
+      : threads;
+
+  const groups = groupThreadsByDate(displayThreads);
 
   const content = (
     <>
@@ -403,15 +455,17 @@ export const ChatThreadList = ({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/25 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search chats…"
+              placeholder="Search threads, people, knowledge…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-black/40 border border-white/12 rounded-lg pl-9 pr-8 py-2 text-sm text-white/90 placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-black/60 focus:ring-1 focus:ring-primary/20 transition-all"
             />
-            {searchQuery ? (
+            {exploreLoading ? (
+              <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary/60 animate-spin" />
+            ) : searchQuery ? (
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
+                onClick={() => { setSearchQuery(''); clearFilters(); }}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70 transition-colors"
                 aria-label="Clear search"
               >
@@ -419,6 +473,34 @@ export const ChatThreadList = ({
               </button>
             ) : null}
           </div>
+          {(facets?.entities?.length ?? 0) > 0 && (
+            <div className="flex gap-1 mt-2 flex-wrap max-h-16 overflow-y-auto chat-scrollbar">
+              {facets!.entities.slice(0, 10).map(({ name }) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setEntityFilter(entityFilter === name ? null : name)}
+                  className={cn(
+                    'text-[9px] px-1.5 py-0.5 rounded-full border transition-colors',
+                    entityFilter === name
+                      ? 'bg-primary/20 text-primary border-primary/30'
+                      : 'bg-white/5 text-white/40 border-white/10 hover:text-white/70 hover:border-white/20'
+                  )}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
+          {entityFilter && (
+            <div className="flex items-center gap-1 mt-1.5 text-[10px] text-primary/80">
+              <Sparkles className="h-3 w-3" />
+              <span>Filtered by {entityFilter}</span>
+              <button type="button" onClick={() => setEntityFilter(null)} className="text-white/40 hover:text-white ml-1">
+                Clear
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -455,11 +537,11 @@ export const ChatThreadList = ({
               </button>
             ))}
           </div>
-        ) : filteredThreads.length === 0 ? (
+        ) : displayThreads.length === 0 ? (
           <div className="px-3 py-8 text-center">
             <MessageSquareText className="h-8 w-8 text-white/15 mx-auto mb-3" />
-            {searchQuery ? (
-              <p className="text-xs text-white/30">No chats match &ldquo;{searchQuery}&rdquo;</p>
+            {searchQuery || entityFilter ? (
+              <p className="text-xs text-white/30">No threads match your search</p>
             ) : (
               <>
                 <p className="text-xs text-white/30">No conversations yet</p>
@@ -476,17 +558,25 @@ export const ChatThreadList = ({
                   {label}
                 </p>
                 <ul className="space-y-0.5">
-                  {groupThreads.map((t) => (
+                  {groupThreads.map((t) => {
+                    const hit = hitByThreadId.get(t.id);
+                    const topSnippet = hit?.snippets[0];
+                    return (
                     <ThreadItem
                       key={t.id}
                       thread={t}
                       isActive={currentThreadId === t.id}
                       isMobile={isMobile}
-                      onSelect={() => handleSelectThread(t.id)}
+                      exploreHit={hit}
+                      onSelect={() => handleSelectThread(t.id, {
+                        messageId: topSnippet?.messageId,
+                        messageIndex: topSnippet?.messageIndex,
+                      })}
                       onDelete={(e) => onDeleteThread(t.id, e)}
                       onRename={onRenameThread ? (newTitle) => onRenameThread(t.id, newTitle) : undefined}
                     />
-                  ))}
+                    );
+                  })}
                 </ul>
               </div>
             ))}

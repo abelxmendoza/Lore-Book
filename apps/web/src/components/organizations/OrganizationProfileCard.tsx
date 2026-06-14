@@ -2,7 +2,7 @@ import {
   Building2, Users, ChevronRight, Hash, BookOpen, CalendarDays,
   TrendingUp, TrendingDown, Minus, Star, Award, Heart,
   Music, Shield, Zap, Globe, GraduationCap, Layers,
-  Calendar, MapPin,
+  Calendar, MapPin, Tag, Truck,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -12,7 +12,7 @@ import { format, parseISO } from 'date-fns';
 export type GroupType =
   | 'friend_group' | 'band' | 'sports_team' | 'company' | 'club' | 'nonprofit'
   | 'family' | 'martial_arts' | 'scene' | 'crew' | 'collective'
-  | 'community' | 'institution' | 'public_entity' | 'other';
+  | 'community' | 'institution' | 'public_entity' | 'brand' | 'vendor' | 'other';
 
 export type MembershipModel = 'strict' | 'fuzzy' | 'none';
 
@@ -218,6 +218,16 @@ const TYPE_VISUALS: Record<GroupType, VisualConfig> = {
     grad: 'from-yellow-500/20 via-amber-600/20 to-yellow-500/20',
     icon: Globe,
     iconCls: 'text-yellow-400/60 group-hover:text-yellow-400',
+  },
+  brand: {
+    grad: 'from-fuchsia-500/20 via-pink-600/20 to-fuchsia-500/20',
+    icon: Tag,
+    iconCls: 'text-fuchsia-400/60 group-hover:text-fuchsia-400',
+  },
+  vendor: {
+    grad: 'from-lime-500/20 via-green-600/20 to-lime-500/20',
+    icon: Truck,
+    iconCls: 'text-lime-400/60 group-hover:text-lime-400',
   },
   other: {
     grad: 'from-gray-500/20 via-gray-600/20 to-gray-500/20',

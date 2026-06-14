@@ -5,6 +5,8 @@ import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { questService, questStorage, questLinker, questExtractor } from '../services/quests';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { clampQuestScore, normalizeQuestType, optionalQuestString } from '../utils/questNormalize';
+import type { QuestSuggestion } from '../services/quests/types';
 
 const router = Router();
 
@@ -161,7 +163,23 @@ router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) =
       .filter(e => e.content?.trim())
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const suggestions = await questExtractor.extractQuests(userId, combined);
+    const extracted = await questExtractor.extractQuests(userId, combined);
+    const existing = await questStorage.getQuests(userId, { status: ['active', 'paused'] });
+    const existingTitles = new Set(existing.map(q => q.title.trim().toLowerCase()));
+
+    const suggestions: QuestSuggestion[] = extracted
+      .filter(q => q.title?.trim() && !existingTitles.has(q.title.trim().toLowerCase()))
+      .map(q => ({
+        title: String(q.title).trim(),
+        description: optionalQuestString(q.description),
+        quest_type: normalizeQuestType(q.quest_type),
+        priority: clampQuestScore(q.priority),
+        importance: clampQuestScore(q.importance),
+        impact: clampQuestScore(q.impact),
+        confidence: 0.72,
+        reasoning: 'Detected from your recent journals and chats',
+      }));
+
     res.json({ suggestions, count: suggestions.length });
   } catch (error) {
     logger.error({ err: error }, 'Failed to get quest suggestions');
@@ -200,14 +218,20 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
  * Create quest
  */
 const createQuestSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().optional(),
-  quest_type: z.enum(['main', 'side', 'daily', 'achievement']),
-  priority: z.number().min(1).max(10).optional(),
-  importance: z.number().min(1).max(10).optional(),
-  impact: z.number().min(1).max(10).optional(),
-  difficulty: z.number().min(1).max(10).optional(),
-  effort_hours: z.number().optional(),
+  title: z.string().trim().min(1),
+  description: z.preprocess(optionalQuestString, z.string().optional()),
+  quest_type: z.preprocess(
+    (v) => normalizeQuestType(v ?? 'side'),
+    z.enum(['main', 'side', 'daily', 'achievement'])
+  ).default('side'),
+  priority: z.preprocess((v) => clampQuestScore(v), z.number().min(1).max(10)).default(5),
+  importance: z.preprocess((v) => clampQuestScore(v), z.number().min(1).max(10)).default(5),
+  impact: z.preprocess((v) => clampQuestScore(v), z.number().min(1).max(10)).default(5),
+  difficulty: z.preprocess((v) => (v == null || v === '' ? undefined : clampQuestScore(v)), z.number().min(1).max(10).optional()),
+  effort_hours: z.preprocess(
+    (v) => (v == null || v === '' ? undefined : Number(v)),
+    z.number().optional()
+  ),
   related_goal_id: z.string().uuid().optional(),
   related_task_id: z.string().uuid().optional(),
   parent_quest_id: z.string().uuid().optional(),
@@ -216,11 +240,12 @@ const createQuestSchema = z.object({
     description: z.string(),
     target_date: z.string().optional(),
   })).optional(),
-  reward_description: z.string().optional(),
-  motivation_notes: z.string().optional(),
-  estimated_completion_date: z.string().optional(),
+  reward_description: z.preprocess(optionalQuestString, z.string().optional()),
+  motivation_notes: z.preprocess(optionalQuestString, z.string().optional()),
+  estimated_completion_date: z.preprocess(optionalQuestString, z.string().optional()),
   tags: z.array(z.string()).optional(),
-  category: z.string().optional(),
+  category: z.preprocess(optionalQuestString, z.string().optional()),
+  source: z.enum(['manual', 'extracted', 'suggested', 'imported']).optional(),
   metadata: z.record(z.any()).optional(),
 });
 
@@ -228,14 +253,18 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const parsed = createQuestSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+      const message = parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') || 'Invalid request';
+      return res.status(400).json({ error: message, details: parsed.error.flatten() });
     }
 
     const quest = await questService.createQuest(req.user!.id, parsed.data);
-    res.json({ quest });
-  } catch (error) {
+    res.status(201).json({ quest });
+  } catch (error: any) {
     logger.error({ err: error }, 'Failed to create quest');
-    res.status(500).json({ error: 'Failed to create quest' });
+    const message = error?.message?.includes('quests')
+      ? 'Quest log is unavailable — database migrations may be missing.'
+      : (error?.message ?? 'Failed to create quest');
+    res.status(500).json({ error: message });
   }
 });
 

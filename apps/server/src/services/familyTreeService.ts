@@ -12,18 +12,24 @@ import { supabaseAdmin } from './supabaseClient';
 
 export type FamilyRelationType =
   | 'parent' | 'child' | 'sibling' | 'twin' | 'grandparent' | 'grandchild'
-  | 'aunt' | 'uncle' | 'cousin' | 'spouse' | 'in_law' | 'step_parent'
-  | 'step_sibling' | 'half_sibling' | 'related';
+  | 'aunt' | 'uncle' | 'niece' | 'nephew' | 'cousin' | 'spouse' | 'in_law'
+  | 'step_parent' | 'step_child' | 'step_sibling' | 'half_sibling'
+  | 'adopted_parent' | 'adopted_child' | 'godparent' | 'godchild' | 'related';
 
 export interface FamilyMemberDTO {
   id: string;
   name: string;
   first_name?: string;
+  /** The kinship term the user actually uses for them, e.g. "Abuela" — shown
+   *  alongside the real name. Preserved even after the real name is learned. */
+  kinship_title?: string;
   relation: FamilyRelationType;
   relation_label: string;
   generation: number;
   closeness?: number;
   is_self?: boolean;
+  is_placeholder?: boolean;
+  inference_status?: 'asserted' | 'inferred' | 'placeholder';
   side?: 'maternal' | 'paternal' | 'both' | 'other';
   notes?: string;
 }
@@ -50,6 +56,9 @@ const FAMILY_TYPES = new Set([
   'family',
 ]);
 
+const VIRTUAL_USER_ID = '__user__';
+const INFERRED_PARENT_ID = '__inferred_parent_unknown__';
+
 /** Generation delta when traversing edge from `atId` toward neighbor. */
 const GEN_DELTA: Record<string, { forward: number; backward: number }> = {
   parent_of: { forward: 1, backward: -1 },
@@ -74,6 +83,18 @@ const GEN_DELTA: Record<string, { forward: number; backward: number }> = {
   godparent_of: { forward: 1, backward: -1 },
   godchild_of: { forward: -1, backward: 1 },
   related_to: { forward: 0, backward: 0 },
+  mother: { forward: 1, backward: -1 },
+  father: { forward: 1, backward: -1 },
+  parent: { forward: 1, backward: -1 },
+  grandmother: { forward: 2, backward: -2 },
+  grandfather: { forward: 2, backward: -2 },
+  grandparent: { forward: 2, backward: -2 },
+  aunt: { forward: 1, backward: -1 },
+  uncle: { forward: 1, backward: -1 },
+  cousin: { forward: 0, backward: 0 },
+  brother: { forward: 0, backward: 0 },
+  sister: { forward: 0, backward: 0 },
+  sibling: { forward: 0, backward: 0 },
 };
 
 const RELATION_LABEL: Record<string, string> = {
@@ -83,26 +104,61 @@ const RELATION_LABEL: Record<string, string> = {
   half_sibling_of: 'Half-sibling', related_to: 'Relative',
 };
 
+type CharacterKinshipRow = {
+  id: string;
+  name: string;
+  alias?: string[] | null;
+  role?: string | null;
+  archetype?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
 function isFamilyType(type: string): boolean {
   const t = (type ?? '').toLowerCase();
   return FAMILY_TYPES.has(t) || t.includes('parent') || t.includes('sibling') || t.includes('family');
 }
 
+function normalizeRelationshipType(type: string): string {
+  const t = (type ?? '').toLowerCase().trim().replace(/[\s-]+/g, '_');
+  const aliases: Record<string, string> = {
+    mother: 'parent_of',
+    father: 'parent_of',
+    parent: 'parent_of',
+    grandmother: 'grandparent_of',
+    grandfather: 'grandparent_of',
+    grandparent: 'grandparent_of',
+    aunt: 'aunt_of',
+    uncle: 'uncle_of',
+    cousin: 'cousin_of',
+    brother: 'sibling_of',
+    sister: 'sibling_of',
+    sibling: 'sibling_of',
+    child: 'child_of',
+    son: 'child_of',
+    daughter: 'child_of',
+  };
+  return aliases[t] ?? t;
+}
+
 function relationFromType(type: string, delta: number): FamilyRelationType {
   const t = type.toLowerCase();
-  if (delta <= -2 || t.includes('grandparent')) return 'grandparent';
-  if (delta >= 2 || t.includes('grandchild')) return 'grandchild';
-  if (delta === -1 || t.includes('parent') || t === 'mother' || t === 'father') return 'parent';
-  if (delta === 1 || t.includes('child')) return 'child';
-  if (t.includes('spouse')) return 'spouse';
-  if (t.includes('cousin')) return 'cousin';
   if (t.includes('aunt')) return 'aunt';
   if (t.includes('uncle')) return 'uncle';
+  if (t.includes('cousin')) return 'cousin';
+  if (t.includes('grandparent') || t === 'grandmother' || t === 'grandfather' || delta <= -2) return 'grandparent';
+  if (t.includes('grandchild') || delta >= 2) return 'grandchild';
   if (t.includes('half_sibling')) return 'half_sibling';
   if (t.includes('step_sibling')) return 'step_sibling';
   if (t.includes('step_parent')) return 'step_parent';
+  if (t.includes('adopted_parent')) return 'adopted_parent';
+  if (t.includes('adopted_child')) return 'adopted_child';
+  if (t.includes('godparent')) return 'godparent';
+  if (t.includes('godchild')) return 'godchild';
   if (t.includes('in_law')) return 'in_law';
   if (t.includes('sibling') || t === 'brother' || t === 'sister') return 'sibling';
+  if (t.includes('parent') || t === 'mother' || t === 'father' || delta === -1) return 'parent';
+  if (t.includes('child') || delta === 1) return 'child';
+  if (t.includes('spouse')) return 'spouse';
   return 'related';
 }
 
@@ -115,13 +171,132 @@ function labelForRelation(relation: FamilyRelationType, name: string, evidence?:
     parent: 'Parent', child: 'Child', sibling: 'Sibling', twin: 'Twin',
     grandparent: 'Grandparent', grandchild: 'Grandchild', aunt: 'Aunt', uncle: 'Uncle',
     cousin: 'Cousin', spouse: 'Spouse', in_law: 'In-law', step_parent: 'Step-parent',
-    step_sibling: 'Step-sibling', half_sibling: 'Half-sibling', related: 'Relative',
+    step_child: 'Step-child', step_sibling: 'Step-sibling', half_sibling: 'Half-sibling',
+    adopted_parent: 'Adoptive parent', adopted_child: 'Adopted child',
+    godparent: 'Godparent', godchild: 'Godchild', niece: 'Niece', nephew: 'Nephew',
+    related: 'Relative',
   };
   return map[relation] ?? name.split(' ')[0];
 }
 
+function searchableKinshipText(row: CharacterKinshipRow): string {
+  const metadata = row.metadata ?? {};
+  return [
+    row.name,
+    ...(row.alias ?? []),
+    row.role,
+    row.archetype,
+    metadata.relationship_type,
+    metadata.context,
+    metadata.relationship_categories,
+  ]
+    .flat()
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function primaryKinshipText(row: CharacterKinshipRow): string {
+  const metadata = row.metadata ?? {};
+  return [
+    row.name,
+    row.role,
+    row.archetype,
+    metadata.relationship_type,
+    metadata.relationship_categories,
+  ]
+    .flat()
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function hasFamilySignal(row: CharacterKinshipRow): boolean {
+  const metadata = row.metadata ?? {};
+  const text = searchableKinshipText(row);
+  const isPublicFigure = metadata.public_figure === true || metadata.figure_type === 'creator' || metadata.figure_type === 'artist';
+  const explicitFamily =
+    row.archetype === 'family' ||
+    row.archetype === 'kin' ||
+    row.role?.toLowerCase() === 'family' ||
+    metadata.relationship_type === 'family' ||
+    (Array.isArray(metadata.relationship_categories) && metadata.relationship_categories.includes('family'));
+
+  if (isPublicFigure && !explicitFamily && !/\bmy\s+(tia|tía|tio|tío|aunt|uncle|abuela|abuelo)\b/.test(text)) {
+    return false;
+  }
+
+  return explicitFamily || /\b(my\s+)?(abuela|abuelita|abuelo|abuelito|grandma|grandmother|grandpa|grandfather|tia|tía|aunt|tio|tío|uncle|cousin|primo|prima|brother|sister|mom|mother|dad|father)\b/.test(text);
+}
+
+// Kinship terms a user might use as the person's name/alias. Longer/more
+// specific terms first so "abuelita" wins over "abuela".
+const KINSHIP_TERMS = [
+  'abuelita', 'abuelito', 'abuela', 'abuelo', 'grandmother', 'grandma', 'grandfather', 'grandpa',
+  'auntie', 'tía', 'tia', 'aunt', 'tío', 'tio', 'uncle', 'prima', 'primo', 'cousin',
+  'mamá', 'mama', 'mom', 'mother', 'papá', 'papa', 'dad', 'father',
+  'hermano', 'hermana', 'brother', 'sister',
+];
+
+function titleCaseTerm(term: string): string {
+  return term.charAt(0).toUpperCase() + term.slice(1);
+}
+
+/** The kinship term the user calls this person (from name/aliases), e.g. "Abuela". */
+function kinshipTermFor(row: CharacterKinshipRow): string | undefined {
+  const candidates = [row.name, ...(row.alias ?? [])].filter(Boolean) as string[];
+  for (const candidate of candidates) {
+    const lc = candidate.toLowerCase();
+    for (const term of KINSHIP_TERMS) {
+      if (new RegExp(`\\b${term}\\b`, 'i').test(lc)) return titleCaseTerm(term);
+    }
+  }
+  return undefined;
+}
+
+function classifyKinship(row: CharacterKinshipRow): { relation: FamilyRelationType; label: string; generation: number; side: 'maternal' | 'paternal' | 'both' | 'other' } | null {
+  if (!hasFamilySignal(row)) return null;
+  const text = searchableKinshipText(row);
+  const primary = primaryKinshipText(row);
+
+  if (/\b(tia|tía|aunt|auntie)\b/.test(primary)) {
+    return { relation: 'aunt', label: 'Aunt', generation: -1, side: inferSide(text) ?? 'other' };
+  }
+  if (/\b(tio|tío|uncle)\b/.test(primary)) {
+    return { relation: 'uncle', label: 'Uncle', generation: -1, side: inferSide(text) ?? 'other' };
+  }
+  if (/\b(cousin|primo|prima)\b/.test(primary) || row.role?.toLowerCase() === 'cousin') {
+    return { relation: 'cousin', label: 'Cousin', generation: 0, side: inferSide(text) ?? 'other' };
+  }
+  if (/\b(abuela|abuelita|grandma|grandmother)\b/.test(primary)) {
+    return { relation: 'grandparent', label: 'Grandmother', generation: -2, side: inferSide(text) ?? 'other' };
+  }
+  if (/\b(abuelo|abuelito|grandpa|grandfather)\b/.test(primary)) {
+    return { relation: 'grandparent', label: 'Grandfather', generation: -2, side: inferSide(text) ?? 'other' };
+  }
+  if (/\b(tia|tía|aunt|auntie)\b/.test(text)) {
+    return { relation: 'aunt', label: 'Aunt', generation: -1, side: inferSide(text) ?? 'other' };
+  }
+  if (/\b(tio|tío|uncle)\b/.test(text)) {
+    return { relation: 'uncle', label: 'Uncle', generation: -1, side: inferSide(text) ?? 'other' };
+  }
+  if (/\b(cousin|primo|prima)\b/.test(text) || row.role?.toLowerCase() === 'cousin') {
+    return { relation: 'cousin', label: 'Cousin', generation: 0, side: inferSide(text) ?? 'other' };
+  }
+  if (/\b(mom|mother|mamá|mama)\b/.test(text)) {
+    return { relation: 'parent', label: 'Mother', generation: -1, side: 'maternal' };
+  }
+  if (/\b(dad|father|papá|papa)\b/.test(text)) {
+    return { relation: 'parent', label: 'Father', generation: -1, side: 'paternal' };
+  }
+  if (/\b(brother|sister|sibling)\b/.test(text)) {
+    return { relation: 'sibling', label: 'Sibling', generation: 0, side: inferSide(text) ?? 'other' };
+  }
+  return null;
+}
+
 class FamilyTreeService {
-  /** The user's own character row (protagonist / "You"). */
+  /** The user's own character row, only when explicitly marked as self/protagonist. */
   async findUserCharacterId(userId: string): Promise<string | null> {
     const { data } = await supabaseAdmin
       .from('characters')
@@ -136,14 +311,13 @@ class FamilyTreeService {
       /^you$/i.test(r.name) ||
       r.importance_level === 'protagonist'
     );
-    return self?.id ?? rows[0]?.id ?? null;
+    return self?.id ?? null;
   }
 
   /** User's personal family tree (centered on the user character). */
   async getUserFamilyTree(userId: string): Promise<FamilyTreeDTO | null> {
     const selfId = await this.findUserCharacterId(userId);
-    if (!selfId) return null;
-    return this.getCharacterFamilyTree(userId, selfId, { isUserTree: true });
+    return this.buildUserCenteredFamilyTree(userId, selfId);
   }
 
   /** Family tree centered on a specific character. */
@@ -167,7 +341,7 @@ class FamilyTreeService {
               edges.push({
                 fromId: rel.fromId,
                 toId: rel.toId,
-                type: rel.type,
+                type: normalizeRelationshipType(rel.type),
                 confidence: rel.confidence,
               });
             }
@@ -291,25 +465,135 @@ class FamilyTreeService {
     return organizationService.getMemberAffiliationsBatch(userId, organizationId);
   }
 
+  private async buildUserCenteredFamilyTree(userId: string, explicitSelfId: string | null): Promise<FamilyTreeDTO | null> {
+    const selfId = explicitSelfId ?? VIRTUAL_USER_ID;
+    const selfName = explicitSelfId ? 'You' : 'You';
+    const members: FamilyMemberDTO[] = [{
+      id: selfId,
+      name: selfName,
+      first_name: 'You',
+      relation: 'related',
+      relation_label: 'You',
+      generation: 0,
+      is_self: true,
+      closeness: 100,
+      inference_status: explicitSelfId ? 'asserted' : 'placeholder',
+      notes: explicitSelfId ? undefined : 'Virtual root used until a self character exists.',
+    }];
+
+    if (explicitSelfId) {
+      const edges = await this.loadFamilyEdges(userId, explicitSelfId);
+      if (edges.length > 0) {
+        const { data: rootChar } = await supabaseAdmin
+          .from('characters')
+          .select('id, name')
+          .eq('id', explicitSelfId)
+          .eq('user_id', userId)
+          .single();
+        const names = await this.loadNames(userId, [explicitSelfId, ...edges.flatMap(e => [e.fromId, e.toId])]);
+        names.set(explicitSelfId, rootChar?.name ?? 'You');
+        const edgeTree = this.buildTreeFromEdges(explicitSelfId, rootChar?.name ?? 'You', edges, names, {
+          markSelf: true,
+          selfId: explicitSelfId,
+        });
+        if (edgeTree.members.length > 1) return this.withInferredParentPlaceholders(edgeTree);
+      }
+    }
+
+    const inferredKin = await this.loadUserKinshipCandidates(userId, explicitSelfId);
+    for (const kin of inferredKin) {
+      if (members.some(m => m.id === kin.id)) continue;
+      members.push(kin);
+    }
+
+    return this.withInferredParentPlaceholders({
+      members,
+      branches: [
+        { side: 'maternal', label: 'Maternal', color: '#f472b6' },
+        { side: 'paternal', label: 'Paternal', color: '#60a5fa' },
+        { side: 'other', label: 'Unknown / extended', color: '#a855f7' },
+      ],
+      self_id: selfId,
+    });
+  }
+
+  private async loadUserKinshipCandidates(userId: string, explicitSelfId: string | null): Promise<FamilyMemberDTO[]> {
+    const { data } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, alias, role, archetype, metadata')
+      .eq('user_id', userId)
+      .order('name', { ascending: true })
+      .limit(250);
+
+    const members: FamilyMemberDTO[] = [];
+    for (const row of (data ?? []) as CharacterKinshipRow[]) {
+      if (row.id === explicitSelfId) continue;
+      const kinship = classifyKinship(row);
+      if (!kinship) continue;
+      members.push({
+        id: row.id,
+        name: row.name,
+        first_name: row.name.split(' ')[0],
+        kinship_title: kinshipTermFor(row),
+        relation: kinship.relation,
+        relation_label: kinship.label,
+        generation: kinship.generation,
+        side: kinship.side,
+        inference_status: 'inferred',
+        notes: 'Inferred from character name, role, aliases, or source context.',
+      });
+    }
+    members.sort((a, b) => a.generation - b.generation || a.relation.localeCompare(b.relation) || a.name.localeCompare(b.name));
+    return members;
+  }
+
+  private withInferredParentPlaceholders(tree: FamilyTreeDTO): FamilyTreeDTO {
+    const hasParent = tree.members.some(m => m.generation === -1 && (m.relation === 'parent' || m.relation === 'step_parent'));
+    const needsParentBridge = tree.members.some(m =>
+      m.generation <= -2 ||
+      (m.generation === -1 && (m.relation === 'aunt' || m.relation === 'uncle'))
+    );
+
+    if (!hasParent && needsParentBridge) {
+      tree.members.push({
+        id: INFERRED_PARENT_ID,
+        name: 'Parent not mentioned yet',
+        first_name: 'Parent',
+        relation: 'parent',
+        relation_label: 'Inferred parent',
+        generation: -1,
+        side: 'other',
+        is_placeholder: true,
+        inference_status: 'placeholder',
+        notes: 'Placeholder bridge: grandparents/aunts/uncles imply a parent, but the parent has not been named.',
+      });
+    }
+
+    tree.members.sort((a, b) => a.generation - b.generation || Number(Boolean(b.is_self)) - Number(Boolean(a.is_self)) || a.name.localeCompare(b.name));
+    return tree;
+  }
+
   private async loadFamilyEdges(userId: string, rootId: string) {
     const edges: Array<{ fromId: string; toId: string; type: string; confidence: number; evidence?: string }> = [];
     const seen = new Set<string>();
 
     const { data: out } = await supabaseAdmin
       .from('character_relationships')
-      .select('source_character_id, target_character_id, relationship_type, closeness_score, metadata, summary')
+      .select('source_character_id, target_character_id, relationship_type, relationship_category, relationship_role, closeness_score, metadata, summary')
       .eq('user_id', userId)
       .or(`source_character_id.eq.${rootId},target_character_id.eq.${rootId}`);
 
-    for (const r of (out ?? []) as Array<{ source_character_id: string; target_character_id: string; relationship_type: string; closeness_score?: number; metadata?: Record<string, unknown>; summary?: string }>) {
-      if (!isFamilyType(r.relationship_type)) continue;
-      const key = `${r.source_character_id}|${r.target_character_id}|${r.relationship_type}`;
+    for (const r of (out ?? []) as Array<{ source_character_id: string; target_character_id: string; relationship_type: string; relationship_category?: string | null; relationship_role?: string | null; closeness_score?: number; metadata?: Record<string, unknown>; summary?: string }>) {
+      const rawType = r.relationship_role ?? r.relationship_type;
+      if (r.relationship_category !== 'family' && !isFamilyType(rawType) && !isFamilyType(r.relationship_type)) continue;
+      const type = normalizeRelationshipType(rawType);
+      const key = `${r.source_character_id}|${r.target_character_id}|${type}`;
       if (seen.has(key)) continue;
       seen.add(key);
       edges.push({
         fromId: r.source_character_id,
         toId: r.target_character_id,
-        type: r.relationship_type,
+        type,
         confidence: 0.75,
         evidence: (r.metadata?.evidence as string) ?? r.summary,
       });

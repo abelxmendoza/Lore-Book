@@ -1,7 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, LayoutGrid, LayoutList, Flame, Wind, Moon, GitBranch, AlertTriangle, GitMerge, Star } from 'lucide-react';
 import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
+import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
+import { MainCharacterProfileCard, buildSyntheticMainCharacter } from './MainCharacterProfileCard';
+import { MainCharacterDetailModal } from './MainCharacterDetailModal';
 import { CharacterBookPage } from './CharacterBookPage';
 import { CharacterDetailModal } from './CharacterDetailModal';
 import { UserProfile } from './UserProfile';
@@ -24,6 +27,9 @@ import { mockDataService } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
+import { DetectedCharacterSuggestions } from './DetectedCharacterSuggestions';
+import { isSelfCharacter } from '../../lib/isSelfCharacter';
+import { selfCharacterApi } from '../../api/selfCharacter';
 
 // ── Demo filter-field normalization ──────────────────────────────────────────
 // Every category tab (proximity, mentioned, etc.) must have matches in demo
@@ -182,6 +188,32 @@ const mergeCharactersLocally = (
 // Comprehensive mock character data showcasing all app capabilities
 // Export for use in mock data service
 export const dummyCharacters: Character[] = [
+  {
+    id: 'dummy-self',
+    name: 'You',
+    first_name: 'Alex',
+    last_name: 'Morgan',
+    pronouns: 'they/them',
+    archetype: 'protagonist',
+    role: 'Main Character · Creative in transition',
+    status: 'active',
+    importance_level: 'protagonist',
+    importance_score: 100,
+    proximity_level: 'direct',
+    relationship_depth: 'close',
+    has_met: true,
+    is_nickname: false,
+    summary:
+      'The protagonist of your story — navigating the shift from tech into music, writing, and a more creative life. Your arcs, hopes, and growth anchor everything else in your lore.',
+    tags: ['your story', 'creative renaissance', 'self-discovery'],
+    metadata: {
+      is_self: true,
+      is_user: true,
+      relationship_type: 'self',
+    },
+    memory_count: 42,
+    relationship_count: 12,
+  },
   {
     id: 'dummy-1',
     name: 'Sarah Chen',
@@ -2401,15 +2433,6 @@ const impactOnUser = (c: Character): number => {
   return typeof override === 'number' ? override : (c.analytics?.character_influence_on_user ?? 0);
 };
 
-type CharacterAttribute = {
-  id: string;
-  attributeType: string;
-  attributeValue: string;
-  confidence: number;
-  isCurrent: boolean;
-  evidence?: string;
-};
-
 // Romantic Relationship Type
 type RomanticRelationship = {
   id: string;
@@ -2438,160 +2461,6 @@ type RomanticRelationship = {
   rank_among_active?: number;
 };
 
-// Main Character Section Component
-const MainCharacterSection = ({ user }: { user: any }) => {
-  const [userCharacterId, setUserCharacterId] = useState<string | null>(null);
-  const [attributes, setAttributes] = useState<CharacterAttribute[]>([]);
-  const [loadingAttributes, setLoadingAttributes] = useState(false);
-
-  // Find user character
-  useEffect(() => {
-    const findUserCharacter = async () => {
-      try {
-        const response = await fetchJson<{ characters: Character[] }>('/api/characters/list');
-        const userChar = response.characters?.find(
-          c => c.metadata?.is_self === true || 
-               c.metadata?.is_user === true ||
-               c.name.toLowerCase() === 'me' ||
-               c.name.toLowerCase() === 'myself' ||
-               c.name.toLowerCase() === 'self'
-        );
-        if (userChar) {
-          setUserCharacterId(userChar.id);
-        }
-      } catch (error) {
-        console.error('Failed to find user character:', error);
-      }
-    };
-    void findUserCharacter();
-  }, []);
-
-  // Load attributes for user character
-  useEffect(() => {
-    const loadAttributes = async () => {
-      if (!userCharacterId) return;
-      setLoadingAttributes(true);
-      try {
-        const response = await fetchJson<{ attributes: CharacterAttribute[] }>(
-          `/api/characters/${userCharacterId}/attributes?currentOnly=true`
-        );
-        setAttributes(response.attributes || []);
-      } catch (error) {
-        console.error('Failed to load user attributes:', error);
-        setAttributes([]);
-      } finally {
-        setLoadingAttributes(false);
-      }
-    };
-    void loadAttributes();
-  }, [userCharacterId]);
-
-  const getAttributeIcon = (type: string) => {
-    switch (type) {
-      case 'employment_status':
-      case 'occupation':
-      case 'workplace':
-        return <Briefcase className="h-3 w-3" />;
-      case 'financial_status':
-        return <DollarSign className="h-3 w-3" />;
-      case 'lifestyle_pattern':
-        return <Activity className="h-3 w-3" />;
-      case 'personality_trait':
-        return <Smile className="h-3 w-3" />;
-      case 'relationship_status':
-        return <HeartIcon className="h-3 w-3" />;
-      case 'living_situation':
-        return <Home className="h-3 w-3" />;
-      default:
-        return <Tag className="h-3 w-3" />;
-    }
-  };
-
-  const getAttributeColor = (type: string) => {
-    switch (type) {
-      case 'employment_status':
-      case 'occupation':
-      case 'workplace':
-        return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-      case 'financial_status':
-        return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'lifestyle_pattern':
-        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-      case 'personality_trait':
-        return 'bg-pink-500/20 text-pink-400 border-pink-500/30';
-      case 'relationship_status':
-        return 'bg-red-500/20 text-red-400 border-red-500/30';
-      case 'living_situation':
-        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-      default:
-        return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
-    }
-  };
-
-  const avatarUrl =
-    user?.user_metadata?.custom_avatar_url ||
-    user?.user_metadata?.avatar_url ||
-    null;
-  const displayName =
-    user?.user_metadata?.full_name ||
-    user?.user_metadata?.name ||
-    user?.email?.split('@')[0] ||
-    'You';
-  const nameInitials = displayName
-    .split(' ')
-    .map((w: string) => w[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase() || '?';
-
-  return (
-    <div className="mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-white/10">
-      <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={displayName}
-            className="h-8 w-8 sm:h-9 sm:w-9 rounded-full object-cover border border-purple-500/30 flex-shrink-0"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-          />
-        ) : (
-          <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-purple-900/30 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-bold text-purple-300/80">{nameInitials}</span>
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="text-xs sm:text-sm font-semibold text-white/90 break-words">
-            {displayName}
-            <span className="ml-1.5 text-[10px] font-normal text-white/40 uppercase tracking-wider">you</span>
-          </p>
-        </div>
-      </div>
-      
-      {/* Attributes */}
-      {loadingAttributes ? (
-        <p className="text-[10px] sm:text-xs text-white/40 ml-6 sm:ml-8">Loading attributes...</p>
-      ) : attributes.length > 0 ? (
-        <div className="ml-6 sm:ml-8 flex flex-wrap gap-1.5 sm:gap-2">
-          {attributes.map((attr) => (
-            <Badge
-              key={attr.id}
-              variant="outline"
-              className={`${getAttributeColor(attr.attributeType)} text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 flex items-center gap-1 sm:gap-1.5`}
-              title={`${attr.attributeType}: ${attr.attributeValue} (${Math.round(attr.confidence * 100)}% confidence)`}
-            >
-              {getAttributeIcon(attr.attributeType)}
-              <span className="font-medium truncate max-w-[100px] sm:max-w-none">{attr.attributeValue}</span>
-            </Badge>
-          ))}
-        </div>
-      ) : (
-        <p className="text-[10px] sm:text-xs text-white/40 ml-6 sm:ml-8 italic">No attributes detected yet. Attributes are automatically extracted from your conversations.</p>
-      )}
-    </div>
-  );
-};
-
 export const CharacterBook = () => {
   const { user } = useAuth();
   const { useMockData: isMockDataEnabled, runtimeDataMode } = useMockData();
@@ -2614,6 +2483,7 @@ export const CharacterBook = () => {
   }, [user]);
   const [loading, setLoading] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
+  const [mainCharacterModalOpen, setMainCharacterModalOpen] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [showMergeDialog, setShowMergeDialog] = useState(false);
@@ -2845,6 +2715,28 @@ export const CharacterBook = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isMockDataEnabled]);
 
+  // Ensure protagonist character exists and backfill from chat threads.
+  useEffect(() => {
+    if (!user?.id || isMockDataEnabled) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await selfCharacterApi.ensureSelf();
+        if (!cancelled) await loadCharacters();
+        const sync = await selfCharacterApi.syncFromConversations({ limit: 80 });
+        if (!cancelled && sync.processed > 0) {
+          apiCache.deletePattern(/\/api\/(characters|knowledge)/);
+          await loadCharacters();
+          window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
+        }
+      } catch {
+        /* non-blocking */
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, isMockDataEnabled]);
+
   // Auto-open modal when navigated here from an entity chip (chat → characters).
   useEffect(() => {
     if (loading || characters.length === 0) return;
@@ -2891,8 +2783,8 @@ export const CharacterBook = () => {
   }, [entries]);
 
   const filteredCharacters = useMemo(() => {
-    // Filter out places - only show actual characters (people)
-    let filtered = characters.filter(char => char.archetype !== 'place');
+    // Filter out places and the main character (shown in the dedicated card above).
+    let filtered = characters.filter(char => char.archetype !== 'place' && !isSelfCharacter(char));
     
     // Filter by importance level
     if (importanceFilter !== 'all') {
@@ -2959,6 +2851,12 @@ export const CharacterBook = () => {
     
     return filtered;
   }, [characters, searchTerm, activeCategory, importanceFilter]);
+
+  const mainCharacter = useMemo(() => {
+    const self = characters.find(isSelfCharacter);
+    if (self) return self;
+    return buildSyntheticMainCharacter(user);
+  }, [characters, user]);
 
   // Group characters by importance level (for "By role" view)
   const groupedByImportance = useMemo(() => {
@@ -3056,6 +2954,11 @@ export const CharacterBook = () => {
   return (
     <div className="space-y-4 sm:space-y-6" data-testid="character-book">
       <ChatFirstViewHint />
+      <DetectedCharacterSuggestions
+        demoMode={isMockDataEnabled}
+        existingCharacterNames={characters.flatMap(c => [c.name, ...(c.alias ?? [])])}
+        onCharacterAdded={() => void loadCharacters()}
+      />
       {/* User Profile */}
       <div className="space-y-3 sm:space-y-4">
         <UserProfile characters={characters} />
@@ -3093,7 +2996,16 @@ export const CharacterBook = () => {
 
       {/* People On Your Mind Lately */}
       {(() => {
+        const displayNameForMindChip = (character: Character) => {
+          const structuredName = [character.first_name, character.last_name]
+            .filter((part): part is string => Boolean(part?.trim()))
+            .join(' ')
+            .trim();
+          return structuredName || character.name;
+        };
+
         const recent = [...characters]
+          .filter(c => !isSelfCharacter(c))
           .filter(c => (c.analytics?.recency_score ?? 0) > 0)
           .sort((a, b) => (b.analytics?.recency_score ?? 0) - (a.analytics?.recency_score ?? 0))
           .slice(0, 6);
@@ -3106,6 +3018,7 @@ export const CharacterBook = () => {
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
               {recent.map(c => {
                 const closeness = c.analytics?.closeness_score ?? 0;
+                const displayName = displayNameForMindChip(c);
                 const phase = (() => {
                   const r = c.analytics?.recency_score ?? 0;
                   if (closeness >= 70 && r >= 0.6) return { label: 'Core',    cls: 'text-purple-300', icon: <Flame className="h-2.5 w-2.5" /> };
@@ -3118,14 +3031,15 @@ export const CharacterBook = () => {
                     key={c.id}
                     type="button"
                     onClick={() => setSelectedCharacter(c)}
-                    className="flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 hover:border-white/20 transition-all w-20 text-center"
+                    className="flex-shrink-0 flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/10 bg-white/4 hover:bg-white/8 hover:border-white/20 transition-all w-28 text-center"
+                    title={displayName}
                   >
                     <div className="w-9 h-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-xs font-bold text-primary overflow-hidden">
                       {c.avatar_url
-                        ? <img src={c.avatar_url} alt={c.name} className="w-full h-full object-cover" />
-                        : c.name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                        ? <img src={c.avatar_url} alt={displayName} className="w-full h-full object-cover" />
+                        : displayName.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
                     </div>
-                    <span className="text-[10px] text-white/80 leading-tight truncate w-full">{c.name.split(' ')[0]}</span>
+                    <span className="text-[10px] text-white/80 leading-tight line-clamp-2 w-full">{displayName}</span>
                     <span className={`flex items-center gap-0.5 text-[9px] ${phase.cls}`}>
                       {phase.icon}{phase.label}
                     </span>
@@ -3369,7 +3283,7 @@ export const CharacterBook = () => {
           </div>
           <div className="flex items-center gap-2">
             {/* Family Tree toggle — only shown in family category */}
-            {isMockDataEnabled && activeCategory === 'family' && (
+            {activeCategory === 'family' && (
               <button
                 type="button"
                 onClick={() => setShowFamilyTree(f => !f)}
@@ -3433,9 +3347,28 @@ export const CharacterBook = () => {
             </>
           )}
         </div>
-      ) : isMockDataEnabled && activeCategory === 'family' && showFamilyTree ? (
+      ) : activeCategory === 'family' && showFamilyTree ? (
         /* ── Family Tree View ── */
         <div className="space-y-4">
+          {/* Real users: conversation-inferred tree that grows as you mention family.
+              Demo mode: the curated mock trees. */}
+          {!isMockDataEnabled ? (
+            <FamilyTreePanel
+              scope="mine"
+              title="No family tree yet"
+              hint="Mention family members in chat (e.g. “my abuela”, “my cousin Nico”) — LoreBook builds and grows your tree from your conversations, then fills in real names as you share them."
+              onMemberClick={(memberId, memberName) => {
+                const nameLc = memberName.toLowerCase();
+                const match = characters.find(c =>
+                  c.id === memberId ||
+                  c.name.toLowerCase().includes(nameLc) ||
+                  nameLc.includes(c.name.toLowerCase())
+                );
+                if (match) setSelectedCharacter(match);
+              }}
+            />
+          ) : (
+          <>
           {/* User's own family tree */}
           <div className="rounded-xl border border-pink-500/20 bg-pink-950/10 p-5">
             <p className="text-[10px] font-semibold text-pink-400/70 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -3477,10 +3410,18 @@ export const CharacterBook = () => {
                 </div>
               );
             })}
+          </>
+          )}
         </div>
       ) : viewMode === 'list' ? (
         /* ── List View ── */
-        <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
+        <div className="space-y-4">
+          <MainCharacterProfileCard
+            character={mainCharacter}
+            user={user}
+            onClick={() => setMainCharacterModalOpen(true)}
+          />
+          <div className="rounded-xl border border-white/10 bg-black/30 overflow-hidden divide-y divide-white/6">
           {filteredCharacters.map(c => {
             const closeness = c.analytics?.closeness_score ?? 0;
             const recency   = c.analytics?.recency_score   ?? 0;
@@ -3541,6 +3482,7 @@ export const CharacterBook = () => {
               </button>
             );
           })}
+          </div>
         </div>
       ) : (
         <>
@@ -3566,8 +3508,14 @@ export const CharacterBook = () => {
                 </div>
               </div>
 
-              {/* Main Character Section */}
-              <MainCharacterSection user={user} />
+              {/* Main Character — full-width hero card at the top of the book */}
+              <div className="mb-4 sm:mb-6 pb-4 sm:pb-5 border-b border-amber-500/15">
+                <MainCharacterProfileCard
+                  character={mainCharacter}
+                  user={user}
+                  onClick={() => setMainCharacterModalOpen(true)}
+                />
+              </div>
 
               {/* Character Grid - By impact or grouped by role */}
               <div className="flex-1 space-y-4 mb-4 sm:mb-6">
@@ -3772,7 +3720,18 @@ export const CharacterBook = () => {
         </>
       )}
 
-      {selectedCharacter && (
+      {mainCharacterModalOpen && (
+        <MainCharacterDetailModal
+          character={mainCharacter}
+          onClose={() => setMainCharacterModalOpen(false)}
+          onUpdate={() => {
+            void loadCharacters();
+            setMainCharacterModalOpen(false);
+          }}
+        />
+      )}
+
+      {selectedCharacter && !isSelfCharacter(selectedCharacter) && (
         <CharacterDetailModal
           character={selectedCharacter}
           relationship={relationships.get(selectedCharacter.id)}

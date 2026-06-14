@@ -4,6 +4,7 @@ import { Badge } from '../ui/badge';
 import { Card, CardContent } from '../ui/card';
 import { fetchJson } from '../../lib/api';
 import type { MemoryCard, LinkedMemory } from '../../types/memory';
+import { getDisplayTitle } from '../../utils/displayTitle';
 
 type MemoryCardProps = {
   memory: MemoryCard;
@@ -92,7 +93,14 @@ export const MemoryCardComponent = ({
 
           return {
             id: entry.id,
-            title: entry.summary || entry.content.substring(0, 50) + '...',
+            title: getDisplayTitle({
+              title: entry.summary,
+              summary: entry.summary,
+              content: entry.content,
+              date: entry.date,
+              source: entry.source,
+              fallbackNoun: entry.source === 'chat' ? 'Conversation' : 'Memory',
+            }),
             date: entry.date,
             linkType,
             linkLabel,
@@ -259,4 +267,3 @@ export const MemoryCardComponent = ({
     </Card>
   );
 };
-

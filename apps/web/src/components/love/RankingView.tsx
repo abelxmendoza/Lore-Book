@@ -8,6 +8,7 @@ import { Button } from '../ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { useMockData } from '../../contexts/MockDataContext';
+import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { getMockRankings } from '../../mocks/romanticRelationships';
 import { RelationshipCard } from './RelationshipCard';
 
@@ -60,34 +61,24 @@ export const RankingView = () => {
       );
 
       if (data.success) {
-        let ranked = data.relationships;
+        let ranked = data.relationships.filter((rel) => isIndividualPersonName(rel.person_name));
 
-        // Load person names and rankings
+        // Load rankings (names already resolved by API)
         const relationshipsWithNames = await Promise.all(
           ranked.map(async (rel) => {
             try {
-              let personName = 'Unknown';
-              if (rel.person_type === 'character') {
-                const charData = await fetchJson<{ name: string }>(
-                  `/api/characters/${rel.person_id}`
-                ).catch(() => null);
-                personName = charData?.name || 'Unknown';
-              }
-              
-              // Load ranking from analytics
               const rankingData = await fetchJson<{
                 rankAmongAll: number | null;
                 rankAmongActive: number | null;
               }>(`/api/conversation/romantic-relationships/${rel.id}/ranking`).catch(() => null);
-              
-              return { 
-                ...rel, 
-                person_name: personName,
+
+              return {
+                ...rel,
                 rank_among_all: rankingData?.rankAmongAll || rel.rank_among_all,
-                rank_among_active: rankingData?.rankAmongActive || rel.rank_among_active
+                rank_among_active: rankingData?.rankAmongActive || rel.rank_among_active,
               };
             } catch {
-              return { ...rel, person_name: 'Unknown' };
+              return rel;
             }
           })
         );

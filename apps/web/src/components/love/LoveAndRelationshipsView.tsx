@@ -9,14 +9,17 @@ import { Input } from '../ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
 import { useMockData } from '../../contexts/MockDataContext';
+import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { 
   getMockRomanticRelationships, 
   getMockRomanticRelationshipsByFilter,
   type MockRomanticRelationship 
 } from '../../mocks/romanticRelationships';
+import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 import { RelationshipCard } from './RelationshipCard';
 import { RelationshipDetailModal } from './RelationshipDetailModal';
 import { RankingView } from './RankingView';
+import { DetectedCharacterSuggestions } from '../characters/DetectedCharacterSuggestions';
 
 type RomanticRelationship = {
   id: string;
@@ -43,6 +46,11 @@ type RomanticRelationship = {
   created_at: string;
   rank_among_all?: number;
   rank_among_active?: number;
+};
+
+type CharacterListItem = {
+  name: string;
+  alias?: string[] | null;
 };
 
 type FilterType =
@@ -92,10 +100,34 @@ export const LoveAndRelationshipsView = () => {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRelationship, setSelectedRelationship] = useState<string | null>(null);
+  const [existingCharacterNames, setExistingCharacterNames] = useState<string[]>([]);
 
   useEffect(() => {
     loadRelationships();
   }, [activeFilter, shouldUseMockData]);
+
+  useEffect(() => {
+    void loadCharacterNames();
+  }, [shouldUseMockData]);
+
+  const loadCharacterNames = async () => {
+    if (shouldUseMockData) {
+      setExistingCharacterNames(getMockCharacterSuggestionBookNames('romantic'));
+      return;
+    }
+
+    try {
+      const response = await fetchJson<{ characters: CharacterListItem[] }>('/api/characters/list');
+      setExistingCharacterNames(
+        (response.characters || []).flatMap(character => [
+          character.name,
+          ...(Array.isArray(character.alias) ? character.alias : []),
+        ])
+      );
+    } catch {
+      setExistingCharacterNames([]);
+    }
+  };
 
   const loadRelationships = async () => {
     setLoading(true);
@@ -115,28 +147,10 @@ export const LoveAndRelationshipsView = () => {
       );
 
       if (data.success) {
-        const filtered = data.relationships;
-        
-        // Load person names for each relationship
-        const relationshipsWithNames = await Promise.all(
-          filtered.map(async (rel) => {
-            try {
-              if (rel.person_type === 'character') {
-                const charData = await fetchJson<{ name: string }>(
-                  `/api/characters/${rel.person_id}`
-                ).catch(() => null);
-                return { ...rel, person_name: charData?.name || 'Unknown' };
-              } else {
-                // For omega_entity, we'd need to fetch from entities table
-                return { ...rel, person_name: 'Unknown' };
-              }
-            } catch {
-              return { ...rel, person_name: 'Unknown' };
-            }
-          })
+        const withNames = data.relationships.filter(
+          (rel) => isIndividualPersonName(rel.person_name)
         );
-
-        setRelationships(relationshipsWithNames);
+        setRelationships(withNames);
       }
     } catch (error) {
       console.error('Failed to load relationships:', error);
@@ -248,6 +262,23 @@ export const LoveAndRelationshipsView = () => {
           </div>
         </CardHeader>
       </Card>
+
+      <DetectedCharacterSuggestions
+        variant="romantic"
+        demoMode={shouldUseMockData}
+        existingCharacterNames={
+          shouldUseMockData
+            ? getMockCharacterSuggestionBookNames('romantic')
+            : [
+                ...existingCharacterNames,
+                ...relationships.flatMap(rel => rel.person_name ? [rel.person_name] : []),
+              ]
+        }
+        onCharacterAdded={() => {
+          void loadCharacterNames();
+          void loadRelationships();
+        }}
+      />
 
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row gap-4">

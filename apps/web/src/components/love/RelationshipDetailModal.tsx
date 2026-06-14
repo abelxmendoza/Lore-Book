@@ -179,20 +179,8 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
       ).catch(() => ({ success: false, relationships: [] }));
 
       const rel = relData.relationships?.find(r => r.id === relationshipId);
-      if (rel) {
-        // Load person name
-        try {
-          if (rel.person_type === 'character') {
-            const charData = await fetchJson<{ name: string }>(
-              `/api/characters/${rel.person_id}`
-            ).catch(() => null);
-            setRelationship({ ...rel, person_name: charData?.name || 'Unknown' });
-          } else {
-            setRelationship({ ...rel, person_name: 'Unknown' });
-          }
-        } catch {
-          setRelationship(rel);
-        }
+      if (rel && rel.person_name) {
+        setRelationship(rel);
       }
 
       // Load analytics and dates

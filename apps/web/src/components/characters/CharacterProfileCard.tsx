@@ -235,10 +235,15 @@ export const CharacterProfileCard = ({
   const proximity = character.proximity_level ?? null;
   const relationshipDepth = character.relationship_depth ?? null;
   
-  // Display name: use first + last if available, otherwise use name
-  const displayName = character.first_name && character.last_name
-    ? `${character.first_name} ${character.last_name}`
-    : character.name;
+  const HONORIFIC_RE = /^(mr|mrs|ms|miss|mx|dr|prof|professor|sir|dame|lord|lady|rev|fr|father)\.?$/i;
+  const hasHonorificFirstName = Boolean(character.first_name && HONORIFIC_RE.test(character.first_name));
+
+  // Display name: preserve honorific-led names like "Mr. Chino" instead of treating "Mr." as a normal first name.
+  const displayName = hasHonorificFirstName
+    ? character.name
+    : character.first_name && character.last_name
+      ? `${character.first_name} ${character.last_name}`
+      : character.name;
 
   const getProximityColor = (level?: string | null) => {
     const colors: Record<string, string> = {
@@ -410,16 +415,6 @@ export const CharacterProfileCard = ({
               <h3 className="text-[10px] sm:text-sm md:text-base font-semibold text-white break-words group-hover:text-primary transition-colors leading-tight">
                 {displayName}
               </h3>
-              {character.is_nickname && (
-                <Badge 
-                  variant="outline" 
-                  className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-[8px] sm:text-[9px] px-1 sm:px-1.5 py-0"
-                  title="Generated nickname"
-                >
-                  <span className="hidden sm:inline">Nickname</span>
-                  <span className="sm:hidden">N</span>
-                </Badge>
-              )}
             </div>
             {/* Show role prominently on mobile; keep short on card, full text in modal */}
             {character.role ? (

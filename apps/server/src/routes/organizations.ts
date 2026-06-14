@@ -17,12 +17,7 @@ const router = Router();
 // Legacy type column values
 const ORG_TYPES = ['friend_group', 'company', 'sports_team', 'club', 'nonprofit', 'affiliation', 'family', 'martial_arts', 'other'] as const;
 
-// G1 canonical group types
-const GROUP_TYPES = [
-  'friend_group', 'band', 'sports_team', 'company', 'club', 'nonprofit',
-  'family', 'martial_arts', 'scene', 'community', 'crew', 'collective', 'institution',
-  'public_entity', 'other',
-] as const;
+import { CANONICAL_GROUP_TYPES } from '../constants/groupTypes';
 
 const MEMBERSHIP_MODELS = ['strict', 'fuzzy', 'none'] as const;
 
@@ -154,7 +149,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     name: z.string().min(1),
     aliases: z.array(z.string()).optional(),
     type: z.enum(ORG_TYPES).optional(),
-    group_type: z.enum(GROUP_TYPES).optional(),
+    group_type: z.enum(CANONICAL_GROUP_TYPES).optional(),
     membership_model: z.enum(MEMBERSHIP_MODELS).optional(),
     user_relationship: z.enum(USER_RELATIONSHIPS).optional(),
     is_public_entity: z.boolean().optional(),
@@ -188,7 +183,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     name: z.string().min(1).optional(),
     aliases: z.array(z.string()).optional(),
     type: z.enum(ORG_TYPES).optional(),
-    group_type: z.enum(GROUP_TYPES).optional(),
+    group_type: z.enum(CANONICAL_GROUP_TYPES).optional(),
     membership_model: z.enum(MEMBERSHIP_MODELS).optional(),
     user_relationship: z.enum(USER_RELATIONSHIPS).optional(),
     is_public_entity: z.boolean().optional(),

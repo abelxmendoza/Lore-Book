@@ -388,7 +388,7 @@ export class EventAssemblyService {
     );
 
     // Extract updated event details
-    const title = this.extractEventTitle(validUnits);
+    const title = this.chooseBetterEventTitle(existingEvent.title, this.extractEventTitle(validUnits));
     const who = this.extractWho(validUnits);
     const what = this.extractWhat(validUnits);
     const where = this.extractWhere(validUnits);
@@ -547,7 +547,7 @@ export class EventAssemblyService {
       }
 
       // Derive updated event from units
-      const updatedTitle = this.extractEventTitle(validUnits);
+      const updatedTitle = this.chooseBetterEventTitle(event.title, this.extractEventTitle(validUnits));
       const updatedWho = this.extractWho(validUnits);
       const updatedWhat = this.extractWhat(validUnits);
       const updatedWhere = this.extractWhere(validUnits);
@@ -645,13 +645,48 @@ export class EventAssemblyService {
     const source = units.map(u => u.content).join(' ').trim();
     if (source.length > 0) {
       const generated = ruleBasedTitleGenerationService.generateTitle(source);
-      if (generated && generated.length >= 8) return generated;
-      const sentences = source.split(/[.!?]+/).filter(s => s.trim().length > 0);
-      const firstSentence = sentences[0]?.trim().substring(0, 100);
+      if (generated && generated.length >= 8 && !this.isWeakEventTitle(generated)) return generated;
+      const sentences = this.cleanEventSourceText(source).split(/[.!?]+/).filter(s => s.trim().length > 0);
+      const firstSentence = sentences.find(sentence => !this.isWeakEventTitle(sentence))?.trim().substring(0, 100);
       if (firstSentence) return firstSentence;
     }
-    // Empty units shouldn't happen; date-stamp as the last resort
-    return `Event on ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    return 'Captured Conversation';
+  }
+
+  private chooseBetterEventTitle(existingTitle: string | null | undefined, candidateTitle: string): string {
+    if (this.isWeakEventTitle(candidateTitle)) {
+      return existingTitle && !this.isWeakEventTitle(existingTitle) ? existingTitle : 'Captured Conversation';
+    }
+
+    if (existingTitle && !this.isWeakEventTitle(existingTitle)) {
+      const candidateWords = candidateTitle.split(/\s+/).filter(Boolean).length;
+      const existingWords = existingTitle.split(/\s+/).filter(Boolean).length;
+      if (candidateWords < 3 && existingWords >= 3) return existingTitle;
+    }
+
+    return candidateTitle;
+  }
+
+  private isWeakEventTitle(title: string | null | undefined): boolean {
+    const value = title?.trim();
+    if (!value) return true;
+    return [
+      /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/i,
+      /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/i,
+      /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{4})?$/i,
+      /^(chat|conversation|journal entry|entry|memory|event|moment)$/i,
+      /^(chat|conversation|journal entry|entry|memory|event|moment)\s*(from|on|for)?\s*[:\-–—]?\s*(\d|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)/i,
+    ].some(pattern => pattern.test(value));
+  }
+
+  private cleanEventSourceText(source: string): string {
+    return source
+      .replace(/\b(user|assistant|system|summary|content|date)\s*:\s*/gi, ' ')
+      .replace(/^(hi|hey|hello|yo|so|okay|ok|um|well)[,!.\s]+/i, '')
+      .replace(/^(today|yesterday|tonight|this morning|this afternoon|this evening)\s*,?\s*/i, '')
+      .replace(/^(i|we)\s+(talked|spoke|chatted|were talking)\s+(about|with)\s+/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   /**
@@ -705,4 +740,3 @@ export class EventAssemblyService {
 }
 
 export const eventAssemblyService = new EventAssemblyService();
-

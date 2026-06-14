@@ -30,6 +30,9 @@ export interface FamilyMember {
   id: string;
   name: string;
   first_name?: string;
+  last_name?: string;
+  /** The term the user calls them, e.g. "Abuela" — shown alongside the real name. */
+  kinship_title?: string;
   avatar_url?: string | null;
   relation: FamilyRelationType;
   relation_label: string;   // "Dad", "Grandma", "Half-sibling"
@@ -38,6 +41,8 @@ export interface FamilyMember {
   deceased?: boolean;
   closeness?: number;       // 0-100
   is_self?: boolean;
+  is_placeholder?: boolean;
+  inference_status?: 'asserted' | 'inferred' | 'placeholder';
   notes?: string;
   side?: 'maternal' | 'paternal' | 'both' | 'other';
 }

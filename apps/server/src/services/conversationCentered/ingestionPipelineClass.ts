@@ -983,6 +983,9 @@ export class ConversationIngestionPipeline {
           // Capture for shadow baseline
           _shadowBaseline.entities = entitiesWithNames.map(e => ({ name: e.name, type: e.type }));
 
+          const hasSelfReference =
+            /\b(I|me|my|myself|I'm|I am|I've|I have|I don't|I didn't|I can't|I won't)\b/i.test(rawText);
+
           if (entitiesWithNames.length >= 2) {
             const detection = await entityRelationshipDetector.detectRelationshipsAndScopes(
               userId,
@@ -1034,28 +1037,6 @@ export class ConversationIngestionPipeline {
               );
             }
 
-            // Detect attributes (Step 4.3)
-            if (entitiesWithNames.length > 0) {
-              try {
-                const attributes = await entityAttributeDetector.detectAttributes(
-                  userId,
-                  rawText,
-                  entitiesWithNames,
-                  messageId,
-                  undefined
-                );
-
-                if (attributes.length > 0) {
-                  logger.debug(
-                    { userId, attributesFound: attributes.length },
-                    'Detected entity attributes'
-                  );
-                }
-              } catch (error) {
-                logger.warn({ error }, 'Attribute detection failed, continuing');
-              }
-            }
-
             if (detection.relationships.length > 0 || detection.scopes.length > 0) {
               logger.debug(
                 {
@@ -1068,8 +1049,59 @@ export class ConversationIngestionPipeline {
               );
             }
           }
+
+          // Detect attributes when any named entity is present OR the narrator speaks in first person
+          if (entitiesWithNames.length > 0 || hasSelfReference) {
+            try {
+              const attributes = await entityAttributeDetector.detectAttributes(
+                userId,
+                rawText,
+                entitiesWithNames,
+                messageId,
+                undefined
+              );
+
+              if (hasSelfReference) {
+                const selfChar = await entityAttributeDetector.ensureUserCharacter(userId);
+                if (selfChar) {
+                  const { entityFactsService } = await import('../entityFactsService');
+                  entityFactsService
+                    .extractAndPersistSelfFacts(userId, selfChar.id, rawText)
+                    .catch(err => logger.warn({ err }, 'Self facts extraction failed (non-blocking)'));
+                }
+              }
+
+              if (attributes.length > 0) {
+                logger.debug(
+                  { userId, attributesFound: attributes.length },
+                  'Detected entity attributes'
+                );
+              }
+            } catch (error) {
+              logger.warn({ error }, 'Attribute detection failed, continuing');
+            }
+          }
         } catch (error) {
           logger.warn({ error }, 'Entity relationship detection failed (non-blocking)');
+        }
+      }
+
+      // Solo first-person messages with no resolved entities still carry self knowledge
+      const soloSelfReference =
+        resolvedEntities.length === 0 &&
+        /\b(I|me|my|myself|I'm|I am|I've|I have|I don't|I didn't|I can't|I won't)\b/i.test(rawText);
+      if (soloSelfReference) {
+        try {
+          await entityAttributeDetector.detectAttributes(userId, rawText, [], messageId, undefined);
+          const selfChar = await entityAttributeDetector.ensureUserCharacter(userId);
+          if (selfChar) {
+            const { entityFactsService } = await import('../entityFactsService');
+            entityFactsService
+              .extractAndPersistSelfFacts(userId, selfChar.id, rawText)
+              .catch(err => logger.warn({ err }, 'Self facts extraction failed (non-blocking)'));
+          }
+        } catch (error) {
+          logger.warn({ error }, 'Solo self-reference extraction failed (non-blocking)');
         }
       }
 

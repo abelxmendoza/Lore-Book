@@ -1,0 +1,272 @@
+/**
+ * Self Character Service
+ *
+ * Ensures the user's protagonist character exists, syncs knowledge from chat
+ * threads, and aggregates profile data for the main character modal.
+ */
+
+import { logger } from '../logger';
+import { entityFactsService } from './entityFactsService';
+import { entityAttributeDetector, type DetectedAttribute } from './conversationCentered/entityAttributeDetector';
+import { supabaseAdmin } from './supabaseClient';
+
+export const SELF_REFERENCE_PATTERN =
+  /\b(I|me|my|myself|I'm|I am|I've|I have|I don't|I didn't|I can't|I won't)\b/i;
+
+export type SelfProfileStats = {
+  messageCount: number;
+  attributeCount: number;
+  factCount: number;
+  knowledgeClaimCount: number;
+  lastSyncedAt: string | null;
+};
+
+export type SelfProfileMemory = {
+  id: string;
+  entry_id: string;
+  date: string;
+  summary: string | null;
+  content: string;
+  source: 'chat' | 'journal';
+  tags: string[];
+};
+
+export type SelfProfile = {
+  character: Record<string, unknown>;
+  attributes: DetectedAttribute[];
+  facts: Awaited<ReturnType<typeof entityFactsService.getEntityFacts>>;
+  knowledgeClaims: Record<string, unknown>[];
+  recentMemories: SelfProfileMemory[];
+  stats: SelfProfileStats;
+  profileSummary: string | null;
+};
+
+function buildProfileSummary(
+  attributes: DetectedAttribute[],
+  facts: Awaited<ReturnType<typeof entityFactsService.getEntityFacts>>
+): string | null {
+  const parts: string[] = [];
+
+  const currentAttrs = attributes.filter(a => a.isCurrent);
+  const attrLabels: Record<string, string> = {
+    occupation: 'Works as',
+    workplace: 'Works at',
+    school: 'Attends',
+    current_city: 'Lives in',
+    hometown: 'From',
+    employment_status: 'Employment',
+    relationship_status: 'Relationship',
+    living_situation: 'Living situation',
+  };
+
+  for (const attr of currentAttrs.slice(0, 6)) {
+    const label = attrLabels[attr.attributeType] ?? attr.attributeType.replace(/_/g, ' ');
+    parts.push(`${label}: ${attr.attributeValue}`);
+  }
+
+  for (const fact of facts.filter(f => f.status === 'active').slice(0, 4)) {
+    parts.push(fact.fact);
+  }
+
+  if (parts.length === 0) return null;
+  return parts.join(' · ');
+}
+
+class SelfCharacterService {
+  async ensureSelfCharacter(userId: string): Promise<Record<string, unknown> | null> {
+    const ref = await entityAttributeDetector.ensureUserCharacter(userId);
+    if (!ref) return null;
+
+    const { data: character, error } = await supabaseAdmin
+      .from('characters')
+      .select('*')
+      .eq('id', ref.id)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !character) {
+      logger.warn({ error, userId }, 'Self character row missing after ensure');
+      return null;
+    }
+
+    return character;
+  }
+
+  async syncFromConversations(
+    userId: string,
+    options?: { limit?: number; sinceDays?: number }
+  ): Promise<{ processed: number; characterId: string | null }> {
+    const limit = Math.min(options?.limit ?? 80, 200);
+    const sinceDays = options?.sinceDays ?? 120;
+    const since = new Date();
+    since.setDate(since.getDate() - sinceDays);
+
+    const selfRef = await entityAttributeDetector.ensureUserCharacter(userId);
+    if (!selfRef) return { processed: 0, characterId: null };
+
+    const { data: messages, error } = await supabaseAdmin
+      .from('chat_messages')
+      .select('id, content, role, created_at')
+      .eq('user_id', userId)
+      .eq('role', 'user')
+      .gte('created_at', since.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      logger.warn({ error, userId }, 'Failed to load chat messages for self sync');
+      return { processed: 0, characterId: selfRef.id };
+    }
+
+    let processed = 0;
+    for (const msg of messages ?? []) {
+      const text = typeof msg.content === 'string' ? msg.content.trim() : '';
+      if (!text || !SELF_REFERENCE_PATTERN.test(text)) continue;
+
+      try {
+        await entityAttributeDetector.detectAttributes(userId, text, [], msg.id);
+        await entityFactsService.extractAndPersistSelfFacts(userId, selfRef.id, text);
+        processed++;
+      } catch (err) {
+        logger.warn({ err, messageId: msg.id }, 'Self sync message failed (non-blocking)');
+      }
+    }
+
+    const summary = await this.refreshSelfSummary(userId, selfRef.id);
+
+    const { data: existing } = await supabaseAdmin
+      .from('characters')
+      .select('metadata')
+      .eq('id', selfRef.id)
+      .eq('user_id', userId)
+      .single();
+
+    const metadata = {
+      ...((existing?.metadata as Record<string, unknown>) ?? {}),
+      is_self: true,
+      is_user: true,
+      self_last_synced_at: new Date().toISOString(),
+      self_messages_processed: processed,
+    };
+
+    await supabaseAdmin
+      .from('characters')
+      .update({
+        metadata,
+        ...(summary ? { summary } : {}),
+        importance_level: 'protagonist',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', selfRef.id)
+      .eq('user_id', userId);
+
+    return { processed, characterId: selfRef.id };
+  }
+
+  async refreshSelfSummary(userId: string, characterId: string): Promise<string | null> {
+    const attributes = await entityAttributeDetector.getEntityAttributes(
+      userId,
+      characterId,
+      'character',
+      true
+    );
+    const facts = await entityFactsService.getEntityFacts(userId, characterId, 'character');
+    return buildProfileSummary(attributes, facts);
+  }
+
+  async getSelfProfile(userId: string): Promise<SelfProfile | null> {
+    const character = await this.ensureSelfCharacter(userId);
+    if (!character) return null;
+
+    const characterId = character.id as string;
+    const metadata = (character.metadata as Record<string, unknown>) ?? {};
+
+    const [
+      attributes,
+      facts,
+      { count: messageCount },
+      { data: knowledgeClaims },
+      { data: recentMessages },
+      { data: recentEntries },
+    ] = await Promise.all([
+      entityAttributeDetector.getEntityAttributes(userId, characterId, 'character', true),
+      entityFactsService.getEntityFacts(userId, characterId, 'character'),
+      supabaseAdmin
+        .from('chat_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('role', 'user'),
+      supabaseAdmin
+        .from('crystallized_knowledge')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'ACTIVE')
+        .gte('confidence', 0.5)
+        .order('confidence', { ascending: false })
+        .limit(50),
+      supabaseAdmin
+        .from('chat_messages')
+        .select('id, content, created_at')
+        .eq('user_id', userId)
+        .eq('role', 'user')
+        .order('created_at', { ascending: false })
+        .limit(40),
+      supabaseAdmin
+        .from('journal_entries')
+        .select('id, date, content, summary, tags, source')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(40),
+    ]);
+
+    const profileSummary =
+      (typeof character.summary === 'string' && character.summary.trim()) ||
+      buildProfileSummary(attributes, facts);
+
+    return {
+      character: {
+        ...character,
+        importance_level: 'protagonist',
+        summary: profileSummary ?? character.summary,
+        memory_count: messageCount ?? 0,
+        knowledge_count: facts.filter(f => f.status === 'active').length + (knowledgeClaims?.length ?? 0),
+      },
+      attributes,
+      facts,
+      knowledgeClaims: knowledgeClaims ?? [],
+      recentMemories: [
+        ...((recentEntries ?? []).map(entry => ({
+          id: `entry-${entry.id}`,
+          entry_id: entry.id,
+          date: entry.date,
+          summary: entry.summary ?? null,
+          content: entry.content ?? entry.summary ?? '',
+          source: 'journal' as const,
+          tags: Array.isArray(entry.tags) ? entry.tags : [],
+        }))),
+        ...((recentMessages ?? []).map(message => ({
+          id: `chat-${message.id}`,
+          entry_id: message.id,
+          date: message.created_at,
+          summary: typeof message.content === 'string' ? message.content.slice(0, 140) : null,
+          content: typeof message.content === 'string' ? message.content : '',
+          source: 'chat' as const,
+          tags: ['conversation'],
+        }))),
+      ]
+        .filter(memory => memory.content.trim().length > 0)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 40),
+      stats: {
+        messageCount: messageCount ?? 0,
+        attributeCount: attributes.length,
+        factCount: facts.filter(f => f.status === 'active').length,
+        knowledgeClaimCount: knowledgeClaims?.length ?? 0,
+        lastSyncedAt: (metadata.self_last_synced_at as string) ?? null,
+      },
+      profileSummary,
+    };
+  }
+}
+
+export const selfCharacterService = new SelfCharacterService();

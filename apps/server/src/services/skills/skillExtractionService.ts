@@ -165,15 +165,15 @@ ${content.substring(0, 2000)}`;
     userId: string,
     questId: string,
     questText: string,
-    opts: { completed?: boolean } = {}
+    opts: { completed?: boolean; xpOverride?: number; reason?: string } = {}
   ): Promise<Array<{ skill: any; created: boolean; leveledUp: boolean }>> {
     try {
       const text = questText?.trim();
       if (!text) return [];
 
       const extractedSkills = await this.extractSkillsFromEntry(userId, questId, text);
-      const xp = opts.completed ? 60 : 15; // completing a quest is worth far more
-      const reason = opts.completed ? 'Completed a related quest' : 'Pursuing a related quest';
+      const xp = opts.xpOverride ?? (opts.completed ? 60 : 15); // completing a quest is worth far more
+      const reason = opts.reason ?? (opts.completed ? 'Completed a related quest' : 'Pursuing a related quest');
       const results: Array<{ skill: any; created: boolean; leveledUp: boolean }> = [];
 
       const existingSkills = await skillService.getSkills(userId, { active_only: true });

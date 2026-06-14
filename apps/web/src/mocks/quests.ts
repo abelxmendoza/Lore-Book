@@ -625,6 +625,52 @@ const calculateThisWeeksQuests = () => {
   });
 };
 
+/** Build a quest board view from any quest list (used when adding mock quests). */
+export function buildQuestBoardFromQuests(quests: Quest[]): QuestBoard {
+  const todays = (() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return quests.filter(q => {
+      if (q.last_activity_at) {
+        const lastActivity = new Date(q.last_activity_at);
+        lastActivity.setHours(0, 0, 0, 0);
+        if (lastActivity.getTime() === today.getTime()) return true;
+      }
+      if (q.estimated_completion_date) {
+        const dueDate = new Date(q.estimated_completion_date);
+        dueDate.setHours(0, 0, 0, 0);
+        if (dueDate.getTime() === today.getTime()) return true;
+      }
+      return false;
+    });
+  })();
+
+  const thisWeek = (() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(today);
+    weekEnd.setDate(today.getDate() + 7);
+    return quests.filter(q => {
+      if (q.estimated_completion_date && q.status !== 'completed' && q.status !== 'archived') {
+        const dueDate = new Date(q.estimated_completion_date);
+        dueDate.setHours(0, 0, 0, 0);
+        return dueDate >= today && dueDate <= weekEnd;
+      }
+      return false;
+    });
+  })();
+
+  return {
+    todays_quests: todays,
+    this_weeks_quests: thisWeek,
+    main_quests: quests.filter(q => q.quest_type === 'main' && q.status !== 'completed' && q.status !== 'archived'),
+    side_quests: quests.filter(q => q.quest_type === 'side' && q.status !== 'completed' && q.status !== 'archived'),
+    daily_quests: quests.filter(q => q.quest_type === 'daily' && q.status !== 'completed' && q.status !== 'archived'),
+    completed_quests: quests.filter(q => q.status === 'completed'),
+    total_count: quests.length,
+  };
+}
+
 export const MOCK_QUEST_BOARD: QuestBoard = {
   todays_quests: calculateTodaysQuests(),
   this_weeks_quests: calculateThisWeeksQuests(),

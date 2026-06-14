@@ -24,6 +24,8 @@ export type GroupType =
   | 'collective'
   | 'institution'
   | 'public_entity'
+  | 'brand'
+  | 'vendor'
   | 'other';
 
 // ── Membership model ──────────────────────────────────────────────────

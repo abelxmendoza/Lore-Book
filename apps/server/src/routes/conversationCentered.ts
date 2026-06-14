@@ -35,6 +35,7 @@ import { relationshipCycleDetector } from '../services/conversationCentered/rela
 import { relationshipDriftDetector } from '../services/conversationCentered/relationshipDriftDetector';
 import { relationshipTreeBuilder, type RelationshipCategory } from '../services/conversationCentered/relationshipTreeBuilder';
 import { romanticRelationshipAnalytics } from '../services/conversationCentered/romanticRelationshipAnalytics';
+import { enrichRomanticRelationshipsForUser } from '../services/conversationCentered/romanticRelationshipEnrichment';
 import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
 import { skillNetworkBuilder } from '../services/conversationCentered/skillNetworkBuilder';
 import { conversationService } from '../services/conversationService';
@@ -194,6 +195,43 @@ router.delete(
 );
 
 /**
+ * GET /api/conversation/threads/explore
+ * Knowledge-aware search across chat threads (titles, entities, messages, claims).
+ */
+router.get(
+  '/threads/explore',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const schema = z.object({
+      q: z.string().optional(),
+      entity: z.string().optional(),
+      limit: z.coerce.number().int().min(1).max(50).optional(),
+      since: z.string().optional(),
+    });
+    const query = schema.parse(req.query);
+    const { threadExplorerService } = await import('../services/conversationCentered/threadExplorerService');
+    const result = await threadExplorerService.explore(userId, query);
+    res.json({ success: true, ...result });
+  })
+);
+
+/**
+ * GET /api/conversation/threads/facets
+ * Entity/subtitle/keyword facets for quick thread navigation.
+ */
+router.get(
+  '/threads/facets',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const { threadExplorerService } = await import('../services/conversationCentered/threadExplorerService');
+    const facets = await threadExplorerService.getFacets(userId);
+    res.json({ success: true, facets });
+  })
+);
+
+/**
  * POST /api/conversation/threads
  * Create a new conversation session
  */
@@ -242,6 +280,23 @@ router.post(
 
     const session = await conversationService.endSession(id, userId, summary, true);
     res.json({ success: true, session });
+  })
+);
+
+/**
+ * GET /api/conversation/threads/:id/context
+ * Rich index for a thread: messages, entities, knowledge, extracted units.
+ */
+router.get(
+  '/threads/:id/context',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { id } = req.params;
+    const userId = req.user!.id;
+    const { threadExplorerService } = await import('../services/conversationCentered/threadExplorerService');
+    const context = await threadExplorerService.getThreadContext(userId, id);
+    if (!context) return res.status(404).json({ success: false, error: 'Thread not found' });
+    res.json({ success: true, context });
   })
 );
 
@@ -1960,9 +2015,11 @@ router.get(
       throw error;
     }
 
+    const enriched = await enrichRomanticRelationshipsForUser(userId, relationships || []);
+
     res.json({
       success: true,
-      relationships: relationships || [],
+      relationships: enriched,
     });
   })
 );

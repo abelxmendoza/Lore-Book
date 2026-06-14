@@ -5,6 +5,7 @@ import { logger } from '../logger';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { skillExtractionService } from '../services/skills/skillExtractionService';
 import { skillService } from '../services/skills/skillService';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
 
@@ -26,6 +27,70 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to get skills');
     res.status(500).json({ error: 'Failed to get skills' });
+  }
+});
+
+/**
+ * Get detected skill SUGGESTIONS — skills found in recent chats + journal that
+ * the user does NOT already track. Detection only (nothing is created); the user
+ * chooses which to add. Must be registered before /:skillId.
+ */
+router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+
+    const [entriesRes, messagesRes, existing] = await Promise.all([
+      supabaseAdmin
+        .from('journal_entries')
+        .select('content, date')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(30),
+      supabaseAdmin
+        .from('chat_messages')
+        .select('content, created_at')
+        .eq('user_id', userId)
+        .eq('role', 'user')
+        .order('created_at', { ascending: false })
+        .limit(50),
+      skillService.getSkills(userId, { active_only: false }),
+    ]);
+
+    const haveNames = new Set(existing.map(s => s.skill_name.toLowerCase()));
+
+    // Combine recent chat + journal into one bounded blob for extraction.
+    const combined = [
+      ...((messagesRes.data as Array<{ content: string }> | null) ?? []).map(m => m.content),
+      ...((entriesRes.data as Array<{ content: string }> | null) ?? []).map(e => e.content),
+    ]
+      .filter(c => c?.trim())
+      .join('\n')
+      .slice(0, 9000);
+
+    if (!combined.trim()) {
+      res.json({ suggestions: [], count: 0 });
+      return;
+    }
+
+    const detected = await skillExtractionService.extractSkillsFromEntry(userId, 'suggestions', combined);
+
+    // Only suggest skills the user doesn't already have; de-dupe + rank by confidence.
+    const seen = new Set<string>();
+    const suggestions = detected
+      .filter(s => s.skill_name?.trim() && !haveNames.has(s.skill_name.toLowerCase()))
+      .filter(s => {
+        const k = s.skill_name.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
+      .slice(0, 12);
+
+    res.json({ suggestions, count: suggestions.length });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get skill suggestions');
+    res.status(500).json({ error: 'Failed to get skill suggestions' });
   }
 });
 

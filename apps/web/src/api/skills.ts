@@ -1,6 +1,14 @@
 import { fetchJson } from '../lib/api';
 import type { Skill, CreateSkillInput, UpdateSkillInput, SkillProgress, SkillCategory, SkillMetadata } from '../types/skill';
 
+export interface SkillSuggestion {
+  skill_name: string;
+  skill_category: SkillCategory;
+  confidence: number;
+  description?: string;
+  evidence?: string[];
+}
+
 export const skillsApi = {
   /**
    * Get all skills
@@ -13,6 +21,14 @@ export const skillsApi = {
     const url = `/api/skills${params.toString() ? `?${params.toString()}` : ''}`;
     const response = await fetchJson<{ skills: Skill[] }>(url);
     return response.skills;
+  },
+
+  /**
+   * Get detected skill suggestions from recent chats + journal (not yet tracked).
+   */
+  async getSuggestions(): Promise<SkillSuggestion[]> {
+    const response = await fetchJson<{ suggestions: SkillSuggestion[] }>('/api/skills/suggestions');
+    return response.suggestions || [];
   },
 
   /**

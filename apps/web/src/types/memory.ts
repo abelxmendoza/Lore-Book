@@ -1,3 +1,5 @@
+import { getDisplayTitle } from '../utils/displayTitle';
+
 export type ContentType = 
   | 'standard'
   | 'testimony'
@@ -78,7 +80,14 @@ export function memoryEntryToCard(entry: {
   preserve_original_language?: boolean;
   metadata?: Record<string, unknown>;
 }): MemoryCard {
-  const title = entry.summary || entry.content.substring(0, 60) + (entry.content.length > 60 ? '...' : '');
+  const title = getDisplayTitle({
+    title: entry.summary,
+    summary: entry.summary,
+    content: entry.content,
+    date: entry.date,
+    source: entry.source,
+    fallbackNoun: entry.source === 'chat' ? 'Conversation' : 'Memory',
+  });
   const sourceMap: Record<string, 'journal' | 'x' | 'task' | 'photo' | 'calendar' | 'chat' | 'manual' | 'api' | 'system'> = {
     manual: 'journal',
     chat: 'chat',
@@ -126,4 +135,3 @@ export function memoryEntryToCard(entry: {
     preserve_original_language: entry.preserve_original_language || false
   };
 }
-

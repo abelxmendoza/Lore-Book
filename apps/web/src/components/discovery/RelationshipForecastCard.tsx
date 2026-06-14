@@ -35,19 +35,22 @@ const TREND_CONFIG: Record<string, { icon: React.ComponentType<{ className?: str
   },
 };
 
-// Generate mock sparkline data for visualization
+// Deterministic illustration of the (real) trend direction — NOT fabricated
+// history. A clean shape per trend, with no random data points, so it never
+// looks like invented relationship data.
 const generateSparklineData = (trend: string): number[] => {
   const data: number[] = [];
   const base = 0.5;
   for (let i = 0; i < 10; i++) {
+    const t = i / 9;
     if (trend === 'warming') {
-      data.push(base + (i / 10) * 0.3 + (Math.random() - 0.5) * 0.1);
+      data.push(base + t * 0.3);
     } else if (trend === 'cooling') {
-      data.push(base - (i / 10) * 0.3 + (Math.random() - 0.5) * 0.1);
+      data.push(base - t * 0.3);
     } else if (trend === 'volatile') {
-      data.push(base + (Math.random() - 0.5) * 0.6);
+      data.push(base + (i % 2 === 0 ? -0.18 : 0.18));
     } else {
-      data.push(base + (Math.random() - 0.5) * 0.2);
+      data.push(base);
     }
   }
   return data;

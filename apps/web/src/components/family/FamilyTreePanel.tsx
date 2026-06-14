@@ -116,7 +116,7 @@ export const FamilyTreePanel = ({
         tree={tree}
         compact={compact}
         onMemberClick={member => {
-          if (member.is_self) return;
+          if (member.is_self || member.is_placeholder) return;
           onMemberClick?.(member.id, member.name);
         }}
       />

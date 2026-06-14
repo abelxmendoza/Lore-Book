@@ -13,6 +13,7 @@ import { format, parseISO } from 'date-fns';
 import { EventDetailModal } from './EventDetailModal';
 import { EventActionsMenu } from './EventActionsMenu';
 import { EventMetaTags } from './EventMetaTags';
+import { getDisplayTitle } from '../../utils/displayTitle';
 
 interface Event {
   id: string;
@@ -164,7 +165,17 @@ export const EventsView: React.FC = () => {
       </div>
 
       <div className="space-y-4">
-        {events.map(event => (
+        {events.map(event => {
+          const displayTitle = getDisplayTitle({
+            title: event.title,
+            summary: event.summary,
+            date: event.start_time,
+            fallbackNoun: 'Event',
+            people: event.people,
+            locations: event.locations,
+          });
+
+          return (
           <Card
             key={event.id}
             className="border-border/60 bg-black/40 hover:bg-black/60 transition-colors cursor-pointer"
@@ -176,7 +187,7 @@ export const EventsView: React.FC = () => {
                   {/* Header */}
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold mb-1">{event.title}</h3>
+                      <h3 className="text-lg font-semibold mb-1">{displayTitle}</h3>
                       {event.summary && (
                         <p className="text-sm text-white/70 line-clamp-2">{event.summary}</p>
                       )}
@@ -225,9 +236,9 @@ export const EventsView: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 };
-

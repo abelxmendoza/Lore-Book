@@ -73,6 +73,10 @@ function inferEdges(members: FamilyMember[]): Array<{ from: string; to: string }
       p => (p.relation === 'parent' || p.relation === 'step_parent') && p.side === gp.side,
     );
     if (parent) edges.push({ from: gp.id, to: parent.id });
+
+    for (const auntUncle of parents.filter(p => (p.relation === 'aunt' || p.relation === 'uncle') && p.side === gp.side)) {
+      edges.push({ from: gp.id, to: auntUncle.id });
+    }
   }
 
   // Parents / Aunts-Uncles → Gen-0 members
@@ -139,6 +143,8 @@ const PersonNode = ({
 }) => {
   const borderCls = member.is_self
     ? 'border-primary/70 bg-primary/10 shadow-[0_0_12px_rgba(124,58,237,0.4)]'
+    : member.is_placeholder
+      ? 'border-dashed border-white/25 bg-white/[0.03]'
     : RELATION_COLORS[member.relation] ?? RELATION_COLORS.default;
   const sideCls = member.side ? SIDE_ACCENT[member.side] ?? '' : '';
   const closenessCls = closenessRing(member.closeness);
@@ -147,27 +153,32 @@ const PersonNode = ({
     <button
       type="button"
       ref={el => onNodeRef?.(member.id, el)}
-      onClick={() => onClick?.(member)}
-      className={`flex flex-col items-center gap-1 group ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
-      title={`${member.name} — ${member.relation_label}`}
+      onClick={() => !member.is_placeholder && onClick?.(member)}
+      disabled={member.is_placeholder}
+      className={`flex flex-col items-center gap-1 group ${onClick && !member.is_placeholder ? 'cursor-pointer' : 'cursor-default'} ${member.is_placeholder ? 'opacity-70' : ''}`}
+      title={`${member.name}${member.kinship_title && member.name.trim().toLowerCase() !== member.kinship_title.toLowerCase() ? ` (${member.kinship_title})` : ''} — ${member.relation_label}`}
     >
       <div className={`rounded-full border-2 ${borderCls} ${sideCls} ${closenessCls} overflow-hidden flex items-center justify-center transition-transform group-hover:scale-105 ${compact ? 'w-10 h-10' : 'w-12 h-12 sm:w-14 sm:h-14'}`}>
         {member.avatar_url ? (
           <img src={member.avatar_url} alt={member.name} className="w-full h-full object-cover" />
         ) : member.is_self ? (
           <User className={`${compact ? 'h-5 w-5' : 'h-6 w-6'} text-primary`} />
+        ) : member.is_placeholder ? (
+          <User className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} text-white/35`} />
         ) : (
           <span className={`font-bold text-white/70 ${compact ? 'text-xs' : 'text-sm'}`}>
             {member.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
           </span>
         )}
       </div>
-      <div className="text-center max-w-[72px]">
-        <p className={`font-medium text-white/90 leading-tight truncate ${compact ? 'text-[9px]' : 'text-[10px] sm:text-xs'}`}>
-          {member.first_name ?? member.name.split(' ')[0]}
+      <div className="text-center max-w-[86px]">
+        <p className={`font-medium text-white/90 leading-tight line-clamp-2 ${compact ? 'text-[9px]' : 'text-[10px] sm:text-xs'}`}>
+          {member.name}
         </p>
-        <p className={`text-white/40 leading-tight truncate ${compact ? 'text-[8px]' : 'text-[9px]'}`}>
-          {member.relation_label}
+        <p className={`text-white/40 leading-tight line-clamp-2 ${compact ? 'text-[8px]' : 'text-[9px]'}`}>
+          {member.kinship_title && member.name.trim().toLowerCase() !== member.kinship_title.toLowerCase()
+            ? `${member.relation_label} · ${member.kinship_title}`
+            : member.relation_label}
         </p>
         {member.deceased && <p className="text-[8px] text-white/25 italic">†</p>}
       </div>
@@ -188,7 +199,7 @@ const GenHeader = ({ label }: { label: string }) => (
 const GEN_LABELS: Record<number, string> = {
   [-3]: 'Great-Grandparents',
   [-2]: 'Grandparents',
-  [-1]: 'Parents',
+  [-1]: 'Parents / Aunts / Uncles',
   [0]:  'Your Generation',
   [1]:  'Children',
   [2]:  'Grandchildren',

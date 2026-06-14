@@ -13,6 +13,7 @@ import { Badge } from '../ui/badge';
 import { Modal } from '../ui/modal';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { skillsApi } from '../../api/skills';
+import { shouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { achievementsApi } from '../../api/achievements';
 import { format, parseISO } from 'date-fns';
 import { useChatStream } from '../../hooks/useChatStream';
@@ -183,6 +184,12 @@ export const SkillDetailModal = ({ skill: initialSkill, onClose, onUpdate }: Ski
       setProgressHistory(progress);
     } catch (error) {
       console.error('Failed to load progress history:', error);
+      // Real accounts must never see fabricated progress — only demo mode does.
+      if (!shouldUseMockData()) {
+        setProgressHistory([]);
+        setLoadingProgress(false);
+        return;
+      }
       // Generate mock progress history
       const mockProgress: SkillProgress[] = [];
       const now = new Date();

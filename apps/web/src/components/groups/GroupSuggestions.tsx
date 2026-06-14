@@ -12,17 +12,12 @@ import { Badge } from '../ui/badge';
 import { fetchJson } from '../../lib/api';
 import type { Organization, OrganizationMember } from '../organizations/OrganizationProfileCard';
 import { deriveOrganizationProfile } from '../../lib/organizationProfile';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type GroupType =
-  | 'friend_group' | 'band' | 'sports_team' | 'company' | 'club' | 'nonprofit'
-  | 'family' | 'martial_arts' | 'scene' | 'crew' | 'collective'
-  | 'community' | 'institution' | 'public_entity' | 'other';
-
-type UserRelationship =
-  | 'founder' | 'leader' | 'member' | 'former_member' | 'collaborator'
-  | 'adjacent' | 'fan' | 'aware_of' | 'referenced' | 'alumnus';
+import {
+  GROUP_TYPE_LABELS,
+  groupTypeMatchesCategory,
+  type OrganizationCategory,
+} from '../../lib/groupTypes';
+import type { GroupType, UserRelationship } from '../organizations/OrganizationProfileCard';
 
 interface GroupCandidate {
   id: string;
@@ -66,20 +61,14 @@ interface GroupSuggestionsProps {
   /** Called after a candidate is accepted. Receives the created organization so
    *  the parent can render its card immediately and open it in the modal. */
   onGroupCreated?: (created?: Organization) => void;
-  categoryFilter?: string;
+  categoryFilter?: OrganizationCategory;
   searchTerm?: string;
   demoMode?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const TYPE_LABELS: Record<GroupType, string> = {
-  friend_group: 'Friend Group', band: 'Band', sports_team: 'Sports Team',
-  company: 'Company', club: 'Club', nonprofit: 'Nonprofit',
-  family: 'Family', martial_arts: 'Martial Arts', scene: 'Scene',
-  crew: 'Crew', collective: 'Collective', community: 'Community', institution: 'Institution',
-  public_entity: 'Public Entity', other: 'Group',
-};
+const TYPE_LABELS = GROUP_TYPE_LABELS;
 const typeLabel = (t: GroupType): string => TYPE_LABELS[t] ?? 'Group';
 
 const TYPE_COLORS: Record<GroupType, string> = {
@@ -97,22 +86,11 @@ const TYPE_COLORS: Record<GroupType, string> = {
   community:    'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
   institution:  'bg-slate-500/20 text-slate-300 border-slate-500/30',
   public_entity:'bg-yellow-600/20 text-yellow-300 border-yellow-600/30',
+  brand:        'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30',
+  vendor:       'bg-lime-500/20 text-lime-300 border-lime-500/30',
   other:        'bg-gray-500/20 text-gray-300 border-gray-500/30',
 };
 const typeColor = (t: GroupType): string => TYPE_COLORS[t] ?? 'bg-gray-500/20 text-gray-300 border-gray-500/30';
-
-const CATEGORY_TYPES: Record<string, GroupType[]> = {
-  crews: ['friend_group', 'crew'],
-  bands: ['band'],
-  scenes: ['scene'],
-  communities: ['community'],
-  companies: ['company'],
-  clubs: ['club', 'collective'],
-  nonprofits: ['nonprofit'],
-  sports_teams: ['sports_team', 'martial_arts'],
-  family: ['family'],
-  public_entities: ['public_entity', 'institution'],
-};
 
 const BAD_MEMBER_NAMES = new Set(['Had', 'Do', 'Did', 'Just', 'She', 'He', 'They', 'My', 'From', 'The', 'This', 'That', 'San Diego', 'Smith Rock']);
 const POLLUTED_CANDIDATE_TERMS = /\b(zephyrine|zephyrne|quillborne?|quillborn|quintessa|vexworth|smith rock|san diego|of debt)\b/i;
@@ -373,14 +351,13 @@ export const GroupSuggestions: React.FC<GroupSuggestionsProps> = ({ onGroupCreat
   };
 
   const visible = useMemo(() => {
-    const allowedTypes = CATEGORY_TYPES[categoryFilter];
     const term = searchTerm.trim().toLowerCase();
 
     return candidates
       .map(cleanCandidate)
       .filter(c => !dismissed.has(c.id))
       .filter(c => !isPollutedCandidate(c))
-      .filter(c => !allowedTypes || allowedTypes.includes(c.suggested_group_type))
+      .filter(c => categoryFilter === 'all' || categoryFilter === 'recent' || groupTypeMatchesCategory(c.suggested_group_type, categoryFilter))
       .filter(c => c.proposed_name || c.detected_members.length >= 2 || c.is_public_entity)
       .filter(c => {
         if (!term) return true;

@@ -38,7 +38,9 @@ import {
 import type { PerceptionEntry } from '../../types/perception';
 import { EntityProvenancePanel } from './EntityProvenancePanel';
 import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
-import { EventTimelineSwimlanes, type SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
+import { CharacterTimelinePanel } from './CharacterTimelinePanel';
+import { isSelfCharacter, isSyntheticSelfId } from '../../lib/isSelfCharacter';
+import { selfCharacterApi } from '../../api/selfCharacter';
 
 type SocialMedia = {
   instagram?: string;
@@ -94,6 +96,16 @@ type CharacterDetail = Character & {
   }>;
 };
 
+type SelfProfileMemory = {
+  id: string;
+  entry_id: string;
+  date: string;
+  summary: string | null;
+  content: string;
+  source: 'chat' | 'journal';
+  tags: string[];
+};
+
 type RomanticRelationship = {
   id: string;
   person_id: string;
@@ -126,15 +138,16 @@ type CharacterDetailModalProps = {
   onClose: () => void;
   onUpdate: () => void;
   relationship?: RomanticRelationship;
+  /** Protagonist / self profile — amber styling, no delete, synthetic-id safe. */
+  isMainCharacter?: boolean;
 };
 
-type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'intelligence';
+type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge';
 
 const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'info',         label: 'Info',            icon: FileText },
-  { key: 'intelligence', label: 'Intelligence',    icon: Zap },
   { key: 'knowledge',    label: 'What I Know',     icon: Brain },
-  { key: 'chat',         label: 'Chat',            icon: MessageSquare },
+  { key: 'chat',         label: 'Intelligence Chat', icon: MessageSquare },
   { key: 'relationships', label: 'Connections',   icon: Network },
   { key: 'history',      label: 'History',         icon: Calendar },
   { key: 'timeline',     label: 'Timeline',        icon: Clock },
@@ -144,8 +157,9 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'metadata',     label: 'Metadata',        icon: Database },
 ];
 
-export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship }: CharacterDetailModalProps) => {
+export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship, isMainCharacter: isMainCharacterProp }: CharacterDetailModalProps) => {
   const { useMockData: isMockDataEnabled } = useMockData();
+  const isMainCharacter = isMainCharacterProp ?? isSelfCharacter(character);
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -809,23 +823,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const [provenance, setProvenance] = useState<any | null>(null);
   const [provenanceLoaded, setProvenanceLoaded] = useState(false);
 
-  // ── Timeline (events with you / things they went through without you) ───────
-  type CharTimelineEvent = {
-    id: string;
-    eventTitle: string;
-    eventDate: string;
-    eventSummary?: string;
-    eventType?: string;
-    userWasPresent: boolean;
-    characterRole?: string;
-    connectionCharacter?: string;
-    emotionalImpact?: string;
-  };
-  const [sharedExperiences, setSharedExperiences] = useState<CharTimelineEvent[]>([]);
-  const [loreEvents, setLoreEvents] = useState<CharTimelineEvent[]>([]);
-  const [timelineLoading, setTimelineLoading] = useState(false);
-  const [timelineLoaded, setTimelineLoaded] = useState(false);
-  const [timelineRebuilding, setTimelineRebuilding] = useState(false);
   const [familyRefreshKey, setFamilyRefreshKey] = useState(0);
 
   // ── Temporal attributes (all historical, not just current) ─────────────────
@@ -917,6 +914,17 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       { id: `mm-4-${characterName}`, title: `Catching up after a while apart`, content: `Hadn't seen ${characterName} in a few months. Picked up exactly where we left off. Some relationships don't need maintenance — they just hold.`, date: d2(30), tags: ['reconnection', 'friendship'], mood: 'warm', source: 'journal', sourceIcon: '📖', characters: [characterName] },
     ];
   };
+
+  const selfMemoryToCard = (memory: SelfProfileMemory, characterName: string): MemoryCard => ({
+    id: memory.id,
+    title: memory.summary || memory.content.slice(0, 80) || 'Conversation memory',
+    content: memory.content || memory.summary || '',
+    date: memory.date,
+    tags: memory.tags || [],
+    source: memory.source === 'chat' ? 'chat' : 'journal',
+    sourceIcon: memory.source === 'chat' ? '💬' : '📖',
+    characters: [characterName],
+  });
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -1031,11 +1039,82 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   useEffect(() => {
     const loadFullDetails = async () => {
       setLoadingDetails(true);
-      if (isMockDataEnabled) {
+      if (isMainCharacter && !isMockDataEnabled) {
+        try {
+          if (isSyntheticSelfId(character.id)) {
+            await selfCharacterApi.ensureSelf().catch(() => {});
+          }
+          await selfCharacterApi.syncFromConversations({ limit: 200, sinceDays: 365 }).catch(() => {});
+          const profile = await selfCharacterApi.getProfile();
+          const selfCharacterName = profile.character.name || character.name;
+          const selfMemories = (profile.recentMemories ?? []).map(memory =>
+            selfMemoryToCard(memory, selfCharacterName)
+          );
+          setEditedCharacter({
+            ...(profile.character as CharacterDetail),
+            importance_level: 'protagonist',
+            shared_memories: (profile.recentMemories ?? []).map(memory => ({
+              id: memory.id,
+              entry_id: memory.entry_id,
+              date: memory.date,
+              summary: memory.summary ?? memory.content.slice(0, 140),
+            })),
+            analytics: {
+              ...(profile.character.analytics ?? {}),
+              closeness_score: 100,
+              relationship_depth: 100,
+              interaction_frequency: profile.stats.messageCount,
+              recency_score: selfMemories.length > 0 ? 1 : 0,
+              character_influence_on_user: 100,
+              user_influence_over_character: 100,
+              importance_score: 100,
+              priority_score: 100,
+              relevance_score: 100,
+              value_score: 100,
+              sentiment_score: 0,
+              trust_score: 100,
+              support_score: 100,
+              conflict_score: 0,
+              engagement_score: Math.min(100, profile.stats.messageCount),
+              activity_level: Math.min(100, profile.stats.messageCount),
+              shared_experiences: selfMemories.length,
+              relationship_duration_days: 0,
+              trend: 'stable',
+            },
+          });
+          setCharacterAttributes(profile.attributes ?? []);
+          setCharacterFacts(profile.facts ?? []);
+          setFactsLoaded(true);
+          setKnowledgeClaims(profile.knowledgeClaims ?? []);
+          setKnowledgeLoaded(true);
+          setSharedMemoryCards(selfMemories);
+        } catch (error) {
+          console.error('Failed to load self profile:', error);
+          setEditedCharacter({
+            ...character,
+            importance_level: 'protagonist',
+          } as CharacterDetail);
+          setSharedMemoryCards([]);
+        } finally {
+          setLoadingDetails(false);
+        }
+        return;
+      }
+      if (isSyntheticSelfId(character.id) && !isMockDataEnabled) {
+        setEditedCharacter({
+          ...character,
+          importance_level: 'protagonist',
+        } as CharacterDetail);
+        setSharedMemoryCards([]);
+        setLoadingDetails(false);
+        return;
+      }
+      if (isMockDataEnabled || isSyntheticSelfId(character.id)) {
         const mockMemories = createMockMemories(character.name);
         const mockRelationshipData = generateMockRelationshipData(character as CharacterDetail);
         const demoCharacter = {
           ...character,
+          importance_level: isMainCharacter ? 'protagonist' : character.importance_level,
           ...mockRelationshipData,
           memory_count: Math.max(character.memory_count ?? 0, mockMemories.length),
           relationship_count: Math.max(character.relationship_count ?? 0, character.relationships?.length ?? 0),
@@ -1072,13 +1151,24 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       }
     };
     void loadFullDetails();
-  }, [character, character.id, character.name, isMockDataEnabled]);
+  }, [character, character.id, character.name, isMockDataEnabled, isMainCharacter]);
 
   // Load character attributes
   useEffect(() => {
     const loadAttributes = async () => {
       setLoadingAttributes(true);
       try {
+        if (isMainCharacter && !isMockDataEnabled) {
+          const profile = await selfCharacterApi.getProfile();
+          setCharacterAttributes(profile.attributes || []);
+          setLoadingAttributes(false);
+          return;
+        }
+        if (isSyntheticSelfId(character.id)) {
+          setCharacterAttributes(isMockDataEnabled ? getMockAttributes(character) : []);
+          setLoadingAttributes(false);
+          return;
+        }
         const response = await fetchJson<{ attributes: CharacterAttribute[] }>(`/api/characters/${character.id}/attributes?currentOnly=true`);
         const realAttributes = response.attributes || [];
         if (realAttributes.length === 0 && isMockDataEnabled) {
@@ -1098,7 +1188,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
       }
     };
     void loadAttributes();
-  }, [character.id, character.name]);
+  }, [character.id, character.name, isMainCharacter, isMockDataEnabled]);
 
   // Load insights when Insights tab is active and ensure analytics exist
   useEffect(() => {
@@ -1154,9 +1244,9 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     }
   }, [activeTab, insights, loadingInsights, editedCharacter]);
 
-  // ── Load intelligence (dynamics + influence) when Intelligence tab opens ────
+  // ── Load intelligence (dynamics + influence) when the combined chat tab opens ────
   useEffect(() => {
-    if (activeTab !== 'intelligence' || dynamicsLoaded) return;
+    if (activeTab !== 'chat' || dynamicsLoaded) return;
     const name = encodeURIComponent(character.name);
 
     if (isMockDataEnabled) {
@@ -1193,26 +1283,8 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     });
   }, [activeTab, character.name, character.id, dynamicsLoaded, isMockDataEnabled]);
 
-  // ── Load chronological event timeline when Timeline tab opens ───────────────
-  useEffect(() => {
-    if (activeTab !== 'timeline' || timelineLoaded || !character.id) return;
-    setTimelineLoading(true);
-    fetchJson<{ success: boolean; timelines: { sharedExperiences: CharTimelineEvent[]; lore: CharTimelineEvent[] } }>(
-      `/api/conversation/characters/${character.id}/timelines`
-    )
-      .then(r => {
-        if (r.success) {
-          setSharedExperiences(r.timelines.sharedExperiences || []);
-          setLoreEvents(r.timelines.lore || []);
-        }
-      })
-      .catch(() => {})
-      .finally(() => { setTimelineLoading(false); setTimelineLoaded(true); });
-  }, [activeTab, character.id, timelineLoaded]);
-
   useEffect(() => {
     return onStoryDataUpdated(() => {
-      setTimelineLoaded(false);
       setFamilyRefreshKey(k => k + 1);
     });
   }, [character.id]);
@@ -1266,16 +1338,19 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
 
     if (!knowledgeLoaded) {
       setKnowledgeLoading(true);
-      const encodedName = encodeURIComponent(character.name);
-      fetchJson<{ success: boolean; claims: any[] }>(
-        `/api/knowledge/character-context/${encodedName}`
-      )
-        .then(r => { if (r.success) setKnowledgeClaims(r.claims); })
+      const loadKnowledge = isMainCharacter
+        ? selfCharacterApi.getProfile().then(r => r.knowledgeClaims ?? [])
+        : fetchJson<{ success: boolean; claims: any[] }>(
+            `/api/knowledge/character-context/${encodeURIComponent(character.name)}`
+          ).then(r => (r.success ? r.claims : []));
+
+      loadKnowledge
+        .then(claims => { setKnowledgeClaims(claims); })
         .catch(() => {})
         .finally(() => { setKnowledgeLoading(false); setKnowledgeLoaded(true); });
     }
 
-    if (!factsLoaded && character.id && !character.id.startsWith('dummy-')) {
+    if (!factsLoaded && character.id && !character.id.startsWith('dummy-') && !(isMainCharacter && !isMockDataEnabled)) {
       setFactsLoading(true);
       fetchJson<{ success: boolean; facts: any[] }>(
         `/api/characters/${character.id}/facts`
@@ -1293,7 +1368,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         .catch(() => {})
         .finally(() => setScenesLoaded(true));
     }
-  }, [activeTab, character.id, character.name, knowledgeLoaded, factsLoaded, scenesLoaded, isMockDataEnabled]);
+  }, [activeTab, character.id, character.name, knowledgeLoaded, factsLoaded, scenesLoaded, isMockDataEnabled, isMainCharacter]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -1399,6 +1474,24 @@ You can explain these analytics to the user when asked. For example:
 - "With ${analytics.shared_experiences} shared experiences, this relationship has ${analytics.shared_experiences >= 10 ? 'significant depth' : analytics.shared_experiences >= 5 ? 'moderate depth' : 'developing depth'}"
 ` : '';
 
+      const relationshipIntelligenceContext = `
+RELATIONSHIP INTELLIGENCE CONTEXT:
+${influenceProfile ? `- Net Influence: ${Math.round((influenceProfile.net_influence ?? 0) * 100)}%
+- Emotional Impact: ${Math.round(Math.abs(influenceProfile.emotional_impact ?? 0) * 100)}%
+- Behavioral Impact: ${Math.round(Math.abs(influenceProfile.behavioral_impact ?? 0) * 100)}%
+- Uplift Score: ${Math.round(Math.abs(influenceProfile.uplift_score ?? 0) * 100)}%
+- Toxicity Signal: ${Math.round(Math.abs(influenceProfile.toxicity_score ?? 0) * 100)}%
+- Recorded Interactions: ${influenceProfile.interaction_count ?? 0}` : '- Influence profile: Not enough data yet'}
+${dynamics?.health ? `- Relationship Health: ${dynamics.health.health_score ?? 0}/100 (${dynamics.health.overall_health ?? 'unknown'})
+- Health Trend: ${dynamics.health.trends?.health_trend ?? 'unknown'}
+${dynamics.health.strengths?.length ? `- Strengths: ${dynamics.health.strengths.join(', ')}` : ''}
+${dynamics.health.concerns?.length ? `- Concerns: ${dynamics.health.concerns.join(', ')}` : ''}` : '- Relationship health: Not enough data yet'}
+${dynamics?.metrics ? `- Interaction Frequency: ${dynamics.metrics.interaction_frequency?.toFixed(1) ?? 'unknown'} per month
+- Average Sentiment: ${Math.round((dynamics.metrics.average_sentiment ?? 0) * 100)}%
+- Positive Ratio: ${Math.round((dynamics.metrics.positive_ratio ?? 0) * 100)}%` : ''}
+${influenceInsights.length > 0 ? `- Influence Insights: ${influenceInsights.slice(0, 4).map((insight: any) => insight.message).join(' | ')}` : ''}
+`;
+
       const characterContext = `You are helping the user discuss and update information about a specific character in their personal journal system.
 
 CHARACTER CONTEXT:
@@ -1413,6 +1506,7 @@ CHARACTER CONTEXT:
 - Shared Memories: ${editedCharacter.shared_memories?.length || 0}
 - Relationships: ${editedCharacter.relationships?.length || 0}
 ${analyticsContext}
+${relationshipIntelligenceContext}
 INSTRUCTIONS:
 1. Answer questions about this character based on the context above
 2. If the user asks about analytics, explain what the scores mean and why they might be at that level
@@ -1431,7 +1525,7 @@ User's message: ${message}`;
       const response = await fetchJson<{ answer: string; metadata?: any }>('/api/chat', {
         method: 'POST',
         body: JSON.stringify({
-          message: message,
+          message: characterContext,
           conversationHistory,
           entityContext: {
             type: 'CHARACTER',
@@ -1631,7 +1725,17 @@ User's message: ${message}`;
   const firstAttributeValue = (types: string[]) => attributesByType(types)[0]?.attributeValue;
   const confidenceLabel = (confidence?: number) => confidence == null ? null : `${Math.round(confidence * 100)}% confidence`;
   const prettyAttributeType = (type: string) => type.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
-  const firstName = editedCharacter.first_name || editedCharacter.name.split(' ')[0] || editedCharacter.name;
+  const HONORIFIC_RE = /^(mr|mrs|ms|miss|mx|dr|prof|professor|sir|dame|lord|lady|rev|fr|father)\.?$/i;
+  const nameParts = editedCharacter.name.trim().split(/\s+/);
+  const hasHonorificFirstName = Boolean(editedCharacter.first_name && HONORIFIC_RE.test(editedCharacter.first_name));
+  const firstName = hasHonorificFirstName
+    ? editedCharacter.name
+    : editedCharacter.first_name || (HONORIFIC_RE.test(nameParts[0] ?? '') ? editedCharacter.name : nameParts[0]) || editedCharacter.name;
+  const displayName = hasHonorificFirstName
+    ? editedCharacter.name
+    : editedCharacter.first_name && editedCharacter.last_name
+      ? `${editedCharacter.first_name} ${editedCharacter.last_name}`
+      : editedCharacter.name;
   const isRomanticRelationshipType = (type = '') => /\b(romantic|dating|date|boyfriend|girlfriend|partner|spouse|wife|husband|fianc|lover|crush|situationship|ex)\b/i.test(type);
   const romanticConnections = (editedCharacter.relationships ?? [])
     .filter(rel => rel.character_name && rel.character_name !== 'You' && isRomanticRelationshipType(rel.relationship_type));
@@ -1642,7 +1746,7 @@ User's message: ${message}`;
   const workplaces = attributesByType(['workplace', 'company']).map(attr => attr.attributeValue);
   const sideHustles = attributesByType(['side_hustle', 'brand', 'business']).map(attr => attr.attributeValue);
   const companyOrganizations = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations)
-    .filter(org => ['company', 'brand', 'business', 'affiliation'].includes(String(org.group_type ?? org.type ?? '').toLowerCase()));
+    .filter(org => ['company', 'brand', 'vendor', 'affiliation'].includes(String(org.group_type ?? org.type ?? '').toLowerCase()));
   const lifeMap = [
     { label: 'Location', value: firstAttributeValue(['location', 'living_situation', 'hometown']), prompt: `Where ${editedCharacter.name} lives or is from: ` },
     { label: 'Culture', value: firstAttributeValue(['nationality', 'cultural_background', 'ethnicity']), prompt: `${editedCharacter.name}'s cultural background: ` },
@@ -1693,10 +1797,18 @@ User's message: ${message}`;
   const storyGroups = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm" data-testid="character-modal" role="dialog" aria-modal="true">
-      <div className="bg-gradient-to-br from-black via-black/95 to-black border-0 sm:border-2 border-primary/30 rounded-none sm:rounded-2xl w-full h-full sm:h-[95vh] sm:max-w-5xl overflow-hidden flex flex-col shadow-2xl shadow-primary/20">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm" data-testid={isMainCharacter ? 'main-character-modal' : 'character-modal'} role="dialog" aria-modal="true">
+      <div className={`bg-gradient-to-br from-black via-black/95 to-black border-0 sm:border-2 rounded-none sm:rounded-2xl w-full h-full sm:h-[95vh] sm:max-w-5xl overflow-hidden flex flex-col shadow-2xl ${
+        isMainCharacter
+          ? 'border-amber-500/40 shadow-amber-500/15'
+          : 'border-primary/30 shadow-primary/20'
+      }`}>
         {/* Enhanced Header */}
-        <div className="relative bg-gradient-to-r from-primary/20 via-purple-900/20 to-primary/20 border-b-2 border-primary/30 p-3 sm:p-6">
+        <div className={`relative border-b-2 p-3 sm:p-6 ${
+          isMainCharacter
+            ? 'bg-gradient-to-r from-amber-500/20 via-amber-950/30 to-purple-900/20 border-amber-500/35'
+            : 'bg-gradient-to-r from-primary/20 via-purple-900/20 to-primary/20 border-primary/30'
+        }`}>
           <div className="flex items-start justify-between gap-2 sm:gap-4">
             <div className="flex items-start gap-2 sm:gap-4 flex-1 min-w-0">
               <div className="relative flex-shrink-0">
@@ -1739,24 +1851,22 @@ User's message: ${message}`;
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1 flex-wrap">
-                  <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-white tracking-tight break-words">
-                    {editedCharacter.first_name && editedCharacter.last_name
-                      ? `${editedCharacter.first_name} ${editedCharacter.last_name}`
-                      : editedCharacter.name}
-                  </h2>
-                  {editedCharacter.is_nickname && (
-                    <Tooltip content={getNicknameTooltip()}>
-                    <Badge 
-                      variant="outline" 
-                        className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-[9px] sm:text-xs px-1 sm:px-2 py-0 sm:py-0.5 cursor-help"
-                    >
-                      <span className="hidden sm:inline">Nickname</span>
-                      <span className="sm:hidden">N</span>
-                    </Badge>
-                    </Tooltip>
-                  )}
-                </div>
+	                <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5 sm:mb-1 flex-wrap">
+	                  <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-white tracking-tight break-words">
+	                    {displayName}
+	                  </h2>
+                    {isMainCharacter && (
+                      <>
+                        <Badge variant="outline" className="bg-amber-500/20 text-amber-200 border-amber-400/50 text-[9px] sm:text-xs px-1.5 sm:px-2 py-0.5 flex items-center gap-1">
+                          <Star className="h-3 w-3 fill-amber-300 text-amber-300" />
+                          Main Character
+                        </Badge>
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/70 border border-amber-500/25 rounded px-1.5 py-0.5">
+                          you
+                        </span>
+                      </>
+                    )}
+	                </div>
                 {/* Compact info row on mobile */}
                 <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
                   {editedCharacter.role && (
@@ -1799,7 +1909,7 @@ User's message: ${message}`;
                     </Badge>
                   )}
                 </div>
-                {editedCharacter.first_name && editedCharacter.last_name && editedCharacter.name !== `${editedCharacter.first_name} ${editedCharacter.last_name}` && (
+                {!hasHonorificFirstName && editedCharacter.first_name && editedCharacter.last_name && editedCharacter.name !== `${editedCharacter.first_name} ${editedCharacter.last_name}` && (
                   <p className="text-[10px] sm:text-sm text-white/60 mb-0.5 sm:mb-1 truncate">
                     Display: {editedCharacter.name}
                   </p>
@@ -1870,6 +1980,7 @@ User's message: ${message}`;
                 )}
               </div>
             </div>
+            {!isMainCharacter && (
             <Button
               variant="ghost"
               onClick={() => setShowDeleteConfirm(true)}
@@ -1879,6 +1990,7 @@ User's message: ${message}`;
             >
               <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
+            )}
             <Button variant="ghost" onClick={onClose} className="flex-shrink-0 hover:bg-white/10 h-8 w-8 sm:h-10 sm:w-10 p-0" aria-label="Close">
               <X className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
@@ -2610,12 +2722,16 @@ User's message: ${message}`;
                       <h3 className="text-xl font-bold text-white">Name Information</h3>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-6 mb-6">
-                      <div>
-                        <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">First Name</label>
-                        <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-base min-h-[48px] flex items-center font-medium shadow-inner">
-                          {editedCharacter.first_name || <span className="text-white/40 italic">Not specified</span>}
-                        </div>
+	                    <div className="grid grid-cols-2 gap-6 mb-6">
+	                      <div>
+	                        <Tooltip content={hasHonorificFirstName ? 'Title/Prefix: This is an honorific, not a first name. LoreBook preserves the full display name instead.' : 'First Name: The given name LoreBook extracted from this person’s full name.'}>
+	                          <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide cursor-help">
+	                            {hasHonorificFirstName ? 'Title / Prefix' : 'First Name'}
+	                          </label>
+	                        </Tooltip>
+	                        <div className="bg-black/80 border-2 border-border/60 rounded-lg px-4 py-3 text-white text-base min-h-[48px] flex items-center font-medium shadow-inner">
+	                          {editedCharacter.first_name || <span className="text-white/40 italic">Not specified</span>}
+	                        </div>
                       </div>
                       <div>
                         <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide">Last Name</label>
@@ -2625,24 +2741,24 @@ User's message: ${message}`;
                       </div>
                     </div>
 
-                    <div className="mb-6">
-                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide flex items-center gap-3">
-                      Display Name
-                      {editedCharacter.is_nickname && (
-                          <Tooltip content={getNicknameTooltip()}>
-                            <Badge variant="outline" className="bg-yellow-500/20 text-yellow-300 border-yellow-500/50 text-xs px-2 py-1 font-semibold cursor-help">
-                          Nickname
-                        </Badge>
-                          </Tooltip>
-                      )}
-                    </label>
+	                    <div className="mb-6">
+	                      <label className="text-sm font-bold text-white/80 mb-3 block uppercase tracking-wide flex items-center gap-3">
+	                      Display Name
+	                      {editedCharacter.is_nickname && (
+	                          <Tooltip content={getNicknameTooltip()}>
+	                            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-300 border-yellow-500/30 text-xs px-2 py-1 font-semibold cursor-help">
+	                          Alias-based
+	                        </Badge>
+	                          </Tooltip>
+	                      )}
+	                    </label>
                       <div className="bg-gradient-to-r from-primary/20 to-primary/10 border-2 border-primary/40 rounded-lg px-4 py-3 text-white text-lg min-h-[52px] flex items-center font-bold shadow-lg">
                         {editedCharacter.name}
                       </div>
-                      {editedCharacter.first_name && editedCharacter.last_name && (
-                        <p className="text-sm text-white/60 mt-2 font-medium">
-                          Full name: <span className="text-white/80">{editedCharacter.first_name} {editedCharacter.last_name}</span>
-                        </p>
+	                      {!hasHonorificFirstName && editedCharacter.first_name && editedCharacter.last_name && (
+	                        <p className="text-sm text-white/60 mt-2 font-medium">
+	                          Full name: <span className="text-white/80">{editedCharacter.first_name} {editedCharacter.last_name}</span>
+	                        </p>
                       )}
                   </div>
 
@@ -3606,94 +3722,91 @@ User's message: ${message}`;
             )}
 
             {/* Timeline Tab */}
-            {!loadingDetails && activeTab === 'timeline' && (() => {
-              const firstName = editedCharacter.name.split(' ')[0];
-              const toSwim = (e: CharTimelineEvent, laneKey: string): SwimlaneEvent => ({
-                id: e.id,
-                title: e.eventTitle,
-                date: e.eventDate,
-                laneKey,
-                type: e.eventType,
-                summary: e.eventSummary,
-                meta: [e.characterRole, e.connectionCharacter ? `with ${e.connectionCharacter}` : null, e.emotionalImpact]
-                  .filter(Boolean)
-                  .join(' · ') || undefined,
-              });
-              const events: SwimlaneEvent[] = [
-                ...sharedExperiences.map(e => toSwim(e, 'with')),
-                ...loreEvents.map(e => toSwim(e, 'without')),
-              ];
-              return (
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                        <Clock className="h-5 w-5 text-primary" />
-                        {firstName}'s Timeline
-                      </h3>
-                      <p className="text-xs text-white/45 mt-1">
-                        Events you lived through together, and things {firstName} went through without you — in chronological order.
-                      </p>
-                    </div>
-                    {!isMockDataEnabled && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0 text-xs"
-                        disabled={timelineRebuilding}
-                        onClick={() => {
-                          setTimelineRebuilding(true);
-                          setTimelineLoaded(false);
-                          fetchJson(`/api/conversation/characters/${character.id}/rebuild-timelines`, { method: 'POST', body: JSON.stringify({}) })
-                            .then(() => fetchJson<{ success: boolean; timelines: { sharedExperiences: CharTimelineEvent[]; lore: CharTimelineEvent[] } }>(
-                              `/api/conversation/characters/${character.id}/timelines`
-                            ))
-                            .then(r => {
-                              if (r.success) {
-                                setSharedExperiences(r.timelines.sharedExperiences || []);
-                                setLoreEvents(r.timelines.lore || []);
-                              }
-                            })
-                            .finally(() => { setTimelineRebuilding(false); setTimelineLoaded(true); });
-                        }}
-                      >
-                        {timelineRebuilding ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
-                        Rescan conversations
-                      </Button>
-                    )}
-                  </div>
-                  <EventTimelineSwimlanes
-                    loading={timelineLoading}
-                    lanes={[
-                      { key: 'with', label: 'With you', accent: 'emerald' },
-                      { key: 'without', label: 'Without you', accent: 'sky' },
-                    ]}
-                    events={events}
-                    emptyTitle={`No timeline events for ${firstName} yet`}
-                    emptyHint={`As you mention ${firstName} in your conversations, shared experiences and their own story will plot here.`}
-                  />
-                  <div className="flex items-center gap-4 text-xs text-white/40 pt-1">
-                    <span><span className="text-emerald-300 font-medium">{sharedExperiences.length}</span> with you</span>
-                    <span><span className="text-sky-300 font-medium">{loreEvents.length}</span> without you</span>
-                  </div>
-                </div>
-              );
-            })()}
+            {!loadingDetails && activeTab === 'timeline' && (
+              <CharacterTimelinePanel
+                characterId={character.id}
+                characterName={editedCharacter.name}
+                mockMode={isMockDataEnabled}
+                active={activeTab === 'timeline'}
+              />
+            )}
 
             {/* Chat Tab */}
             {!loadingDetails && activeTab === 'chat' && (
               <div className="space-y-4">
-                <div className="mb-4">
-                  <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                    <MessageSquare className="h-6 w-6 text-primary" />
-                    Chat about {editedCharacter.name}
-                  </h3>
-                  <p className="text-base text-white/70">
-                    Ask questions, share stories, or update information about {editedCharacter.name} through conversation.
-                  </p>
-                </div>
-                
-                {/* Messages Area - Chat composer moved to sticky area */}
+	                <div className="mb-4">
+	                  <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+	                    <MessageSquare className="h-6 w-6 text-primary" />
+	                    Intelligence Chat about {displayName}
+	                  </h3>
+	                  <p className="text-base text-white/70">
+	                    Ask questions, share stories, correct facts, or talk through relationship intelligence in one focused conversation.
+	                  </p>
+	                </div>
+
+	                <Card className="bg-yellow-500/10 border-yellow-500/25">
+	                  <CardContent className="p-4 space-y-3">
+	                    <div className="flex items-start justify-between gap-3">
+	                      <div>
+	                        <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+	                          <Zap className="h-4 w-4 text-yellow-300" />
+	                          Relationship Intelligence
+	                        </h4>
+	                        <p className="text-xs text-white/45 mt-1">
+	                          These signals are loaded into the conversation so you can ask why they matter or correct them.
+	                        </p>
+	                      </div>
+	                      {(dynamicsLoading || influenceLoading) && <Loader2 className="h-4 w-4 animate-spin text-yellow-300 flex-shrink-0" />}
+	                    </div>
+
+	                    {!dynamicsLoading && !influenceLoading && !influenceProfile && !dynamics && (
+	                      <p className="text-sm text-white/45 rounded-lg border border-white/8 bg-black/25 p-3">
+	                        LoreBook is still learning how {firstName} affects your life. Add context in this chat to build influence, trust, health, and dynamic signals.
+	                      </p>
+	                    )}
+
+	                    {!dynamicsLoading && !influenceLoading && (influenceProfile || dynamics) && (
+	                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+	                        {influenceProfile && (
+	                          <Tooltip content={`Net influence estimates how strongly ${displayName} affects your emotions, behavior, and decisions based on recorded interactions.`}>
+	                            <div className="p-3 rounded-lg bg-black/25 border border-white/8 cursor-help">
+	                              <p className="text-[10px] text-white/40 mb-1">Net Influence</p>
+	                              <p className="text-lg font-semibold text-yellow-300">{Math.round((influenceProfile.net_influence ?? 0) * 100)}%</p>
+	                            </div>
+	                          </Tooltip>
+	                        )}
+	                        {dynamics?.health && (
+	                          <Tooltip content="Relationship health combines support, trust, conflict, sentiment, and consistency from your conversations.">
+	                            <div className="p-3 rounded-lg bg-black/25 border border-white/8 cursor-help">
+	                              <p className="text-[10px] text-white/40 mb-1">Health</p>
+	                              <p className="text-lg font-semibold text-white">{dynamics.health.health_score ?? 0}<span className="text-xs text-white/40">/100</span></p>
+	                            </div>
+	                          </Tooltip>
+	                        )}
+	                        {dynamics?.metrics && (
+	                          <Tooltip content="Interaction frequency is estimated from mentions, shared memories, and timeline activity.">
+	                            <div className="p-3 rounded-lg bg-black/25 border border-white/8 cursor-help">
+	                              <p className="text-[10px] text-white/40 mb-1">Freq / mo</p>
+	                              <p className="text-lg font-semibold text-white">{dynamics.metrics.interaction_frequency?.toFixed(1) ?? '—'}</p>
+	                            </div>
+	                          </Tooltip>
+	                        )}
+	                      </div>
+	                    )}
+
+	                    {!dynamicsLoading && !influenceLoading && influenceInsights.length > 0 && (
+	                      <div className="space-y-2">
+	                        {influenceInsights.slice(0, 2).map((insight: any, index: number) => (
+	                          <p key={index} className="text-xs text-white/70 rounded-lg border border-yellow-500/15 bg-yellow-950/10 p-2">
+	                            {insight.message}
+	                          </p>
+	                        ))}
+	                      </div>
+	                    )}
+	                  </CardContent>
+	                </Card>
+	                
+	                {/* Messages Area - Chat composer moved to sticky area */}
                 <div className="space-y-4">
                   {chatMessages.length === 0 ? (
                     <div className="text-center py-12 text-white/60">
@@ -4105,7 +4218,7 @@ User's message: ${message}`;
 
             {/* Metadata Tab */}
             {/* ── Intelligence Tab ── */}
-            {!loadingDetails && activeTab === 'intelligence' && (
+            {false && !loadingDetails && activeTab === 'chat' && (
               <div className="space-y-6">
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2">

@@ -25,7 +25,8 @@
 
 import { logger } from '../logger';
 import { jaroWinkler } from '../utils/jaroWinkler';
-import { normalizeNameKey, namesOverlapByContainment, containmentIsPossessive } from '../utils/nameNormalization';
+import { normalizeNameKey, namesOverlapByContainment, containmentIsPossessive, splitPersonName } from '../utils/nameNormalization';
+import { isCollectivePersonName } from '../utils/personNameValidation';
 
 import { supabaseAdmin } from './supabaseClient';
 
@@ -117,6 +118,7 @@ class CharacterRegistry {
 
     if (name.length < 2) return { ok: false, reason: 'too_short' };
     if (JUNK_NAMES.has(name.toLowerCase())) return { ok: false, reason: 'junk_word' };
+    if (isCollectivePersonName(name)) return { ok: false, reason: 'collective_not_individual' };
     if (NON_PERSON_NAME_PATTERNS.some(pattern => pattern.test(name))) return { ok: false, reason: 'non_person_name' };
     // More than 5 tokens after cleaning is a sentence fragment, not a name
     if (name.split(' ').length > 5) return { ok: false, reason: 'phrase_not_name' };
@@ -322,10 +324,10 @@ class CharacterRegistry {
     if (addAlias && mentionIsFuller) {
       aliases.delete(mention);
       aliases.add(row.name);
-      const tokens = mention.split(' ');
+      const parsedName = splitPersonName(mention);
       update.name = mention;
-      update.first_name = tokens[0];
-      update.last_name = tokens.slice(1).join(' ') || null;
+      update.first_name = parsedName.firstName || null;
+      update.last_name = parsedName.lastName || null;
       logger.info({ characterId, from: row.name, to: mention }, 'Character name upgraded to fuller form');
     }
     update.alias = aliases.size > 0 ? [...aliases] : null;

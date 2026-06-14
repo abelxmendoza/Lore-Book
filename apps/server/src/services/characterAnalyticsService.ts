@@ -116,6 +116,12 @@ export class CharacterAnalyticsService {
         conversations,
         relationships
       );
+
+      const relevance_score = this.calculateRelevanceScore(
+        conversations,
+        journalMentions,
+        calculationPeriod
+      );
       
       // Importance metrics
       const importance_score = this.calculateImportanceScore(
@@ -129,12 +135,6 @@ export class CharacterAnalyticsService {
         recency_score,
         interaction_frequency,
         character
-      );
-      
-      const relevance_score = this.calculateRelevanceScore(
-        conversations,
-        journalMentions,
-        calculationPeriod
       );
       
       const value_score = await this.calculateValueScore(

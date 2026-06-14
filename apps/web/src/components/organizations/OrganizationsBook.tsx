@@ -5,7 +5,7 @@
 // =====================================================
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart, TreePine, Network } from 'lucide-react';
+import { Building2, Music, Zap, Globe, RefreshCw, ChevronLeft, ChevronRight, BookOpen, Users, Calendar, Hash, Sparkles, Plus, X, Heart, TreePine, Network, Tag, Truck } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -27,13 +27,15 @@ import { subDays } from 'date-fns';
 
 const ITEMS_PER_PAGE = 24;
 
-type OrganizationCategory =
-  | 'all' | 'recent'
-  | 'crews' | 'bands' | 'scenes' | 'communities'
-  | 'companies' | 'clubs' | 'nonprofits'
-  | 'sports_teams' | 'family' | 'public_entities';
-
-type SortOption = 'name_asc' | 'name_desc' | 'usage_desc' | 'usage_asc' | 'confidence_desc' | 'confidence_asc' | 'recent' | 'importance_desc' | 'involvement_desc' | 'priority_desc' | 'value_desc';
+import {
+  CANONICAL_GROUP_TYPES,
+  ORGANIZATION_CATEGORIES,
+  GROUP_TYPE_LABELS,
+  GROUP_SUBCATEGORIES,
+  groupTypeMatchesCategory,
+  formatSubcategory,
+  type OrganizationCategory,
+} from '../../lib/groupTypes';
 
 type GroupCandidate = {
   id: string;
@@ -52,11 +54,7 @@ type GroupCandidate = {
   created_at?: string;
 };
 
-const GROUP_TYPES: Organization['group_type'][] = [
-  'friend_group', 'band', 'sports_team', 'company', 'club', 'nonprofit',
-  'family', 'martial_arts', 'scene', 'crew', 'collective', 'community',
-  'institution', 'public_entity', 'other',
-];
+const GROUP_TYPES = CANONICAL_GROUP_TYPES;
 
 const LEGACY_TYPES: Organization['type'][] = [
   'friend_group', 'company', 'sports_team', 'club', 'nonprofit',
@@ -946,7 +944,12 @@ export const OrganizationsBook: React.FC = () => {
   const [dupChecking, setDupChecking] = useState(false);
   const [dupChecked, setDupChecked] = useState(false);
   const [merging, setMerging] = useState<string | null>(null);
-  const [newOrg, setNewOrg] = useState({ name: '', groupType: 'other' as Organization['group_type'], description: '' });
+  const [newOrg, setNewOrg] = useState({
+    name: '',
+    groupType: 'other' as Organization['group_type'],
+    subcategory: '',
+    description: '',
+  });
   const [showMyFamily, setShowMyFamily] = useState(false);
   const [showGroupNetwork, setShowGroupNetwork] = useState(false);
   const [myFamilyCount, setMyFamilyCount] = useState<number | null>(null);
@@ -1135,10 +1138,13 @@ export const OrganizationsBook: React.FC = () => {
           group_type: newOrg.groupType,
           description: newOrg.description.trim() || undefined,
           status: 'active',
+          metadata: newOrg.subcategory
+            ? { subcategory: newOrg.subcategory }
+            : undefined,
         }),
       });
       setShowCreateForm(false);
-      setNewOrg({ name: '', groupType: 'other', description: '' });
+      setNewOrg({ name: '', groupType: 'other', subcategory: '', description: '' });
       await loadOrganizations();
     } catch (err: any) {
       console.error('Failed to create organization:', err);
@@ -1148,22 +1154,7 @@ export const OrganizationsBook: React.FC = () => {
   };
 
   // Categories derived from canonical group_type field
-  const availableCategories = useMemo((): OrganizationCategory[] => {
-    return [
-      'all',
-      'crews',
-      'bands',
-      'scenes',
-      'communities',
-      'companies',
-      'sports_teams',
-      'clubs',
-      'nonprofits',
-      'family',
-      'public_entities',
-      'recent',
-    ];
-  }, []);
+  const availableCategories = useMemo((): OrganizationCategory[] => ORGANIZATION_CATEGORIES, []);
 
   const filteredOrganizations = useMemo(() => {
     let filtered = [...organizations];
@@ -1171,23 +1162,11 @@ export const OrganizationsBook: React.FC = () => {
     if (activeCategory !== 'all') {
       filtered = filtered.filter(org => {
         const gt = org.group_type;
-        switch (activeCategory) {
-          case 'crews':          return gt === 'friend_group' || gt === 'crew';
-          case 'bands':          return gt === 'band';
-          case 'scenes':         return gt === 'scene';
-          case 'communities':    return gt === 'community';
-          case 'companies':      return gt === 'company';
-          case 'clubs':          return gt === 'club' || gt === 'collective';
-          case 'sports_teams':   return gt === 'sports_team' || gt === 'martial_arts';
-          case 'nonprofits':     return gt === 'nonprofit';
-          case 'family':         return gt === 'family';
-          case 'public_entities':return gt === 'public_entity' || gt === 'institution';
-          case 'recent': {
-            const cutoff = subDays(new Date(), 30);
-            return new Date(org.last_seen) >= cutoff;
-          }
-          default: return true;
+        if (activeCategory === 'recent') {
+          const cutoff = subDays(new Date(), 30);
+          return new Date(org.last_seen) >= cutoff;
         }
+        return groupTypeMatchesCategory(gt, activeCategory);
       });
     }
 
@@ -1551,26 +1530,25 @@ export const OrganizationsBook: React.FC = () => {
                 />
                 <select
                   value={newOrg.groupType}
-                  onChange={e => setNewOrg(v => ({ ...v, groupType: e.target.value as Organization['group_type'] }))}
+                  onChange={e => setNewOrg(v => ({ ...v, groupType: e.target.value as Organization['group_type'], subcategory: '' }))}
                   className="px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                 >
-                  <option value="friend_group">Friend Group</option>
-                  <option value="crew">Crew</option>
-                  <option value="band">Band</option>
-                  <option value="scene">Scene</option>
-                  <option value="community">Community</option>
-                  <option value="company">Company</option>
-                  <option value="sports_team">Sports Team</option>
-                  <option value="club">Club</option>
-                  <option value="collective">Collective</option>
-                  <option value="nonprofit">Nonprofit</option>
-                  <option value="affiliation">Affiliation</option>
-                  <option value="family">Family</option>
-                  <option value="martial_arts">Martial Arts</option>
-                  <option value="institution">Institution</option>
-                  <option value="public_entity">Public Entity</option>
-                  <option value="other">Other</option>
+                  {GROUP_TYPES.map(t => (
+                    <option key={t} value={t}>{GROUP_TYPE_LABELS[t]}</option>
+                  ))}
                 </select>
+                {(GROUP_SUBCATEGORIES[newOrg.groupType]?.length ?? 0) > 0 && (
+                  <select
+                    value={newOrg.subcategory}
+                    onChange={e => setNewOrg(v => ({ ...v, subcategory: e.target.value }))}
+                    className="px-3 py-2 bg-black/60 border border-border/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  >
+                    <option value="">Subcategory (optional)</option>
+                    {(GROUP_SUBCATEGORIES[newOrg.groupType] ?? []).map(sc => (
+                      <option key={sc} value={sc}>{formatSubcategory(sc)}</option>
+                    ))}
+                  </select>
+                )}
                 <Input
                   placeholder="Description (optional)"
                   value={newOrg.description}
@@ -1644,6 +1622,24 @@ export const OrganizationsBook: React.FC = () => {
               >
                 <Building2 className="h-4 w-4" />
                 Companies
+              </TabsTrigger>
+            )}
+            {availableCategories.includes('brands') && (
+              <TabsTrigger
+                value="brands"
+                className="flex items-center gap-2 data-[state=active]:bg-fuchsia-500/20 data-[state=active]:text-fuchsia-400"
+              >
+                <Tag className="h-4 w-4" />
+                Brands
+              </TabsTrigger>
+            )}
+            {availableCategories.includes('vendors') && (
+              <TabsTrigger
+                value="vendors"
+                className="flex items-center gap-2 data-[state=active]:bg-lime-500/20 data-[state=active]:text-lime-400"
+              >
+                <Truck className="h-4 w-4" />
+                Vendors
               </TabsTrigger>
             )}
             {availableCategories.includes('sports_teams') && (

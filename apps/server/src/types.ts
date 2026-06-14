@@ -372,6 +372,7 @@ export type LocationProfile = {
   moods: { mood: string; count: number }[];
   entries: LocationVisit[];
   sources: string[];
+  metadata?: Record<string, unknown>;
 };
 
 export type MemoryGraphNodeType = 'entry' | 'event' | 'person' | 'place' | 'tag' | 'theme' | 'chapter';

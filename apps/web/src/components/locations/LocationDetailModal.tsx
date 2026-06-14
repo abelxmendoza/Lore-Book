@@ -8,11 +8,31 @@ import { fetchJson } from '../../lib/api';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { UnknownField } from '../ui/UnknownField';
 import type { LocationProfile } from './LocationProfileCard';
+// Re-export so consumers (e.g. CharacterDetailModal) can import the type from here.
+export type { LocationProfile } from './LocationProfileCard';
 import { useMockData } from '../../contexts/MockDataContext';
+import { schedulePostChatRefresh } from '../../lib/storyRefresh';
+import { classifyLocation, KIND_META, locationHierarchy, computeChildren } from '../../lib/locationTaxonomy';
+import {
+  formatPlaceType,
+  formatPlaceSignificance,
+  getPlaceTags,
+  getPlaceSignificance,
+  resolvePlaceType,
+  type PlaceSignificance,
+} from '../../lib/placeTypes';
+import { PlaceProfileEditor, type PlaceProfileDraft } from './PlaceProfileEditor';
+import { Button } from '../ui/button';
+import { Pencil } from 'lucide-react';
 
 type LocationDetailModalProps = {
   location: LocationProfile;
+  /** Full location list — used to derive the nesting (places within this one). */
+  allLocations?: LocationProfile[];
+  /** Open a nested/parent location in the modal. */
+  onSelectLocation?: (loc: LocationProfile) => void;
   onClose: () => void;
+  onLocationUpdated?: (loc: LocationProfile) => void;
 };
 
 type TabKey = 'overview' | 'memories' | 'people' | 'insights' | 'knowledge';
@@ -25,7 +45,34 @@ const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: 'insights',  label: 'Insights',  icon: Brain },
 ];
 
-export const LocationDetailModal = ({ location, onClose }: LocationDetailModalProps) => {
+export const LocationDetailModal = ({
+  location: locationProp,
+  allLocations = [],
+  onSelectLocation,
+  onClose,
+  onLocationUpdated,
+}: LocationDetailModalProps) => {
+  const [location, setLocation] = useState(locationProp);
+  const [editingProfile, setEditingProfile] = useState(false);
+
+  useEffect(() => {
+    setLocation(locationProp);
+    setEditingProfile(false);
+  }, [locationProp.id]);
+
+  const reloadLocationProfile = async () => {
+    if (isMockDataEnabled || !location.id) return;
+    try {
+      const r = await fetchJson<{ locations: LocationProfile[] }>('/api/locations');
+      const updated = r.locations.find(l => l.id === location.id);
+      if (updated) {
+        setLocation(updated);
+        onLocationUpdated?.(updated);
+      }
+    } catch {
+      // non-blocking
+    }
+  };
   const { useMockData: isMockDataEnabled } = useMockData();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [loadingMemories, setLoadingMemories] = useState(false);
@@ -135,7 +182,12 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
         }
       } catch (error) {
         console.error('Failed to load location memories:', error);
-        // Fallback to mock memories even if API fails
+        // Real accounts must never see fabricated memories — only demo mode does.
+        if (!isMockDataEnabled) {
+          setMemoryCards([]);
+          setLoadingMemories(false);
+          return;
+        }
         const mockMemories: MemoryCard[] = [
           {
             id: `mock-mem-${location.id}-1`,
@@ -242,6 +294,10 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
         }),
       });
       setChatMessages(prev => [...prev, { role: 'assistant', content: response.answer || 'Got it.', timestamp: new Date() }]);
+      schedulePostChatRefresh({ scopes: ['all'] });
+      window.dispatchEvent(new CustomEvent('lk:locations-updated', { detail: { ids: [location.id] } }));
+      setTimeout(() => { void reloadLocationProfile(); }, 4000);
+      setTimeout(() => { void reloadLocationProfile(); }, 11000);
     } catch {
       setChatMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong.', timestamp: new Date() }]);
     } finally {
@@ -255,10 +311,55 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
   const a = location.analytics;
   const verifiedPeople = location.relatedPeople.filter(person => person.character_id);
   const placeLine = [location.address, location.city, location.region, location.country].filter(Boolean).join(', ');
+  const placeType = resolvePlaceType(location.type, location.name);
+  const placeTags = getPlaceTags(location);
+  const placeSignificance = getPlaceSignificance(location);
+
+  const profileDraft: PlaceProfileDraft = {
+    type: resolvePlaceType(location.type, location.name) ?? location.type ?? '',
+    place_tags: placeTags,
+    place_significance: placeSignificance,
+  };
+
+  const savePlaceProfile = async (draft: PlaceProfileDraft) => {
+    if (isMockDataEnabled) {
+      const next = {
+        ...location,
+        type: draft.type || location.type,
+        metadata: {
+          ...(location.metadata ?? {}),
+          place_tags: draft.place_tags,
+          place_significance: draft.place_significance,
+        },
+      };
+      setLocation(next);
+      onLocationUpdated?.(next);
+      setEditingProfile(false);
+      return;
+    }
+    const r = await fetchJson<{ success: boolean; location: LocationProfile }>(
+      `/api/locations/${location.id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          type: draft.type || null,
+          place_tags: draft.place_tags,
+          place_significance: draft.place_significance,
+        }),
+      },
+    );
+    if (r.success && r.location) {
+      setLocation(r.location);
+      onLocationUpdated?.(r.location);
+      window.dispatchEvent(new CustomEvent('lk:locations-updated', { detail: { ids: [location.id] } }));
+    }
+    setEditingProfile(false);
+  };
+
   const identityFields = [
-    { label: 'Type', value: location.type },
+    { label: 'Place type', value: placeType ? formatPlaceType(placeType) : location.type ?? undefined },
     { label: 'Location', value: placeLine },
-    { label: 'Owner/operator', value: location.ownerOperator },
+    { label: 'Owner/operator', value: location.ownerOperator ?? undefined },
   ].filter((field): field is { label: string; value: string } => Boolean(field.value));
 
   return (
@@ -273,7 +374,12 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-bold text-white leading-tight">{location.name}</h2>
             <div className="flex flex-wrap items-center gap-3 mt-1">
-              {location.type && <span className="text-xs text-teal-300/80 capitalize">{location.type}</span>}
+              {placeType && (
+                <span className="text-xs text-teal-300/80">{formatPlaceType(placeType)}</span>
+              )}
+              {!placeType && location.type && (
+                <span className="text-xs text-teal-300/80 capitalize">{location.type.replace(/_/g, ' ')}</span>
+              )}
               <span className="text-xs text-white/45">{location.visitCount} visits</span>
               {location.coordinates && (
                 <span className="text-xs text-white/30 font-mono">
@@ -319,20 +425,141 @@ export const LocationDetailModal = ({ location, onClose }: LocationDetailModalPr
           {/* ── OVERVIEW ── */}
           {activeTab === 'overview' && (
             <div className="space-y-5">
-              {/* Place identity */}
-              {identityFields.length > 0 && (
-                <div className="rounded-xl bg-white/4 border border-white/8 p-3">
-                  <p className="text-xs text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <MapPin className="h-3 w-3" /> Identity
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {identityFields.map(field => (
-                      <div key={field.label} className="rounded-lg bg-black/25 border border-white/6 px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-wider text-white/30">{field.label}</p>
-                        <p className="text-xs font-medium text-white/75">{field.value}</p>
+              {/* Hierarchy + nesting — kind, what it's part of, and places within */}
+              {(() => {
+                const kind = classifyLocation(location);
+                const meta = KIND_META[kind];
+                const hierarchy = locationHierarchy(location);
+                const children = computeChildren(location, allLocations);
+                const findByName = (name: string) =>
+                  allLocations.find(l => l.name.toLowerCase() === name.toLowerCase());
+                if (kind === 'other' && hierarchy.length === 0 && children.length === 0) return null;
+                return (
+                  <div className="rounded-xl bg-white/4 border border-white/8 p-3 space-y-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full border ${meta.color}`}>
+                        <span aria-hidden>{meta.icon}</span> {meta.label}
+                      </span>
+                      {hierarchy.length > 0 && (
+                        <span className="text-xs text-white/45 flex items-center gap-1 flex-wrap">
+                          part of
+                          {hierarchy.map((h, i) => {
+                            const target = findByName(h.name);
+                            return (
+                              <span key={h.name} className="flex items-center gap-1">
+                                {i > 0 && <span className="text-white/25">›</span>}
+                                {target && onSelectLocation ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onSelectLocation(target)}
+                                    className="text-teal-300 hover:text-teal-200 hover:underline underline-offset-2"
+                                  >
+                                    {h.name}
+                                  </button>
+                                ) : (
+                                  <span className="text-white/65">{h.name}</span>
+                                )}
+                              </span>
+                            );
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    {children.length > 0 && (
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1.5">
+                          Places within ({children.length})
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {children.slice(0, 12).map(child => (
+                            <button
+                              key={child.id}
+                              type="button"
+                              onClick={() => onSelectLocation?.(child)}
+                              disabled={!onSelectLocation}
+                              className="text-xs px-2.5 py-1 rounded-full bg-black/30 border border-white/10 text-white/70 hover:border-teal-500/40 hover:text-teal-200 transition-colors disabled:cursor-default"
+                            >
+                              <span aria-hidden>{KIND_META[classifyLocation(child)].icon}</span> {child.name}
+                              {child.visitCount > 0 && <span className="ml-1 text-[10px] text-white/35">{child.visitCount}</span>}
+                            </button>
+                          ))}
+                          {children.length > 12 && (
+                            <span className="text-xs text-white/35 self-center">+{children.length - 12} more</span>
+                          )}
+                        </div>
                       </div>
-                    ))}
+                    )}
                   </div>
+                );
+              })()}
+
+              {/* Place identity + editor */}
+              <div className="space-y-3">
+                {!editingProfile && (
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => setEditingProfile(true)}
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                      Edit type & tags
+                    </Button>
+                  </div>
+                )}
+                {editingProfile ? (
+                  <PlaceProfileEditor
+                    initial={profileDraft}
+                    onSave={savePlaceProfile}
+                    onCancel={() => setEditingProfile(false)}
+                  />
+                ) : identityFields.length > 0 ? (
+                  <div className="rounded-xl bg-white/4 border border-white/8 p-3">
+                    <p className="text-xs text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <MapPin className="h-3 w-3" /> Identity
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {identityFields.map(field => (
+                        <div key={field.label} className="rounded-lg bg-black/25 border border-white/6 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wider text-white/30">{field.label}</p>
+                          <p className="text-xs font-medium text-white/75">{field.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              {(placeTags.length > 0 || placeSignificance.length > 0) && !editingProfile && (
+                <div className="rounded-xl bg-white/4 border border-white/8 p-3 space-y-3">
+                  {placeSignificance.length > 0 && (
+                    <div>
+                      <p className="text-xs text-white/40 uppercase tracking-wider mb-2">Personal significance</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {placeSignificance.map(sig => (
+                          <span key={sig} className="text-xs px-2.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-300">
+                            {formatPlaceSignificance(sig)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {placeTags.length > 0 && (
+                    <div>
+                      <p className="text-xs text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                        <Tag className="h-3 w-3" /> Place tags
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {placeTags.map(tag => (
+                          <span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-300">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

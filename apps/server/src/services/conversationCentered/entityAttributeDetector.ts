@@ -152,6 +152,10 @@ export class EntityAttributeDetector {
   /**
    * Get or create a character representing the user themselves
    */
+  async ensureUserCharacter(userId: string): Promise<{ id: string; name: string } | null> {
+    return this.getOrCreateUserCharacter(userId);
+  }
+
   private async getOrCreateUserCharacter(userId: string): Promise<{ id: string; name: string } | null> {
     try {
       // First, try to find existing user character

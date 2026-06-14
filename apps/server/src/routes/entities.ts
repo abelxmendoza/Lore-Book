@@ -4,6 +4,7 @@ import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
 import { embeddingService } from '../services/embeddingService';
+import { inferPlaceType } from '../constants/placeTypes';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
@@ -215,15 +216,27 @@ async function ensureLocationExists(userId: string, name: string, context: strin
 
   if (!existing) {
     const embedding = await embeddingService.embedText(name);
-    await supabaseAdmin
+    const inferredType = inferPlaceType(name, context);
+    const { data: created } = await supabaseAdmin
       .from('locations')
       .insert({
         user_id: userId,
         name: name,
         normalized_name: normalizedName,
-        description: `Mentioned in: ${context.substring(0, 200)}`,
-        embedding: embedding
-      });
+        type: inferredType,
+        metadata: { description: `Mentioned in: ${context.substring(0, 200)}` },
+        embedding: embedding,
+      })
+      .select('id')
+      .single();
+
+    if (created?.id) {
+      const { placeEnrichmentService } = await import('../services/placeEnrichmentService');
+      await placeEnrichmentService.enrichFromText(userId, created.id, `${name} ${context}`).catch(() => {});
+    }
+  } else {
+    const { placeEnrichmentService } = await import('../services/placeEnrichmentService');
+    await placeEnrichmentService.enrichFromText(userId, existing.id, `${name} ${context}`).catch(() => {});
   }
 }
 

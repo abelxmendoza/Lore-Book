@@ -78,6 +78,16 @@ describe('LoveAndRelationshipsView', () => {
     });
   });
 
+  it('shows demo romantic character suggestions in mock mode', async () => {
+    render(<LoveAndRelationshipsView />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/romantic interests detected in your chats/i)).toBeInTheDocument();
+      expect(screen.getByText('Priya')).toBeInTheDocument();
+      expect(screen.getByText('Daniel')).toBeInTheDocument();
+    });
+  });
+
   it.skip('shows loading state initially', () => {
     // Loading state is transient: mock resolves in useEffect before we can assert
     render(<LoveAndRelationshipsView />);

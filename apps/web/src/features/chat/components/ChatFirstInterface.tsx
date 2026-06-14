@@ -132,6 +132,26 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   const [selectedSource, setSelectedSource] = useState<ChatSource | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchMessageId, setSearchMessageId] = useState<string | null>(null);
+
+  // Jump to a message when navigating from thread explorer search hits.
+  useEffect(() => {
+    if (!activeThreadId || messages.length === 0) return;
+    const jumpId = sessionStorage.getItem('lk:chat-jump-message');
+    if (jumpId) {
+      sessionStorage.removeItem('lk:chat-jump-message');
+      if (messages.some(m => m.id === jumpId)) {
+        setSearchMessageId(jumpId);
+        return;
+      }
+    }
+    const jumpIndexRaw = sessionStorage.getItem('lk:chat-jump-index');
+    if (jumpIndexRaw != null) {
+      sessionStorage.removeItem('lk:chat-jump-index');
+      const idx = Number(jumpIndexRaw);
+      const target = messages[idx];
+      if (target?.id) setSearchMessageId(target.id);
+    }
+  }, [activeThreadId, messages]);
   const [showWorkSummary, setShowWorkSummary] = useState(false);
   const [showCognitiveTrace] = useLocalStorage<boolean>('lorekeeper_cognitive_trace', false);
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
@@ -324,7 +344,12 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         threads={threads}
         currentThreadId={activeThreadId}
         onNewChat={handleNewChat}
-        onSelectThread={(id) => {
+        onSelectThread={(id, options) => {
+          if (options?.messageId) {
+            sessionStorage.setItem('lk:chat-jump-message', options.messageId);
+          } else if (options?.messageIndex != null) {
+            sessionStorage.setItem('lk:chat-jump-index', String(options.messageIndex));
+          }
           setThreadListMobileOpen(false);
           handleSelectThread(id);
         }}

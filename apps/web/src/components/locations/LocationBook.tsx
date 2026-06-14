@@ -1,16 +1,32 @@
 import { useState, useMemo, useEffect } from 'react';
-import { MapPin, RefreshCw, ChevronLeft, ChevronRight, Home, Briefcase, Plane, Coffee, Leaf } from 'lucide-react';
+import { MapPin, RefreshCw, ChevronLeft, ChevronRight, SlidersHorizontal, X } from 'lucide-react';
+import { classifyLocation, KIND_META, type LocationKind } from '../../lib/locationTaxonomy';
+import {
+  PLACE_ADVANCED_FILTER_GROUPS,
+  PLACE_LIFESTYLE_FILTERS,
+  PLACE_TAXONOMY,
+  placeMatchesAdvancedFilter,
+  placeMatchesFilter,
+  placeMatchesLifestyleFilter,
+  getSubTypeFiltersForCategory,
+  type PlaceAdvancedFilter,
+  type PlaceCategory,
+  type PlaceLifestyleFilter,
+} from '../../lib/placeTypes';
 import { LocationProfileCard, type LocationProfile } from './LocationProfileCard';
 import { LocationDetailModal } from './LocationDetailModal';
 import { Button } from '../ui/button';
 import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { fetchJson } from '../../lib/api';
+import { apiCache } from '../../lib/cache';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { mockDataService } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
+import { DetectedLocationSuggestions } from './DetectedLocationSuggestions';
+import { LocationMergePanel } from './LocationMergePanel';
 
 // Comprehensive mock location data showcasing all app capabilities
 // Export for use in mock data service
@@ -48,6 +64,7 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-2',
     name: 'Golden Gate Park',
+    type: 'park',
     visitCount: 25,
     firstVisited: '2023-08-01T09:00:00Z',
     lastVisited: '2024-03-15T16:00:00Z',
@@ -81,6 +98,8 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-3',
     name: 'Home Studio',
+    type: 'house',
+    metadata: { place_significance: ['home', 'creative_space'], place_tags: ['Creative', 'Music Production'] },
     visitCount: 120,
     firstVisited: '2023-06-01T08:00:00Z',
     lastVisited: '2024-03-25T18:00:00Z',
@@ -115,6 +134,7 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-4',
     name: 'Coffee Shop Downtown',
+    type: 'coffee_shop',
     visitCount: 45,
     firstVisited: '2023-09-10T08:00:00Z',
     lastVisited: '2024-03-22T15:00:00Z',
@@ -148,6 +168,7 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-5',
     name: 'Tokyo, Japan',
+    type: 'city',
     visitCount: 1,
     firstVisited: '2024-02-15T00:00:00Z',
     lastVisited: '2024-02-25T23:59:59Z',
@@ -171,6 +192,7 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-6',
     name: 'Gym & Fitness Center',
+    type: 'gym',
     visitCount: 35,
     firstVisited: '2024-01-05T06:00:00Z',
     lastVisited: '2024-03-24T19:00:00Z',
@@ -196,6 +218,7 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-7',
     name: 'Local Library',
+    type: 'library',
     visitCount: 18,
     firstVisited: '2023-11-20T10:00:00Z',
     lastVisited: '2024-03-18T16:00:00Z',
@@ -250,6 +273,7 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-9',
     name: 'University Campus',
+    type: 'university',
     visitCount: 28,
     firstVisited: '2024-01-08T08:00:00Z',
     lastVisited: '2024-03-20T17:00:00Z',
@@ -275,6 +299,7 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-10',
     name: 'Art Gallery - Mission District',
+    type: 'theater',
     visitCount: 8,
     firstVisited: '2024-02-20T18:00:00Z',
     lastVisited: '2024-03-18T19:00:00Z',
@@ -303,6 +328,7 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-11',
     name: 'Mountain Trail',
+    type: 'hiking_trail',
     visitCount: 12,
     firstVisited: '2024-01-12T07:00:00Z',
     lastVisited: '2024-03-16T10:00:00Z',
@@ -328,6 +354,7 @@ export const dummyLocations: LocationProfile[] = [
   {
     id: 'dummy-loc-12',
     name: 'Conference Center',
+    type: 'convention_center',
     visitCount: 3,
     firstVisited: '2024-02-20T09:00:00Z',
     lastVisited: '2024-03-05T17:00:00Z',
@@ -350,7 +377,26 @@ export const dummyLocations: LocationProfile[] = [
     ],
     entries: [],
     sources: ['journal', 'calendar']
-  }
+  },
+  {
+    id: 'dummy-loc-13',
+    name: 'Catch One',
+    type: 'nightclub',
+    metadata: {
+      place_tags: ['Goth Scene', 'Live Music', 'Dancing', 'Late Night', 'Historic Venue'],
+      place_significance: ['hangout_spot'],
+    },
+    visitCount: 14,
+    firstVisited: '2023-04-01T22:00:00Z',
+    lastVisited: '2024-03-01T02:30:00Z',
+    coordinates: { lat: 34.024, lng: -118.344 },
+    relatedPeople: [],
+    tagCounts: [{ tag: 'nightlife', count: 10 }, { tag: 'music', count: 8 }],
+    chapters: [],
+    moods: [{ mood: 'energized', count: 8 }],
+    entries: [],
+    sources: ['journal'],
+  },
 ];
 
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
@@ -369,12 +415,28 @@ export const LocationBook = () => {
   const [selectedMemory, setSelectedMemory] = useState<MemoryCard | null>(null);
   const [allMemories, setAllMemories] = useState<MemoryCard[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedTab, setSelectedTab] = useState('all');
+  const [selectedLifestyle, setSelectedLifestyle] = useState<PlaceLifestyleFilter>('all');
+  const [selectedAdvancedFilter, setSelectedAdvancedFilter] = useState<PlaceAdvancedFilter | null>(null);
+  const [selectedKind, setSelectedKind] = useState<LocationKind | null>(null);
+  const [selectedSubType, setSelectedSubType] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
   const { entries = [] } = useLoreKeeper();
+
+  const toggleSelectedForMerge = (locationId: string) => {
+    setSelectedForMerge(prev => {
+      const next = new Set(prev);
+      if (next.has(locationId)) next.delete(locationId);
+      else next.add(locationId);
+      return next;
+    });
+  };
 
   const loadLocations = async () => {
     setLoading(true);
     try {
+      apiCache.deletePattern(/\/api\/locations/);
       const response = await fetchJson<{ locations: LocationProfile[] }>('/api/locations');
       const locationList = response?.locations || [];
       
@@ -418,43 +480,25 @@ export const LocationBook = () => {
     setAllMemories(memoryCards);
   }, [entries]);
 
+  useEffect(() => {
+    setSelectedSubType(null);
+  }, [selectedAdvancedFilter]);
+
   const filteredLocations = useMemo(() => {
     let locs = locations;
 
-    // Tag-driven category filtering. Tags are the primary signal; name keywords
-    // are a fallback for locations that haven't accumulated tags yet.
-    const CATEGORY_TAGS: Record<string, { tags: string[]; nameKeywords: string[] }> = {
-      work: {
-        tags: ['work', 'meeting', 'networking', 'office', 'conference', 'professional', 'study', 'education', 'career-transition'],
-        nameKeywords: ['office', 'work', 'conference', 'campus', 'library'],
-      },
-      home: {
-        tags: ['home', 'family', 'routine'],
-        nameKeywords: ['home', 'house', 'apartment'],
-      },
-      travel: {
-        tags: ['travel', 'vacation', 'adventure', 'culture', 'trip'],
-        nameKeywords: ['airport', 'hotel'],
-      },
-      social: {
-        tags: ['social', 'coffee', 'dates', 'art', 'friends', 'party'],
-        nameKeywords: ['coffee', 'gallery', 'bar', 'restaurant', 'cafe'],
-      },
-      nature: {
-        tags: ['nature', 'hiking', 'outdoors', 'beach', 'park'],
-        nameKeywords: ['park', 'trail', 'beach', 'mountain', 'lake', 'forest'],
-      },
-    };
+    locs = locs.filter(loc => placeMatchesLifestyleFilter(loc, selectedLifestyle));
 
-    const category = CATEGORY_TAGS[selectedTab];
-    if (category) {
-      locs = locs.filter(loc => {
-        const nameLower = loc.name.toLowerCase();
-        return (
-          loc.tagCounts.some(t => category.tags.includes(t.tag.toLowerCase())) ||
-          category.nameKeywords.some(kw => nameLower.includes(kw))
-        );
-      });
+    if (selectedAdvancedFilter) {
+      if (selectedSubType) {
+        locs = locs.filter(loc => placeMatchesFilter(loc, 'all', selectedSubType));
+      } else {
+        locs = locs.filter(loc => placeMatchesAdvancedFilter(loc, selectedAdvancedFilter));
+      }
+    }
+
+    if (selectedKind) {
+      locs = locs.filter(loc => classifyLocation(loc) === selectedKind);
     }
 
     if (!searchTerm.trim()) return locs;
@@ -462,15 +506,16 @@ export const LocationBook = () => {
     return locs.filter(
       (loc) =>
         loc.name.toLowerCase().includes(term) ||
+        (loc.type ?? '').toLowerCase().includes(term) ||
         loc.relatedPeople.some((person) => person.name.toLowerCase().includes(term)) ||
         loc.tagCounts.some((tag) => tag.tag.toLowerCase().includes(term)) ||
         loc.chapters.some((chapter) => chapter.title?.toLowerCase().includes(term))
     );
-  }, [locations, searchTerm, selectedTab]);
+  }, [locations, searchTerm, selectedLifestyle, selectedAdvancedFilter, selectedSubType, selectedKind]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedTab]);
+  }, [searchTerm, selectedLifestyle, selectedAdvancedFilter, selectedSubType, selectedKind]);
 
   const totalPages = Math.ceil(filteredLocations.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -531,18 +576,74 @@ export const LocationBook = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentPage, totalPages]);
 
-  const FILTERS = [
-    { value: 'all',    label: 'All',    icon: MapPin },
-    { value: 'work',   label: 'Work',   icon: Briefcase },
-    { value: 'home',   label: 'Home',   icon: Home },
-    { value: 'travel', label: 'Travel', icon: Plane },
-    { value: 'social', label: 'Social', icon: Coffee },
-    { value: 'nature', label: 'Nature', icon: Leaf },
-  ] as const;
+  const subTypeFilters = useMemo(() => {
+    if (!selectedAdvancedFilter || !(selectedAdvancedFilter in PLACE_TAXONOMY)) {
+      return [];
+    }
+    return getSubTypeFiltersForCategory(locations, selectedAdvancedFilter as PlaceCategory);
+  }, [selectedAdvancedFilter, locations]);
+
+  const lifestyleFilters = useMemo(() => {
+    return PLACE_LIFESTYLE_FILTERS.map(filter => ({
+      ...filter,
+      count: locations.filter(loc => placeMatchesLifestyleFilter(loc, filter.id)).length,
+    }));
+  }, [locations]);
+
+  const advancedFilterGroups = useMemo(() => {
+    return PLACE_ADVANCED_FILTER_GROUPS.map(group => ({
+      ...group,
+      filters: group.filters.map(filter => ({
+        ...filter,
+        count: locations.filter(loc => placeMatchesAdvancedFilter(loc, filter.id)).length,
+      })),
+    }));
+  }, [locations]);
+
+  const activeAdvancedLabel = useMemo(() => {
+    if (!selectedAdvancedFilter) return null;
+    for (const group of PLACE_ADVANCED_FILTER_GROUPS) {
+      const match = group.filters.find(filter => filter.id === selectedAdvancedFilter);
+      if (match) return match.label;
+    }
+    return null;
+  }, [selectedAdvancedFilter]);
+
+  const kindFilters = useMemo(() => {
+    const counts = new Map<LocationKind, number>();
+    for (const loc of locations) {
+      const k = classifyLocation(loc);
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    const order: LocationKind[] = ['country', 'state', 'region', 'city', 'neighborhood', 'venue', 'landmark', 'nature', 'other'];
+    return order
+      .filter(k => (counts.get(k) ?? 0) > 0)
+      .map(k => ({ kind: k, count: counts.get(k)!, meta: KIND_META[k] }));
+  }, [locations]);
 
   return (
     <div className="space-y-5">
       <ChatFirstViewHint />
+
+      <DetectedLocationSuggestions
+        demoMode={isMockDataEnabled}
+        existingLocationNames={locations.flatMap(l => [
+          l.name,
+          ...(Array.isArray(l.metadata?.aliases) ? (l.metadata!.aliases as string[]) : []),
+        ])}
+        onLocationAdded={() => void loadLocations()}
+      />
+
+      <LocationMergePanel
+        locations={locations}
+        demoMode={isMockDataEnabled}
+        onMerged={() => void loadLocations()}
+        selectionMode={selectionMode}
+        onSelectionModeChange={setSelectionMode}
+        selectedForMerge={selectedForMerge}
+        onToggleSelected={toggleSelectedForMerge}
+        onClearSelection={() => setSelectedForMerge(new Set())}
+      />
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -580,24 +681,153 @@ export const LocationBook = () => {
         emptyHint="No matching locations"
       />
 
-      {/* Filter pills */}
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map(({ value, label, icon: Icon }) => (
+      {/* Clean lifestyle row */}
+      <div className="flex flex-wrap items-center gap-2">
+        {lifestyleFilters.map(({ id, label, icon, count }) => (
           <button
-            key={value}
+            key={id}
             type="button"
-            onClick={() => setSelectedTab(value)}
+            onClick={() => setSelectedLifestyle(id)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-              selectedTab === value
+              selectedLifestyle === id
                 ? 'bg-teal-500/15 border-teal-500/40 text-teal-300'
                 : 'bg-white/4 border-white/10 text-white/50 hover:border-white/25 hover:text-white/70'
             }`}
           >
-            <Icon className="h-3 w-3" />
+            <span aria-hidden>{icon}</span>
             {label}
+            {id !== 'all' && <span className="text-[10px] text-white/40">{count}</span>}
           </button>
         ))}
+
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen(open => !open)}
+          className={`ml-0 sm:ml-1 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+            advancedOpen || selectedAdvancedFilter
+              ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
+              : 'bg-white/4 border-white/10 text-white/50 hover:border-white/25 hover:text-white/70'
+          }`}
+          aria-expanded={advancedOpen}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Advanced
+          {activeAdvancedLabel && <span className="text-[10px] text-white/45">· {activeAdvancedLabel}</span>}
+        </button>
+
+        {(selectedAdvancedFilter || selectedKind) && (
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedAdvancedFilter(null);
+              setSelectedSubType(null);
+              setSelectedKind(null);
+            }}
+            className="flex items-center gap-1 text-xs text-white/35 hover:text-white/65 transition-colors"
+          >
+            <X className="h-3 w-3" />
+            Clear filters
+          </button>
+        )}
       </div>
+
+      {advancedOpen && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4 space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/45 mb-2">
+              Advanced Filters
+            </p>
+            <p className="text-xs text-white/35">
+              Narrow places by type or by what they mean in your story.
+            </p>
+          </div>
+
+          {advancedFilterGroups.map(group => (
+            <div key={group.label} className="space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-white/35">
+                {group.label}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {group.filters.map(({ id, label, icon, count }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAdvancedFilter(id);
+                      setSelectedSubType(null);
+                    }}
+                    className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
+                      selectedAdvancedFilter === id
+                        ? 'bg-purple-500/15 border-purple-500/35 text-purple-200'
+                        : 'border-white/10 text-white/45 hover:text-white/70 hover:border-white/25'
+                    }`}
+                  >
+                    {icon && <span className="mr-1" aria-hidden>{icon}</span>}
+                    {label}
+                    <span className="ml-1 text-white/35">{count}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Sub-type filters within selected category (e.g. Nightclub, Goth Club) */}
+      {subTypeFilters.length > 1 && (
+        <div className="flex flex-wrap gap-1.5 -mt-1">
+          <button
+            type="button"
+            onClick={() => setSelectedSubType(null)}
+            className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
+              !selectedSubType
+                ? 'bg-teal-500/15 border-teal-500/35 text-teal-300'
+                : 'border-white/10 text-white/45 hover:text-white/65'
+            }`}
+          >
+            All in category
+          </button>
+          {subTypeFilters.map(({ type, label, count }) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setSelectedSubType(type)}
+              className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
+                selectedSubType === type
+                  ? 'bg-teal-500/15 border-teal-500/35 text-teal-300'
+                  : 'border-white/10 text-white/45 hover:text-white/65'
+              }`}
+            >
+              {label}
+              <span className="ml-1 text-white/35">{count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Geographic kind filters — country / city / venue … */}
+      {kindFilters.length > 1 && (
+        <div className="flex flex-wrap gap-2 -mt-2">
+          {kindFilters.map(({ kind, count, meta }) => {
+            return (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setSelectedKind(current => current === kind ? null : kind)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                  selectedKind === kind
+                    ? 'bg-teal-500/15 border-teal-500/40 text-teal-300'
+                    : 'bg-white/4 border-white/10 text-white/50 hover:border-white/25 hover:text-white/70'
+                }`}
+              >
+                <span aria-hidden>{meta.icon}</span>
+                {meta.plural}
+                <span className="text-[10px] text-white/40">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Grid */}
       {loading ? (
@@ -618,7 +848,11 @@ export const LocationBook = () => {
             <LocationProfileCard
               key={location.id || `loc-${index}`}
               location={location}
-              onClick={() => setSelectedLocation(location)}
+              selectionMode={selectionMode}
+              selected={selectedForMerge.has(location.id)}
+              onClick={() =>
+                selectionMode ? toggleSelectedForMerge(location.id) : setSelectedLocation(location)
+              }
             />
           ))}
         </div>
@@ -674,6 +908,12 @@ export const LocationBook = () => {
       {selectedLocation && (
         <LocationDetailModal
           location={selectedLocation}
+          allLocations={locations}
+          onSelectLocation={(loc) => setSelectedLocation(loc)}
+          onLocationUpdated={(loc) => {
+            setSelectedLocation(loc);
+            setLocations(prev => prev.map(l => (l.id === loc.id ? loc : l)));
+          }}
           onClose={() => { setSelectedLocation(null); void loadLocations(); }}
         />
       )}
@@ -692,4 +932,3 @@ export const LocationBook = () => {
     </div>
   );
 };
-

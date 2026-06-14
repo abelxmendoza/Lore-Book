@@ -1,7 +1,7 @@
-import { Clock, Target, TrendingUp, CheckCircle, Link as LinkIcon, Sparkles, X } from 'lucide-react';
+import { Clock, Target, TrendingUp, CheckCircle, Link as LinkIcon, Sparkles, X, Pause, Play, Flag } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { useQuest, useQuestHistory, useUpdateQuestProgress } from '../../hooks/useQuests';
+import { useAbandonQuest, useCompleteQuest, usePauseQuest, useQuest, useQuestHistory, useStartQuest, useUpdateQuestProgress } from '../../hooks/useQuests';
 import type { Quest } from '../../types/quest';
 
 interface QuestDetailPanelProps {
@@ -13,6 +13,10 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
   const { data: quest, isLoading } = useQuest(questId || '');
   const { data: history } = useQuestHistory(questId || '');
   const updateProgress = useUpdateQuestProgress();
+  const startQuest = useStartQuest();
+  const pauseQuest = usePauseQuest();
+  const completeQuest = useCompleteQuest();
+  const abandonQuest = useAbandonQuest();
 
   if (!questId) {
     return (
@@ -52,6 +56,13 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
       default: return 'text-primary border-primary/30';
     }
   };
+
+  const actionButtonClass = "text-xs px-2 h-10 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[40px] flex-1 sm:flex-none";
+  const canResume = quest.status === 'paused';
+  const canPause = quest.status === 'active';
+  const canComplete = quest.status !== 'completed' && quest.status !== 'abandoned';
+  const canAbandon = quest.status !== 'completed' && quest.status !== 'abandoned';
+  const isMutatingStatus = startQuest.isPending || pauseQuest.isPending || completeQuest.isPending || abandonQuest.isPending;
 
   return (
     <div className="h-full sm:h-full bg-black/40 border-l-0 sm:border-l border-primary/20 backdrop-blur-sm flex flex-col min-h-0 overflow-hidden">
@@ -128,6 +139,56 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
                 +10%
               </Button>
             </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {canResume && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isMutatingStatus}
+                  onClick={() => { void startQuest.mutateAsync(questId); }}
+                  className={actionButtonClass}
+                >
+                  <Play className="h-3.5 w-3.5 mr-1" />
+                  Resume
+                </Button>
+              )}
+              {canPause && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isMutatingStatus}
+                  onClick={() => { void pauseQuest.mutateAsync(questId); }}
+                  className={actionButtonClass}
+                >
+                  <Pause className="h-3.5 w-3.5 mr-1" />
+                  Pause
+                </Button>
+              )}
+              {canComplete && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isMutatingStatus}
+                  onClick={() => { void completeQuest.mutateAsync({ questId }); }}
+                  className={actionButtonClass}
+                >
+                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                  Complete
+                </Button>
+              )}
+              {canAbandon && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isMutatingStatus}
+                  onClick={() => { void abandonQuest.mutateAsync({ questId, reason: 'Marked from quest details' }); }}
+                  className="text-xs px-2 h-10 border-red-500/30 text-red-300 hover:bg-red-500/10 hover:border-red-500/50 min-h-[40px] flex-1 sm:flex-none"
+                >
+                  <Flag className="h-3.5 w-3.5 mr-1" />
+                  Abandon
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -189,6 +250,56 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
               +10%
             </Button>
           </div>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            {canResume && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isMutatingStatus}
+                onClick={() => { void startQuest.mutateAsync(questId); }}
+                className="text-xs h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px]"
+              >
+                <Play className="h-3.5 w-3.5 mr-1" />
+                Resume
+              </Button>
+            )}
+            {canPause && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isMutatingStatus}
+                onClick={() => { void pauseQuest.mutateAsync(questId); }}
+                className="text-xs h-11 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50 min-h-[44px]"
+              >
+                <Pause className="h-3.5 w-3.5 mr-1" />
+                Pause
+              </Button>
+            )}
+            {canComplete && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isMutatingStatus}
+                onClick={() => { void completeQuest.mutateAsync({ questId }); }}
+                className="text-xs h-11 border-green-500/30 text-green-300 hover:bg-green-500/10 hover:border-green-500/50 min-h-[44px]"
+              >
+                <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                Complete
+              </Button>
+            )}
+            {canAbandon && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isMutatingStatus}
+                onClick={() => { void abandonQuest.mutateAsync({ questId, reason: 'Marked from mobile quest details' }); }}
+                className="text-xs h-11 border-red-500/30 text-red-300 hover:bg-red-500/10 hover:border-red-500/50 min-h-[44px]"
+              >
+                <Flag className="h-3.5 w-3.5 mr-1" />
+                Abandon
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -237,7 +348,7 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
         {quest.milestones && quest.milestones.length > 0 && (
           <div>
             <div className="text-xs sm:text-sm text-primary/60 mb-3 font-mono">MILESTONES</div>
-            <div className="space-y-2 max-h-48 sm:max-h-60 overflow-y-auto">
+            <div className="space-y-2">
               {quest.milestones.map((milestone) => (
                 <div 
                   key={milestone.id} 
@@ -276,7 +387,7 @@ export const QuestDetailPanel = ({ questId, onClose }: QuestDetailPanelProps) =>
         {history && history.length > 0 && (
           <div>
             <div className="text-xs sm:text-sm text-primary/60 mb-3 font-mono">HISTORY</div>
-            <div className="space-y-2 max-h-48 sm:max-h-60 overflow-y-auto">
+            <div className="space-y-2">
               {history.map((event) => (
                 <div key={event.id} className="bg-black/40 border border-primary/20 rounded p-2 sm:p-3">
                   <div className="flex items-center justify-between mb-1">

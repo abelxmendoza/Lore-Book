@@ -76,7 +76,13 @@ const BAND_SIGNALS = /\b(band|ensemble|group|duo|trio|quartet|quintet|orchestra|
 
 const COMMUNITY_SIGNALS = /\b(community|bootcamp|school|academy|students|alumni|developers|programmer|programmers|cohort)\b/i;
 
-// Workplace / staffing vocabulary — a recruiter, onboarding contact, agency,
+const VENDOR_SIGNALS =
+  /\b(vendor|supplier|contractor|subcontractor|freelancer|consultant|outsourc(?:e|ed|ing)|procurement|invoice(?:s|d)?|saas provider|service provider|deliver(?:y|ies)|fulfillment|wholesaler|distributor)\b/i;
+
+const BRAND_SIGNALS =
+  /\b(brand|product line|label|merch|merchandise|sponsor(?:ed|ship)?|wear(?:s|ing)?|shop(?:s|ping)? at|customer of|loyalty program|subscription box)\b/i;
+
+// Workplace / staffing vocabulary
 // staffing firm, or hiring/employment language all point at a company, not a
 // friend group. This is what tells the app that "Sam the recruiter and Kelly
 // working onboarding" is a professional org (e.g. a staffing agency).
@@ -335,6 +341,8 @@ export class GroupDetectionService {
       return 'family';
     }
     if (COMMUNITY_SIGNALS.test(m) || COMMUNITY_SIGNALS.test(n)) return 'community';
+    if (VENDOR_SIGNALS.test(m) || VENDOR_SIGNALS.test(n)) return 'vendor';
+    if (BRAND_SIGNALS.test(m) || BRAND_SIGNALS.test(n)) return 'brand';
     if (BAND_SIGNALS.test(m) || /\b(music|gig|concert|rehearsal|song|album|track|riff|jam)\b/i.test(m)) {
       return 'band';
     }
@@ -370,7 +378,7 @@ export class GroupDetectionService {
 
   suggestMembershipModel(groupType: GroupType): MembershipModel {
     if (groupType === 'scene' || groupType === 'community') return 'fuzzy';
-    if (groupType === 'public_entity') return 'none';
+    if (groupType === 'public_entity' || groupType === 'brand' || groupType === 'vendor') return 'none';
     return 'strict';
   }
 
