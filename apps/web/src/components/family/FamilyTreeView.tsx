@@ -382,17 +382,17 @@ export const FamilyTreeView = ({ tree, onMemberClick, compact = false }: FamilyT
 export const createMockUserFamilyTree = (): FamilyTree => ({
   self_id: 'self',
   branches: [
-    { side: 'paternal', label: "Ashford (Dad's side)", color: '#60a5fa' },
+    { side: 'paternal', label: "Whitmore (Dad's side)", color: '#60a5fa' },
     { side: 'maternal', label: "Chen (Mom's side)",    color: '#f472b6' },
     { side: 'partner',  label: 'Partner side',         color: '#34d399' },
   ],
   members: [
     { id: 'self',     name: 'You',                 relation: 'related',      relation_label: 'You',          generation: 0,  is_self: true },
-    { id: 'dad',      name: 'Roberto Ashford',     first_name: 'Roberto',   relation: 'parent',      relation_label: 'Dad',          generation: -1, birth_year: 1966, side: 'paternal', closeness: 72 },
-    { id: 'mom',      name: 'Elena Chen-Ashford',  first_name: 'Elena',     relation: 'parent',      relation_label: 'Mom',          generation: -1, birth_year: 1969, side: 'maternal', closeness: 81 },
+    { id: 'dad',      name: 'Roberto Whitmore',     first_name: 'Roberto',   relation: 'parent',      relation_label: 'Dad',          generation: -1, birth_year: 1966, side: 'paternal', closeness: 72 },
+    { id: 'mom',      name: 'Elena Chen-Whitmore',  first_name: 'Elena',     relation: 'parent',      relation_label: 'Mom',          generation: -1, birth_year: 1969, side: 'maternal', closeness: 81 },
     { id: 'jordan',   name: 'Jordan Kim',          first_name: 'Jordan',    relation: 'half_sibling', relation_label: 'Half-sibling', generation: 0,  side: 'maternal', closeness: 93 },
-    { id: 'gpa-m',    name: 'Miguel Ashford',      first_name: 'Miguel',    relation: 'grandparent', relation_label: 'Grandpa',      generation: -2, birth_year: 1938, side: 'paternal', deceased: true },
-    { id: 'gma-m',    name: 'Carmen Ashford',      first_name: 'Carmen',    relation: 'grandparent', relation_label: 'Grandma',      generation: -2, birth_year: 1942, side: 'paternal', closeness: 65 },
+    { id: 'gpa-m',    name: 'Miguel Whitmore',      first_name: 'Miguel',    relation: 'grandparent', relation_label: 'Grandpa',      generation: -2, birth_year: 1938, side: 'paternal', deceased: true },
+    { id: 'gma-m',    name: 'Carmen Whitmore',      first_name: 'Carmen',    relation: 'grandparent', relation_label: 'Grandma',      generation: -2, birth_year: 1942, side: 'paternal', closeness: 65 },
     { id: 'gpa-c',    name: 'James Chen',          first_name: 'James',     relation: 'grandparent', relation_label: 'Grandpa',      generation: -2, birth_year: 1944, side: 'maternal', closeness: 58 },
     { id: 'gma-c',    name: 'Susan Chen',          first_name: 'Susan',     relation: 'grandparent', relation_label: 'Grandma',      generation: -2, birth_year: 1947, side: 'maternal', closeness: 61 },
     { id: 'uncle-dc', name: 'David Chen',          first_name: 'David',     relation: 'uncle',       relation_label: 'Uncle',        generation: -1, birth_year: 1972, side: 'maternal', closeness: 45 },
@@ -411,7 +411,7 @@ export const createMockFamilyTreeForCharacter = (characterName: string): FamilyT
       ],
       members: [
         { id: 'jordan',    name: 'Jordan Kim',          first_name: 'Jordan',   relation: 'related',      relation_label: 'Jordan',       generation: 0,  is_self: true },
-        { id: 'mom-shared',name: 'Elena Chen-Ashford',  first_name: 'Elena',    relation: 'parent',       relation_label: 'Mom (shared)', generation: -1, side: 'maternal' },
+        { id: 'mom-shared',name: 'Elena Chen-Whitmore',  first_name: 'Elena',    relation: 'parent',       relation_label: 'Mom (shared)', generation: -1, side: 'maternal' },
         { id: 'dad-kim',   name: 'David Kim',           first_name: 'David',    relation: 'parent',       relation_label: 'Dad',          generation: -1, side: 'paternal' },
         { id: 'self-ref',  name: 'You',                 first_name: 'You',      relation: 'half_sibling', relation_label: 'Half-sibling', generation: 0,  side: 'maternal' },
         { id: 'gma-kim',   name: 'Soon-hee Kim',        first_name: 'Soon-hee', relation: 'grandparent',  relation_label: 'Grandma',      generation: -2, side: 'paternal' },

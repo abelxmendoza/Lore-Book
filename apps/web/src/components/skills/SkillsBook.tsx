@@ -75,7 +75,7 @@ const generateMockSkills = (): Skill[] => {
       total_xp: Math.floor(totalXP),
       xp_to_next_level: Math.floor(xpToNext),
       description: i < 3
-        ? ['Building LoreBook in React and Supabase', '6-0 amateur Muay Thai record', 'Line cook experience at fast-casual restaurants'][i]
+        ? ['Building the fictional Atlas Notes app in React', 'Amateur kickboxing training at the demo gym', 'Line cook experience at River Café and Golden Spoon'][i]
         : Math.random() > 0.5 ? `Skill description for ${skillNames[i % skillNames.length]}` : null,
       first_mentioned_at: firstMentioned.toISOString(),
       last_practiced_at: lastPracticed?.toISOString() || null,
@@ -91,9 +91,9 @@ const generateMockSkills = (): Skill[] => {
           enjoyment: 78,
           usage_frequency: 'daily',
           trajectory: 'improving',
-          origin_story: 'Learned through CS projects; now building LoreBook frontend',
-          related_projects: ['LoreBook'],
-          evidence: [{ text: 'Building LoreBook in React and Supabase' }],
+          origin_story: 'Learned through CS projects; now building the Atlas Notes frontend',
+          related_projects: ['Atlas Notes'],
+          evidence: [{ text: 'Building the Atlas Notes frontend in React' }],
         },
       } : i === 1 ? {
         skill_profile: {
@@ -103,8 +103,8 @@ const generateMockSkills = (): Skill[] => {
           enjoyment: 90,
           usage_frequency: 'weekly',
           trajectory: 'improving',
-          origin_story: 'Training for discipline and competition',
-          evidence: [{ text: '6-0 in Muay Thai' }],
+          origin_story: 'Training for discipline and conditioning',
+          evidence: [{ text: 'Training kickboxing twice a week' }],
         },
       } : i === 2 ? {
         skill_profile: {
@@ -114,8 +114,8 @@ const generateMockSkills = (): Skill[] => {
           enjoyment: 55,
           usage_frequency: 'rarely',
           trajectory: 'stagnant',
-          origin_story: 'Worked line cook at Chipotle and El Pollo Loco',
-          related_jobs: ['Chipotle', 'El Pollo Loco'],
+          origin_story: 'Worked line cook at River Café and Golden Spoon',
+          related_jobs: ['River Café', 'Golden Spoon'],
         },
       } : {},
       created_at: firstMentioned.toISOString(),

@@ -28,6 +28,7 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { DetectedCharacterSuggestions } from './DetectedCharacterSuggestions';
+import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 
@@ -2148,13 +2149,13 @@ export const dummyCharacters: Character[] = [
     proximity_level: 'direct',
     has_met: true,
     relationship_depth: 'close',
-    summary: 'Family member from the Ashford-Luna side. Her contextual nickname, Hallway Guardian, demonstrates the app’s story-aware extra-name feature.',
-    tags: ['family', 'aunt', 'ashford-luna', 'nickname'],
+    summary: 'Family member from the Whitmore-Chen side. Her contextual nickname, Hallway Guardian, demonstrates the app’s story-aware extra-name feature.',
+    tags: ['family', 'aunt', 'whitmore-chen', 'nickname'],
     metadata: {
       relationship_type: 'family',
       relationship_types: ['family'],
       categories: ['family'],
-      group_memberships: ['The Ashford-Luna Family'],
+      group_memberships: ['The Whitmore-Chen Family'],
       contextual_title: 'Hallway Guardian',
       closeness_score: 78
     },
@@ -2178,13 +2179,13 @@ export const dummyCharacters: Character[] = [
     proximity_level: 'direct',
     has_met: true,
     relationship_depth: 'moderate',
-    summary: 'Family member grouped under the Ashford-Luna Family demo card.',
-    tags: ['family', 'cousin', 'ashford-luna'],
+    summary: 'Family member grouped under the Whitmore-Chen Family demo card.',
+    tags: ['family', 'cousin', 'whitmore-chen'],
     metadata: {
       relationship_type: 'family',
       relationship_types: ['family'],
       categories: ['family'],
-      group_memberships: ['The Ashford-Luna Family'],
+      group_memberships: ['The Whitmore-Chen Family'],
       closeness_score: 64
     },
     social_media: {},
@@ -2207,13 +2208,13 @@ export const dummyCharacters: Character[] = [
     proximity_level: 'direct',
     has_met: true,
     relationship_depth: 'close',
-    summary: 'Family elder and memory keeper for the Ashford-Luna Family demo group.',
-    tags: ['family', 'grandmother', 'elder', 'ashford-luna'],
+    summary: 'Family elder and memory keeper for the Whitmore-Chen Family demo group.',
+    tags: ['family', 'grandmother', 'elder', 'whitmore-chen'],
     metadata: {
       relationship_type: 'family',
       relationship_types: ['family'],
       categories: ['family'],
-      group_memberships: ['The Ashford-Luna Family'],
+      group_memberships: ['The Whitmore-Chen Family'],
       closeness_score: 88
     },
     social_media: {},
@@ -2251,14 +2252,14 @@ export const dummyCharacters: Character[] = [
     relationship_count: 3
   },
   {
-    id: 'demo-brighthire-dana',
-    name: 'Dana',
-    first_name: 'Dana',
+    id: 'demo-summit-sloane',
+    name: 'Sloane',
+    first_name: 'Sloane',
     last_name: null,
-    alias: ['Dana from BrightHire'],
+    alias: ['Sloane from Summit Staffing'],
     pronouns: 'she/her',
     archetype: 'professional',
-    role: 'BrightHire recruiting contact',
+    role: 'Summit Staffing recruiting contact',
     status: 'active',
     importance_level: 'supporting',
     importance_score: 63,
@@ -2266,13 +2267,13 @@ export const dummyCharacters: Character[] = [
     proximity_level: 'direct',
     has_met: true,
     relationship_depth: 'professional',
-    summary: 'Professional contact from BrightHire tied to identity verification, paperwork, background checks, and Northstar Logistics onboarding.',
-    tags: ['professional', 'recruiter', 'brighthire', 'northstar logistics', 'onboarding'],
+    summary: 'Professional contact from Summit Staffing tied to onboarding paperwork and Northwind Logistics hiring.',
+    tags: ['professional', 'recruiter', 'summit staffing', 'northwind logistics', 'onboarding'],
     metadata: {
       relationship_type: 'professional',
       relationship_types: ['professional', 'recruiter'],
       categories: ['professional'],
-      group_memberships: ['BrightHire Staffing', 'Northstar Logistics'],
+      group_memberships: ['Summit Staffing', 'Northwind Logistics'],
       group_role: 'Recruiting contact',
       closeness_score: 42
     },
@@ -2281,14 +2282,14 @@ export const dummyCharacters: Character[] = [
     relationship_count: 2
   },
   {
-    id: 'demo-brighthire-reese',
-    name: 'Reese',
-    first_name: 'Reese',
+    id: 'demo-summit-quinn',
+    name: 'Quinn',
+    first_name: 'Quinn',
     last_name: null,
-    alias: ['Reese from BrightHire'],
+    alias: ['Quinn from Summit Staffing'],
     pronouns: 'they/them',
     archetype: 'professional',
-    role: 'BrightHire agency contact',
+    role: 'Summit Staffing agency contact',
     status: 'active',
     importance_level: 'minor',
     importance_score: 46,
@@ -2296,13 +2297,13 @@ export const dummyCharacters: Character[] = [
     proximity_level: 'direct',
     has_met: true,
     relationship_depth: 'professional',
-    summary: 'Professional connection from the BrightHire agency hiring pipeline for Northstar Logistics.',
-    tags: ['professional', 'agency', 'brighthire', 'northstar logistics'],
+    summary: 'Professional connection from the Summit Staffing hiring pipeline for Northwind Logistics.',
+    tags: ['professional', 'agency', 'summit staffing', 'northwind logistics'],
     metadata: {
       relationship_type: 'professional',
       relationship_types: ['professional'],
       categories: ['professional'],
-      group_memberships: ['BrightHire Staffing', 'Northstar Logistics'],
+      group_memberships: ['Summit Staffing', 'Northwind Logistics'],
       group_role: 'Agency contact',
       closeness_score: 35
     },
@@ -2389,7 +2390,7 @@ const relationshipSignalsFor = (char: Character): Set<string> => {
   if (/\b(?:my|his|her|their|our)\s+(?:grandmother|grandfather|mom|dad|mother|father|sister|brother|cousin|aunt|uncle|grandma|grandpa|abuela|abuelo|t[ií]o|t[ií]a|family)\b/.test(text) || /\bfamily\s+(?:member|side|relative)\b/.test(text)) signals.add('family');
   if (/\b(dated|dating|date|romantic|girlfriend|boyfriend|situationship|crush|ex|hooked up|went out|partner|wife|husband)\b/.test(text)) signals.add('romantic');
   if (/\b(mentor|mentorship|teacher|instructor|bootcamp|coach|professor|advisor|taught me|guided me)\b/.test(text)) signals.add('mentor');
-  if (/\b(brighthire|northstar logistics|agency|recruiter|onboarding|hiring|background check|identity verification|paperwork|professional|colleague|coworker|co worker|job|career|client|manager|boss)\b/.test(text)) signals.add('professional');
+  if (/\b(summit staffing|northwind logistics|agency|recruiter|onboarding|hiring|background check|identity verification|paperwork|professional|colleague|coworker|co worker|job|career|client|manager|boss)\b/.test(text)) signals.add('professional');
   if (/\b(bandmate|creative|collaborator|collab|co founder|cofounder|artist|music|writing|producer|dj|show|set|song|studio|make music|record|perform)\b/.test(text)) signals.add('creative');
   if (/\b(friend|ally|buddy|roommate|homie|new friends?)\b/.test(text)) signals.add('friend');
 
@@ -2531,6 +2532,13 @@ export const CharacterBook = () => {
 
   const loadCharacters = async () => {
     setLoading(true);
+
+    if (isMockDataEnabled) {
+      const result = mockDataService.getWithFallback.characters(null, true);
+      setCharacters(result.data.map(withDemoAnalytics));
+      setLoading(false);
+      return;
+    }
     
     try {
       const response = await fetchJson<{ characters: Character[] }>('/api/characters/list');
@@ -2956,8 +2964,17 @@ export const CharacterBook = () => {
       <ChatFirstViewHint />
       <DetectedCharacterSuggestions
         demoMode={isMockDataEnabled}
-        existingCharacterNames={characters.flatMap(c => [c.name, ...(c.alias ?? [])])}
-        onCharacterAdded={() => void loadCharacters()}
+        existingCharacterNames={
+          isMockDataEnabled
+            ? getMockCharacterSuggestionBookNames('general')
+            : characters.flatMap(c => [c.name, ...(c.alias ?? [])])
+        }
+        onCharacterAdded={() => {
+          if (isMockDataEnabled) {
+            setMergeNotice('Demo: character added to your book preview — sign in to persist real suggestions.');
+          }
+          void loadCharacters();
+        }}
       />
       {/* User Profile */}
       <div className="space-y-3 sm:space-y-4">
@@ -3356,7 +3373,7 @@ export const CharacterBook = () => {
             <FamilyTreePanel
               scope="mine"
               title="No family tree yet"
-              hint="Mention family members in chat (e.g. “my abuela”, “my cousin Nico”) — LoreBook builds and grows your tree from your conversations, then fills in real names as you share them."
+              hint="Mention family members in chat (e.g. “my grandmother”, “my cousin Nico”) — LoreBook builds and grows your tree from your conversations, then fills in real names as you share them."
               onMemberClick={(memberId, memberName) => {
                 const nameLc = memberName.toLowerCase();
                 const match = characters.find(c =>

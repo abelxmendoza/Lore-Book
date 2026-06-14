@@ -39,20 +39,35 @@ export const MOCK_ROMANTIC_RELATIONSHIP_NAMES: string[] = [
 
 const DEMO_GENERAL: CharacterSuggestion[] = [
   {
-    name: 'Dana (Onboarding)',
-    mentionCount: 4,
-    confidence: 0.82,
-    source: 'chat_extract',
-    role: 'Recruiter contact',
-    context: 'Handling your KForce onboarding paperwork',
+    name: 'Iris Vance',
+    mentionCount: 6,
+    confidence: 0.88,
+    source: 'omega_entity',
+    archetype: 'performer',
+    context: 'Indie theater performer — mentioned around the Velvet Room venue',
   },
   {
-    name: 'Reese',
+    name: 'DJ Cassian',
+    mentionCount: 4,
+    confidence: 0.84,
+    source: 'chat_extract',
+    role: 'DJ / collaborator',
+    context: 'Opened for Iris Vance at a fictional anniversary showcase',
+  },
+  {
+    name: 'Uncle Theo',
     mentionCount: 3,
-    confidence: 0.76,
+    confidence: 0.79,
     source: 'entity_question',
-    archetype: 'colleague',
-    context: 'Staffing agency contact from recent threads',
+    context: 'Family mention from sample demo threads — confirm who you mean',
+  },
+  {
+    name: 'Morgan Hale',
+    mentionCount: 2,
+    confidence: 0.74,
+    source: 'chat_extract',
+    role: 'Manager',
+    context: 'Helios Aerospace manager referenced in a fictional work story',
   },
 ];
 
@@ -65,7 +80,7 @@ const DEMO_ROMANTIC: CharacterSuggestion[] = [
     source: 'chat_extract',
     archetype: 'romantic',
     relationship: 'romantic',
-    context: 'You went on two dates recently — add her to track the connection',
+    context: 'Two dates in the demo storyline — add her to track the connection',
   },
   {
     name: 'Daniel',
@@ -74,7 +89,7 @@ const DEMO_ROMANTIC: CharacterSuggestion[] = [
     source: 'chat_extract',
     archetype: 'romantic',
     relationship: 'romantic',
-    context: 'Mentioned as a situationship in your recent chats',
+    context: 'Mentioned as a situationship in the demo romance arc',
   },
 ];
 

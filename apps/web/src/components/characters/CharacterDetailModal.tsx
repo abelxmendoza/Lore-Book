@@ -144,17 +144,17 @@ type CharacterDetailModalProps = {
 
 type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge';
 
-const tabs: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
-  { key: 'info',         label: 'Info',            icon: FileText },
-  { key: 'knowledge',    label: 'What I Know',     icon: Brain },
-  { key: 'chat',         label: 'Intelligence Chat', icon: MessageSquare },
-  { key: 'relationships', label: 'Connections',   icon: Network },
-  { key: 'history',      label: 'History',         icon: Calendar },
-  { key: 'timeline',     label: 'Timeline',        icon: Clock },
-  { key: 'insights',     label: 'Insights',        icon: BarChart3 },
-  { key: 'perceptions',  label: 'Perceptions',     icon: Eye },
-  { key: 'social',       label: 'Social',          icon: Globe },
-  { key: 'metadata',     label: 'Metadata',        icon: Database },
+const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
+  { key: 'info',         label: 'Info',              shortLabel: 'Info',    icon: FileText },
+  { key: 'knowledge',    label: 'What I Know',       shortLabel: 'Know',    icon: Brain },
+  { key: 'chat',         label: 'Intelligence Chat', shortLabel: 'Chat',    icon: MessageSquare },
+  { key: 'relationships', label: 'Connections',      shortLabel: 'Links',   icon: Network },
+  { key: 'history',      label: 'History',           shortLabel: 'History', icon: Calendar },
+  { key: 'timeline',     label: 'Timeline',          shortLabel: 'Time',    icon: Clock },
+  { key: 'insights',     label: 'Insights',          shortLabel: 'Insights', icon: BarChart3 },
+  { key: 'perceptions',  label: 'Perceptions',       shortLabel: 'Views',   icon: Eye },
+  { key: 'social',       label: 'Social',            shortLabel: 'Social',  icon: Globe },
+  { key: 'metadata',     label: 'Metadata',          shortLabel: 'Meta',    icon: Database },
 ];
 
 export const CharacterDetailModal = ({ character, onClose, onUpdate, relationship, isMainCharacter: isMainCharacterProp }: CharacterDetailModalProps) => {
@@ -1797,20 +1797,25 @@ User's message: ${message}`;
   const storyGroups = (isMockDataEnabled ? getMockOrganizations() : characterOrganizations);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm" data-testid={isMainCharacter ? 'main-character-modal' : 'character-modal'} role="dialog" aria-modal="true">
-      <div className={`bg-gradient-to-br from-black via-black/95 to-black border-0 sm:border-2 rounded-none sm:rounded-2xl w-full h-full sm:h-[95vh] sm:max-w-5xl overflow-hidden flex flex-col shadow-2xl ${
+    <div
+      className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm overscroll-none"
+      data-testid={isMainCharacter ? 'main-character-modal' : 'character-modal'}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className={`bg-gradient-to-br from-black via-black/95 to-black border-0 sm:border-2 rounded-none sm:rounded-2xl w-full h-[100dvh] max-h-[100dvh] sm:h-[95vh] sm:max-h-[95vh] sm:max-w-5xl overflow-hidden flex flex-col shadow-2xl ${
         isMainCharacter
           ? 'border-amber-500/40 shadow-amber-500/15'
           : 'border-primary/30 shadow-primary/20'
       }`}>
         {/* Enhanced Header */}
-        <div className={`relative border-b-2 p-3 sm:p-6 ${
+        <div className={`relative border-b-2 p-3 sm:p-6 flex-shrink-0 ${
           isMainCharacter
             ? 'bg-gradient-to-r from-amber-500/20 via-amber-950/30 to-purple-900/20 border-amber-500/35'
             : 'bg-gradient-to-r from-primary/20 via-purple-900/20 to-primary/20 border-primary/30'
         }`}>
           <div className="flex items-start justify-between gap-2 sm:gap-4">
-            <div className="flex items-start gap-2 sm:gap-4 flex-1 min-w-0">
+            <div className="flex items-start gap-2.5 sm:gap-4 flex-1 min-w-0">
               <div className="relative flex-shrink-0">
                 {/* Phase ring around avatar */}
                 {(() => {
@@ -1915,7 +1920,7 @@ User's message: ${message}`;
                   </p>
                 )}
                 {editedCharacter.alias && editedCharacter.alias.length > 0 && (
-                  <p className="text-[10px] sm:text-base text-white/70 mb-1 sm:mb-2 truncate">
+                  <p className="text-[10px] sm:text-base text-white/70 mb-1 sm:mb-2 line-clamp-2 sm:line-clamp-none sm:truncate">
                     <span className="text-white/50 hidden sm:inline">Also known as: </span>
                     <span className="text-white/50 sm:hidden">AKA: </span>
                     {editedCharacter.alias.join(', ')}
@@ -1980,6 +1985,7 @@ User's message: ${message}`;
                 )}
               </div>
             </div>
+            <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
             {!isMainCharacter && (
             <Button
               variant="ghost"
@@ -1994,32 +2000,44 @@ User's message: ${message}`;
             <Button variant="ghost" onClick={onClose} className="flex-shrink-0 hover:bg-white/10 h-8 w-8 sm:h-10 sm:w-10 p-0" aria-label="Close">
               <X className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
+            </div>
           </div>
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          {/* Tab Navigation */}
-          <div className="flex flex-wrap border-b border-border/60 flex-shrink-0">
+          {/* Tab Navigation — horizontal scroll on mobile, wrap on larger screens */}
+          <div className="flex-shrink-0 border-b border-border/60 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex min-w-max sm:min-w-0 sm:flex-wrap">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+                  className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium transition whitespace-nowrap flex-shrink-0 ${
                     activeTab === tab.key
-                      ? 'border-b-2 border-primary text-white'
-                      : 'text-white/60 hover:text-white'
+                      ? 'border-b-2 border-primary text-white bg-primary/5'
+                      : 'text-white/60 hover:text-white hover:bg-white/5'
                   }`}
+                  aria-current={activeTab === tab.key ? 'page' : undefined}
+                  aria-label={tab.label}
                 >
-                  <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  <span>{tab.label}</span>
+                  <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+                  {tab.shortLabel === tab.label ? (
+                    <span>{tab.label}</span>
+                  ) : (
+                    <>
+                      <span className="sm:hidden">{tab.shortLabel}</span>
+                      <span className="hidden sm:inline">{tab.label}</span>
+                    </>
+                  )}
                 </button>
               );
             })}
+            </div>
           </div>
 
-          <div ref={contentRef} className="flex-1 overflow-y-auto p-8 space-y-8 bg-black/40 min-h-0 pb-32">
+          <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-8 bg-black/40 min-h-0 pb-[max(5rem,env(safe-area-inset-bottom,0px))] sm:pb-32">
             {loadingDetails && (
               <div className="text-center py-12 text-white/60">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
@@ -3852,8 +3870,8 @@ User's message: ${message}`;
                   <div ref={chatEndRef} />
                 </div>
 
-                {/* Composer — only shown in Chat tab */}
-                <div className="pt-3 border-t border-white/10">
+                {/* Composer — sticky at bottom of scroll area on mobile */}
+                <div className="sticky bottom-0 z-10 -mx-4 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 border-t border-white/10 bg-black/95 backdrop-blur-md">
                   <ChatComposer
                     onSubmit={handleChatSubmit}
                     loading={chatLoading}

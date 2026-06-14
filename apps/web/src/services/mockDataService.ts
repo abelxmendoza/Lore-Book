@@ -376,10 +376,10 @@ export function mergeDataWithMock<T>(
   useMock: boolean = getGlobalMockDataEnabled()
 ): DataWithMetadata<T[]> {
   if (useMock) {
-    // Use mock data if toggle is on
+    // Demo Mode must never fall back to live account data.
     return {
-      data: mockData.length > 0 ? mockData : realData,
-      metadata: createDataMetadata(mockData.length > 0, mockData.length > 0 ? 'mock' : 'real')
+      data: mockData,
+      metadata: createDataMetadata(true, 'mock')
     };
   } else {
     // Use real data if toggle is off
@@ -405,11 +405,10 @@ export function getDataWithFallback<T>(
   const mock = mockData || [];
 
   if (shouldUseMock) {
-    // When mock is enabled, prefer mock data but fall back to real if no mock
-    const data = mock.length > 0 ? mock : real;
+    // Demo Mode must never fall back to live account data.
     return {
-      data,
-      metadata: createDataMetadata(mock.length > 0, mock.length > 0 ? 'mock' : (real.length > 0 ? 'real' : 'mock'))
+      data: mock,
+      metadata: createDataMetadata(true, 'mock')
     };
   } else {
     // When mock is disabled, only use real data
@@ -516,11 +515,11 @@ export const mockDataService = {
       getDataWithFallback(realData, mockDataRegistry.getPhotos(), useMock),
     goalsValues: (realData?: GoalsValuesMockData | null, useMock?: boolean) => {
       const mock = mockDataRegistry.getGoalsValues();
-      if (useMock !== undefined ? useMock : getGlobalMockDataEnabled()) {
-        const data = mock || realData;
+      const shouldUseMock = useMock !== undefined ? useMock : getGlobalMockDataEnabled();
+      if (shouldUseMock) {
         return {
-          data: data || { goals: [], values: [], alignmentSnapshots: [], driftObservations: [] },
-          metadata: createDataMetadata(!!mock, mock ? 'mock' : (realData ? 'real' : 'mock'))
+          data: mock || { goals: [], values: [], alignmentSnapshots: [], driftObservations: [] },
+          metadata: createDataMetadata(true, 'mock')
         };
       } else {
         return {
@@ -533,11 +532,11 @@ export const mockDataService = {
       getDataWithFallback(realData, mockDataRegistry.getAchievements(), useMock),
     achievementStatistics: (realData?: AchievementStatistics | null, useMock?: boolean) => {
       const mock = mockDataRegistry.getAchievementStatistics();
-      if (useMock !== undefined ? useMock : getGlobalMockDataEnabled()) {
-        const data = mock || realData;
+      const shouldUseMock = useMock !== undefined ? useMock : getGlobalMockDataEnabled();
+      if (shouldUseMock) {
         return {
-          data: data || { total: 0, byType: {} as any, byRarity: {} as any, recent: [] },
-          metadata: createDataMetadata(!!mock, mock ? 'mock' : (realData ? 'real' : 'mock'))
+          data: mock || { total: 0, byType: {} as any, byRarity: {} as any, recent: [] },
+          metadata: createDataMetadata(true, 'mock')
         };
       } else {
         return {
@@ -548,11 +547,11 @@ export const mockDataService = {
     },
     reactionPatterns: (realData?: ReactionPatterns | null, useMock?: boolean) => {
       const mock = mockDataRegistry.getReactionPatterns();
-      if (useMock !== undefined ? useMock : getGlobalMockDataEnabled()) {
-        const data = mock || realData;
+      const shouldUseMock = useMock !== undefined ? useMock : getGlobalMockDataEnabled();
+      if (shouldUseMock) {
         return {
-          data: data || { byTrigger: {}, byLabel: {}, byType: {} as any, intensityAverages: {}, commonPatterns: [] },
-          metadata: createDataMetadata(!!mock, mock ? 'mock' : (realData ? 'real' : 'mock'))
+          data: mock || { byTrigger: {}, byLabel: {}, byType: {} as any, intensityAverages: {}, commonPatterns: [] },
+          metadata: createDataMetadata(true, 'mock')
         };
       } else {
         return {
@@ -565,11 +564,11 @@ export const mockDataService = {
       getDataWithFallback(realData, mockDataRegistry.getPatternInsights(), useMock),
     stabilityMetrics: (realData?: StabilityMetrics | null, useMock?: boolean) => {
       const mock = mockDataRegistry.getStabilityMetrics();
-      if (useMock !== undefined ? useMock : getGlobalMockDataEnabled()) {
-        const data = mock || realData;
+      const shouldUseMock = useMock !== undefined ? useMock : getGlobalMockDataEnabled();
+      if (shouldUseMock) {
         return {
-          data: data || { avg_recovery_time_minutes: null, recovery_trend: 'unknown', recurrence_rate: 0, intensity_trend: 'unknown', resilience_score: null },
-          metadata: createDataMetadata(!!mock, mock ? 'mock' : (realData ? 'real' : 'mock'))
+          data: mock || { avg_recovery_time_minutes: null, recovery_trend: 'unknown', recurrence_rate: 0, intensity_trend: 'unknown', resilience_score: null },
+          metadata: createDataMetadata(true, 'mock')
         };
       } else {
         return {

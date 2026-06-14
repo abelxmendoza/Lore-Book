@@ -23,7 +23,7 @@ describe('organizationProfile', () => {
   describe('deriveOrganizationProfile', () => {
     it('produces a non-empty, type-appropriate profile for a family', () => {
       const p = deriveOrganizationProfile({
-        name: 'Ashford-Luna Family',
+        name: 'Whitmore-Chen Family',
         group_type: 'family',
         members: ['Aunt Maribel', 'Nico'],
       });
@@ -41,12 +41,12 @@ describe('organizationProfile', () => {
 
     it('weaves the first members into roles for color', () => {
       const p = deriveOrganizationProfile({
-        name: 'BrightHire',
+        name: 'Summit Staffing',
         group_type: 'company',
-        members: ['Dana', 'Reese'],
+        members: ['Sloane', 'Quinn'],
       });
       const blob = JSON.stringify(p.structure?.roles);
-      expect(blob).toContain('Dana');
+      expect(blob).toContain('Sloane');
     });
   });
 

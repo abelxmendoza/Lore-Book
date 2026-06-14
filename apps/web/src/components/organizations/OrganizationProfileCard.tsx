@@ -144,6 +144,8 @@ export type Organization = {
 type OrganizationProfileCardProps = {
   organization: Organization;
   onClick?: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
 };
 
 // ── Per-type visual config ────────────────────────────────────────────
@@ -260,7 +262,7 @@ function relBadgeCls(rel: UserRelationship): string {
   return 'bg-white/10 text-white/40 border-white/20';
 }
 
-export const OrganizationProfileCard = ({ organization, onClick }: OrganizationProfileCardProps) => {
+export const OrganizationProfileCard = ({ organization, onClick, selectionMode, selected }: OrganizationProfileCardProps) => {
   const gt = organization.group_type ?? 'other';
   const visual = TYPE_VISUALS[gt] ?? TYPE_VISUALS.other;
   const Icon = visual.icon;
@@ -279,9 +281,22 @@ export const OrganizationProfileCard = ({ organization, onClick }: OrganizationP
 
   return (
     <Card
-      className={`group cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 border-border/50 overflow-hidden flex flex-col aspect-square sm:aspect-auto min-h-0 sm:min-h-0 ${isFormer ? 'opacity-75' : ''}`}
+      className={`group relative cursor-pointer transition-all duration-300 hover:border-primary/50 hover:shadow-xl hover:shadow-primary/20 hover:-translate-y-1 bg-gradient-to-br from-black/60 via-black/40 to-black/60 overflow-hidden flex flex-col aspect-square sm:aspect-auto min-h-0 sm:min-h-0 ${isFormer ? 'opacity-75' : ''} ${
+        selected
+          ? 'border-purple-500/50 ring-1 ring-purple-500/40 bg-purple-500/10'
+          : 'border-border/50'
+      }`}
       onClick={onClick}
     >
+      {selectionMode && (
+        <span
+          className={`absolute top-2 right-2 z-20 w-5 h-5 rounded border text-[10px] flex items-center justify-center ${
+            selected ? 'bg-purple-500 border-purple-400 text-black' : 'border-white/25 text-transparent'
+          }`}
+        >
+          ✓
+        </span>
+      )}
       {/* Header — color and icon vary by group type */}
       <div className={`relative h-10 sm:h-16 bg-gradient-to-br ${visual.grad} flex items-center justify-center flex-shrink-0`}>
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />

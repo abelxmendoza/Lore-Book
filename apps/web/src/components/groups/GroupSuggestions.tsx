@@ -171,8 +171,8 @@ const candidateToOrganization = (c: GroupCandidate, id?: string): Organization =
 
 const DEMO_GROUP_CANDIDATES: GroupCandidate[] = [
   {
-    id: 'demo-group-ashford-luna',
-    proposed_name: 'Ashford-Luna Family',
+    id: 'demo-group-whitmore-chen',
+    proposed_name: 'Whitmore-Chen Family',
     detected_members: ['Aunt Maribel', 'Nico', 'Nana Elena'],
     suggested_group_type: 'family',
     suggested_user_relationship: 'member',
@@ -184,7 +184,7 @@ const DEMO_GROUP_CANDIDATES: GroupCandidate[] = [
   {
     id: 'demo-group-code-harbor',
     proposed_name: 'Code Harbor Academy',
-    detected_members: ['Adrian Patel', 'Maya', 'Reese'],
+    detected_members: ['Adrian Patel', 'Maya', 'Leo'],
     suggested_group_type: 'community',
     suggested_user_relationship: 'alumnus',
     is_public_entity: false,
@@ -193,15 +193,15 @@ const DEMO_GROUP_CANDIDATES: GroupCandidate[] = [
     context: 'Adrian keeps showing up as a mentor connected to the bootcamp, study group, and career transition memories.',
   },
   {
-    id: 'demo-group-brighthire',
-    proposed_name: 'BrightHire Staffing',
-    detected_members: ['Dana', 'Reese'],
+    id: 'demo-group-summit',
+    proposed_name: 'Summit Staffing',
+    detected_members: ['Sloane', 'Quinn'],
     suggested_group_type: 'company',
     suggested_user_relationship: 'referenced',
     is_public_entity: false,
     confidence: 0.86,
     occurrence_count: 4,
-    context: 'Dana and Reese are both tied to paperwork, background checks, and Northstar Logistics onboarding.',
+    context: 'Sloane and Quinn are both tied to paperwork, background checks, and Northwind Logistics onboarding.',
   },
 ];
 

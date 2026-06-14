@@ -146,6 +146,11 @@ export const DetectedCharacterSuggestions = ({
 
       {!collapsed && (
         <div className="px-3 sm:px-4 pb-4 space-y-2">
+          {showDemo && (
+            <p className="text-[11px] text-amber-200/70 leading-relaxed rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+              LoreBook scanned fictional sample conversations and found people not in the demo Character Book yet. Tap Add to preview how confirmation works.
+            </p>
+          )}
           {error && (
             <p className="text-xs text-red-400 rounded border border-red-500/30 bg-red-500/10 px-3 py-2">{error}</p>
           )}

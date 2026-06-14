@@ -20,6 +20,10 @@ vi.mock('../groups/GroupSuggestions', () => ({
   GroupSuggestions: () => <div data-testid="group-suggestions" />,
 }));
 
+vi.mock('../groups/GroupMergePanel', () => ({
+  GroupMergePanel: () => <div data-testid="group-merge-panel" />,
+}));
+
 vi.mock('../timeline/ColorCodedTimeline', () => ({
   ColorCodedTimeline: () => <div data-testid="color-coded-timeline" />,
 }));

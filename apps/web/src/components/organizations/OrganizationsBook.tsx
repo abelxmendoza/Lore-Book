@@ -15,6 +15,7 @@ import { OrganizationProfileCard, type Organization, type OrganizationMember, ty
 import { OrganizationDetailModal } from './OrganizationDetailModal';
 import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import { GroupSuggestions } from '../groups/GroupSuggestions';
+import { GroupMergePanel } from '../groups/GroupMergePanel';
 import { deriveOrganizationProfile } from '../../lib/organizationProfile';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { fetchJson } from '../../lib/api';
@@ -487,11 +488,11 @@ const MOCK_ORGANIZATIONS: Organization[] = [
 
   {
     id: 'mock-8',
-    name: 'The Ashford-Luna Family',
-    aliases: ['Family', 'Home', 'My family', 'Ashford Family', 'Luna Family'],
+    name: 'The Whitmore-Chen Family',
+    aliases: ['Family', 'Home', 'My family', 'Whitmore Family', 'Chen Family'],
     type: 'family', group_type: 'family',
     membership_model: 'strict', user_relationship: 'member', is_public_entity: false,
-    description: 'Three generations across the Ashford and Luna sides. Aunt Maribel, Nico, Nana Elena, parents, cousins, and the relatives who turn ordinary family stories into lore.',
+    description: 'Three generations across the Whitmore and Chen sides. Aunt Maribel, Nico, Nana Elena, parents, cousins, and the relatives who turn ordinary family stories into lore.',
     location: 'Cedar Falls, CA',
     founded_year: 1968,
     generations: 3,
@@ -526,11 +527,11 @@ const MOCK_ORGANIZATIONS: Organization[] = [
 
   {
     id: 'mock-19',
-    name: 'BrightHire Staffing',
-    aliases: ['BrightHire Staffing agency', 'BrightHire Staffing recruiting'],
+    name: 'Summit Staffing',
+    aliases: ['Summit Staffing agency', 'Summit Staffing recruiting'],
     type: 'company', group_type: 'company',
     membership_model: 'fuzzy', user_relationship: 'adjacent', is_public_entity: false,
-    description: 'Recruiting and staffing agency connected to the Northstar Logistics hiring process. Dana and Reese are professional contacts tied to onboarding, paperwork, identity verification, and background check updates.',
+    description: 'Recruiting and staffing agency connected to the Northwind Logistics hiring process. Sloane and Quinn are professional contacts tied to onboarding and paperwork.',
     location: 'Remote / recruiting pipeline',
     status: 'active',
     member_count: 2,
@@ -541,29 +542,29 @@ const MOCK_ORGANIZATIONS: Organization[] = [
     updated_at: subDays(new Date(), 2).toISOString(),
     metadata: {
       hierarchy: [
-        { name: 'Dana', role: 'Recruiting contact', importance: 'primary_contact' },
-        { name: 'Reese', role: 'Agency contact', importance: 'supporting_contact' },
+        { name: 'Sloane', role: 'Recruiting contact', importance: 'primary_contact' },
+        { name: 'Quinn', role: 'Agency contact', importance: 'supporting_contact' },
       ],
     },
     members: [
-      { id: 'm1', character_name: 'Dana', role: 'Recruiting contact', status: 'active', notes: 'Sent paperwork and handled identity verification follow-up.' },
-      { id: 'm2', character_name: 'Reese', role: 'Agency contact', status: 'active', notes: 'Professional connection from the BrightHire Staffing hiring pipeline.' },
+      { id: 'm1', character_name: 'Sloane', role: 'Recruiting contact', status: 'active', notes: 'Sent paperwork and handled onboarding follow-up.' },
+      { id: 'm2', character_name: 'Quinn', role: 'Agency contact', status: 'active', notes: 'Professional connection from the Summit Staffing hiring pipeline.' },
     ],
     stories: [
-      { id: 's1', title: 'Identity verification call', summary: 'Dana said the rest of the paperwork would come soon while the background check continued.', date: subDays(new Date(), 2).toISOString(), related_members: ['Dana'] },
+      { id: 's1', title: 'Onboarding paperwork call', summary: 'Sloane said the rest of the paperwork would come soon while the background check continued.', date: subDays(new Date(), 2).toISOString(), related_members: ['Sloane'] },
     ],
-    events: [{ id: 'e1', title: 'Identity verification video call', date: subDays(new Date(), 2).toISOString(), type: 'work' }],
+    events: [{ id: 'e1', title: 'Onboarding video call', date: subDays(new Date(), 2).toISOString(), type: 'work' }],
     locations: [],
     analytics: mkAnalytics(62, 78, 'increasing', ['Clear professional context', 'Hiring pipeline signal'], ['Temporary relationship', 'Dependent on onboarding updates']),
   },
 
   {
     id: 'mock-20',
-    name: 'Northstar Logistics',
-    aliases: ['Northstar Logistics job', 'Northstar Logistics onboarding'],
+    name: 'Northwind Logistics',
+    aliases: ['Northwind Logistics job', 'Northwind Logistics onboarding'],
     type: 'company', group_type: 'company',
     membership_model: 'fuzzy', user_relationship: 'adjacent', is_public_entity: false,
-    description: 'The company tied to the expected start date, background check, and onboarding pipeline. Connected to BrightHire Staffing through the recruiting workflow.',
+    description: 'The company tied to the expected start date, background check, and onboarding pipeline. Connected to Summit Staffing through the recruiting workflow.',
     location: 'Work / onboarding',
     status: 'active',
     member_count: 0,
@@ -573,7 +574,7 @@ const MOCK_ORGANIZATIONS: Organization[] = [
     created_at: subDays(new Date(), 45).toISOString(),
     updated_at: subDays(new Date(), 2).toISOString(),
     metadata: {
-      related_groups: ['BrightHire Staffing'],
+      related_groups: ['Summit Staffing'],
       hiring_status: 'background_check_pending',
     },
     members: [],
@@ -940,10 +941,8 @@ export const OrganizationsBook: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanNote, setScanNote] = useState<string | null>(null);
-  const [duplicates, setDuplicates] = useState<Array<{ primary_id: string; primary_name: string; duplicate_ids: string[]; names: string[]; reason: string }>>([]);
-  const [dupChecking, setDupChecking] = useState(false);
-  const [dupChecked, setDupChecked] = useState(false);
-  const [merging, setMerging] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
   const [newOrg, setNewOrg] = useState({
     name: '',
     groupType: 'other' as Organization['group_type'],
@@ -1087,41 +1086,13 @@ export const OrganizationsBook: React.FC = () => {
     }
   };
 
-  const handleFindDuplicates = async () => {
-    if (isMockDataEnabled) {
-      setDupChecked(true);
-      setDuplicates([]);
-      return;
-    }
-    setDupChecking(true);
-    try {
-      const res = await fetchJson<{ success: boolean; clusters: typeof duplicates }>(
-        '/api/organizations/duplicates'
-      );
-      setDuplicates(res.clusters ?? []);
-      setDupChecked(true);
-    } catch {
-      setDuplicates([]);
-      setDupChecked(true);
-    } finally {
-      setDupChecking(false);
-    }
-  };
-
-  const handleMerge = async (cluster: { primary_id: string; duplicate_ids: string[] }) => {
-    setMerging(cluster.primary_id);
-    try {
-      await fetchJson('/api/organizations/merge', {
-        method: 'POST',
-        body: JSON.stringify({ primary_id: cluster.primary_id, duplicate_ids: cluster.duplicate_ids }),
-      });
-      setDuplicates(prev => prev.filter(c => c.primary_id !== cluster.primary_id));
-      await loadOrganizations();
-    } catch {
-      // keep the cluster visible so the user can retry
-    } finally {
-      setMerging(null);
-    }
+  const toggleSelectedForMerge = (organizationId: string) => {
+    setSelectedForMerge(prev => {
+      const next = new Set(prev);
+      if (next.has(organizationId)) next.delete(organizationId);
+      else next.add(organizationId);
+      return next;
+    });
   };
 
   const handleCreate = async () => {
@@ -1337,6 +1308,17 @@ export const OrganizationsBook: React.FC = () => {
         }}
       />
 
+      <GroupMergePanel
+        organizations={organizations}
+        demoMode={isMockDataEnabled}
+        onMerged={() => void loadOrganizations()}
+        selectionMode={selectionMode}
+        onSelectionModeChange={setSelectionMode}
+        selectedForMerge={selectedForMerge}
+        onToggleSelected={toggleSelectedForMerge}
+        onClearSelection={() => setSelectedForMerge(new Set())}
+      />
+
       {!isMockDataEnabled && (
         <>
         <Card
@@ -1456,17 +1438,6 @@ export const OrganizationsBook: React.FC = () => {
             </Button>
 
             <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handleFindDuplicates()}
-              disabled={dupChecking}
-              title="Find and merge duplicate groups"
-            >
-              <RefreshCw className="h-4 w-4 mr-1" />
-              {dupChecking ? 'Checking...' : 'Find duplicates'}
-            </Button>
-
-            <Button
               size="sm"
               onClick={() => setShowCreateForm(v => !v)}
             >
@@ -1481,38 +1452,6 @@ export const OrganizationsBook: React.FC = () => {
             <Sparkles className="h-3.5 w-3.5 text-purple-400" />
             {scanNote}
           </p>
-        )}
-
-        {dupChecked && (
-          <div className="space-y-2">
-            {duplicates.length === 0 ? (
-              <p className="text-xs text-white/50">No duplicate groups found.</p>
-            ) : (
-              duplicates.map(cluster => (
-                <Card key={cluster.primary_id} className="bg-black/60 border border-amber-500/30">
-                  <CardContent className="py-3 px-4 flex items-center justify-between gap-3 flex-wrap">
-                    <div className="min-w-0">
-                      <p className="text-sm text-white/85">
-                        {cluster.names.join(' · ')}
-                      </p>
-                      <p className="text-[11px] text-white/45">
-                        {cluster.duplicate_ids.length + 1} likely the same group
-                        {cluster.reason === 'member_overlap' ? ' (shared members)' : ' (same name)'} — keeping
-                        “{cluster.primary_name}”.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      onClick={() => void handleMerge(cluster)}
-                      disabled={merging === cluster.primary_id}
-                    >
-                      {merging === cluster.primary_id ? 'Merging...' : 'Merge'}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
         )}
 
         {/* Create form */}
@@ -1762,7 +1701,12 @@ export const OrganizationsBook: React.FC = () => {
                     <OrganizationProfileCard
                       key={org.id}
                       organization={org}
-                      onClick={() => setSelectedOrganization(normalizeOrganization(org))}
+                      selectionMode={selectionMode}
+                      selected={selectedForMerge.has(org.id)}
+                      onClick={() => {
+                        if (selectionMode) toggleSelectedForMerge(org.id);
+                        else setSelectedOrganization(normalizeOrganization(org));
+                      }}
                     />
                   ))}
                 </div>
