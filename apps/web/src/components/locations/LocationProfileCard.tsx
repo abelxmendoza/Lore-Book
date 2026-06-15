@@ -105,7 +105,7 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
     <button
       type="button"
       onClick={onClick}
-      className={`group relative w-full text-left rounded-xl border bg-black/40 transition-all duration-200 p-4 flex flex-col gap-3 ${
+      className={`group relative w-full text-left rounded-xl border bg-black/40 transition-all duration-200 p-3 sm:p-4 flex flex-col gap-2.5 sm:gap-3 ${
         selected
           ? 'border-teal-500/50 bg-teal-500/10 ring-1 ring-teal-500/40'
           : 'border-white/8 hover:border-teal-500/30 hover:bg-teal-500/5'
@@ -113,7 +113,7 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
     >
       {selectionMode && (
         <span
-          className={`absolute top-3 right-3 w-5 h-5 rounded border text-[10px] flex items-center justify-center ${
+          className={`absolute top-2.5 right-2.5 sm:top-3 sm:right-3 w-5 h-5 rounded border text-[10px] flex items-center justify-center ${
             selected ? 'bg-teal-500 border-teal-400 text-black' : 'border-white/25 text-transparent'
           }`}
         >
@@ -121,8 +121,8 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
         </span>
       )}
       {/* Name row */}
-      <div className="flex items-start gap-3">
-        <div className={`rounded-lg border p-2 shrink-0 mt-0.5 ${accent}`}>
+      <div className="flex items-start gap-2.5 sm:gap-3">
+        <div className={`rounded-lg border p-1.5 sm:p-2 shrink-0 mt-0.5 ${accent}`}>
           <MapPin className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">

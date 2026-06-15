@@ -400,14 +400,14 @@ export const LocationDetailModal = ({
           </button>
         </div>
 
-        {/* ── Tab bar ── */}
-        <div className="flex gap-1 px-5 pt-3 border-b border-white/8 shrink-0 overflow-x-auto">
+        {/* ── Tab bar — wraps to multiple rows on narrow screens instead of scrolling ── */}
+        <div className="flex flex-wrap gap-1 px-3 sm:px-5 pt-3 border-b border-white/8 shrink-0">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               type="button"
               onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 whitespace-nowrap transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 whitespace-nowrap transition-colors ${
                 activeTab === key
                   ? 'border-teal-400 text-teal-300'
                   : 'border-transparent text-white/40 hover:text-white/70'

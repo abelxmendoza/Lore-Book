@@ -308,7 +308,7 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
         <Icon className={`h-6 w-6 sm:h-10 sm:w-10 ${visual.iconCls} transition-colors relative z-10`} />
 
         {/* Top-right: analytics + confidence */}
-        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 flex items-center gap-1 hidden sm:flex">
+        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 items-center gap-1 hidden sm:flex">
           {organization.analytics && !isObserver && (
             <>
               <Badge
@@ -358,7 +358,7 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
             </h3>
 
             {/* Group type + relationship badges */}
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap hidden sm:flex">
+            <div className="items-center gap-1.5 mt-0.5 flex-wrap hidden sm:flex">
               <p className="text-[10px] text-white/50 truncate capitalize">
                 {gt.replace(/_/g, ' ')}
               </p>
@@ -408,8 +408,22 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
           )}
         </div>
 
-        {/* Mobile — type + relationship + mentions */}
+        {/* Mobile — importance + type + relationship + mentions */}
         <div className="flex items-center gap-1.5 text-[10px] text-white/50 sm:hidden flex-wrap">
+          {organization.analytics && !isObserver && (
+            <span
+              className={`text-[9px] px-1.5 py-0.5 rounded border flex items-center gap-0.5 ${
+                organization.analytics.importance_score >= 70
+                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                  : organization.analytics.importance_score >= 40
+                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                    : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+              }`}
+            >
+              {organization.analytics.importance_score >= 70 && <Star className="h-2 w-2" />}
+              {organization.analytics.importance_score}
+            </span>
+          )}
           <span className="capitalize truncate">{gt.replace(/_/g, ' ')}</span>
           {rel && rel !== 'member' && (
             <span className={`text-[9px] px-1.5 py-0.5 rounded border ${relBadgeCls(rel)}`}>
@@ -426,9 +440,6 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
               hierarchy
             </span>
           )}
-          <span className="text-white/30">•</span>
-          <Hash className="h-2.5 w-2.5 flex-shrink-0" />
-          <span>{organization.usage_count}</span>
         </div>
 
         {/* Description */}
@@ -439,7 +450,7 @@ export const OrganizationProfileCard = ({ organization, onClick, selectionMode, 
         )}
 
         {/* Metadata row */}
-        <div className="flex flex-wrap gap-2 text-[10px] text-white/50 hidden sm:flex">
+        <div className="flex-wrap gap-2 text-[10px] text-white/50 hidden sm:flex">
           {organization.analytics && !isObserver && (
             <>
               <div className="flex items-center gap-1">
