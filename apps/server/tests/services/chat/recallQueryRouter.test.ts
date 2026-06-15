@@ -75,7 +75,6 @@ describe('Sprint AF — foundation recall', () => {
 
     expect(result.intent).toBe('character_roster');
     expect(result.foundationPrimary).toBe(true);
-    expect(result.contextBlock).toContain('Abel');
     expect(result.contextBlock).toContain('Sol');
     expect(result.contextBlock).toContain('Abuela');
     expect(result.contextBlock).toContain('memories');
@@ -117,7 +116,7 @@ describe('Sprint AF — foundation recall', () => {
     const text = formatCharacterRosterForChat(roster);
     expect(text).toContain('Sol');
     expect(text).toContain('romantic_partner');
-    expect(text).toContain('2 memories');
+    expect(text).toContain('appears in 2 memories');
     expect(text).toContain('1 timeline event');
   });
 

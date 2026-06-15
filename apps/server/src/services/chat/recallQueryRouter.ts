@@ -231,17 +231,6 @@ export async function routeRecallQuery(
 ): Promise<RecallResult> {
   const knownEntities = await loadKnownEntities(userId);
 
-  if (THREAD_RECALL_RE.test(message) || (THREAD_RE.test(message) && conversationHistory.length > 0)) {
-    const thread = await buildThreadRecall(userId, message, { conversationHistory });
-    return {
-      intent: 'thread',
-      entityName: null,
-      contextBlock: thread.content,
-      confidence: thread.confidence,
-      foundationPrimary: true,
-    };
-  }
-
   if (CONVERSATION_RECALL_RE.test(message) && conversationHistory.length > 0) {
     const block = await buildConversationSummaryWithRosterFallback(userId, conversationHistory);
     return {
@@ -249,6 +238,17 @@ export async function routeRecallQuery(
       entityName: null,
       contextBlock: block,
       confidence: 0.95,
+      foundationPrimary: true,
+    };
+  }
+
+  if (THREAD_RECALL_RE.test(message) || (THREAD_RE.test(message) && conversationHistory.length > 0)) {
+    const thread = await buildThreadRecall(userId, message, { conversationHistory });
+    return {
+      intent: 'thread',
+      entityName: null,
+      contextBlock: thread.content,
+      confidence: thread.confidence,
       foundationPrimary: true,
     };
   }
