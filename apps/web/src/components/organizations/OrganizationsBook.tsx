@@ -38,6 +38,19 @@ import {
   type OrganizationCategory,
 } from '../../lib/groupTypes';
 
+type SortOption =
+  | 'importance_desc'
+  | 'involvement_desc'
+  | 'priority_desc'
+  | 'value_desc'
+  | 'name_asc'
+  | 'name_desc'
+  | 'usage_desc'
+  | 'usage_asc'
+  | 'confidence_desc'
+  | 'confidence_asc'
+  | 'recent';
+
 type GroupCandidate = {
   id: string;
   proposed_name?: string;

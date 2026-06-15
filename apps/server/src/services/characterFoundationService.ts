@@ -94,7 +94,8 @@ class CharacterFoundationService {
    */
   async promoteEntityToCharacter(
     userId: string,
-    entity: PeoplePlaceEntity
+    entity: PeoplePlaceEntity,
+    threadId: string | null = null
   ): Promise<string | null> {
     if (entity.type !== 'person') {
       logger.debug({ entityName: entity.name, type: entity.type }, 'Skipping non-person entity');

@@ -58,7 +58,7 @@ export function inferPlaceType(name: string, context?: string, storedType?: stri
 
   if (raw) {
     const n = normalizeSlug(raw);
-    if (ALL_TYPES.has(n)) return n as PlaceType;
+    if (ALL_TYPES.has(n as PlaceType)) return n as PlaceType;
     if (TYPE_ALIASES[n]) return TYPE_ALIASES[n];
   }
   const haystack = `${name} ${context ?? ''}`.trim();

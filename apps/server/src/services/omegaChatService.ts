@@ -650,6 +650,7 @@ class OmegaChatService {
       const { matchesFoundationRecallQuery } = await import('./chat/recallIntentPatterns');
       if (matchesFoundationRecallQuery(message)) {
         const { executeExplicitRecall } = await import('./chat/explicitRecallService');
+        const { formatModeResponse } = await import('./modeRouter/responseFormatter');
         const foundation = await executeExplicitRecall(
           userId,
           message,

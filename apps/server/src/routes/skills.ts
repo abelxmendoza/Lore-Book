@@ -197,7 +197,7 @@ router.post('/suggestions/reject-by-name', requireAuth, async (req: Authenticate
 router.post('/suggestions/:id/confirm', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const skill = await skillSuggestionService.confirmSuggestion(userId, req.params.id);
+    const skill = await skillSuggestionService.confirmSuggestion(userId, req.params.id as string);
     res.json({ skill });
   } catch (error) {
     logger.error({ err: error }, 'Failed to confirm skill suggestion');
@@ -208,7 +208,7 @@ router.post('/suggestions/:id/confirm', requireAuth, async (req: AuthenticatedRe
 router.post('/suggestions/:id/reject', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    await skillSuggestionService.rejectSuggestion(userId, req.params.id);
+    await skillSuggestionService.rejectSuggestion(userId, req.params.id as string);
     res.json({ success: true });
   } catch (error) {
     logger.error({ err: error }, 'Failed to reject skill suggestion');
@@ -222,7 +222,7 @@ router.post('/suggestions/:id/reject', requireAuth, async (req: AuthenticatedReq
 router.get('/:skillId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { skillId } = req.params;
+    const skillId = req.params.skillId as string;
 
     const skill = await skillService.getSkill(userId, skillId);
     if (!skill) {
@@ -270,7 +270,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.patch('/:skillId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { skillId } = req.params;
+    const skillId = req.params.skillId as string;
     const schema = z.object({
       skill_name: z.string().min(1).max(100).optional(),
       skill_category: z.enum(['professional', 'creative', 'physical', 'social', 'intellectual', 'emotional', 'practical', 'artistic', 'technical', 'other']).optional(),
@@ -297,7 +297,7 @@ router.patch('/:skillId', requireAuth, async (req: AuthenticatedRequest, res) =>
 router.post('/:skillId/xp', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { skillId } = req.params;
+    const skillId = req.params.skillId as string;
     const schema = z.object({
       xp_amount: z.number().int().positive(),
       source_type: z.enum(['memory', 'achievement', 'manual']),
@@ -332,7 +332,7 @@ router.post('/:skillId/xp', requireAuth, async (req: AuthenticatedRequest, res) 
 router.get('/:skillId/progress', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { skillId } = req.params;
+    const skillId = req.params.skillId as string;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
 
     const progress = await skillService.getSkillProgress(userId, skillId, limit);
@@ -369,7 +369,7 @@ router.post('/extract', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.delete('/:skillId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { skillId } = req.params;
+    const skillId = req.params.skillId as string;
 
     await skillService.deleteSkill(userId, skillId);
     res.json({ success: true });
@@ -385,7 +385,7 @@ router.delete('/:skillId', requireAuth, async (req: AuthenticatedRequest, res) =
 router.get('/:skillId/details', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { skillId } = req.params;
+    const skillId = req.params.skillId as string;
 
     const skill = await skillService.getSkillDetails(userId, skillId);
     res.json({ skill });
@@ -401,7 +401,7 @@ router.get('/:skillId/details', requireAuth, async (req: AuthenticatedRequest, r
 router.post('/:skillId/details/extract', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { skillId } = req.params;
+    const skillId = req.params.skillId as string;
 
     const details = await skillService.extractSkillDetails(userId, skillId);
     res.json({ details });
@@ -417,7 +417,7 @@ router.post('/:skillId/details/extract', requireAuth, async (req: AuthenticatedR
 router.patch('/:skillId/details', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
-    const { skillId } = req.params;
+    const skillId = req.params.skillId as string;
     const updates = req.body;
 
     const skill = await skillService.updateSkillDetails(userId, skillId, updates);

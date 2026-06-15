@@ -174,16 +174,23 @@ export async function getCharacterKnowledgeBase(
       relationship: relTypeByCharId.get(c.id),
     })),
     ...(orgsResult.data ?? [])
-      .filter((row) => row.organizations && typeof row.organizations === 'object')
-      .map((row) => {
-        const org = row.organizations as { id: string; name: string };
+      .map((row): RelatedEntity | null => {
+        // PostgREST types the embed as an array, but an FK embed resolves to a
+        // single object at runtime — normalize both shapes before reading it.
+        const orgRaw = row.organizations as unknown;
+        const org = (Array.isArray(orgRaw) ? orgRaw[0] : orgRaw) as
+          | { id: string; name: string }
+          | null
+          | undefined;
+        if (!org || typeof org !== 'object') return null;
         return {
           id: org.id,
           name: org.name,
           type: 'organization' as const,
           relationship: row.role ?? undefined,
         };
-      }),
+      })
+      .filter((e): e is RelatedEntity => e !== null),
   ];
 
   const memoryCount = profile?.memoryCount ?? 0;

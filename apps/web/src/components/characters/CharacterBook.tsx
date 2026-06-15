@@ -2267,7 +2267,7 @@ export const dummyCharacters: Character[] = [
     is_nickname: false,
     proximity_level: 'direct',
     has_met: true,
-    relationship_depth: 'professional',
+    relationship_depth: 'casual',
     summary: 'Professional contact from Summit Staffing tied to onboarding paperwork and Northwind Logistics hiring.',
     tags: ['professional', 'recruiter', 'summit staffing', 'northwind logistics', 'onboarding'],
     metadata: {
@@ -2297,7 +2297,7 @@ export const dummyCharacters: Character[] = [
     is_nickname: false,
     proximity_level: 'direct',
     has_met: true,
-    relationship_depth: 'professional',
+    relationship_depth: 'casual',
     summary: 'Professional connection from the Summit Staffing hiring pipeline for Northwind Logistics.',
     tags: ['professional', 'agency', 'summit staffing', 'northwind logistics'],
     metadata: {
@@ -2316,7 +2316,7 @@ export const dummyCharacters: Character[] = [
 
 const findDemoCharacter = (id: string) => dummyCharacters.find(character => character.id === id);
 
-const getDemoDuplicateGroups = (): DuplicateGroup[] => [
+const getDemoDuplicateGroups = (): DuplicateGroup[] => ([
   {
     match_type: 'exact',
     canonical_name: 'Alex',
@@ -2333,7 +2333,7 @@ const getDemoDuplicateGroups = (): DuplicateGroup[] => [
       .filter((character): character is Character => Boolean(character))
       .map(withDemoAnalytics),
   },
-].filter(group => group.characters.length >= 2);
+] as DuplicateGroup[]).filter(group => group.characters.length >= 2);
 
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 

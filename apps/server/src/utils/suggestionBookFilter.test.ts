@@ -1,3 +1,5 @@
+import { describe, it, expect } from 'vitest';
+
 import { normalizeNameKey } from './nameNormalization';
 import { collectNameKeys, isNameAlreadyInBook } from './suggestionBookFilter';
 

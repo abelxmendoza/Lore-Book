@@ -112,7 +112,7 @@ function buildMockData(characterId: string, characterName: string): CharacterKno
     },
     facts,
     knowledgeClaims: claims,
-    sceneCandidates: scenes,
+    sceneCandidates: scenes as unknown as Array<Record<string, unknown>>,
     relatedEntities: [],
     intelligence: {
       totalEvidenceItems: facts.length + claims.length + scenes.length,

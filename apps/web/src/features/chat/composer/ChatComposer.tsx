@@ -3,6 +3,7 @@ import { Button } from '../../../components/ui/button';
 import { Textarea } from '../../../components/ui/textarea';
 import { Card } from '../../../components/ui/card';
 import { useChatComposer } from '../hooks/useChatComposer';
+import { CommandSuggestions } from './CommandSuggestions';
 import { ComposerEntityChips } from './ComposerEntityChips';
 import { ComposerHints } from './ComposerHints';
 import { MoodIndicator } from './MoodIndicator';

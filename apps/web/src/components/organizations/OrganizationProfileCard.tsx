@@ -231,6 +231,11 @@ const TYPE_VISUALS: Record<GroupType, VisualConfig> = {
     icon: Truck,
     iconCls: 'text-lime-400/60 group-hover:text-lime-400',
   },
+  community: {
+    grad: 'from-teal-500/20 via-emerald-600/20 to-teal-500/20',
+    icon: Users,
+    iconCls: 'text-teal-400/60 group-hover:text-teal-400',
+  },
   other: {
     grad: 'from-gray-500/20 via-gray-600/20 to-gray-500/20',
     icon: Building2,

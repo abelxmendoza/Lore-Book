@@ -26,7 +26,7 @@ const MAX_PER_TYPE = 2;
 export const ComposerHints = ({ mood, entities, tagCount }: ComposerHintsProps) => {
   // Group by type, cap per type
   const grouped = (['character', 'location', 'organization', 'skill', 'event'] as EntityType[]).reduce<
-    Record<EntityType, EntityMatch[]>
+    Record<EntityType, Array<{ name: string; type: EntityType }>>
   >(
     (acc, type) => {
       acc[type] = entities.filter(e => e.type === type).slice(0, MAX_PER_TYPE);

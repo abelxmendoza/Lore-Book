@@ -13,6 +13,8 @@ const org = (id: string, name: string, group_type?: Organization['group_type']):
   group_type: group_type ?? 'other',
   membership_model: 'strict',
   status: 'active',
+  user_relationship: 'member',
+  is_public_entity: false,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 });

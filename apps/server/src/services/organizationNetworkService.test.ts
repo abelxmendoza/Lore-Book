@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OrganizationNetworkService } from './organizationNetworkService';
+// vi.mock() is hoisted above imports, so this static import receives the mock.
+import { organizationService } from './organizationService';
 
 vi.mock('./organizationService', () => ({
   organizationService: {
@@ -21,8 +23,6 @@ vi.mock('./supabaseClient', () => ({
     })),
   },
 }));
-
-const { organizationService } = await import('./organizationService');
 
 describe('OrganizationNetworkService', () => {
   const svc = new OrganizationNetworkService();

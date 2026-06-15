@@ -33,6 +33,7 @@ import { perspectiveService } from './perspectiveService';
 import { predictiveContinuityService } from './predictiveContinuityService';
 import { privacyScopeService } from './privacyScopeService';
 import { responseShapingService } from './responseShapingService';
+import { stabilityDetectionService } from './stabilityDetectionService';
 import { supabaseAdmin } from './supabaseClient';
 
 const MIN_CONFIDENCE_THRESHOLD = 0.5;
@@ -78,7 +79,7 @@ export class ConversationalOrchestrationService {
             session.session_id,
             'assistant',
             foundation.content,
-            foundation.response_mode,
+            foundation.response_mode as ChatResponse['response_mode'],
             undefined,
             foundation.confidence
           );

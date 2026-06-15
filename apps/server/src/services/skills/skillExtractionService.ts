@@ -215,7 +215,7 @@ class SkillExtractionService {
         } else {
           const newSkill = await skillService.createSkill(userId, {
             skill_name: extracted.skill_name,
-            skill_category: extracted.skill_category,
+            skill_category: this.normalizeCategory(String(extracted.skill_category ?? 'other')),
             description: extracted.description,
             auto_detected: true,
             confidence_score: extracted.confidence,
@@ -272,7 +272,7 @@ class SkillExtractionService {
         } else {
           const newSkill = await skillService.createSkill(userId, {
             skill_name: extracted.skill_name,
-            skill_category: extracted.skill_category,
+            skill_category: this.normalizeCategory(String(extracted.skill_category ?? 'other')),
             description: extracted.description,
             auto_detected: true,
             confidence_score: extracted.confidence,

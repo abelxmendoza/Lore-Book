@@ -58,42 +58,54 @@ export async function listCertifiedEntities(userId: string): Promise<CertifiedEn
     skillsRes,
     eventsRes,
   ] = await Promise.all([
-    supabaseAdmin
-      .from('character_identity_index')
-      .select('character_id, mention, mention_key, character:characters(id, name, alias)')
-      .eq('user_id', userId)
+    Promise.resolve(
+      supabaseAdmin
+        .from('character_identity_index')
+        .select('character_id, mention, mention_key, character:characters(id, name, alias)')
+        .eq('user_id', userId)
+    )
       .then((r) => r.data ?? [])
       .catch(() => []),
-    supabaseAdmin
-      .from('characters')
-      .select('id, name, alias')
-      .eq('user_id', userId)
+    Promise.resolve(
+      supabaseAdmin
+        .from('characters')
+        .select('id, name, alias')
+        .eq('user_id', userId)
+    )
       .then((r) => r.data ?? [])
       .catch(() => []),
-    supabaseAdmin
-      .from('locations')
-      .select('id, name, metadata')
-      .eq('user_id', userId)
+    Promise.resolve(
+      supabaseAdmin
+        .from('locations')
+        .select('id, name, metadata')
+        .eq('user_id', userId)
+    )
       .then((r) => r.data ?? [])
       .catch(() => []),
-    supabaseAdmin
-      .from('organizations')
-      .select('id, name, metadata')
-      .eq('user_id', userId)
+    Promise.resolve(
+      supabaseAdmin
+        .from('organizations')
+        .select('id, name, metadata')
+        .eq('user_id', userId)
+    )
       .then((r) => r.data ?? [])
       .catch(() => []),
-    supabaseAdmin
-      .from('skills')
-      .select('id, skill_name, metadata')
-      .eq('user_id', userId)
+    Promise.resolve(
+      supabaseAdmin
+        .from('skills')
+        .select('id, skill_name, metadata')
+        .eq('user_id', userId)
+    )
       .then((r) => r.data ?? [])
       .catch(() => []),
-    supabaseAdmin
-      .from('timeline_events')
-      .select('id, title, context')
-      .eq('user_id', userId)
-      .order('occurred_at', { ascending: false })
-      .limit(500)
+    Promise.resolve(
+      supabaseAdmin
+        .from('timeline_events')
+        .select('id, title, context')
+        .eq('user_id', userId)
+        .order('occurred_at', { ascending: false })
+        .limit(500)
+    )
       .then((r) => r.data ?? [])
       .catch(() => []),
   ]);

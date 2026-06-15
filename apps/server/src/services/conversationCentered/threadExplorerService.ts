@@ -102,7 +102,7 @@ function parseMetadataMessages(metadata: Record<string, unknown> | null | undefi
   return raw
     .map((m: Record<string, unknown>, index) => {
       const content = typeof m.content === 'string' ? m.content : '';
-      const role = m.role === 'assistant' ? 'assistant' : 'user';
+      const role: 'user' | 'assistant' = m.role === 'assistant' ? 'assistant' : 'user';
       return {
         role,
         content,
@@ -489,7 +489,7 @@ class ThreadExplorerService {
       subtitles: [...subtitleCounts.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, 12)
-        .map(([label, count]) => ({ name: label, count })),
+        .map(([label, count]) => ({ label, count })),
       totalThreads: threads.length,
       totalMessages,
     };

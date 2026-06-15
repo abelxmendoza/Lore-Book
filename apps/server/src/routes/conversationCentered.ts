@@ -414,7 +414,7 @@ router.get(
   '/threads/:id/context',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
     const { threadExplorerService } = await import('../services/conversationCentered/threadExplorerService');
     const context = await threadExplorerService.getThreadContext(userId, id);
@@ -431,7 +431,7 @@ router.post(
   '/threads/:id/ensure-visible',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
     const { recoverOrphanSession, touchThreadActivity, loadThreadMessages } = await import(
       '../services/conversationCentered/threadContentService'
@@ -490,7 +490,7 @@ router.get(
   '/threads/:id/status',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
     const { getThreadStatus } = await import('../services/conversationCentered/threadContentService');
     const status = await getThreadStatus(userId, id);
@@ -506,7 +506,7 @@ router.get(
   '/threads/:id/messages',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
 
     const { recoverOrphanSession, loadThreadMessages } = await import(
@@ -569,7 +569,7 @@ router.get(
   '/threads/:id/units',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
 
     // Get all messages in thread
@@ -956,7 +956,7 @@ router.get(
   '/events/:id',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
 
     // Get event
@@ -1352,7 +1352,7 @@ router.get(
   '/events/:id/sources',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
 
     // Verify event exists and belongs to user
@@ -2274,7 +2274,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const analytics = await romanticRelationshipAnalytics.generateAnalytics(userId, id);
 
@@ -2301,7 +2301,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const { romanticRelationshipRanking } = await import('../services/conversationCentered/romanticRelationshipRanking');
     const ranking = await romanticRelationshipRanking.getRanking(userId, id);
@@ -2355,7 +2355,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const { data: dates, error } = await supabaseAdmin
       .from('romantic_dates')
@@ -2403,7 +2403,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const { data: relationship } = await supabaseAdmin
       .from('romantic_relationships')
@@ -2452,7 +2452,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const { data: relationship } = await supabaseAdmin
       .from('romantic_relationships')
@@ -2501,7 +2501,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const { data: breakup } = await supabaseAdmin
       .from('relationship_breakups')
@@ -2554,7 +2554,7 @@ router.get(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const timelines = await characterTimelineBuilder.buildTimelines(userId, id);
 
@@ -2574,7 +2574,7 @@ router.post(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     await characterTimelineBuilder.rebuildTimelinesForCharacter(userId, id);
 
@@ -2594,7 +2594,7 @@ router.post(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { message, conversationHistory = [] } = req.body;
 
     if (!message || typeof message !== 'string') {
@@ -2842,7 +2842,7 @@ router.post(
   '/threads/:id/title',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
 
     const schema = z.object({
@@ -2873,7 +2873,7 @@ router.patch(
   '/threads/:id/title',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
 
     const { title } = z.object({ title: z.string().min(1).max(120) }).parse(req.body);
@@ -2898,7 +2898,7 @@ router.patch(
   '/threads/:id',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
 
     const schema = z.object({
@@ -2941,7 +2941,7 @@ router.delete(
   '/threads/:id',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
     const force = req.query.force === 'true';
 
@@ -3002,7 +3002,7 @@ router.post(
   '/threads/:id/fork',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = req.user!.id;
 
     const schema = z.object({

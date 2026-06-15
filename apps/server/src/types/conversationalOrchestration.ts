@@ -66,6 +66,8 @@ export interface ChatResponse {
   response_mode: ResponseMode;
   citations?: string[];
   confidence?: number;
+  /** Free-form mode/stability metadata surfaced by recall + silence gates */
+  metadata?: Record<string, unknown>;
   disclaimer?: string;
   related_insights?: string[];
   mrq_proposal_id?: string;
