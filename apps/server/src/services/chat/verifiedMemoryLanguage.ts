@@ -12,7 +12,7 @@ export const FORBIDDEN_UNVERIFIED_CLAIMS = [
   /i'?ve added this to your lore/i,
   /captured everything/i,
   /goes into your lore/i,
-  /my record is thin/i,
+  /my record.{0,20}thin/i,
   /tell me now and it goes/i,
 ];
 

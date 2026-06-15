@@ -15,6 +15,11 @@
 import { logger } from '../../logger';
 import { openai } from '../openaiClient';
 import { matchesFoundationRecallQuery } from '../chat/recallIntentPatterns';
+import { classifyQuestionIntent } from '../chat/questionIntentClassifier';
+import {
+  shouldSuppressTherapist,
+  shouldPreferBiographyWriter,
+} from '../chat/therapistSuppressionRules';
 
 export type ChatMode =
   | 'EMOTIONAL_EXISTENTIAL'  // Mode 1: Thoughts, fears, insecurities
@@ -175,8 +180,27 @@ class ModeRouterService {
       };
     }
 
+    // Sprint AK — suppress therapist routing for recall/testing/fact descriptions
+    const akIntent = classifyQuestionIntent(message);
+    if (shouldSuppressTherapist(message, akIntent)) {
+      if (shouldPreferBiographyWriter(message)) {
+        return {
+          mode: 'EXPERIENCE_INGESTION',
+          confidence: 0.85,
+          reasoning: 'Biography-worthy fact description; suppress therapist mode',
+        };
+      }
+      if (matchesFoundationRecallQuery(message)) {
+        return {
+          mode: 'FOUNDATION_RECALL',
+          confidence: 0.9,
+          reasoning: 'Recall/testing query; suppress therapist mode',
+        };
+      }
+    }
+
     // EMOTIONAL_EXISTENTIAL: Short, emotional, present-tense
-    if (messageLength < 200 && this.isEmotionalExistential(text)) {
+    if (messageLength < 200 && this.isEmotionalExistential(text) && !shouldSuppressTherapist(message, akIntent)) {
       return {
         mode: 'EMOTIONAL_EXISTENTIAL',
         confidence: 0.8,

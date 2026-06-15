@@ -663,6 +663,33 @@ class OmegaChatService {
       : '';
 
     // =====================================================
+    // SPRINT AK — Conversation intelligence (before AH gates)
+    // =====================================================
+    try {
+      const { routeConversationIntelligence } = await import('./chat/conversationIntelligenceRouter');
+      const { formatModeResponse } = await import('./modeRouter/responseFormatter');
+
+      const akResult = await routeConversationIntelligence(userId, message, {
+        conversationHistory: conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+        threadId: threadId ?? currentContext?.threadId,
+      });
+
+      if (akResult.handled) {
+        return formatModeResponse(
+          {
+            content: akResult.content,
+            response_mode: akResult.response_mode,
+            confidence: akResult.confidence,
+            metadata: { conversation_intelligence: true, ...akResult.metadata },
+          },
+          'FOUNDATION_RECALL'
+        );
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'Sprint AK conversation intelligence failed, continuing');
+    }
+
+    // =====================================================
     // SPRINT AH — Trust & Recall gates (before mode router)
     // =====================================================
     try {

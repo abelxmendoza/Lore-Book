@@ -1,0 +1,179 @@
+/**
+ * Sprint AK-3 — Character creation verification
+ *
+ * Verifies entity + character + DB write when user asks "Did you create a character?"
+ */
+
+import { supabaseAdmin } from '../supabaseClient';
+import { resolveCharacterByName } from './foundationRecallDataService';
+import { extractEntityNameFromMessage } from './memoryFormationStatusService';
+import { formatEvidenceResponse, type EvidenceCounts } from './memoryEvidenceFormatter';
+
+type VerificationCheck = { label: string; ok: boolean; detail: string };
+
+export async function verifyCharacterCreation(
+  userId: string,
+  message: string,
+  options: { threadId?: string } = {}
+): Promise<{ content: string; entityName: string | null }> {
+  const entityName = extractEntityNameFromMessage(message);
+
+  if (!entityName) {
+    const { count: charCount } = await supabaseAdmin
+      .from('characters')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    const { data: recent } = await supabaseAdmin
+      .from('characters')
+      .select('name, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(3);
+
+    const checks: VerificationCheck[] = [
+      {
+        label: 'Character table',
+        ok: (charCount ?? 0) > 0,
+        detail: `${charCount ?? 0} character(s) in database`,
+      },
+    ];
+
+    const known = recent?.map((c) => `${c.name} (created ${new Date(c.created_at).toLocaleDateString()})`) ?? [];
+    const unknown = (charCount ?? 0) === 0 ? ['No characters created yet'] : [];
+
+    const evidence: EvidenceCounts = {
+      thread: 0,
+      memory: 0,
+      event: 0,
+      character: charCount ?? 0,
+    };
+
+    const body = formatEvidenceResponse({
+      preamble: '**Character Creation — System Check**\n\nAsk about a specific name for a detailed verification.',
+      known,
+      unknown,
+      evidence,
+    });
+
+    const checkLines = checks.map((c) => `**${c.label}:** ${c.ok ? '✓' : '✗'} ${c.detail}`);
+    return { content: [body, '', ...checkLines].join('\n'), entityName: null };
+  }
+
+  const char = await resolveCharacterByName(userId, entityName);
+  const checks: VerificationCheck[] = [];
+
+  checks.push({
+    label: 'Entity resolved',
+    ok: !!char,
+    detail: char ? `✓ Matched "${char.name}" in characters table` : `✗ No row for "${entityName}"`,
+  });
+
+  let peoplePlaceOk = false;
+  const { data: place } = await supabaseAdmin
+    .from('people_places')
+    .select('id, name, type')
+    .eq('user_id', userId)
+    .ilike('name', `%${entityName}%`)
+    .maybeSingle();
+
+  if (place) {
+    peoplePlaceOk = true;
+    checks.push({
+      label: 'Entity registry',
+      ok: true,
+      detail: `✓ ${place.name} (${place.type}) in people_places`,
+    });
+  } else {
+    checks.push({
+      label: 'Entity registry',
+      ok: false,
+      detail: '✗ Not in people_places yet',
+    });
+  }
+
+  if (char) {
+    const { count: memCount } = await supabaseAdmin
+      .from('character_memories')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('character_id', char.id);
+
+    checks.push({
+      label: 'DB write (memories)',
+      ok: (memCount ?? 0) > 0,
+      detail:
+        (memCount ?? 0) > 0
+          ? `✓ ${memCount} character_memory link(s)`
+          : '○ Character exists but no linked memories yet',
+    });
+
+    const { count: relCount } = await supabaseAdmin
+      .from('character_relationships')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .or(`source_character_id.eq.${char.id},target_character_id.eq.${char.id}`);
+
+    checks.push({
+      label: 'Relationships',
+      ok: (relCount ?? 0) > 0,
+      detail: (relCount ?? 0) > 0 ? `✓ ${relCount} relationship row(s)` : '○ No relationships yet',
+    });
+  }
+
+  let threadEvidence = 0;
+  if (options.threadId) {
+    const { data: msgs } = await supabaseAdmin
+      .from('chat_messages')
+      .select('content')
+      .eq('user_id', userId)
+      .eq('session_id', options.threadId)
+      .eq('role', 'user')
+      .limit(30);
+
+    const key = entityName.toLowerCase();
+    threadEvidence = (msgs ?? []).filter((m) =>
+      String(m.content).toLowerCase().includes(key)
+    ).length;
+  }
+
+  const known: string[] = [];
+  const unknown: string[] = [];
+
+  if (char) known.push(`Character "${char.name}" exists in database`);
+  else unknown.push(`Character record for "${entityName}" not created`);
+
+  if (peoplePlaceOk) known.push('Entity registered in people_places');
+  else unknown.push('Entity not in people_places registry');
+
+  const memCheck = checks.find((c) => c.label === 'DB write (memories)');
+  if (memCheck?.ok) known.push(memCheck.detail.replace('✓ ', ''));
+  else if (char) unknown.push('No linked memories yet');
+
+  const evidence: EvidenceCounts = {
+    thread: threadEvidence,
+    memory: memCheck?.ok ? 1 : 0,
+    event: 0,
+    character: char ? 1 : 0,
+  };
+
+  const whyNot = !char
+    ? `\n\n**Why not created:** No matching row in \`characters\` for "${entityName}". Mention them again in chat — extraction runs asynchronously after ingestion.`
+    : !memCheck?.ok
+      ? '\n\n**Partial creation:** Character card exists but memory links are still pending extraction.'
+      : '';
+
+  const body = formatEvidenceResponse({
+    preamble: `**Character Creation — ${entityName}**`,
+    known,
+    unknown,
+    evidence,
+  });
+
+  const checkLines = checks.map((c) => `**${c.label}:** ${c.detail}`);
+
+  return {
+    content: [body, '', ...checkLines, whyNot].filter(Boolean).join('\n'),
+    entityName,
+  };
+}
