@@ -659,7 +659,7 @@ export const SkillsBook: React.FC = () => {
           setActiveCategory(v as SkillCategoryFilter);
           setCurrentPage(1);
         }}>
-          <TabsList className="bg-black/40 border-white/10 p-1 h-auto flex flex-wrap gap-1">
+          <TabsList className="w-full bg-black/40 border-white/10 p-1 h-auto flex flex-wrap gap-1 justify-center sm:justify-start">
             {availableCategories.map(category => (
               <TabsTrigger
                 key={category}
@@ -673,7 +673,7 @@ export const SkillsBook: React.FC = () => {
         </Tabs>
 
         {/* View Controls */}
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-center sm:justify-end">
           <div className="flex items-center gap-2">
             <select
               value={sortBy}

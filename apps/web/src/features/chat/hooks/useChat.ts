@@ -229,7 +229,7 @@ export const useChat = () => {
 
     const composerThread = (options?.composerEntities ?? [])
       .map(toComposerThreadEntity)
-      .filter((e): e is { id: string; name: string; type: 'character' | 'location' | 'organization' } => e !== null);
+      .filter((e): e is { id: string; name: string; type: 'character' | 'location' | 'organization' | 'skill' } => e !== null);
     const mergedThreadEntities = mergeThreadEntities(options?.threadEntities ?? [], composerThread);
 
     try {

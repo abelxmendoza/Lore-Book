@@ -13,18 +13,26 @@
  *   arcWidth = daysBetween(arc.start, arc.end ?? today) * pixelsPerDay
  */
 
-import { useRef, useState, useMemo, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { useRef, useState, useMemo, useCallback, useEffect } from 'react';
+import { ZoomIn, ZoomOut, Maximize2, Calendar, ExternalLink, Layers } from 'lucide-react';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
 import type { ChronologyEntry } from '../../types/timelineV2';
+import { useEntityModal } from '../../contexts/EntityModalContext';
+import { TimelineStitchedView } from './TimelineStitchedView';
+import {
+  formatEventDateCompact,
+  formatEventDateShort,
+  sortEntriesChronologically,
+} from './timelineEventUtils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BASE_PPD      = 3;    // pixels per day at zoom 1× (~1100px per year)
 const SUBLANE_H     = 44;   // px per sub-lane within a track row
-const AXIS_H        = 28;   // px for the year/month axis
-const MEM_H         = 64;   // px for the memory dots row
-const LABEL_W       = 96;   // px for the fixed track-label column
+const AXIS_H        = 48;   // px for the year/month axis (prominent dates)
+const MEM_H         = 96;   // px for labeled memory markers
+const LABEL_W       = 96;   // px for the fixed track-label column (desktop)
+const LABEL_W_MOBILE = 72;
 const ARC_BAR_H     = 28;   // px arc bar height
 const ARC_BAR_VPAD  = 8;    // px above the bar inside its sub-lane
 const MIN_ZOOM      = 0.3;
@@ -125,9 +133,10 @@ interface ArcBarProps {
   subLane: number;
   onHover: (arc: LifeArc | null) => void;
   onClick: (arc: LifeArc) => void;
+  onTouchSelect: (arc: LifeArc) => void;
 }
 
-const ArcBar = ({ arc, x, width, subLane, onHover, onClick }: ArcBarProps) => {
+const ArcBar = ({ arc, x, width, subLane, onHover, onClick, onTouchSelect }: ArcBarProps) => {
   const track = (arc.track ?? 'inner') as ArcTrack;
   const c = TRACK_COLORS[track];
   const MIN_W = 6;
@@ -140,6 +149,11 @@ const ArcBar = ({ arc, x, width, subLane, onHover, onClick }: ArcBarProps) => {
       onMouseEnter={() => onHover(arc)}
       onMouseLeave={() => onHover(null)}
       onClick={() => onClick(arc)}
+      onTouchEnd={(e) => {
+        e.preventDefault();
+        onTouchSelect(arc);
+        onClick(arc);
+      }}
       style={{
         position: 'absolute',
         left: x,
@@ -163,26 +177,51 @@ const ArcBar = ({ arc, x, width, subLane, onHover, onClick }: ArcBarProps) => {
   );
 };
 
-interface MemDotProps {
+interface MemEventProps {
   entry: ChronologyEntry;
   x: number;
   track: ArcTrack;
-  onHover: (entry: ChronologyEntry | null, x: number) => void;
+  selected: boolean;
+  onHover: (entry: ChronologyEntry | null) => void;
   onClick: (entry: ChronologyEntry) => void;
+  onTouchSelect: (entry: ChronologyEntry) => void;
 }
 
-const MemDot = ({ entry, x, track, onHover, onClick }: MemDotProps) => {
+const MemEvent = ({ entry, x, track, selected, onHover, onClick, onTouchSelect }: MemEventProps) => {
   const c = TRACK_COLORS[track];
+  const dateLabel = formatEventDateCompact(entry.start_time);
+
   return (
     <button
       type="button"
-      title={entry.content.slice(0, 120)}
-      onMouseEnter={e => onHover(entry, (e.currentTarget as HTMLElement).getBoundingClientRect().left)}
-      onMouseLeave={() => onHover(null, 0)}
+      title={entry.content.slice(0, 160)}
+      onMouseEnter={() => onHover(entry)}
+      onMouseLeave={() => onHover(null)}
       onClick={() => onClick(entry)}
-      style={{ position: 'absolute', left: x - 4, top: MEM_H / 2 - 4 }}
-      className={`w-2 h-2 rounded-full border ${c.dotBg} border-black/40 hover:scale-150 transition-transform cursor-pointer`}
-    />
+      onTouchEnd={(e) => {
+        e.preventDefault();
+        onTouchSelect(entry);
+        onClick(entry);
+      }}
+      style={{ position: 'absolute', left: x, transform: 'translateX(-50%)', top: 6 }}
+      className="flex flex-col items-center gap-0.5 touch-manipulation z-[5]"
+    >
+      <span
+        className={`text-[9px] sm:text-[10px] font-semibold whitespace-nowrap px-1.5 py-0.5 rounded-md border ${
+          selected
+            ? 'text-primary border-primary/40 bg-primary/15'
+            : 'text-white/70 border-white/15 bg-black/60'
+        }`}
+      >
+        {dateLabel}
+      </span>
+      <div className={`w-px h-3 ${selected ? 'bg-primary/70' : 'bg-white/25'}`} />
+      <span
+        className={`w-3 h-3 rounded-full border-2 border-black/50 transition-transform hover:scale-125 ${
+          selected ? `${c.dotBg} ring-2 ring-primary/50 scale-110` : c.dotBg
+        }`}
+      />
+    </button>
   );
 };
 
@@ -200,7 +239,10 @@ const Tooltip = ({ arc, entry }: { arc: LifeArc | null; entry: ChronologyEntry |
     : '';
 
   return (
-    <div className="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-sm w-80 px-4 py-3 rounded-2xl border border-white/15 bg-black/90 backdrop-blur-md shadow-2xl">
+    <div
+      className="pointer-events-none fixed z-50 max-w-[calc(100vw-2rem)] w-[min(20rem,calc(100vw-2rem))] px-4 py-3 rounded-2xl border border-white/15 bg-black/90 backdrop-blur-md shadow-2xl left-1/2 -translate-x-1/2"
+      style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
       <p className="text-xs text-white/40 mb-0.5">{sub}</p>
       <p className="text-sm font-semibold text-white leading-snug mb-1">{title}</p>
       {body && <p className="text-xs text-white/65 leading-relaxed line-clamp-3">{body}</p>}
@@ -216,14 +258,27 @@ interface TimelineSwimlanesProps {
   activeArcs: LifeArc[];
   entries: ChronologyEntry[];
   loading: boolean;
+  onOpenArcTimeline?: (arc: LifeArc) => void;
 }
 
-export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: TimelineSwimlanesProps) => {
+export const TimelineSwimlanes = ({
+  arcs,
+  arcsByTrack,
+  entries,
+  loading,
+  onOpenArcTimeline,
+}: TimelineSwimlanesProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const didInitialScroll = useRef(false);
+  const { openMemory } = useEntityModal();
   const [zoom, setZoom] = useState(1);
   const [hoveredArc, setHoveredArc]     = useState<LifeArc | null>(null);
   const [hoveredEntry, setHoveredEntry] = useState<ChronologyEntry | null>(null);
   const [selectedArc, setSelectedArc]   = useState<LifeArc | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<ChronologyEntry | null>(null);
+  const [showEventsList, setShowEventsList] = useState(true);
+
+  const sortedEntries = useMemo(() => sortEntriesChronologically(entries), [entries]);
 
   const ppd = BASE_PPD * zoom;
 
@@ -233,14 +288,14 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
     const arcDates = arcs
       .filter(a => a.start_date)
       .map(a => new Date(a.start_date!));
-    const entryDates = entries.slice(0, 50).map(e => new Date(e.start_time));
+    const entryDates = sortedEntries.slice(0, 50).map(e => new Date(e.start_time));
     const allDates   = [...arcDates, ...entryDates];
     const earliest   = allDates.length > 0 ? new Date(Math.min(...allDates.map(d => d.getTime()))) : today;
     // Show at least 3 years back
     const threeYearsAgo = new Date(today);
     threeYearsAgo.setFullYear(today.getFullYear() - 3);
     return new Date(Math.min(earliest.getTime(), threeYearsAgo.getTime()));
-  }, [arcs, entries, today]);
+  }, [arcs, sortedEntries, today]);
 
   const totalDays  = useMemo(() => daysBetween(timelineStart, today) + 30, [timelineStart, today]);
   const totalWidth = useMemo(() => Math.round(totalDays * ppd), [totalDays, ppd]);
@@ -293,6 +348,34 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
   const zoomOut = () => setZoom(z => Math.max(MIN_ZOOM, +(z / 1.6).toFixed(2)));
   const zoomReset = () => setZoom(1);
 
+  const handleSelectArc = useCallback((arc: LifeArc) => {
+    if (onOpenArcTimeline) {
+      onOpenArcTimeline(arc);
+      return;
+    }
+    setSelectedArc(arc);
+    setSelectedEntry(null);
+  }, [onOpenArcTimeline]);
+
+  const handleSelectEntry = useCallback((entry: ChronologyEntry) => {
+    setSelectedEntry(entry);
+    setSelectedArc(null);
+  }, []);
+
+  const todayX = xOf(today);
+
+  // Scroll to "today" on first load — must run before any early return (Rules of Hooks)
+  useEffect(() => {
+    if (loading || (arcs.length === 0 && entries.length === 0)) return;
+    if (didInitialScroll.current) return;
+    const el = scrollRef.current;
+    if (!el || totalWidth <= 0) return;
+    const labelOffset = window.innerWidth < 640 ? LABEL_W_MOBILE : LABEL_W;
+    const target = Math.max(0, todayX - el.clientWidth / 2 + labelOffset / 2);
+    el.scrollLeft = target;
+    didInitialScroll.current = true;
+  }, [loading, arcs.length, entries.length, todayX, totalWidth]);
+
   // ── Empty/loading states ─────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -325,34 +408,38 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
     );
   }
 
-  const todayX = xOf(today);
   const totalH = AXIS_H + totalTracksHeight + MEM_H;
+
+  const displayArc = selectedArc ?? hoveredArc;
+  const displayEntry = selectedEntry ?? hoveredEntry;
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-black">
       {/* ── Zoom controls ─────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center justify-end gap-1 px-4 py-2 border-b border-white/6">
-        <span className="text-xs text-white/25 font-mono mr-2">{zoom.toFixed(1)}×</span>
+      <div className="flex-shrink-0 flex items-center justify-between sm:justify-end gap-1 px-3 sm:px-4 py-2 border-b border-white/6">
+        <p className="text-[10px] text-white/25 sm:hidden">Pinch or scroll horizontally · tap arcs for details</p>
+        <div className="flex items-center gap-1 shrink-0">
+        <span className="text-xs text-white/25 font-mono mr-1 sm:mr-2">{zoom.toFixed(1)}×</span>
         <button type="button" onClick={zoomOut} disabled={zoom <= MIN_ZOOM}
-          className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 text-sm font-mono flex items-center justify-center">
+          className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center touch-manipulation">
           <ZoomOut className="h-3.5 w-3.5" />
         </button>
         <button type="button" onClick={zoomReset}
-          className="px-2 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-xs font-mono">
+          className="px-2.5 h-8 sm:h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition text-xs font-mono touch-manipulation">
           1×
         </button>
         <button type="button" onClick={zoomIn} disabled={zoom >= MAX_ZOOM}
-          className="w-7 h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center">
+          className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition disabled:opacity-25 flex items-center justify-center touch-manipulation">
           <ZoomIn className="h-3.5 w-3.5" />
         </button>
+        </div>
       </div>
 
       {/* ── Main layout: labels | scrollable canvas ───────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Fixed track labels — height mirrors the canvas track rows */}
         <div
-          className="flex-shrink-0 border-r border-white/6 bg-black flex flex-col overflow-y-hidden"
-          style={{ width: LABEL_W }}
+          className="flex-shrink-0 border-r border-white/6 bg-black flex flex-col overflow-y-hidden w-[4.5rem] sm:w-24"
         >
           <div style={{ height: AXIS_H }} className="border-b border-white/6 flex-shrink-0" />
 
@@ -365,14 +452,14 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
               <div
                 key={track}
                 style={{ height: h, flexShrink: 0 }}
-                className="flex flex-col justify-center px-3 border-b border-white/4"
+                className="flex flex-col justify-center px-1.5 sm:px-3 border-b border-white/4"
               >
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1 sm:gap-1.5">
                   <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dotBg}`} />
-                  <span className={`text-[11px] font-medium ${c.text}`}>{TRACK_LABELS[track]}</span>
+                  <span className={`text-[10px] sm:text-[11px] font-medium leading-tight ${c.text}`}>{TRACK_LABELS[track]}</span>
                 </div>
                 {count > 0 && (
-                  <span className="text-[10px] text-white/25 mt-0.5 pl-3">
+                  <span className="text-[9px] sm:text-[10px] text-white/25 mt-0.5 pl-2.5 sm:pl-3 hidden sm:block">
                     {count} arc{count !== 1 ? 's' : ''}
                     {lanes > 1 && <span className="text-white/20 ml-1">· {lanes} lanes</span>}
                   </span>
@@ -381,8 +468,8 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
             );
           })}
 
-          <div style={{ height: MEM_H, flexShrink: 0 }} className="flex flex-col justify-center px-3">
-            <span className="text-[11px] text-white/30 font-medium">Memories</span>
+          <div style={{ height: MEM_H, flexShrink: 0 }} className="flex flex-col justify-center px-1.5 sm:px-3">
+            <span className="text-[10px] sm:text-[11px] text-white/30 font-medium leading-tight">Memories</span>
             {entries.length > 0 && (
               <span className="text-[10px] text-white/20 mt-0.5">{entries.length}</span>
             )}
@@ -392,7 +479,7 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
         {/* Scrollable canvas */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-x-auto overflow-y-hidden"
+          className="flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x"
           style={{ scrollBehavior: 'smooth' }}
         >
           <div
@@ -410,12 +497,27 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
                   className="absolute flex flex-col items-start"
                   style={{ left: tick.x }}
                 >
-                  <div className={`w-px ${tick.major ? 'h-3 bg-white/20' : 'h-2 bg-white/10'}`} />
-                  <span className={`text-[10px] font-mono mt-0.5 whitespace-nowrap ${tick.major ? 'text-white/40' : 'text-white/20'}`}>
+                  <div className={`w-px ${tick.major ? 'h-4 bg-white/30' : 'h-2.5 bg-white/12'}`} />
+                  <span
+                    className={`mt-1 whitespace-nowrap ${
+                      tick.major
+                        ? 'text-[11px] sm:text-xs font-bold text-white/75 px-1.5 py-0.5 rounded bg-white/8 border border-white/10'
+                        : 'text-[10px] font-medium text-white/35'
+                    }`}
+                  >
                     {tick.label}
                   </span>
                 </div>
               ))}
+              {/* Month grid lines */}
+              {showMonths &&
+                getMonths(timelineStart, today).map((d, i) => (
+                  <div
+                    key={`grid-${i}`}
+                    className="absolute top-0 bottom-0 w-px bg-white/[0.04] pointer-events-none"
+                    style={{ left: xOf(d) }}
+                  />
+                ))}
             </div>
 
             {/* ── Track rows — height expands with sub-lane count ─────── */}
@@ -446,7 +548,8 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
                         width={w}
                         subLane={subLane}
                         onHover={setHoveredArc}
-                        onClick={setSelectedArc}
+                        onClick={handleSelectArc}
+                        onTouchSelect={handleSelectArc}
                       />
                     );
                   })}
@@ -460,18 +563,20 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
               style={{ top: AXIS_H + totalTracksHeight, height: MEM_H }}
             >
               <div className="absolute inset-0 border-t border-white/6" />
-              {entries.map(entry => {
+              {sortedEntries.map(entry => {
                 const x = xOf(entry.start_time);
                 if (x < 0 || x > totalWidth + 30) return null;
                 const track = entryTrack(entry, arcs);
                 return (
-                  <MemDot
+                  <MemEvent
                     key={entry.id}
                     entry={entry}
                     x={x}
                     track={track}
-                    onHover={(e, _) => setHoveredEntry(e)}
-                    onClick={() => {}}
+                    selected={selectedEntry?.id === entry.id}
+                    onHover={setHoveredEntry}
+                    onClick={handleSelectEntry}
+                    onTouchSelect={handleSelectEntry}
                   />
                 );
               })}
@@ -482,21 +587,77 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
               className="absolute top-0 bottom-0 pointer-events-none z-10"
               style={{ left: todayX }}
             >
-              <div className="w-px h-full bg-white/20" />
-              <span
-                className="absolute top-1 left-1 text-[10px] text-white/40 font-mono whitespace-nowrap"
-              >
-                today
+              <div className="w-0.5 h-full bg-primary/50" />
+              <span className="absolute top-1 left-1.5 text-[10px] font-bold text-primary/90 whitespace-nowrap px-1.5 py-0.5 rounded bg-primary/10 border border-primary/30">
+                TODAY
               </span>
             </div>
           </div>
         </div>
       </div>
 
+      {/* ── Stitched timeline (moments + events, reorderable) ─────────── */}
+      {!loading && (
+        <div className="flex-shrink-0 border-t border-white/10 bg-black/80">
+          <button
+            type="button"
+            onClick={() => setShowEventsList(v => !v)}
+            className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 text-left hover:bg-white/[0.03] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary/70" />
+              <span className="text-xs font-semibold text-white/80">
+                Stitched timeline
+                {sortedEntries.length > 0 && ` · ${sortedEntries.length} memor${sortedEntries.length === 1 ? 'y' : 'ies'}`}
+              </span>
+            </div>
+            <span className="text-[10px] text-white/35 uppercase tracking-wider">
+              {showEventsList ? 'Hide' : 'Show'}
+            </span>
+          </button>
+          {showEventsList && (
+            <div className="max-h-[38vh] sm:max-h-[42vh] overflow-hidden flex flex-col min-h-[200px]">
+              <TimelineStitchedView embedded hideHeader />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Selected event detail ─────────────────────────────────────── */}
+      {selectedEntry && !selectedArc && (
+        <div className="flex-shrink-0 border-t border-white/10 bg-black/90 backdrop-blur-sm px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="flex-1 min-w-0 w-full">
+            <p className="text-base sm:text-lg font-bold text-white flex items-center gap-2 mb-1">
+              <Calendar className="h-4 w-4 text-primary/80 shrink-0" />
+              {formatEventDateShort(selectedEntry.start_time)}
+            </p>
+            <p className="text-sm text-white/70 leading-relaxed line-clamp-4">{selectedEntry.content}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-start">
+            <button
+              type="button"
+              onClick={() => openMemory(selectedEntry)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/20 border border-primary/40 text-primary text-xs font-medium hover:bg-primary/30 transition-colors min-h-[44px]"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Open
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedEntry(null)}
+              className="text-white/30 hover:text-white/60 transition text-sm min-h-[44px] min-w-[44px] flex items-center justify-center"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Arc detail panel (shows when arc is clicked) ──────────────── */}
       {selectedArc && (
-        <div className="flex-shrink-0 border-t border-white/10 bg-black/90 backdrop-blur-sm px-6 py-4 flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
+        <div className="flex-shrink-0 border-t border-white/10 bg-black/90 backdrop-blur-sm px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="flex-1 min-w-0 w-full">
             <div className="flex items-center gap-2 mb-1">
               <span className={`text-xs px-2 py-0.5 rounded-full border ${TRACK_COLORS[(selectedArc.track ?? 'inner') as ArcTrack].bg} ${TRACK_COLORS[(selectedArc.track ?? 'inner') as ArcTrack].border} ${TRACK_COLORS[(selectedArc.track ?? 'inner') as ArcTrack].text}`}>
                 {TRACK_LABELS[(selectedArc.track ?? 'inner') as ArcTrack]}
@@ -517,18 +678,31 @@ export const TimelineSwimlanes = ({ arcs, arcsByTrack, entries, loading }: Timel
               <p className="text-sm text-white/60 mt-2 leading-relaxed">{selectedArc.summary}</p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setSelectedArc(null)}
-            className="text-white/30 hover:text-white/60 transition text-sm shrink-0"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-start">
+            {onOpenArcTimeline && (
+              <button
+                type="button"
+                onClick={() => onOpenArcTimeline(selectedArc)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary/20 border border-primary/40 text-primary text-xs font-medium hover:bg-primary/30 transition-colors min-h-[44px]"
+              >
+                <Layers className="h-3.5 w-3.5" />
+                Full timeline
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelectedArc(null)}
+              className="text-white/30 hover:text-white/60 transition text-sm min-h-[44px] min-w-[44px] flex items-center justify-center"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
-      {/* ── Hover tooltips ────────────────────────────────────────────── */}
-      <Tooltip arc={hoveredArc} entry={hoveredEntry} />
+      {/* ── Hover / tap tooltips ────────────────────────────────────────────── */}
+      <Tooltip arc={displayArc} entry={displayEntry} />
     </div>
   );
 };

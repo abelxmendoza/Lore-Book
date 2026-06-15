@@ -1,6 +1,7 @@
 import { fetchJson } from '../lib/api';
 
 export type CharacterSuggestion = {
+  id: string;
   name: string;
   omegaEntityId?: string;
   questionId?: string;
@@ -31,11 +32,15 @@ export const characterSuggestionsApi = {
         relationshipDepth: suggestion.archetype === 'romantic' ? 'moderate' : 'acquaintance',
         hasMet: true,
         proximity: 'direct',
+        omegaEntityId: suggestion.omegaEntityId,
+        questionId: suggestion.questionId,
+        suggestionId: suggestion.id,
       }),
     }),
 };
 
 export type LocationSuggestion = {
+  id: string;
   name: string;
   type?: string;
   context?: string;
@@ -58,6 +63,7 @@ export const locationSuggestionsApi = {
       {
         method: 'POST',
         body: JSON.stringify({
+          id: suggestion.id,
           name: suggestion.name,
           type: suggestion.type,
           context: suggestion.context,

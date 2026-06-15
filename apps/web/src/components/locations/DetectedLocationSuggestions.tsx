@@ -17,10 +17,11 @@ const SOURCE_LABEL: Record<LocationSuggestion['source'], string> = {
   metadata: 'Journal tag',
 };
 
-const keyFor = (s: LocationSuggestion) => `${s.name}__${s.type ?? 'place'}`.toLowerCase();
+const keyFor = (s: LocationSuggestion) => s.id;
 
 const DEMO_SUGGESTIONS: LocationSuggestion[] = [
   {
+    id: 'sug:location:the gym on main street:gym',
     name: 'The gym on Main Street',
     type: 'gym',
     mentionCount: 3,
@@ -29,6 +30,7 @@ const DEMO_SUGGESTIONS: LocationSuggestion[] = [
     context: 'Where you mentioned going twice a week',
   },
   {
+    id: 'sug:location:kforce office:office',
     name: 'KForce office',
     type: 'office',
     mentionCount: 2,

@@ -5,6 +5,7 @@
 
 import { logger } from '../logger';
 
+import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
 import { groupAnalyticsService, type GroupAnalytics } from './groupAnalyticsService';
 import { supabaseAdmin } from './supabaseClient';
 
@@ -353,10 +354,55 @@ export class OrganizationService {
   }
 
   /**
+   * Find an existing organization by name or alias (normalized comparison).
+   */
+  async findByName(userId: string, name: string): Promise<Organization | null> {
+    const target = normalizeNameKey(name);
+    if (!target) return null;
+
+    const { data, error } = await supabaseAdmin
+      .from('organizations')
+      .select('*')
+      .eq('user_id', userId)
+      .limit(500);
+
+    if (error || !data?.length) return null;
+
+    for (const row of data) {
+      const labels = [row.name, ...((row.aliases as string[] | null) ?? [])];
+      for (const label of labels) {
+        const norm = normalizeNameKey(label);
+        if (norm === target || namesOverlapByContainment(norm, target)) {
+          return {
+            ...row,
+            members: [],
+            stories: [],
+            events: [],
+            locations: [],
+            member_count: 0,
+            usage_count: 0,
+            confidence: 1.0,
+            last_seen: row.updated_at,
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
    * Create a new organization
    */
   async createOrganization(userId: string, data: Partial<Organization>): Promise<Organization> {
     try {
+      if (data.name) {
+        const existing = await this.findByName(userId, data.name);
+        if (existing) {
+          logger.info({ userId, orgId: existing.id, name: data.name }, 'Dedup: returning existing organization');
+          return existing;
+        }
+      }
+
       const { data: org, error } = await supabaseAdmin
         .from('organizations')
         .insert({

@@ -105,7 +105,7 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
     <button
       type="button"
       onClick={onClick}
-      className={`group relative w-full text-left rounded-xl border bg-black/40 transition-all duration-200 p-3 sm:p-4 flex flex-col gap-2.5 sm:gap-3 ${
+      className={`group relative w-full text-left rounded-xl border bg-black/40 transition-all duration-200 overflow-hidden aspect-square sm:aspect-auto flex flex-col ${
         selected
           ? 'border-teal-500/50 bg-teal-500/10 ring-1 ring-teal-500/40'
           : 'border-white/8 hover:border-teal-500/30 hover:bg-teal-500/5'
@@ -113,13 +113,47 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
     >
       {selectionMode && (
         <span
-          className={`absolute top-2.5 right-2.5 sm:top-3 sm:right-3 w-5 h-5 rounded border text-[10px] flex items-center justify-center ${
+          className={`absolute top-2 right-2 sm:top-3 sm:right-3 z-10 w-5 h-5 rounded border text-[10px] flex items-center justify-center ${
             selected ? 'bg-teal-500 border-teal-400 text-black' : 'border-white/25 text-transparent'
           }`}
         >
           ✓
         </span>
       )}
+
+      {/* Mobile grid tile */}
+      <div className="sm:hidden flex flex-col h-full min-h-0">
+        <div className={`h-10 flex items-center justify-center border-b border-white/5 ${accent}`}>
+          <MapPin className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-h-0 p-2.5 flex flex-col justify-center gap-1.5">
+          <h3 className="text-xs font-semibold text-white group-hover:text-teal-300 transition-colors leading-snug line-clamp-2">
+            {location.name}
+          </h3>
+          <div className="flex flex-wrap items-center gap-1">
+            {placeType && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded border bg-teal-500/10 text-teal-300 border-teal-500/30 truncate max-w-full">
+                {formatPlaceType(placeType)}
+              </span>
+            )}
+            <span className="text-[10px] text-white/45">
+              {location.visitCount} {location.visitCount === 1 ? 'visit' : 'visits'}
+            </span>
+          </div>
+          {(placeTags.length > 0 || location.tagCounts.length > 0) && (
+            <div className="flex flex-wrap gap-1">
+              {(placeTags[0] ?? location.tagCounts[0]?.tag) && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/40 truncate max-w-full">
+                  {placeTags[0] ?? location.tagCounts[0]?.tag}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Desktop card */}
+      <div className="hidden sm:flex flex-col gap-2.5 sm:gap-3 p-3 sm:p-4">
       {/* Name row */}
       <div className="flex items-start gap-2.5 sm:gap-3">
         <div className={`rounded-lg border p-1.5 sm:p-2 shrink-0 mt-0.5 ${accent}`}>
@@ -201,6 +235,7 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
           )}
         </div>
       )}
+      </div>
     </button>
   );
 };

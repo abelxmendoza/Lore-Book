@@ -1,15 +1,27 @@
 /**
- * Client-side certified entity mention matching.
- * Mirrors server logic in certifiedEntityIndexService.
+ * Client-side entity mention matching for composer chips.
+ * Mirrors server entityMentionIndexService matching.
  */
 
 import type { CertifiedEntity, CertifiedEntityType } from '../types/certifiedEntity';
 
 export type { CertifiedEntity, CertifiedEntityType };
 
+export type EntityMatchKind = 'full' | 'prefix';
+
 export type CertifiedEntityMatch = CertifiedEntity & {
   matchedLabel: string;
+  matchKind?: EntityMatchKind;
 };
+
+function normalizeNameKey(name: string): string {
+  return (name ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -21,7 +33,13 @@ function containsMention(text: string, label: string): boolean {
   return re.test(text);
 }
 
-/** Match certified entities in composer text. Returns only entities with stable ids. */
+function lastToken(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  return trimmed.split(/\s+/).pop() ?? '';
+}
+
+/** Match entities in composer text — full name mentions + prefix autocomplete on last token. */
 export function matchCertifiedEntities(
   text: string,
   index: CertifiedEntity[]
@@ -37,8 +55,37 @@ export function matchCertifiedEntities(
 
     for (const label of labels) {
       if (containsMention(text, label)) {
-        matched.set(`${entity.type}:${entity.id}`, { ...entity, matchedLabel: label });
+        matched.set(`${entity.type}:${entity.id}`, {
+          ...entity,
+          matchedLabel: label,
+          matchKind: 'full',
+        });
         break;
+      }
+    }
+  }
+
+  const prefix = normalizeNameKey(lastToken(text));
+  if (prefix.length >= 2) {
+    for (const entity of index) {
+      const slot = `${entity.type}:${entity.id}`;
+      if (matched.has(slot)) continue;
+
+      const keys = entity.mentionKeys?.length
+        ? entity.mentionKeys
+        : [entity.name, ...entity.aliases].map(normalizeNameKey).filter(Boolean);
+
+      const nameStarts = keys.some((k) => k.startsWith(prefix));
+      const labelStarts = [entity.name, ...entity.aliases].some((l) =>
+        normalizeNameKey(l).startsWith(prefix)
+      );
+
+      if (nameStarts || labelStarts) {
+        matched.set(slot, {
+          ...entity,
+          matchedLabel: entity.name,
+          matchKind: 'prefix',
+        });
       }
     }
   }
@@ -46,20 +93,20 @@ export function matchCertifiedEntities(
   return [...matched.values()];
 }
 
-/** Map certified entity to chat pipeline thread entity shape. */
+/** Map entity to chat pipeline thread entity shape (includes skills). */
 export function toComposerThreadEntity(
   entity: CertifiedEntity
-): { id: string; name: string; type: 'character' | 'location' | 'organization' } | null {
-  if (entity.type === 'skill' || entity.type === 'event') return null;
+): { id: string; name: string; type: 'character' | 'location' | 'organization' | 'skill' } | null {
+  if (entity.type === 'event') return null;
   return { id: entity.id, name: entity.name, type: entity.type };
 }
 
 export function mergeThreadEntities(
-  base: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
-  composer: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>
-): Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }> {
-  const map = new Map<string, { id: string; name: string; type: 'character' | 'location' | 'organization' }>();
-  for (const e of base) map.set(e.id, e);
-  for (const e of composer) map.set(e.id, e);
+  base: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' | 'skill' }>,
+  composer: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' | 'skill' }>
+): Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' | 'skill' }> {
+  const map = new Map<string, { id: string; name: string; type: 'character' | 'location' | 'organization' | 'skill' }>();
+  for (const e of base) map.set(`${e.type}:${e.id}`, e);
+  for (const e of composer) map.set(`${e.type}:${e.id}`, e);
   return [...map.values()];
 }

@@ -36,7 +36,7 @@ export const TEMPORAL_RE =
   /\b(recently|lately|what.*(was|were|have) i (doing|up to|working|building)|what happened (lately|recently|this week|today)|just (did|told you|mentioned)|what.*(last|past) (few|couple|week|month))\b/i;
 
 export const THREAD_RE =
-  /\b(earlier|this conversation|what we (discussed|talked|were talking)|remember what i (said|told)|in this (chat|thread))\b/i;
+  /\b(earlier|this conversation|what we (discussed|talked|were talking)|remember what i (said|told)|in this (chat|thread)|what did i (just )?(say|tell|mention)|what were we (talking|discussing)|what have i (said|told|shared) (so far|here|in this))\b/i;
 
 /** User wants a structured recap of the current thread — not vector journal search. */
 export const CONVERSATION_RECALL_RE =
@@ -63,6 +63,7 @@ export function matchesFoundationRecallQuery(message: string): boolean {
   if (TEMPORAL_RE.test(text)) return true;
   if (CONVERSATION_RECALL_RE.test(text)) return true;
   if (THREAD_RE.test(text)) return true;
+  if (/^what did i (just )?(say|tell)/i.test(text)) return true;
   if (matchesEntityQuery(text)) return true;
   if (WHO_IS_RE.test(text)) return true;
   return false;

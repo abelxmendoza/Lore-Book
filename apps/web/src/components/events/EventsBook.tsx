@@ -43,6 +43,8 @@ import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { MemoryExplorer, dummyMemoryCards } from '../memory-explorer/MemoryExplorer';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
+import { useCalendarMonth } from '../../hooks/useCalendarMonth';
+import { TimelineStitchedView } from '../timeline/TimelineStitchedView';
 
 const ITEMS_PER_PAGE = 18;
 
@@ -85,7 +87,8 @@ interface FilterState {
 
 type CalendarItem =
   | { id: string; kind: 'event'; date: Date; title: string; event: Event }
-  | { id: string; kind: 'memory'; date: Date; title: string; memory: MemoryCard };
+  | { id: string; kind: 'memory'; date: Date; title: string; memory: MemoryCard }
+  | { id: string; kind: 'occasion'; date: Date; title: string; lifeArcId: string; userPresence: 'attended' | 'heard_about' | 'unknown' };
 
 function safeDate(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -512,6 +515,7 @@ export const EventsBook: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => startOfDay(new Date()));
+  const [selectedOccasionArc, setSelectedOccasionArc] = useState<{ id: string; title: string } | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     dateRange: 'all',
     types: [],
@@ -525,6 +529,13 @@ export const EventsBook: React.FC = () => {
   });
 
   const isMockDataEnabled = useShouldUseMockData();
+  const calendarYear = calendarMonth.getFullYear();
+  const calendarMonthNum = calendarMonth.getMonth() + 1;
+  const { dayMap: calendarDayMap, loading: calendarApiLoading } = useCalendarMonth(
+    calendarYear,
+    calendarMonthNum,
+    viewMode === 'calendar' && !isMockDataEnabled
+  );
   const memoryCards = useMemo<MemoryCard[]>(() => {
     const realMemories = entries.map(entry => memoryEntryToCard({
       id: entry.id,
@@ -736,6 +747,7 @@ export const EventsBook: React.FC = () => {
     return buckets;
   }, [calendarItems]);
   const selectedCalendarItems = itemsByDay.get(dayKey(selectedCalendarDate)) ?? [];
+  const selectedApiDay = calendarDayMap.get(dayKey(selectedCalendarDate));
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -900,7 +912,7 @@ export const EventsBook: React.FC = () => {
       </div>}
 
       {/* ── Category filter chips ── */}
-      {viewMode === 'events' && <div className="flex flex-wrap gap-1.5">
+      {viewMode === 'events' && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5">
         {CATEGORY_CHIPS.map(({ value, label, icon: Icon, shortLabel }) => (
           <button
             key={value}
@@ -921,7 +933,7 @@ export const EventsBook: React.FC = () => {
       </div>}
 
       {/* ── Impact filter chips ── */}
-      {viewMode === 'events' && showFilters && <div className="flex flex-wrap gap-1.5">
+      {viewMode === 'events' && showFilters && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5">
         {IMPACT_CHIPS.map(({ value, label, activeClass }) => (
           <button
             key={value}
@@ -940,7 +952,7 @@ export const EventsBook: React.FC = () => {
       </div>}
 
       {/* ── Significance filter chips ── */}
-      {viewMode === 'events' && <div className="flex flex-wrap gap-1.5 items-center">
+      {viewMode === 'events' && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5 items-center">
         <span className="text-[10px] text-white/25 font-medium uppercase tracking-wide">Scale</span>
         {SIGNIFICANCE_CHIPS.map(({ value, label, activeClass }) => (
           <button
@@ -1215,7 +1227,8 @@ export const EventsBook: React.FC = () => {
                     {format(calendarMonth, 'MMMM yyyy')}
                   </h3>
                   <p className="text-xs text-white/45 mt-0.5">
-                    Events span every active day. Memories appear on the day they were recorded.
+                    Named occasions, events you attended or heard about, and memories — with times.
+                    {calendarApiLoading && ' Loading…'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1271,10 +1284,13 @@ export const EventsBook: React.FC = () => {
                 {calendarDays.map(day => {
                   const key = dayKey(day);
                   const items = itemsByDay.get(key) ?? [];
+                  const apiDay = calendarDayMap.get(key);
                   const eventCount = items.filter(item => item.kind === 'event').length;
-                  const memoryCount = items.length - eventCount;
+                  const memoryCount = items.filter(item => item.kind === 'memory').length;
+                  const occasionCount = apiDay?.occasions.length ?? 0;
                   const selected = isSameDay(day, selectedCalendarDate);
                   const inMonth = isSameMonth(day, calendarMonth);
+                  const primaryOccasion = apiDay?.occasions[0];
                   return (
                     <button
                       key={key}
@@ -1293,14 +1309,27 @@ export const EventsBook: React.FC = () => {
                         <span className={`text-xs font-semibold ${selected ? 'text-primary' : 'text-white/75'}`}>
                           {format(day, 'd')}
                         </span>
-                        {items.length > 0 && (
+                        {(items.length > 0 || occasionCount > 0) && (
                           <span className="text-[10px] text-white/35 tabular-nums">
-                            {items.length}
+                            {occasionCount + items.length}
                           </span>
                         )}
                       </div>
 
                       <div className="mt-auto space-y-1">
+                        {primaryOccasion && (
+                          <div className="flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-violet-300 shrink-0" />
+                            <span className="text-[10px] text-violet-200 truncate leading-tight">
+                              {primaryOccasion.title}
+                            </span>
+                          </div>
+                        )}
+                        {occasionCount > 1 && (
+                          <span className="text-[9px] text-white/30 pl-2.5">
+                            +{occasionCount - 1} more occasion{occasionCount - 1 === 1 ? '' : 's'}
+                          </span>
+                        )}
                         {eventCount > 0 && (
                           <div className="flex items-center gap-1">
                             <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
@@ -1337,11 +1366,59 @@ export const EventsBook: React.FC = () => {
                   </h3>
                 </div>
                 <Badge variant="outline" className="border-white/15 text-white/45">
-                  {selectedCalendarItems.length}
+                  {selectedApiDay?.items.filter(i => i.kind !== 'occasion').length ?? selectedCalendarItems.length}
                 </Badge>
               </div>
 
-              {selectedCalendarItems.length === 0 ? (
+              {selectedApiDay && selectedApiDay.occasions.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {selectedApiDay.occasions.map(o => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => setSelectedOccasionArc({ id: o.id, title: o.title })}
+                      className="w-full rounded-xl border border-violet-500/30 bg-violet-500/10 p-3 text-left hover:bg-violet-500/15 transition"
+                    >
+                      <p className="text-[10px] uppercase tracking-wide text-violet-300/80 mb-1">
+                        {o.userPresence === 'heard_about' ? 'Heard about' : 'You were there'}
+                      </p>
+                      <p className="text-sm font-semibold text-white leading-snug">{o.title}</p>
+                      {o.summary && (
+                        <p className="text-xs text-white/50 mt-1 line-clamp-2">{o.summary}</p>
+                      )}
+                      <p className="text-[10px] text-white/35 mt-1">{o.itemCount} linked moment{o.itemCount !== 1 ? 's' : ''} & events</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {selectedApiDay && selectedApiDay.items.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedApiDay.items
+                    .filter(i => i.kind !== 'occasion')
+                    .map(item => (
+                      <div
+                        key={item.id}
+                        className="w-full rounded-xl border border-white/8 bg-white/[0.04] p-3 text-left"
+                      >
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={`h-2 w-2 rounded-full ${item.kind === 'event' ? 'bg-cyan-300' : 'bg-amber-300'}`} />
+                          <span className="text-[10px] uppercase tracking-wide text-white/35">
+                            {item.kind === 'event' ? 'Event' : 'Moment'}
+                            {item.temporalRole && item.temporalRole !== 'during' && ` · ${item.temporalRole}`}
+                          </span>
+                          {item.userPresence === 'heard_about' && (
+                            <span className="text-[10px] text-amber-300/80">heard about</span>
+                          )}
+                          <span className="text-[10px] text-white/30 ml-auto font-mono">
+                            {item.sortTime.slice(11, 16)}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-white">{item.title}</p>
+                      </div>
+                    ))}
+                </div>
+              ) : selectedCalendarItems.length === 0 ? (
                 <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4 text-sm text-white/45">
                   No memories or events recorded for this day.
                 </div>
@@ -1351,7 +1428,10 @@ export const EventsBook: React.FC = () => {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => item.kind === 'event' ? setSelectedEvent(item.event) : setSelectedMemory(item.memory)}
+                      onClick={() => {
+                        if (item.kind === 'event') setSelectedEvent(item.event);
+                        else if (item.kind === 'memory') setSelectedMemory(item.memory);
+                      }}
                       className="w-full rounded-xl border border-white/8 bg-white/[0.04] p-3 text-left hover:border-primary/35 hover:bg-primary/8 transition"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1560,6 +1640,13 @@ export const EventsBook: React.FC = () => {
       )}
       {selectedMemory && (
         <MemoryDetailModal memory={selectedMemory} onClose={() => setSelectedMemory(null)} />
+      )}
+      {selectedOccasionArc && (
+        <TimelineStitchedView
+          lifeArcId={selectedOccasionArc.id}
+          scopeLabel={selectedOccasionArc.title}
+          onClose={() => setSelectedOccasionArc(null)}
+        />
       )}
     </div>
   );

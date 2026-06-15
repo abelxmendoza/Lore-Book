@@ -1064,7 +1064,7 @@ export const MemoryExplorer = () => {
             
             {/* Navigation Tabs */}
             <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
-              <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1">
+              <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1 justify-center sm:justify-start">
                 <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 text-white/70 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0">
                   <FileText className="h-3 w-3 sm:h-4 sm:w-4" /> <span>All</span>
                 </TabsTrigger>
@@ -1243,9 +1243,9 @@ export const MemoryExplorer = () => {
                     ) : (
                       <>
                         {/* Book Page Container with Grid Inside */}
-                        <div className="relative w-full min-h-[400px] sm:min-h-[500px] lg:min-h-[600px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden">
+                        <div className="relative w-full min-h-[72dvh] sm:min-h-[640px] lg:min-h-[720px] bg-gradient-to-br from-amber-50/5 via-amber-100/5 to-amber-50/5 rounded-lg border-2 border-amber-800/30 shadow-2xl overflow-hidden flex flex-col">
                           {/* Page Content */}
-                          <div className="p-4 sm:p-6 lg:p-8 flex flex-col">
+                          <div className="p-4 sm:p-6 lg:p-8 flex flex-col flex-1 min-h-0">
                             {/* Page Header */}
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-amber-800/20">
                               <div className="flex items-center gap-2 sm:gap-3">
@@ -1265,7 +1265,7 @@ export const MemoryExplorer = () => {
                             </div>
 
                             {/* Memory Grid */}
-                            <div className="flex-1 grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            <div className="flex-1 grid grid-cols-3 sm:grid-cols-2 gap-2 sm:gap-4 mb-4 sm:mb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 content-start min-h-0">
                               {paginatedMemories.map((memory, index) => {
                                 try {
                                   return (
@@ -1286,7 +1286,7 @@ export const MemoryExplorer = () => {
                             </div>
 
                             {/* Page Footer with Navigation - Pushed to bottom */}
-                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-amber-800/20">
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-amber-800/20 mt-auto">
                               <Button
                                 variant="ghost"
                                 size="sm"

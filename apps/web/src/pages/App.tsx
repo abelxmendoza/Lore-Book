@@ -216,7 +216,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       perceptions: 'Perceptions',
       events: 'Life Log',
       entities: 'Entities',
-      organizations: 'Organizations',
+      organizations: 'Groups & Organizations',
       skills: 'Skills',
       subscription: 'Subscription',
       pricing: 'Pricing',
@@ -249,7 +249,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <DemoModeBootstrap />
 
       {/* Mobile Header — hidden in chat, lorebook, and memoir (all have their own top bars) */}
-      <header className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga') ? ' hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
+      <header className={`fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b border-border/60 bg-black/80 backdrop-blur-lg px-4 py-3 lg:hidden${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga' || activeSurface === 'timeline') ? ' hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0.75rem)' }}>
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -279,15 +279,15 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
           chat composer rendered below the fold and the page scrolled. h-screen
           + min-h-0 pins the composer to the bottom like ChatGPT. All other
           surfaces keep min-h-screen so they can grow and page-scroll. */}
-      <div className={`flex-1 flex flex-col overflow-hidden ${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga') ? 'h-screen min-h-0' : 'min-h-screen'}`}>
+      <div className={`flex-1 flex flex-col overflow-hidden ${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga' || activeSurface === 'timeline') ? 'h-screen min-h-0' : 'min-h-screen'}`}>
       <DemoModeBanner />
       <main
         id="main-content"
-        className={`flex-1 text-white overflow-x-hidden flex flex-col ${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga') ? 'p-0' : activeSurface === 'home' ? 'p-0 pt-14 lg:pt-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
+        className={`flex-1 text-white overflow-x-hidden flex flex-col ${(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga' || activeSurface === 'timeline') ? 'p-0' : activeSurface === 'home' ? 'p-0 pt-14 lg:pt-0' : 'space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8 xl:p-10 pt-16 sm:pt-6'}`}
         role="main"
-        style={activeSurface === 'timeline' ? { height: '100%', minHeight: '100%' } : (activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga') ? { height: '100vh', overflow: 'hidden' } : activeSurface === 'home' ? { minHeight: '100vh', overflowY: 'auto' } : {}}
+        style={(activeSurface === 'chat' || activeSurface === 'lorebook' || activeSurface === 'memoir' || activeSurface === 'saga' || activeSurface === 'timeline') ? { height: '100vh', overflow: 'hidden' } : activeSurface === 'home' ? { minHeight: '100vh', overflowY: 'auto' } : {}}
       >
-        {activeSurface !== 'chat' && activeSurface !== 'home' && activeSurface !== 'memoir' && activeSurface !== 'lorebook' && activeSurface !== 'saga' && (
+        {activeSurface !== 'chat' && activeSurface !== 'home' && activeSurface !== 'memoir' && activeSurface !== 'lorebook' && activeSurface !== 'saga' && activeSurface !== 'timeline' && (
           <>
             <header className="hidden lg:flex items-center justify-between rounded-2xl border border-border/60 bg-opacity-70 bg-[radial-gradient(circle_at_top,_rgba(126,34,206,0.35),_transparent)] p-4 shadow-panel">
               <div>
@@ -308,7 +308,11 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             <ChatFirstInterface onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
           </div>
         )}
-        {activeSurface === 'timeline' && <OmniTimeline />}
+        {activeSurface === 'timeline' && (
+          <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
+            <OmniTimeline onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
+          </div>
+        )}
         {activeSurface === 'search' && renderSearchSurface()}
         {activeSurface === 'characters' && <CharacterBook />}
         {activeSurface === 'locations' && <LocationBook />}

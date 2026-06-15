@@ -2,6 +2,7 @@ import { v4 as uuid } from 'uuid';
 
 import { config } from '../config';
 import { logger } from '../logger';
+import { normalizeNameKey } from '../utils/nameNormalization';
 
 import { supabaseAdmin } from './supabaseClient';
 
@@ -310,7 +311,7 @@ Generate a unique, contextual nickname that includes relationship information:`
     location: LocationWithNickname
   ): Promise<{ id: string; name: string } | null> {
     try {
-      const normalizedName = location.name.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+      const normalizedName = normalizeNameKey(location.name);
       if (!normalizedName) return null;
 
       const { data: existingByName } = await supabaseAdmin

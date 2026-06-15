@@ -27,6 +27,28 @@ interface AssembledWhen {
   source?: 'temporal_context' | 'content_inference' | 'created_at';
 }
 
+type UserPresence = 'attended' | 'heard_about' | 'unknown';
+
+function inferUserPresence(unitGroup: ExtractedUnit[]): UserPresence {
+  const text = unitGroup.map(u => u.content).join(' ').toLowerCase();
+  if (
+    /\b(heard about|couldn't make|could not make|missed the|find out that|told me about|wish i could|didn't go|did not go|wasn't at|was not at|couldn't attend|could not attend|they had a|she had a|he had a without me)\b/.test(
+      text
+    )
+  ) {
+    return 'heard_about';
+  }
+  if (
+    /\b(i went|i was at|we went|i attended|i drove|i arrived|i stayed|i met|i saw|i hung|i celebrated|we were at|i'm at|i am at|my cousin|my friend|yesterday i|today i|last night i)\b/.test(
+      text
+    )
+  ) {
+    return 'attended';
+  }
+  if (unitGroup.some(u => u.type === 'EXPERIENCE')) return 'attended';
+  return 'unknown';
+}
+
 /**
  * Assembles structured events from EXPERIENCE units
  */
@@ -174,8 +196,9 @@ export class EventAssemblyService {
     const what = this.extractWhat(unitGroup);
     const where = this.extractWhere(unitGroup);
     const when = this.extractWhen(unitGroup);
+    const userPresence = inferUserPresence(unitGroup);
 
-    // Group units by knowledge type. Event narrative comes from EXPERIENCE
+    // Group units by knowledge type.
     // units (what happened); fall back to the whole group when a cluster has
     // no EXPERIENCE units so entity extraction still gets source text.
     const experienceUnits = unitGroup.filter(u => u.type === 'EXPERIENCE');
@@ -209,6 +232,7 @@ export class EventAssemblyService {
         confidence: 0.8,
         metadata: {
           assembled_from_units: unitGroup.map(u => u.id),
+          user_presence: userPresence,
           ...(threadId ? { thread_id: threadId } : {}),
           knowledge_types: {
             experiences: experienceUnits.length,
@@ -415,6 +439,7 @@ export class EventAssemblyService {
     const what = this.extractWhat(validUnits);
     const where = this.extractWhere(validUnits);
     const when = this.extractWhen(validUnits);
+    const userPresence = inferUserPresence(validUnits);
 
     // Re-ingest to get updated entities
     const sourceText = validUnits.map(u => u.content).join(' ');
@@ -454,6 +479,7 @@ export class EventAssemblyService {
         metadata: {
           ...(existingEvent.metadata || {}),
           assembled_from_units: validUnits.map(u => u.id),
+          user_presence: userPresence,
           last_refined_at: new Date().toISOString(),
           temporal: when
             ? {

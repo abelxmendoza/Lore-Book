@@ -41,7 +41,68 @@ export interface TimeBucket {
   entries: ChronologyEntry[];
 }
 
+function computeChronologyBuckets(startTime: Date): {
+  year_bucket: number;
+  month_bucket: string;
+  decade_bucket: number;
+} {
+  const year = startTime.getUTCFullYear();
+  const month = new Date(Date.UTC(year, startTime.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  return {
+    year_bucket: year,
+    month_bucket: month,
+    decade_bucket: Math.floor(year / 10) * 10,
+  };
+}
+
 export class ChronologyService {
+  /**
+   * Backfill chronology_index from journal_entries.
+   * Needed for entries created before the sync trigger existed.
+   */
+  async backfillChronologyIndex(userId: string): Promise<number> {
+    try {
+      const { data: entries, error } = await supabaseAdmin
+        .from('journal_entries')
+        .select('id, user_id, date, end_time, time_precision, content')
+        .eq('user_id', userId);
+
+      if (error) {
+        logger.error({ error, userId }, 'Failed to load journal entries for chronology backfill');
+        return 0;
+      }
+      if (!entries?.length) return 0;
+
+      const rows = entries.map((entry: any) => {
+        const startIso = entry.date ?? new Date().toISOString();
+        const buckets = computeChronologyBuckets(new Date(startIso));
+        return {
+          user_id: userId,
+          journal_entry_id: entry.id,
+          start_time: startIso,
+          end_time: entry.end_time ?? null,
+          time_precision: entry.time_precision ?? 'exact',
+          ...buckets,
+        };
+      });
+
+      const { error: upsertError } = await supabaseAdmin
+        .from('chronology_index')
+        .upsert(rows, { onConflict: 'user_id,journal_entry_id' });
+
+      if (upsertError) {
+        logger.error({ error: upsertError, userId }, 'Failed to upsert chronology_index backfill');
+        return 0;
+      }
+
+      logger.info({ userId, count: rows.length }, 'Backfilled chronology_index from journal_entries');
+      return rows.length;
+    } catch (error) {
+      logger.error({ error, userId }, 'Error in backfillChronologyIndex');
+      return 0;
+    }
+  }
+
   /**
    * Get chronological order of all memories for a user
    * Optionally filter by timeline IDs
@@ -53,27 +114,43 @@ export class ChronologyService {
     timelineIds?: string[]
   ): Promise<ChronologyEntry[]> {
     try {
-      let query = supabaseAdmin
-        .from('chronology_index')
-        .select(`
-          *,
-          journal_entries!inner(id, content, user_id)
-        `)
-        .eq('user_id', userId)
-        .order('start_time', { ascending: true });
+      const runQuery = async () => {
+        let query = supabaseAdmin
+          .from('chronology_index')
+          .select(`
+            *,
+            journal_entries!inner(id, content, user_id)
+          `)
+          .eq('user_id', userId)
+          .order('start_time', { ascending: true });
 
-      if (startTime) {
-        query = query.gte('start_time', startTime);
-      }
-      if (endTime) {
-        query = query.lte('start_time', endTime);
-      }
+        if (startTime) {
+          query = query.gte('start_time', startTime);
+        }
+        if (endTime) {
+          query = query.lte('start_time', endTime);
+        }
 
-      const { data, error } = await query;
+        return query;
+      };
+
+      let { data, error } = await runQuery();
 
       if (error) {
         logger.error({ error, userId }, 'Failed to get chronological order');
         throw error;
+      }
+
+      // Journal entries may exist without index rows (pre-trigger data)
+      if (!data?.length) {
+        const backfilled = await this.backfillChronologyIndex(userId);
+        if (backfilled > 0) {
+          ({ data, error } = await runQuery());
+          if (error) {
+            logger.error({ error, userId }, 'Failed to get chronological order after backfill');
+            throw error;
+          }
+        }
       }
 
       // Get timeline memberships for each entry

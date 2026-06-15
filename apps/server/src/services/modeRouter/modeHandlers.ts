@@ -28,8 +28,8 @@ class ModeHandlers {
     options?: {
       messageId?: string;
       conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
-      /** Return-to-thread orientation block — present when the thread was idle 24h+ */
       continuityContext?: string;
+      threadId?: string;
     }
   ): Promise<ModeHandlerResponse> {
     switch (mode) {
@@ -37,7 +37,7 @@ class ModeHandlers {
         return await this.handleEmotionalExistential(userId, message);
       
       case 'MEMORY_RECALL':
-        return await this.handleMemoryRecall(userId, message, options?.conversationHistory);
+        return await this.handleMemoryRecall(userId, message, options?.conversationHistory, options?.threadId);
       
       case 'NARRATIVE_RECALL':
         return await this.handleNarrativeRecall(userId, message);
@@ -46,7 +46,7 @@ class ModeHandlers {
         return await this.handleNarrativeStory(userId, message);
 
       case 'FOUNDATION_RECALL':
-        return await this.handleFoundationRecall(userId, message, options?.conversationHistory);
+        return await this.handleFoundationRecall(userId, message, options?.conversationHistory, options?.threadId);
       
       case 'EXPERIENCE_INGESTION':
         return await this.handleExperienceIngestion(userId, message, options?.messageId, options?.continuityContext);
@@ -111,14 +111,16 @@ class ModeHandlers {
   private async handleFoundationRecall(
     userId: string,
     message: string,
-    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    threadId?: string
   ): Promise<ModeHandlerResponse> {
     try {
       const { executeExplicitRecall } = await import('../chat/explicitRecallService');
       const result = await executeExplicitRecall(
         userId,
         message,
-        conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? []
+        conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? [],
+        { threadId: options?.threadId }
       );
 
       return {
@@ -144,7 +146,8 @@ class ModeHandlers {
   private async handleMemoryRecall(
     userId: string,
     message: string,
-    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    threadId?: string
   ): Promise<ModeHandlerResponse> {
     try {
       const { matchesFoundationRecallQuery } = await import('../chat/recallIntentPatterns');
@@ -153,7 +156,8 @@ class ModeHandlers {
         const foundation = await executeExplicitRecall(
           userId,
           message,
-          conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? []
+          conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? [],
+          { threadId: options?.threadId }
         );
         if (foundation.response_mode !== 'SILENCE') {
           return {
@@ -188,7 +192,13 @@ class ModeHandlers {
       // Surface journal fragments even when confidence is low — never hide matches
       if (recallResult.confidence < 0.5 && recallResult.entries.length === 0) {
         const { executeExplicitRecall } = await import('../chat/explicitRecallService');
-        const foundation = await executeExplicitRecall(userId, message);
+        const { buildDiagnosticRecall } = await import('../chat/failureAwareHandler');
+        const foundation = await executeExplicitRecall(
+          userId,
+          message,
+          conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? [],
+          { threadId }
+        );
         if (foundation.response_mode !== 'SILENCE') {
           return {
             content: foundation.content,
@@ -197,8 +207,20 @@ class ModeHandlers {
             metadata: foundation.metadata,
           };
         }
+        if ((conversationHistory?.length ?? 0) > 0) {
+          const diagnostic = await buildDiagnosticRecall(userId, message, {
+            conversationHistory: conversationHistory?.map((m) => ({ role: m.role, content: m.content })) ?? [],
+            threadId,
+          });
+          return {
+            content: diagnostic,
+            response_mode: 'DIAGNOSTIC',
+            confidence: 0.7,
+            metadata: { recall_confidence: recallResult.confidence },
+          };
+        }
         return {
-          content: "My record there is thin — I only have fragments. What specifically were you thinking of?",
+          content: "I don't have stored memories matching that yet. Tell me more and I'll add it to your record.",
           response_mode: 'LOW_CONFIDENCE_RECALL',
           confidence: recallResult.confidence,
           metadata: {

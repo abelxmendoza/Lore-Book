@@ -21,7 +21,6 @@ import { ErrorBoundary } from '../ErrorBoundary';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
-import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { Modal } from '../ui/modal';
 import { subDays } from 'date-fns';
@@ -1412,7 +1411,7 @@ export const OrganizationsBook: React.FC = () => {
             />
           </div>
           
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 w-full sm:w-auto">
             {/* Sort */}
             <select
               aria-label="Sort organizations"
@@ -1521,7 +1520,7 @@ export const OrganizationsBook: React.FC = () => {
 
         {/* Category Tabs - Dynamically generated based on available types. On mobile, wrap to second row so all are visible without horizontal scroll. */}
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as OrganizationCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1 sm:gap-2 justify-start">
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1 sm:gap-2 justify-center sm:justify-start">
             {availableCategories.includes('all') && (
               <TabsTrigger 
                 value="all" 
@@ -1678,18 +1677,18 @@ export const OrganizationsBook: React.FC = () => {
       ) : (
         <>
           {/* Book Page Container */}
-          <div className="relative w-full min-h-[600px] bg-gradient-to-br from-purple-50/5 via-purple-100/5 to-purple-50/5 rounded-lg border-2 border-purple-800/30 shadow-2xl overflow-hidden">
-            <div className="p-4 sm:p-8 flex flex-col">
+          <div className="relative w-full min-h-[72dvh] sm:min-h-[640px] lg:min-h-[720px] bg-gradient-to-br from-purple-50/5 via-purple-100/5 to-purple-50/5 rounded-lg border-2 border-purple-800/30 shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-4 sm:p-8 flex flex-col flex-1 min-h-0">
               {/* Page Header — visible on mobile */}
               <div className="flex items-center justify-between mb-4 sm:mb-6 pb-4 border-b border-purple-800/20">
                 <div className="flex items-center gap-3">
                   <BookOpen className="h-6 w-6 text-purple-600/60" />
                   <div>
                     <h3 className="text-sm font-semibold text-purple-900/40 uppercase tracking-wider">
-                      Organizations Book
+                      Groups and Organizations
                     </h3>
                     <p className="text-xs text-purple-700/50 mt-0.5">
-                      Page {currentPage} of {totalPages} · {filteredOrganizations.length} organizations
+                      Page {currentPage} of {totalPages} · {filteredOrganizations.length} groups
                     </p>
                   </div>
                 </div>
@@ -1709,7 +1708,7 @@ export const OrganizationsBook: React.FC = () => {
                   </div>
                 }
               >
-                <div className="flex-1 grid gap-2 sm:gap-4 mb-4 sm:mb-6 grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="flex-1 grid gap-2 sm:gap-4 mb-4 sm:mb-6 grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 content-start min-h-0">
                   {paginatedOrganizations.map((org) => (
                     <OrganizationProfileCard
                       key={org.id}
@@ -1726,7 +1725,7 @@ export const OrganizationsBook: React.FC = () => {
               </ErrorBoundary>
 
               {/* Page Footer with Navigation */}
-              <div className="flex items-center justify-between pt-4 border-t border-purple-800/20">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-4 border-t border-purple-800/20 mt-auto">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1790,13 +1789,6 @@ export const OrganizationsBook: React.FC = () => {
             <div className="absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-purple-900/40 via-purple-800/30 to-purple-900/40" />
           </div>
         </>
-      )}
-
-      {/* Timeline at bottom */}
-      {filteredOrganizations.length > 0 && (
-        <div className="mt-8">
-          <ColorCodedTimeline />
-        </div>
       )}
 
       {/* Organization Detail Modal */}

@@ -54,7 +54,10 @@ const createCharacterSchema = z.object({
       phone: z.string().optional()
     })
     .optional(),
-  metadata: z.record(z.string(), z.unknown()).optional()
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  omegaEntityId: z.string().uuid().optional(),
+  questionId: z.string().uuid().optional(),
+  suggestionId: z.string().optional(),
 });
 
 const updateCharacterSchema = z.object({
@@ -569,6 +572,9 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       const metadata: Record<string, unknown> = {
         ...(characterData.metadata || {}),
         ...(characterData.social_media ? { social_media: characterData.social_media } : {}),
+        ...(characterData.omegaEntityId ? { omega_entity_id: characterData.omegaEntityId } : {}),
+        ...(characterData.questionId ? { entity_question_id: characterData.questionId } : {}),
+        ...(characterData.suggestionId ? { suggestion_id: characterData.suggestionId } : {}),
         relationship_categories: inferredCategories.confirmed,
         potential_relationship_categories: inferredCategories.potential,
         importance_inference: {

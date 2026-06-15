@@ -11,11 +11,13 @@ import {
 } from '../utils/namedPlaceExtractor';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { collectNameKeys, isNameAlreadyInBook, type BookNameEntry } from '../utils/suggestionBookFilter';
+import { locationSuggestionId } from '../utils/entitySuggestionId';
 import { locationService } from './locationService';
 import { locationNicknameService } from './locationNicknameService';
 import { supabaseAdmin } from './supabaseClient';
 
 export type LocationSuggestion = {
+  id: string;
   name: string;
   type?: string;
   context?: string;
@@ -77,6 +79,7 @@ class LocationSuggestionService {
       const primary = group.find(g => g.name === bestName) ?? group[0];
       return {
         ...primary,
+        id: locationSuggestionId({ name: bestName, type: primary.type }),
         name: bestName,
         mentionCount: group.reduce((sum, g) => sum + g.mentionCount, 0),
         confidence: Math.max(...group.map(g => g.confidence)),
@@ -91,12 +94,12 @@ class LocationSuggestionService {
 
     const { exactKeys: bookExact, entries: bookEntries } = await this.buildLocationBookIndex(userId);
 
-    const add = (s: LocationSuggestion) => {
+    const add = (s: Omit<LocationSuggestion, 'id'>) => {
       const key = normalizeNameKey(s.name);
       if (!key || key.length < 2 || seen.has(key)) return;
       if (isNameAlreadyInBook(s.name, bookExact, bookEntries)) return;
       seen.add(key);
-      suggestions.push(s);
+      suggestions.push({ ...s, id: locationSuggestionId(s) });
     };
 
     try {

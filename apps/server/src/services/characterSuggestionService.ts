@@ -8,9 +8,11 @@ import { normalizeNameKey } from '../utils/nameNormalization';
 import { isIndividualPersonName } from '../utils/personNameValidation';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { collectNameKeys, isNameAlreadyInBook, type BookNameEntry } from '../utils/suggestionBookFilter';
+import { characterSuggestionId } from '../utils/entitySuggestionId';
 import { supabaseAdmin } from './supabaseClient';
 
 export type CharacterSuggestion = {
+  id: string;
   name: string;
   omegaEntityId?: string;
   questionId?: string;
@@ -55,14 +57,14 @@ class CharacterSuggestionService {
     let bookExact = new Set<string>();
     let bookEntries: BookNameEntry[] = [];
 
-    const add = (s: CharacterSuggestion) => {
+    const add = (s: Omit<CharacterSuggestion, 'id'>) => {
       const key = normalizeNameKey(s.name);
       if (!key || key.length < 2 || JUNK.has(key) || seen.has(key)) return;
       if (!isIndividualPersonName(s.name)) return;
       if (classifyMentionKind(s.name).kind !== 'person') return;
       if (isNameAlreadyInBook(s.name, bookExact, bookEntries)) return;
       seen.add(key);
-      suggestions.push(s);
+      suggestions.push({ ...s, id: characterSuggestionId(s) });
     };
 
     try {
@@ -196,6 +198,7 @@ class CharacterSuggestionService {
       if (!existing || s.confidence > existing.confidence) {
         merged.set(key, {
           ...s,
+          id: s.id ?? characterSuggestionId(s),
           archetype: s.archetype ?? 'romantic',
           context: s.context ?? 'Possible romantic connection from your chats',
         });
@@ -240,6 +243,7 @@ class CharacterSuggestionService {
       if (!romanticNearby) continue;
 
       out.push({
+        id: characterSuggestionId({ name: gate.cleanName }),
         name: gate.cleanName,
         mentionCount: 2,
         confidence: 0.72,
@@ -292,6 +296,10 @@ class CharacterSuggestionService {
       if (!name || !isIndividualPersonName(name)) continue;
       if (isNameAlreadyInBook(name, book.exactKeys, book.entries)) continue;
       out.push({
+        id: characterSuggestionId({
+          name,
+          omegaEntityId: rel.person_type === 'omega_entity' ? rel.person_id : undefined,
+        }),
         name,
         mentionCount: 2,
         confidence: 0.78,

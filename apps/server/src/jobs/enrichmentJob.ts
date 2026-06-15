@@ -15,6 +15,7 @@ import { HabitStorage } from '../services/habits/habitStorage';
 import { InfluenceEngine } from '../services/influence/influenceEngine';
 import { InfluenceStorage } from '../services/influence/influenceStorage';
 import { arcInferenceService } from '../services/continuityRuntime/arcs/arcInferenceService';
+import { dayOccasionService } from '../services/continuityRuntime/arcs/dayOccasionService';
 import { arcReconciliationService } from '../services/continuityRuntime/arcs/arcReconciliationService';
 import { arcMembershipSuggestionService } from '../services/continuityRuntime/arcs/arcMembershipSuggestionService';
 import { FlowDetector } from '../services/creative/flowDetector';
@@ -135,6 +136,14 @@ enrichmentPipeline.registerUserAnalyzer({
   tier: 'EXPERIMENTAL',
   async processUser(userId) {
     await arcInferenceService.runForUser(userId);
+  },
+});
+
+enrichmentPipeline.registerUserAnalyzer({
+  name: 'day-occasion-arcs',
+  tier: 'EXPERIMENTAL',
+  async processUser(userId) {
+    await dayOccasionService.processRecentDays(userId, { lookbackDays: 90 });
   },
 });
 

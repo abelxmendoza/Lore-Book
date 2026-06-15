@@ -3092,7 +3092,7 @@ export const CharacterBook = () => {
         />
         
         {/* Importance & Impact Filters */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-4">
           <div className="flex items-center gap-2">
             <label className="text-sm text-white/60">Filter:</label>
             <select
@@ -3198,7 +3198,7 @@ export const CharacterBook = () => {
           Characters can appear in multiple filters based on context. Confirmed signals show in filters now; tentative signals like “might collaborate” are learned but won&apos;t become professional until the story confirms it.
         </div>
         <Tabs value={activeCategory} onValueChange={(value) => setActiveCategory(value as CharacterCategory)}>
-          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1">
+          <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1 justify-center sm:justify-start">
             <TabsTrigger 
               value="all" 
               className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-primary/20 data-[state=active]:text-primary text-xs sm:text-sm flex-shrink-0"
@@ -3515,9 +3515,9 @@ export const CharacterBook = () => {
       ) : (
         <>
           {/* Book Page Container with Grid Inside */}
-          <div className="relative w-full min-h-[400px] sm:min-h-[500px] lg:min-h-[600px] bg-gradient-to-br from-purple-950/20 via-black/40 to-purple-950/20 rounded-lg border border-purple-500/20 shadow-2xl overflow-hidden">
+          <div className="relative w-full min-h-[72dvh] sm:min-h-[640px] lg:min-h-[720px] bg-gradient-to-br from-purple-950/20 via-black/40 to-purple-950/20 rounded-lg border border-purple-500/20 shadow-2xl overflow-hidden flex flex-col">
             {/* Page Content */}
-            <div className="p-4 sm:p-6 lg:p-8 flex flex-col">
+            <div className="p-4 sm:p-6 lg:p-8 flex flex-col flex-1 min-h-0">
               {/* Page Header */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-white/10">
                 <div className="flex items-center gap-2 sm:gap-3">
@@ -3546,7 +3546,7 @@ export const CharacterBook = () => {
               </div>
 
               {/* Character Grid - By impact or grouped by role */}
-              <div className="flex-1 space-y-4 mb-4 sm:mb-6">
+              <div className="flex-1 space-y-4 mb-4 sm:mb-6 min-h-0">
                 {sortOrder === 'standing' ? (
                   <div className="space-y-2">
                     <h4 className="text-sm font-bold text-white flex items-center gap-2">
@@ -3681,7 +3681,7 @@ export const CharacterBook = () => {
               </div>
 
               {/* Page Footer with Navigation */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-white/10">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-3 sm:pt-4 border-t border-white/10 mt-auto">
                 <Button
                   variant="ghost"
                   size="sm"

@@ -39,14 +39,17 @@ export const MOCK_ROMANTIC_RELATIONSHIP_NAMES: string[] = [
 
 const DEMO_GENERAL: CharacterSuggestion[] = [
   {
+    id: 'demo-omega-iris',
     name: 'Iris Vance',
     mentionCount: 6,
     confidence: 0.88,
     source: 'omega_entity',
+    omegaEntityId: 'demo-omega-iris',
     archetype: 'performer',
     context: 'Indie theater performer — mentioned around the Velvet Room venue',
   },
   {
+    id: 'sug:character:dj cassian',
     name: 'DJ Cassian',
     mentionCount: 4,
     confidence: 0.84,
@@ -55,13 +58,16 @@ const DEMO_GENERAL: CharacterSuggestion[] = [
     context: 'Opened for Iris Vance at a fictional anniversary showcase',
   },
   {
+    id: 'demo-question-theo',
     name: 'Uncle Theo',
     mentionCount: 3,
     confidence: 0.79,
     source: 'entity_question',
+    questionId: 'demo-question-theo',
     context: 'Family mention from sample demo threads — confirm who you mean',
   },
   {
+    id: 'sug:character:morgan hale',
     name: 'Morgan Hale',
     mentionCount: 2,
     confidence: 0.74,
@@ -74,6 +80,7 @@ const DEMO_GENERAL: CharacterSuggestion[] = [
 /** Individual romantic interests not yet in the demo book or relationship cards. */
 const DEMO_ROMANTIC: CharacterSuggestion[] = [
   {
+    id: 'sug:character:priya',
     name: 'Priya',
     mentionCount: 4,
     confidence: 0.84,
@@ -83,6 +90,7 @@ const DEMO_ROMANTIC: CharacterSuggestion[] = [
     context: 'Two dates in the demo storyline — add her to track the connection',
   },
   {
+    id: 'sug:character:daniel',
     name: 'Daniel',
     mentionCount: 3,
     confidence: 0.79,

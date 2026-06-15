@@ -744,7 +744,7 @@ export const EntityResolutionBook: React.FC = () => {
 
           {/* Category tabs */}
           <Tabs value={activeCategory} onValueChange={v => setActiveCategory(v as EntityCategory)}>
-            <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1">
+            <TabsList className="w-full bg-black/40 border border-border/50 p-1 h-auto flex flex-wrap gap-1 justify-center sm:justify-start">
               {(([
                 { value: 'all',           icon: Hash,          label: 'All',       badge: undefined },
                 { value: 'people',        icon: User,          label: 'People',    badge: undefined },

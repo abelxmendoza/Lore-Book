@@ -8,10 +8,11 @@
  * is on the left, the current chapter unfolds on the right.
  */
 
-import { useState, useMemo } from 'react';
-import { BookOpen, Clock, Star } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Star, ChevronLeft } from 'lucide-react';
 import { TRACK_COLORS, TRACK_LABELS, type LifeArc, type ArcTrack } from '../../hooks/useLifeArcs';
 import type { ChronologyEntry } from '../../types/timelineV2';
+import { TimelineStitchedView } from './TimelineStitchedView';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -90,53 +91,35 @@ const ChapterItem = ({
   );
 };
 
-// ─── Entry card in the reading view ───────────────────────────────────────────
-
-const EntryCard = ({ entry }: { entry: ChronologyEntry }) => {
-  const [expanded, setExpanded] = useState(false);
-  const date = new Date(entry.start_time).toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-  });
-  const preview = !expanded && entry.content.length > 300;
-
-  return (
-    <div className="border-b border-white/6 py-6 first:pt-2">
-      <p className="text-xs text-white/30 font-mono mb-3 flex items-center gap-1.5">
-        <Clock className="h-3 w-3" />
-        {date}
-        {entry.time_precision && entry.time_precision !== 'exact' && (
-          <span className="text-white/20">~{entry.time_precision}</span>
-        )}
-      </p>
-      <p className={`text-sm text-white/80 leading-relaxed whitespace-pre-wrap ${preview ? 'line-clamp-6' : ''}`}>
-        {entry.content}
-      </p>
-      {preview && (
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="mt-2 text-xs text-primary/70 hover:text-primary transition"
-        >
-          Read more
-        </button>
-      )}
-    </div>
-  );
-};
-
 // ─── Arc reading panel ────────────────────────────────────────────────────────
 
-const ArcPanel = ({ arc, arcEntries }: { arc: LifeArc; arcEntries: ChronologyEntry[] }) => {
+const ArcPanel = ({
+  arc,
+  onBack,
+}: {
+  arc: LifeArc;
+  onBack?: () => void;
+}) => {
   const track = (arc.track ?? 'inner') as ArcTrack;
   const c     = TRACK_COLORS[track];
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Chapter header */}
-      <div className={`sticky top-0 z-10 px-8 py-6 border-b border-white/8 bg-black/95 backdrop-blur-sm`}>
+      <div className={`sticky top-0 z-10 px-4 sm:px-8 py-4 sm:py-6 border-b border-white/8 bg-black/95 backdrop-blur-sm`}>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="md:hidden flex items-center gap-1.5 text-xs text-white/50 hover:text-white mb-3 -ml-1 min-h-[44px]"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Chapters
+          </button>
+        )}
         <div className="flex items-start gap-3">
           <div className={`w-3 h-3 rounded-full flex-shrink-0 mt-1.5 ${c.dotBg}`} />
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className={`text-xs px-2 py-0.5 rounded-full border ${c.bg} ${c.border} ${c.text}`}>
                 {TRACK_LABELS[track]}
@@ -148,7 +131,7 @@ const ArcPanel = ({ arc, arcEntries }: { arc: LifeArc; arcEntries: ChronologyEnt
                 {confidenceBars(arc.confidence)}
               </span>
             </div>
-            <h2 className="text-2xl font-bold text-white leading-tight mb-1" style={{ fontFamily: 'Georgia, serif' }}>
+            <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight mb-1" style={{ fontFamily: 'Georgia, serif' }}>
               {arc.title}
             </h2>
             <p className="text-xs text-white/35">{formatDateRange(arc)}</p>
@@ -162,23 +145,19 @@ const ArcPanel = ({ arc, arcEntries }: { arc: LifeArc; arcEntries: ChronologyEnt
         </div>
 
         {arc.summary && (
-          <p className="text-sm text-white/55 leading-relaxed mt-4 pl-6 border-l-2 border-white/10">
+          <p className="text-sm text-white/55 leading-relaxed mt-4 pl-0 sm:pl-6 border-l-0 sm:border-l-2 border-white/10">
             {arc.summary}
           </p>
         )}
       </div>
 
-      {/* Entries */}
-      <div className="px-8 pb-16">
-        {arcEntries.length === 0 ? (
-          <div className="text-center py-16">
-            <BookOpen className="h-10 w-10 text-white/10 mx-auto mb-3" />
-            <p className="text-white/30 text-sm">No memories in this arc yet.</p>
-            <p className="text-white/20 text-xs mt-1">Share more in Chat and they'll appear here.</p>
-          </div>
-        ) : (
-          arcEntries.map(e => <EntryCard key={e.id} entry={e} />)
-        )}
+      <div className="flex-1 min-h-0 border-t border-white/8">
+        <TimelineStitchedView
+          embedded
+          hideHeader
+          lifeArcId={arc.id}
+          scopeLabel={arc.title}
+        />
       </div>
     </div>
   );
@@ -190,10 +169,21 @@ interface TimelineStoryViewProps {
   arcs: LifeArc[];
   entries: ChronologyEntry[];
   loading: boolean;
+  onOpenArcTimeline?: (arc: LifeArc) => void;
 }
 
 export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewProps) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
+
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 768px)');
+    const onChange = () => {
+      if (mql.matches) setMobileReaderOpen(false);
+    };
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
 
   // Sort arcs by start_date, fallback to created_at
   const sortedArcs = useMemo(() =>
@@ -249,9 +239,13 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
   return (
     <div className="h-full flex overflow-hidden">
       {/* ── Table of contents ────────────────────────────────────────── */}
-      <div className="w-64 flex-shrink-0 border-r border-white/8 overflow-y-auto bg-black/50">
+      <div
+        className={`w-full md:w-64 flex-shrink-0 border-r border-white/8 overflow-y-auto bg-black/50 ${
+          mobileReaderOpen ? 'hidden md:block' : 'block'
+        }`}
+      >
         <div className="px-4 py-3 border-b border-white/8 sticky top-0 bg-black/90 backdrop-blur-sm z-10">
-          <p className="text-[10px] text-white/30 uppercase tracking-widest font-mono">
+          <p className="text-[10px] text-white/30 uppercase tracking-widest font-mono text-center md:text-left">
             {sortedArcs.length} chapter{sortedArcs.length !== 1 ? 's' : ''}
           </p>
         </div>
@@ -262,18 +256,28 @@ export const TimelineStoryView = ({ arcs, entries, loading }: TimelineStoryViewP
             arc={arc}
             selected={arc.id === (selectedArc?.id)}
             entryCount={arcEntryMap[arc.id]?.length ?? 0}
-            onClick={() => setSelectedId(arc.id)}
+            onClick={() => {
+              setSelectedId(arc.id);
+              setMobileReaderOpen(true);
+            }}
           />
         ))}
       </div>
 
       {/* ── Reading area ─────────────────────────────────────────────── */}
-      <div className="flex-1 min-w-0 overflow-hidden bg-black">
+      <div
+        className={`flex-1 min-w-0 overflow-hidden bg-black ${
+          mobileReaderOpen ? 'block' : 'hidden md:block'
+        }`}
+      >
         {selectedArc ? (
-          <ArcPanel arc={selectedArc} arcEntries={arcEntryMap[selectedArc.id] ?? []} />
+          <ArcPanel
+            arc={selectedArc}
+            onBack={() => setMobileReaderOpen(false)}
+          />
         ) : (
-          <div className="h-full flex items-center justify-center">
-            <p className="text-white/25 text-sm">Select a chapter from the left.</p>
+          <div className="h-full flex items-center justify-center px-6">
+            <p className="text-white/25 text-sm text-center">Select a chapter to start reading.</p>
           </div>
         )}
       </div>

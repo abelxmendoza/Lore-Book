@@ -1,12 +1,19 @@
 /**
- * Explicit Recall Service — Sprint AF
+ * Explicit Recall Service — Sprint AF / AH
  *
- * Returns structured foundation data directly. Raw journal snippets are only
- * appended for biography/general queries — never for roster, family, or entity.
+ * Retrieval order:
+ *   1. Current thread (threadRecallService)
+ *   2. Structured foundation (recallQueryRouter)
+ *   3. Journal semantic search (memoryRecallEngine)
  */
 
 import { routeRecallQuery, type RecallResult as RoutedRecall } from './recallQueryRouter';
 import { isFoundationPrimaryIntent } from './recallIntentPatterns';
+import {
+  buildThreadRecall,
+  matchesThreadRecallQuery,
+  THREAD_RECALL_RE,
+} from './threadRecallService';
 import type { RecallResult as JournalRecall } from '../memoryRecall/types';
 
 export type ExplicitRecallResponse = {
@@ -19,11 +26,41 @@ export type ExplicitRecallResponse = {
 export async function executeExplicitRecall(
   userId: string,
   message: string,
-  conversationHistory: Array<{ role: string; content: string }> = []
+  conversationHistory: Array<{ role: string; content: string }> = [],
+  options: { threadId?: string } = {}
 ): Promise<ExplicitRecallResponse> {
+  const isThreadQuery =
+    matchesThreadRecallQuery(message) || THREAD_RECALL_RE.test(message.trim());
+
+  // Phase 2 — thread first when history exists or threadId provided
+  if (isThreadQuery || conversationHistory.length > 0) {
+    const thread = await buildThreadRecall(userId, message, {
+      conversationHistory,
+      threadId: options.threadId,
+    });
+
+    if (thread.hasContent) {
+      return {
+        content: thread.content,
+        response_mode: 'THREAD_RECALL',
+        confidence: thread.confidence,
+        metadata: { recall_intent: 'thread', thread_first: true },
+      };
+    }
+
+    // Thread query with empty history — still return thread response, skip journal
+    if (isThreadQuery) {
+      return {
+        content: thread.content,
+        response_mode: 'THREAD_RECALL',
+        confidence: thread.confidence,
+        metadata: { recall_intent: 'thread', thread_first: true },
+      };
+    }
+  }
+
   const routed = await routeRecallQuery(userId, message, conversationHistory);
 
-  // Foundation-primary intents never fall back to journal snippets
   if (routed.foundationPrimary && hasFoundationContent(routed)) {
     return {
       content: formatFoundationForChat(routed),
@@ -44,7 +81,21 @@ export async function executeExplicitRecall(
     persona: 'ARCHIVIST',
   });
 
+  // Never silence when thread had user messages
+  const userTurns = conversationHistory.filter((m) => m.role === 'user');
   if (journalRecall.silence && !hasFoundationContent(routed)) {
+    if (userTurns.length > 0) {
+      const threadFallback = await buildThreadRecall(userId, message, {
+        conversationHistory,
+        threadId: options.threadId,
+      });
+      return {
+        content: threadFallback.content,
+        response_mode: 'THREAD_RECALL',
+        confidence: 0.85,
+        metadata: { recall_intent: 'thread', fallback_from: 'journal_silence' },
+      };
+    }
     return {
       content: journalRecall.silence.message,
       response_mode: 'SILENCE',
@@ -56,6 +107,18 @@ export async function executeExplicitRecall(
   const content = buildCombinedContent(routed, journalRecall);
 
   if (!content) {
+    if (userTurns.length > 0) {
+      const threadFallback = await buildThreadRecall(userId, message, {
+        conversationHistory,
+        threadId: options.threadId,
+      });
+      return {
+        content: threadFallback.content,
+        response_mode: 'THREAD_RECALL',
+        confidence: 0.8,
+        metadata: { recall_intent: 'thread', fallback_from: 'empty_combined' },
+      };
+    }
     return {
       content:
         "We haven't talked about that yet — tell me about it and it becomes part of your record.",
@@ -99,7 +162,6 @@ function buildCombinedContent(routed: RoutedRecall, journalRecall: JournalRecall
   const foundation = formatFoundationForChat(routed);
   if (foundation) parts.push(foundation);
 
-  // Journal supplement only when foundation is not the primary surface
   if (!isFoundationPrimaryIntent(routed.intent) && !routed.foundationPrimary) {
     const journal = formatJournalArchivist(journalRecall);
     if (journal) parts.push(journal);
@@ -112,12 +174,15 @@ function formatFoundationForChat(routed: RoutedRecall): string {
   const block = routed.contextBlock?.trim() ?? '';
   if (!block || !hasFoundationContent(routed)) return block;
 
-  // Character roster and family responses are already chat-formatted
-  if (routed.intent === 'character_roster' || routed.intent === 'character_list' || routed.intent === 'family') {
+  if (
+    routed.intent === 'character_roster' ||
+    routed.intent === 'character_list' ||
+    routed.intent === 'family'
+  ) {
     return block;
   }
 
-  if (routed.intent === 'entity' || routed.intent === 'conversation') {
+  if (routed.intent === 'entity' || routed.intent === 'conversation' || routed.intent === 'thread') {
     return block;
   }
 

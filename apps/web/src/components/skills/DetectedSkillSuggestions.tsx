@@ -28,7 +28,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 const catColor = (c?: string) => CATEGORY_COLORS[c ?? ''] ?? 'bg-white/10 text-white/60 border-white/20';
 
-const keyFor = (s: SkillSuggestion) => s.skill_name.toLowerCase();
+const keyFor = (s: SkillSuggestion) => s.id;
 
 function evidenceQuote(s: SkillSuggestion): string | undefined {
   const raw = s.evidence?.[0];

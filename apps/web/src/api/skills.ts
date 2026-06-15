@@ -4,7 +4,7 @@ import type { Skill, CreateSkillInput, UpdateSkillInput, SkillProgress, SkillCat
 import type { SkillProfile } from '../lib/skillProfile';
 
 export interface SkillSuggestion {
-  id?: string;
+  id: string;
   skill_name: string;
   skill_category: SkillCategory;
   skill_type?: SkillProfile['skill_type'];

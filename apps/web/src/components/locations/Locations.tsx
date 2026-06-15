@@ -192,7 +192,7 @@ export const Locations = () => {
           <p className="text-sm">Try a different search term</p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredLocations.map((location, index) => {
             try {
               return (

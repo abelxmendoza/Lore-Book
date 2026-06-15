@@ -6,7 +6,7 @@ import { useGuest } from '../contexts/GuestContext';
 import { generateMockLifeArcs } from '../mocks/timelineMockData';
 
 export type ArcTrack = 'career' | 'relationships' | 'creative' | 'health' | 'inner' | 'mixed' | 'custom';
-export type ArcType  = 'life_era' | 'skill' | 'location' | 'work' | 'custom';
+export type ArcType  = 'life_era' | 'skill' | 'location' | 'work' | 'custom' | 'occasion';
 
 export interface LifeArc {
   id: string;
@@ -70,7 +70,7 @@ interface UseLifeArcsResult {
 }
 
 export function useLifeArcs(opts: UseLifeArcsOptions = {}): UseLifeArcsResult {
-  const { user }                   = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { isGuest }                = useGuest();
   const { useMockData: mockEnabled } = useMockData();
 
@@ -82,6 +82,15 @@ export function useLifeArcs(opts: UseLifeArcsOptions = {}): UseLifeArcsResult {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (authLoading) return;
+
+    // Wait for auth before hitting protected API routes
+    if (!user && !isDemoMode) {
+      setArcs([]);
+      setLoading(false);
+      return;
+    }
+
     // Demo / mock mode: return canned data immediately, no API call
     if (isDemoMode) {
       let data = getMockArcs();
@@ -110,7 +119,7 @@ export function useLifeArcs(opts: UseLifeArcsOptions = {}): UseLifeArcsResult {
     } finally {
       setLoading(false);
     }
-  }, [isDemoMode, opts.activeOnly, opts.minConfidence, opts.includeChildren]);
+  }, [authLoading, user, isDemoMode, opts.activeOnly, opts.minConfidence, opts.includeChildren]);
 
   useEffect(() => { void load(); }, [load]);
 

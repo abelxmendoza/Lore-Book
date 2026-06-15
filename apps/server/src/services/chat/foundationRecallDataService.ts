@@ -313,12 +313,20 @@ export async function fetchEntityProfile(userId: string, entityName: string): Pr
 export function formatCharacterRosterForChat(roster: CharacterRosterEntry[]): string {
   if (roster.length === 0) return 'No characters recorded yet.';
 
-  const lines = [`Here are the people in your story (${roster.length}):`, ''];
-  for (const entry of roster) {
-    const rel = entry.relationshipToUser ? ` — ${entry.relationshipToUser}` : '';
-    lines.push(
-      `• ${entry.name}${rel} — ${entry.memoryCount} ${entry.memoryCount === 1 ? 'memory' : 'memories'} — ${entry.timelineEventCount} timeline ${entry.timelineEventCount === 1 ? 'event' : 'events'}`
-    );
+  const people = roster.filter((e) => !e.isSelf);
+  const lines = [`**Characters in your story (${people.length})**`, ''];
+
+  for (const entry of people) {
+    const bullets: string[] = [];
+    if (entry.relationshipToUser) bullets.push(entry.relationshipToUser);
+    if (entry.memoryCount > 0) {
+      bullets.push(`appears in ${entry.memoryCount} ${entry.memoryCount === 1 ? 'memory' : 'memories'}`);
+    }
+    if (entry.timelineEventCount > 0) {
+      bullets.push(`${entry.timelineEventCount} timeline ${entry.timelineEventCount === 1 ? 'event' : 'events'}`);
+    }
+    const detail = bullets.length ? `\n  • ${bullets.join('\n  • ')}` : '';
+    lines.push(`**${entry.name}**${detail}`);
   }
   return lines.join('\n');
 }
@@ -338,12 +346,18 @@ export function formatFamilyRosterForChat(
     return parts.filter(Boolean).join('\n');
   }
 
-  parts.push('', `Family members (${members.length}):`, '');
+  parts.push('', `**Family (${members.length})**`, '');
   for (const m of members) {
-    const rel = m.relationshipToUser ? ` — ${m.relationshipToUser}` : '';
-    parts.push(
-      `• ${m.name}${rel} — ${m.memoryCount} ${m.memoryCount === 1 ? 'memory' : 'memories'} — ${m.timelineEventCount} timeline ${m.timelineEventCount === 1 ? 'event' : 'events'}`
-    );
+    const bullets: string[] = [];
+    if (m.relationshipToUser) bullets.push(m.relationshipToUser);
+    if (m.memoryCount > 0) {
+      bullets.push(`appears in ${m.memoryCount} ${m.memoryCount === 1 ? 'memory' : 'memories'}`);
+    }
+    if (m.timelineEventCount > 0) {
+      bullets.push(`${m.timelineEventCount} timeline ${m.timelineEventCount === 1 ? 'event' : 'events'}`);
+    }
+    const detail = bullets.length ? `\n  • ${bullets.join('\n  • ')}` : '';
+    parts.push(`**${m.name}**${detail}`);
   }
   return parts.join('\n');
 }

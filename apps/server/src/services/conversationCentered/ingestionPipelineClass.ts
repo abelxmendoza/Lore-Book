@@ -49,6 +49,7 @@ import { skillExtractionService } from '../skills/skillExtractionService';
 import { questService } from '../quests/questService';
 import { ingestConversationER } from '../unifiedErIngestion';
 import { eventCandidateService } from '../eventCandidates/eventCandidateService';
+import { dayOccasionService } from '../continuityRuntime/arcs/dayOccasionService';
 import { narrativeContinuityService } from '../narrativeContinuityService';
 import { groupCandidateService } from '../groupCandidateService';
 import { shadowModeOrchestrator } from '../ingestion/shadowMode';
@@ -1847,6 +1848,12 @@ export class ConversationIngestionPipeline {
                 }
               }
             }
+
+            dayOccasionService
+              .processRecentDays(userId, { lookbackDays: 7 })
+              .catch(err => {
+                logger.warn({ err, userId }, 'Day occasion arc detection failed (non-blocking)');
+              });
           })
           .catch(err => {
             logger.warn({ error: err, userId, threadId }, 'Event assembly failed (non-blocking)');

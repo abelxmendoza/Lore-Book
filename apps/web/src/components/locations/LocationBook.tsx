@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { MapPin, RefreshCw, ChevronLeft, ChevronRight, SlidersHorizontal, X } from 'lucide-react';
+import { MapPin, RefreshCw, ChevronLeft, ChevronRight, SlidersHorizontal, X, BookOpen } from 'lucide-react';
 import { classifyLocation, KIND_META, type LocationKind } from '../../lib/locationTaxonomy';
 import {
   PLACE_ADVANCED_FILTER_GROUPS,
@@ -521,6 +521,8 @@ export const LocationBook = () => {
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedLocations = filteredLocations.slice(startIndex, endIndex);
+  const visibleStart = filteredLocations.length === 0 ? 0 : startIndex + 1;
+  const visibleEnd = Math.min(endIndex, filteredLocations.length);
 
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -650,8 +652,7 @@ export const LocationBook = () => {
         <div>
           <h2 className="text-xl font-bold text-white">Places</h2>
           <p className="text-xs text-white/40 mt-0.5">
-            {filteredLocations.length} of {locations.length} locations
-            {totalPages > 1 && ` · page ${currentPage}/${totalPages}`}
+            {filteredLocations.length} of {locations.length} places
           </p>
         </div>
         <button
@@ -682,7 +683,7 @@ export const LocationBook = () => {
       />
 
       {/* Clean lifestyle row */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
         {lifestyleFilters.map(({ id, label, icon, count }) => (
           <button
             key={id}
@@ -747,7 +748,7 @@ export const LocationBook = () => {
               <p className="text-[11px] font-semibold uppercase tracking-wider text-white/35">
                 {group.label}
               </p>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap justify-center sm:justify-start gap-1.5">
                 {group.filters.map(({ id, label, icon, count }) => (
                   <button
                     key={id}
@@ -775,7 +776,7 @@ export const LocationBook = () => {
 
       {/* Sub-type filters within selected category (e.g. Nightclub, Goth Club) */}
       {subTypeFilters.length > 1 && (
-        <div className="flex flex-wrap gap-1.5 -mt-1">
+        <div className="flex flex-wrap justify-center sm:justify-start gap-1.5 -mt-1">
           <button
             type="button"
             onClick={() => setSelectedSubType(null)}
@@ -807,7 +808,7 @@ export const LocationBook = () => {
 
       {/* Geographic kind filters — country / city / venue … */}
       {kindFilters.length > 1 && (
-        <div className="flex flex-wrap gap-2 -mt-2">
+        <div className="flex flex-wrap justify-center sm:justify-start gap-2 -mt-2">
           {kindFilters.map(({ kind, count, meta }) => {
             return (
               <button
@@ -829,80 +830,120 @@ export const LocationBook = () => {
         </div>
       )}
 
-      {/* Grid */}
+      {/* Places Display */}
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-28 rounded-xl bg-white/5 border border-white/8 animate-pulse" />
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
+          {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
+            <div key={i} className="aspect-square sm:aspect-auto sm:h-28 rounded-xl bg-white/5 border border-white/8 animate-pulse" />
           ))}
         </div>
       ) : filteredLocations.length === 0 ? (
         <div className="text-center py-16">
           <MapPin className="h-10 w-10 mx-auto mb-3 text-white/15" />
-          <p className="text-sm font-medium text-white/50 mb-1">No locations found</p>
+          <p className="text-sm font-medium text-white/50 mb-1">No places found</p>
           <p className="text-xs text-white/30">Mention places in chat and LoreBook will track them</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {paginatedLocations.map((location, index) => (
-            <LocationProfileCard
-              key={location.id || `loc-${index}`}
-              location={location}
-              selectionMode={selectionMode}
-              selected={selectedForMerge.has(location.id)}
-              onClick={() =>
-                selectionMode ? toggleSelectedForMerge(location.id) : setSelectedLocation(location)
-              }
-            />
-          ))}
-        </div>
-      )}
+        <>
+          {/* Book Page Container */}
+          <div className="relative w-full min-h-[72dvh] sm:min-h-[640px] lg:min-h-[720px] bg-gradient-to-br from-teal-950/20 via-black/40 to-teal-950/20 rounded-lg border-2 border-teal-800/30 shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-4 sm:p-8 flex flex-col flex-1 min-h-0">
+              {/* Page Header */}
+              <div className="flex items-center justify-between mb-4 sm:mb-6 pb-4 border-b border-teal-800/20">
+                <div className="flex items-center gap-3">
+                  <BookOpen className="h-6 w-6 text-teal-500/60" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-teal-200/50 uppercase tracking-wider">
+                      Places Book
+                    </h3>
+                    <p className="text-xs text-teal-300/40 mt-0.5">
+                      Page {currentPage} of {totalPages} · {filteredLocations.length} places
+                    </p>
+                  </div>
+                </div>
+                <div className="text-xs text-teal-300/35 font-mono">
+                  {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
+              </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-2">
-          <button
-            type="button"
-            onClick={goToPrevious}
-            disabled={currentPage === 1}
-            className="flex items-center gap-1 text-sm text-white/40 hover:text-teal-400 disabled:opacity-25 transition-colors"
-          >
-            <ChevronLeft className="h-4 w-4" /> Prev
-          </button>
+              {/* Places Grid */}
+              <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 mb-4 sm:mb-6 content-start min-h-0">
+                {paginatedLocations.map((location, index) => (
+                  <LocationProfileCard
+                    key={location.id || `loc-${index}`}
+                    location={location}
+                    selectionMode={selectionMode}
+                    selected={selectedForMerge.has(location.id)}
+                    onClick={() =>
+                      selectionMode ? toggleSelectedForMerge(location.id) : setSelectedLocation(location)
+                    }
+                  />
+                ))}
+              </div>
 
-          <div className="flex items-center gap-1">
-            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-              let p: number;
-              if (totalPages <= 7)             p = i + 1;
-              else if (currentPage <= 4)       p = i + 1;
-              else if (currentPage >= totalPages - 3) p = totalPages - 6 + i;
-              else                             p = currentPage - 3 + i;
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => goToPage(p)}
-                  className={`w-7 h-7 rounded-lg text-xs font-medium transition-all ${
-                    currentPage === p
-                      ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
-                      : 'text-white/35 hover:text-white/60 hover:bg-white/5'
-                  }`}
+              {/* Page Footer with Navigation */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0 pt-4 border-t border-teal-800/20 mt-auto">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={goToPrevious}
+                  disabled={currentPage === 1}
+                  className="text-teal-300/60 hover:text-teal-200 hover:bg-teal-500/10 disabled:opacity-30"
                 >
-                  {p}
-                </button>
-              );
-            })}
-          </div>
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
 
-          <button
-            type="button"
-            onClick={goToNext}
-            disabled={currentPage === totalPages}
-            className="flex items-center gap-1 text-sm text-white/40 hover:text-teal-400 disabled:opacity-25 transition-colors"
-          >
-            Next <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
+                <div className="flex items-center gap-2">
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1 px-3 py-1 bg-black/40 rounded-lg border border-teal-800/30">
+                      {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                        let pageNum: number;
+                        if (totalPages <= 7) pageNum = i + 1;
+                        else if (currentPage <= 4) pageNum = i + 1;
+                        else if (currentPage >= totalPages - 3) pageNum = totalPages - 6 + i;
+                        else pageNum = currentPage - 3 + i;
+
+                        return (
+                          <button
+                            key={pageNum}
+                            type="button"
+                            onClick={() => goToPage(pageNum)}
+                            className={`px-2 py-1 rounded text-sm transition ${
+                              currentPage === pageNum
+                                ? 'bg-teal-600 text-white'
+                                : 'text-teal-300/60 hover:text-teal-200 hover:bg-teal-500/10'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <span className="text-sm text-teal-300/50">
+                    {visibleStart}-{visibleEnd} of {filteredLocations.length}
+                  </span>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={goToNext}
+                  disabled={currentPage === totalPages}
+                  className="text-teal-300/60 hover:text-teal-200 hover:bg-teal-500/10 disabled:opacity-30"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Book Binding Effect */}
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-teal-900/40 via-teal-800/30 to-teal-900/40" />
+            <div className="absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-teal-900/40 via-teal-800/30 to-teal-900/40" />
+          </div>
+        </>
       )}
 
       {selectedLocation && (

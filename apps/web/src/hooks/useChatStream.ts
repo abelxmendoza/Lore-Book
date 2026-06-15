@@ -84,7 +84,7 @@ export const useChatStream = () => {
     onMemoryFeedback?: (feedback: MemoryFeedbackEvent) => void,
     threadId?: string,
     threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
-    composerEntities?: Array<{ id: string; name: string; type: string; aliases?: string[] }>
+    composerEntities?: Array<{ id: string; name: string; type: string; status?: string; aliases?: string[] }>
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -119,6 +119,7 @@ export const useChatStream = () => {
                   id: e.id,
                   name: e.name,
                   type: e.type,
+                  ...(e.status ? { status: e.status } : {}),
                 })),
               }
             : {}),

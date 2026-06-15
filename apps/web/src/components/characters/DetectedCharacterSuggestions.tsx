@@ -20,8 +20,7 @@ const SOURCE_LABEL: Record<CharacterSuggestion['source'], string> = {
   chat_extract: 'From recent chats',
 };
 
-const keyFor = (s: CharacterSuggestion) =>
-  `${s.name}__${s.omegaEntityId ?? s.questionId ?? ''}`.toLowerCase();
+const keyFor = (s: CharacterSuggestion) => s.id;
 
 export const DetectedCharacterSuggestions = ({
   onCharacterAdded,

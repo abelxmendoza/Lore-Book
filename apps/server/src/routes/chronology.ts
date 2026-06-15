@@ -12,6 +12,8 @@ import {
   applyHierarchyConstraints,
 } from '../services/chronology/hierarchyContextProvider';
 import { chronologyService } from '../services/chronologyV2';
+import { stitchedTimelineService } from '../services/chronologyV2/stitchedTimelineService';
+import { calendarAggregationService } from '../services/chronologyV2/calendarAggregationService';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
@@ -367,6 +369,88 @@ router.get(
     const entryId = req.query.entry_id as string | undefined;
     const overlaps = await chronologyService.detectOverlaps(req.user!.id, entryId);
     res.json({ overlaps });
+  })
+);
+
+/**
+ * GET /api/chronology/stitched
+ * Moments + events merged chronologically, with optional life-arc scope.
+ */
+router.get(
+  '/stitched',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const lifeArcId = req.query.life_arc_id as string | undefined;
+    const startTime = req.query.start_time as string | undefined;
+    const endTime = req.query.end_time as string | undefined;
+    const scopeType = req.query.scope_type as 'global' | 'life_arc' | undefined;
+
+    const result = await stitchedTimelineService.getStitchedTimeline(req.user!.id, {
+      scope_type: scopeType,
+      life_arc_id: lifeArcId,
+      start_time: startTime,
+      end_time: endTime,
+    });
+
+    res.json(result);
+  })
+);
+
+/**
+ * PUT /api/chronology/order
+ * Persist user drag-reorder for a timeline scope (training signal).
+ */
+router.put(
+  '/order',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const schema = z.object({
+      scope_type: z.enum(['global', 'life_arc']),
+      scope_id: z.string().uuid().optional(),
+      items: z.array(
+        z.object({
+          kind: z.enum(['moment', 'event']),
+          id: z.string().uuid(),
+          sort_index: z.number().int().min(0),
+        })
+      ),
+    });
+
+    const body = schema.parse(req.body);
+    const result = await stitchedTimelineService.saveUserOrder(req.user!.id, body);
+    res.json({ success: true, ...result });
+  })
+);
+
+/**
+ * GET /api/chronology/calendar?year=2026&month=6
+ * Month view: occasion arcs, events, moments by day with attendance.
+ */
+router.get(
+  '/calendar',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const year = parseInt(req.query.year as string, 10) || new Date().getFullYear();
+    const month = parseInt(req.query.month as string, 10) || new Date().getMonth() + 1;
+    const result = await calendarAggregationService.getMonth(req.user!.id, year, month);
+    res.json(result);
+  })
+);
+
+/**
+ * POST /api/chronology/sync-occasions
+ * Backfill day-scoped occasion arcs from recent resolved events.
+ */
+router.post(
+  '/sync-occasions',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const lookbackDays = typeof req.body?.lookback_days === 'number' ? req.body.lookback_days : 90;
+    const { dayOccasionService } = await import('../services/continuityRuntime/arcs/dayOccasionService');
+    const upserted = await dayOccasionService.processRecentDays(req.user!.id, {
+      lookbackDays: Math.min(Math.max(lookbackDays, 1), 365),
+    });
+    res.json({ success: true, upserted });
   })
 );
 

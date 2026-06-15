@@ -51,14 +51,15 @@ const chatSchema = z.object({
   currentContext: currentContextSchema,
   soulProfileContext: soulProfileContextSchema,
   threadEntities: z.array(z.object({
-    id: z.string().uuid(),
+    id: z.string().min(1),
     name: z.string(),
-    type: z.enum(['character', 'location', 'organization']),
+    type: z.enum(['character', 'location', 'organization', 'skill']),
   })).max(20).optional(),
   composerEntities: z.array(z.object({
-    id: z.string().uuid(),
+    id: z.string().min(1),
     name: z.string(),
     type: z.enum(['character', 'location', 'organization', 'skill', 'event']),
+    status: z.enum(['confirmed', 'suggestion']).optional(),
   })).max(15).optional(),
 });
 

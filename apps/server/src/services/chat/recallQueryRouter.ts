@@ -31,6 +31,7 @@ import {
   WORK_RE,
 } from './recallIntentPatterns';
 import { buildConversationSummaryWithRosterFallback } from './conversationSummaryBuilder';
+import { buildThreadRecall, THREAD_RECALL_RE } from './threadRecallService';
 
 async function loadKnownEntities(userId: string): Promise<Map<string, { id: string; type: string }>> {
   const { data } = await supabaseAdmin
@@ -230,6 +231,17 @@ export async function routeRecallQuery(
 ): Promise<RecallResult> {
   const knownEntities = await loadKnownEntities(userId);
 
+  if (THREAD_RECALL_RE.test(message) || (THREAD_RE.test(message) && conversationHistory.length > 0)) {
+    const thread = await buildThreadRecall(userId, message, { conversationHistory });
+    return {
+      intent: 'thread',
+      entityName: null,
+      contextBlock: thread.content,
+      confidence: thread.confidence,
+      foundationPrimary: true,
+    };
+  }
+
   if (CONVERSATION_RECALL_RE.test(message) && conversationHistory.length > 0) {
     const block = await buildConversationSummaryWithRosterFallback(userId, conversationHistory);
     return {
@@ -238,20 +250,6 @@ export async function routeRecallQuery(
       contextBlock: block,
       confidence: 0.95,
       foundationPrimary: true,
-    };
-  }
-
-  if (THREAD_RE.test(message) && conversationHistory.length > 0) {
-    const recent = conversationHistory
-      .slice(-6)
-      .map((m) => `${m.role}: ${m.content.slice(0, 100)}`)
-      .join('\n');
-    return {
-      intent: 'thread',
-      entityName: null,
-      contextBlock: `## CURRENT THREAD CONTEXT\n${recent}`,
-      confidence: 0.9,
-      foundationPrimary: false,
     };
   }
 

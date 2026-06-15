@@ -2,14 +2,29 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ChronologyEntry, ChronologyOverlap, TimeBucket, Timeline } from '../types/timelineV2';
 import { fetchChronology, fetchChronologyOverlaps, fetchTimeBuckets } from '../api/timelineV2';
 import { mockDataService } from '../services/mockDataService';
-import { subscribeToMockDataState } from '../contexts/MockDataContext';
+import { subscribeToMockDataState, useMockData } from '../contexts/MockDataContext';
+import { useAuth } from '../lib/supabase';
+import { useGuest } from '../contexts/GuestContext';
 
 export const useChronology = (startTime?: string, endTime?: string, timelineIds?: string[]) => {
+  const { user, loading: authLoading } = useAuth();
+  const { isGuest } = useGuest();
+  const { useMockData: mockEnabled } = useMockData();
+  const isDemoMode = !user && (isGuest ? mockEnabled : mockEnabled);
+
   const [entries, setEntries] = useState<ChronologyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const loadChronology = useCallback(async () => {
+    if (authLoading) return;
+
+    if (!user && !isDemoMode) {
+      setEntries([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -60,7 +75,7 @@ export const useChronology = (startTime?: string, endTime?: string, timelineIds?
     } finally {
       setLoading(false);
     }
-  }, [startTime, endTime, timelineIds]);
+  }, [authLoading, user, isDemoMode, startTime, endTime, timelineIds]);
 
   useEffect(() => {
     loadChronology();

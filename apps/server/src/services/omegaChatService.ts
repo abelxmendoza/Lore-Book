@@ -562,7 +562,7 @@ class OmegaChatService {
   }
 
   private buildComposerEntitiesContext(
-    composerEntities?: Array<{ id: string; name: string; type: string }>
+    composerEntities?: Array<{ id: string; name: string; type: string; status?: string }>
   ): string {
     if (!composerEntities?.length) return '';
     const lines = composerEntities.map((e) => {
@@ -573,9 +573,10 @@ class OmegaChatService {
               : e.type === 'skill' ? 'skill'
                 : e.type === 'event' ? 'event'
                   : e.type;
-      return `- ${e.name} (${tag}, id: ${e.id})`;
+      const tier = e.status === 'suggestion' ? 'suggestion' : 'confirmed book entity';
+      return `- ${e.name} (${tag}, ${tier}, id: ${e.id})`;
     });
-    return `\n\n**COMPOSER CERTIFIED ENTITIES**: The user explicitly mentioned these book entities in their message. Load each entity's knowledge base (character record, relationships, timeline, location profile, group roster, skill progress, or event context) by id before responding:\n${lines.join('\n')}\nTreat these as confirmed references — not new extractions.`;
+    return `\n\n**COMPOSER ENTITIES**: The user referenced these entities while typing. Load context by stable id before responding:\n${lines.join('\n')}\nConfirmed entities are in their Lore Books. Suggestions are detected but not yet added — treat names as known references, do not re-extract as new entities.`;
   }
 
   private buildThreadEntitiesContext(
@@ -662,7 +663,90 @@ class OmegaChatService {
       : '';
 
     // =====================================================
-    // MODE ROUTER (NEW - FIRST GATE)
+    // SPRINT AH — Trust & Recall gates (before mode router)
+    // =====================================================
+    try {
+      const { detectTestingMode } = await import('./chat/testingModeDetector');
+      const { getMemoryFormationStatus } = await import('./chat/memoryFormationStatusService');
+      const { detectRecallFailure } = await import('./chat/testingModeDetector');
+      const { buildDiagnosticRecall } = await import('./chat/failureAwareHandler');
+      const { formatModeResponse } = await import('./modeRouter/responseFormatter');
+      const { matchesThreadRecallQuery, buildThreadRecall } = await import('./chat/threadRecallService');
+
+      const testingMode = detectTestingMode(message);
+      if (testingMode === 'memory_formation') {
+        const status = await getMemoryFormationStatus(userId, message);
+        return formatModeResponse(
+          {
+            content: status.content,
+            response_mode: 'DIAGNOSTIC',
+            confidence: 0.95,
+            metadata: { testing_mode: testingMode, entity_name: status.entityName },
+          },
+          'FOUNDATION_RECALL'
+        );
+      }
+
+      if (detectRecallFailure(message)) {
+        const diagnostic = await buildDiagnosticRecall(userId, message, {
+          conversationHistory: conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+          threadId: threadId ?? currentContext?.threadId,
+        });
+        return formatModeResponse(
+          {
+            content: diagnostic,
+            response_mode: 'DIAGNOSTIC',
+            confidence: 0.9,
+            metadata: { recall_failure_recovery: true },
+          },
+          'FOUNDATION_RECALL'
+        );
+      }
+
+      if (matchesThreadRecallQuery(message) && conversationHistory.length > 0) {
+        const thread = await buildThreadRecall(userId, message, {
+          conversationHistory: conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+          threadId: threadId ?? currentContext?.threadId,
+        });
+        if (thread.hasContent) {
+          return formatModeResponse(
+            {
+              content: thread.content,
+              response_mode: 'THREAD_RECALL',
+              confidence: thread.confidence,
+              metadata: { recall_intent: 'thread', thread_first: true },
+            },
+            'FOUNDATION_RECALL'
+          );
+        }
+      }
+
+      if (testingMode === 'recall_check' || testingMode === 'system_state' || testingMode === 'general_diagnostic') {
+        const { executeExplicitRecall } = await import('./chat/explicitRecallService');
+        const recall = await executeExplicitRecall(
+          userId,
+          message,
+          conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+          { threadId: threadId ?? currentContext?.threadId }
+        );
+        if (recall.response_mode !== 'SILENCE') {
+          return formatModeResponse(
+            {
+              content: recall.content,
+              response_mode: 'DIAGNOSTIC',
+              confidence: recall.confidence,
+              metadata: { testing_mode: testingMode, ...recall.metadata },
+            },
+            'FOUNDATION_RECALL'
+          );
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'Sprint AH recall gates failed, continuing');
+    }
+
+    // =====================================================
+    // MODE ROUTER (FIRST GATE)
     // =====================================================
     // Captured here so it can be included in the SSE metadata for the cognition panel.
     let modeDecision: { mode: string; confidence: number; reasoning: string } | undefined;
@@ -717,7 +801,12 @@ class OmegaChatService {
           routing.mode,
           userId,
           message,
-          { messageId, conversationHistory, continuityContext: returnToThreadContext || undefined }
+          {
+            messageId,
+            conversationHistory,
+            continuityContext: returnToThreadContext || undefined,
+            threadId: threadId ?? currentContext?.threadId,
+          }
         );
 
         // Phase 4.5: persist assistant with recall_sources for recall modes
@@ -755,7 +844,8 @@ class OmegaChatService {
         const foundation = await executeExplicitRecall(
           userId,
           message,
-          conversationHistory.map((m) => ({ role: m.role, content: m.content }))
+          conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+          { threadId: threadId ?? currentContext?.threadId }
         );
         if (foundation.response_mode !== 'SILENCE') {
           return formatModeResponse(
