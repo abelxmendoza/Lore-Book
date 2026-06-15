@@ -675,7 +675,9 @@ class OmegaChatService {
 
       const testingMode = detectTestingMode(message);
       if (testingMode === 'memory_formation') {
-        const status = await getMemoryFormationStatus(userId, message);
+        const status = await getMemoryFormationStatus(userId, message, {
+          threadId: threadId ?? currentContext?.threadId,
+        });
         return formatModeResponse(
           {
             content: status.content,

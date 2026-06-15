@@ -8,9 +8,18 @@
 
 import { supabaseAdmin } from '../supabaseClient';
 import { normalizeNameKey } from '../../utils/nameNormalization';
+import { formatFactsAndMeaning } from './significanceRecall';
 
 const FAMILY_REL_RE =
   /family|parent|child|sibling|spouse|cousin|mother|father|brother|sister|grand|in-law|partner|wife|husband|grandmother|grandfather|abuela|abuelo|aunt|uncle|niece|nephew/i;
+
+const PROFESSIONAL_REL_RE =
+  /work|colleague|boss|manager|coworker|employer|client|professional|mentor|supervisor|teammate|employee|staff/i;
+
+const ROMANTIC_REL_RE =
+  /romantic|crush|dating|boyfriend|girlfriend|wife|husband|situationship|hookup|lover|ex\b|situationship|one.night/i;
+
+type RosterCategory = 'Family' | 'Romantic' | 'Professional' | 'Scene';
 
 export type CharacterRosterEntry = {
   id: string;
@@ -310,6 +319,167 @@ export async function fetchEntityProfile(userId: string, entityName: string): Pr
   };
 }
 
+async function loadRomanticCharacterIds(userId: string): Promise<Set<string>> {
+  const { data } = await supabaseAdmin
+    .from('romantic_relationships')
+    .select('person_id')
+    .eq('user_id', userId)
+    .eq('person_type', 'character');
+
+  return new Set((data ?? []).map((row) => row.person_id as string));
+}
+
+function categorizeRosterEntry(
+  entry: CharacterRosterEntry,
+  romanticIds: Set<string>
+): RosterCategory {
+  const rel = (entry.relationshipToUser ?? '').toLowerCase();
+  if (romanticIds.has(entry.id) || ROMANTIC_REL_RE.test(rel)) return 'Romantic';
+  if (FAMILY_REL_RE.test(rel)) return 'Family';
+  if (PROFESSIONAL_REL_RE.test(rel)) return 'Professional';
+  return 'Scene';
+}
+
+function formatRosterMemberLines(entry: CharacterRosterEntry): string {
+  const bullets: string[] = [];
+  if (entry.relationshipToUser) bullets.push(entry.relationshipToUser);
+  if (entry.memoryCount > 0) {
+    bullets.push(
+      `Appears in ${entry.memoryCount} ${entry.memoryCount === 1 ? 'memory' : 'memories'}`
+    );
+  }
+  if (entry.timelineEventCount > 0) {
+    bullets.push(
+      `${entry.timelineEventCount} timeline ${entry.timelineEventCount === 1 ? 'event' : 'events'}`
+    );
+  }
+  const detail = bullets.length ? `\n  • ${bullets.join('\n  • ')}` : '';
+  return `**${entry.name}**${detail}`;
+}
+
+/**
+ * Sprint AI — grouped character roster (Family / Romantic / Professional / Scene).
+ */
+export async function formatGroupedCharacterRosterForChat(
+  userId: string,
+  roster?: CharacterRosterEntry[]
+): Promise<string> {
+  const entries = roster ?? (await fetchCharacterRoster(userId));
+  const people = entries.filter((e) => !e.isSelf);
+  if (people.length === 0) return 'No characters recorded yet.';
+
+  const romanticIds = await loadRomanticCharacterIds(userId);
+  const groups: Record<RosterCategory, CharacterRosterEntry[]> = {
+    Family: [],
+    Romantic: [],
+    Professional: [],
+    Scene: [],
+  };
+
+  for (const entry of people) {
+    groups[categorizeRosterEntry(entry, romanticIds)].push(entry);
+  }
+
+  const lines = [`**Characters in your story (${people.length})**`, ''];
+  const order: RosterCategory[] = ['Family', 'Romantic', 'Professional', 'Scene'];
+
+  for (const category of order) {
+    const members = groups[category];
+    if (!members.length) continue;
+    lines.push(`**${category}**`, '');
+    for (const entry of members) {
+      lines.push(formatRosterMemberLines(entry));
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n').trim();
+}
+
+/**
+ * Sprint AI — family relationship graph from character_relationships.
+ */
+export async function formatFamilyTreeForChat(userId: string): Promise<string | null> {
+  const [members, rels, chars] = await Promise.all([
+    fetchFamilyMembers(userId),
+    loadRelationships(userId),
+    loadCharacters(userId),
+  ]);
+
+  if (members.length === 0) return null;
+
+  const self = findSelfCharacter(chars);
+  const idToName = new Map(chars.map((c) => [c.id, c.name]));
+  const familyIds = new Set(members.map((m) => m.id));
+  if (self) familyIds.add(self.id);
+
+  const roots = members.filter(
+    (m) =>
+      /grand|abuela|abuelo|grandmother|grandfather/i.test(m.name) ||
+      /grand|abuela|abuelo|mother|father/i.test(m.relationshipToUser ?? '')
+  );
+
+  const linkedNames = new Set<string>();
+  const lines = ['**Family structure**', ''];
+
+  const appendMemberLine = (name: string, note: string, prefix: '├──' | '└──') => {
+    lines.push(`${prefix} ${name}${note}`);
+  };
+
+  if (roots.length > 0) {
+    for (const root of roots.slice(0, 2)) {
+      lines.push(`**${root.name}**`);
+
+      for (const rel of rels) {
+        if (!FAMILY_REL_RE.test(rel.relationship_type)) continue;
+        const involvesRoot =
+          rel.source_character_id === root.id || rel.target_character_id === root.id;
+        if (!involvesRoot) continue;
+
+        const otherId =
+          rel.source_character_id === root.id
+            ? rel.target_character_id
+            : rel.source_character_id;
+        if (self && otherId === self.id) continue;
+
+        const otherName = idToName.get(otherId);
+        if (!otherName || linkedNames.has(otherName)) continue;
+        linkedNames.add(otherName);
+
+        const member = members.find((m) => m.id === otherId);
+        const note = member?.relationshipToUser
+          ? ` (${member.relationshipToUser})`
+          : ` (${rel.relationship_type.replace(/_/g, ' ')})`;
+        appendMemberLine(otherName, note, '├──');
+      }
+
+      for (const member of members) {
+        if (member.id === root.id || linkedNames.has(member.name)) continue;
+        appendMemberLine(
+          member.name,
+          member.relationshipToUser ? ` (${member.relationshipToUser})` : '',
+          '├──'
+        );
+        linkedNames.add(member.name);
+      }
+
+      appendMemberLine('You', '', '└──');
+      lines.push('');
+    }
+  } else {
+    for (const member of members) {
+      appendMemberLine(
+        member.name,
+        member.relationshipToUser ? ` (${member.relationshipToUser})` : '',
+        '├──'
+      );
+    }
+    appendMemberLine('You', '', '└──');
+  }
+
+  return lines.join('\n');
+}
+
 export function formatCharacterRosterForChat(roster: CharacterRosterEntry[]): string {
   if (roster.length === 0) return 'No characters recorded yet.';
 
@@ -362,7 +532,10 @@ export function formatFamilyRosterForChat(
   return parts.join('\n');
 }
 
-export function formatEntityProfileForChat(profile: EntityProfile): string {
+export function formatEntityProfileForChat(
+  profile: EntityProfile,
+  options?: { threadText?: string }
+): string {
   const lines: string[] = [`**${profile.name}**`];
   if (profile.aliases.length) lines.push(`Also known as: ${profile.aliases.join(', ')}`);
   if (profile.relationshipToUser) lines.push(`Relationship: ${profile.relationshipToUser}`);
@@ -371,20 +544,36 @@ export function formatEntityProfileForChat(profile: EntityProfile): string {
     `${profile.memoryCount} linked ${profile.memoryCount === 1 ? 'memory' : 'memories'} across your story`
   );
 
-  if (profile.facts.length) {
-    lines.push('', 'What I know:');
-    for (const fact of profile.facts.slice(0, 6)) {
-      lines.push(`• ${fact}`);
-    }
+  const factStrings =
+    profile.facts.length > 0
+      ? profile.facts
+      : profile.timelineEvents.map((ev) => {
+          const date = ev.date ? new Date(ev.date).toLocaleDateString() : '';
+          return date ? `${date}: ${ev.title}` : ev.title;
+        });
+
+  const { factsBlock, meaningBlock } = formatFactsAndMeaning(
+    factStrings,
+    options?.threadText
+  );
+
+  lines.push('', '**Facts:**', factsBlock);
+
+  if (meaningBlock) {
+    lines.push('', '**Meaning:**', meaningBlock);
   }
 
-  if (profile.timelineEvents.length) {
-    lines.push('', 'Timeline:');
+  if (profile.timelineEvents.length && profile.facts.length > 0) {
+    lines.push('', '**Timeline:**');
     for (const ev of profile.timelineEvents) {
       const date = ev.date ? new Date(ev.date).toLocaleDateString() : 'Unknown date';
       lines.push(`• ${date}: ${ev.title} [${ev.type}]`);
       if (ev.summary) lines.push(`  ${ev.summary.slice(0, 150)}`);
     }
+  }
+
+  if (profile.memoryCount === 0 && profile.facts.length === 0 && profile.timelineEvents.length === 0) {
+    lines.push('', '_Not yet created in structured memory — mention them again to build the record._');
   }
 
   return lines.join('\n');

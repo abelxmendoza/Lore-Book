@@ -24,9 +24,31 @@ function extractEntityName(message: string): string | null {
 
 type FormationCheck = { label: string; ok: boolean; detail: string };
 
+async function countThreadEvidence(
+  userId: string,
+  entityName: string,
+  threadId?: string
+): Promise<number> {
+  if (!threadId) return 0;
+
+  const key = normalizeNameKey(entityName);
+  const { data: rows } = await supabaseAdmin
+    .from('chat_messages')
+    .select('content')
+    .eq('user_id', userId)
+    .eq('session_id', threadId)
+    .eq('role', 'user')
+    .limit(50);
+
+  return (rows ?? []).filter((row) =>
+    normalizeNameKey(String(row.content)).includes(key)
+  ).length;
+}
+
 export async function getMemoryFormationStatus(
   userId: string,
-  message: string
+  message: string,
+  options: { threadId?: string } = {}
 ): Promise<{ content: string; entityName: string | null }> {
   const entityName = extractEntityName(message);
 
@@ -115,19 +137,40 @@ export async function getMemoryFormationStatus(
     });
   }
 
-  // Location check by name
-  const { data: place } = await supabaseAdmin
-    .from('people_places')
-    .select('id, name, type')
-    .eq('user_id', userId)
-    .ilike('name', entityName)
-    .maybeSingle();
+  // Location check by name (including possessive forms like "Abuela's House")
+  const locationPatterns = [
+    entityName,
+    `${entityName}'s`,
+    `${entityName}s`,
+    `${entityName} House`,
+    `${entityName}'s House`,
+  ];
 
-  if (place?.type === 'LOCATION') {
+  let placeFound = false;
+  for (const pattern of locationPatterns) {
+    const { data: place } = await supabaseAdmin
+      .from('people_places')
+      .select('id, name, type')
+      .eq('user_id', userId)
+      .ilike('name', `%${pattern}%`)
+      .maybeSingle();
+
+    if (place?.type === 'LOCATION') {
+      checks.push({
+        label: 'Location',
+        ok: true,
+        detail: `✓ ${place.name}`,
+      });
+      placeFound = true;
+      break;
+    }
+  }
+
+  if (!placeFound && entityName.length >= 3) {
     checks.push({
       label: 'Location',
-      ok: true,
-      detail: `✓ ${place.name}`,
+      ok: false,
+      detail: '○ Not yet created',
     });
   }
 
@@ -143,16 +186,21 @@ export async function getMemoryFormationStatus(
     detail: (eventCount ?? 0) > 0 ? `✓ ${eventCount} related event(s)` : '○ Pending extraction',
   });
 
+  const threadEvidence = await countThreadEvidence(userId, entityName, options.threadId);
+
   const evidenceCount =
     (char ? 1 : 0) +
-    checks.filter((c) => c.ok && c.label !== 'Character').length;
+    checks.filter((c) => c.ok && c.label !== 'Character').length +
+    threadEvidence;
 
   const lines = [
     `**Memory Formation — ${entityName}**`,
     '',
     ...checks.map((c) => `**${c.label}:** ${c.detail}`),
     '',
-    `**Evidence:** ${evidenceCount} supporting layer(s) on record`,
+    `**Evidence:** ${evidenceCount} supporting layer(s) on record${
+      threadEvidence > 0 ? ` (${threadEvidence} message(s) in this thread)` : ''
+    }`,
   ];
 
   if (!char) {

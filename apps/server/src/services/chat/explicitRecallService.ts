@@ -9,6 +9,7 @@
 
 import { routeRecallQuery, type RecallResult as RoutedRecall } from './recallQueryRouter';
 import { isFoundationPrimaryIntent } from './recallIntentPatterns';
+import { VERIFIED_SILENCE_FALLBACK } from './verifiedMemoryLanguage';
 import {
   buildThreadRecall,
   matchesThreadRecallQuery,
@@ -120,8 +121,7 @@ export async function executeExplicitRecall(
       };
     }
     return {
-      content:
-        "We haven't talked about that yet — tell me about it and it becomes part of your record.",
+      content: VERIFIED_SILENCE_FALLBACK,
       response_mode: 'SILENCE',
       confidence: 0.3,
     };

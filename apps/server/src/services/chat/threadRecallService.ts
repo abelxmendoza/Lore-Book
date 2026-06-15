@@ -11,7 +11,10 @@ import { buildConversationSummaryWithRosterFallback } from './conversationSummar
 type HistoryMessage = { role: string; content: string };
 
 export const THREAD_RECALL_RE =
-  /\b(what did i (just )?(say|tell|mention|share)|what were we (talking|discussing) about|what happened in this (conversation|chat|thread)|do you remember what i (just )?(said|told|mentioned)|what did you (just )?hear|what have i (said|told|shared) (so far|today|here|in this)|what was i (saying|talking about)|remind me what i (said|told)|recap (this )?(conversation|chat|thread))\b/i;
+  /\b(what did i (just )?(say|tell|mention|share)|what were we (talking|discussing) about|what happened in this (conversation|chat|thread)|do you remember what i (just )?(said|told|mentioned)|what did you (just )?hear|what have i (said|told|shared) (so far|today|here|in this)|what was i (saying|talking about)|remind me what i (said|told)|recap (this )?(conversation|chat|thread)|what happened today|what did we talk about today)\b/i;
+
+/** Bare "Do you remember?" — prove memory from thread, not therapist redirect. */
+export const DO_YOU_REMEMBER_BARE_RE = /^do you remember\??$/i;
 
 function extractPeople(text: string): string[] {
   const names = text.match(/\b[A-ZÁÉÍÓÚÑ][a-z]+(?:\s+(?:de|del|la|T[ií]o|T[ií]a)\s+)?[A-ZÁÉÍÓÚÑ][a-z]+(?:\s+[A-ZÁÉÍÓÚÑ][a-z]+)*/g) ?? [];
@@ -25,6 +28,21 @@ function extractPlaces(text: string): string[] {
     if (p && p.length > 2) places.add(p);
   }
   return [...places].slice(0, 8);
+}
+
+function extractProjects(text: string): string[] {
+  const projects: string[] = [];
+  const patterns = [
+    /\b(working on|building|developing|creating|launching)\s+[^.!?]{3,60}/gi,
+    /\b(my (?:project|app|startup|side project|business))\s*[^.!?]{0,50}/gi,
+    /\b(lorebook|lore book)\b/gi,
+  ];
+  for (const pat of patterns) {
+    for (const m of text.matchAll(pat)) {
+      projects.push(m[0].trim());
+    }
+  }
+  return [...new Set(projects)].slice(0, 6);
 }
 
 function extractEvents(text: string): string[] {
@@ -80,7 +98,8 @@ function formatUserSaidBlock(history: HistoryMessage[]): string {
 }
 
 export function matchesThreadRecallQuery(message: string): boolean {
-  return THREAD_RECALL_RE.test(message.trim());
+  const text = message.trim();
+  return THREAD_RECALL_RE.test(text) || DO_YOU_REMEMBER_BARE_RE.test(text);
 }
 
 export async function buildThreadRecall(
@@ -113,6 +132,7 @@ export async function buildThreadRecall(
   const people = extractPeople(userText);
   const places = extractPlaces(userText);
   const events = extractEvents(userText);
+  const projects = extractProjects(userText);
 
   const parts: string[] = [];
 
@@ -128,6 +148,7 @@ export async function buildThreadRecall(
   if (people.length) extracted.push(`**People:** ${people.join(', ')}`);
   if (places.length) extracted.push(`**Places:** ${places.join(', ')}`);
   if (events.length) extracted.push(`**Events/topics:** ${events.join('; ')}`);
+  if (projects.length) extracted.push(`**Projects:** ${projects.join('; ')}`);
   if (extracted.length) {
     parts.push('', '**Extracted from this thread:**', ...extracted);
   }

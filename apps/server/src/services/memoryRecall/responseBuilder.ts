@@ -8,6 +8,7 @@
 import { logger } from '../../logger';
 import { beliefRealityReconciliationService } from '../beliefRealityReconciliationService';
 import type { RecallResult, RecallIntent, PersonaMode } from './types';
+import { VERIFIED_SILENCE_FALLBACK } from '../chat/verifiedMemoryLanguage';
 
 export class ResponseBuilder {
   /**
@@ -95,7 +96,7 @@ export class ResponseBuilder {
 
     // Honest no-record answer — never imply past moments exist when none do
     if (result.entries.length === 0) {
-      return "We haven't talked about that yet — tell me about it and it becomes part of your record.";
+      return VERIFIED_SILENCE_FALLBACK;
     }
 
     const parts: string[] = [];

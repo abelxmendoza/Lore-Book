@@ -7,6 +7,7 @@
 import type { ChatResponse } from '../../types/conversationalOrchestration';
 
 import type { RecallResult, PersonaMode } from './types';
+import { VERIFIED_SILENCE_FALLBACK } from '../chat/verifiedMemoryLanguage';
 
 /**
  * Format recall result for chat response
@@ -29,8 +30,7 @@ export function formatRecallChatResponse(
     responseMode = 'SILENCE';
   } else if (isEmpty) {
     // Honest no-record answer — never imply past moments exist when none do
-    messageText =
-      "We haven't talked about that yet — tell me about it and it becomes part of your record.";
+    messageText = VERIFIED_SILENCE_FALLBACK;
     responseMode = 'SILENCE';
   } else if (isLowConfidence) {
     messageText =

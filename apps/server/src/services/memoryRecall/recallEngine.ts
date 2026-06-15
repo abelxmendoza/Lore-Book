@@ -12,6 +12,7 @@ import { entityConfidenceService } from '../entityConfidenceService';
 import { memoryService } from '../memoryService';
 import type { Persona } from '../personaController';
 import { supabaseAdmin } from '../supabaseClient';
+import { VERIFIED_SILENCE_FALLBACK } from '../chat/verifiedMemoryLanguage';
 
 export type RecallIntent = 'EMOTIONAL_RECALL' | 'TEMPORAL_RECALL' | 'PATTERN_LOOKBACK' | 'GENERAL_RECALL';
 export type Phrasing = 'STRONG' | 'TENTATIVE';
@@ -367,7 +368,7 @@ export class MemoryRecallEngine {
     // Honest no-record answer — never imply past moments exist when none do
     if (recall.moments.length === 0) {
       return {
-        text: "We haven't talked about that yet — tell me about it and it becomes part of your record.",
+        text: VERIFIED_SILENCE_FALLBACK,
         moments: [],
       };
     }

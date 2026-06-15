@@ -339,9 +339,12 @@ class ModeHandlers {
       try {
         const { openai } = await import('../../lib/openai');
         const { config } = await import('../../config');
+        const { INGESTION_ACK_GUIDANCE, INGESTION_ACK_FALLBACK } = await import(
+          '../chat/verifiedMemoryLanguage'
+        );
         const basePrompt = isDump
-          ? `You are LoreBook, a personal lore and memory AI. The user just shared a detailed experience. Acknowledge it warmly in 2-3 sentences — reflect something specific back from what they shared, confirm you've saved it to their lore, and optionally ask one light follow-up question. Be natural and conversational, not robotic.`
-          : `You are LoreBook, a personal lore and memory AI. The user just shared a moment or experience from their life. Respond warmly in 1-2 sentences — reflect something specific back from what they shared, and confirm you've captured it. Be natural, curious, and conversational. You may ask a brief follow-up if it feels natural.`;
+          ? `You are LoreBook, a personal lore and memory AI. The user just shared a detailed experience. ${INGESTION_ACK_GUIDANCE}`
+          : `You are LoreBook, a personal lore and memory AI. The user just shared a moment or experience from their life. ${INGESTION_ACK_GUIDANCE}`;
         // Returning to an idle thread: orient quietly to the resumed context
         const systemPrompt = continuityContext ? `${basePrompt}${continuityContext}` : basePrompt;
         const completion = await openai.chat.completions.create({
@@ -353,7 +356,7 @@ class ModeHandlers {
             { role: 'user', content: message },
           ],
         });
-        const ackText = completion.choices[0]?.message?.content?.trim() || "Got it, I've captured this moment.";
+        const ackText = completion.choices[0]?.message?.content?.trim() || INGESTION_ACK_FALLBACK;
         return {
           content: ackText,
           response_mode: 'INGESTION_ACK',
@@ -361,10 +364,9 @@ class ModeHandlers {
           metadata: { processing: 'async', is_dump: isDump },
         };
       } catch {
+        const { INGESTION_ACK_FALLBACK } = await import('../chat/verifiedMemoryLanguage');
         return {
-          content: isDump
-            ? "Got it — I'm capturing everything you shared. Take your time."
-            : "Captured. I've added this to your lore.",
+          content: INGESTION_ACK_FALLBACK,
           response_mode: 'INGESTION_ACK',
           confidence: 0.9,
           metadata: { processing: 'async', is_dump: isDump },
@@ -372,8 +374,9 @@ class ModeHandlers {
       }
     } catch (error) {
       logger.error({ err: error, userId }, 'Failed to handle experience ingestion mode');
+      const { INGESTION_ACK_FALLBACK } = await import('../chat/verifiedMemoryLanguage');
       return {
-        content: "Got it. I'm capturing this.",
+        content: INGESTION_ACK_FALLBACK,
         response_mode: 'INGESTION_ACK',
         confidence: 0.8,
       };

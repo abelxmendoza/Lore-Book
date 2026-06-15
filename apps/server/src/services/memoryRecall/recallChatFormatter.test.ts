@@ -21,9 +21,9 @@ const entry = {
 };
 
 describe('formatRecallChatResponse', () => {
-  it('zero entries → honest "haven\'t talked about that yet", SILENCE mode', () => {
+  it('zero entries → verified silence fallback, SILENCE mode', () => {
     const res = formatRecallChatResponse(baseRecall());
-    expect(res.content).toContain("haven't talked about that yet");
+    expect(res.content).toContain('Nothing verified on record');
     expect(res.content).not.toContain('past moments');
     expect(res.response_mode).toBe('SILENCE');
     expect(res.confidence_label).toBe('No record');

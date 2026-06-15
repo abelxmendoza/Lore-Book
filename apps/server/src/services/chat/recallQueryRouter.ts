@@ -12,6 +12,8 @@ import {
   fetchFamilyMembers,
   fetchEntityProfile,
   formatCharacterRosterForChat,
+  formatGroupedCharacterRosterForChat,
+  formatFamilyTreeForChat,
   formatFamilyRosterForChat,
   formatEntityProfileForChat,
   resolveCharacterByName,
@@ -120,23 +122,35 @@ async function fetchBiographyContext(userId: string): Promise<string> {
     .join('\n');
 }
 
-async function fetchEntityContext(userId: string, entityName: string): Promise<string> {
+async function fetchEntityContext(
+  userId: string,
+  entityName: string,
+  conversationHistory: Array<{ role: string; content: string }> = []
+): Promise<string> {
   const profile = await fetchEntityProfile(userId, entityName);
-  if (!profile) return `No character record found for "${entityName}".`;
-  return formatEntityProfileForChat(profile);
+  if (!profile) return `No character record found for "${entityName}". Not yet created.`;
+
+  const threadText = conversationHistory
+    .filter((m) => m.role === 'user')
+    .map((m) => m.content)
+    .join('\n');
+
+  return formatEntityProfileForChat(profile, { threadText });
 }
 
 async function fetchCharacterListContext(userId: string): Promise<string> {
   const roster = await fetchCharacterRoster(userId);
-  return formatCharacterRosterForChat(roster);
+  return formatGroupedCharacterRosterForChat(userId, roster);
 }
 
 async function fetchFamilyContext(userId: string): Promise<string> {
-  const [bioBlock, members] = await Promise.all([
+  const [bioBlock, members, tree] = await Promise.all([
     fetchBiographyContext(userId),
     fetchFamilyMembers(userId),
+    formatFamilyTreeForChat(userId),
   ]);
-  return formatFamilyRosterForChat(members, bioBlock || undefined);
+  const rosterBlock = formatFamilyRosterForChat(members, bioBlock || undefined);
+  return tree ? `${tree}\n\n${rosterBlock}` : rosterBlock;
 }
 
 async function fetchTemporalContext(userId: string): Promise<string> {
@@ -320,7 +334,7 @@ export async function routeRecallQuery(
   if (mentionedEntity || (WHO_IS_RE.test(message) && matchesEntityQuery(message))) {
     const entityName = mentionedEntity ?? extractEntityNameFromQuery(message);
     if (entityName) {
-      const block = await fetchEntityContext(userId, entityName);
+      const block = await fetchEntityContext(userId, entityName, conversationHistory);
       return {
         intent: 'entity',
         entityName,
@@ -350,7 +364,7 @@ export async function routeRecallQuery(
 
   const rosterLine =
     roster.length > 0
-      ? `## PEOPLE (${roster.length})\n${roster.map((r) => `• ${r.name}`).join('\n')}`
+      ? `## PEOPLE\n${await formatGroupedCharacterRosterForChat(userId, roster)}`
       : '';
 
   return {

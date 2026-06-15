@@ -9,10 +9,10 @@ export type TestingModeKind =
   | 'general_diagnostic';
 
 export const TESTING_MODE_RE =
-  /\b(testing|test mode|diagnostic|system state|what do you know|what have you stored|what did you (save|record|capture|create|make)|did you (save|record|remember|capture|create|make|store)|have you (saved|recorded|remembered|captured|created|stored)|do you remember|did you make a character|did you create a card|is .+ in (the )?(system|database|lorebook)|show me what you (have|know|saved|stored))\b/i;
+  /\b(testing|test mode|diagnostic|system state|what do you know|what have you stored|what did you (save|record|capture|create|make|store|extract|change)|did you (save|record|remember|capture|create|make|store)|have you (saved|recorded|remembered|captured|created|stored)|did you make a character|did you create a card|did memory form|what was extracted|what changed|is .+ in (the )?(system|database|lorebook)|show me what you (have|know|saved|stored))\b/i;
 
 export const MEMORY_FORMATION_RE =
-  /\b(did you save|have you saved|is .+ saved|did you (create|make) (a |the )?(character|card|entry|record)|memory formation|what do you have (on|for|about)|what did you store (about|for))\b/i;
+  /\b(did you save|have you saved|is .+ saved|did you (create|make) (a |the )?(character|card|entry|record)|memory formation|did memory form|what do you have (on|for|about)|what did you store (about|for)|what was extracted|what changed)\b/i;
 
 export function detectTestingMode(message: string): TestingModeKind | null {
   const text = message.trim();
@@ -31,7 +31,7 @@ export function isTestingModeMessage(message: string): boolean {
 }
 
 export const RECALL_FAILURE_RE =
-  /\b(you forgot|still not working|you don'?t remember|bad sign|you lost|that didn'?t work|you missed|you failed|why can'?t you remember|you never remember)\b/i;
+  /\b(you forgot|still not working|you don'?t remember|bad sign|aww man|you lost|that didn'?t work|you missed|you failed|why can'?t you remember|you never remember)\b/i;
 
 export function detectRecallFailure(message: string): boolean {
   return RECALL_FAILURE_RE.test(message.trim());
