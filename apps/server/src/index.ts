@@ -286,8 +286,13 @@ app.use((req: express.Request, res: express.Response) => {
 // Global error handler (must be last)
 app.use(errorHandler);
 
-// CJS requires an async IIFE for top-level await (not supported in CommonJS modules).
-(async () => {
+// Heavy boot work (schema verification, background jobs, engine scheduler).
+// Runs AFTER the HTTP server is already listening so that a slow/unreachable
+// Supabase at cold boot can never delay the port bind past Railway's healthcheck
+// window. Previously this ran before app.listen(); a single slow schema probe on
+// Railway would stall startup, fail the /api/health check, and crash-loop the
+// container into a permanent 502.
+async function runBootTasks(): Promise<void> {
   try {
     // Boot-time schema verification: mark DEGRADED if required tables missing
     const { verifySchema } = await import('./db/schemaVerification');
@@ -353,23 +358,31 @@ app.use(errorHandler);
       logger.warn({ error }, 'Failed to start engine scheduler, continuing anyway');
     }
   }
+}
 
-  const server = app.listen(config.port, () => {
-    logger.info(`Lore Book API listening on ${config.port}`);
-    const aiMode = process.env.DEV_AI_FALLBACK === 'true'
-      ? '⚠️  AI Provider: FALLBACK MODE (DEV_AI_FALLBACK=true — no real inference)'
-      : config.openAiKey
-        ? '✅ AI Provider: OpenAI LIVE'
-        : '❌ AI Provider: NO KEY — requests will fail';
-    logger.info(aiMode);
-  });
+// Bind the port FIRST so the healthcheck (/api/health) is reachable immediately,
+// then kick off boot tasks in the background. CJS requires an async IIFE only
+// for the top-level awaits inside runBootTasks().
+const server = app.listen(config.port, () => {
+  logger.info(`Lore Book API listening on ${config.port}`);
+  const aiMode = process.env.DEV_AI_FALLBACK === 'true'
+    ? '⚠️  AI Provider: FALLBACK MODE (DEV_AI_FALLBACK=true — no real inference)'
+    : config.openAiKey
+      ? '✅ AI Provider: OpenAI LIVE'
+      : '❌ AI Provider: NO KEY — requests will fail';
+  logger.info(aiMode);
 
-  server.on('error', (error: NodeJS.ErrnoException) => {
-    if (error.code === 'EADDRINUSE') {
-      logger.error(`Port ${config.port} is already in use. Please stop the other process or change the port.`);
-    } else {
-      logger.error({ error }, 'Failed to start server');
-    }
-    process.exit(1);
+  // Fire-and-forget: never let boot work block or crash the listening server.
+  runBootTasks().catch((error) => {
+    logger.error({ error }, 'Boot tasks failed — server still listening');
   });
-})();
+});
+
+server.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EADDRINUSE') {
+    logger.error(`Port ${config.port} is already in use. Please stop the other process or change the port.`);
+  } else {
+    logger.error({ error }, 'Failed to start server');
+  }
+  process.exit(1);
+});
