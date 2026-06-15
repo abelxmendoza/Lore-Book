@@ -10,6 +10,7 @@ import { ChatPersonaRL } from '../services/reinforcementLearning/chatPersonaRL';
 import { incrementAiRequestCount } from '../services/usageTracking';
 import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
 import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
+import { messageCorrectionService } from '../services/messageCorrectionService';
 
 // AI endpoints get their own stricter limit: 30 req/15min in prod, unlimited in dev
 const aiRateLimit = createRateLimiter(30);
@@ -387,6 +388,52 @@ router.get('/memory-feedback/:messageId', requireAuth, async (req: Authenticated
   }
 
   res.json(feedback);
+});
+
+/**
+ * Correct one of the user's own chat messages.
+ * Versions the message (history preserved), tombstones the knowledge derived
+ * from the old text, and re-ingests the corrected text so what Lore Book
+ * "knows" updates to match.
+ */
+const correctMessageSchema = z.object({
+  content: z.string().min(1).max(20000),
+  reason: z.string().max(1000).optional(),
+});
+
+router.patch('/messages/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const messageId = req.params.id as string;
+
+  const parsed = correctMessageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid correction', details: parsed.error.flatten() });
+  }
+
+  try {
+    const result = await messageCorrectionService.correctMessage(
+      userId,
+      messageId,
+      parsed.data.content,
+      parsed.data.reason
+    );
+    return res.json(result);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Failed to correct message';
+    const status = msg === 'Message not found' ? 404
+      : msg === 'Only user messages can be corrected' ? 422
+      : 400;
+    logger.warn({ err: error, userId, messageId }, 'Message correction failed');
+    return res.status(status).json({ error: msg });
+  }
+});
+
+/** Full edit history of a message (newest first). */
+router.get('/messages/:id/revisions', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const messageId = req.params.id as string;
+  const revisions = await messageCorrectionService.getRevisions(userId, messageId);
+  return res.json({ revisions });
 });
 
 export const chatRouter = router;

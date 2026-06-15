@@ -153,7 +153,7 @@ export async function buildRAGPacket(
     try {
       const [corrResult, deprResult] = await Promise.all([
         supabaseAdmin.from('correction_records').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
-        supabaseAdmin.from('extracted_units').select('*').eq('user_id', userId).eq('metadata->>deprecated', 'true').order('created_at', { ascending: false }).limit(30),
+        supabaseAdmin.from('extracted_units').select('*').eq('user_id', userId).or('metadata->>deprecated.eq.true,superseded_at.not.is.null').order('created_at', { ascending: false }).limit(30),
       ]);
       corrections = ((corrResult as any).data as any[]) || [];
       deprecatedUnits = ((deprResult as any).data as any[]) || [];

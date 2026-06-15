@@ -33,6 +33,8 @@ export interface IngestionJobPayload {
   chatMessageId: string;
   sessionId: string;
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /** Re-ingest even if this message was already ingested (used by corrections). */
+  force?: boolean;
 }
 
 interface IngestionJob extends IngestionJobPayload {
@@ -163,7 +165,8 @@ class IngestionQueue {
         job.userId,
         job.chatMessageId,
         job.sessionId,
-        job.conversationHistory
+        job.conversationHistory,
+        job.force
       );
 
       this.totalCompleted++;

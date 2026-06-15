@@ -67,7 +67,8 @@ export class ConversationIngestionPipeline {
     userId: string,
     chatMessageId: string,
     sessionId: string,
-    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    force?: boolean
   ): Promise<void> {
     const pipelineStart = Date.now();
     try {
@@ -84,16 +85,20 @@ export class ConversationIngestionPipeline {
         return;
       }
 
-      // Check if already ingested (avoid duplicate processing)
-      const { data: existing } = await supabaseAdmin
-        .from('conversation_messages')
-        .select('id')
-        .eq('metadata->>chat_message_id', chatMessageId)
-        .single();
+      // Check if already ingested (avoid duplicate processing). Skipped on a
+      // forced re-ingest (a correction) — the caller has already tombstoned the
+      // stale derivations and wants fresh ones from the corrected text.
+      if (!force) {
+        const { data: existing } = await supabaseAdmin
+          .from('conversation_messages')
+          .select('id')
+          .eq('metadata->>chat_message_id', chatMessageId)
+          .single();
 
-      if (existing) {
-        logger.debug({ chatMessageId, conversationMessageId: existing.id }, 'Message already ingested');
-        return;
+        if (existing) {
+          logger.debug({ chatMessageId, conversationMessageId: existing.id }, 'Message already ingested');
+          return;
+        }
       }
 
       // Map chat session to conversation session
