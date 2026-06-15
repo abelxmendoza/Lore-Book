@@ -10,6 +10,9 @@ import { PanelBreadcrumb } from './PanelBreadcrumb';
 const SoulProfilePanel = lazy(() =>
   import('./SoulProfilePanel').then(m => ({ default: m.SoulProfilePanel }))
 );
+const RevealedSelfPanel = lazy(() =>
+  import('./RevealedSelfPanel').then(m => ({ default: m.RevealedSelfPanel }))
+);
 const IdentityPulsePanel = lazy(() =>
   import('../identity/IdentityPulsePanel').then(m => ({ default: m.IdentityPulsePanel }))
 );
@@ -88,6 +91,7 @@ export const DiscoveryHub = () => (
 
         {/* Insights panels */}
         <Route path="soul-profile"         element={<Panel><SoulProfilePanel /></Panel>} />
+        <Route path="revealed-self"        element={<Panel><RevealedSelfPanel /></Panel>} />
         <Route path="identity"             element={<Panel><IdentityPulsePanel /></Panel>} />
         <Route path="relationships"        element={<Panel><RelationshipsAnalyticsPanel /></Panel>} />
         <Route path="insights-predictions" element={<Panel><InsightsAndPredictionsPanel /></Panel>} />

@@ -74,6 +74,7 @@ import perceptionsRouter from './perceptions';
 import reactionsRouter from './reactions';
 import perceptionReactionEngineRouter from './perceptionReactionEngine';
 import skillsRouter from './skills';
+import { revealedPreferenceRouter } from './revealedPreference';
 import resumeRouter from './resume';
 import { notebookRouter } from './notebook';
 import { identityRouter } from './identity';
@@ -994,6 +995,12 @@ export const routeRegistry: RouteEntry[] = [
     router: skillsRouter,
     classification: 'CORE_RUNTIME',
     description: 'Skill tracking, suggestions, and skill profile intelligence',
+  },
+  {
+    path: '/api/revealed-self',
+    router: revealedPreferenceRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Revealed Preference Engine: stated-vs-revealed priorities from real episodes',
   },
   {
     path: '/api/achievements',
