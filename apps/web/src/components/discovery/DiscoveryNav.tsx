@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   Compass, Heart, Brain, Users, TrendingUp, Target, Clock, MapPin,
   AlertCircle, Zap, HeartPulse, Database, ClipboardCheck, Activity,
-  Ghost, BookOpen, CalendarDays, BarChart3, Trophy, ScrollText, Eye
+  Ghost, BookOpen, CalendarDays, BarChart3, Trophy, ScrollText, Eye, Scale
 } from 'lucide-react';
 import { useDiscoverySummary } from '../../hooks/useDiscoverySummary';
 
@@ -17,6 +17,7 @@ interface NavPanel {
 const INSIGHTS_PANELS: NavPanel[] = [
   { id: 'soul-profile',         title: 'Soul Profile',            path: '/discovery/soul-profile',          icon: Heart },
   { id: 'revealed-self',        title: 'Revealed Self',           path: '/discovery/revealed-self',         icon: Eye },
+  { id: 'contradictions',       title: 'Contradictions',          path: '/discovery/contradictions',        icon: Scale },
   { id: 'identity',             title: 'Identity Pulse',          path: '/discovery/identity',              icon: Brain },
   { id: 'relationships',        title: 'Relationships',           path: '/discovery/relationships',         icon: Users },
   { id: 'insights-predictions', title: 'Insights & Predictions',  path: '/discovery/insights-predictions',  icon: TrendingUp },

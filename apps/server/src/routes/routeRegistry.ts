@@ -75,6 +75,7 @@ import reactionsRouter from './reactions';
 import perceptionReactionEngineRouter from './perceptionReactionEngine';
 import skillsRouter from './skills';
 import { revealedPreferenceRouter } from './revealedPreference';
+import { contradictionsRouter } from './contradictions';
 import resumeRouter from './resume';
 import { notebookRouter } from './notebook';
 import { identityRouter } from './identity';
@@ -1001,6 +1002,12 @@ export const routeRegistry: RouteEntry[] = [
     router: revealedPreferenceRouter,
     classification: 'CORE_RUNTIME',
     description: 'Revealed Preference Engine: stated-vs-revealed priorities from real episodes',
+  },
+  {
+    path: '/api/contradictions',
+    router: contradictionsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Contradiction Engine: proven divergences between stated identity and revealed behavior',
   },
   {
     path: '/api/achievements',
