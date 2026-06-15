@@ -48,6 +48,8 @@ type EnvConfig = {
   defaultModel: string;
   /** User-facing chat responses — flagship tier (quality is felt here) */
   chatModel: string;
+  /** Opt-in bridge for the user-facing chat stream to use OpenAI Responses API. */
+  useResponsesApiForChat: boolean;
   /** Extraction, facts, titles — mini tier (quality is remembered here) */
   extractionModel: string;
   /** High-volume classification/routing — nano tier */
@@ -81,8 +83,9 @@ export const config: EnvConfig = {
   supabaseUrl: process.env.SUPABASE_URL ?? '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-  defaultModel: process.env.OPENAI_API_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-5.4-mini',
-  chatModel: process.env.OPENAI_CHAT_MODEL ?? 'gpt-5.4',
+  defaultModel: process.env.OPENAI_API_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-5.5',
+  chatModel: process.env.OPENAI_CHAT_MODEL ?? 'gpt-5.5',
+  useResponsesApiForChat: process.env.OPENAI_CHAT_USE_RESPONSES === 'true',
   extractionModel: process.env.OPENAI_EXTRACTION_MODEL ?? 'gpt-5.4-mini',
   nanoModel: process.env.OPENAI_NANO_MODEL ?? 'gpt-5.4-nano',
   embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',

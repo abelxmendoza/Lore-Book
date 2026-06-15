@@ -302,6 +302,7 @@ export const useChat = () => {
             narrativeEntryCount: metadata?.entry_count,
             // Entity chips
             mentionedEntities: metadata?.mentionedEntities,
+            suggestedActions: metadata?.suggestedActions,
           });
 
           // If there's a disambiguation prompt, attach it to the user message
@@ -425,4 +426,3 @@ export const useChat = () => {
     registerMessageRef: conversationStore.registerMessageRef,
   };
 };
-

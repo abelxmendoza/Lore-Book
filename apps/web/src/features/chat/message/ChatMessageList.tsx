@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ChatMessage, type Message, type ChatSource } from './ChatMessage';
+import { ChatMessage, type Message, type ChatSource, type ChatSuggestedAction } from './ChatMessage';
 import { groupMessagesByDate } from '../utils/messageGrouping';
 import { scrollToMessage } from '../utils/scrollToMessage';
 
@@ -16,6 +16,7 @@ type ChatMessageListProps = {
   onSourceClick?: (source: ChatSource) => void;
   onFeedback?: (messageId: string, feedback: 'positive' | 'negative') => void;
   onFork?: (messageId: string) => void;
+  onSuggestedAction?: (action: ChatSuggestedAction, message: Message) => void;
   registerMessageRef?: (messageId: string, element: HTMLDivElement | null) => void;
 };
 
@@ -32,16 +33,31 @@ export const ChatMessageList = ({
   onSourceClick,
   onFeedback,
   onFork,
+  onSuggestedAction,
   registerMessageRef
 }: ChatMessageListProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const previousLastMessageIdRef = useRef<string | null>(null);
   const groupedMessages = groupMessagesByDate(messages);
 
-  // Scroll to bottom when messages change (new message, streaming update, thread switch)
+  // Scroll to bottom on thread/message switches and while the user is already
+  // near the bottom. Avoid yanking position on every streaming chunk.
   useEffect(() => {
     if (!containerRef.current || messages.length === 0) return;
-    containerRef.current.scrollTop = containerRef.current.scrollHeight;
-  }, [messages]);
+    const container = containerRef.current;
+    const lastMessageId = messages[messages.length - 1]?.id ?? null;
+    const lastMessageChanged = previousLastMessageIdRef.current !== lastMessageId;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    const isNearBottom = distanceFromBottom < 160;
+
+    if (lastMessageChanged || isNearBottom) {
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
+    }
+
+    previousLastMessageIdRef.current = lastMessageId;
+  }, [messages, streamingMessageId]);
 
   // Scroll to search result
   useEffect(() => {
@@ -92,6 +108,7 @@ export const ChatMessageList = ({
                   onFork={onFork ? () => onFork(message.id) : undefined}
                   onSourceClick={onSourceClick}
                   onFeedback={onFeedback}
+                  onSuggestedAction={onSuggestedAction}
                 />
               </div>
             ))}
@@ -101,4 +118,3 @@ export const ChatMessageList = ({
     </div>
   );
 };
-

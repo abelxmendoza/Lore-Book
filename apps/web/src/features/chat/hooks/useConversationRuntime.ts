@@ -105,6 +105,7 @@ export const useConversationRuntime = ({
   // Tracks which thread has already had a title generated this session.
   const titleGeneratedRef = useRef<string | null>(null);
   const hydrationRequestRef = useRef<string | null>(null);
+  const selectionRequestSeqRef = useRef(0);
 
   /** Remove a thread with no saved conversation and navigate to a safe fallback. */
   const removeEmptyThread = useCallback(
@@ -421,6 +422,7 @@ export const useConversationRuntime = ({
   /** Switch to an existing thread: flush current, load messages, navigate */
   const handleSelectThread = useCallback(
     async (id: string) => {
+      const requestSeq = ++selectionRequestSeqRef.current;
       if (currentThreadId && currentThreadId !== id) {
         runtimeDiagnostics.record('flush_save', { threadId: currentThreadId });
         flushSave(currentThreadId);
@@ -435,13 +437,28 @@ export const useConversationRuntime = ({
       clearMessages();
       if (!thread || thread.messages.length === 0) {
         const hydratedThread = await hydrateThreadMessages(id);
+        if (selectionRequestSeqRef.current !== requestSeq) {
+          runtimeDiagnostics.record('hydration_skip', {
+            threadId: id,
+            meta: { reason: 'stale_thread_select' },
+          });
+          return;
+        }
         if (hydratedThread) thread = hydratedThread;
       }
       if (!thread || thread.messages.length === 0) {
-        removeEmptyThread(id);
+        // Keep the selected conversation visible even when message hydration fails.
+        // Deleting here made some legitimate backend threads disappear after a
+        // transient empty response, which looked like click-to-open was broken.
+        intendedThreadRef.current = id;
+        isHydratedRef.current = true;
+        hydratedByHandlerRef.current = id;
+        clearMessages();
+        switchThread(id);
+        navigate(`/chat/${id}`);
         runtimeDiagnostics.recordTimed('thread_switch', 'thread_switch', {
           threadId: id,
-          meta: { result: 'empty_deleted' },
+          meta: { result: 'empty_or_unavailable' },
         });
         return;
       }
@@ -453,7 +470,7 @@ export const useConversationRuntime = ({
       navigate(`/chat/${id}`);
       runtimeDiagnostics.recordTimed('thread_switch', 'thread_switch', { threadId: id });
     },
-    [currentThreadId, flushSave, getThread, clearMessages, hydrateThreadMessages, setMessages, switchThread, navigate, removeEmptyThread]
+    [currentThreadId, flushSave, getThread, clearMessages, hydrateThreadMessages, setMessages, switchThread, navigate]
   );
 
   /** Delete a thread: remove it and navigate to the next available thread or /chat */

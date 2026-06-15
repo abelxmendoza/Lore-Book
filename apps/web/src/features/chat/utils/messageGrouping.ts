@@ -6,6 +6,15 @@ export type MessageGroup = {
   messages: Message[];
 };
 
+function coerceMessageDate(value: unknown): Date {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
 /**
  * Groups messages by date with sticky date headers
  */
@@ -13,7 +22,7 @@ export const groupMessagesByDate = (messages: Message[]): MessageGroup[] => {
   const groups: Record<string, Message[]> = {};
   
   messages.forEach((msg) => {
-    const date = msg.timestamp.toLocaleDateString();
+    const date = coerceMessageDate(msg.timestamp).toLocaleDateString();
     if (!groups[date]) {
       groups[date] = [];
     }
@@ -34,4 +43,3 @@ export const groupMessagesByDate = (messages: Message[]): MessageGroup[] => {
     }))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };
-

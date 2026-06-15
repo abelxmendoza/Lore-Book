@@ -22,6 +22,8 @@ import { Search as SearchIcon, MessageSquareText, Brain, Menu, SquarePen, UserCi
 import { useLocalStorage } from '../../../hooks/useLocalStorage';
 import { ChatEmptyState } from './ChatEmptyState';
 import { ChatMessageList } from '../message/ChatMessageList';
+import { MessageCorrectionModal } from '../message/MessageCorrectionModal';
+import { useMessageCorrection } from '../hooks/useMessageCorrection';
 import { ChatLoadingPulse } from './ChatLoadingPulse';
 import { ChatComposer } from '../composer/ChatComposer';
 import { ThreadEntityChips } from './ThreadEntityChips';
@@ -46,9 +48,14 @@ import { ActiveContextPanel } from './ActiveContextPanel';
 import { ChronologyNarrativeModal } from './ChronologyNarrativeModal';
 import { Logo } from '../../../components/Logo';
 import { useAuth } from '../../../lib/supabase';
-import type { ChatSource } from '../message/ChatMessage';
+import type { ChatSource, ChatSuggestedAction, Message } from '../message/ChatMessage';
 import '../styles/chat-theme.css';
 import '../styles/message-animations.css';
+
+// A persisted message carries its real chat_messages UUID; synthetic live ids
+// look like "user-1719…", "error-…", etc. Only persisted messages can be
+// corrected (the server row + its derived knowledge must exist to re-derive).
+const PERSISTED_MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: () => void } = {}) => {
   const navigate = useNavigate();
@@ -172,6 +179,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     }
   }, [activeThreadId, messages]);
   const [showWorkSummary, setShowWorkSummary] = useState(false);
+  const [correcting, setCorrecting] = useState<{ id: string; content: string } | null>(null);
+  const { correctMessage, saving: correctionSaving, error: correctionError } = useMessageCorrection();
   const [showCognitiveTrace] = useLocalStorage<boolean>('lorekeeper_cognitive_trace', false);
   const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
   const [initialDate, setInitialDate] = useState<string | null>(null);
@@ -302,18 +311,37 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
   const handleEdit = (messageId: string) => {
     const message = messages.find((m) => m.id === messageId);
-    if (message && message.role === 'user') {
-      analytics.track('chat_message_edited', { messageId });
-      const messageIndex = messages.findIndex((m) => m.id === messageId);
-      if (messageIndex >= 0) {
-        setMessages(messages.slice(0, messageIndex));
-        const textarea = document.querySelector('textarea[placeholder*="Message Lore Book"]') as HTMLTextAreaElement;
-        if (textarea) {
-          textarea.focus();
-          textarea.value = message.content;
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
+    if (!message || message.role !== 'user') return;
+    analytics.track('chat_message_edited', { messageId });
+
+    // Persisted messages (real chat_messages UUID) are *corrected* — the edit
+    // re-derives what Lore Book knows. Unsaved live messages (synthetic ids like
+    // "user-…") keep the old truncate-and-resend behaviour.
+    if (PERSISTED_MESSAGE_ID.test(message.id)) {
+      setCorrecting({ id: message.id, content: message.content });
+      return;
+    }
+
+    const messageIndex = messages.findIndex((m) => m.id === messageId);
+    if (messageIndex >= 0) {
+      setMessages(messages.slice(0, messageIndex));
+      const textarea = document.querySelector('textarea[placeholder*="Message Lore Book"]') as HTMLTextAreaElement;
+      if (textarea) {
+        textarea.focus();
+        textarea.value = message.content;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
       }
+    }
+  };
+
+  const handleSaveCorrection = async (newContent: string, reason?: string) => {
+    if (!correcting) return;
+    const result = await correctMessage(correcting.id, newContent, reason);
+    if (result) {
+      // Reflect the corrected text in the bubble and refresh derived lore.
+      setMessages(messages.map((m) => (m.id === correcting.id ? { ...m, content: newContent } : m)));
+      setCorrecting(null);
+      void Promise.all([refreshEntries(), refreshTimeline()]);
     }
   };
 
@@ -343,6 +371,47 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
   const handleSearchResultClick = (messageId: string) => {
     setSearchMessageId(messageId);
+  };
+
+  const prefillComposer = (prompt: string) => {
+    setInitialPrompt(prompt);
+    const textarea = document.querySelector('textarea[placeholder*="Message Lore Book"]') as HTMLTextAreaElement | null;
+    if (textarea) {
+      textarea.focus();
+      textarea.value = prompt;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
+
+  const handleSuggestedAction = (action: ChatSuggestedAction, message: Message) => {
+    analytics.track('chat_suggested_action_clicked', {
+      actionId: action.id,
+      actionKind: action.kind,
+      messageId: message.id,
+    });
+
+    if (action.kind === 'open_sources') {
+      const source = action.targetId
+        ? message.sources?.find((s) => s.id === action.targetId)
+        : message.sources?.[0];
+      if (source) handleSourceClick(source);
+      return;
+    }
+
+    if (action.kind === 'search') {
+      const query = action.query || message.content.slice(0, 160);
+      navigate(`/search?q=${encodeURIComponent(query)}`);
+      return;
+    }
+
+    if (action.kind === 'fork') {
+      forkThread(message.id);
+      return;
+    }
+
+    if (action.prompt) {
+      prefillComposer(action.prompt);
+    }
   };
 
   const [conversationCopied, setConversationCopied] = useState(false);
@@ -542,6 +611,17 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           />
         )}
 
+        {/* Correct a previously-sent message (re-derives knowledge) */}
+        {correcting && (
+          <MessageCorrectionModal
+            originalContent={correcting.content}
+            saving={correctionSaving}
+            error={correctionError}
+            onCancel={() => setCorrecting(null)}
+            onSave={handleSaveCorrection}
+          />
+        )}
+
         {/* Work Summary Importer */}
         {showWorkSummary && (
           <WorkSummaryImporter
@@ -584,6 +664,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
               onFork={(messageId) => forkThread(messageId)}
               onSourceClick={handleSourceClick}
               onFeedback={handleFeedback}
+              onSuggestedAction={handleSuggestedAction}
               registerMessageRef={registerMessageRef}
             />
           )}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, User as UserIcon, Copy, Sparkles, ExternalLink, Check } from 'lucide-react';
+import { Bot, User as UserIcon, Copy, Sparkles, ExternalLink, Check, Search, GitFork, CornerDownRight } from 'lucide-react';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { ChatLoadingDots } from '../components/ChatLoadingDots';
 import { parseConnections } from '../../../utils/parseConnections';
@@ -26,6 +26,15 @@ export type ChatSource = {
   title: string;
   snippet?: string;
   date?: string;
+};
+
+export type ChatSuggestedAction = {
+  id: string;
+  label: string;
+  kind: 'open_sources' | 'search' | 'prefill' | 'fork';
+  prompt?: string;
+  query?: string;
+  targetId?: string;
 };
 
 /** User-facing labels for source types (no jargon like HQI) */
@@ -109,6 +118,7 @@ export type Message = {
   cognitionFeedback?: import('../../../hooks/useChatStream').MemoryFeedbackEvent;
   continuityAcknowledged?: { signals: string[]; entityHints: string[]; timelineSignificant: boolean };
   mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
+  suggestedActions?: ChatSuggestedAction[];
 };
 
 type ChatMessageProps = {
@@ -116,6 +126,7 @@ type ChatMessageProps = {
   showCognitiveTrace?: boolean;
   onCopy?: () => void;
   onSourceClick?: (source: ChatSource) => void;
+  onSuggestedAction?: (action: ChatSuggestedAction, message: Message) => void;
 };
 
 export const ChatMessage = ({
@@ -123,6 +134,7 @@ export const ChatMessage = ({
   showCognitiveTrace = false,
   onCopy,
   onSourceClick,
+  onSuggestedAction,
 }: ChatMessageProps) => {
   const [showActions, setShowActions] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -573,6 +585,29 @@ export const ChatMessage = ({
             <MemoryCognitionPanel feedback={message.cognitionFeedback} />
           )}
 
+          {!isUser && message.suggestedActions && message.suggestedActions.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {message.suggestedActions.map((action) => {
+                const Icon =
+                  action.kind === 'search' ? Search :
+                  action.kind === 'fork' ? GitFork :
+                  action.kind === 'open_sources' ? ExternalLink :
+                  CornerDownRight;
+                return (
+                  <button
+                    key={action.id}
+                    type="button"
+                    onClick={() => onSuggestedAction?.(action, message)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/60 transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-white"
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    <span>{action.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* NarrativeStoryPanel intentionally removed from inline chat.
               Story-of-self analysis lives on the dedicated Story page only. */}
           </div>
@@ -638,4 +673,3 @@ export const ChatMessage = ({
     </div>
   );
 };
-

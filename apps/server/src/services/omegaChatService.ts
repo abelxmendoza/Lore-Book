@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 
+import type OpenAI from 'openai';
+
 import { config } from '../config';
 import { logger } from '../logger';
 import { openai } from '../lib/openai';
@@ -17,6 +19,7 @@ import {
 import { ingestionQueue } from './ingestion/ingestionQueue';
 import { tokenBudgetService } from './chat/tokenBudgetService';
 import { compactionService } from './chat/compactionService';
+import { createOpenAIChatStream, type LorekeeperChatStream } from './chat/openaiChatStreamAdapter';
 import { responseSafetyService } from './conversationCentered/responseSafetyService';
 import { tangentTransitionDetector, type TransitionAnalysis, type EmotionalState } from './conversationCentered/tangentTransitionDetector';
 import { entityAmbiguityService } from './entityAmbiguityService';
@@ -90,6 +93,7 @@ export type OmegaChatResponse = {
   memories?: MemoryClaim[]; // Memory claims used in this response
   memorySuggestion?: MemorySuggestion; // Proactive memory suggestion
   mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
+  suggestedActions?: ChatSuggestedAction[];
 };
 
 export type MemorySuggestion = {
@@ -102,9 +106,105 @@ export type MemorySuggestion = {
   risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
 };
 
+export type ChatSuggestedAction = {
+  id: string;
+  label: string;
+  kind: 'open_sources' | 'search' | 'prefill' | 'fork';
+  prompt?: string;
+  query?: string;
+  targetId?: string;
+};
+
+function buildSuggestedActions(input: {
+  message: string;
+  sources: ChatSource[];
+  mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
+  timelineUpdates: string[];
+  memorySuggestion: MemorySuggestion | null;
+  disambiguationPrompt: StreamingChatResponse['metadata']['disambiguationPrompt'] | null;
+}): ChatSuggestedAction[] {
+  const actions: ChatSuggestedAction[] = [];
+  const add = (action: ChatSuggestedAction) => {
+    if (!actions.some((existing) => existing.id === action.id)) actions.push(action);
+  };
+
+  if (input.sources.length > 0) {
+    add({
+      id: 'open-sources',
+      label: 'Review sources',
+      kind: 'open_sources',
+      targetId: input.sources[0]?.id,
+    });
+  }
+
+  if (input.memorySuggestion) {
+    add({
+      id: 'confirm-memory',
+      label: 'Confirm memory',
+      kind: 'prefill',
+      prompt: `Yes, remember this: ${input.memorySuggestion.claim_text}`,
+    });
+  }
+
+  if (input.disambiguationPrompt) {
+    add({
+      id: 'clarify-entity',
+      label: 'Clarify who this is',
+      kind: 'prefill',
+      prompt: `When I said "${input.disambiguationPrompt.mention_text}", I meant `,
+    });
+  }
+
+  const primaryEntity = input.mentionedEntities[0];
+  if (primaryEntity) {
+    add({
+      id: `ask-entity-${primaryEntity.id}`,
+      label: `Ask about ${primaryEntity.name}`,
+      kind: 'prefill',
+      prompt: `What do you know about ${primaryEntity.name} across my Lore Book?`,
+      targetId: primaryEntity.id,
+    });
+  }
+
+  if (input.timelineUpdates.length > 0 || /\b(date|timeline|when|chapter|event|happened)\b/i.test(input.message)) {
+    add({
+      id: 'refine-timeline',
+      label: 'Refine timeline',
+      kind: 'prefill',
+      prompt: 'Help me refine the timeline details from this conversation.',
+    });
+  }
+
+  if (/\b(remember|recall|what do you know|have i ever|find)\b/i.test(input.message)) {
+    add({
+      id: 'search-related',
+      label: 'Find related memories',
+      kind: 'search',
+      query: input.message.slice(0, 160),
+    });
+  }
+
+  add({
+    id: 'fork-thread',
+    label: 'Branch from here',
+    kind: 'fork',
+  });
+
+  if (actions.length < 3) {
+    add({
+      id: 'go-deeper',
+      label: 'Go deeper',
+      kind: 'prefill',
+      prompt: 'Go deeper on this and connect it to the broader patterns in my Lore Book.',
+    });
+  }
+
+  return actions.slice(0, 4);
+}
+
 export type StreamingChatResponse = {
   content?: string; // For non-streaming responses (like recall)
-  stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
+  stream: LorekeeperChatStream;
   metadata: {
     entryId?: string;
     characterIds?: string[];
@@ -170,6 +270,7 @@ export type StreamingChatResponse = {
       name: string;
       type: 'character' | 'location' | 'organization';
     }>;
+    suggestedActions?: ChatSuggestedAction[];
     mode?: string;
     confidence?: number;
   };
@@ -965,9 +1066,9 @@ class OmegaChatService {
     }
 
     // Entity analytics (chatStream does not fetch yet; pass null so buildSystemPrompt skips entity block)
-    let entityAnalytics: any = null;
-    let entityConfidence: number | null = null;
-    let analyticsGate: any = null;
+    const entityAnalytics: any = null;
+    const entityConfidence: number | null = null;
+    const analyticsGate: any = null;
 
     // RL: Select optimal persona blend
     let personaBlend;
@@ -1284,18 +1385,23 @@ class OmegaChatService {
       ? `${systemPrompt}\n\n${sessionMemoryBlock}`
       : systemPrompt;
 
-    const messages = [
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: 'system' as const, content: finalSystemPrompt },
-      ...truncatedHistory,
+      ...truncatedHistory.map((turn) => ({
+        role: turn.role as 'user' | 'assistant',
+        content: turn.content,
+      })),
       { role: 'user' as const, content: message }
     ];
 
-    // Create streaming response — flagship tier: this is the reply the user reads
-    const stream = await openai.chat.completions.create({
+    // Create streaming response — flagship tier: this is the reply the user reads.
+    // Defaults to Chat Completions. Set OPENAI_CHAT_USE_RESPONSES=true to opt into
+    // the Responses API adapter while preserving the existing SSE route shape.
+    const stream = await createOpenAIChatStream({
       model: config.chatModel,
       temperature: 0.7,
-      stream: true,
-      messages
+      messages,
+      userId,
     });
 
     // Save chat message and ingest through pipeline (all non-trivial messages)
@@ -1495,6 +1601,15 @@ class OmegaChatService {
       }, 10000); // After 10 seconds, assume user has read the response
     }
 
+    const suggestedActions = buildSuggestedActions({
+      message,
+      sources,
+      mentionedEntities,
+      timelineUpdates,
+      memorySuggestion,
+      disambiguationPrompt,
+    });
+
     return {
       stream,
       metadata: {
@@ -1509,6 +1624,7 @@ class OmegaChatService {
         timelineUpdates,
         memorySuggestion: memorySuggestion || undefined,
         disambiguationPrompt: disambiguationPrompt || undefined,
+        suggestedActions,
         activePersona: activePersona || undefined,
         modeDecision: modeDecision || undefined,
         continuityAcknowledged: continuityIntent?.detected ? {
@@ -2199,6 +2315,15 @@ class OmegaChatService {
       });
     }
 
+    const suggestedActions = buildSuggestedActions({
+      message,
+      sources,
+      mentionedEntities,
+      timelineUpdates,
+      memorySuggestion,
+      disambiguationPrompt: null,
+    });
+
     return {
       answer,
       entryId,
@@ -2214,7 +2339,8 @@ class OmegaChatService {
       extractedDates,
       sources: sources.slice(0, 10),
       citations,
-      memorySuggestion: memorySuggestion || undefined
+      memorySuggestion: memorySuggestion || undefined,
+      suggestedActions,
     };
   }
 
@@ -2269,4 +2395,3 @@ class OmegaChatService {
 }
 
 export const omegaChatService = new OmegaChatService();
-

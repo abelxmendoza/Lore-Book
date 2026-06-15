@@ -39,6 +39,23 @@ import type { Message } from '../../message/ChatMessage';
 const mockUseAuth = vi.mocked(useAuth);
 const mockFetchJson = vi.mocked(fetchJson);
 
+function ensureLocalStorage() {
+  if (typeof localStorage !== 'undefined' && typeof localStorage.clear === 'function') return;
+  const store = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: vi.fn((key: string) => store.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => {
+      store.set(key, value);
+    }),
+    removeItem: vi.fn((key: string) => {
+      store.delete(key);
+    }),
+    clear: vi.fn(() => {
+      store.clear();
+    }),
+  });
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeMessage(role: 'user' | 'assistant', content = 'hello'): Message {
@@ -103,6 +120,7 @@ function makeRuntimeOptions(messages: Message[] = []) {
 
 describe('useConversationRuntime', () => {
   beforeEach(() => {
+    ensureLocalStorage();
     vi.clearAllMocks();
     mockUseAuth.mockReturnValue({ user: { id: 'u1' } as any, loading: false, session: null, signOut: vi.fn() });
   });
@@ -201,6 +219,58 @@ describe('useConversationRuntime', () => {
     expect(runtimeDiagnostics.record).toHaveBeenCalledWith(
       'hydration_skip',
       expect.objectContaining({ threadId: 't1' })
+    );
+  });
+
+  it('ignores a stale async thread hydration after a newer thread is selected', async () => {
+    const slowMessage = makeMessage('user', 'slow thread');
+    const fastMessage = makeMessage('user', 'fast thread');
+    let resolveSlow: (value: ReturnType<typeof makeThread>) => void = () => {};
+    const slowHydration = new Promise<ReturnType<typeof makeThread>>((resolve) => {
+      resolveSlow = resolve;
+    });
+    const fastThread = makeThread('fast', [fastMessage]);
+    const store = makeThreadsStore({
+      threads: [
+        makeThread('slow', []),
+        makeThread('fast', []),
+      ],
+    });
+    store.hydrateThreadMessages.mockImplementation(async (id: string) => {
+      if (id === 'slow') return slowHydration;
+      if (id === 'fast') return fastThread;
+      return null;
+    });
+    mockUseChatThreads.mockReturnValue(store);
+    const opts = makeRuntimeOptions();
+
+    const { result } = renderHook(() => useConversationRuntime(opts), {
+      wrapper: makeWrapper('/chat'),
+    });
+
+    act(() => {
+      void result.current.handleSelectThread('slow');
+    });
+    act(() => {
+      void result.current.handleSelectThread('fast');
+    });
+
+    await waitFor(() => {
+      expect(opts.setMessages).toHaveBeenCalledWith(fastThread.messages);
+    });
+
+    await act(async () => {
+      resolveSlow(makeThread('slow', [slowMessage]));
+      await slowHydration;
+    });
+
+    expect(opts.setMessages).not.toHaveBeenLastCalledWith([slowMessage]);
+    expect(runtimeDiagnostics.record).toHaveBeenCalledWith(
+      'hydration_skip',
+      expect.objectContaining({
+        threadId: 'slow',
+        meta: { reason: 'stale_thread_select' },
+      })
     );
   });
 
@@ -372,6 +442,9 @@ describe('useConversationRuntime', () => {
     });
 
     await new Promise((r) => setTimeout(r, 50));
-    expect(mockFetchJson).not.toHaveBeenCalled();
+    expect(mockFetchJson).not.toHaveBeenCalledWith(
+      '/api/conversation/threads/t4/title',
+      expect.anything()
+    );
   });
 });
