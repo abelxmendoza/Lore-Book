@@ -980,6 +980,8 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
           first_name: char.first_name ?? null,
           last_name: char.last_name ?? null,
           is_nickname: char.is_nickname ?? null,
+          importance_level: char.importance_level ?? null,
+          importance_score: char.importance_score ?? 0,
           proximity_level: char.proximity_level ?? null,
           has_met: char.has_met ?? null,
           relationship_depth: char.relationship_depth ?? null,

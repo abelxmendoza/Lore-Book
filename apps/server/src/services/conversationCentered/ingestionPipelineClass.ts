@@ -1697,6 +1697,33 @@ export class ConversationIngestionPipeline {
                         .catch(err => {
                           logger.warn({ err }, 'Character timeline processing failed (non-blocking)');
                         });
+
+                      // Sprint AL: enrich real data after event assembly
+                      void import('../events/eventSignificanceService')
+                        .then(({ scoreAndPersistEvent }) => scoreAndPersistEvent(userId, fullEvent.id))
+                        .catch(err => logger.debug({ err, userId }, 'AL event significance failed'));
+
+                      void import('../meaning/eventMeaningService')
+                        .then(({ generateAndPersistEventMeaning }) =>
+                          generateAndPersistEventMeaning(userId, fullEvent.id)
+                        )
+                        .catch(err => logger.debug({ err, userId }, 'AL event meaning failed'));
+
+                      void import('../characters/characterImportanceService')
+                        .then(async ({ scoreAndPersistCharacter }) => {
+                          for (const charId of fullEvent.people ?? []) {
+                            await scoreAndPersistCharacter(userId, charId);
+                          }
+                        })
+                        .catch(err => logger.debug({ err, userId }, 'AL character importance failed'));
+
+                      void import('../characters/characterBiographyService')
+                        .then(async ({ buildAndPersistBiography }) => {
+                          for (const charId of fullEvent.people ?? []) {
+                            await buildAndPersistBiography(userId, charId);
+                          }
+                        })
+                        .catch(err => logger.debug({ err, userId }, 'AL character biography failed'));
                     }
 
                     // Step 12.8.5: Recurring scene detection — non-blocking

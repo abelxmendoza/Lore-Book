@@ -377,6 +377,10 @@ router.get('/intelligence-health', requireAuth, async (req: Request, res: Respon
       warnings.push({ level: 'info', system: 'All Systems', message: 'All pipeline metrics are within healthy thresholds.', actual: 100, threshold: 100 });
     }
 
+    const userId = req.user!.id;
+    const { buildIntelligenceCoverageReport } = await import('../services/diagnostics/intelligenceHealthCoverage');
+    const al_coverage = await buildIntelligenceCoverageReport(userId);
+
     res.json({
       success: true,
       observed_at: now.toISOString(),
@@ -418,6 +422,14 @@ router.get('/intelligence-health', requireAuth, async (req: Request, res: Respon
       funnel,
       warnings,
       thresholds: THRESHOLDS,
+      al_coverage: {
+        character_importance_coverage_pct: al_coverage.character_importance_coverage.coverage_pct,
+        event_significance_coverage_pct: al_coverage.event_significance_coverage.coverage_pct,
+        relationship_scoring_coverage_pct: al_coverage.relationship_scoring_coverage.coverage_pct,
+        meaning_generation_coverage_pct: al_coverage.meaning_generation_coverage.coverage_pct,
+        character_biography_coverage_pct: al_coverage.character_biography_coverage.coverage_pct,
+        details: al_coverage,
+      },
     });
   } catch (err) {
     return res.status(500).json({ error: 'Intelligence health check failed', detail: String(err) });
