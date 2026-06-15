@@ -63,12 +63,6 @@ export async function verifyCharacterCreation(
   const char = await resolveCharacterByName(userId, entityName);
   const checks: VerificationCheck[] = [];
 
-  checks.push({
-    label: 'Entity resolved',
-    ok: !!char,
-    detail: char ? `✓ Matched "${char.name}" in characters table` : `✗ No row for "${entityName}"`,
-  });
-
   let peoplePlaceOk = false;
   const { data: place } = await supabaseAdmin
     .from('people_places')
@@ -79,46 +73,73 @@ export async function verifyCharacterCreation(
 
   if (place) {
     peoplePlaceOk = true;
-    checks.push({
-      label: 'Entity registry',
-      ok: true,
-      detail: `✓ ${place.name} (${place.type}) in people_places`,
-    });
-  } else {
-    checks.push({
-      label: 'Entity registry',
-      ok: false,
-      detail: '✗ Not in people_places yet',
-    });
   }
 
   if (char) {
-    const { count: memCount } = await supabaseAdmin
-      .from('character_memories')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('character_id', char.id);
+    const [{ count: memCount }, { count: relCount }] = await Promise.all([
+      supabaseAdmin
+        .from('character_memories')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('character_id', char.id),
+      supabaseAdmin
+        .from('character_relationships')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .or(`source_character_id.eq.${char.id},target_character_id.eq.${char.id}`),
+    ]);
 
     checks.push({
-      label: 'DB write (memories)',
+      label: '1. Entity exists',
+      ok: peoplePlaceOk,
+      detail: peoplePlaceOk
+        ? `✓ Entity in people_places (${place!.name})`
+        : '○ Entity registry pending',
+    });
+
+    checks.push({
+      label: '2. Character exists',
+      ok: true,
+      detail: `✓ Character row: "${char.name}" (${char.id.slice(0, 8)}…)`,
+    });
+
+    checks.push({
+      label: '3. UI card exists',
+      ok: true,
+      detail: `✓ Character card available via GET /api/characters/${char.id}`,
+    });
+
+    checks.push({
+      label: '4. Ingestion succeeded',
       ok: (memCount ?? 0) > 0,
       detail:
         (memCount ?? 0) > 0
-          ? `✓ ${memCount} character_memory link(s)`
-          : '○ Character exists but no linked memories yet',
+          ? `✓ ${memCount} character_memory link(s) — ingestion complete`
+          : '○ Character created — memory links pending (extraction async)',
     });
 
-    const { count: relCount } = await supabaseAdmin
-      .from('character_relationships')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .or(`source_character_id.eq.${char.id},target_character_id.eq.${char.id}`);
+    const ingestionFailed = char.metadata?.extraction_failed === true;
+    checks.push({
+      label: '5. Creation status',
+      ok: !ingestionFailed && (memCount ?? 0) > 0,
+      detail: ingestionFailed
+        ? '✗ Ingestion reported failure — check diagnostics'
+        : (memCount ?? 0) > 0
+          ? '✓ Fully created'
+          : '○ Partial — card exists, memories pending',
+    });
 
     checks.push({
       label: 'Relationships',
       ok: (relCount ?? 0) > 0,
       detail: (relCount ?? 0) > 0 ? `✓ ${relCount} relationship row(s)` : '○ No relationships yet',
     });
+  } else {
+    checks.push({ label: '1. Entity exists', ok: peoplePlaceOk, detail: peoplePlaceOk ? '✓' : '✗ Not found' });
+    checks.push({ label: '2. Character exists', ok: false, detail: `✗ No character row for "${entityName}"` });
+    checks.push({ label: '3. UI card exists', ok: false, detail: '✗ No card — character not created' });
+    checks.push({ label: '4. Ingestion succeeded', ok: false, detail: '✗ No ingestion — nothing to display' });
+    checks.push({ label: '5. Creation status', ok: false, detail: '✗ Creation failed or not started' });
   }
 
   let threadEvidence = 0;
@@ -146,7 +167,7 @@ export async function verifyCharacterCreation(
   if (peoplePlaceOk) known.push('Entity registered in people_places');
   else unknown.push('Entity not in people_places registry');
 
-  const memCheck = checks.find((c) => c.label === 'DB write (memories)');
+  const memCheck = checks.find((c) => c.label === '4. Ingestion succeeded');
   if (memCheck?.ok) known.push(memCheck.detail.replace('✓ ', ''));
   else if (char) unknown.push('No linked memories yet');
 

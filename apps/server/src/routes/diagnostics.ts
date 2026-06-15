@@ -436,4 +436,21 @@ router.get('/intelligence-health', requireAuth, async (req: Request, res: Respon
   }
 });
 
+/**
+ * GET /api/diagnostics/story-coverage
+ *
+ * Sprint AM-7 — Per-user story utilization coverage.
+ * Reveals where memory exists but cannot yet tell stories.
+ */
+router.get('/story-coverage', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { buildStoryCoverageReport } = await import('../services/diagnostics/storyCoverageDiagnostics');
+    const report = await buildStoryCoverageReport(userId);
+    return res.json(report);
+  } catch (err) {
+    return res.status(500).json({ error: 'Story coverage check failed', detail: String(err) });
+  }
+});
+
 export default router;

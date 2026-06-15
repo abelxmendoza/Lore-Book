@@ -13,6 +13,7 @@ import {
   fetchEntityProfile,
   formatCharacterRosterForChat,
   formatGroupedCharacterRosterForChat,
+  formatStoryRosterForChat,
   formatFamilyTreeForChat,
   formatFamilyRosterForChat,
   formatEntityProfileForChat,
@@ -139,8 +140,7 @@ async function fetchEntityContext(
 }
 
 async function fetchCharacterListContext(userId: string): Promise<string> {
-  const roster = await fetchCharacterRoster(userId);
-  return formatGroupedCharacterRosterForChat(userId, roster);
+  return formatStoryRosterForChat(userId);
 }
 
 async function fetchFamilyContext(userId: string): Promise<string> {

@@ -397,6 +397,69 @@ export async function formatGroupedCharacterRosterForChat(
 }
 
 /**
+ * Sprint AM-8 — Story roster with importance, memories, relationship, major moments.
+ */
+export async function formatStoryRosterForChat(userId: string): Promise<string> {
+  const roster = await fetchCharacterRoster(userId);
+  const people = roster.filter((e) => !e.isSelf);
+  if (people.length === 0) return 'No characters recorded yet.';
+
+  const romanticIds = await loadRomanticCharacterIds(userId);
+  const groups: Record<RosterCategory, CharacterRosterEntry[]> = {
+    Family: [],
+    Romantic: [],
+    Professional: [],
+    Scene: [],
+  };
+
+  for (const entry of people) {
+    groups[categorizeRosterEntry(entry, romanticIds)].push(entry);
+  }
+
+  const { data: charsMeta } = await supabaseAdmin
+    .from('characters')
+    .select('id, metadata, importance_score, importance_level')
+    .eq('user_id', userId)
+    .in('id', people.map((p) => p.id));
+
+  const metaById = new Map((charsMeta ?? []).map((c) => [c.id, c]));
+
+  const lines = [`**People in your story (${people.length})**`, ''];
+  const order: RosterCategory[] = ['Family', 'Romantic', 'Professional', 'Scene'];
+
+  for (const category of order) {
+    const members = groups[category];
+    if (!members.length) continue;
+    lines.push(`**${category}**`, '');
+
+    for (const entry of members) {
+      const meta = metaById.get(entry.id);
+      const bio = (meta?.metadata as Record<string, unknown> | undefined)?.al_biography as
+        | Record<string, unknown>
+        | undefined;
+      const importance = meta?.importance_score ?? entry.memoryCount * 5;
+      const level = meta?.importance_level ?? 'minor';
+
+      lines.push(`**${entry.name}**`);
+      lines.push(`  • Importance: ${importance}/100 (${level})`);
+      if (entry.relationshipToUser) lines.push(`  • Relationship: ${entry.relationshipToUser}`);
+      lines.push(
+        `  • ${entry.memoryCount} ${entry.memoryCount === 1 ? 'memory' : 'memories'}`
+      );
+      const moments = bio?.major_moments as string[] | undefined;
+      if (moments?.length) {
+        lines.push(`  • Major moments: ${moments.slice(0, 2).join('; ')}`);
+      } else if (typeof bio?.narrative_summary === 'string') {
+        lines.push(`  • ${String(bio.narrative_summary).slice(0, 100)}`);
+      }
+      lines.push('');
+    }
+  }
+
+  return lines.join('\n').trim();
+}
+
+/**
  * Sprint AI — family relationship graph from character_relationships.
  */
 export async function formatFamilyTreeForChat(userId: string): Promise<string | null> {

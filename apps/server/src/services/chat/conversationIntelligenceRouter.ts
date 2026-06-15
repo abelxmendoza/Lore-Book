@@ -4,16 +4,21 @@
  * Routes classified question intents to evidence-backed handlers.
  */
 
-import { classifyQuestionIntent, extractPersonNameFromIntent } from './questionIntentClassifier';
+import { classifyQuestionIntent, extractPersonNameFromIntent, extractSceneQuery } from './questionIntentClassifier';
 import { formatEvidenceResponse, hasAnyEvidence, type EvidenceCounts } from './memoryEvidenceFormatter';
 import { formatLabeledRecall } from './memorySourceLabels';
 import { buildThreadRecall } from './threadRecallService';
-import { fetchEntityProfile, formatEntityProfileForChat } from './foundationRecallDataService';
+import { fetchEntityProfile } from './foundationRecallDataService';
 import { getMemoryFormationStatus } from './memoryFormationStatusService';
 import { verifyCharacterCreation } from './characterCreationVerification';
 import { buildMemoryDebugReport } from './memoryDebugMode';
-import { formatStoryInsightBlock } from './storyInsightService';
 import { sanitizeAssistantResponse, getRecentAssistantMessages } from './antiRepetitionLayer';
+import {
+  buildPersonStoryRecall,
+  buildSceneRecall,
+  buildEventStoryRecall,
+  buildStoryRosterRecall,
+} from '../story/storyRecallService';
 import { supabaseAdmin } from '../supabaseClient';
 
 type HistoryMessage = { role: string; content: string };
@@ -31,67 +36,53 @@ async function buildPersonRecall(
   name: string,
   options: { conversationHistory: HistoryMessage[]; threadId?: string }
 ): Promise<ConversationIntelligenceResult> {
-  const threadText = options.conversationHistory
-    .filter((m) => m.role === 'user')
-    .map((m) => m.content)
-    .join('\n');
+  const storyContent = await buildPersonStoryRecall(userId, name, {
+    threadId: options.threadId,
+    conversationHistory: options.conversationHistory,
+  });
+
+  if (storyContent) {
+    const profile = await fetchEntityProfile(userId, name);
+    const evidence: EvidenceCounts = {
+      thread: options.conversationHistory.some(
+        (m) => m.role === 'user' && m.content.toLowerCase().includes(name.toLowerCase())
+      )
+        ? 1
+        : 0,
+      memory: profile?.memoryCount ?? 0,
+      event: profile?.timelineEvents.length ?? 0,
+      character: profile ? 1 : 0,
+    };
+
+    return {
+      handled: true,
+      content: storyContent,
+      response_mode: 'STORY_RECALL',
+      confidence: hasAnyEvidence(evidence) ? 0.95 : 0.7,
+      metadata: { am_intent: 'person_story', entity_name: name, evidence },
+    };
+  }
 
   const profile = await fetchEntityProfile(userId, name);
-  const threadMentions = threadText.toLowerCase().includes(name.toLowerCase()) ? 1 : 0;
-
-  const known: string[] = [];
-  const unknown: string[] = [];
-
-  if (threadMentions) {
-    known.push(`Mentioned in current thread`);
-  } else {
-    unknown.push(`Not mentioned in current thread`);
-  }
-
-  if (profile) {
-    known.push(`Character "${profile.name}" in database`);
-    if (profile.memoryCount > 0) known.push(`${profile.memoryCount} linked memory(ies)`);
-    if (profile.relationshipToUser) known.push(`Relationship: ${profile.relationshipToUser}`);
-    for (const fact of profile.facts.slice(0, 4)) known.push(fact);
-  } else {
-    unknown.push(`No character record for "${name}"`);
-  }
-
   const evidence: EvidenceCounts = {
-    thread: threadMentions,
+    thread: 0,
     memory: profile?.memoryCount ?? 0,
     event: profile?.timelineEvents.length ?? 0,
     character: profile ? 1 : 0,
   };
 
-  const storedLore = profile
-    ? formatEntityProfileForChat(profile, { threadText })
-    : null;
-
-  const insight = formatStoryInsightBlock([
-    ...options.conversationHistory.filter((m) => m.role === 'user').map((m) => m.content),
-    ...(profile?.facts ?? []),
-  ]);
-
-  const labeled = formatLabeledRecall({
-    currentThread: threadMentions
-      ? options.conversationHistory
-          .filter((m) => m.role === 'user' && m.content.toLowerCase().includes(name.toLowerCase()))
-          .map((m) => m.content.slice(0, 200))
-          .join('\n')
-      : null,
-    storedLore,
+  const evidenceBlock = formatEvidenceResponse({
+    known: profile ? [`Character "${profile.name}" exists`] : [],
+    unknown: profile ? [] : [`No story reconstructed for "${name}"`],
+    evidence,
   });
-
-  const evidenceBlock = formatEvidenceResponse({ known, unknown, evidence });
-  const content = [labeled, insight, evidenceBlock].filter(Boolean).join('\n\n');
 
   return {
     handled: true,
-    content,
-    response_mode: profile ? 'RECALL' : 'DIAGNOSTIC',
-    confidence: hasAnyEvidence(evidence) ? 0.9 : 0.4,
-    metadata: { ak_intent: 'recall_person', entity_name: name, evidence },
+    content: evidenceBlock,
+    response_mode: 'DIAGNOSTIC',
+    confidence: 0.4,
+    metadata: { am_intent: 'person_story_empty', entity_name: name, evidence },
   };
 }
 
@@ -230,6 +221,43 @@ export async function routeConversationIntelligence(
         response_mode: 'DIAGNOSTIC',
         confidence: 0.95,
         metadata: { ak_intent: 'memory_debug' },
+      };
+      break;
+    }
+    case 'scene_recall': {
+      const content = await buildSceneRecall(userId, message, options);
+      result = {
+        handled: !!content,
+        content: content ?? '',
+        response_mode: 'STORY_RECALL',
+        confidence: content ? 0.95 : 0,
+        metadata: { am_intent: 'scene_recall', query: extractSceneQuery(message) },
+      };
+      break;
+    }
+    case 'event_story': {
+      const subject =
+        extractPersonNameFromIntent(message, intent) ??
+        extractSceneQuery(message) ??
+        message.replace(/\bwhat happened (?:with|at|to)\s+/i, '').replace(/[?.!]+$/, '').trim();
+      const content = await buildEventStoryRecall(userId, subject);
+      result = {
+        handled: !!content,
+        content: content ?? '',
+        response_mode: 'STORY_RECALL',
+        confidence: content ? 0.95 : 0,
+        metadata: { am_intent: 'event_story', subject },
+      };
+      break;
+    }
+    case 'story_roster': {
+      const content = await buildStoryRosterRecall(userId);
+      result = {
+        handled: true,
+        content,
+        response_mode: 'STORY_RECALL',
+        confidence: 0.95,
+        metadata: { am_intent: 'story_roster' },
       };
       break;
     }
