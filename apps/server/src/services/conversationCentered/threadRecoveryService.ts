@@ -16,9 +16,12 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { countMissingAssistantTurns, hasOrderingConflict } from './threadDurabilityChecks';
+import { isGenericThreadTitle, deriveTitleFromMessages } from '../../utils/threadTitleUtils';
+
+const ORPHAN_AGE_MS = 60 * 60 * 1000; // an empty thread older than this is an orphan
 
 interface MsgRow { session_id: string; role: string; content: string | null; created_at: string; }
-interface SessionRow { id: string; updated_at: string; metadata: Record<string, unknown> | null; }
+interface SessionRow { id: string; title: string | null; updated_at: string; created_at: string | null; metadata: Record<string, unknown> | null; }
 
 export interface ThreadHealthReport {
   thread_count: number;
@@ -29,15 +32,19 @@ export interface ThreadHealthReport {
   metadata_drift: number;            // threads whose metadata snapshot is stale
   ordering_conflicts: number;        // threads whose updated_at < last message time
   hydration_failures: number;        // threads that would hydrate empty despite having messages
+  broken_titles: number;             // threads with messages but a generic/empty title
+  orphan_threads: number;            // empty threads older than the orphan cutoff
+  empty_threads: number;             // threads with zero messages
+  duplicate_threads: number;         // threads sharing an identical first user message
   recovery_actions: number;          // repairs applied in the last repairUser() call
 }
 
-export interface RepairResult { sessionId: string; rebuiltSnapshot: boolean; bumpedOrdering: boolean; messageCount: number; }
+export interface RepairResult { sessionId: string; rebuiltSnapshot: boolean; bumpedOrdering: boolean; retitled?: string; messageCount: number; }
 
 class ThreadRecoveryService {
   private async loadAll(userId: string): Promise<{ sessions: SessionRow[]; messages: MsgRow[] }> {
     const [{ data: sessions }, { data: messages }] = await Promise.all([
-      supabaseAdmin.from('conversation_sessions').select('id, updated_at, metadata').eq('user_id', userId),
+      supabaseAdmin.from('conversation_sessions').select('id, title, updated_at, created_at, metadata').eq('user_id', userId),
       supabaseAdmin.from('chat_messages').select('session_id, role, content, created_at')
         .eq('user_id', userId).order('created_at', { ascending: true }),
     ]);
@@ -67,7 +74,9 @@ class ThreadRecoveryService {
     const bySession = this.groupBySession(messages);
 
     let orphaned = 0, missingAssistant = 0, mismatched = 0, drift = 0, orderingConflicts = 0, hydrationFailures = 0;
-    let conversationCount = 0;
+    let conversationCount = 0, brokenTitles = 0, orphanThreads = 0, emptyThreads = 0;
+    const now = Date.now();
+    const firstMessageFingerprints = new Map<string, number>();
 
     // Orphaned: messages whose session row no longer exists.
     for (const [sid, msgs] of bySession) {
@@ -87,12 +96,22 @@ class ThreadRecoveryService {
       if (msgs.length > 0) {
         const last = msgs[msgs.length - 1].created_at;
         if (hasOrderingConflict(s.updated_at, last)) orderingConflicts += 1;
+        // A thread with real messages but a generic title is "broken".
+        if (isGenericThreadTitle(s.title)) brokenTitles += 1;
+        // Duplicate detection: identical first user message.
+        const fp = this.firstUserFingerprint(msgs);
+        if (fp) firstMessageFingerprints.set(fp, (firstMessageFingerprints.get(fp) ?? 0) + 1);
+      } else {
+        emptyThreads += 1;
+        const age = now - new Date(s.created_at ?? s.updated_at).getTime();
+        if (age > ORPHAN_AGE_MS) orphanThreads += 1;
       }
 
-      // Would hydration render empty? (Only true if there is genuinely no message
-      // in any canonical source — chat_messages is what we count here.)
       if (msgs.length === 0 && snap === 0) hydrationFailures += 1;
     }
+
+    let duplicateThreads = 0;
+    for (const count of firstMessageFingerprints.values()) if (count > 1) duplicateThreads += count - 1;
 
     return {
       thread_count: sessions.length,
@@ -103,8 +122,19 @@ class ThreadRecoveryService {
       metadata_drift: drift,
       ordering_conflicts: orderingConflicts,
       hydration_failures: hydrationFailures,
+      broken_titles: brokenTitles,
+      orphan_threads: orphanThreads,
+      empty_threads: emptyThreads,
+      duplicate_threads: duplicateThreads,
       recovery_actions: recoveryActions,
     };
+  }
+
+  /** Fingerprint a thread by its first user message (duplicate-thread detection). */
+  private firstUserFingerprint(msgs: MsgRow[]): string | null {
+    const firstUser = msgs.find((m) => m.role === 'user' && (m.content ?? '').trim());
+    if (!firstUser) return null;
+    return (firstUser.content ?? '').trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 120);
   }
 
   /** Rebuild a thread's metadata snapshot from chat_messages and fix its ordering. */
@@ -121,15 +151,28 @@ class ThreadRecoveryService {
     const lastActivity = rows[rows.length - 1].created_at;
 
     const { data: session } = await supabaseAdmin
-      .from('conversation_sessions').select('metadata, updated_at').eq('id', sessionId).eq('user_id', userId).maybeSingle();
+      .from('conversation_sessions').select('title, metadata, updated_at').eq('id', sessionId).eq('user_id', userId).maybeSingle();
     const existingMeta = (session?.metadata as Record<string, unknown> | null) ?? {};
 
+    // Repair a broken/generic title deterministically (never "New Conversation").
+    // Don't overwrite a user-renamed title.
+    let retitled: string | null = null;
+    const userRenamed = existingMeta.titleSource === 'user';
+    if (!userRenamed && isGenericThreadTitle(session?.title as string | null)) {
+      retitled = deriveTitleFromMessages(rows.map((m) => ({ role: m.role, content: m.content ?? '' })));
+    }
+
+    const update: Record<string, unknown> = {
+      metadata: { ...existingMeta, messages: snapshot },
+      updated_at: lastActivity,
+    };
+    if (retitled) update.title = retitled;
+
     const { error } = await supabaseAdmin.from('conversation_sessions')
-      .update({ metadata: { ...existingMeta, messages: snapshot }, updated_at: lastActivity })
-      .eq('id', sessionId).eq('user_id', userId);
+      .update(update).eq('id', sessionId).eq('user_id', userId);
     if (error) { logger.warn({ err: error, sessionId }, 'repairThread: snapshot rebuild failed'); }
 
-    return { sessionId, rebuiltSnapshot: !error, bumpedOrdering: !error, messageCount: rows.length };
+    return { sessionId, rebuiltSnapshot: !error, bumpedOrdering: !error, retitled: retitled ?? undefined, messageCount: rows.length };
   }
 
   /** Repair every thread whose snapshot/ordering drifted. Returns repairs applied. */
@@ -144,7 +187,8 @@ class ThreadRecoveryService {
       const snap = this.snapshotCount(s.metadata);
       const last = msgs[msgs.length - 1].created_at;
       const orderingOff = hasOrderingConflict(s.updated_at, last);
-      if (snap !== msgs.length || orderingOff) {
+      const titleBroken = s.metadata?.titleSource !== 'user' && isGenericThreadTitle(s.title);
+      if (snap !== msgs.length || orderingOff || titleBroken) {
         results.push(await this.repairThread(userId, s.id));
       }
     }

@@ -6,6 +6,7 @@ import {
   dedupeMessages,
   type DurableMessage,
 } from '../../src/services/conversationCentered/threadDurabilityChecks';
+import { deriveTitleFromMessages, isGenericThreadTitle } from '../../src/utils/threadTitleUtils';
 
 const m = (id: string, role: string, content: string, t: string): DurableMessage => ({ id, role, content, created_at: t });
 const T = (s: number) => new Date(2026, 0, 1, 0, 0, s).toISOString();
@@ -77,6 +78,29 @@ describe('Thread durability — ordering (thread switch / new activity reconcili
       [m('db-1', 'user', 'question', T(5))],
     ]);
     expect(merged.map((x) => x.role)).toEqual(['user', 'assistant']);
+  });
+});
+
+describe('Thread durability — broken-title repair (Phase 6/7: never "New Conversation")', () => {
+  it('derives a real title from the first user message', () => {
+    const title = deriveTitleFromMessages([
+      { role: 'user', content: 'Took Abuela to Costco yesterday and it took forever' },
+      { role: 'assistant', content: 'That sounds like a long trip…' },
+    ]);
+    expect(title).toBeTruthy();
+    expect(isGenericThreadTitle(title)).toBe(false);
+  });
+
+  it('a thread with messages never keeps a generic title after repair', () => {
+    for (const generic of ['New Chat', 'Untitled', 'Chat', 'Draft', '']) {
+      expect(isGenericThreadTitle(generic)).toBe(true); // detected as broken
+    }
+    const repaired = deriveTitleFromMessages([{ role: 'user', content: 'LoreBook memory testing session' }]);
+    expect(isGenericThreadTitle(repaired)).toBe(false);
+  });
+
+  it('returns null when there is no user message to derive from (no false title)', () => {
+    expect(deriveTitleFromMessages([{ role: 'assistant', content: 'hello' }])).toBeNull();
   });
 });
 
