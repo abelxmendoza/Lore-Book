@@ -399,3 +399,17 @@ server.on('error', (error: NodeJS.ErrnoException) => {
   }
   process.exit(1);
 });
+
+// Graceful shutdown: close the HTTP server (release port 4000) before exiting so
+// restarts don't race on EADDRINUSE, and so `tsx watch` stops logging
+// "Process hasn't exited. Killing process…" on every file change.
+let shuttingDown = false;
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info(`${signal} received — closing server`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3_000).unref();
+  });
+}

@@ -410,6 +410,11 @@ export class GroupCandidateService {
 
     const signatures = ((data ?? []) as Array<{ proposed_name?: string; detected_members?: string[] }>)
       .map(row => ({ members: row.detected_members ?? [], name: row.proposed_name }));
+    // Bound this user-keyed cache: evict the oldest entry if over the cap (OOM guard).
+    if (this.rejectionCache.size >= 1_000 && !this.rejectionCache.has(userId)) {
+      const oldest = this.rejectionCache.keys().next().value;
+      if (oldest !== undefined) this.rejectionCache.delete(oldest);
+    }
     this.rejectionCache.set(userId, { signatures, expiresAt: Date.now() + 60_000 });
     return signatures;
   }

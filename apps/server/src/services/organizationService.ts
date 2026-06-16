@@ -1126,14 +1126,31 @@ export class OrganizationService {
       if (!memberships || memberships.length === 0) return [];
 
       const orgIds = [...new Set(memberships.map(m => m.organization_id))];
-      const orgs = await Promise.all(
-        orgIds.map(id => this.getOrganization(userId, id))
-      );
+      const orgs = await this.getOrganizationsChunked(userId, orgIds);
       return orgs.filter((o): o is Organization => o !== null);
     } catch (error) {
       logger.error({ error, userId, characterId, characterName }, 'Failed to get organizations by character');
       return [];
     }
+  }
+
+  /**
+   * Load many organizations in bounded batches. `getOrganization` fans out to
+   * members + stories + events + locations per org, so loading ALL orgs at once
+   * materialized whole subgraphs simultaneously (OOM contributor — see
+   * docs/oom-root-cause-report.md). Process in small chunks instead.
+   */
+  private async getOrganizationsChunked(
+    userId: string,
+    orgIds: string[],
+    chunkSize = 5
+  ): Promise<Array<Organization | null>> {
+    const out: Array<Organization | null> = [];
+    for (let i = 0; i < orgIds.length; i += chunkSize) {
+      const batch = orgIds.slice(i, i + chunkSize);
+      out.push(...await Promise.all(batch.map(id => this.getOrganization(userId, id))));
+    }
+    return out;
   }
 
   /** Other group memberships for each roster member (excludes the current org). */
@@ -1161,7 +1178,7 @@ export class OrganizationService {
       if (!rows?.length) return {};
 
       const orgIds = [...new Set(rows.map(r => r.organization_id as string))];
-      const orgs = await Promise.all(orgIds.map(id => this.getOrganization(userId, id)));
+      const orgs = await this.getOrganizationsChunked(userId, orgIds);
       const orgById = new Map(
         orgs.filter((o): o is Organization => o !== null).map(o => [o.id, o])
       );

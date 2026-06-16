@@ -15,9 +15,23 @@ interface Edge {
   contexts: Set<string>;
 }
 
+// Memory bounds (OOM guard — see docs/oom-root-cause-report.md). Edge count is
+// O(nodes²) and node identity comes from noisy name extraction, so an unbounded
+// run can build a multi-GB graph. These caps make a single run's footprint
+// bounded without changing results for normal-sized histories.
+const MAX_IDS_PER_CONTEXT = 30;   // a context with more "names" than this is noise
+const MAX_NODES = 2_000;          // once reached, only existing nodes accrue edges
+const MAX_EDGES = 200_000;        // hard ceiling on the edge map
+
 export class CoOccurrenceGraph {
   private nodes = new Set<string>();
   private edges = new Map<string, Edge>();
+  private capped = false;
+
+  /** True if this run hit a memory cap and stopped growing the graph. */
+  isCapped(): boolean {
+    return this.capped;
+  }
 
   private static edgeKey(a: string, b: string): string {
     return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`;
@@ -25,11 +39,19 @@ export class CoOccurrenceGraph {
 
   /** Register one context: every distinct pair among `ids` gains weight (once per context). */
   addContext(ids: string[], contextId: string): void {
-    const uniq = [...new Set(ids.filter(Boolean))];
-    for (const id of uniq) this.nodes.add(id);
+    // Truncate pathologically large contexts (noise) so one context can't add O(n²) edges.
+    const uniq = [...new Set(ids.filter(Boolean))].slice(0, MAX_IDS_PER_CONTEXT);
+    for (const id of uniq) {
+      // Stop registering NEW nodes at the cap; known nodes still accrue edges.
+      if (this.nodes.size >= MAX_NODES && !this.nodes.has(id)) { this.capped = true; continue; }
+      this.nodes.add(id);
+    }
     for (let i = 0; i < uniq.length; i++) {
       for (let j = i + 1; j < uniq.length; j++) {
+        // Only pair nodes that were actually registered (respects the node cap).
+        if (!this.nodes.has(uniq[i]) || !this.nodes.has(uniq[j])) continue;
         const key = CoOccurrenceGraph.edgeKey(uniq[i], uniq[j]);
+        if (!this.edges.has(key) && this.edges.size >= MAX_EDGES) { this.capped = true; continue; }
         const edge = this.edges.get(key) ?? { a: uniq[i], b: uniq[j], weight: 0, contexts: new Set() };
         if (!edge.contexts.has(contextId)) {
           edge.contexts.add(contextId);

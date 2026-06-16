@@ -57,6 +57,18 @@ class SocietyResolver {
     return `${cluster.key}|${[...cluster.memberIds].sort().join(',')}`;
   }
 
+  // Bounded set: this cache is a process-lifetime singleton, so an uncapped Map
+  // only ever grows (OOM contributor — see docs/oom-root-cause-report.md). Evict
+  // the oldest entry (Map preserves insertion order) once over the cap.
+  private static readonly MAX_CACHE_ENTRIES = 5_000;
+  private cacheSet(key: string, value: Resolution): void {
+    if (this.cache.size >= SocietyResolver.MAX_CACHE_ENTRIES) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) this.cache.delete(oldest);
+    }
+    this.cache.set(key, value);
+  }
+
   private withinBudget(): boolean {
     const today = new Date().toISOString().slice(0, 10);
     if (today !== this.budgetDay) { this.budgetDay = today; this.budgetUsed = 0; }
@@ -90,7 +102,7 @@ class SocietyResolver {
           const r = fresh.get(cluster.key);
           if (r) {
             resolved.set(cluster.key, r);
-            this.cache.set(this.cacheKey(cluster), r);
+            this.cacheSet(this.cacheKey(cluster), r);
           }
         }
       } catch (error) {

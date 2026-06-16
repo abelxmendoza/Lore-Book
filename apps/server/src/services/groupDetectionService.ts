@@ -484,6 +484,12 @@ export class GroupDetectionService {
         .select('id, name, alias')
         .eq('user_id', userId);
       const rows = (data ?? []) as Array<{ id: string; name: string; alias?: string[] | null }>;
+      // Bound this user-keyed cache: evict the oldest entry if over the cap so the
+      // singleton Map can't grow with total user count (OOM guard).
+      if (this.characterNameCache.size >= 1_000 && !this.characterNameCache.has(userId)) {
+        const oldest = this.characterNameCache.keys().next().value;
+        if (oldest !== undefined) this.characterNameCache.delete(oldest);
+      }
       this.characterNameCache.set(userId, { rows, expiresAt: Date.now() + 60_000 });
       return rows;
     } catch (error) {

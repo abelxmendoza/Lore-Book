@@ -63,21 +63,30 @@ class GroupDetectionWorker {
     logger.info({ cycleMs: this.CYCLE_MS, startupDelayMs: this.STARTUP_DELAY_MS }, 'GroupDetectionWorker started');
   }
 
+  /** Heap usage in MB (diagnostics — watch for growth across runs). */
+  private heapMb(): number {
+    return Math.round(process.memoryUsage().heapUsed / 1048576);
+  }
+
   /** Run cross-session society mapping for every active user. */
   private async runSocietyBatch(): Promise<void> {
+    const before = this.heapMb();
     await runForAllActiveUsers(
       'group-detection:society',
       userId => societyMappingService.mapUser(userId).then(() => undefined),
       this.CONCURRENCY
     );
+    logger.info({ label: 'society', heapBeforeMb: before, heapAfterMb: this.heapMb() }, 'GroupDetectionWorker: run heap');
   }
 
   private async runBatch(sinceDays: number, cap: number, label: string): Promise<void> {
+    const before = this.heapMb();
     await runForAllActiveUsers(
       `group-detection:${label}`,
       userId => this.runForUser(userId, sinceDays, cap),
       this.CONCURRENCY
     );
+    logger.info({ label, heapBeforeMb: before, heapAfterMb: this.heapMb() }, 'GroupDetectionWorker: run heap');
   }
 
   /** Scan one user's recent chat messages + journal entries for groups. */
