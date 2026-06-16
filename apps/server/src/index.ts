@@ -314,15 +314,28 @@ async function runBootTasks(): Promise<void> {
     // CORE jobs — always run
     registerSyncJob();
     memoryExtractionWorker.start();
-    const { groupDetectionWorker } = await import('./workers/groupDetectionWorker');
-    groupDetectionWorker.start();
+
+    // GroupDetectionWorker is DISABLED by default: it builds O(n²) co-occurrence
+    // graphs + wide org fan-outs over each user's whole history and retains
+    // never-evicted singleton caches, driving the process to a ~4 GB heap OOM
+    // crash-loop (see docs/oom-root-cause-report.md). It is background enrichment
+    // only — chat, memory, retrieval, threads, summaries, and life reconstruction
+    // do NOT depend on it. Opt in explicitly once P1/P2 memory bounds land.
+    if (process.env.ENABLE_GROUP_DETECTION === 'true') {
+      const { groupDetectionWorker } = await import('./workers/groupDetectionWorker');
+      groupDetectionWorker.start();
+      logger.warn('GroupDetectionWorker ENABLED (ENABLE_GROUP_DETECTION=true) — monitor heap; known OOM risk until P1/P2 land');
+    } else {
+      logger.info('GroupDetectionWorker DISABLED (set ENABLE_GROUP_DETECTION=true to enable) — prevents the group-detection OOM crash-loop');
+    }
+
     const { continuityEngineJob } = await import('./jobs/continuityEngineJob');
     continuityEngineJob.register();
     const { accessibilityDecayJob } = await import('./jobs/accessibilityDecayJob');
     accessibilityDecayJob.register();
     const { arcStabilityDecayJob } = await import('./jobs/arcStabilityDecayJob');
     arcStabilityDecayJob.register();
-    logger.info('Core background jobs registered: sync, memoryExtraction, groupDetection, continuityEngine, accessibilityDecay, arcStabilityDecay');
+    logger.info('Core background jobs registered: sync, memoryExtraction, continuityEngine, accessibilityDecay, arcStabilityDecay');
 
     // EXPERIMENTAL jobs — gated behind ENABLE_EXPERIMENTAL_RUNTIME
     if (process.env.ENABLE_EXPERIMENTAL_RUNTIME === 'true') {
