@@ -6,6 +6,7 @@ import { APITester } from '../../components/dev/APITester';
 import { FlagTogglePanel } from '../../components/dev/FlagTogglePanel';
 import { DBTools } from '../../components/dev/DBTools';
 import { canAccessDevConsole } from '../../middleware/roleGuard';
+import { useAccountAuthority } from '../../hooks/useAccountAuthority';
 import { config } from '../../config/env';
 import NotFound from '../../routes/NotFound';
 
@@ -19,14 +20,21 @@ export const DevConsolePage = () => {
   
   // Check access: API_ENV === "dev" OR user.id == ADMIN_ID
   // In production, dev console is COMPLETELY DISABLED
-  const hasAccess = canAccessDevConsole(user || null);
+  const { authority, loading: authorityLoading } = useAccountAuthority();
+
+  const hasAccess = canAccessDevConsole(authority);
 
   useEffect(() => {
+    if (authorityLoading) return;
     if (!hasAccess) {
       window.location.href = '/';
       return;
     }
-  }, [hasAccess]);
+  }, [authorityLoading, hasAccess]);
+
+  if (authorityLoading) {
+    return null;
+  }
 
   // In production, show 404 instead of null to prevent route discovery
   if (!hasAccess) {
