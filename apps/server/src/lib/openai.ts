@@ -4,21 +4,52 @@ import { config } from '../config';
 import { logger } from '../logger';
 import { createSemaphore } from './semaphore';
 
+/** gpt-5.x and o-series reasoning models only accept the default temperature (1). */
+export function modelSupportsCustomTemperature(model: string): boolean {
+  const m = model.toLowerCase();
+  if (m.startsWith('gpt-5')) return false;
+  if (/^o[0-9]/.test(m)) return false;
+  return true;
+}
+
+type TokenParams = {
+  model?: string;
+  temperature?: number;
+  max_tokens?: number;
+  max_completion_tokens?: number;
+};
+
+/** Normalize params once at the SDK boundary (temperature, max_tokens). */
+export function normalizeOpenAIChatParams<T extends TokenParams>(params: T): T {
+  const normalized = { ...params };
+  const model = normalized.model ?? '';
+
+  if (model.startsWith('gpt-5') && normalized.max_tokens != null) {
+    normalized.max_completion_tokens = normalized.max_tokens;
+    delete normalized.max_tokens;
+  }
+
+  if (normalized.temperature != null && !modelSupportsCustomTemperature(model)) {
+    delete normalized.temperature;
+  }
+
+  return normalized;
+}
+
 /**
  * gpt-5.x models reject the legacy `max_tokens` parameter and require
  * `max_completion_tokens`. ~30 call sites across the codebase still pass
  * `max_tokens`, so normalize once here instead of touching every caller.
  */
 const normalizingFetch: typeof fetch = async (url, init) => {
-  if (init?.body && typeof init.body === 'string' && String(url).includes('/chat/completions')) {
-    try {
-      const body = JSON.parse(init.body);
-      if (typeof body.model === 'string' && body.model.startsWith('gpt-5') && body.max_tokens != null) {
-        body.max_completion_tokens = body.max_tokens;
-        delete body.max_tokens;
+  if (init?.body && typeof init.body === 'string') {
+    const urlStr = String(url);
+    if (urlStr.includes('/chat/completions') || urlStr.includes('/responses')) {
+      try {
+        const body = normalizeOpenAIChatParams(JSON.parse(init.body) as TokenParams);
         init = { ...init, body: JSON.stringify(body) };
-      }
-    } catch { /* not JSON — pass through untouched */ }
+      } catch { /* not JSON — pass through untouched */ }
+    }
   }
   return fetch(url, init);
 };
@@ -59,15 +90,23 @@ export function getOpenAIConcurrency() {
 // Wrap chat.completions.create once, globally. Preserves streaming + non-streaming.
 const _rawCreate = openai.chat.completions.create.bind(openai.chat.completions);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-(openai.chat.completions as any).create = (...args: any[]) =>
-  openaiSemaphore.run(() => _rawCreate(...(args as Parameters<typeof _rawCreate>)));
+(openai.chat.completions as any).create = (...args: any[]) => {
+  const [params, ...rest] = args;
+  const normalized = normalizeOpenAIChatParams((params ?? {}) as TokenParams);
+  return openaiSemaphore.run(() => _rawCreate(normalized, ...rest));
+};
 
 // Responses API chat path must share the same gate; otherwise flipping
 // OPENAI_CHAT_USE_RESPONSES reintroduces the same detector fan-out 429 storm.
-const _rawResponsesCreate = openai.responses.create.bind(openai.responses);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(openai.responses as any).create = (...args: any[]) =>
-  openaiSemaphore.run(() => _rawResponsesCreate(...(args as Parameters<typeof _rawResponsesCreate>)));
+if (openai.responses?.create) {
+  const _rawResponsesCreate = openai.responses.create.bind(openai.responses);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (openai.responses as any).create = (...args: any[]) => {
+    const [params, ...rest] = args;
+    const normalized = normalizeOpenAIChatParams((params ?? {}) as TokenParams);
+    return openaiSemaphore.run(() => _rawResponsesCreate(normalized, ...rest));
+  };
+}
 
 /**
  * Traced wrapper for chat completions. Logs model, token counts, and duration.

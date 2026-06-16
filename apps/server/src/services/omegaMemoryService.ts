@@ -15,6 +15,8 @@ import { openai } from '../lib/openai';
 import { jaroWinkler } from '../utils/jaroWinkler';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { classifyEntity, toOmegaType } from './entities/entityClassifier';
+import { resolveWithCore } from './entities/entityResolutionBridge';
+import type { ResolutionContext } from './entities/entityResolutionCore';
 import type {
   Entity,
   Claim,
@@ -303,9 +305,12 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
    */
   async resolveEntities(
     userId: string,
-    candidates: Array<{ name: string; type: EntityType }>
+    candidates: Array<{ name: string; type: EntityType }>,
+    options?: { context?: ResolutionContext }
   ): Promise<Entity[]> {
     if (candidates.length === 0) return [];
+
+    const context = options?.context ?? {};
 
     // 1. Gather distinct types
     const distinctTypes = [...new Set(candidates.map(c => c.type))];
@@ -324,56 +329,40 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
       })
     );
 
-    // 3. Resolve each candidate in-memory (exact → JW) with per-candidate
-    //    embedding fallback only when needed
+    // 3. Resolve each candidate — legacy path with optional EntityResolutionCore authority
     const resolved: Entity[] = [];
 
     for (const candidate of candidates) {
       const pool = typeEntities.get(candidate.type) ?? [];
-      const nameLower = normalizeNameKey(candidate.name);
+      const bridged = resolveWithCore({
+        mention: candidate.name,
+        entityType: candidate.type,
+        pool,
+        context,
+      });
 
-      // Exact / alias match (in-memory, accent/case-insensitive)
-      let match: Entity | null =
-        pool.find(
-          e =>
-            normalizeNameKey(e.primary_name) === nameLower ||
-            (Array.isArray(e.aliases) &&
-              e.aliases.some((a: string) => normalizeNameKey(a) === nameLower))
-        ) ?? null;
+      let match: Entity | null = null;
 
-      if (match) {
-        await continuityService.recordEntityResolved(userId, match, 'exact_match').catch(() => {});
+      if (bridged.useCore) {
+        if (bridged.productionDecision === 'skip') {
+          continue;
+        }
+        match = bridged.entityFromCore;
+      } else if (bridged.legacy.entity) {
+        match = bridged.legacy.entity;
+        const reason = bridged.legacy.method === 'jw' ? 'alias_match' : 'exact_match';
+        await continuityService.recordEntityResolved(userId, match, reason).catch(() => {});
         this.promoteMentionIfNeeded(userId, match);
+        if (bridged.legacy.method === 'jw') {
+          this.registerAliasIfNew(userId, match, candidate.name).catch(() => {});
+        }
       }
 
-      // JW fuzzy match (in-memory)
-      if (!match) {
-        let bestScore = 0;
-        let bestEntity: Entity | null = null;
-
-        for (const entity of pool) {
-          const namesToCheck: string[] = [
-            entity.primary_name,
-            ...(Array.isArray(entity.aliases) ? entity.aliases : []),
-          ].filter(Boolean);
-
-          const score = Math.max(
-            ...namesToCheck.map((n: string) =>
-              jaroWinkler(nameLower, normalizeNameKey(n))
-            )
-          );
-
-          if (score > bestScore) {
-            bestScore = score;
-            bestEntity = entity;
-          }
-        }
-
-        if (bestScore >= AI_THRESHOLDS.JW_ENTITY_MATCH && bestEntity) {
-          match = bestEntity;
-          await continuityService.recordEntityResolved(userId, match, 'alias_match').catch(() => {});
-          this.promoteMentionIfNeeded(userId, match);
-          // Register as alias so future lookups hit exact match instead of re-running JW
+      // Core authoritative resolve — record continuity + alias registration
+      if (match && bridged.useCore) {
+        await continuityService.recordEntityResolved(userId, match, 'exact_match').catch(() => {});
+        this.promoteMentionIfNeeded(userId, match);
+        if (normalizeNameKey(match.primary_name) !== normalizeNameKey(candidate.name)) {
           this.registerAliasIfNew(userId, match, candidate.name).catch(() => {});
         }
       }
@@ -387,8 +376,10 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
 
       // Create if still unresolved
       if (!match) {
+        if (bridged.useCore && bridged.productionDecision === 'skip') {
+          continue;
+        }
         match = await this.createEntity(userId, candidate.name, candidate.type);
-        // Add to pool so later candidates in this batch can match it
         pool.push(match);
         typeEntities.set(candidate.type, pool);
       }

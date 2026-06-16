@@ -84,6 +84,8 @@ export function looksLikeResidentialPlaceName(name: string): boolean {
   const n = name.trim();
   if (!n) return false;
   if (SHOW_VENUE_RE.test(n)) return false;
+  // "House Show at …" is an event/venue context, not a home address.
+  if (/\bhouse\s+show\b/i.test(n)) return false;
   if (/\b(house|home|apartment|apt|condo|flat|casa|duplex|townhouse|residence)\b/i.test(n)) return true;
   if (/[''']s?\s+(house|home|apartment|apt|condo|flat|casa)\b/i.test(n)) return true;
   if (/\b(my|our|family)\s+(house|home|apartment|place)\b/i.test(n)) return true;

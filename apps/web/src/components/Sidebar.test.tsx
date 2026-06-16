@@ -19,8 +19,12 @@ vi.mock('../lib/supabase', () => ({
   useAuth: () => ({ user: { id: 'user-1' } }),
 }));
 
+vi.mock('../hooks/useAccountAuthority', () => ({
+  useAccountAuthority: () => ({ authority: null, loading: false, error: null, refresh: vi.fn() }),
+}));
+
 vi.mock('../middleware/roleGuard', () => ({
-  isAdmin: () => false,
+  canAccessAdmin: () => false,
 }));
 
 vi.mock('../utils/routeMapping', () => ({
@@ -79,13 +83,13 @@ describe('Sidebar', () => {
     expect(screen.getAllByText('Account & help').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders story-entity nav: Characters, Locations, Memories, Groups, Skills, Love & Relationships', () => {
+  it('renders story-entity nav: Characters, Locations, Life Log, Groups, Skills, Love & Relationships', () => {
     render(<Sidebar {...defaultProps} />);
-    expect(screen.getAllByRole('button', { name: /Open chat/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /Open chat interface/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open characters view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open locations view/i }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole('button', { name: /Open memories view/i }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole('button', { name: /Open all entries/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /Open life log/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole('button', { name: /Open universal search/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open groups view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open skills view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open love and relationships/i }).length).toBeGreaterThanOrEqual(1);

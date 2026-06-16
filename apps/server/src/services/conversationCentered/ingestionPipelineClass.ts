@@ -56,6 +56,7 @@ import { shadowModeOrchestrator } from '../ingestion/shadowMode';
 import { hybridExtractor } from './hybridExtractor';
 import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
 import { graphRecoveryTrigger } from './graphRecoveryTrigger';
+import { episodeSegmentationTrigger } from './episodeSegmentationTrigger';
 
 /**
  * Main ingestion pipeline for conversation messages
@@ -129,6 +130,22 @@ export class ConversationIngestionPipeline {
         })
         .eq('id', result.messageId);
 
+      // Carry resolved entity/location ids onto chat_messages for episode segmentation.
+      if (result.resolvedEntityIds.length > 0 || result.resolvedLocationIds.length > 0) {
+        const existingMeta = (chatMessage.metadata as Record<string, unknown> | null) ?? {};
+        await supabaseAdmin
+          .from('chat_messages')
+          .update({
+            metadata: {
+              ...existingMeta,
+              entity_ids: result.resolvedEntityIds,
+              location_ids: result.resolvedLocationIds,
+            },
+          })
+          .eq('id', chatMessageId)
+          .eq('user_id', userId);
+      }
+
       // Publish feedback so the polling endpoint can surface it to the UI
       setImmediate(() => {
         this.buildAndPublishFeedback(
@@ -146,6 +163,7 @@ export class ConversationIngestionPipeline {
       // one idempotent recovery run; keeps the scored graph current with chat
       // instead of decaying between manual script runs.
       graphRecoveryTrigger.schedule(userId);
+      episodeSegmentationTrigger.schedule(userId, conversationSessionId);
     } catch (error) {
       // Log but don't throw - ingestion failures should not block chat
       logger.error(
@@ -402,6 +420,8 @@ export class ConversationIngestionPipeline {
     messageId: string;
     utteranceIds: string[];
     unitIds: string[];
+    resolvedEntityIds: string[];
+    resolvedLocationIds: string[];
   }> {
     try {
       return await this.ingestMessageCore(userId, threadId, sender, rawText, conversationHistory, eventContext, entityContext);
@@ -863,6 +883,8 @@ export class ConversationIngestionPipeline {
       // Thread-intelligence collector (Phase 2): resolved entity names this turn,
       // folded into conversation_sessions.metadata.threadMeta after Step 12.
       const _threadMetaTurn = { people: [] as string[], places: [] as string[] };
+      const _resolvedEntityIds: string[] = [];
+      const _resolvedLocationIds: string[] = [];
 
       // Step 1: Save message (if not already saved)
       // Note: In practice, message might already be saved by chat service
@@ -942,6 +964,14 @@ export class ConversationIngestionPipeline {
           const candidateEntities = await omegaMemoryService.extractEntities(fullNormalizedText);
           const resolved = await omegaMemoryService.resolveEntities(userId, candidateEntities);
           resolvedEntities.push(...resolved.map(e => ({ id: e.id, type: e.type })));
+
+          for (const e of resolved) {
+            if (e.type === 'LOCATION') {
+              if (!_resolvedLocationIds.includes(e.id)) _resolvedLocationIds.push(e.id);
+            } else {
+              if (!_resolvedEntityIds.includes(e.id)) _resolvedEntityIds.push(e.id);
+            }
+          }
 
           // Collect resolved names for thread metadata (people vs places).
           for (const e of resolved) {
@@ -2239,7 +2269,13 @@ export class ConversationIngestionPipeline {
       }
 
       // Return the results
-      return { messageId, utteranceIds, unitIds };
+      return {
+        messageId,
+        utteranceIds,
+        unitIds,
+        resolvedEntityIds: _resolvedEntityIds,
+        resolvedLocationIds: _resolvedLocationIds,
+      };
     }
   }
 }

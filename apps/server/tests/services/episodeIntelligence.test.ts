@@ -4,12 +4,12 @@ import { resolveMention, wouldCreateCharacter, type ResolutionCandidate } from '
 import { segmentEpisodes, type SegMessage } from '../../src/services/conversationCentered/episodeSegmentationCore';
 import { emptyThreadMetadata, mergeThreadMetadata, buildContinuityCard } from '../../src/services/conversationCentered/threadIntelligenceService';
 
-const abuela: ResolutionCandidate = { id: 'e-abuela', name: 'Abuela', aliases: ['grandma', 'Abuelita'], type: 'person', mentions: 18, lastMentionedAt: new Date().toISOString() };
-const tioJuan: ResolutionCandidate = { id: 'e-tiojuan', name: 'Tío Juan', aliases: ['Juan'], type: 'person', mentions: 12, relatedEntityIds: ['e-abuela'] };
+const abuela: ResolutionCandidate = { id: 'e-abuela', name: 'Grandma Rose', aliases: ['grandma', 'Abuelita'], type: 'person', mentions: 18, lastMentionedAt: new Date().toISOString() };
+const tioJuan: ResolutionCandidate = { id: 'e-tiojuan', name: 'Uncle James', aliases: ['Juan'], type: 'person', mentions: 12, relatedEntityIds: ['e-abuela'] };
 const oscuriJuan: ResolutionCandidate = { id: 'e-oscuri', name: 'Juan', aliases: [], type: 'person', mentions: 3, relatedEntityIds: ['e-club'] };
 
 describe('Entity Resolution Core — lore-aware (never duplicate a known entity)', () => {
-  it('"grandma" resolves to the existing Abuela via kinship/alias', () => {
+  it('"grandma" resolves to the existing Grandma Rose via kinship/alias', () => {
     const r = resolveMention('grandma', [abuela]);
     expect(r.action).toBe('resolve');
     expect(r.resolvedId).toBe('e-abuela');
@@ -21,7 +21,7 @@ describe('Entity Resolution Core — lore-aware (never duplicate a known entity)
   });
 
   it('exact + alias match resolve confidently', () => {
-    expect(resolveMention('Abuela', [abuela]).action).toBe('resolve');
+    expect(resolveMention('Grandma Rose', [abuela]).action).toBe('resolve');
     expect(resolveMention('Abuelita', [abuela]).action).toBe('resolve');
   });
 });
@@ -33,14 +33,14 @@ describe('Entity Resolution Core — context-aware disambiguation ("which Juan")
     expect(r.ranked).toHaveLength(2);
   });
 
-  it('thread context (Tío Juan active) → resolves to Tío Juan, not the other', () => {
+  it('thread context (Uncle James active) → resolves to Uncle James, not the other', () => {
     const r = resolveMention('Juan', [tioJuan, oscuriJuan], { threadEntityIds: ['e-tiojuan'] });
     expect(r.action).toBe('resolve');
     expect(r.resolvedId).toBe('e-tiojuan');
   });
 
   it('relationship overlap with the thread breaks ties', () => {
-    // Abuela is active in the thread; Tío Juan is related to Abuela → favoured.
+    // Grandma Rose is active in the thread; Uncle James is related to Grandma Rose → favoured.
     const r = resolveMention('Juan', [tioJuan, oscuriJuan], { threadEntityIds: ['e-abuela'] });
     expect(r.resolvedId).toBe('e-tiojuan');
   });
@@ -59,12 +59,12 @@ describe('Entity Resolution Core — create vs skip', () => {
 });
 
 describe('Entity Resolution Core — Phase 8 duplicate prevention (production examples)', () => {
-  it('Juan vs Tío Juan: ambiguous → merge_suggestion; thread context → auto_resolve', () => {
+  it('Juan vs Uncle James: ambiguous → merge_suggestion; thread context → auto_resolve', () => {
     expect(resolveMention('Juan', [tioJuan, oscuriJuan]).recommendation).toBe('merge_suggestion');
     expect(resolveMention('Juan', [tioJuan, oscuriJuan], { threadEntityIds: ['e-tiojuan'] }).recommendation).toBe('auto_resolve');
   });
 
-  it('Abuela vs Grandma: kinship-equivalent → auto_resolve (no duplicate)', () => {
+  it('Grandma Rose vs Grandma: kinship-equivalent → auto_resolve (no duplicate)', () => {
     const r = resolveMention('Grandma', [abuela]);
     expect(r.recommendation).toBe('auto_resolve');
     expect(r.resolvedId).toBe('e-abuela');
@@ -77,18 +77,18 @@ describe('Entity Resolution Core — Phase 8 duplicate prevention (production ex
     expect(r.recommendation).toBe('auto_resolve');
   });
 
-  it('Daisy vs Hell Fairy: resolves only when Daisy is a known alias (no false merge)', () => {
-    const hellFairy: ResolutionCandidate = { id: 'e-hf', name: 'Hell Fairy', aliases: ['Daisy'], type: 'person', mentions: 7 };
+  it('Daisy vs Velvet Hour: resolves only when Daisy is a known alias (no false merge)', () => {
+    const hellFairy: ResolutionCandidate = { id: 'e-hf', name: 'Velvet Hour', aliases: ['Daisy'], type: 'person', mentions: 7 };
     expect(resolveMention('Daisy', [hellFairy]).resolvedId).toBe('e-hf'); // aliased → resolve
-    // Without the alias, "Daisy" must NOT merge into Hell Fairy (different name).
-    const hellFairyNoAlias: ResolutionCandidate = { id: 'e-hf2', name: 'Hell Fairy', aliases: [], type: 'person', mentions: 7 };
+    // Without the alias, "Daisy" must NOT merge into Velvet Hour (different name).
+    const hellFairyNoAlias: ResolutionCandidate = { id: 'e-hf2', name: 'Velvet Hour', aliases: [], type: 'person', mentions: 7 };
     expect(resolveMention('Daisy', [hellFairyNoAlias]).resolvedId).toBeNull(); // no false merge
     // With person evidence and no match, it becomes a separate entity.
     expect(resolveMention('Daisy', [hellFairyNoAlias], { now: Date.now() }).recommendation).not.toBe('auto_resolve');
   });
 
   it('the three tiers: high→auto_resolve, medium→merge_suggestion, low→create_separate', () => {
-    expect(resolveMention('Abuela', [abuela]).recommendation).toBe('auto_resolve');          // exact, single
+    expect(resolveMention('Grandma Rose', [abuela]).recommendation).toBe('auto_resolve');          // exact, single
     expect(resolveMention('Juan', [tioJuan, oscuriJuan]).recommendation).toBe('merge_suggestion'); // ambiguous
     expect(resolveMention('Tío Ralph', []).recommendation).toBe('create_separate');          // no match
   });
@@ -102,16 +102,16 @@ const msg = (id: string, content: string, hour: number, entityIds: string[] = []
 describe('Episode Segmentation — splits a thread into episodes', () => {
   it('a continuous burst on one topic → one episode', () => {
     const eps = segmentEpisodes([
-      msg('1', 'building lorebook memory features all afternoon', 13, ['p-lorebook']),
-      msg('2', 'fixed the lorebook recall bug finally', 13, ['p-lorebook']),
+      msg('1', 'building lifeledger memory features all afternoon', 13, ['p-lifeledger']),
+      msg('2', 'fixed the lifeledger recall bug finally', 13, ['p-lifeledger']),
     ]);
     expect(eps).toHaveLength(1);
   });
 
   it('a large time gap starts a new episode', () => {
     const eps = segmentEpisodes([
-      msg('1', 'morning coding session on lorebook', 9, ['p-lorebook']),
-      msg('2', 'went clubbing at metro that night', 22, ['l-clubmetro'], ['l-clubmetro']),
+      msg('1', 'morning coding session on lifeledger', 9, ['p-lifeledger']),
+      msg('2', 'went clubbing at Blue Room that night', 22, ['l-clubmetro'], ['l-clubmetro']),
     ]);
     expect(eps.length).toBe(2);
     expect(eps[1].boundaryReason).toContain('time-gap');
@@ -136,11 +136,11 @@ describe('Episode Segmentation — splits a thread into episodes', () => {
 describe('Thread Intelligence — incremental metadata (Phase 2)', () => {
   it('folds turns in incrementally (set-union, counters bump), no full scan', () => {
     let meta = emptyThreadMetadata();
-    meta = mergeThreadMetadata(meta, { people: ['Abuela'], places: ['Costco'], at: '2026-06-01T12:00:00Z' });
-    meta = mergeThreadMetadata(meta, { people: ['Abuela', 'Tío Juan'], projects: ['LoreBook'], episodeId: 'ep-1', at: '2026-06-01T13:00:00Z' });
-    expect(meta.people.sort()).toEqual(['Abuela', 'Tío Juan']); // de-duped union
+    meta = mergeThreadMetadata(meta, { people: ['Grandma Rose'], places: ['Costco'], at: '2026-06-01T12:00:00Z' });
+    meta = mergeThreadMetadata(meta, { people: ['Grandma Rose', 'Uncle James'], projects: ['LifeLedger'], episodeId: 'ep-1', at: '2026-06-01T13:00:00Z' });
+    expect(meta.people.sort()).toEqual(['Grandma Rose', 'Uncle James']); // de-duped union
     expect(meta.places).toEqual(['Costco']);
-    expect(meta.projects).toEqual(['LoreBook']);
+    expect(meta.projects).toEqual(['LifeLedger']);
     expect(meta.episodes).toEqual(['ep-1']);
     expect(meta.message_count).toBe(2);
     expect(meta.last_activity).toBe('2026-06-01T13:00:00Z'); // latest wins
@@ -151,17 +151,27 @@ describe('Thread Intelligence — incremental metadata (Phase 2)', () => {
     meta = mergeThreadMetadata(meta, { at: '2026-06-01T00:00:00Z' });
     expect(meta.last_activity).toBe('2026-06-05T00:00:00Z');
   });
+
+  it('replaceEpisodes overwrites the episode list after background segmentation', () => {
+    let meta = mergeThreadMetadata(emptyThreadMetadata(), { episodeId: 'old-ep', at: '2026-06-01T12:00:00Z' });
+    meta = mergeThreadMetadata(meta, {
+      replaceEpisodes: ['Costco · Grandma Rose', 'Blue Room · Uncle James'],
+      episodeLabel: 'Blue Room · Uncle James',
+      at: '2026-06-01T18:00:00Z',
+    });
+    expect(meta.episodes).toEqual(['Costco · Grandma Rose', 'Blue Room · Uncle James']);
+  });
 });
 
 describe('Thread Intelligence — continuity card (Phase 3, deterministic)', () => {
   const now = new Date('2026-06-05T00:00:00Z').getTime();
   it('renders "Last time in this thread" from metadata, omitting empty sections', () => {
-    const meta = { ...emptyThreadMetadata(), people: ['Abuela', 'Tío Juan'], projects: ['LoreBook'], places: ['Costco'], episodes: ['Costco With Abuela'], last_activity: '2026-06-02T00:00:00Z' };
+    const meta = { ...emptyThreadMetadata(), people: ['Grandma Rose', 'Uncle James'], projects: ['LifeLedger'], places: ['Costco'], episodes: ['Costco With Grandma Rose'], last_activity: '2026-06-02T00:00:00Z' };
     const card = buildContinuityCard(meta, { now });
     expect(card).toContain('Last time in this thread (3 days ago):');
-    expect(card).toContain('People: Abuela, Tío Juan');
-    expect(card).toContain('Projects: LoreBook');
-    expect(card).toContain('Recent events: Costco With Abuela');
+    expect(card).toContain('People: Grandma Rose, Uncle James');
+    expect(card).toContain('Projects: LifeLedger');
+    expect(card).toContain('Recent events: Costco With Grandma Rose');
     expect(card).not.toContain('Themes:'); // empty section omitted
   });
 
@@ -170,7 +180,7 @@ describe('Thread Intelligence — continuity card (Phase 3, deterministic)', () 
   });
 
   it('open loops surface when provided', () => {
-    const meta = { ...emptyThreadMetadata(), people: ['Sol'], last_activity: '2026-06-04T00:00:00Z' };
+    const meta = { ...emptyThreadMetadata(), people: ['Sam Chen'], last_activity: '2026-06-04T00:00:00Z' };
     const card = buildContinuityCard(meta, { now, openLoops: ['1 message awaiting a reply'] });
     expect(card).toContain('Open loops: 1 message awaiting a reply');
   });

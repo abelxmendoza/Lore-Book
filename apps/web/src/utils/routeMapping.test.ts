@@ -20,8 +20,8 @@ describe('routeMapping', () => {
       expect(getSurfaceFromRoute('/search#section')).toBe('search');
     });
 
-    it('maps /memories to search', () => {
-      expect(getSurfaceFromRoute('/memories')).toBe('search');
+    it('maps /memories to events (Life Log)', () => {
+      expect(getSurfaceFromRoute('/memories')).toBe('events');
     });
 
     it('defaults to chat for unknown path', () => {

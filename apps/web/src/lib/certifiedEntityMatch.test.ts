@@ -4,20 +4,20 @@ import type { CertifiedEntity } from '../types/certifiedEntity';
 
 const INDEX: CertifiedEntity[] = [
   { id: 'uuid-abel', name: 'Abel', type: 'character', aliases: [], mentionKeys: ['abel'], status: 'confirmed' },
-  { id: 'uuid-sol', name: 'Sol', type: 'character', aliases: [], mentionKeys: ['sol'], status: 'confirmed' },
-  { id: 'uuid-kforce', name: 'K-Force', type: 'organization', aliases: ['KForce'], mentionKeys: ['k-force', 'kforce'], status: 'confirmed' },
+  { id: 'uuid-sol', name: 'Sam Chen', type: 'character', aliases: [], mentionKeys: ['sol'], status: 'confirmed' },
+  { id: 'uuid-kforce', name: 'TechStaff', type: 'organization', aliases: ['KForce'], mentionKeys: ['k-force', 'kforce'], status: 'confirmed' },
   { id: 'sug:character:kelly', name: 'Kelly', type: 'character', aliases: [], mentionKeys: ['kelly'], status: 'suggestion' },
 ];
 
 describe('matchCertifiedEntities', () => {
   it('detects confirmed entities while typing', () => {
-    const matches = matchCertifiedEntities('Tell me about Sol and K-Force', INDEX);
-    expect(matches.map((m) => m.name).sort()).toEqual(['K-Force', 'Sol']);
+    const matches = matchCertifiedEntities('Tell me about Sam Chen and TechStaff', INDEX);
+    expect(matches.map((m) => m.name).sort()).toEqual(['Sam Chen', 'TechStaff']);
     expect(matches.every((m) => m.id.startsWith('uuid-'))).toBe(true);
   });
 
   it('deduplicates by id', () => {
-    const matches = matchCertifiedEntities('Sol said Sol is coming', INDEX);
+    const matches = matchCertifiedEntities('Sam Chen said Sam Chen is coming', INDEX);
     expect(matches).toHaveLength(1);
   });
 

@@ -42,6 +42,10 @@ export interface ThreadTurn {
   projects?: string[];
   themes?: string[];
   episodeId?: string | null;
+  /** Human-readable episode label for continuity card "Recent events". */
+  episodeLabel?: string | null;
+  /** Replace threadMeta.episodes wholesale (used after background segmentation). */
+  replaceEpisodes?: string[];
   openLoop?: string | null;
   at: string;            // message timestamp
   addedMessages?: number; // how many messages this turn added (default 1)
@@ -75,7 +79,13 @@ export function mergeThreadMetadata(existing: ThreadMetadata, turn: ThreadTurn):
     places: unionCap(existing.places, turn.places),
     projects: unionCap(existing.projects, turn.projects),
     themes: unionCap(existing.themes, turn.themes),
-    episodes: turn.episodeId ? unionCap(existing.episodes, [turn.episodeId]) : existing.episodes,
+    episodes: turn.replaceEpisodes
+      ? turn.replaceEpisodes.filter((x) => x?.trim()).slice(-50)
+      : turn.episodeLabel
+        ? unionCap(existing.episodes, [turn.episodeLabel])
+        : turn.episodeId
+          ? unionCap(existing.episodes, [turn.episodeId])
+          : existing.episodes,
     open_loops: turn.openLoop ? unionCap(existing.open_loops, [turn.openLoop], 20) : existing.open_loops,
     first_activity: existing.first_activity ?? turn.at,
     last_activity: !existing.last_activity || turn.at > existing.last_activity ? turn.at : existing.last_activity,
