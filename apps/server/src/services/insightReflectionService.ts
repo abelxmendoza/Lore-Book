@@ -88,7 +88,7 @@ export class InsightReflectionService {
    */
   async detectPatterns(userId: string, entityId: string): Promise<Insight[]> {
     try {
-      const rankedClaims = await omegaMemoryService.rankClaims(entityId);
+      const rankedClaims = await omegaMemoryService.rankClaims(userId, entityId);
       if (rankedClaims.length < 3) {
         return []; // Need at least 3 claims for patterns
       }

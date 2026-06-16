@@ -8,6 +8,12 @@ vi.mock('../../src/services/emotionalIntelligence/emotionalEngine', () => ({
 vi.mock('../../src/services/emotionalIntelligence/storeEvent', () => ({
   getAllEvents: vi.fn().mockResolvedValue([]),
 }));
+vi.mock('../../src/middleware/auth', () => ({
+  requireAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => {
+    req.user = { id: 'u1' };
+    next();
+  },
+}));
 vi.mock('../../src/services/supabaseClient', () => ({
   supabaseAdmin: {
     from: vi.fn().mockReturnValue({
@@ -21,28 +27,26 @@ vi.mock('../../src/services/supabaseClient', () => ({
 }));
 
 import emotionalIntelligenceRouter from '../../src/routes/emotionalIntelligence';
+import { emotionalIntelligenceEngine } from '../../src/services/emotionalIntelligence/emotionalEngine';
 
 const app = express();
 app.use(express.json());
-app.use((req, _res, next) => {
-  (req as any).user = { id: 'u1' };
-  next();
-});
 app.use('/api/emotions', emotionalIntelligenceRouter);
 
 describe('EmotionalIntelligence API Routes', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('POST /analyze returns result with entry and user', async () => {
+  it('POST /analyze uses authenticated user id, not body user', async () => {
     const res = await request(app)
       .post('/api/emotions/analyze')
-      .send({ entry: { id: 'e1' }, user: { id: 'u1' } })
+      .send({ entry: { id: 'e1' }, user: { id: 'other-user' } })
       .expect(200);
     expect(res.body).toBeDefined();
+    expect(emotionalIntelligenceEngine).toHaveBeenCalledWith({ id: 'e1' }, 'u1');
   });
 
-  it('POST /analyze returns 400 when entry or user missing', async () => {
-    await request(app).post('/api/emotions/analyze').send({}).expect(400);
+  it('POST /analyze returns 400 when entry missing', async () => {
+    await request(app).post('/api/emotions/analyze').send({ user: { id: 'u1' } }).expect(400);
   });
 
   it('GET /events returns events', async () => {

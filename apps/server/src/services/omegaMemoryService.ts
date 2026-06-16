@@ -7,6 +7,7 @@
 import { config } from '../config';
 import { AI_THRESHOLDS } from '../config/aiThresholds';
 import { logger } from '../logger';
+import { assertOmegaEntityOwned, TenantAccessError } from '../lib/tenantOwnership';
 import {
   PRIORS, updateBelief, beliefStats, fromFloat, serializeBelief, deserializeBelief,
 } from './bayesian/beliefUpdater';
@@ -1281,10 +1282,13 @@ A contradiction means the claims cannot both be true at the same time.`
   /**
    * Rank claims by truth score (recency + confidence + evidence + temporal confidence)
    */
-  async rankClaims(entityId: string): Promise<RankedClaim[]> {
+  async rankClaims(userId: string, entityId: string): Promise<RankedClaim[]> {
+    await assertOmegaEntityOwned(userId, entityId);
+
     const { data: claims, error } = await supabaseAdmin
       .from('omega_claims')
       .select('*')
+      .eq('user_id', userId)
       .eq('entity_id', entityId)
       .eq('is_active', true)
       .order('start_time', { ascending: false });
@@ -1362,23 +1366,27 @@ A contradiction means the claims cannot both be true at the same time.`
   /**
    * Summarize entity with ranked claims using LLM
    */
-  async summarizeEntity(entityId: string): Promise<EntitySummary> {
+  async summarizeEntity(userId: string, entityId: string): Promise<EntitySummary> {
+    await assertOmegaEntityOwned(userId, entityId);
+
     const { data: entity, error: entityError } = await supabaseAdmin
       .from('omega_entities')
       .select('*')
       .eq('id', entityId)
+      .eq('user_id', userId)
       .single();
 
     if (entityError || !entity) {
-      throw new Error('Entity not found');
+      throw new TenantAccessError('Entity not found');
     }
 
-    const rankedClaims = await this.rankClaims(entityId);
+    const rankedClaims = await this.rankClaims(userId, entityId);
 
     // Get active relationships
     const { data: relationships } = await supabaseAdmin
       .from('omega_relationships')
       .select('*')
+      .eq('user_id', userId)
       .eq('from_entity_id', entityId)
       .eq('is_active', true);
 

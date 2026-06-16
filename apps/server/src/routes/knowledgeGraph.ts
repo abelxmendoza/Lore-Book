@@ -4,6 +4,11 @@ import { z } from 'zod';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { knowledgeGraphService } from '../services/knowledgeGraphService';
+import {
+  assertMemoryComponentOwned,
+  assertMemoryComponentsOwned,
+  TenantAccessError,
+} from '../lib/tenantOwnership';
 import { supabaseAdmin } from '../services/supabaseClient';
 
 const router = Router();
@@ -68,6 +73,10 @@ router.get('/path', requireAuth, async (req: AuthenticatedRequest, res) => {
     }
 
     const depth = maxDepth ? parseInt(maxDepth as string) : 3;
+    const userId = req.user!.id;
+
+    await assertMemoryComponentOwned(userId, source as string);
+    await assertMemoryComponentOwned(userId, target as string);
 
     const path = await knowledgeGraphService.getPath(
       source as string,
@@ -77,6 +86,9 @@ router.get('/path', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     res.json({ path });
   } catch (error) {
+    if (error instanceof TenantAccessError) {
+      return res.status(404).json({ error: 'Component not found' });
+    }
     logger.error({ error }, 'Failed to get graph path');
     res.status(500).json({
       error: 'Failed to get graph path',
@@ -123,7 +135,7 @@ router.get('/edges', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     // Filter to user's components
     if (componentId) {
-      // Already filtered by componentId
+      await assertMemoryComponentOwned(req.user!.id, componentId as string);
       res.json({ edges: data || [] });
     } else {
       // Need to filter by user
@@ -170,6 +182,9 @@ router.get('/edges', requireAuth, async (req: AuthenticatedRequest, res) => {
       res.json({ edges: [] });
     }
   } catch (error) {
+    if (error instanceof TenantAccessError) {
+      return res.status(404).json({ error: 'Component not found' });
+    }
     logger.error({ error }, 'Failed to get graph edges');
     res.status(500).json({
       error: 'Failed to get graph edges',
@@ -217,6 +232,8 @@ router.post('/build', requireAuth, async (req: AuthenticatedRequest, res) => {
       components = data;
     } else if (componentIds) {
       // Get specified components
+      await assertMemoryComponentsOwned(req.user!.id, componentIds);
+
       const { data } = await supabaseAdmin
         .from('memory_components')
         .select('*')
@@ -224,18 +241,6 @@ router.post('/build', requireAuth, async (req: AuthenticatedRequest, res) => {
 
       if (!data) {
         return res.status(404).json({ error: 'Components not found' });
-      }
-
-      // Verify components belong to user
-      const entryIds = [...new Set(data.map((c: any) => c.journal_entry_id))];
-      const { data: entries } = await supabaseAdmin
-        .from('journal_entries')
-        .select('id')
-        .eq('user_id', req.user!.id)
-        .in('id', entryIds);
-
-      if (!entries || entries.length !== entryIds.length) {
-        return res.status(403).json({ error: 'Access denied' });
       }
 
       components = data;

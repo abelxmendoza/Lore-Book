@@ -1,6 +1,7 @@
 import { v4 as uuid } from 'uuid';
 
 import { logger } from '../logger';
+import { assertMemoryComponentOwned } from '../lib/tenantOwnership';
 import type { MemoryComponent, TimelineLink } from '../types';
 
 import { memoryService } from './memoryService';
@@ -194,7 +195,9 @@ class TimelineAssignmentService {
   /**
    * Get timeline links for a component
    */
-  async getTimelineLinks(componentId: string): Promise<TimelineLink[]> {
+  async getTimelineLinks(userId: string, componentId: string): Promise<TimelineLink[]> {
+    await assertMemoryComponentOwned(userId, componentId);
+
     const { data, error } = await supabaseAdmin
       .from('timeline_links')
       .select('*')
@@ -212,6 +215,7 @@ class TimelineAssignmentService {
    * Get components for a timeline level
    */
   async getComponentsForTimelineLevel(
+    userId: string,
     level: 'mythos' | 'epoch' | 'era' | 'saga' | 'arc' | 'chapter' | 'scene' | 'action' | 'micro_action',
     levelId: string
   ): Promise<MemoryComponent[]> {
@@ -258,7 +262,22 @@ class TimelineAssignmentService {
       throw componentsError;
     }
 
-    return (components ?? []) as MemoryComponent[];
+    const ownedComponents: MemoryComponent[] = [];
+    for (const component of components ?? []) {
+      const entryId = (component as MemoryComponent & { journal_entry_id?: string }).journal_entry_id;
+      if (!entryId) continue;
+      const { data: entry } = await supabaseAdmin
+        .from('journal_entries')
+        .select('id')
+        .eq('id', entryId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (entry) {
+        ownedComponents.push(component as MemoryComponent);
+      }
+    }
+
+    return ownedComponents;
   }
 }
 

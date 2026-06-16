@@ -284,7 +284,7 @@ Return JSON:
       // Get ranked claims for entities
       const allClaims: any[] = [];
       for (const entity of entities) {
-        const claims = await omegaMemoryService.rankClaims(entity.id);
+        const claims = await omegaMemoryService.rankClaims(context.user_id, entity.id);
         allClaims.push(...claims);
       }
 

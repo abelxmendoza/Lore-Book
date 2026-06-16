@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import { logger } from '../logger';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { emotionalIntelligenceEngine } from '../services/emotionalIntelligence/emotionalEngine';
 import { getAllEvents } from '../services/emotionalIntelligence/storeEvent';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -11,15 +12,16 @@ const router = Router();
  * POST /api/emotions/analyze
  * Analyze emotional intelligence from a journal entry
  */
-router.post('/analyze', async (req, res) => {
+router.post('/analyze', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { entry, user } = req.body;
+    const userId = req.user!.id;
+    const { entry } = req.body;
 
-    if (!entry || !entry.id || !user || !user.id) {
-      return res.status(400).json({ error: 'Missing entry or user' });
+    if (!entry || !entry.id) {
+      return res.status(400).json({ error: 'Missing entry' });
     }
 
-    const result = await emotionalIntelligenceEngine(entry, user.id);
+    const result = await emotionalIntelligenceEngine(entry, userId);
 
     res.json(result);
   } catch (error) {
@@ -32,13 +34,9 @@ router.post('/analyze', async (req, res) => {
  * GET /api/emotions/events
  * Get emotional events for user
  */
-router.get('/events', async (req, res) => {
+router.get('/events', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = (req as any).user?.id;
-
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    const userId = req.user!.id;
 
     const limit = parseInt(req.query.limit as string) || 100;
     const events = await getAllEvents(userId);
@@ -54,13 +52,9 @@ router.get('/events', async (req, res) => {
  * GET /api/emotions/patterns
  * Get emotional patterns for user
  */
-router.get('/patterns', async (req, res) => {
+router.get('/patterns', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = (req as any).user?.id;
-
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    const userId = req.user!.id;
 
     const { data, error } = await supabaseAdmin
       .from('emotional_patterns')
@@ -99,4 +93,3 @@ router.get('/patterns', async (req, res) => {
 });
 
 export default router;
-

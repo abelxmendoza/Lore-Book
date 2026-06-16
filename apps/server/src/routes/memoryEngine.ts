@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { memoryExtractionWorker } from '../jobs/memoryExtractionWorker';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { TenantAccessError, assertJournalEntryOwned } from '../lib/tenantOwnership';
+import { supabaseAdmin } from '../services/supabaseClient';
 import { conversationService } from '../services/conversationService';
 import { memoryExtractionService } from '../services/memoryExtractionService';
 import { ruleBasedMemoryDetectionService } from '../services/ruleBasedMemoryDetection';
@@ -237,6 +239,9 @@ router.get('/session/:id/messages', requireAuth, async (req: AuthenticatedReques
 router.get('/entry/:entryId/components', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { entryId } = req.params;
+    const userId = req.user!.id;
+
+    await assertJournalEntryOwned(userId, entryId);
 
     const { data, error } = await supabaseAdmin
       .from('memory_components')
@@ -252,19 +257,11 @@ router.get('/entry/:entryId/components', requireAuth, async (req: AuthenticatedR
       });
     }
 
-    // Verify entry belongs to user
-    const { data: entry } = await supabaseAdmin
-      .from('journal_entries')
-      .select('user_id')
-      .eq('id', entryId)
-      .single();
-
-    if (!entry || entry.user_id !== req.user!.id) {
-      return res.status(404).json({ error: 'Entry not found' });
-    }
-
     res.json({ components: data || [] });
   } catch (error) {
+    if (error instanceof TenantAccessError) {
+      return res.status(404).json({ error: 'Entry not found' });
+    }
     logger.error({ error }, 'Failed to get components');
     res.status(500).json({
       error: 'Failed to get components',
@@ -280,11 +277,15 @@ router.get('/entry/:entryId/components', requireAuth, async (req: AuthenticatedR
 router.get('/component/:componentId/timeline', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { componentId } = req.params;
+    const userId = req.user!.id;
 
-    const links = await timelineAssignmentService.getTimelineLinks(componentId);
+    const links = await timelineAssignmentService.getTimelineLinks(userId, componentId);
 
     res.json({ links });
   } catch (error) {
+    if (error instanceof TenantAccessError) {
+      return res.status(404).json({ error: 'Component not found' });
+    }
     logger.error({ error }, 'Failed to get timeline links');
     res.status(500).json({
       error: 'Failed to get timeline links',
@@ -307,12 +308,16 @@ router.get('/timeline/:level/:levelId/components', requireAuth, async (req: Auth
     }
 
     const components = await timelineAssignmentService.getComponentsForTimelineLevel(
+      req.user!.id,
       level as any,
       levelId
     );
 
     res.json({ components });
   } catch (error) {
+    if (error instanceof TenantAccessError) {
+      return res.status(404).json({ error: 'Component not found' });
+    }
     logger.error({ error }, 'Failed to get timeline components');
     res.status(500).json({
       error: 'Failed to get timeline components',

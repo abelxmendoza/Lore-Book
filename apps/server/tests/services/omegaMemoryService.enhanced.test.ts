@@ -261,6 +261,12 @@ describe('OmegaMemoryService - Enhanced Features', () => {
         }
       ];
 
+      const mockEntityChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'entity-1' }, error: null }),
+      };
+
       const mockClaimsChain = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
@@ -278,10 +284,11 @@ describe('OmegaMemoryService - Enhanced Features', () => {
       };
 
       vi.mocked(supabaseAdmin.from)
+        .mockReturnValueOnce(mockEntityChain as any)
         .mockReturnValueOnce(mockClaimsChain as any)
         .mockReturnValue(mockEvidenceChain as any);
 
-      const ranked = await omegaMemoryService.rankClaims('entity-1');
+      const ranked = await omegaMemoryService.rankClaims('user-123', 'entity-1');
 
       expect(ranked).toBeDefined();
       expect(ranked.length).toBe(1);

@@ -273,6 +273,13 @@ describe('OmegaMemoryService', () => {
         }
       ];
 
+      // Mock entity ownership check
+      const mockEntityChain = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'entity-1' }, error: null }),
+      };
+
       // Mock claims fetch
       const mockClaimsChain = {
         select: vi.fn().mockReturnThis(),
@@ -287,10 +294,11 @@ describe('OmegaMemoryService', () => {
       };
 
       vi.mocked(supabaseAdmin.from)
-        .mockReturnValueOnce(mockClaimsChain as any) // First call for claims
-        .mockReturnValue(mockEvidenceChain as any); // Subsequent calls for evidence
+        .mockReturnValueOnce(mockEntityChain as any) // ownership
+        .mockReturnValueOnce(mockClaimsChain as any) // claims
+        .mockReturnValue(mockEvidenceChain as any); // evidence
 
-      const ranked = await omegaMemoryService.rankClaims('entity-1');
+      const ranked = await omegaMemoryService.rankClaims('user-123', 'entity-1');
 
       expect(ranked).toBeDefined();
       expect(ranked.length).toBe(2);

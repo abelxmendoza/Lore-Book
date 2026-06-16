@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from 'express';
 
 import { config } from '../config';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { requireAdmin, requireDevAccess } from '../middleware/rbac';
+import { requireSelfUserIdParam } from '../middleware/tenantGuard';
 import { threadRecoveryService } from '../services/conversationCentered/threadRecoveryService';
 import { cognitionHealthService } from '../services/cognitionHealthService';
 import { supabaseAdmin } from '../services/supabaseClient';
@@ -83,9 +85,9 @@ router.get('/cors', (req: Request, res: Response) => {
 
 /**
  * GET /api/diagnostics/cognition-health
- * Cognition pipeline health dashboard — requires auth (admin check via ENABLE_EXPERIMENTAL env)
+ * Cognition pipeline health dashboard — admin-only (platform-wide metrics).
  */
-router.get('/cognition-health', requireAuth, async (_req: Request, res: Response) => {
+router.get('/cognition-health', requireAuth, requireAdmin, async (_req: Request, res: Response) => {
   try {
     const report = await cognitionHealthService.getReport();
     const statusCode = report.overallStatus === 'critical' ? 503 : 200;
@@ -160,24 +162,25 @@ router.post('/thread-health/repair', requireAuth, async (req: Request, res: Resp
 /**
  * GET /api/diagnostics/continuity-trace/:userId?limit=10&windowHours=24
  *
- * Dev-only runtime truth endpoint. Returns:
+ * Developer-only, self-scoped runtime truth endpoint. Returns:
  *   - Recent pipeline runs and their production summaries
  *   - Entity continuity verification (ingested → extracted → entityized → provenance)
  *   - Queue health snapshot
  *
- * Answers: "Did the loop close?" for recent messages.
+ * :userId must match the authenticated user (403 otherwise).
  * Blocked in production unless ENABLE_EXPERIMENTAL=true.
  */
-router.get('/continuity-trace/:userId', requireAuth, async (req: Request, res: Response) => {
+router.get(
+  '/continuity-trace/:userId',
+  requireAuth,
+  requireSelfUserIdParam('userId'),
+  requireDevAccess,
+  async (req: Request, res: Response) => {
   if (!isDev && process.env.ENABLE_EXPERIMENTAL !== 'true') {
     return res.status(403).json({ error: 'Dev-only endpoint — not available in production' });
   }
 
-  const userIdParam = req.params.userId;
-  const userId = Array.isArray(userIdParam) ? userIdParam[0] : userIdParam;
-  if (!userId) {
-    return res.status(400).json({ error: 'userId is required' });
-  }
+  const userId = (req as AuthenticatedRequest).user!.id;
   const limit = Math.min(parseInt(req.query.limit as string || '10', 10), 50);
   const windowHours = Math.min(parseInt(req.query.windowHours as string || '24', 10), 168);
 
@@ -270,12 +273,12 @@ router.get('/continuity-trace/:userId', requireAuth, async (req: Request, res: R
  *
  * Phase 4 — Observe Reality.
  * Returns real production metrics for the full event intelligence pipeline.
- * Admin/builder facing. Requires auth. Used to detect where intelligence dies.
+ * Admin-only. Used to detect where intelligence dies.
  *
  * Response: event pipeline funnel, meaning layer depth, story layer,
  * knowledge layer, bottleneck warnings, and observation timestamp.
  */
-router.get('/intelligence-health', requireAuth, async (req: Request, res: Response) => {
+router.get('/intelligence-health', requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {
     const now = new Date();
     const h24 = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();

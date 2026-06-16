@@ -6,6 +6,7 @@ import { Router } from 'express';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { TenantAccessError } from '../lib/tenantOwnership';
 import { supabaseAdmin } from '../db/dbAdapter';
 import { omegaMemoryService } from '../services/omegaMemoryService';
 
@@ -84,10 +85,13 @@ router.get('/entities/:id/claims', requireAuth, async (req: AuthenticatedRequest
 router.get('/entities/:id/ranked-claims', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const rankedClaims = await omegaMemoryService.rankClaims(id);
+    const rankedClaims = await omegaMemoryService.rankClaims(req.user!.id, id);
 
     res.json({ claims: rankedClaims });
   } catch (error) {
+    if (error instanceof TenantAccessError) {
+      return res.status(404).json({ error: 'Entity not found' });
+    }
     logger.error({ err: error }, 'Failed to rank claims');
     res.status(500).json({ error: 'Failed to rank claims' });
   }
@@ -100,10 +104,13 @@ router.get('/entities/:id/ranked-claims', requireAuth, async (req: Authenticated
 router.get('/entities/:id/summary', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const summary = await omegaMemoryService.summarizeEntity(id);
+    const summary = await omegaMemoryService.summarizeEntity(req.user!.id, id);
 
     res.json(summary);
   } catch (error) {
+    if (error instanceof TenantAccessError) {
+      return res.status(404).json({ error: 'Entity not found' });
+    }
     logger.error({ err: error }, 'Failed to summarize entity');
     res.status(500).json({ error: 'Failed to summarize entity' });
   }

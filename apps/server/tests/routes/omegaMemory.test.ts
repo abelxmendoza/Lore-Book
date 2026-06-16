@@ -157,6 +157,18 @@ describe('Omega Memory Engine API Routes', () => {
 
       expect(response.body).toHaveProperty('claims');
       expect(response.body.claims).toEqual(mockRankedClaims);
+      expect(omegaMemoryService.rankClaims).toHaveBeenCalledWith('user-123', 'entity-1');
+    });
+
+    it('returns 404 when entity belongs to another user', async () => {
+      const { TenantAccessError } = await import('../../src/lib/tenantOwnership');
+      vi.mocked(omegaMemoryService.rankClaims).mockRejectedValue(new TenantAccessError('Entity not found'));
+
+      const response = await request(app)
+        .get('/api/omega-memory/entities/foreign-entity/ranked-claims')
+        .expect(404);
+
+      expect(response.body.error).toBe('Entity not found');
     });
   });
 
@@ -184,6 +196,18 @@ describe('Omega Memory Engine API Routes', () => {
         .expect(200);
 
       expect(response.body).toEqual(mockSummary);
+      expect(omegaMemoryService.summarizeEntity).toHaveBeenCalledWith('user-123', 'entity-1');
+    });
+
+    it('returns 404 when entity belongs to another user', async () => {
+      const { TenantAccessError } = await import('../../src/lib/tenantOwnership');
+      vi.mocked(omegaMemoryService.summarizeEntity).mockRejectedValue(new TenantAccessError('Entity not found'));
+
+      const response = await request(app)
+        .get('/api/omega-memory/entities/foreign-entity/summary')
+        .expect(404);
+
+      expect(response.body.error).toBe('Entity not found');
     });
   });
 
