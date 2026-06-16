@@ -97,11 +97,13 @@ const INTENT_RULES: Array<{ intent: WorkingMemoryIntent; pattern: RegExp }> = [
   { intent: 'EVENT_QUERY', pattern: /\b(what happened at .*(graduation|party|wedding|funeral|birthday)|what happened during|tell me about .*graduation|event)\b/i },
   { intent: 'PLACE_QUERY', pattern: /\b(what happened at|what went on at|what was it like at|memories at|remember at)\b/i },
   { intent: 'PROJECT_QUERY', pattern: /\b(how is .* progressing|progress on|status of|how's .* going|project|lorebook)\b/i },
-  { intent: 'RELATIONSHIP_QUERY', pattern: /\b(what do you remember about|relationship with|what happened with|story with|between me and)\b/i },
+  { intent: 'RELATIONSHIP_QUERY', pattern: /\b(what do you remember about|relationship with|what happened with|story with|between me and|how am i related to|who lives with me|who do i live with|what role did)\b/i },
   { intent: 'PERSON_QUERY', pattern: /\b(what do you know about|who is|who was|tell me about|do you remember)\b/i },
 ];
 
 const TARGET_PATTERNS = [
+  /\b(?:how am i related to)\s+(.+?)[?.!]?$/i,
+  /\b(?:what role did)\s+(.+?)\s+play\b/i,
   /\b(?:what do you know about|what do you remember about|who is|who was|tell me about|relationship with|what happened with|between me and)\s+(.+?)[?.!]?$/i,
   /\b(?:what happened at|what went on at|what was it like at|memories at|remember at)\s+(.+?)[?.!]?$/i,
   /\b(?:how is|how's|progress on|status of)\s+(.+?)(?:\s+progressing|\s+going)?[?.!]?$/i,
@@ -338,6 +340,49 @@ async function resolveTargetEntities(userId: string, target: string | null): Pro
     seen.add(key);
     return true;
   });
+}
+
+async function loadProtagonistRelationshipCandidates(userId: string): Promise<Candidate[]> {
+  const { data: chars } = await supabaseAdmin
+    .from('characters')
+    .select('id, name, metadata')
+    .eq('user_id', userId);
+  const list = (chars ?? []) as Array<{ id: string; name: string; metadata?: Record<string, unknown> }>;
+  const protagonist =
+    list.find((c) => /^me$/i.test(c.name)) ?? list.find((c) => /abel\s+mendoza/i.test(c.name)) ?? list[0];
+  if (!protagonist) return [];
+
+  const { data: rels } = await supabaseAdmin
+    .from('character_relationships')
+    .select('id, relationship_type, status, metadata, source_character_id, target_character_id, updated_at')
+    .eq('user_id', userId)
+    .or(`source_character_id.eq.${protagonist.id},target_character_id.eq.${protagonist.id}`)
+    .limit(12);
+
+  const nameMap = new Map(list.map((c) => [c.id, c.name]));
+  const out: Candidate[] = [];
+
+  for (const rel of (rels ?? []) as any[]) {
+    const otherId =
+      rel.source_character_id === protagonist.id ? rel.target_character_id : rel.source_character_id;
+    const otherName = nameMap.get(otherId) ?? 'Unknown';
+    const kinship = (rel.metadata as Record<string, unknown>)?.kinship;
+    out.push({
+      id: `relationship:${rel.id}`,
+      type: 'relationship',
+      title: kinship ? `${kinship} — ${otherName}` : `${rel.relationship_type} — ${otherName}`,
+      content: `${rel.relationship_type}${kinship ? ` (${kinship})` : ''}${rel.status ? `, ${rel.status}` : ''}`,
+      source: 'character_relationships',
+      date: rel.updated_at,
+      confidence: Number((rel.metadata as Record<string, unknown>)?.confidence ?? 0.85),
+      relevance: 0.95,
+      importance: 0.8,
+      significance: 0.75,
+      relationshipDistance: 0.85,
+      reasons: ['protagonist relationship edge'],
+    });
+  }
+  return out;
 }
 
 async function loadPersonCandidates(userId: string, entity: WorkingMemoryEntity, target: string): Promise<Candidate[]> {
@@ -667,9 +712,11 @@ export async function assembleWorkingMemory(
     null;
 
   const personCandidates =
-    primaryEntity && (primaryEntity.type === 'PERSON' || intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY')
-      ? await loadPersonCandidates(input.userId, primaryEntity, target ?? primaryEntity.name)
-      : [];
+    /\b(who lives with me|who do i live with|my household)\b/i.test(input.question)
+      ? await loadProtagonistRelationshipCandidates(input.userId)
+      : primaryEntity && (primaryEntity.type === 'PERSON' || intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY')
+        ? await loadPersonCandidates(input.userId, primaryEntity, target ?? primaryEntity.name)
+        : [];
 
   const textualCandidates = await loadTextualCandidates(
     input.userId,

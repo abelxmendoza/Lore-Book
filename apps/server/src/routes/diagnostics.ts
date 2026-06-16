@@ -576,4 +576,21 @@ router.post('/repair-entity-pollution', requireAuth, async (req: Request, res: R
   }
 });
 
+/**
+ * POST /api/diagnostics/recover-relationships
+ * Backfill character_relationships from entity_facts, journal, and chat co-mentions.
+ */
+router.post('/recover-relationships', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const { relationshipFoundationService } = await import('../services/relationshipFoundationService');
+    const stats = await relationshipFoundationService.recoverRelationshipGraph(userId);
+    const coverage = await relationshipFoundationService.buildCoverageReport(userId);
+    const relationships = await relationshipFoundationService.listRelationshipsWithNames(userId);
+    return res.json({ stats, coverage, relationships });
+  } catch (err) {
+    return res.status(500).json({ error: 'Relationship recovery failed', detail: String(err) });
+  }
+});
+
 export default router;

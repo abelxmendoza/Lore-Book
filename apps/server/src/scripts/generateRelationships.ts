@@ -9,38 +9,37 @@ import { supabaseAdmin } from '../services/supabaseClient';
 import { relationshipFoundationService } from '../services/relationshipFoundationService';
 import { logger } from '../logger';
 
+const userId = process.env.RECOVERY_USER_ID;
+
 async function run(): Promise<void> {
-  logger.info('=== RELATIONSHIP GENERATION BACKFILL START ===');
+  logger.info('=== RELATIONSHIP GRAPH RECOVERY START ===');
 
   const { count: before } = await supabaseAdmin
     .from('character_relationships')
     .select('id', { count: 'exact', head: true });
-  logger.info({ relationships: before ?? 0 }, 'BEFORE');
 
-  const { data: userRows } = await supabaseAdmin
-    .from('characters')
-    .select('user_id');
-  const userIds = [...new Set((userRows ?? []).map((r: any) => r.user_id as string))];
-  logger.info({ userCount: userIds.length }, 'Users with characters');
+  const userIds = userId
+    ? [userId]
+    : [
+        ...new Set(
+          (
+            (await supabaseAdmin.from('characters').select('user_id')).data ?? []
+          ).map((r: { user_id: string }) => r.user_id)
+        ),
+      ];
 
-  let totalCreated = 0;
-  let totalUpdated = 0;
-
-  for (const userId of userIds) {
-    const stats = await relationshipFoundationService.extractRelationshipsFromMemories(userId);
-    totalCreated += stats.created;
-    totalUpdated += stats.updated;
-    logger.info({ userId, ...stats }, 'User relationship extraction complete');
-
-    const relationships = await relationshipFoundationService.listRelationshipsWithNames(userId);
-    logger.info({ userId, relationships }, 'Relationships with evidence');
+  for (const uid of userIds) {
+    const stats = await relationshipFoundationService.recoverRelationshipGraph(uid);
+    const coverage = await relationshipFoundationService.buildCoverageReport(uid);
+    const rels = await relationshipFoundationService.listRelationshipsWithNames(uid);
+    logger.info({ userId: uid, stats, coverage, sample: rels.slice(0, 15) }, 'Recovery complete');
   }
 
   const { count: after } = await supabaseAdmin
     .from('character_relationships')
     .select('id', { count: 'exact', head: true });
-  logger.info({ relationships: after ?? 0, totalCreated, totalUpdated }, 'AFTER');
-  logger.info('=== RELATIONSHIP GENERATION BACKFILL COMPLETE ===');
+
+  logger.info({ before: before ?? 0, after: after ?? 0 }, '=== RELATIONSHIP GRAPH RECOVERY COMPLETE ===');
 }
 
 run().catch(err => {
