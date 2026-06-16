@@ -15,7 +15,6 @@
 
 import express, { Router } from 'express';
 
-import { billingRouter } from '../billing/billingRouter';
 import { externalHubRouter } from '../external/external_hub.router';
 import { harmonizationRouter } from '../harmonization/harmonization.router';
 import { logger } from '../logger';
@@ -263,13 +262,6 @@ export const routeRegistry: RouteEntry[] = [
     router: subscriptionRouter,
     classification: 'CORE_RUNTIME',
     description: 'Subscription tier management',
-  },
-  {
-    path: '/api/billing',
-    router: billingRouter,
-    requiresAuth: false,
-    classification: 'CORE_RUNTIME',
-    description: 'Stripe billing, webhooks',
   },
   {
     path: '/api/verification',

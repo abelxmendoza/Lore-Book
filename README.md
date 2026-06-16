@@ -127,6 +127,8 @@ Pattern matching runs first (<50ms). LLM classification fires only when confiden
 
 **Event linkage:** After every event assembly, `event_records` (Mode Router system — emotional/cognitive data) are linked to `resolved_events` (Temporal Assembler system — what happened) via an explicit FK (`resolved_event_id`). This ensures the Meaning Tab has a reliable data path regardless of when the user documented the event. Date-join fallback preserved for backward compatibility.
 
+**Live graph recovery:** Relationship and event recovery (`relationshipFoundationService`, `eventRecoveryService`) run on the live chat path — debounced per user (`graphRecoveryTrigger`) so the relationship/event graph stays current as you chat, instead of only updating on batch script runs. Idempotent (re-runs create no duplicates); diagnostics recorded in `pipeline_runs` and surfaced at `GET /api/diagnostics/graph-recovery`.
+
 ### Entity System
 
 Single `EntityRegistry` façade over four entity tables. Priority resolution: `characters` → `omega_entities` → `people_places` → `entities`. Jaro-Winkler similarity for near-duplicate detection. Character deduplication at all creation paths.
@@ -201,6 +203,17 @@ Everything Lorekeeper knows about you comes from what you explicitly shared.
 | `event_candidates` | Recurring behavioral scene patterns with continuity strength |
 | `event_unit_links` | Links extracted_units to resolved_events |
 | `character_timeline_events` | Events linked to specific characters (shared_experience, lore, mentioned) |
+
+---
+
+## Subscriptions & Billing
+
+LoreBook Premium ($20/month) is sold via Stripe with a **7-day free trial** (card collected up front, no charge until the trial ends).
+
+- **Flow:** custom Stripe Elements `PaymentElement` — `CheckoutFlow` → `POST /api/subscription/create` → `stripeService.createSubscription` (trial subscription, `default_incomplete`) → client confirms the returned PaymentIntent or, during a trial, the `pending_setup_intent` (the route returns `intentType: 'payment' | 'setup'`).
+- **Sync:** Stripe webhooks at `POST /api/subscription/webhook` (signature-verified) drive `stripeService.handleWebhook`, which keeps the `subscriptions` table in sync for `customer.subscription.*` and `invoice.payment_*`.
+- **Management:** Account Center → Subscription tab (`SubscriptionManagement`) handles upgrade, cancel, reactivate, and the Stripe-hosted billing portal.
+- **Required env** (server): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `SUBSCRIPTION_PRICE_ID`; (web, Vite): `VITE_STRIPE_PUBLISHABLE_KEY`. See `.env.example`. Local webhook testing: `stripe listen --forward-to localhost:4000/api/subscription/webhook`.
 
 ---
 

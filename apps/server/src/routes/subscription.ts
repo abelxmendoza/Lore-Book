@@ -106,18 +106,38 @@ router.post('/create', authMiddleware, async (req: AuthenticatedRequest, res: Re
     // Create subscription with 7-day trial
     const subscription = await createSubscription(customerId, req.user.id, 7);
 
-    // Return client secret for payment confirmation
+    // Return the client secret the PaymentElement should confirm. A trialing
+    // subscription has no immediate PaymentIntent — Stripe attaches a
+    // pending_setup_intent (collect card now, charge after trial). Prefer the
+    // PaymentIntent (immediate charge) and fall back to the SetupIntent. The
+    // `intentType` tells the client whether to call confirmPayment or confirmSetup.
     const invoice = subscription.latest_invoice as any;
     const paymentIntent = invoice?.payment_intent;
+    const setupIntent = (subscription as any).pending_setup_intent;
+    const clientSecret = paymentIntent?.client_secret ?? setupIntent?.client_secret ?? null;
+    const intentType: 'payment' | 'setup' | null = paymentIntent?.client_secret
+      ? 'payment'
+      : setupIntent?.client_secret
+        ? 'setup'
+        : null;
 
     return res.json({
       subscriptionId: subscription.id,
-      clientSecret: paymentIntent?.client_secret,
+      clientSecret,
+      intentType,
       status: subscription.status,
       trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
     });
   } catch (error: any) {
     console.error('Error creating subscription:', error);
+    // Distinguish "Stripe isn't set up" from real failures so the UI can hide
+    // the upgrade path instead of showing a generic error.
+    if (typeof error?.message === 'string' && /not configured/i.test(error.message)) {
+      return res.status(503).json({
+        error: 'billing_not_configured',
+        message: 'Subscription billing is not configured on this server.',
+      });
+    }
     return res.status(500).json({
       error: 'Failed to create subscription',
       message: error.message,

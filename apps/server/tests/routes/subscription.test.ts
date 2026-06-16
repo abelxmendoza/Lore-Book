@@ -57,4 +57,65 @@ describe('Subscription API Routes', () => {
       expect(response.body).toEqual(usage);
     });
   });
+
+  describe('POST /api/subscription/create', () => {
+    it('returns the SetupIntent secret + intentType "setup" for a trial subscription', async () => {
+      vi.mocked(stripeService.getUserSubscription).mockResolvedValue(null);
+      vi.mocked(stripeService.createCustomer).mockResolvedValue('cus_123');
+      // Trialing subscription: no latest_invoice.payment_intent, has pending_setup_intent.
+      vi.mocked(stripeService.createSubscription).mockResolvedValue({
+        id: 'sub_1',
+        status: 'trialing',
+        trial_end: 1234567890,
+        latest_invoice: { payment_intent: null },
+        pending_setup_intent: { client_secret: 'seti_secret_abc' },
+      } as any);
+
+      const res = await request(app).post('/api/subscription/create').expect(200);
+      expect(res.body).toMatchObject({
+        subscriptionId: 'sub_1',
+        clientSecret: 'seti_secret_abc',
+        intentType: 'setup',
+      });
+    });
+
+    it('returns the PaymentIntent secret + intentType "payment" for an immediate charge', async () => {
+      vi.mocked(stripeService.getUserSubscription).mockResolvedValue(null);
+      vi.mocked(stripeService.createCustomer).mockResolvedValue('cus_123');
+      vi.mocked(stripeService.createSubscription).mockResolvedValue({
+        id: 'sub_2',
+        status: 'active',
+        trial_end: null,
+        latest_invoice: { payment_intent: { client_secret: 'pi_secret_xyz' } },
+        pending_setup_intent: null,
+      } as any);
+
+      const res = await request(app).post('/api/subscription/create').expect(200);
+      expect(res.body).toMatchObject({
+        subscriptionId: 'sub_2',
+        clientSecret: 'pi_secret_xyz',
+        intentType: 'payment',
+      });
+    });
+
+    it('returns 503 billing_not_configured when Stripe is not set up', async () => {
+      vi.mocked(stripeService.getUserSubscription).mockResolvedValue(null);
+      vi.mocked(stripeService.createCustomer).mockResolvedValue('cus_123');
+      vi.mocked(stripeService.createSubscription).mockRejectedValue(
+        new Error('Stripe or subscription price ID is not configured')
+      );
+
+      const res = await request(app).post('/api/subscription/create').expect(503);
+      expect(res.body).toMatchObject({ error: 'billing_not_configured' });
+    });
+
+    it('rejects when the user already has a subscription', async () => {
+      vi.mocked(stripeService.getUserSubscription).mockResolvedValue({
+        stripeSubscriptionId: 'sub_existing',
+      } as any);
+
+      const res = await request(app).post('/api/subscription/create').expect(400);
+      expect(res.body).toMatchObject({ error: 'Subscription exists' });
+    });
+  });
 });

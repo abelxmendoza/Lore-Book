@@ -55,6 +55,7 @@ import { groupCandidateService } from '../groupCandidateService';
 import { shadowModeOrchestrator } from '../ingestion/shadowMode';
 import { hybridExtractor } from './hybridExtractor';
 import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
+import { graphRecoveryTrigger } from './graphRecoveryTrigger';
 
 /**
  * Main ingestion pipeline for conversation messages
@@ -139,6 +140,12 @@ export class ConversationIngestionPipeline {
           logger.warn({ err, chatMessageId }, 'Failed to build memory feedback (non-critical)');
         });
       });
+
+      // Step 1 (Integration Sprint): promote relationship + event recovery from
+      // batch-only to live. Debounced per-user so a burst of turns collapses into
+      // one idempotent recovery run; keeps the scored graph current with chat
+      // instead of decaying between manual script runs.
+      graphRecoveryTrigger.schedule(userId);
     } catch (error) {
       // Log but don't throw - ingestion failures should not block chat
       logger.error(

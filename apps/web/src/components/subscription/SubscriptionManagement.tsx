@@ -6,6 +6,7 @@ import {
   CreditCard, PauseCircle, AlertCircle,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { CheckoutFlow } from './CheckoutFlow';
 
 // ── Usage bar ─────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,7 @@ export const SubscriptionManagement = () => {
   const [canceling, setCanceling] = useState(false);
   const [reactivating, setReactivating] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
 
   const openBillingPortal = async () => {
     try {
@@ -158,13 +160,16 @@ export const SubscriptionManagement = () => {
     }
   };
 
-  const handleUpgrade = () => {
-    const subject = encodeURIComponent('LoreBook Pro plan — early access');
-    const body = encodeURIComponent(
-      "Hi, I'd like to join the waitlist for LoreBook Pro ($20/month).\n\nI'm currently on the free plan and want to lock in early-adopter pricing."
+  const handleUpgrade = () => setShowCheckout(true);
+
+  if (showCheckout) {
+    return (
+      <CheckoutFlow
+        onCancel={() => setShowCheckout(false)}
+        onSuccess={() => setShowCheckout(false)}
+      />
     );
-    window.open(`mailto:abelxmendoza@gmail.com?subject=${subject}&body=${body}`, '_blank');
-  };
+  }
 
   if (loading) {
     return (

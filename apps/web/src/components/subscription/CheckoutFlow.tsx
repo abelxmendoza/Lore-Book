@@ -12,13 +12,15 @@ const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
 // Initialize Stripe (will be null if key not configured)
 const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
 
-const CheckoutForm = ({ 
-  clientSecret, 
-  onSuccess, 
-  onCancel 
-}: { 
+const CheckoutForm = ({
+  clientSecret,
+  intentType,
+  onSuccess,
+  onCancel
+}: {
   clientSecret: string;
-  onSuccess: () => void; 
+  intentType: 'payment' | 'setup' | null;
+  onSuccess: () => void;
   onCancel: () => void;
 }) => {
   const stripe = useStripe();
@@ -44,14 +46,16 @@ const CheckoutForm = ({
         return;
       }
 
-      const { error: confirmError } = await stripe.confirmPayment({
-        elements,
-        clientSecret,
-        confirmParams: {
-          return_url: `${window.location.origin}/subscription?success=true`,
-        },
-        redirect: 'if_required',
-      });
+      // A trialing subscription returns a SetupIntent secret (collect card now,
+      // charge after the trial) which must be confirmed with confirmSetup; an
+      // immediate charge returns a PaymentIntent secret for confirmPayment.
+      const confirmParams = {
+        return_url: `${window.location.origin}/subscription?success=true`,
+      };
+      const { error: confirmError } =
+        intentType === 'setup'
+          ? await stripe.confirmSetup({ elements, clientSecret, confirmParams, redirect: 'if_required' })
+          : await stripe.confirmPayment({ elements, clientSecret, confirmParams, redirect: 'if_required' });
 
       if (confirmError) {
         setError(confirmError.message || 'Payment confirmation failed');
@@ -110,12 +114,14 @@ const CheckoutForm = ({
 export const CheckoutFlow = ({ onCancel, onSuccess }: { onCancel: () => void; onSuccess?: () => void }) => {
   const { subscription, createSubscription } = useSubscription();
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [intentType, setIntentType] = useState<'payment' | 'setup' | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     createSubscription()
       .then((result) => {
         setClientSecret(result.clientSecret);
+        setIntentType(result.intentType);
         setLoading(false);
       })
       .catch((err) => {
@@ -193,6 +199,7 @@ export const CheckoutFlow = ({ onCancel, onSuccess }: { onCancel: () => void; on
             >
               <CheckoutForm
                 clientSecret={clientSecret}
+                intentType={intentType}
                 onSuccess={() => {
                   if (onSuccess) {
                     onSuccess();

@@ -37,7 +37,7 @@ export const PLANS = [
     tagline: 'For people who talk to LoreBook every day.',
     highlight: true,
     badge: 'Most popular',
-    cta: 'Join the waitlist',
+    cta: 'Start free trial',
     ctaStyle: 'bg-primary hover:bg-primary/90 text-white shadow-[0_0_20px_rgba(139,92,246,0.3)]',
     features: [
       { text: 'Unlimited threads', included: true },
@@ -151,11 +151,11 @@ export const PricingTable = ({ onUpgrade, currentPlan = 'free' }: PricingTablePr
       })}
     </div>
 
-    {/* Pre-launch note */}
+    {/* Trust note */}
     <div className="flex items-center justify-center gap-3">
       <div className="h-px flex-1 bg-white/6" />
       <p className="text-xs text-white/25 text-center px-4">
-        Payments launching soon. Join the waitlist to lock in early-adopter pricing.
+        7-day free trial · No charge until it ends · Cancel anytime
       </p>
       <div className="h-px flex-1 bg-white/6" />
     </div>

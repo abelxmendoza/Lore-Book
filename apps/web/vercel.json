@@ -28,6 +28,7 @@
     "NODE_VERSION": "20",
     "VITE_APP_URL": "https://lorebookai.com",
     "VITE_API_URL": "",
+    "VITE_STRIPE_PUBLISHABLE_KEY": "pk_test_51L9CLGDEX66PEmCrcyscRq4ojvpWsWAScd2dFNwJChIFoAdyNAGvDmok0JP0RBWdPjnzYoaP5fXTMO7FBHprD6Yz00BmGfEXxj",
     "VITE_USE_MOCK_DATA": "false",
     "VITE_SHOW_DEV_NOTICE": "false",
     "VITE_ADMIN_EMAIL": "abelxmendoza@gmail.com",

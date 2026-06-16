@@ -130,7 +130,7 @@ export const PricingPage = ({ onSurfaceChange }: { onSurfaceChange?: (surface: '
                 Premium
               </CardTitle>
               <div className="mt-2">
-                <span className="text-4xl font-bold text-white">$15</span>
+                <span className="text-4xl font-bold text-white">$20</span>
                 <span className="text-white/60">/month</span>
               </div>
               <p className="text-sm text-yellow-400 mt-2">7-day free trial • Cancel anytime</p>

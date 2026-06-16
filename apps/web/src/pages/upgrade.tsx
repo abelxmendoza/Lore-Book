@@ -6,6 +6,7 @@ import { useSubscription } from '../hooks/useSubscription';
 import { LandingHeader } from '../components/landing/LandingHeader';
 import { LandingFooter } from '../components/landing/LandingFooter';
 import { CTASection } from '../components/landing/CTASection';
+import { CheckoutFlow } from '../components/subscription/CheckoutFlow';
 
 // ── Value pillars ─────────────────────────────────────────────────────────────
 
@@ -60,8 +61,8 @@ const FAQ = [
     a: 'It\'s as good as what you\'ve shared. The longer and more honestly you\'ve talked to LoreBook, the more accurate and moving the biography becomes. New users get a solid outline. Veteran users get something they want to keep.',
   },
   {
-    q: 'When do payments actually start?',
-    a: 'We\'re finishing payment infrastructure now. Joining the waitlist locks in early-adopter pricing and you\'ll be notified first. No credit card required until launch.',
+    q: 'How does billing work?',
+    a: 'Pro is a $20/month subscription with a 7-day free trial. You add a card to start, but you\'re not charged until the trial ends — and you can cancel anytime before then with no charge. Billing is handled securely by Stripe.',
   },
 ];
 
@@ -94,14 +95,25 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 const UpgradePage = () => {
   const navigate = useNavigate();
   const { subscription } = useSubscription();
+  const [showCheckout, setShowCheckout] = useState(false);
 
   const handleUpgrade = (tier: string) => {
-    const subject = encodeURIComponent(`LoreBook ${tier} plan — early access`);
-    const body = encodeURIComponent(
-      `Hi, I'd like to join the waitlist for the LoreBook ${tier} plan.\n\nI'm currently on the free plan and want to lock in early-adopter pricing.`
-    );
-    window.open(`mailto:abelxmendoza@gmail.com?subject=${subject}&body=${body}`, '_blank');
+    // Free tier just sends them into the app; paid tiers launch Stripe checkout.
+    if (tier === 'free') {
+      navigate('/login');
+      return;
+    }
+    setShowCheckout(true);
   };
+
+  if (showCheckout) {
+    return (
+      <CheckoutFlow
+        onCancel={() => setShowCheckout(false)}
+        onSuccess={() => setShowCheckout(false)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-purple-950 to-black text-white">

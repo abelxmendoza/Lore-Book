@@ -96,6 +96,38 @@ router.get('/cognition-health', requireAuth, async (_req: Request, res: Response
 });
 
 /**
+ * GET /api/diagnostics/graph-recovery
+ * Proves live graph recovery ran: returns the last live relationship/event
+ * recovery for the authenticated user with before/after counts and deltas.
+ */
+router.get('/graph-recovery', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const { graphRecoveryTrigger } = await import('../services/conversationCentered/graphRecoveryTrigger');
+    const last = graphRecoveryTrigger.getLastRun(userId);
+    res.json({ userId, lastRun: last, ran: last !== null });
+  } catch (err) {
+    res.status(500).json({ error: 'Graph recovery diagnostics failed', detail: String(err) });
+  }
+});
+
+/**
+ * POST /api/diagnostics/graph-recovery/run
+ * Force an immediate live graph recovery run (shared path with the debounced
+ * live trigger and the batch scripts). Returns the before/after deltas.
+ */
+router.post('/graph-recovery/run', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const { graphRecoveryTrigger } = await import('../services/conversationCentered/graphRecoveryTrigger');
+    const result = await graphRecoveryTrigger.runNow(userId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Graph recovery run failed', detail: String(err) });
+  }
+});
+
+/**
  * GET /api/diagnostics/thread-health
  * Conversation durability metrics for the authenticated user (Task 10).
  */

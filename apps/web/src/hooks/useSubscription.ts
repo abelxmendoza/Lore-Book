@@ -88,7 +88,8 @@ export function useSubscription() {
     try {
       const result = await fetchJson<{
         subscriptionId: string;
-        clientSecret: string;
+        clientSecret: string | null;
+        intentType: 'payment' | 'setup' | null;
         status: string;
         trialEnd: string | null;
       }>('/api/subscription/create', {

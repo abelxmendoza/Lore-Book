@@ -22,6 +22,29 @@ if (config.stripeSecretKey) {
 export type SubscriptionStatus = 'trial' | 'active' | 'canceled' | 'past_due' | 'incomplete' | 'incomplete_expired';
 export type PlanType = 'free' | 'premium';
 
+/**
+ * Read the current billing period from a Stripe subscription.
+ * In recent Stripe API versions (and the stripe@20 SDK types) `current_period_*`
+ * moved from the subscription to the subscription item, so read from the item
+ * first and fall back to the legacy top-level field. Returns ISO strings or null
+ * (e.g. a trialing subscription may not have a period yet).
+ */
+function readSubscriptionPeriod(subscription: Stripe.Subscription): {
+  startIso: string | null;
+  endIso: string | null;
+} {
+  const item = subscription.items?.data?.[0] as
+    | (Stripe.SubscriptionItem & { current_period_start?: number; current_period_end?: number })
+    | undefined;
+  const legacy = subscription as unknown as { current_period_start?: number; current_period_end?: number };
+  const start = item?.current_period_start ?? legacy.current_period_start;
+  const end = item?.current_period_end ?? legacy.current_period_end;
+  return {
+    startIso: typeof start === 'number' ? new Date(start * 1000).toISOString() : null,
+    endIso: typeof end === 'number' ? new Date(end * 1000).toISOString() : null,
+  };
+}
+
 export interface SubscriptionData {
   id: string;
   userId: string;
@@ -79,7 +102,10 @@ export async function createSubscription(
     trial_end: trialEnd,
     payment_behavior: 'default_incomplete',
     payment_settings: { save_default_payment_method: 'on_subscription' },
-    expand: ['latest_invoice.payment_intent'],
+    // A trialing subscription has no immediate PaymentIntent — Stripe attaches a
+    // pending_setup_intent to collect the card now and charge after the trial.
+    // Expand both so the route can hand the client whichever exists.
+    expand: ['latest_invoice.payment_intent', 'pending_setup_intent'],
   });
 
   // Update subscription record
@@ -90,8 +116,8 @@ export async function createSubscription(
       status: 'trial',
       plan_type: 'premium',
       trial_ends_at: new Date(trialEnd * 1000).toISOString(),
-      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      current_period_start: readSubscriptionPeriod(subscription).startIso,
+      current_period_end: readSubscriptionPeriod(subscription).endIso,
       cancel_at_period_end: false,
     })
     .eq('user_id', userId);
@@ -448,8 +474,8 @@ async function syncSubscriptionFromStripe(subscription: Stripe.Subscription): Pr
       stripe_subscription_id: subscription.id,
       status: statusMap[subscription.status] || 'active',
       plan_type: subscription.status === 'active' || subscription.status === 'trialing' ? 'premium' : 'free',
-      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      current_period_start: readSubscriptionPeriod(subscription).startIso,
+      current_period_end: readSubscriptionPeriod(subscription).endIso,
       cancel_at_period_end: subscription.cancel_at_period_end,
       trial_ends_at: subscription.trial_end 
         ? new Date(subscription.trial_end * 1000).toISOString() 
