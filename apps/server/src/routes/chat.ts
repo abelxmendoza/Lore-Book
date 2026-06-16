@@ -11,6 +11,7 @@ import { incrementAiRequestCount } from '../services/usageTracking';
 import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
 import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
 import { messageCorrectionService } from '../services/messageCorrectionService';
+import { supabaseAdmin } from '../services/supabaseClient';
 
 // AI endpoints get their own stricter limit: 30 req/15min in prod, unlimited in dev
 const aiRateLimit = createRateLimiter(30);
@@ -75,6 +76,11 @@ function resolveThreadContext(
   return currentContext;
 }
 
+function isOpenAIQuotaError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /429|insufficient_quota|quota exceeded/i.test(text);
+}
+
 // Streaming endpoint
 router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (req: AuthenticatedRequest, res) => {
   // Disable Nagle's algorithm so SSE chunks reach the client immediately without buffering.
@@ -122,9 +128,25 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
         await streamFallbackResponse(res, msgForFallback, reason);
       } else {
         logger.error({ err: setupError }, 'Chat stream setup error');
+        if (isOpenAIQuotaError(setupError)) {
+          res.status(429).json({
+            error: 'OpenAI quota exhausted',
+            stage: 'response_generation',
+            memory: {
+              user_message_saved: false,
+              ingestion_started: false,
+              entity_creation_started: false,
+              assistant_message_saved: false,
+            },
+            userMessage:
+              'Response generation failed because the OpenAI quota is exhausted. This failed before server-side memory ingestion, so I did not create or update memories from this send.',
+          });
+          return;
+        }
         // Headers not yet committed — safe to send JSON.
         res.status(500).json({
           error: 'Failed to process chat message',
+          stage: 'response_generation',
           message: setupError instanceof Error ? setupError.message : 'Unknown error',
         });
       }
@@ -149,8 +171,45 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
     // suggestions UI instead — see characterSuggestionService.
     sseWrite({ type: 'metadata', data: result.metadata });
 
+    // ── Durable assistant persistence ──────────────────────────────────────────
+    // The assistant message MUST survive even if the stream throws mid-way or the
+    // client disconnects (root cause of "missing assistant messages / user-only
+    // threads"). We persist whatever streamed, with a status, exactly once, and
+    // bump the thread's updated_at so ordering reflects the assistant turn.
+    let fullResponse = '';
+    let assistantPersisted = false;
+    const persistSessionId = result.metadata.sessionId ?? threadId ?? null;
+    const persistAssistant = async (status: 'complete' | 'partial' | 'failed'): Promise<void> => {
+      if (assistantPersisted || !req.user?.id || !persistSessionId) return;
+      if (fullResponse.trim().length === 0) return; // nothing to save; user msg already durable
+      assistantPersisted = true;
+      const nowIso = new Date().toISOString();
+      try {
+        const { error } = await supabaseAdmin.from('chat_messages').insert({
+          user_id: req.user.id,
+          session_id: persistSessionId,
+          role: 'assistant',
+          content: fullResponse,
+          metadata: {
+            sources: result.metadata.sources,
+            connections: result.metadata.connections,
+            continuityWarnings: result.metadata.continuityWarnings,
+            response_mode: result.metadata.response_mode,
+            saved_from_stream: true,
+            stream_status: status, // complete | partial | failed
+          },
+        });
+        if (error) { assistantPersisted = false; logger.warn({ err: error, status }, 'Failed to persist assistant message'); return; }
+        // Ordering: thread rises to top on assistant completion (Task 3).
+        await supabaseAdmin.from('conversation_sessions')
+          .update({ updated_at: nowIso }).eq('id', persistSessionId).eq('user_id', req.user.id);
+      } catch (err) {
+        assistantPersisted = false;
+        logger.warn({ err, status }, 'Assistant persistence threw');
+      }
+    };
+
     try {
-      let fullResponse = '';
       for await (const chunk of result.stream) {
         if (clientGone) break;
         const content = chunk.choices[0]?.delta?.content;
@@ -163,6 +222,8 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
         sseWrite({ type: 'done' });
         res.end();
       }
+      // Persist on success (or partial if the client vanished mid-stream).
+      await persistAssistant(clientGone ? 'partial' : 'complete');
       // Advisory hallucination guard — never blocks the stream; flags
       // responses that claim memory about names absent from the entity graph.
       if (fullResponse.length > 0 && req.user?.id) {
@@ -171,12 +232,17 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
           .catch(() => {});
       }
     } catch (streamError) {
+      // Mid-stream failure: persist whatever we got so the assistant turn is never lost.
+      await persistAssistant('partial');
       // Mid-stream failure — headers committed, can only write an error event.
       if (isFallbackEnabled() && isFallbackError(streamError)) {
         writeFallbackToOpenStream(res, message, streamError instanceof Error ? streamError.message : 'stream error');
       } else {
         logger.error({ error: streamError }, 'Chat stream mid-stream error');
-        sseWrite({ type: 'error', error: streamError instanceof Error ? streamError.message : 'Unknown stream error' });
+        const error = isOpenAIQuotaError(streamError)
+          ? 'Response generation stopped because the OpenAI quota is exhausted. Your user message may have been saved, but this assistant reply is incomplete.'
+          : streamError instanceof Error ? streamError.message : 'Unknown stream error';
+        sseWrite({ type: 'error', error });
         if (!res.writableEnded) res.end();
       }
     }

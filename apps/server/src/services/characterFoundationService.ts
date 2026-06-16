@@ -18,6 +18,7 @@ import { v4 as uuid } from 'uuid';
 import { logger } from '../logger';
 import { splitPersonName } from '../utils/nameNormalization';
 import { shouldDeferCharacterPromotion } from '../utils/entityMentionClassifier';
+import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 import { characterRegistry } from './characterRegistry';
 import { assignCharacterAvatar } from './characterAvatarService';
 import { supabaseAdmin } from './supabaseClient';
@@ -102,6 +103,12 @@ class CharacterFoundationService {
       return null;
     }
 
+    const classification = classifyEntity(entity.name);
+    if (!isCharacterEligible(classification.type) && !isUnknownEntity(classification.type)) {
+      logger.debug({ entityName: entity.name, classification }, 'Skipping entity that is not character-eligible');
+      return null;
+    }
+
     // The user is the narrator/main character — never add them to their own book
     if (await this.isSelfEntity(userId, entity.name)) {
       logger.debug({ name: entity.name }, 'Skipping self-entity: user is the narrator');
@@ -122,6 +129,12 @@ class CharacterFoundationService {
       await this.updateCharacter(existing, entity);
       logger.debug({ characterId: existing.id, name: entity.name }, 'Updated existing character');
       return existing.id;
+    }
+
+    const mentions = entity.total_mentions ?? entity.related_entries?.length ?? 1;
+    if (shouldDeferCharacterPromotion(entity.name, mentions)) {
+      logger.debug({ name: entity.name, mentions }, 'Deferring entity to promotion candidate (not auto-creating character)');
+      return null;
     }
 
     // ── 3. Create new character ──────────────────────────────────────────────
@@ -381,6 +394,12 @@ class CharacterFoundationService {
   ): Promise<string | null> {
     if (entity.type !== 'PERSON' && entity.type !== 'CHARACTER') return null;
 
+    const classification = classifyEntity(entity.primary_name);
+    if (!isCharacterEligible(classification.type) && !isUnknownEntity(classification.type)) {
+      logger.debug({ name: entity.primary_name, classification }, 'Skipping omega entity that is not character-eligible');
+      return null;
+    }
+
     // The user is the narrator/main character — never add them to their own book
     if (await this.isSelfEntity(userId, entity.primary_name)) {
       logger.debug({ name: entity.primary_name }, 'Skipping self-entity (chat): user is the narrator');
@@ -432,7 +451,7 @@ class CharacterFoundationService {
 
     const mentions = entity.mention_count ?? 1;
     if (shouldDeferCharacterPromotion(decision.cleanName, mentions)) {
-      logger.debug({ name: entity.primary_name, mentions }, 'Deferring single-token mention to suggestions (not auto-creating character)');
+      logger.debug({ name: entity.primary_name, mentions }, 'Deferring mention to promotion candidate (not auto-creating character)');
       return null;
     }
 

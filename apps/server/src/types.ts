@@ -219,7 +219,9 @@ export type PeoplePlaceEntity = {
   id: string;
   user_id: string;
   name: string;
-  type: 'person' | 'place' | 'organization' | 'platform';
+  // 'event'/'unclassified' added by the Entity Resolution Hardening pass so
+  // unknown or non-person entities are not forced to 'person' (→ Character).
+  type: 'person' | 'place' | 'organization' | 'platform' | 'event' | 'unclassified';
   first_mentioned_at: string;
   last_mentioned_at: string;
   total_mentions: number;

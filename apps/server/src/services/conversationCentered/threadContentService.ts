@@ -22,52 +22,80 @@ function metadataMessages(meta: Record<string, unknown> | null | undefined): Thr
     }));
 }
 
-/** Unified loader: metadata → conversation_messages → chat_messages */
+function normalizeContent(text: string): string {
+  return text.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function sourceRank(id: string): number {
+  if (id.startsWith('meta-') || id.startsWith('user-') || id.startsWith('assistant-')) return 0;
+  return 1;
+}
+
+function mergeMessageSources(sources: ThreadMessageRow[][]): ThreadMessageRow[] {
+  const byFingerprint = new Map<string, ThreadMessageRow>();
+
+  for (const source of sources) {
+    for (const message of source) {
+      if (!message.content.trim()) continue;
+      const fingerprint = `${message.role}:${normalizeContent(message.content)}`;
+      const existing = byFingerprint.get(fingerprint);
+      if (!existing || sourceRank(message.id) > sourceRank(existing.id)) {
+        byFingerprint.set(fingerprint, message);
+      }
+    }
+  }
+
+  return [...byFingerprint.values()].sort((a, b) => {
+    const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    if (timeDiff !== 0) return timeDiff;
+    if (a.role === b.role) return 0;
+    return a.role === 'user' ? -1 : 1;
+  });
+}
+
+/** Unified loader: merges metadata + conversation_messages + chat_messages. */
 export async function loadThreadMessages(
   userId: string,
   sessionId: string
 ): Promise<ThreadMessageRow[]> {
-  const { data: session } = await supabaseAdmin
-    .from('conversation_sessions')
-    .select('metadata')
-    .eq('id', sessionId)
-    .eq('user_id', userId)
-    .maybeSingle();
+  const [{ data: session }, { data: convMsgs }, { data: chatMsgs }] = await Promise.all([
+    supabaseAdmin
+      .from('conversation_sessions')
+      .select('metadata')
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('conversation_messages')
+      .select('id, role, content, created_at, metadata')
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true }),
+    supabaseAdmin
+      .from('chat_messages')
+      .select('id, role, content, created_at, metadata')
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true }),
+  ]);
 
   const fromMeta = metadataMessages(session?.metadata as Record<string, unknown> | null);
-  if (fromMeta.length > 0) return fromMeta;
-
-  const { data: convMsgs } = await supabaseAdmin
-    .from('conversation_messages')
-    .select('id, role, content, created_at, metadata')
-    .eq('session_id', sessionId)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true });
-
-  if (convMsgs?.length) {
-    return convMsgs.map((m) => ({
-      id: m.id,
-      role: m.role === 'assistant' ? 'assistant' : 'user',
-      content: String(m.content ?? ''),
-      created_at: m.created_at,
-      metadata: (m.metadata as Record<string, unknown>) ?? null,
-    }));
-  }
-
-  const { data: chatMsgs } = await supabaseAdmin
-    .from('chat_messages')
-    .select('id, role, content, created_at, metadata')
-    .eq('session_id', sessionId)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true });
-
-  return (chatMsgs ?? []).map((m) => ({
+  const fromConversation = (convMsgs ?? []).map((m) => ({
     id: m.id,
-    role: m.role === 'assistant' ? 'assistant' : 'user',
+    role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
     content: String(m.content ?? ''),
     created_at: m.created_at,
     metadata: (m.metadata as Record<string, unknown>) ?? null,
   }));
+  const fromChat = (chatMsgs ?? []).map((m) => ({
+    id: m.id,
+    role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
+    content: String(m.content ?? ''),
+    created_at: m.created_at,
+    metadata: (m.metadata as Record<string, unknown>) ?? null,
+  }));
+
+  return mergeMessageSources([fromConversation, fromChat, fromMeta]);
 }
 
 export async function threadMessageCount(userId: string, sessionId: string): Promise<number> {

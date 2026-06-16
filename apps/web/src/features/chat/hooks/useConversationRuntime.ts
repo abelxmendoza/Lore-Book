@@ -106,6 +106,9 @@ export const useConversationRuntime = ({
   const titleGeneratedRef = useRef<string | null>(null);
   const hydrationRequestRef = useRef<string | null>(null);
   const selectionRequestSeqRef = useRef(0);
+  /** Previous messages snapshot — used to detect user sends / stream completion for sidebar ordering */
+  const prevSyncedMessagesRef = useRef<Message[]>([]);
+  const lastSyncThreadRef = useRef<string | null>(null);
 
   /** Remove a thread with no saved conversation and navigate to a safe fallback. */
   const removeEmptyThread = useCallback(
@@ -322,7 +325,7 @@ export const useConversationRuntime = ({
       updateThread(id, {
         messages,
         ...(provisionalTitle ? { title: provisionalTitle } : {}),
-        updatedAt: new Date().toISOString(),
+        touchActivity: true,
       });
       navigate(`/chat/${id}`, { replace: true });
     }
@@ -332,11 +335,51 @@ export const useConversationRuntime = ({
   // ── Sync in-memory messages → thread store ──────────────────────────────────
   // Uses intendedThreadRef (not threadIdParam) as the target so intermediate
   // renders during navigation never write to the wrong thread.
+  // touchActivity only on new user message or completed assistant stream — never on hydrate/open.
   useEffect(() => {
     const tid = intendedThreadRef.current;
     if (!tid || !isHydratedRef.current) return;
-    runtimeDiagnostics.record('sync_write', { threadId: tid });
-    updateThread(tid, { messages, updatedAt: new Date().toISOString() });
+
+    if (lastSyncThreadRef.current !== tid) {
+      lastSyncThreadRef.current = tid;
+      prevSyncedMessagesRef.current = messages;
+      runtimeDiagnostics.record('sync_write', { threadId: tid, meta: { touchActivity: false, reason: 'thread_switch' } });
+      updateThread(tid, { messages });
+      return;
+    }
+
+    const prev = prevSyncedMessagesRef.current;
+    prevSyncedMessagesRef.current = messages;
+
+    // First baseline after hydration — do not treat loaded history as new activity.
+    if (prev.length === 0 && messages.length > 0) {
+      runtimeDiagnostics.record('sync_write', { threadId: tid, meta: { touchActivity: false, reason: 'initial_baseline' } });
+      updateThread(tid, { messages });
+      return;
+    }
+
+    let touchActivity = false;
+    if (messages.length > prev.length) {
+      const last = messages[messages.length - 1];
+      if (last?.role === 'user') touchActivity = true;
+    }
+
+    const prevLast = prev[prev.length - 1];
+    const currLast = messages[messages.length - 1];
+    if (
+      currLast?.role === 'assistant' &&
+      prevLast?.id === currLast.id &&
+      prevLast?.isStreaming &&
+      !currLast.isStreaming
+    ) {
+      touchActivity = true;
+    }
+
+    runtimeDiagnostics.record('sync_write', { threadId: tid, meta: { touchActivity } });
+    updateThread(tid, {
+      messages,
+      ...(touchActivity ? { touchActivity: true } : {}),
+    });
   }, [messages, updateThread]);
 
   // ── Semantic title generation ───────────────────────────────────────────────

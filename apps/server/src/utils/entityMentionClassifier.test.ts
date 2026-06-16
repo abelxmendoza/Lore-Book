@@ -24,14 +24,17 @@ describe('entityMentionClassifier', () => {
     expect(classifyMentionKind('Gathering', 'talked about magic gathering cards').kind).toBe('game');
   });
 
-  it('accepts real person names', () => {
-    expect(classifyMentionKind('Ashley De la Cruz').kind).toBe('person');
-    expect(classifyMentionKind('Ashley').kind).toBe('person');
+  it('requires person evidence for unknown proper nouns', () => {
+    expect(classifyMentionKind('Ashley De la Cruz').kind).toBe('unknown');
+    expect(classifyMentionKind('Ashley').kind).toBe('unknown');
+    expect(classifyMentionKind('Tio Juan').kind).toBe('person');
+    expect(classifyMentionKind('Ashley', 'Ashley said she would call').kind).toBe('person');
   });
 
-  it('defers single-token first mentions', () => {
+  it('defers all first mentions from automatic character promotion', () => {
     expect(shouldDeferCharacterPromotion('Ashley', 1)).toBe(true);
     expect(shouldDeferCharacterPromotion('Ashley', 2)).toBe(false);
-    expect(shouldDeferCharacterPromotion('Ashley De la Cruz', 1)).toBe(false);
+    expect(shouldDeferCharacterPromotion('Ashley De la Cruz', 1)).toBe(true);
+    expect(shouldDeferCharacterPromotion('Ashley De la Cruz', 2)).toBe(false);
   });
 });

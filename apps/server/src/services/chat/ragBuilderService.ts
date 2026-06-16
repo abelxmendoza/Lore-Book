@@ -23,6 +23,7 @@ import {
   loadEntityArc,
   arcToMemoryEntries,
 } from './entityScopedRetriever';
+import { assembleWorkingMemory, buildWorkingMemoryPacket } from './workingMemoryAssembler';
 
 // ─── Fitness keyword gate ────────────────────────────────────────────────────
 const FITNESS_RE = /\b(workout|exercise|gym|ran|run|lifted|bench|squat|deadlift|calories|weight|lbs|kg|miles|steps|cardio|biometric|body fat|muscle)\b/i;
@@ -482,40 +483,34 @@ export async function buildRAGPacket(
     }
   } catch (e) { logger.debug({ e }, 'RAGBuilder: relationship context build failed'); }
 
-  // ── Foundation recall — Sprint G ─────────────────────────────────────────
-  // Routes the user's message to the appropriate foundation data layer
-  // (biography, entity, temporal, fact) and returns a formatted context block.
-  // Also reads from character_relationships and character_timeline_events —
-  // the foundation tables that were missing from this pipeline before Sprint G.
+  // ── Working Memory — single authoritative retrieval packet ───────────────
+  // This replaces the duplicate routeRecallQuery() pass that used to run here.
+  // Upstream recall gates still exist for explicit diagnostic/short-circuit
+  // modes, but normal LLM context now gets one bounded memory packet.
   let foundationRecallBlock = '';
   let foundationRelationships: any[] = [];
   let foundationTimeline: any[] = [];
+  let workingMemory: Awaited<ReturnType<typeof assembleWorkingMemory>> | null = null;
+  let workingMemoryPacket: ReturnType<typeof buildWorkingMemoryPacket> | null = null;
 
   try {
-    const { routeRecallQuery } = await import('./recallQueryRouter');
-    // conversationHistory not available at this layer — thread recall handled upstream
-    const recall = await routeRecallQuery(userId, message, []);
-    foundationRecallBlock = recall.contextBlock;
-    logger.debug({ userId, intent: recall.intent, entity: recall.entityName }, 'RAGBuilder: recall routed');
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: recall router failed'); }
-
-  try {
-    const { data } = await supabaseAdmin
-      .from('character_relationships')
-      .select('id, source_character_id, target_character_id, relationship_type, status, metadata')
-      .eq('user_id', userId);
-    foundationRelationships = (data as any[]) ?? [];
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: foundation relationships fetch failed'); }
-
-  try {
-    const { data } = await supabaseAdmin
-      .from('character_timeline_events')
-      .select('event_title, event_type, event_date, event_summary, emotional_impact, confidence')
-      .eq('user_id', userId)
-      .order('event_date', { ascending: false })
-      .limit(10);
-    foundationTimeline = (data as any[]) ?? [];
-  } catch (e) { logger.debug({ e }, 'RAGBuilder: foundation timeline fetch failed'); }
+    workingMemory = await assembleWorkingMemory({
+      userId,
+      question: message,
+      threadId: (currentContext as { threadId?: string } | undefined)?.threadId,
+    });
+    workingMemoryPacket = buildWorkingMemoryPacket(workingMemory);
+    foundationRecallBlock = workingMemoryPacket.text;
+    foundationRelationships = workingMemory.relationships;
+    foundationTimeline = workingMemory.timeline;
+    logger.debug({
+      userId,
+      intent: workingMemory.intent,
+      selected: workingMemory.budget.selected,
+      rejected: workingMemory.budget.rejected,
+      confidence: workingMemory.confidence,
+    }, 'RAGBuilder: working memory assembled');
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: working memory assembly failed'); }
 
   let confirmedSkills: Array<{ id: string; name: string; category: string; skill_key: string }> = [];
   try {
@@ -548,6 +543,8 @@ export async function buildRAGPacket(
     foundationRecallBlock,
     foundationRelationships,
     foundationTimeline,
+    workingMemory,
+    workingMemoryPacket,
     confirmedSkills,
   };
 

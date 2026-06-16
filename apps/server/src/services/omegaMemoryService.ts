@@ -13,6 +13,7 @@ import {
 import { openai } from '../lib/openai';
 import { jaroWinkler } from '../utils/jaroWinkler';
 import { normalizeNameKey } from '../utils/nameNormalization';
+import { classifyEntity, toOmegaType } from './entities/entityClassifier';
 import type {
   Entity,
   Claim,
@@ -33,6 +34,18 @@ import { memoryReviewQueueService } from './memoryReviewQueueService';
 import { perspectiveService } from './perspectiveService';
 import { provenanceEdgeService } from './provenance/provenanceEdgeService';
 import { supabaseAdmin } from './supabaseClient';
+
+function uniqueEntities(entities: Array<{ name: string; type: EntityType }>): Array<{ name: string; type: EntityType }> {
+  const seen = new Set<string>();
+  const out: Array<{ name: string; type: EntityType }> = [];
+  for (const entity of entities) {
+    const key = `${normalizeNameKey(entity.name)}:${entity.type}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(entity);
+  }
+  return out;
+}
 
 export class OmegaMemoryService {
   /**
@@ -188,6 +201,8 @@ export class OmegaMemoryService {
       );
     }
 
+    const deterministicCandidates = this.extractDeterministicEntities(text);
+
     try {
       const completion = await openai.chat.completions.create({
         model: config.defaultModel || 'gpt-5.4-mini',
@@ -227,12 +242,18 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
       });
 
       const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
-      const entities = (response.entities || []).filter((e: any) => e.confidence >= 0.5);
-      
-      return entities.map((e: any) => ({
-        name: e.name,
-        type: e.type as EntityType,
-      }));
+      const llmEntities = (response.entities || [])
+        .filter((e: any) => e.confidence >= 0.5 && typeof e.name === 'string')
+        .map((e: any) => {
+          const classification = classifyEntity(e.name, text);
+          return {
+            name: e.name,
+            type: toOmegaType(classification.type) as EntityType,
+          };
+        });
+
+      return uniqueEntities([...deterministicCandidates, ...llmEntities])
+        .filter(entity => entity.type !== 'UNKNOWN');
     } catch (error: any) {
       // FIX 3: Never downgrade errors - throw instead of returning empty
       // FIX 4: Rate-limit circuit breaker
@@ -245,6 +266,30 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
       // Invalid IR is worse than no IR - throw instead of returning empty
       throw error;
     }
+  }
+
+  private extractDeterministicEntities(text: string): Array<{ name: string; type: EntityType }> {
+    const candidates = new Set<string>();
+    const properNounPattern = /\b([A-ZÀ-Ý][a-zÀ-ÿ0-9'’.-]+(?:\s+[A-ZÀ-Ý][a-zÀ-ÿ0-9'’.-]+){0,3})\b/g;
+    let match: RegExpExecArray | null;
+    while ((match = properNounPattern.exec(text)) !== null) {
+      candidates.add(match[1].trim());
+    }
+
+    // Catch known mixed-case/app phrases that simple proper-noun regexes miss.
+    for (const phrase of ['Find My', 'High Noon', 'High Noons', 'Amazon Ring', 'Moreno Valley', 'Club Metro', 'Prayers', 'Ex Lover']) {
+      if (new RegExp(`\\b${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text)) {
+        candidates.add(phrase);
+      }
+    }
+
+    return [...candidates]
+      .map(name => {
+        const classification = classifyEntity(name, text);
+        return { name, type: toOmegaType(classification.type) as EntityType, confidence: classification.confidence };
+      })
+      .filter(entity => entity.confidence >= 0.8 && entity.type !== 'UNKNOWN')
+      .map(({ name, type }) => ({ name, type }));
   }
 
   /**

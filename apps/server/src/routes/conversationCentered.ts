@@ -425,7 +425,7 @@ router.get(
 
 /**
  * POST /api/conversation/threads/:id/ensure-visible
- * Recover orphaned sessions and bump updated_at so origin threads appear in the sidebar.
+ * Recover orphaned sessions without bumping updated_at (opening a thread must not reorder it).
  */
 router.post(
   '/threads/:id/ensure-visible',
@@ -433,7 +433,7 @@ router.post(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const id = req.params.id as string;
     const userId = req.user!.id;
-    const { recoverOrphanSession, touchThreadActivity, loadThreadMessages } = await import(
+    const { recoverOrphanSession, loadThreadMessages } = await import(
       '../services/conversationCentered/threadContentService'
     );
 
@@ -465,7 +465,6 @@ router.post(
       return res.status(404).json({ success: false, error: 'Thread not found' });
     }
 
-    await touchThreadActivity(userId, id);
     const messages = await loadThreadMessages(userId, id);
 
     res.json({
@@ -474,7 +473,7 @@ router.post(
         id: thread.id,
         title: thread.title ?? DRAFT_THREAD_TITLE,
         subtitle: (thread.metadata as Record<string, unknown>)?.subtitle as string | undefined,
-        updatedAt: new Date().toISOString(),
+        updatedAt: thread.updated_at,
         metadata: thread.metadata ?? {},
         messageCount: messages.length,
       },
@@ -2904,10 +2903,15 @@ router.patch(
     const schema = z.object({
       title: z.string().optional(),
       messages: z.array(z.any()).optional(),
+      /** When true, bumps updated_at so the thread rises in the sidebar (new message activity). */
+      touchActivity: z.boolean().optional(),
     });
     const body = schema.parse(req.body);
 
-    const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const updatePayload: Record<string, unknown> = {};
+    if (body.touchActivity) {
+      updatePayload.updated_at = new Date().toISOString();
+    }
     if (body.title !== undefined) updatePayload.title = body.title;
     if (body.messages !== undefined) {
       // Merge messages into existing metadata so we don't clobber other keys

@@ -5,6 +5,7 @@
  */
 
 import { normalizeNameKey } from './nameNormalization';
+import { classifyEntity, isCharacterEligible, isUnknownEntity, toOmegaType } from '../services/entities/entityClassifier';
 
 export type MentionKind =
   | 'person'
@@ -13,7 +14,8 @@ export type MentionKind =
   | 'game'
   | 'concept'
   | 'fragment'
-  | 'common_noun';
+  | 'common_noun'
+  | 'unknown';
 
 export type MentionClassification = {
   kind: MentionKind;
@@ -142,14 +144,25 @@ export function classifyMentionKind(name: string, rawContext?: string): MentionC
     return { kind: 'common_noun', reason: 'common_noun' };
   }
 
-  return { kind: 'person' };
+  const classification = classifyEntity(trimmed, rawContext);
+  if (isCharacterEligible(classification.type)) return { kind: 'person', reason: classification.reason };
+  if (!isUnknownEntity(classification.type)) {
+    const omegaType = toOmegaType(classification.type);
+    return {
+      kind: omegaType === 'EVENT' ? 'event' : 'concept',
+      omegaType: omegaType === 'EVENT' ? 'EVENT' : omegaType === 'ORG' ? 'ORG' : undefined,
+      canonicalName: trimmed,
+      reason: classification.reason,
+    };
+  }
+
+  return { kind: 'unknown', reason: 'no classifying evidence' };
 }
 
 /** Single-token names need multiple mentions before auto-promotion to the Characters book. */
 export function shouldDeferCharacterPromotion(name: string, mentionCount: number): boolean {
   const key = normalizeNameKey(name);
   const tokens = key.split(' ').filter(Boolean);
-  if (tokens.length >= 2) return false;
   if (mentionCount >= 2) return false;
   return true;
 }

@@ -18,6 +18,7 @@ export type ImportanceInputs = {
   isFamily: boolean;
   isSelf: boolean;
   relationshipTypeWeight: number;
+  structuralImportanceFloor?: number;
 };
 
 export type ImportanceResult = {
@@ -51,7 +52,8 @@ export function computeImportanceScore(inputs: ImportanceInputs): number {
 
   if (inputs.isFamily) score += 15;
 
-  return clamp(Math.round(score), 0, 100);
+  const flooredScore = Math.max(score, inputs.structuralImportanceFloor ?? 0);
+  return clamp(Math.round(flooredScore), 0, 100);
 }
 
 export function scoreToLevel(score: number, isSelf: boolean): ImportanceLevel {
@@ -75,11 +77,24 @@ export function computeImportance(inputs: ImportanceInputs): ImportanceResult {
 function relationshipTypeWeight(type: string | null | undefined): number {
   if (!type) return 0.2;
   const t = type.toLowerCase();
+  if (/mother|father|mom|dad|parent|child|daughter|son|grand|abuela|abuelo|grandmother|grandfather|spouse|wife|husband/.test(t)) return 1;
+  if (/sibling|brother|sister/.test(t)) return 0.95;
   if (FAMILY_REL.test(t)) return 0.9;
   if (/partner|romantic|spouse|boyfriend|girlfriend|wife|husband|crush|lover/.test(t)) return 0.85;
   if (/mentor|boss|manager|colleague|work|professional/.test(t)) return 0.5;
   if (/friend|close/.test(t)) return 0.65;
   return 0.3;
+}
+
+function structuralFamilyFloor(name: string, relationshipTypes: string[]): number {
+  const text = [name, ...relationshipTypes].join(' ').toLowerCase();
+  if (/mother|father|mom|dad|parent|grand|abuela|abuelo|grandmother|grandfather|child|daughter|son|spouse|wife|husband/.test(text)) {
+    return 65;
+  }
+  if (/sibling|brother|sister/.test(text)) return 60;
+  if (/t[ií]o|t[ií]a|uncle|aunt/.test(text)) return 50;
+  if (/cousin|family/.test(text)) return 40;
+  return 0;
 }
 
 async function gatherInputs(userId: string, characterId: string): Promise<ImportanceInputs> {
@@ -169,6 +184,7 @@ async function gatherInputs(userId: string, characterId: string): Promise<Import
     isFamily,
     isSelf,
     relationshipTypeWeight: maxRelWeight,
+    structuralImportanceFloor: structuralFamilyFloor(name, relTypes),
   };
 }
 

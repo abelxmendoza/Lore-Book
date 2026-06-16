@@ -33,6 +33,7 @@ import {
 } from '../utils/disambiguationUtils';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { isCollectivePersonName } from '../utils/personNameValidation';
+import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 
 import { supabaseAdmin } from './supabaseClient';
 
@@ -128,8 +129,13 @@ class CharacterRegistry {
     if (NON_PERSON_NAME_PATTERNS.some(pattern => pattern.test(name))) return { ok: false, reason: 'non_person_name' };
 
     const mentionKind = classifyMentionKind(name, raw);
-    if (mentionKind.kind !== 'person') {
+    if (mentionKind.kind !== 'person' && mentionKind.kind !== 'unknown') {
       return { ok: false, reason: mentionKind.reason ?? mentionKind.kind };
+    }
+
+    const classification = classifyEntity(name, raw);
+    if (!isCharacterEligible(classification.type) && !isUnknownEntity(classification.type)) {
+      return { ok: false, reason: classification.reason };
     }
 
     // More than 5 tokens after cleaning is a sentence fragment, not a name

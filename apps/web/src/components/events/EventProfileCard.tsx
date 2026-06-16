@@ -297,15 +297,15 @@ export const EventProfileCard = ({ event, onClick }: EventProfileCardProps) => {
           )}
         </div>
 
-        {/* Source count */}
+        {/* Evidence count — always visible as trust anchor */}
         {event.source_count > 0 && (
-          <div className="hidden sm:block">
+          <div>
             <Tooltip
-              content={`${event.source_count} conversation${event.source_count === 1 ? '' : 's'} mention this event. More sources = higher confidence.`}
+              content={`${event.source_count} message${event.source_count === 1 ? '' : 's'} back this moment. More evidence = higher confidence.`}
               side="top"
             >
-              <span className="text-[9px] text-white/30 cursor-help hover:text-white/50 transition-colors">
-                {event.source_count} {event.source_count === 1 ? 'source' : 'sources'}
+              <span className="text-[10px] text-white/45 cursor-help hover:text-white/65 transition-colors">
+                {event.source_count} evidence
               </span>
             </Tooltip>
           </div>

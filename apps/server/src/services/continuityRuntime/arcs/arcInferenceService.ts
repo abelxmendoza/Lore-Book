@@ -88,19 +88,26 @@ function inferTrack(candidate: RawCandidate, arcType: ArcType): TrackType {
   }
   if (arcType === 'location') return 'inner';
 
-  // life_era / custom: infer from activities and entity names
-  const hasHealth = [...HEALTH_ACTIVITIES].some(a => activities.has(a));
-  const hasRelationship = [...RELATIONSHIP_ENTITIES].some(r => names.includes(r));
-  const hasCreative = ['writing', 'music', 'photography', 'drawing', 'painting'].some(a => activities.has(a));
-  const hasCareer = [...WORK_ACTIVITIES].some(a => activities.has(a));
+  // life_era / custom: pick the strongest single domain (never dump everything into mixed).
+  const scores: Record<TrackType, number> = {
+    health: [...HEALTH_ACTIVITIES].some(a => activities.has(a)) ? 1 : 0,
+    relationships: [...RELATIONSHIP_ENTITIES].some(r => names.includes(r)) ? 1 : 0,
+    creative: ['writing', 'music', 'photography', 'drawing', 'painting'].some(a => activities.has(a)) ? 1 : 0,
+    career: [...WORK_ACTIVITIES].some(a => activities.has(a)) ? 1 : 0,
+    inner: 0,
+    mixed: 0,
+  };
 
-  const signals = [hasHealth, hasRelationship, hasCreative, hasCareer].filter(Boolean).length;
-  if (signals > 1) return 'mixed';
-  if (hasHealth) return 'health';
-  if (hasRelationship) return 'relationships';
-  if (hasCreative) return 'creative';
-  if (hasCareer) return 'career';
-  return 'inner';
+  const ranked: TrackType[] = ['relationships', 'career', 'health', 'creative'];
+  let best: TrackType = 'inner';
+  let bestScore = 0;
+  for (const track of ranked) {
+    if (scores[track] > bestScore) {
+      bestScore = scores[track];
+      best = track;
+    }
+  }
+  return bestScore > 0 ? best : 'inner';
 }
 
 /**

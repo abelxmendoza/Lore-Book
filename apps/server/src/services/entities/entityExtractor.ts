@@ -1,6 +1,39 @@
 import { logger } from '../../logger';
 
 import type { ExtractedEntity, EntityType } from './types';
+import { classifyEntity } from './entityClassifier';
+
+function toLegacyEntityType(name: string, context: string): EntityType {
+  const classification = classifyEntity(name, context);
+  switch (classification.type) {
+    case 'PERSON':
+      return 'person';
+    case 'PLACE':
+    case 'LOCATION':
+    case 'HOUSEHOLD':
+      return 'place';
+    case 'ORGANIZATION':
+    case 'COMPANY':
+    case 'GROUP':
+    case 'FAMILY':
+    case 'BRAND':
+      return 'org';
+    case 'EVENT':
+      return 'event';
+    case 'PRODUCT':
+    case 'APP':
+    case 'PROJECT':
+    case 'SKILL':
+    case 'PET':
+    case 'VEHICLE':
+    case 'MEDIA':
+    case 'FOOD_DRINK':
+      return 'thing';
+    case 'UNKNOWN':
+    case 'UNCLASSIFIED':
+      return 'unknown';
+  }
+}
 
 /**
  * Extracts entities from journal entries using rule-based patterns
@@ -49,9 +82,10 @@ export class EntityExtractor {
           for (const match of matches) {
             const name = match[1] || match[0];
             if (name && name.length > 1) {
+              const type = toLegacyEntityType(name.trim(), text);
               out.push({
                 raw: name.trim(),
-                type: 'person',
+                type,
                 memoryId: entry.id,
                 timestamp: entry.date || entry.created_at || entry.timestamp,
                 userId: entry.user_id,

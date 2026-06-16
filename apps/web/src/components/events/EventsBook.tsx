@@ -1,13 +1,13 @@
 // =====================================================
-// EVENTS BOOK
-// Purpose: Full-page chronicle of important life events
+// LIFE LOG (EventsBook)
+// Purpose: Browse life as moments — scenes from conversations with evidence
 // =====================================================
 
 import { useState, useEffect, useMemo } from 'react';
 import {
   Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
   RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
-  Music2, Building2, Briefcase, Plane, Heart, List,
+  Music2, Building2, Briefcase, Plane, Heart, List, LayoutGrid,
   CalendarDays, Repeat2, Star, TrendingUp, BookOpen,
 } from 'lucide-react';
 import {
@@ -64,7 +64,8 @@ type RecurringScene = {
   timeline_candidate?: boolean;
 };
 
-type ViewMode = 'events' | 'memories' | 'timeline' | 'calendar' | 'recurring';
+type ViewMode = 'events' | 'calendar' | 'recurring';
+type MomentsLayout = 'grid' | 'timeline' | 'facts';
 type EventCategory = 'all' | 'recent' | 'birthdays' | 'parties' | 'concerts_shows' | 'conventions' | 'work' | 'travel' | 'family' | 'festivals' | 'with_people' | 'with_locations';
 type ImpactFilter = 'all' | 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
 type SignificanceFilter = 'all' | 'major' | 'moderate' | 'minor';
@@ -133,12 +134,16 @@ const SIGNIFICANCE_CHIPS: { value: SignificanceFilter; label: string; activeClas
   { value: 'minor', label: 'Minor', activeClass: 'bg-slate-500/20 text-slate-400 border-slate-500/40' },
 ];
 
-const VIEWS: { value: ViewMode; label: string; icon: React.ElementType; soon?: boolean }[] = [
-  { value: 'events', label: 'Events', icon: Calendar },
-  { value: 'memories', label: 'Memories', icon: BookOpen },
-  { value: 'timeline', label: 'Timeline', icon: List },
-  { value: 'recurring', label: 'Recurring Scenes', icon: Repeat2 },
+const VIEWS: { value: ViewMode; label: string; icon: React.ElementType }[] = [
+  { value: 'events', label: 'Moments', icon: Sparkles },
   { value: 'calendar', label: 'Calendar', icon: CalendarDays },
+  { value: 'recurring', label: 'Patterns', icon: Repeat2 },
+];
+
+const MOMENTS_LAYOUTS: { value: MomentsLayout; label: string; icon: React.ElementType }[] = [
+  { value: 'grid', label: 'Browse', icon: LayoutGrid },
+  { value: 'timeline', label: 'Timeline', icon: List },
+  { value: 'facts', label: 'Search facts', icon: BookOpen },
 ];
 
 // ─── Keyword matching ─────────────────────────────────────────────────────────
@@ -498,6 +503,7 @@ const MOCK_SCENES: RecurringScene[] = [
 
 export const EventsBook: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('events');
+  const [momentsLayout, setMomentsLayout] = useState<MomentsLayout>('grid');
   const { entries = [] } = useLoreKeeper();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
@@ -794,24 +800,26 @@ export const EventsBook: React.FC = () => {
                 Life Log
               </p>
               <h2 className="mt-1 text-xl sm:text-2xl font-semibold text-white">
-                Memories, events, and moments in one place
+                Your life, scene by scene
               </h2>
               <p className="mt-1 max-w-3xl text-sm text-white/55">
-                Use Memories for raw chats and journal entries, Events for parties/festivals/weddings and other real-world happenings, and Recurring Scenes for patterns LoreBook detects over time.
+                Browse <strong className="font-medium text-white/70">Moments</strong> — scenes from your conversations with people, places, and meaning.
+                Use <strong className="font-medium text-white/70">Search facts</strong> for atomic details inside those moments.
+                <strong className="font-medium text-white/70"> Patterns</strong> shows rhythms LoreBook notices over time.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[16rem]">
               <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                 <p className="text-lg font-semibold text-white">{events.length}</p>
-                <p className="text-[10px] uppercase tracking-wide text-white/35">Events</p>
+                <p className="text-[10px] uppercase tracking-wide text-white/35">Moments</p>
               </div>
               <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
                 <p className="text-lg font-semibold text-white">{recurringScenes.length}</p>
-                <p className="text-[10px] uppercase tracking-wide text-white/35">Scenes</p>
+                <p className="text-[10px] uppercase tracking-wide text-white/35">Patterns</p>
               </div>
               <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                <p className="text-lg font-semibold text-white">{activeFilterCount}</p>
-                <p className="text-[10px] uppercase tracking-wide text-white/35">Filters</p>
+                <p className="text-lg font-semibold text-white">{memoryCards.length}</p>
+                <p className="text-[10px] uppercase tracking-wide text-white/35">Facts</p>
               </div>
             </div>
           </div>
@@ -833,36 +841,55 @@ export const EventsBook: React.FC = () => {
       )}
 
       {/* ── Views nav ── */}
-      <div className="flex items-center gap-1 p-1 bg-black/40 border border-border/50 rounded-lg w-full sm:w-auto sm:inline-flex">
-        {VIEWS.map(({ value, label, icon: Icon, soon }) => (
-          <button
-            key={value}
-            onClick={() => !soon && setViewMode(value)}
-            disabled={soon}
-            className={`
-              flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors flex-1 sm:flex-none justify-center
-              ${viewMode === value
-                ? 'bg-primary/20 text-primary'
-                : soon
-                ? 'text-white/25 cursor-not-allowed'
-                : 'text-white/50 hover:text-white/80 hover:bg-white/5'
-              }
-            `}
-          >
-            <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-            <span className="hidden sm:inline">{label}</span>
-            {soon && <span className="text-[9px] text-white/20 ml-0.5 hidden sm:inline">soon</span>}
-          </button>
-        ))}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-1 p-1 bg-black/40 border border-border/50 rounded-lg w-full sm:w-auto sm:inline-flex">
+          {VIEWS.map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              onClick={() => setViewMode(value)}
+              className={`
+                flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors flex-1 sm:flex-none justify-center
+                ${viewMode === value
+                  ? 'bg-primary/20 text-primary'
+                  : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+                }
+              `}
+            >
+              <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {viewMode === 'events' && (
+          <div className="flex items-center gap-1 p-1 bg-black/25 border border-border/40 rounded-lg w-full sm:w-auto sm:inline-flex">
+            {MOMENTS_LAYOUTS.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                onClick={() => setMomentsLayout(value)}
+                className={`
+                  flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors flex-1 sm:flex-none justify-center
+                  ${momentsLayout === value
+                    ? 'bg-white/10 text-white'
+                    : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                  }
+                `}
+              >
+                <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="hidden sm:inline">{label}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* ── Event search + filters ── */}
-      {viewMode === 'events' && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      {/* ── Moment search + filters (grid layout only) ── */}
+      {viewMode === 'events' && momentsLayout === 'grid' && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
           <Input
             type="text"
-            placeholder="Search events by title, person, place, or activity…"
+            placeholder="Search moments by title, person, place, or activity…"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="pl-10 bg-black/40 border-border/50 text-white placeholder:text-white/35 text-sm"
@@ -871,7 +898,7 @@ export const EventsBook: React.FC = () => {
         <div className="flex items-center gap-2">
           <select
             value={sortBy}
-            title="Sort events"
+            title="Sort moments"
             onChange={e => setSortBy(e.target.value as SortOption)}
             className="h-9 px-2 sm:px-3 bg-black/40 border border-border/50 rounded-lg text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 flex-shrink-0"
           >
@@ -912,7 +939,7 @@ export const EventsBook: React.FC = () => {
       </div>}
 
       {/* ── Category filter chips ── */}
-      {viewMode === 'events' && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5">
+      {viewMode === 'events' && momentsLayout === 'grid' && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5">
         {CATEGORY_CHIPS.map(({ value, label, icon: Icon, shortLabel }) => (
           <button
             key={value}
@@ -933,7 +960,7 @@ export const EventsBook: React.FC = () => {
       </div>}
 
       {/* ── Impact filter chips ── */}
-      {viewMode === 'events' && showFilters && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5">
+      {viewMode === 'events' && momentsLayout === 'grid' && showFilters && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5">
         {IMPACT_CHIPS.map(({ value, label, activeClass }) => (
           <button
             key={value}
@@ -952,7 +979,7 @@ export const EventsBook: React.FC = () => {
       </div>}
 
       {/* ── Significance filter chips ── */}
-      {viewMode === 'events' && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5 items-center">
+      {viewMode === 'events' && momentsLayout === 'grid' && <div className="flex flex-wrap justify-center sm:justify-start gap-1.5 items-center">
         <span className="text-[10px] text-white/25 font-medium uppercase tracking-wide">Scale</span>
         {SIGNIFICANCE_CHIPS.map(({ value, label, activeClass }) => (
           <button
@@ -972,7 +999,7 @@ export const EventsBook: React.FC = () => {
       </div>}
 
       {/* ── Advanced filters panel ── */}
-      {viewMode === 'events' && showFilters && (
+      {viewMode === 'events' && momentsLayout === 'grid' && showFilters && (
         <Card className="bg-black/80 border border-primary/25">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-4">
@@ -1130,16 +1157,16 @@ export const EventsBook: React.FC = () => {
       )}
 
       {/* ── Results summary ── */}
-      {viewMode === 'events' && <div className="flex items-center justify-between text-xs text-white/40">
+      {viewMode === 'events' && momentsLayout === 'grid' && <div className="flex items-center justify-between text-xs text-white/40">
         <span>
-          {filteredEvents.length === 0 ? 'No events' : `${startIndex + 1}–${Math.min(startIndex + ITEMS_PER_PAGE, filteredEvents.length)} of ${filteredEvents.length}`}
+          {filteredEvents.length === 0 ? 'No moments' : `${startIndex + 1}–${Math.min(startIndex + ITEMS_PER_PAGE, filteredEvents.length)} of ${filteredEvents.length}`}
           {filteredEvents.length !== events.length && <span className="ml-1 text-primary/60">({events.length} total)</span>}
         </span>
         {totalPages > 1 && <span>Page {currentPage} of {totalPages}</span>}
       </div>}
 
-      {/* ══ EVENTS VIEW ══ */}
-      {viewMode === 'events' && (
+      {/* ══ MOMENTS — GRID ══ */}
+      {viewMode === 'events' && momentsLayout === 'grid' && (
         loading ? (
           <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
             {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
@@ -1149,8 +1176,8 @@ export const EventsBook: React.FC = () => {
         ) : filteredEvents.length === 0 ? (
           <div className="text-center py-12 text-white/50">
             <Sparkles className="h-10 w-10 mx-auto mb-3 text-white/15" />
-            <p className="text-base font-medium mb-1">No events found</p>
-            <p className="text-sm text-white/35">Try adjusting your filters or search</p>
+            <p className="text-base font-medium mb-1">No moments found</p>
+            <p className="text-sm text-white/35">Keep chatting — LoreBook groups scenes from your conversations automatically</p>
             {(activeFilterCount > 0 || searchTerm || activeCategory !== 'all' || impactFilter !== 'all' || significanceFilter !== 'all') && (
               <Button variant="outline" size="sm" onClick={clearFilters} className="mt-4 text-xs">
                 Clear All Filters
@@ -1199,16 +1226,23 @@ export const EventsBook: React.FC = () => {
         )
       )}
 
-      {/* ══ TIMELINE VIEW ══ */}
-      {viewMode === 'timeline' && (
+      {/* ══ MOMENTS — TIMELINE ══ */}
+      {viewMode === 'events' && momentsLayout === 'timeline' && (
         <div className="mt-2">
           <ColorCodedTimeline />
         </div>
       )}
 
-      {/* ══ MEMORIES VIEW ══ */}
-      {viewMode === 'memories' && (
+      {/* ══ MOMENTS — FACT SEARCH ══ */}
+      {viewMode === 'events' && momentsLayout === 'facts' && (
         <div className="mt-2 rounded-xl border border-border/50 bg-black/25 p-3 sm:p-4">
+          <div className="mb-3">
+            <p className="text-sm font-medium text-white">Search facts</p>
+            <p className="text-xs text-white/45 mt-0.5">
+              Atomic details extracted from your moments — journal entries, chat facts, and linked claims.
+              Every fact belongs inside a moment.
+            </p>
+          </div>
           <MemoryExplorer />
         </div>
       )}
@@ -1227,7 +1261,7 @@ export const EventsBook: React.FC = () => {
                     {format(calendarMonth, 'MMMM yyyy')}
                   </h3>
                   <p className="text-xs text-white/45 mt-0.5">
-                    Named occasions, events you attended or heard about, and memories — with times.
+                    Moments, named occasions, and facts — with times.
                     {calendarApiLoading && ' Loading…'}
                   </p>
                 </div>
@@ -1420,7 +1454,7 @@ export const EventsBook: React.FC = () => {
                 </div>
               ) : selectedCalendarItems.length === 0 ? (
                 <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4 text-sm text-white/45">
-                  No memories or events recorded for this day.
+                  No moments or facts recorded for this day.
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1439,7 +1473,7 @@ export const EventsBook: React.FC = () => {
                           <div className="flex items-center gap-2 mb-1">
                             <span className={`h-2 w-2 rounded-full ${item.kind === 'event' ? 'bg-cyan-300' : 'bg-amber-300'}`} />
                             <span className="text-[10px] uppercase tracking-wide text-white/35">
-                              {item.kind === 'event' ? 'Event' : 'Memory'}
+                              {item.kind === 'event' ? 'Moment' : 'Fact'}
                             </span>
                           </div>
                           <p className="text-sm font-medium text-white truncate">{item.title}</p>
@@ -1468,7 +1502,7 @@ export const EventsBook: React.FC = () => {
         </div>
       )}
 
-      {/* ══ RECURRING SCENES ══ */}
+      {/* ══ PATTERNS ══ */}
       {viewMode === 'recurring' && (
         <div className="space-y-5">
           {/* Header */}
@@ -1476,10 +1510,10 @@ export const EventsBook: React.FC = () => {
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Repeat2 className="h-5 w-5 text-primary/70" />
-                Recurring Scenes
+                Patterns
               </h2>
               <p className="text-xs text-white/40 mt-1">
-                Patterns LoreBook has noticed repeating across your life
+                Recurring rhythms LoreBook notices across your life — Sunday calls, weekly rituals, familiar places
               </p>
             </div>
             <Button

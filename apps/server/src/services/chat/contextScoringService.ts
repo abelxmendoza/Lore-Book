@@ -643,6 +643,15 @@ export function scoreContext(
   // ── allPeoplePlaces: passed through (used internally, not in prompt) ─────────
   filtered.allPeoplePlaces = loreData.allPeoplePlaces;
 
+  // ── Working Memory: authoritative per-turn packet, already budgeted/scored ──
+  // Do not re-score or drop it here; this layer is a final prompt-size guard for
+  // older broad lore blocks, while Working Memory has its own budget and reasons.
+  filtered.foundationRecallBlock = loreData.foundationRecallBlock;
+  filtered.foundationRelationships = loreData.foundationRelationships;
+  filtered.foundationTimeline = loreData.foundationTimeline;
+  filtered.workingMemory = loreData.workingMemory;
+  filtered.workingMemoryPacket = loreData.workingMemoryPacket;
+
   // ── Compute final stats ─────────────────────────────────────────────────────
   const reductionPct = tokensBefore > 0
     ? Math.round(((tokensBefore - tokensAfter) / tokensBefore) * 100)

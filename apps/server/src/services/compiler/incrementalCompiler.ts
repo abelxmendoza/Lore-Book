@@ -62,7 +62,7 @@ export class IncrementalCompiler {
       // Re-extract emotions and themes (cheap - uses enrichment service)
       const enrichment = await entryEnrichmentService.enrichEntry(
         content,
-        entities.map(e => ({ id: e.entity_id, type: 'person' }))
+        entities.map(e => ({ id: e.entity_id, type: e.type ?? 'unknown' }))
       );
 
       const emotions = enrichment.emotions.map(emotion => ({
@@ -117,7 +117,8 @@ export class IncrementalCompiler {
       return resolved.map(entity => ({
         entity_id: entity.id,
         mention_text: entity.primary_name,
-        confidence: entity.confidence || 0.7,
+        type: entity.type,
+        confidence: (entity as any).confidence || 0.7,
       }));
     } catch (error) {
       // FIX 3: Never downgrade errors - throw instead of returning empty
@@ -132,7 +133,7 @@ export class IncrementalCompiler {
    */
   private recomputeConfidence(
     ir: EntryIR,
-    entities: Array<{ entity_id: string; mention_text: string; confidence: number }>,
+    entities: Array<{ entity_id: string; mention_text: string; type?: string; confidence: number }>,
     emotions: Array<{ emotion: string; intensity: number; confidence: number }>,
     themes: Array<{ theme: string; confidence: number }>
   ): number {

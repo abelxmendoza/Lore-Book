@@ -25,6 +25,46 @@ import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 
+function characterNameKeys(row: { name: string; alias?: string[] | null }): Set<string> {
+  return new Set([row.name, ...((row.alias ?? []) as string[])].filter(Boolean).map(normalizeNameKey));
+}
+
+function duplicateConfidence(
+  left: { name: string; alias?: string[] | null },
+  right: { name: string; alias?: string[] | null }
+): { match_type: 'exact' | 'alias' | 'containment'; confidence: number; recommendation: 'merge' | 'review'; reason: string } | null {
+  const leftKeys = characterNameKeys(left);
+  const rightKeys = characterNameKeys(right);
+  const overlap = [...leftKeys].filter(key => rightKeys.has(key));
+  if (overlap.length > 0) {
+    const primaryOverlap = normalizeNameKey(left.name) === normalizeNameKey(right.name);
+    return {
+      match_type: primaryOverlap ? 'exact' : 'alias',
+      confidence: primaryOverlap ? 0.98 : 0.92,
+      recommendation: 'merge',
+      reason: primaryOverlap ? 'same canonical name' : 'name/alias overlap',
+    };
+  }
+
+  const leftKey = normalizeNameKey(left.name);
+  const rightKey = normalizeNameKey(right.name);
+  if (namesOverlapByContainment(leftKey, rightKey)) {
+    const shortKey = leftKey.length <= rightKey.length ? leftKey : rightKey;
+    const longKey = leftKey.length > rightKey.length ? leftKey : rightKey;
+    const kinshipAmbiguity = /\b(tio|tia|uncle|aunt|mom|mother|dad|father|grandma|grandpa)\b/.test(longKey);
+    return {
+      match_type: 'containment',
+      confidence: kinshipAmbiguity ? 0.55 : 0.72,
+      recommendation: 'review',
+      reason: kinshipAmbiguity
+        ? 'shared name with kinship/context prefix; requires user confirmation'
+        : `contained name "${shortKey}" appears inside "${longKey}"`,
+    };
+  }
+
+  return null;
+}
+
 const createCharacterSchema = z.object({
   name: z.string().min(1),
   firstName: z.string().optional(),
@@ -695,6 +735,9 @@ router.get('/duplicates', requireAuth, async (req: AuthenticatedRequest, res) =>
       .filter(([, chars]) => chars.length > 1)
       .map(([canonical_name, characters]) => ({
         match_type: 'exact',
+        confidence: 0.98,
+        recommendation: 'merge',
+        reason: 'same canonical name',
         canonical_name,
         characters,
       }));
@@ -704,15 +747,19 @@ router.get('/duplicates', requireAuth, async (req: AuthenticatedRequest, res) =>
       for (let j = i + 1; j < rows.length; j++) {
         const left = rows[i];
         const right = rows[j];
-        const leftKey = normalizeNameKey(left.name);
-        const rightKey = normalizeNameKey(right.name);
-        if (leftKey === rightKey || !namesOverlapByContainment(leftKey, rightKey)) continue;
         const pairKey = [left.id, right.id].sort().join(':');
         if (seenPairs.has(pairKey)) continue;
+        const score = duplicateConfidence(left, right);
+        if (!score || score.match_type === 'exact') continue;
         seenPairs.add(pairKey);
         groups.push({
-          match_type: 'containment',
-          canonical_name: leftKey.length <= rightKey.length ? leftKey : rightKey,
+          match_type: score.match_type,
+          confidence: score.confidence,
+          recommendation: score.recommendation,
+          reason: score.reason,
+          canonical_name: normalizeNameKey(left.name).length <= normalizeNameKey(right.name).length
+            ? normalizeNameKey(left.name)
+            : normalizeNameKey(right.name),
           characters: [left, right],
         });
       }

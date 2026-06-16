@@ -10,6 +10,8 @@ import { detectContentType } from '../utils/contentTypeDetection';
 import { memoirService } from './memoirService';
 import { memoryService } from './memoryService';
 import { peoplePlacesService } from './peoplePlacesService';
+import { characterRegistry } from './characterRegistry';
+import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 import { supabaseAdmin } from './supabaseClient';
 
 
@@ -249,6 +251,18 @@ Detection patterns to look for:
     let created = 0;
     for (const char of characters) {
       try {
+        const classification = classifyEntity(char.name, [char.description, ...(char.relationships ?? [])].filter(Boolean).join(' '));
+        if (!isCharacterEligible(classification.type) && !isUnknownEntity(classification.type)) {
+          logger.debug({ name: char.name, classification }, 'Skipping non-person document entity');
+          continue;
+        }
+        const decision = await characterRegistry.classifyForCreation(userId, char.name);
+        if (decision.action === 'reject' || decision.action === 'defer') continue;
+        if (decision.action === 'merge') {
+          await characterRegistry.mergeMention(userId, decision.characterId, decision.cleanName, { document_imported: true });
+          continue;
+        }
+
         const id = uuid();
         
         // Generate avatar URL
@@ -268,7 +282,7 @@ Detection patterns to look for:
           .upsert({
             id,
             user_id: userId,
-            name: char.name,
+            name: decision.cleanName,
             summary: char.description || null,
             avatar_url: avatarUrl,
             metadata: {

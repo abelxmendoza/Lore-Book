@@ -42,7 +42,7 @@ export class IRCompiler {
       const entities = await this.extractEntities(userId, normalized);
 
       // Extract emotions and themes (using enrichment service)
-      const enrichment = await entryEnrichmentService.enrichEntry(normalized, entities.map(e => ({ id: e.entity_id, type: 'person' })));
+      const enrichment = await entryEnrichmentService.enrichEntry(normalized, entities.map(e => ({ id: e.entity_id, type: e.type ?? 'unknown' })));
       
       const emotions: EmotionSignal[] = enrichment.emotions.map(emotion => ({
         emotion,
@@ -280,6 +280,7 @@ export class IRCompiler {
       return resolved.map(entity => ({
         entity_id: entity.id,
         mention_text: entity.primary_name,
+        type: entity.type,
         confidence: (entity as any).confidence ?? 0.7,
       }));
     } catch (error) {

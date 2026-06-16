@@ -94,7 +94,7 @@ export class SymbolResolver {
         return {
           id: randomUUID(),
           canonical_name: entityRef.mention_text,
-          entity_type: 'PERSON',
+          entity_type: 'CONCEPT',
           aliases: [],
           confidence: entityRef.confidence,
           introduced_by_entry_id: entryIR.id,
@@ -121,7 +121,7 @@ export class SymbolResolver {
       return {
         id: randomUUID(),
         canonical_name: entityRef.mention_text,
-        entity_type: 'PERSON',
+        entity_type: 'CONCEPT',
         aliases: [],
         confidence: entityRef.confidence,
         introduced_by_entry_id: entryIR.id,
@@ -144,7 +144,7 @@ export class SymbolResolver {
       concept: 'CONCEPT',
     };
 
-    return mapping[dbType.toLowerCase()] || 'PERSON';
+    return mapping[dbType.toLowerCase()] || 'CONCEPT';
   }
 
   /**

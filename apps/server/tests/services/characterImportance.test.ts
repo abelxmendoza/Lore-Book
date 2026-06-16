@@ -48,6 +48,28 @@ describe('characterImportanceService', () => {
     expect(computeImportanceScore({ ...base, isSelf: true })).toBe(100);
   });
 
+  it('floors structurally important family above random scene contacts', () => {
+    const mom = computeImportance({
+      ...base,
+      mentionCount: 1,
+      distinctMemories: 1,
+      isFamily: true,
+      relationshipTypeWeight: 1,
+      structuralImportanceFloor: 65,
+    });
+
+    const sceneContact = computeImportance({
+      ...base,
+      mentionCount: 1,
+      distinctMemories: 1,
+      relationshipTypeWeight: 0.2,
+    });
+
+    expect(mom.importanceScore).toBeGreaterThanOrEqual(65);
+    expect(mom.importanceScore).toBeGreaterThan(sceneContact.importanceScore);
+    expect(mom.importanceLevel).toMatch(/major|legendary/);
+  });
+
   it('is deterministic', () => {
     const inputs = { ...base, mentionCount: 5, distinctMemories: 2, isFamily: true };
     expect(computeImportance(inputs)).toEqual(computeImportance(inputs));

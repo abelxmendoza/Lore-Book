@@ -99,8 +99,13 @@ function getTokenSync(): string | null {
   }
 }
 
-// ── Pending-save record ───────────────────────────────────────────────────────
 type PendingSave = { timer: ReturnType<typeof setTimeout>; snap: any[] };
+
+function sortThreadsByActivity(threads: ChatThread[]): ChatThread[] {
+  return [...threads].sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
+}
 
 export const useChatThreads = () => {
   const { user, loading: authLoading } = useAuth();
@@ -374,13 +379,14 @@ export const useChatThreads = () => {
         }
         if (messages.length === 0) return null;
 
-        const updatedAt =
-          ensuredMeta.updatedAt ??
-          messages[messages.length - 1].timestamp.toISOString();
-
         let hydratedThread: ChatThread | null = null;
         setThreads((prev) => {
           const row = prev.find((t) => t.id === id);
+          const updatedAt =
+            ensuredMeta.updatedAt ??
+            row?.updatedAt ??
+            existing?.updatedAt ??
+            messages[messages.length - 1].timestamp.toISOString();
           hydratedThread = {
             id,
             title: ensuredMeta.title || row?.title || existing?.title || 'Restored chat',
@@ -391,8 +397,7 @@ export const useChatThreads = () => {
           };
 
           if (row) {
-            const next = prev.map((t) => (t.id === id ? { ...t, ...hydratedThread! } : t));
-            return [next.find((t) => t.id === id)!, ...next.filter((t) => t.id !== id)];
+            return prev.map((t) => (t.id === id ? { ...t, ...hydratedThread! } : t));
           }
           return [hydratedThread, ...prev];
         });
@@ -428,8 +433,13 @@ export const useChatThreads = () => {
       dominantEntities?: string[];
       messages?: Message[];
       updatedAt?: string;
+      /** Bump sidebar ordering — only on new message activity, never on open/hydrate sync */
+      touchActivity?: boolean;
     }) => {
-      const updatedAt = payload.updatedAt ?? new Date().toISOString();
+      const touchActivity = payload.touchActivity === true;
+      const updatedAt = touchActivity
+        ? (payload.updatedAt ?? new Date().toISOString())
+        : undefined;
       let derivedTitle: string | undefined;
       if (payload.title === undefined && payload.messages !== undefined) {
         const current = threadsRef.current.find((t) => t.id === id);
@@ -452,12 +462,13 @@ export const useChatThreads = () => {
                 ...(payload.subtitle !== undefined && { subtitle: payload.subtitle }),
                 ...(payload.dominantEntities !== undefined && { dominantEntities: payload.dominantEntities }),
                 ...(payload.messages !== undefined && { messages: payload.messages }),
-                updatedAt,
+                ...(updatedAt !== undefined && { updatedAt }),
               }
             : t
         );
-        if (!isAuthenticated) persistLocal(next, currentThreadIdRef.current);
-        return next;
+        const sorted = touchActivity ? sortThreadsByActivity(next) : next;
+        if (!isAuthenticated) persistLocal(sorted, currentThreadIdRef.current);
+        return sorted;
       });
 
       if (isAuthenticated) {
@@ -488,7 +499,10 @@ export const useChatThreads = () => {
               threadPersistenceTracker.markPersisting(id);
               fetchJson(`/api/conversation/threads/${id}`, {
                 method: 'PATCH',
-                body: JSON.stringify({ messages: snap }),
+                body: JSON.stringify({
+                  messages: snap,
+                  ...(touchActivity ? { touchActivity: true } : {}),
+                }),
               }).then(() => {
                 threadPersistenceTracker.markPersisted(id);
               }).catch((err: unknown) => {

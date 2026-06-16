@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 
 import { config } from '../config';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { threadRecoveryService } from '../services/conversationCentered/threadRecoveryService';
 import { cognitionHealthService } from '../services/cognitionHealthService';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { entityContinuityVerifier } from '../services/entityContinuityVerifier';
@@ -95,6 +96,36 @@ router.get('/cognition-health', requireAuth, async (_req: Request, res: Response
 });
 
 /**
+ * GET /api/diagnostics/thread-health
+ * Conversation durability metrics for the authenticated user (Task 10).
+ */
+router.get('/thread-health', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const report = await threadRecoveryService.getThreadHealth(userId);
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: 'Thread health check failed', detail: String(err) });
+  }
+});
+
+/**
+ * POST /api/diagnostics/thread-health/repair
+ * Auto-repair drifted/mis-ordered threads (rebuild snapshot from chat_messages,
+ * bump updated_at), then return the refreshed health report.
+ */
+router.post('/thread-health/repair', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const { repaired } = await threadRecoveryService.repairUser(userId);
+    const report = await threadRecoveryService.getThreadHealth(userId, repaired);
+    res.json({ repaired, report });
+  } catch (err) {
+    res.status(500).json({ error: 'Thread repair failed', detail: String(err) });
+  }
+});
+
+/**
  * GET /api/diagnostics/continuity-trace/:userId?limit=10&windowHours=24
  *
  * Dev-only runtime truth endpoint. Returns:
@@ -110,7 +141,11 @@ router.get('/continuity-trace/:userId', requireAuth, async (req: Request, res: R
     return res.status(403).json({ error: 'Dev-only endpoint — not available in production' });
   }
 
-  const { userId } = req.params;
+  const userIdParam = req.params.userId;
+  const userId = Array.isArray(userIdParam) ? userIdParam[0] : userIdParam;
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
   const limit = Math.min(parseInt(req.query.limit as string || '10', 10), 50);
   const windowHours = Math.min(parseInt(req.query.windowHours as string || '24', 10), 168);
 
@@ -450,6 +485,74 @@ router.get('/story-coverage', requireAuth, async (req: Request, res: Response) =
     return res.json(report);
   } catch (err) {
     return res.status(500).json({ error: 'Story coverage check failed', detail: String(err) });
+  }
+});
+
+/**
+ * POST /api/diagnostics/working-memory
+ *
+ * Returns the exact Working Memory assembly for a question, including selected
+ * and rejected memories, scores, budget allocation, and the prompt packet.
+ */
+router.post('/working-memory', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
+    const threadId = typeof req.body?.threadId === 'string' ? req.body.threadId : undefined;
+    const maxItems = Number.isFinite(Number(req.body?.maxItems))
+      ? Math.max(1, Math.min(50, Number(req.body.maxItems)))
+      : undefined;
+
+    if (!question) {
+      return res.status(400).json({ error: 'question is required' });
+    }
+
+    const { assembleWorkingMemory, buildWorkingMemoryPacket } = await import('../services/chat/workingMemoryAssembler');
+    const assembly = await assembleWorkingMemory({ userId, question, threadId }, { maxItems });
+    const packet = buildWorkingMemoryPacket(assembly);
+
+    return res.json({
+      question,
+      threadId: threadId ?? null,
+      intent: assembly.intent,
+      confidence: assembly.confidence,
+      entities: assembly.entities,
+      budget: assembly.budget,
+      selected: {
+        episodes: assembly.episodes,
+        events: assembly.events,
+        projects: assembly.projects,
+        relationships: assembly.relationships,
+        preferences: assembly.preferences,
+        timeline: assembly.timeline,
+      },
+      rejected: assembly.rejected,
+      packet,
+      reasoningPath: {
+        retrievalSystem: 'WorkingMemoryAssembler',
+        duplicateRecallRouterPass: false,
+        scoringFormula: '0.38 relevance + 0.18 importance + 0.16 recency + 0.14 significance + 0.08 relationship_distance + 0.06 confidence',
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Working memory diagnostic failed', detail: String(err) });
+  }
+});
+
+/**
+ * GET /api/diagnostics/memory-coverage
+ *
+ * Entity coverage audit: finds entities that exist but have no episodes,
+ * events, relationships, or evidence.
+ */
+router.get('/memory-coverage', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const { buildMemoryCoverageAudit } = await import('../services/diagnostics/memoryCoverageAudit');
+    const report = await buildMemoryCoverageAudit(userId);
+    return res.json(report);
+  } catch (err) {
+    return res.status(500).json({ error: 'Memory coverage audit failed', detail: String(err) });
   }
 });
 

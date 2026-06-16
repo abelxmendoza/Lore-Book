@@ -14,6 +14,7 @@ import { groupDetectionService } from './groupDetectionService';
 import { organizationService } from './organizationService';
 import type { GroupType, MembershipModel, UserRelationship } from './organizationService';
 import { organizationRelationshipInferenceService } from './organizationRelationshipInferenceService';
+import { nameHousehold } from './entities/householdNaming';
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -288,9 +289,10 @@ export class GroupCandidateService {
     const lasts = members.map(m => m.split(' ').slice(1).join(' ')).filter(Boolean);
 
     if (group.group_type === 'family') {
+      const householdName = nameHousehold(members.map(name => ({ name })));
+      if (householdName) return householdName;
       const surname = lasts.find(Boolean);
       if (surname && lasts.filter(l => l === surname).length >= 2) return `${surname} Family`;
-      if (firsts.length) return `${firsts.slice(0, 2).join(' & ')} Family`;
       return 'My Family';
     }
 

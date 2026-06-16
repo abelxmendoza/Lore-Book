@@ -12,12 +12,15 @@ import type {
 } from '../types';
 
 import { supabaseAdmin } from './supabaseClient';
+import { classifyEntity, toStorageType } from './entities/entityClassifier';
 
 const relationshipTags: RelationshipTag[] = ['friend', 'family', 'coach', 'romantic', 'professional', 'other'];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type EntityType = 'person' | 'place' | 'organization' | 'platform';
+// 'unclassified' and 'event' added so unknown/non-person entities are NOT forced
+// to 'person' (which promotes them to Character cards). See entityClassifier.ts.
+type EntityType = 'person' | 'place' | 'organization' | 'platform' | 'event' | 'unclassified';
 
 type DetectedEntity = {
   name: string;
@@ -171,36 +174,16 @@ class PeoplePlacesService {
   private inferType(name: string, context?: string): EntityType {
     const lower = name.toLowerCase();
 
-    // Known org/platform override (highest priority)
+    // Known org/platform override from the legacy lexicon (highest priority).
     const knownType = KNOWN_ORGANIZATIONS.get(lower);
     if (knownType) return knownType;
 
-    // Known city/region
-    if (KNOWN_CITIES.has(lower)) return 'place';
-
-    // Possessive location pattern: "Abuela's House" → place
-    // Only applies when the name itself ends with "House", "Park" etc.
-    // "Abuela" alone does NOT match — the possessive is on the modifying word.
-    const lastWord = lower.split(/\s+/).pop() ?? '';
-    if (LOCATION_SUFFIXES.includes(lastWord)) return 'place';
-
-    // Multi-word possessive location like "John's Cafe" → the suffix check above
-    // catches the final word. No further possessive heuristic needed here.
-
-    // Context clue: only use unambiguous prepositions ("in", "at") and require
-    // the name to appear immediately after without a possessive ('s).
-    // "in Anaheim" → place, but NOT "by Sol's actions" or "at Abuela's house"
-    // (those are people referenced via possessive, not location names).
-    if (context && name.length >= 4) {
-      const ctxLower = context.toLowerCase();
-      // Regex: preposition + whitespace + name + word boundary, NOT followed by 's
-      const placePattern = new RegExp(`\\b(?:in|at)\\s+${lower}(?!['']s)\\b`, 'i');
-      if (placePattern.test(ctxLower)) {
-        return 'place';
-      }
-    }
-
-    return 'person';
+    // Deterministic classifier (entityClassifier.ts). Crucially, an unknown
+    // proper noun returns 'unclassified' — NOT 'person' — so products, apps,
+    // places, households, and unknowns never get promoted to Character cards.
+    // PERSON is only returned when there is positive evidence (honorific,
+    // kinship, or a person-predicate in the surrounding text).
+    return toStorageType(classifyEntity(name, context).type);
   }
 
   private fallbackDetect(content: string): DetectedEntity[] {
@@ -317,7 +300,10 @@ class PeoplePlacesService {
         .filter((item: DetectedEntity) => Boolean(item?.name) && !this.isBlocked(item.name))
         .map((item: DetectedEntity) => ({
           name: this.normalizeName(item.name),
-          type: item.type ?? 'person',
+          // Re-run the deterministic classifier over the LLM's candidate so the
+          // model can never force an unknown into 'person' → Character. The LLM
+          // type is advisory; evidence-based classification wins.
+          type: toStorageType(classifyEntity(item.name, content).type),
           corrected_names: [],
         }));
     } catch (error) {

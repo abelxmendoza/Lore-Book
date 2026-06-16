@@ -3,7 +3,10 @@
  * Time-aware, truth-seeking knowledge system
  */
 
-export type EntityType = 'PERSON' | 'CHARACTER' | 'LOCATION' | 'ORG' | 'EVENT';
+export type EntityType =
+  | 'PERSON' | 'CHARACTER' | 'LOCATION' | 'ORG' | 'EVENT'
+  | 'PRODUCT' | 'APP' | 'BRAND' | 'PROJECT' | 'SKILL' | 'PET'
+  | 'VEHICLE' | 'MEDIA' | 'FOOD_DRINK' | 'UNKNOWN';
 export type ClaimSource = 'USER' | 'AI' | 'EXTERNAL';
 export type Sentiment = 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'MIXED';
 

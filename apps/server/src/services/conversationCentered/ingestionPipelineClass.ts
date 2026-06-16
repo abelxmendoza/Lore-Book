@@ -853,6 +853,10 @@ export class ConversationIngestionPipeline {
         experiences:     [] as Array<{ content: string; type: string }>,
       };
 
+      // Thread-intelligence collector (Phase 2): resolved entity names this turn,
+      // folded into conversation_sessions.metadata.threadMeta after Step 12.
+      const _threadMetaTurn = { people: [] as string[], places: [] as string[] };
+
       // Step 1: Save message (if not already saved)
       // Note: In practice, message might already be saved by chat service
       // This is a placeholder - adjust based on your chat service implementation
@@ -931,6 +935,14 @@ export class ConversationIngestionPipeline {
           const candidateEntities = await omegaMemoryService.extractEntities(fullNormalizedText);
           const resolved = await omegaMemoryService.resolveEntities(userId, candidateEntities);
           resolvedEntities.push(...resolved.map(e => ({ id: e.id, type: e.type })));
+
+          // Collect resolved names for thread metadata (people vs places).
+          for (const e of resolved) {
+            const name = (e as any).primary_name as string | undefined;
+            if (!name?.trim()) continue;
+            if (e.type === 'PERSON' || e.type === 'CHARACTER') _threadMetaTurn.people.push(name.trim());
+            else if (e.type === 'LOCATION') _threadMetaTurn.places.push(name.trim());
+          }
 
           // Promote PERSON/CHARACTER entities to characters table so they appear
           // in the Characters Book. USER messages only — assistant/RAG text must
@@ -2170,6 +2182,27 @@ export class ConversationIngestionPipeline {
         await this.updateThreadTimestamp(threadId);
       } catch (err) {
         logger.warn({ err, userId, threadId }, 'Failed to update thread timestamp, continuing');
+      }
+
+      // Step 12.5: Thread intelligence — fold this turn into the canonical
+      // thread metadata (Phase 2) and refresh living summaries if stale (Phase 1).
+      // Incremental, single store (conversation_sessions.metadata.threadMeta),
+      // never a full thread scan. Non-blocking.
+      try {
+        const { threadIntelligenceService } = await import('./threadIntelligenceService');
+        await threadIntelligenceService.updateOnMessage(userId, threadId, {
+          people: _threadMetaTurn.people,
+          places: _threadMetaTurn.places,
+          at: new Date().toISOString(),
+          addedMessages: 1,
+        });
+        // Summary regen is staleness-gated internally; fire-and-forget so it
+        // never blocks the chat turn.
+        import('./threadSummaryService').then(({ threadSummaryService }) => {
+          threadSummaryService.maybeRefresh(userId, threadId).catch(() => {});
+        }).catch(() => {});
+      } catch (err) {
+        logger.warn({ err, userId, threadId }, 'Thread intelligence update failed (non-blocking)');
       }
 
       // Step 12.13: Group candidate detection — non-blocking, fire-and-forget

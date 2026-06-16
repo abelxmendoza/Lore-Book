@@ -192,7 +192,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel p-4 sm:p-6">
         <div className="mb-4">
           <h2 className="text-xl sm:text-2xl font-semibold mb-2">Universal Timeline Search</h2>
-          <p className="text-xs sm:text-sm text-white/60">Search across people, places, skills, jobs, projects, eras, and more. Use Life Log for browsing memories and events.</p>
+          <p className="text-xs sm:text-sm text-white/60">Search across people, places, skills, jobs, projects, eras, and more. Use Life Log to browse moments from your life.</p>
         </div>
         <TimelineSearch />
       </div>

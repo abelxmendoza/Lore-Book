@@ -154,7 +154,10 @@ function withDemoAnalytics(rawChar: Character): Character {
 }
 
 type DuplicateGroup = {
-  match_type: 'exact' | 'containment';
+  match_type: 'exact' | 'alias' | 'containment';
+  confidence?: number;
+  recommendation?: 'merge' | 'review';
+  reason?: string;
   canonical_name: string;
   characters: Character[];
 };
@@ -3804,9 +3807,17 @@ export const CharacterBook = () => {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">
-                        {group.match_type === 'exact' ? 'Exact duplicate' : 'Possible duplicate'}
+                        {group.match_type === 'exact'
+                          ? 'Exact duplicate'
+                          : group.match_type === 'alias'
+                            ? 'Alias match'
+                            : 'Review possible duplicate'}
                       </p>
-                      <p className="text-xs text-white/45">{group.canonical_name}</p>
+                      <p className="text-xs text-white/45">
+                        {group.canonical_name}
+                        {typeof group.confidence === 'number' ? ` · ${Math.round(group.confidence * 100)}% confidence` : ''}
+                        {group.reason ? ` · ${group.reason}` : ''}
+                      </p>
                     </div>
                     <span className="text-[10px] uppercase tracking-wider text-white/35">
                       {group.characters.length} cards

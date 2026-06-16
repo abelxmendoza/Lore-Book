@@ -59,7 +59,9 @@ function isOpenAIError(error: string): boolean {
 // Map a raw error string to a user-facing message.
 function friendlyErrorMessage(errMsg: string): string {
   if (isOpenAIRateLimited(errMsg)) {
-    return "The AI is temporarily over capacity. Please wait a moment and try again.";
+    return errMsg.includes('Response generation failed')
+      ? errMsg
+      : "Response generation failed because the OpenAI quota/rate limit was hit. Memory ingestion and entity creation may not have completed for this send.";
   }
   if (isOpenAIError(errMsg)) {
     return "The AI service encountered an issue. Please try again shortly.";

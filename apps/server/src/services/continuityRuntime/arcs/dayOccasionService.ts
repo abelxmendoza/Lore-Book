@@ -109,7 +109,13 @@ function inferTrack(events: ResolvedEventRow[]): ArcTrack {
   if (/\b(concert|show|festival|game)\b/.test(text)) {
     return 'creative';
   }
-  return 'mixed';
+  if (/\b(family|mom|dad|abuela|abuelo|grandma|grandpa|wedding|funeral|reunion)\b/.test(text)) {
+    return 'relationships';
+  }
+  if (/\b(health|doctor|hospital|therapy|gym|workout)\b/.test(text)) {
+    return 'health';
+  }
+  return 'inner';
 }
 
 function weekendRange(day: string): [string, string] | null {

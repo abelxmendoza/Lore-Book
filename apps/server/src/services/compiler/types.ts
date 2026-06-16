@@ -41,6 +41,7 @@ export type CertaintySource =
 export interface EntityRef {
   entity_id: string;
   mention_text: string;
+  type?: string;
   confidence: number;
   role?: string; // e.g., 'subject', 'object', 'location'
 }

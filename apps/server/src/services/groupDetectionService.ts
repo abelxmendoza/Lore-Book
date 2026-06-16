@@ -23,6 +23,7 @@ import {
   type MembershipModel,
   type UserRelationship,
 } from './organizationService';
+import { nameHousehold } from './entities/householdNaming';
 import { supabaseAdmin } from './supabaseClient';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -250,13 +251,16 @@ export class GroupDetectionService {
       }
 
       // Named group detection
-      for (const groupName of groupNames) {
+      for (let groupName of groupNames) {
         const isEmployer = employerNames.has(groupName);
         // An employer/agency the user works through is a company, never a
         // public-fan entity — even if a famous client (e.g. Amazon) is named in
         // the same sentence.
         const isPublic = isEmployer ? false : this.isPublicEntity(groupName, message);
         const groupType = isEmployer ? 'company' : this.suggestGroupType(message, memberNames, groupName);
+        if (groupType === 'family' && memberNames.length >= 2 && /^my family$/i.test(groupName)) {
+          groupName = nameHousehold(memberNames.map(name => ({ name }))) ?? groupName;
+        }
         const existingGroup = await this.findGroupByName(userId, groupName);
         const familyAliases = groupType === 'family' && /\//.test(groupName)
           ? groupName.replace(/\s+Family$/i, '').split('/').map(part => `${part.trim()} Family`)

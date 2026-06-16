@@ -534,11 +534,27 @@ class OmegaChatService {
 
       const idleDays = Math.floor(idleHours / 24);
       const timeLabel = idleDays === 1 ? '1 day' : `${idleDays} days`;
-      const subtitle = (threadRow.metadata as any)?.subtitle as string | undefined;
-      const entities: string[] = (threadRow.metadata as any)?.dominantEntities ?? [];
-      const entityPhrase = entities.length > 0 ? ` The recurring context included: ${entities.slice(0, 3).join(', ')}.` : '';
-      const subtitlePhrase = subtitle ? ` The last topic was: ${subtitle}.` : '';
-      context = `\n\n**THREAD RESUMED AFTER ${timeLabel.toUpperCase()} GAP**: This conversation was last active ${timeLabel} ago.${subtitlePhrase}${entityPhrase} Orient naturally to the resumed context — no dramatic welcome, just quiet continuity.`;
+
+      // Prefer the structured, deterministic continuity card (Phase 3) built from
+      // conversation_sessions.metadata.threadMeta — people/places/projects/episodes/
+      // open loops + the living medium summary. Falls back to the legacy
+      // subtitle/dominantEntities only when threadMeta is empty.
+      let continuityBody = '';
+      try {
+        const { threadIntelligenceService } = await import('./conversationCentered/threadIntelligenceService');
+        const { card } = await threadIntelligenceService.getContinuity(userId, threadId);
+        if (card) continuityBody = `\n${card}`;
+      } catch (err) {
+        logger.warn({ err, threadId }, 'Continuity card lookup failed, falling back');
+      }
+      if (!continuityBody) {
+        const subtitle = (threadRow.metadata as any)?.subtitle as string | undefined;
+        const entities: string[] = (threadRow.metadata as any)?.dominantEntities ?? [];
+        const entityPhrase = entities.length > 0 ? ` The recurring context included: ${entities.slice(0, 3).join(', ')}.` : '';
+        const subtitlePhrase = subtitle ? ` The last topic was: ${subtitle}.` : '';
+        continuityBody = `${subtitlePhrase}${entityPhrase}`;
+      }
+      context = `\n\n**THREAD RESUMED AFTER ${timeLabel.toUpperCase()} GAP**: This conversation was last active ${timeLabel} ago.${continuityBody}\nOrient naturally to the resumed context — no dramatic welcome, just quiet continuity.`;
 
       try {
         const { eventCandidateService } = await import('./eventCandidates/eventCandidateService');
@@ -661,11 +677,12 @@ class OmegaChatService {
     const returnToThreadContext = currentContext?.threadId
       ? await this.buildReturnToThreadContext(userId, currentContext.threadId)
       : '';
+    const workingMemoryPrimary = process.env.WORKING_MEMORY_PRIMARY !== 'false';
 
     // =====================================================
     // SPRINT AK — Conversation intelligence (before AH gates)
     // =====================================================
-    try {
+    if (!workingMemoryPrimary) try {
       const { routeConversationIntelligence } = await import('./chat/conversationIntelligenceRouter');
       const { formatModeResponse } = await import('./modeRouter/responseFormatter');
 
@@ -750,7 +767,7 @@ class OmegaChatService {
         }
       }
 
-      if (testingMode === 'recall_check' || testingMode === 'system_state' || testingMode === 'general_diagnostic') {
+      if (!workingMemoryPrimary && (testingMode === 'recall_check' || testingMode === 'system_state' || testingMode === 'general_diagnostic')) {
         const { executeExplicitRecall } = await import('./chat/explicitRecallService');
         const recall = await executeExplicitRecall(
           userId,
@@ -789,7 +806,10 @@ class OmegaChatService {
       modeDecision = { mode: routing.mode, confidence: routing.confidence, reasoning: routing.reasoning ?? '' };
       
       // Route to appropriate handler if mode is known
-      if (routing.mode !== 'UNKNOWN') {
+      if (
+        routing.mode !== 'UNKNOWN' &&
+        !(workingMemoryPrimary && (routing.mode === 'MEMORY_RECALL' || routing.mode === 'FOUNDATION_RECALL'))
+      ) {
         // For EXPERIENCE_INGESTION and ACTION_LOG, we need messageId - save message first
         let messageId: string | undefined;
         if (routing.mode === 'EXPERIENCE_INGESTION' || routing.mode === 'ACTION_LOG') {
@@ -865,7 +885,7 @@ class OmegaChatService {
     }
 
     // ---- RECALL GATE: Foundation lore before journal vector search ----
-    try {
+    if (!workingMemoryPrimary) try {
       const { matchesFoundationRecallQuery } = await import('./chat/recallIntentPatterns');
       if (matchesFoundationRecallQuery(message)) {
         const { executeExplicitRecall } = await import('./chat/explicitRecallService');
@@ -1304,6 +1324,11 @@ class OmegaChatService {
       entityDossierBlock: (ragPacket as { entityDossierBlock?: string | null }).entityDossierBlock ?? null,
       entityArcNarrativeBlock: ragPacket.entityArcNarrativeBlock ?? null,
       knowledgeGapBlock: (ragPacket as { knowledgeGapBlock?: string | null }).knowledgeGapBlock ?? null,
+      foundationRecallBlock: (ragPacket as any).foundationRecallBlock ?? '',
+      foundationRelationships: (ragPacket as any).foundationRelationships ?? [],
+      foundationTimeline: (ragPacket as any).foundationTimeline ?? [],
+      workingMemory: (ragPacket as any).workingMemory ?? null,
+      workingMemoryPacket: (ragPacket as any).workingMemoryPacket ?? null,
     };
 
     let scoredLoreData: Record<string, unknown> = rawLoreData;
@@ -1554,6 +1579,13 @@ class OmegaChatService {
       } else {
         // Set entryId for tracking and RL
         entryId = savedMessage.id;
+
+        // Ordering: thread rises to top when the user sends a message.
+        void supabaseAdmin
+          .from('conversation_sessions')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', sessionId)
+          .eq('user_id', userId);
 
         // Enqueue ingestion — fully off the chat critical path.
         // Skip when entityContext is set: ingestMessageWithContext() fires separately
@@ -2246,6 +2278,12 @@ class OmegaChatService {
       .then(async (result) => {
         if (result.data && result.data.id) {
           logger.debug({ userId, sessionId }, 'Saved assistant response');
+
+          void supabaseAdmin
+            .from('conversation_sessions')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('id', sessionId)
+            .eq('user_id', userId);
           
           // Enqueue AI response ingestion at LOW priority (user messages take precedence).
           // Skip when entityContext is set — entity-scoped sessions are handled by

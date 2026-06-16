@@ -2,7 +2,7 @@
  * Entity Resolution Engine Type Definitions
  */
 
-export type EntityType = 'person' | 'place' | 'org' | 'event' | 'thing';
+export type EntityType = 'person' | 'place' | 'org' | 'event' | 'thing' | 'unknown';
 
 export interface ExtractedEntity {
   raw: string;

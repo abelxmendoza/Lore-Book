@@ -39,14 +39,36 @@ export interface ResolutionContext {
 
 export type ResolutionAction = 'resolve' | 'disambiguate' | 'create' | 'skip';
 
+/**
+ * Production decision (Phase 8 confidence tiers):
+ *  - auto_resolve:    high confidence → use the existing entity, no UI
+ *  - merge_suggestion: medium confidence → create but surface a merge suggestion
+ *  - create_separate:  low/no match → a genuinely new entity
+ *  - skip:             not worth creating (unknown bare token)
+ */
+export type ResolutionRecommendation = 'auto_resolve' | 'merge_suggestion' | 'create_separate' | 'skip';
+
 export interface ScoredCandidate { id: string; name: string; score: number; reasons: string[]; }
 
 export interface ResolutionResult {
   action: ResolutionAction;
+  recommendation: ResolutionRecommendation;
   resolvedId: string | null;
   confidence: number;          // 0..1
   classification: EntityClass;
   ranked: ScoredCandidate[];   // best-first
+}
+
+const HIGH_CONFIDENCE = 0.7;  // ≥ → auto-resolve
+const MERGE_CONFIDENCE = 0.32; // ≥ (and < HIGH) → merge suggestion
+
+function recommend(action: ResolutionAction, confidence: number): ResolutionRecommendation {
+  if (action === 'skip') return 'skip';
+  if (action === 'create') return 'create_separate';
+  // resolve or disambiguate: tier by confidence.
+  if (action === 'resolve' && confidence >= HIGH_CONFIDENCE) return 'auto_resolve';
+  if (confidence >= MERGE_CONFIDENCE) return 'merge_suggestion';
+  return 'create_separate';
 }
 
 const DAY_MS = 86_400_000;
@@ -120,8 +142,15 @@ export function resolveMention(
     // Nothing to resolve to. Create only if we can classify it positively;
     // unknown/unclassified mentions are skipped (they require more evidence).
     const action: ResolutionAction = classification === 'UNKNOWN' || classification === 'UNCLASSIFIED' ? 'skip' : 'create';
-    return { action, resolvedId: null, confidence: action === 'create' ? 0.6 : 0.1, classification, ranked: [] };
+    const conf = action === 'create' ? 0.6 : 0.1;
+    return { action, recommendation: recommend(action, conf), resolvedId: null, confidence: conf, classification, ranked: [] };
   }
+
+  // Absolute confidence of a lexical match kind (for the tier decision — a single
+  // unambiguous match is high-confidence regardless of the relative ranking score).
+  const kindConfidence = (kind: 'exact' | 'alias' | 'kinship' | 'none') =>
+    kind === 'exact' ? 0.9 : kind === 'alias' ? 0.86 : kind === 'kinship' ? 0.82 : 0.5;
+  const kindById = new Map(matches.map((x) => [x.c.id, x.lex.kind]));
 
   const maxMentions = Math.max(1, ...matches.map((x) => x.c.mentions ?? 0));
   const ranked: ScoredCandidate[] = matches.map(({ c, lex }) => {
@@ -150,9 +179,13 @@ export function resolveMention(
 
   // Single match, or a clear winner → resolve. Otherwise ask.
   if (!second || top.score - second.score >= DISAMBIGUATION_MARGIN) {
-    return { action: 'resolve', resolvedId: top.id, confidence: Math.min(0.99, top.score), classification, ranked };
+    // Confidence for the TIER comes from the winner's match kind (absolute), not
+    // the relative ranking score — a clear/single match is genuinely high-confidence.
+    const confidence = kindConfidence(kindById.get(top.id) ?? 'none');
+    return { action: 'resolve', recommendation: recommend('resolve', confidence), resolvedId: top.id, confidence, classification, ranked };
   }
-  return { action: 'disambiguate', resolvedId: null, confidence: top.score, classification, ranked };
+  // Too close to call → ambiguous; surface a merge suggestion rather than guess.
+  return { action: 'disambiguate', recommendation: recommend('disambiguate', top.score), resolvedId: null, confidence: top.score, classification, ranked };
 }
 
 /** Convenience: would this mention create a NEW character? (lore-aware guard) */

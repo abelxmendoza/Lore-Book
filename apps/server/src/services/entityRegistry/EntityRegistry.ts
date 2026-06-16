@@ -65,7 +65,7 @@ class EntityRegistry {
         .eq('user_id', userId)
         .maybeSingle() as { data: PPRow | null };
 
-      if (pp) return { id: pp.id, name: pp.name, type: pp.type ?? 'PERSON', source: 'person_place' };
+      if (pp) return { id: pp.id, name: pp.name, type: pp.type ?? 'unknown', source: 'person_place' };
 
       const { data: ent } = await supabaseAdmin
         .from('entities')
@@ -117,7 +117,7 @@ class EntityRegistry {
         .limit(1)
         .maybeSingle() as { data: PPRow | null };
 
-      if (ppByName) return { id: ppByName.id, name: ppByName.name, type: ppByName.type ?? 'PERSON', source: 'person_place' };
+      if (ppByName) return { id: ppByName.id, name: ppByName.name, type: ppByName.type ?? 'unknown', source: 'person_place' };
 
       const { data: ppByAlias } = await supabaseAdmin
         .from('people_places')
@@ -127,7 +127,7 @@ class EntityRegistry {
         .limit(1)
         .maybeSingle() as { data: PPRow | null };
 
-      if (ppByAlias) return { id: ppByAlias.id, name: ppByAlias.name, type: ppByAlias.type ?? 'PERSON', source: 'person_place' };
+      if (ppByAlias) return { id: ppByAlias.id, name: ppByAlias.name, type: ppByAlias.type ?? 'unknown', source: 'person_place' };
 
       const { data: entByName } = await supabaseAdmin
         .from('entities')
@@ -180,7 +180,7 @@ class EntityRegistry {
       if (!seen.has(o.id)) { result.push({ id: o.id, name: o.primary_name, type: o.entity_type ?? 'ENTITY', source: 'omega_entity' }); seen.add(o.id); }
     }
     for (const p of ((pps.data ?? []) as PPRow[])) {
-      if (!seen.has(p.id)) { result.push({ id: p.id, name: p.name, type: p.type ?? 'PERSON', source: 'person_place' }); seen.add(p.id); }
+      if (!seen.has(p.id)) { result.push({ id: p.id, name: p.name, type: p.type ?? 'unknown', source: 'person_place' }); seen.add(p.id); }
     }
     for (const e of ((ents.data ?? []) as EntRow[])) {
       if (!seen.has(e.id)) { result.push({ id: e.id, name: e.canonical_name, type: e.type ?? 'ENTITY', source: 'entity' }); seen.add(e.id); }

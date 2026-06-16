@@ -1,11 +1,8 @@
-import OpenAI from 'openai';
-
-import { config } from '../config';
 import { logger } from '../logger';
+import { config } from '../config';
+import { openai } from '../lib/openai';
 
 import { supabaseAdmin } from './supabaseClient';
-
-const openai = new OpenAI({ apiKey: config.openAiKey });
 
 export type ImportanceLevel = 'protagonist' | 'major' | 'supporting' | 'minor' | 'background';
 

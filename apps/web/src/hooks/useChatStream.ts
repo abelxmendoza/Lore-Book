@@ -168,6 +168,13 @@ export const useChatStream = () => {
           userMessage = isProdNoApi
             ? 'Method Not Allowed (405). The deployed app has no backend. Set VITE_API_URL in Vercel to your API URL (e.g. https://your-api.vercel.app), or run the app locally: npm run dev in apps/web and apps/server.'
             : 'Method Not Allowed (405). The chat API expects POST. Ensure the backend is running (cd apps/server && npm run dev) and that nothing is blocking POST to /api/chat/stream.';
+        } else if (response.status === 429) {
+          try {
+            const body = JSON.parse(errorText);
+            userMessage = body.userMessage || body.message || body.error || errorText;
+          } catch {
+            userMessage = `OpenAI quota/rate limit error: ${errorText}`;
+          }
         } else {
           userMessage = `HTTP error! status: ${response.status}, message: ${errorText}`;
         }
