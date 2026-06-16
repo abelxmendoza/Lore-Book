@@ -723,6 +723,20 @@ class RelationshipFoundationService {
         betterType = 'family';
       }
 
+      // Dirty-check: skip the UPDATE when nothing material changed — no new
+      // evidence id and the resolved type is unchanged. Without this, every
+      // recovery run re-touches every existing edge (bumping co_mention_count +
+      // timestamps), producing ~57 idle UPDATEs/run of pure write amplification.
+      const prevFactIds = new Set<string>((prevMeta.fact_ids as string[]) ?? []);
+      const prevMemIds = new Set<string>((prevMeta.source_memory_ids as string[]) ?? []);
+      const hasNewEvidence = params.evidenceIds.some((id) =>
+        params.source === 'entity_facts' ? !prevFactIds.has(id) : !prevMemIds.has(id)
+      );
+      const typeChanged = betterType !== existing[0].relationship_type;
+      if (!hasNewEvidence && !typeChanged) {
+        return false; // no-op — avoid the redundant write
+      }
+
       await supabaseAdmin
         .from('character_relationships')
         .update({
