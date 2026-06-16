@@ -180,6 +180,39 @@ class ThreadIntelligenceService {
     return next;
   }
 
+  /**
+   * Sync message_count from chat_messages and refresh summaries when stale.
+   * Called on thread open — repairs threads that missed ingestion pipeline updates.
+   */
+  async syncFromStoredMessages(userId: string, sessionId: string): Promise<ThreadMetadata> {
+    const { meta, otherMeta } = await this.readMeta(userId, sessionId);
+    const { loadThreadMessages } = await import('./threadContentService');
+    const loaded = await loadThreadMessages(userId, sessionId);
+    const actualCount = loaded.length;
+    if (actualCount <= meta.message_count && meta.summary_short) return meta;
+
+    const next: ThreadMetadata = {
+      ...meta,
+      message_count: Math.max(meta.message_count, actualCount),
+      last_activity: meta.last_activity ?? new Date().toISOString(),
+      title: meta.title ?? ((otherMeta as { title?: string }).title ?? null),
+    };
+
+    const { error } = await supabaseAdmin.from('conversation_sessions')
+      .update({ metadata: { ...otherMeta, threadMeta: next } })
+      .eq('id', sessionId).eq('user_id', userId);
+    if (error) logger.warn({ err: error, sessionId }, 'threadIntelligence: sync message_count failed');
+
+    if (actualCount > 0) {
+      const { threadSummaryService, isSummaryStale } = await import('./threadSummaryService');
+      if (isSummaryStale(next) || !next.summary_short) {
+        await threadSummaryService.maybeRefresh(userId, sessionId, { force: !next.summary_short }).catch(() => {});
+      }
+    }
+
+    return next;
+  }
+
   /** Continuity card from metadata (Phase 3). Open loops computed from chat_messages. */
   async getContinuity(userId: string, sessionId: string): Promise<{ card: string; metadata: ThreadMetadata; openLoopCount: number }> {
     const { meta } = await this.readMeta(userId, sessionId);

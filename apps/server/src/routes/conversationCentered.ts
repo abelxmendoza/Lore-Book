@@ -44,6 +44,7 @@ import { enrichRomanticRelationshipsForUser } from '../services/conversationCent
 import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
 import { skillNetworkBuilder } from '../services/conversationCentered/skillNetworkBuilder';
 import { conversationService } from '../services/conversationService';
+import { threadIntelligenceService } from '../services/conversationCentered/threadIntelligenceService';
 import { metaControlService } from '../services/metaControlService';
 import { narrativeContinuityService } from '../services/narrativeContinuityService';
 import { omegaChatService } from '../services/omegaChatService';
@@ -467,6 +468,9 @@ router.post(
 
     const messages = await loadThreadMessages(userId, id);
 
+    // Backfill thread intelligence + summaries for threads that missed ingestion.
+    void threadIntelligenceService.syncFromStoredMessages(userId, id).catch(() => {});
+
     res.json({
       success: true,
       thread: {
@@ -541,6 +545,8 @@ router.get(
     }
 
     const messages = await loadThreadMessages(userId, id);
+
+    void threadIntelligenceService.syncFromStoredMessages(userId, id).catch(() => {});
 
     if (messages.length > 0) {
       res.json({

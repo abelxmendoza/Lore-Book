@@ -556,4 +556,24 @@ router.get('/memory-coverage', requireAuth, async (req: Request, res: Response) 
   }
 });
 
+/**
+ * POST /api/diagnostics/repair-entity-pollution
+ * Reclassify legacy products/places/events wrongly stored as person/character.
+ */
+router.post('/repair-entity-pollution', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const { findPollutedEntities, repairPollutedEntities } = await import('../services/entities/entityPollutionRepair');
+    const dryRun = req.query.dryRun === 'true';
+    if (dryRun) {
+      const hits = await findPollutedEntities(userId);
+      return res.json({ dryRun: true, hits, count: hits.length });
+    }
+    const report = await repairPollutedEntities(userId);
+    return res.json(report);
+  } catch (err) {
+    return res.status(500).json({ error: 'Entity pollution repair failed', detail: String(err) });
+  }
+});
+
 export default router;

@@ -24,11 +24,11 @@
 import { config } from '../../config';
 import { logger } from '../../logger';
 import { tracedCompletion } from '../../lib/openai';
-import { supabaseAdmin } from '../supabaseClient';
 import {
   threadIntelligenceService,
   type ThreadMetadata,
 } from './threadIntelligenceService';
+import { loadThreadMessages } from './threadContentService';
 
 /** Regenerate once this many new messages have accrued since the last build. */
 export const STALENESS_THRESHOLD = 4;
@@ -174,20 +174,19 @@ class ThreadSummaryService {
   ): Promise<ThreadSummaries & { version: number; stale: boolean }> {
     const meta = knownMeta ?? (await threadIntelligenceService.getThreadMeta(userId, sessionId));
 
-    const { data: rows } = await supabaseAdmin
-      .from('chat_messages')
-      .select('role, content, created_at')
-      .eq('user_id', userId)
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: false })
-      .limit(RECENT_WINDOW);
-    const recent = ((rows ?? []) as Array<{ role: string; content: string }>)
-      .reverse()
+    const loaded = await loadThreadMessages(userId, sessionId);
+    const recent = loaded
+      .slice(-RECENT_WINDOW)
       .map((r) => ({ role: r.role === 'user' ? 'user' : 'assistant', content: r.content } as SummaryMessage))
       .filter((m) => m.content?.trim());
 
-    // Deterministic floor first — guarantees non-empty output.
-    let summaries = deriveDeterministicSummaries(meta);
+    // Deterministic floor first — guarantees non-empty output when messages exist.
+    const metaForSummary: ThreadMetadata = {
+      ...meta,
+      message_count: Math.max(meta.message_count, loaded.length),
+      title: meta.title ?? null,
+    };
+    let summaries = deriveDeterministicSummaries(metaForSummary);
 
     if (recent.length > 0) {
       try {
