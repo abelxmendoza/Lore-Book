@@ -593,4 +593,62 @@ router.post('/recover-relationships', requireAuth, async (req: Request, res: Res
   }
 });
 
+/**
+ * POST /api/diagnostics/recover-events
+ * Backfill character_timeline_events from chat, facts, and thread summaries.
+ */
+router.post('/recover-events', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const { eventRecoveryService } = await import('../services/eventRecoveryService');
+    const stats = await eventRecoveryService.recoverMissingEvents(userId);
+    const coverage = await eventRecoveryService.benchmarkCoverage(userId);
+    return res.json({ stats, coverage });
+  } catch (err) {
+    return res.status(500).json({ error: 'Event recovery failed', detail: String(err) });
+  }
+});
+
+/**
+ * POST /api/diagnostics/life-reconstruction-score
+ * Run trust scorecard for the authenticated user.
+ */
+router.post('/life-reconstruction-score', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user!.id;
+    const { buildMemoryCoverageAudit } = await import('../services/diagnostics/memoryCoverageAudit');
+    const { assembleWorkingMemory } = await import('../services/chat/workingMemoryAssembler');
+    const { eventRecoveryService } = await import('../services/eventRecoveryService');
+    const { relationshipFoundationService } = await import('../services/relationshipFoundationService');
+
+    const audit = await buildMemoryCoverageAudit(userId);
+    const coverage = await relationshipFoundationService.buildCoverageReport(userId);
+    const timelineBench = await eventRecoveryService.benchmarkCoverage(userId);
+
+    const recallQueries = [
+      'Who lives with me?',
+      'What happened with Sol?',
+      'How am I related to Tio Juan?',
+      'Who is Andrew?',
+    ];
+    const recallResults: Record<string, { confidence: number; items: number }> = {};
+    for (const q of recallQueries) {
+      const a = await assembleWorkingMemory({ question: q, userId });
+      recallResults[q] = {
+        confidence: a.confidence,
+        items: a.episodes.length + a.events.length + a.relationships.length + a.entities.length,
+      };
+    }
+
+    return res.json({
+      coverageSummary: audit.summary,
+      relationshipCoverage: coverage,
+      timelineBenchmark: timelineBench,
+      recallResults,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Scorecard failed', detail: String(err) });
+  }
+});
+
 export default router;

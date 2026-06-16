@@ -1162,6 +1162,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     const loadAttributes = async () => {
       setLoadingAttributes(true);
       try {
+        if (isMockDataEnabled) {
+          setCharacterAttributes(getMockAttributes(character));
+          return;
+        }
         if (isMainCharacter && !isMockDataEnabled) {
           const profile = await selfCharacterApi.getProfile();
           setCharacterAttributes(profile.attributes || []);
@@ -1180,8 +1184,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         } else {
           setCharacterAttributes(realAttributes);
         }
-      } catch (error) {
-        console.error('Failed to load character attributes:', error);
+      } catch {
         if (isMockDataEnabled) {
           setCharacterAttributes(getMockAttributes(character));
         } else {

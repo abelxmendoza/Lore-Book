@@ -38,12 +38,16 @@ function isBackendUnavailable(error: string): boolean {
 
 // Returns true when the error is an OpenAI quota/rate-limit issue.
 function isOpenAIRateLimited(error: string): boolean {
+  const lower = error.toLowerCase();
   return (
     error.includes('429') ||
-    error.includes('quota exceeded') ||
-    error.includes('rate limit') ||
-    error.includes('insufficient_quota') ||
-    error.includes('OpenAI 429')
+    lower.includes('quota exceeded') ||
+    lower.includes('quota is exhausted') ||
+    lower.includes('quota exhausted') ||
+    lower.includes('exceeded your current quota') ||
+    lower.includes('insufficient_quota') ||
+    lower.includes('rate limit') ||
+    lower.includes('openai 429')
   );
 }
 
@@ -59,9 +63,15 @@ function isOpenAIError(error: string): boolean {
 // Map a raw error string to a user-facing message.
 function friendlyErrorMessage(errMsg: string): string {
   if (isOpenAIRateLimited(errMsg)) {
-    return errMsg.includes('Response generation failed')
-      ? errMsg
-      : "Response generation failed because the OpenAI quota/rate limit was hit. Memory ingestion and entity creation may not have completed for this send.";
+    if (
+      errMsg.includes('Response generation failed') ||
+      errMsg.includes('Response generation stopped') ||
+      errMsg.includes('quota is exhausted') ||
+      errMsg.includes('exceeded your current quota')
+    ) {
+      return errMsg;
+    }
+    return "Response generation failed because the OpenAI quota/rate limit was hit. Memory ingestion and entity creation may not have completed for this send.";
   }
   if (isOpenAIError(errMsg)) {
     return "The AI service encountered an issue. Please try again shortly.";

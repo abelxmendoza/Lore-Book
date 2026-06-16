@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { CharacterAvatar } from './CharacterAvatar';
 import { fetchJson } from '../../lib/api';
+import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
 import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import type { Character } from './CharacterProfileCard';
@@ -93,6 +94,12 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
   const canOpenDetail = interactive && Boolean(onClick);
 
   useEffect(() => {
+    if (!canCallAuthenticatedApi()) {
+      setAttributes([]);
+      setLoadingAttributes(false);
+      return;
+    }
+
     let cancelled = false;
     setLoadingAttributes(true);
 

@@ -38,7 +38,7 @@ async function auditUser(userId: string) {
 
   const { data: chars, error: cErr } = await supabaseAdmin
     .from('characters')
-    .select('id,name,aliases,relationship_type,importance_level,is_family')
+    .select('id,name,relationship_type,importance_level,is_family')
     .eq('user_id', userId)
     .limit(500);
   if (cErr) console.log('chars err', cErr.message);

@@ -63,7 +63,6 @@ interface AppContentProps {
 }
 
 const AppContent = ({ defaultSurface }: AppContentProps) => {
-  console.log('[App] AppContent render start', { defaultSurface });
   const { user } = useAuth();
   const {
     entries,
@@ -199,8 +198,6 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
     </div>
   );
 
-  console.log('[App] AppContent returning JSX', { activeSurface });
-  
   // Get surface display name
   const getSurfaceName = (surface: SurfaceKey): string => {
     const names: Record<SurfaceKey, string> = {

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../supabaseClient';
+import { normalizeNameKey } from '../../utils/nameNormalization';
 
 export type EntityCoverageRow = {
   id: string;
@@ -102,6 +103,23 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
     }
   }
 
+  const charIdByNameKey = new Map<string, string>();
+  for (const row of (charactersResult.data ?? []) as any[]) {
+    const key = normalizeNameKey(String(row.name ?? ''));
+    if (key) charIdByNameKey.set(key, row.id);
+  }
+
+  const linkedCharacterStats = (name: string) => {
+    const charId = charIdByNameKey.get(normalizeNameKey(name));
+    if (!charId) return null;
+    return {
+      episodes: memoryCounts.get(charId) ?? 0,
+      events: eventCounts.get(charId) ?? 0,
+      relationships: relationshipCounts.get(charId) ?? 0,
+      evidence: factCounts.get(charId) ?? 0,
+    };
+  };
+
   const entities: EntityCoverageRow[] = [];
 
   for (const row of (charactersResult.data ?? []) as any[]) {
@@ -123,12 +141,20 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
 
   for (const row of (peoplePlacesResult.data ?? []) as any[]) {
     const relatedEntries = Array.isArray(row.related_entries) ? row.related_entries.length : 0;
-    const base = {
-      episodes: relatedEntries,
-      events: 0,
-      relationships: 0,
-      evidence: 0,
-    };
+    const linked = linkedCharacterStats(String(row.name ?? ''));
+    const base = linked
+      ? {
+          episodes: Math.max(relatedEntries, linked.episodes),
+          events: linked.events,
+          relationships: linked.relationships,
+          evidence: linked.evidence,
+        }
+      : {
+          episodes: relatedEntries,
+          events: 0,
+          relationships: 0,
+          evidence: 0,
+        };
     entities.push({
       id: row.id,
       name: row.name,
@@ -140,12 +166,20 @@ export async function buildMemoryCoverageAudit(userId: string): Promise<MemoryCo
   }
 
   for (const row of (omegaResult.data ?? []) as any[]) {
-    const base = {
-      episodes: Number(row.mention_count ?? 0),
-      events: 0,
-      relationships: omegaRelationshipCounts.get(row.id) ?? 0,
-      evidence: omegaClaimCounts.get(row.id) ?? 0,
-    };
+    const linked = linkedCharacterStats(String(row.primary_name ?? ''));
+    const base = linked
+      ? {
+          episodes: Math.max(Number(row.mention_count ?? 0), linked.episodes),
+          events: linked.events,
+          relationships: Math.max(omegaRelationshipCounts.get(row.id) ?? 0, linked.relationships),
+          evidence: Math.max(omegaClaimCounts.get(row.id) ?? 0, linked.evidence),
+        }
+      : {
+          episodes: Number(row.mention_count ?? 0),
+          events: 0,
+          relationships: omegaRelationshipCounts.get(row.id) ?? 0,
+          evidence: omegaClaimCounts.get(row.id) ?? 0,
+        };
     entities.push({
       id: row.id,
       name: row.primary_name,

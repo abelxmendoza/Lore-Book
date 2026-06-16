@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ChronologyEntry, ChronologyOverlap, TimeBucket, Timeline } from '../types/timelineV2';
 import { fetchChronology, fetchChronologyOverlaps, fetchTimeBuckets } from '../api/timelineV2';
+import { config } from '../config/env';
 import { mockDataService } from '../services/mockDataService';
 import { subscribeToMockDataState, useMockData } from '../contexts/MockDataContext';
 import { useAuth } from '../lib/supabase';
@@ -28,6 +29,29 @@ export const useChronology = (startTime?: string, endTime?: string, timelineIds?
     try {
       setLoading(true);
       setError(null);
+
+      // Demo/guest: use seeded chronology directly — never hit authenticated API.
+      if (isDemoMode) {
+        const result = mockDataService.getWithFallback.chronologyEntries(null);
+        let filteredEntries = result.data;
+        if (timelineIds && timelineIds.length > 0) {
+          filteredEntries = filteredEntries.filter(e =>
+            e.timeline_memberships?.some(id => timelineIds.includes(id))
+          );
+        }
+        if (startTime || endTime) {
+          filteredEntries = filteredEntries.filter(e => {
+            const entryTime = new Date(e.start_time).getTime();
+            const start = startTime ? new Date(startTime).getTime() : -Infinity;
+            const end = endTime ? new Date(endTime).getTime() : Infinity;
+            return entryTime >= start && entryTime <= end;
+          });
+        }
+        setEntries(filteredEntries);
+        setError(null);
+        return;
+      }
+
       let response;
       try {
         response = await fetchChronology(startTime, endTime, timelineIds);
@@ -35,7 +59,9 @@ export const useChronology = (startTime?: string, endTime?: string, timelineIds?
         // If API fails, use mock data if enabled
         const mockData = mockDataService.getWithFallback.chronologyEntries(null);
         if (mockData.metadata.isMock) {
-          console.warn('Chronology API failed, using mock data:', err);
+          if (config.env.isDevelopment) {
+            console.debug('Chronology API failed, using mock data:', err);
+          }
           response = { entries: mockData.data };
         } else {
           throw err;

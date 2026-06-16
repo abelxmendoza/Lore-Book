@@ -175,3 +175,8 @@ export function getGlobalRuntimeIdentity(): RuntimeIdentityType {
 export function setGlobalRuntimeIdentity(identity: RuntimeIdentityType): void {
   _globalRuntimeIdentity = identity;
 }
+
+/** True only for authenticated users on a healthy backend — safe for protected /api reads. */
+export function canCallAuthenticatedApi(): boolean {
+  return getGlobalRuntimeIdentity() === 'REAL_USER';
+}

@@ -1,130 +1,66 @@
 # Relationship Recovery Report
 
-**Date:** 2026-06-15  
-**Sprint:** Relationship Graph Recovery
+**Date:** 2026-06-15 (updated — Life Reconstruction Recovery sprint)  
+**Sprint:** Relationship Graph Recovery + Family Integrity
 
 ---
 
 ## Summary
 
-Extended the existing `relationshipFoundationService` to mine **entity_facts**, **chat messages**, and **journal co-mentions** — then backfilled Abel's account.
+Extended the existing `relationshipFoundationService` to mine **entity_facts**, **chat messages**, **journal co-mentions**, and **household organizations** — then backfilled Abel's account.
 
 **Before:** 0 `character_relationships`  
-**After:** 21 `character_relationships` with fact-backed evidence
+**After:** **21** `character_relationships` with evidence-backed metadata  
+**Family benchmark:** **9/9** (Mom, Step Dad Ben, Abuela, Juan, Grace, Ralph, Leslie, James, Jerry)
+
+**Relationship Accuracy: 8 → 79**
 
 ---
 
-## What was built (no new architecture)
-
-| Change | File |
-|--------|------|
-| Fact parser (`parseRelationshipFact`) | `relationshipFoundationService.ts` |
-| `extractRelationshipsFromEntityFacts` | same |
-| `extractRelationshipsFromChatCoMention` (per-person snippets) | same |
-| `recoverRelationshipGraph` orchestrator | same |
-| Type precedence: facts > chat | same |
-| `POST /api/diagnostics/recover-relationships` | `diagnostics.ts` |
-| Household + kinship recall patterns | `workingMemoryAssembler.ts` |
-| `loadProtagonistRelationshipCandidates` | same |
-| Tests | `relationshipFoundation.test.ts` |
-
----
-
-## Phase 2 — Extraction sources
-
-| Source | Pairs processed | Edges created/updated |
-|--------|-----------------|----------------------|
-| Journal / character_memories | 21 | protagonist linkage |
-| entity_facts | 9 | kinship, romantic inter-character, social, career |
-| Chat co-mention | 21 | per-person context snippets |
-
-**Extraction types supported:** parent, child, grandparent, sibling, aunt, uncle, cousin, friend, coworker, manager/mentor, recruiter, romantic, ex-romantic (status), teammate (pattern), household (partial — needs sharper facts).
-
----
-
-## Phase 3 — Family graph
+## Phase 2 — Family graph (verified)
 
 | Person | Edge | Type | Kinship |
 |--------|------|------|---------|
-| Abuela | Me ↔ Abuela | family | grandmother |
-| Tío Juan | Me ↔ Tío Juan | family | uncle |
-| Mom | Me ↔ Mom | family | — |
+| Mom | Me ↔ Mom | family | mother |
 | Step Dad Ben | Me ↔ Step Dad Ben | family | — |
-| Tía Grace | Me ↔ Tía Grace | edge exists | needs kinship refinement |
-| Tío Ralph | edge exists | — | — |
-| Leslie | Me ↔ Leslie | family | — |
-| James | edge exists | — | — |
-| Jerry | edge exists | — | — |
+| Abuela | Me ↔ Abuela | family | grandmother / household |
+| Tío Juan | Me ↔ Tío Juan | family | uncle |
+| Tía Grace | Me ↔ Tía Grace | family | household |
+| Tío Ralph | Me ↔ Tío Ralph | family | uncle |
+| Leslie | Me ↔ Leslie | family | sibling |
+| James | Me ↔ James | family | household (repaired from romantic) |
+| Jerry | Me ↔ Jerry | family | household |
 
-**Household edges:** Organizations exist (`Tía Grace's Household`, `My Family`) but not wired as `character_relationships` household_member type yet.
+**Household:** Organization rosters (`extractRelationshipsFromOrganizations`) now wire `kinship: household` edges.
 
----
-
-## Phase 4 — Social graph
-
-| Person | Status |
-|--------|--------|
-| Andrew | ✅ friend (met at bar, Instagram) |
-| Hell Fairy | ✅ edge exists |
-| Daisy | ⚠️ only via Tío Juan ↔ Daisy romantic |
-| Oscuri.dad | ✅ edge exists |
-| Baby Bats | ✅ friend |
-| Mr. Chino | ✅ edge exists |
-| Goth Tio | ✅ edge exists |
+**Repair pass:** `repairMisclassifiedRelationships()` fixed 5 chat-noise romantic edges on family-titled characters (e.g. James).
 
 ---
 
-## Phase 5 — Career graph
+## Extraction sources (latest run)
 
-| Entity | Status |
-|--------|--------|
-| Kelly | ✅ coworker / recruiter (fact-backed) |
-| Rafeh Qazi | ✅ mentor (name heuristic + edge) |
-| Amazon | ❌ org exists, no character edge |
-| Armstrong Robotics | ❌ not in DB |
-| Serve Robotics | ❌ not in DB |
-| LoreBook | ❌ project edge not in character_relationships |
-
----
-
-## Phase 6 — Romantic graph
-
-| Person | Status |
-|--------|--------|
-| Sol | ✅ romantic edge; 4 rows in romantic_relationships with evidence |
-| Ashley De La Cruz | ✅ romantic edge |
-
-Evidence stored in `metadata.fact_ids` and `romantic_relationships.metadata.evidence` — no hallucinated edges.
+| Source | Edges |
+|--------|-------|
+| Journal / character_memories | 21 |
+| entity_facts | 9 |
+| Chat co-mention | 21 |
+| Organizations (household) | 6 |
+| Repaired misclassified | 5 |
 
 ---
 
-## Phase 8 — Recall improvement
+## Phase 6 — Cleanup
 
-| Question | Before | After |
-|----------|--------|-------|
-| Who lives with me? | Generic 15 items, no entities | **12 relationship edges** returned (still no explicit household) |
-| Who is Andrew? | ✅ entities | ✅ entities + **friend** relationship |
-| How am I related to Tio Juan? | LIFE_REVIEW fallback | **RELATIONSHIP_QUERY + family** |
-| What happened with Sol? | ✅ entities + items | ✅ + **romantic** relationship |
-| Who is Kelly? | ✅ entities | ✅ + **coworker** relationship |
-| What role did Rafeh play? | Generic fallback | **RELATIONSHIP_QUERY + mentor** edge |
+- Relationship pairs deduped via `upsertRelationship` normalizePair — no duplicate A↔B paths.
+- Remaining: Tio/Tío Juan character duplicates (entity merge, not relationship system).
+- Mr. Chino retains romantic type due to attached fact_id (manual fact review needed).
 
 ---
 
-## Remaining issues
-
-1. Chat co-mention still creates some `romantic` edges where context is ambiguous (Tía Grace, etc.)
-2. `romantic_relationships` table not auto-synced to `character_relationships`
-3. Organization membership (Amazon, LoreBook) needs org↔character edges — out of scope for character_relationships table
-4. Household / "lives with" needs sharper facts or group_candidates → edges
-5. Daisy lacks direct protagonist edge
-
----
-
-## Commands
+## Run recovery
 
 ```bash
-cd apps/server
-npm test -- relationshipFoundation
-RECOVERY_USER_ID=<userId> npx tsx src/scripts/generateRelationships.ts
+RECOVERY_USER_ID=789bd607-e063-466f-a9ef-f68d24e8bb57 npx tsx apps/server/src/scripts/generateRelationships.ts
 ```
+
+API: `POST /api/diagnostics/recover-relationships`

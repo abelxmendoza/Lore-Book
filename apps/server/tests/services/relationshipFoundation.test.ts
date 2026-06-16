@@ -37,6 +37,11 @@ describe('parseRelationshipFact', () => {
       'coworker'
     );
   });
+
+  it('parses household cohabitation', () => {
+    expect(parseRelationshipFact('Lives with the narrator')?.kinship).toBe('household');
+    expect(parseRelationshipFact('Same household as Mom')?.relType).toBe('family');
+  });
 });
 
 describe('resolveCharacterIdByName', () => {

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { config } from '../config/env';
+import { config, log } from '../config/env';
 import { dispatchStoryDataUpdated } from '../lib/storyRefresh';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
 
@@ -98,7 +98,9 @@ export const useChatStream = () => {
       const apiUrl = config.api.url;
       const url = apiUrl ? `${apiUrl}/api/chat/stream` : '/api/chat/stream';
 
-      console.log('[useChatStream] Calling:', url);
+      if (config.logging.logApiCalls) {
+        log.debug('[useChatStream] Calling:', url);
+      }
 
       const response = await fetch(url, {
         method: 'POST',
@@ -204,26 +206,28 @@ export const useChatStream = () => {
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
 
+          let data: StreamChunk;
           try {
-            const data: StreamChunk = JSON.parse(line.slice(6));
-
-            if (data.type === 'metadata') {
-              if (data.data?.messageId) capturedMessageId = data.data.messageId;
-              onMetadata(data.data);
-            } else if (data.type === 'chunk' && data.content) {
-              onChunk(data.content);
-            } else if (data.type === 'done') {
-              onComplete();
-              setIsStreaming(false);
-              if (onMemoryFeedback && capturedMessageId) {
-                pollMemoryFeedback(capturedMessageId, token, onMemoryFeedback);
-              }
-              return;
-            } else if (data.type === 'error') {
-              throw new Error(data.error || 'Stream error');
-            }
+            data = JSON.parse(line.slice(6));
           } catch (parseError) {
             console.error('Failed to parse SSE data:', parseError);
+            continue;
+          }
+
+          if (data.type === 'metadata') {
+            if (data.data?.messageId) capturedMessageId = data.data.messageId;
+            onMetadata(data.data);
+          } else if (data.type === 'chunk' && data.content) {
+            onChunk(data.content);
+          } else if (data.type === 'done') {
+            onComplete();
+            setIsStreaming(false);
+            if (onMemoryFeedback && capturedMessageId) {
+              pollMemoryFeedback(capturedMessageId, token, onMemoryFeedback);
+            }
+            return;
+          } else if (data.type === 'error') {
+            throw new Error(data.error || 'Stream error');
           }
         }
       }

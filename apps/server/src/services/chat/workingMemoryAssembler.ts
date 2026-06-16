@@ -94,7 +94,7 @@ const INTENT_RULES: Array<{ intent: WorkingMemoryIntent; pattern: RegExp }> = [
   { intent: 'DEBUG_QUERY', pattern: /\b(did you save|did you store|what did you save|debug|memory status|was that saved)\b/i },
   { intent: 'LIFE_REVIEW', pattern: /\b(what have i been doing lately|what have i done lately|what's been going on|recently|lately|recap my life|life review)\b/i },
   { intent: 'IDENTITY_QUERY', pattern: /\b(what kind of person am i|who am i|what do you know about me|my identity|my values|what matters to me)\b/i },
-  { intent: 'EVENT_QUERY', pattern: /\b(what happened at .*(graduation|party|wedding|funeral|birthday)|what happened during|tell me about .*graduation|event)\b/i },
+  { intent: 'EVENT_QUERY', pattern: /\b(what happened at .*(graduation|party|wedding|funeral|birthday)|what happened during|tell me about .*graduation|what did i do with|event)\b/i },
   { intent: 'PLACE_QUERY', pattern: /\b(what happened at|what went on at|what was it like at|memories at|remember at)\b/i },
   { intent: 'PROJECT_QUERY', pattern: /\b(how is .* progressing|progress on|status of|how's .* going|project|lorebook)\b/i },
   { intent: 'RELATIONSHIP_QUERY', pattern: /\b(what do you remember about|relationship with|what happened with|story with|between me and|how am i related to|who lives with me|who do i live with|what role did)\b/i },
@@ -102,6 +102,7 @@ const INTENT_RULES: Array<{ intent: WorkingMemoryIntent; pattern: RegExp }> = [
 ];
 
 const TARGET_PATTERNS = [
+  /\b(?:what did i do with|what have i done with)\s+(.+?)[?.!]?$/i,
   /\b(?:how am i related to)\s+(.+?)[?.!]?$/i,
   /\b(?:what role did)\s+(.+?)\s+play\b/i,
   /\b(?:what do you know about|what do you remember about|who is|who was|tell me about|relationship with|what happened with|between me and)\s+(.+?)[?.!]?$/i,
@@ -115,6 +116,15 @@ function classifyIntent(question: string): WorkingMemoryIntent {
     if (rule.pattern.test(question)) return rule.intent;
   }
   return 'LIFE_REVIEW';
+}
+
+function eventSearchOrClause(target: string): string {
+  const tokens = target.match(/\b[a-z]{4,}/gi) ?? [];
+  if (tokens.length === 0) return `event_title.ilike.%${target.slice(0, 24)}%`;
+  return tokens
+    .slice(0, 4)
+    .flatMap((token) => [`event_title.ilike.%${token}%`, `event_summary.ilike.%${token}%`])
+    .join(',');
 }
 
 function extractQuestionTarget(question: string): string | null {
@@ -398,7 +408,7 @@ async function loadPersonCandidates(userId: string, entity: WorkingMemoryEntity,
       .limit(8),
     supabaseAdmin
       .from('character_timeline_events')
-      .select('id, event_title, event_type, event_date, event_summary, significance_score, confidence')
+      .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
       .eq('user_id', userId)
       .eq('character_id', characterId)
       .order('event_date', { ascending: false })
@@ -470,7 +480,7 @@ async function loadPersonCandidates(userId: string, entity: WorkingMemoryEntity,
       confidence: Number(event.confidence ?? 0.8),
       relevance: 0.92,
       importance: 0.75,
-      significance: Number(event.significance_score ?? 65) / 100,
+      significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 65) / 100,
       relationshipDistance: 1,
       reasons: ['timeline event for target character'],
     });
@@ -521,7 +531,7 @@ async function loadTextualCandidates(
 ): Promise<Candidate[]> {
   const like = `%${target ?? ''}%`;
   const wantsTarget = Boolean(target);
-  const [entries, chats, timeline, projects, biography] = await Promise.all([
+  const [entries, chats, timeline, eventTargetHits, projects, biography] = await Promise.all([
     supabaseAdmin
       .from('journal_entries')
       .select('id, content, summary, date, tags, source, metadata')
@@ -546,10 +556,19 @@ async function loadTextualCandidates(
           .limit(6),
     supabaseAdmin
       .from('character_timeline_events')
-      .select('id, event_title, event_type, event_date, event_summary, significance_score, confidence')
+      .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
       .eq('user_id', userId)
       .order('event_date', { ascending: false })
       .limit(intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' ? 8 : 4),
+    intent === 'EVENT_QUERY' && target
+      ? supabaseAdmin
+          .from('character_timeline_events')
+          .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
+          .eq('user_id', userId)
+          .or(eventSearchOrClause(target))
+          .order('event_date', { ascending: false })
+          .limit(6)
+      : Promise.resolve({ data: [] as any[] }),
     supabaseAdmin
       .from('projects')
       .select('id, name, title, description, status, updated_at, metadata')
@@ -610,20 +629,23 @@ async function loadTextualCandidates(
     });
   }
 
-  for (const event of (timeline.data ?? []) as any[]) {
+  const seenEventIds = new Set<string>();
+  for (const event of [...(timeline.data ?? []), ...(eventTargetHits.data ?? [])] as any[]) {
+    if (seenEventIds.has(event.id)) continue;
+    seenEventIds.add(event.id);
     const text = `${event.event_title ?? ''} ${event.event_summary ?? ''}`;
     if (wantsTarget && !includeByIntent(text) && !['LIFE_REVIEW', 'EVENT_QUERY'].includes(intent)) continue;
     out.push({
       id: `timeline:${event.id}`,
-      type: 'timeline',
+      type: intent === 'EVENT_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 'event' : 'timeline',
       title: event.event_title ?? event.event_type ?? 'Timeline event',
       content: String(event.event_summary ?? event.event_title ?? ''),
       source: 'character_timeline_events',
       date: event.event_date,
       confidence: Number(event.confidence ?? 0.7),
-      relevance: includeByIntent(text) ? 0.8 : 0.55,
+      relevance: includeByIntent(text) ? (intent === 'EVENT_QUERY' ? 0.98 : 0.8) : 0.55,
       importance: 0.65,
-      significance: Number(event.significance_score ?? 55) / 100,
+      significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 55) / 100,
       relationshipDistance: 0.5,
       reasons: includeByIntent(text) ? ['timeline text matches target'] : ['recent timeline'],
     });
@@ -714,7 +736,9 @@ export async function assembleWorkingMemory(
   const personCandidates =
     /\b(who lives with me|who do i live with|my household)\b/i.test(input.question)
       ? await loadProtagonistRelationshipCandidates(input.userId)
-      : primaryEntity && (primaryEntity.type === 'PERSON' || intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY')
+      : intent !== 'EVENT_QUERY' &&
+          primaryEntity &&
+          (primaryEntity.type === 'PERSON' || intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY')
         ? await loadPersonCandidates(input.userId, primaryEntity, target ?? primaryEntity.name)
         : [];
 

@@ -2511,7 +2511,7 @@ export const CharacterBook = () => {
 
   // Auto-extract characters from chat
   useCharacterExtraction(chatMessages, {
-    enabled: true,
+    enabled: !isMockDataEnabled && !!user?.id,
     onCharacterCreated: () => {
       void loadCharacters();
     }

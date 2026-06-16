@@ -6,6 +6,7 @@ import { UnknownField } from '../ui/UnknownField';
 import { CharacterAvatar } from './CharacterAvatar';
 import { useState, useEffect } from 'react';
 import { fetchJson } from '../../lib/api';
+import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
 
 export type SocialMedia = {
   instagram?: string;
@@ -157,14 +158,18 @@ export const CharacterProfileCard = ({
   useEffect(() => {
     const loadAttributes = async () => {
       if (!character.id) return;
+      if (!canCallAuthenticatedApi()) {
+        setAttributes([]);
+        setLoadingAttributes(false);
+        return;
+      }
       setLoadingAttributes(true);
       try {
         const response = await fetchJson<{ attributes: CharacterAttribute[] }>(
           `/api/characters/${character.id}/attributes?currentOnly=true`
         );
         setAttributes(response.attributes || []);
-      } catch (error) {
-        console.error('Failed to load character attributes:', error);
+      } catch {
         setAttributes([]);
       } finally {
         setLoadingAttributes(false);

@@ -107,6 +107,21 @@ export function parseRelationshipFact(fact: string): ParsedRelationshipFact | nu
     return { relType: 'romantic', status: 'ended', protagonistToHolder: true };
   }
 
+  const livesWith = text.match(/\b(lives with|living with|same household as|household includes)\b/i);
+  if (livesWith) {
+    return { relType: 'family', kinship: 'household', protagonistToHolder: /narrator/i.test(text) };
+  }
+
+  const stepParent = text.match(/\b(step\s*(?:dad|father|mom|mother))\b/i);
+  if (stepParent && /narrator/i.test(text)) {
+    return { relType: 'family', kinship: stepParent[1].toLowerCase().replace(/\s+/g, ' '), protagonistToHolder: true };
+  }
+
+  const sibling = text.match(/\b(narrator'?s\s+)?(brother|sister|sibling)\b/i);
+  if (sibling && /narrator/i.test(text)) {
+    return { relType: 'family', kinship: sibling[2]?.toLowerCase() ?? 'sibling', protagonistToHolder: true };
+  }
+
   for (const [type, pattern] of TYPE_PATTERNS) {
     if (pattern.test(text)) return { relType: type, protagonistToHolder: /narrator/i.test(text) };
   }
@@ -167,7 +182,12 @@ export type RecoveryStats = {
   fromMemories: number;
   fromFacts: number;
   fromChat: number;
+  fromOrganizations: number;
+  repaired: number;
 };
+
+const FAMILY_NAME_HINT =
+  /\b(mom|mother|mamá|mama|dad|father|papá|papa|james|jerry|leslie|step\s*dad|stepdad|ben\b|abuela|t[íi]o|t[íi]a|uncle|aunt|ralph|grace|cousin|sibling|brother|sister)\b/i;
 
 class RelationshipFoundationService {
   async findProtagonist(userId: string, chars?: CharacterRow[]): Promise<CharacterRow | null> {
@@ -195,7 +215,7 @@ class RelationshipFoundationService {
     return best;
   }
 
-  /** Full recovery: journal + facts + chat. */
+  /** Full recovery: journal + facts + chat + orgs + repair pass. */
   async recoverRelationshipGraph(userId: string): Promise<RecoveryStats> {
     const totals: RecoveryStats = {
       created: 0,
@@ -204,6 +224,8 @@ class RelationshipFoundationService {
       fromMemories: 0,
       fromFacts: 0,
       fromChat: 0,
+      fromOrganizations: 0,
+      repaired: 0,
     };
 
     const mem = await this.extractRelationshipsFromMemories(userId);
@@ -223,6 +245,16 @@ class RelationshipFoundationService {
     totals.updated += chat.updated;
     totals.pairs += chat.pairs;
     totals.fromChat = chat.pairs;
+
+    const orgs = await this.extractRelationshipsFromOrganizations(userId);
+    totals.created += orgs.created;
+    totals.updated += orgs.updated;
+    totals.pairs += orgs.pairs;
+    totals.fromOrganizations = orgs.pairs;
+
+    const repaired = await this.repairMisclassifiedRelationships(userId);
+    totals.repaired = repaired.repaired;
+    totals.updated += repaired.repaired;
 
     return totals;
   }
@@ -462,6 +494,26 @@ class RelationshipFoundationService {
       let relType = inferRelationshipType(localContext);
       if (/mentor/i.test(otherName)) relType = 'mentor';
       if (/step\s*dad|stepdad/i.test(otherName)) relType = 'family';
+      if (FAMILY_NAME_HINT.test(otherName) && relType === 'romantic') relType = 'family';
+      if (/^kelly$/i.test(otherName.trim()) && /interview|recruiter|amazon|onboard/i.test(localContext)) {
+        relType = 'coworker';
+      }
+
+      const kinship = FAMILY_NAME_HINT.test(otherName)
+        ? (/\babuela/i.test(otherName)
+            ? 'grandmother'
+            : /step\s*dad|stepdad|ben/i.test(otherName)
+              ? 'stepfather'
+              : /^mom$/i.test(otherName)
+                ? 'mother'
+                : /juan|ralph/i.test(otherName)
+                  ? 'uncle'
+                  : /grace/i.test(otherName)
+                    ? 'aunt'
+                    : /james|jerry|leslie/i.test(otherName)
+                      ? 'sibling'
+                      : undefined)
+        : undefined;
 
       const [a, b] = normalizePair(protagonist.id, otherId);
       stats.pairs++;
@@ -472,12 +524,135 @@ class RelationshipFoundationService {
         evidenceIds: [],
         source: 'chat_comention',
         confidence: 0.55,
+        kinship,
       });
       if (isNew) stats.created++;
       else stats.updated++;
     }
 
     return stats;
+  }
+
+  /** Household / family org rosters → protagonist edges with household kinship. */
+  async extractRelationshipsFromOrganizations(userId: string): Promise<{
+    created: number;
+    updated: number;
+    pairs: number;
+  }> {
+    const stats = { created: 0, updated: 0, pairs: 0 };
+
+    const { data: chars } = await supabaseAdmin
+      .from('characters')
+      .select('id, name')
+      .eq('user_id', userId);
+    if (!chars?.length) return stats;
+
+    const protagonist = await this.findProtagonist(userId, chars as CharacterRow[]);
+    if (!protagonist) return stats;
+
+    const { data: members } = await supabaseAdmin
+      .from('organization_members')
+      .select('organization_id, character_id, character_name, role')
+      .eq('user_id', userId);
+
+    if (!members?.length) return stats;
+
+    const { data: orgs } = await supabaseAdmin
+      .from('organizations')
+      .select('id, name, group_type, metadata')
+      .eq('user_id', userId);
+
+    const householdOrgIds = new Set(
+      (orgs ?? [])
+        .filter(
+          (o) =>
+            /household|family|home/i.test(String(o.group_type ?? '')) ||
+            /household|family|home/i.test(String(o.name ?? ''))
+        )
+        .map((o) => o.id)
+    );
+
+    const protagonistOrgIds = new Set(
+      members.filter((m) => m.character_id === protagonist.id).map((m) => m.organization_id)
+    );
+
+    const targetOrgIds = householdOrgIds.size
+      ? [...householdOrgIds]
+      : [...protagonistOrgIds];
+
+    for (const orgId of targetOrgIds) {
+      const roster = members.filter((m) => m.organization_id === orgId);
+      for (const member of roster) {
+        let otherId = member.character_id as string | null;
+        if (!otherId && member.character_name) {
+          otherId = resolveCharacterIdByName(String(member.character_name), chars);
+        }
+        if (!otherId || otherId === protagonist.id) continue;
+
+        stats.pairs++;
+        const isNew = await this.upsertRelationship(userId, {
+          charAId: protagonist.id,
+          charBId: otherId,
+          relType: 'family',
+          evidenceIds: [],
+          source: 'organization_members',
+          kinship: 'household',
+          confidence: 0.7,
+        });
+        if (isNew) stats.created++;
+        else stats.updated++;
+      }
+    }
+
+    return stats;
+  }
+
+  /** Fix chat-noise romantic edges on family-titled characters when facts don't support romance. */
+  async repairMisclassifiedRelationships(userId: string): Promise<{ repaired: number }> {
+    let repaired = 0;
+
+    const { data: rels } = await supabaseAdmin
+      .from('character_relationships')
+      .select('id, relationship_type, source_character_id, target_character_id, metadata')
+      .eq('user_id', userId);
+
+    if (!rels?.length) return { repaired: 0 };
+
+    const charIds = [...new Set(rels.flatMap((r) => [r.source_character_id, r.target_character_id]))];
+    const { data: chars } = await supabaseAdmin.from('characters').select('id, name').in('id', charIds);
+    const nameMap = new Map((chars ?? []).map((c) => [c.id, c.name]));
+
+    for (const rel of rels) {
+      if (rel.relationship_type !== 'romantic') continue;
+      const meta = (rel.metadata as Record<string, unknown>) ?? {};
+      const factIds = (meta.fact_ids as string[]) ?? [];
+      if (factIds.length > 0) continue;
+
+      const otherId =
+        rel.source_character_id === rel.target_character_id
+          ? null
+          : rel.source_character_id;
+      const names = [nameMap.get(rel.source_character_id), nameMap.get(rel.target_character_id)];
+      const otherName = names.find((n) => n && !/^me$/i.test(n)) ?? '';
+      if (!FAMILY_NAME_HINT.test(otherName)) continue;
+
+      await supabaseAdmin
+        .from('character_relationships')
+        .update({
+          relationship_type: 'family',
+          metadata: {
+            ...meta,
+            kinship: (meta.kinship as string) ?? 'family',
+            repaired_from: 'romantic',
+            repaired_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', rel.id);
+      repaired++;
+    }
+
+    return { repaired };
   }
 
   private async upsertRelationship(

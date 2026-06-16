@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
+import { canCallAuthenticatedApi } from '../lib/runtimeIdentity';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -22,7 +23,7 @@ export const useCharacterExtraction = (
   const { enabled = true, onCharacterCreated } = options;
 
   const extractAndCreateCharacters = useCallback(async (message: string, conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []) => {
-    if (!enabled || !message.trim()) return;
+    if (!enabled || !message.trim() || !canCallAuthenticatedApi()) return;
 
     try {
       // Call backend to extract character information from the message (including unnamed characters)
