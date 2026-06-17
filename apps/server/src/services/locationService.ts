@@ -253,7 +253,13 @@ class LocationService {
       if (entryId) existing.entryIds.add(entryId);
       if (coordinates && !existing.coordinates) existing.coordinates = coordinates;
       existing.sources.add(source);
-      if (fixedId && existing.id.startsWith('location-')) {
+      // Authority rule: the canonical `locations` table (source='registry') is the
+      // single id authority. Its id always wins over a people_places id or a
+      // synthesized `location-<slug>` id, so the Location Book emits ONE id type
+      // (locations.id) whenever a canonical row exists. Non-canonical ids only fill
+      // in when no canonical row exists yet. Fixes the merge "authority drift".
+      const isCanonical = source === 'registry';
+      if (fixedId && (isCanonical || existing.id.startsWith('location-'))) {
         existing.id = fixedId;
       }
       if (record) existing.record = { ...existing.record, ...record };

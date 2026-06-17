@@ -143,8 +143,10 @@ router.get('/:id/facts', requireAuth, async (req: AuthenticatedRequest, res) => 
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
+    // Authority: tolerate a people_places id from the Book without creating rows on a GET.
+    const canonicalId = (await locationMergeService.resolveCanonicalLocationId(userId, locationId, { promote: false })) ?? locationId;
     const { entityFactsService } = await import('../services/entityFactsService');
-    const facts = await entityFactsService.getEntityFacts(userId, locationId, 'location');
+    const facts = await entityFactsService.getEntityFacts(userId, canonicalId, 'location');
     res.json({ success: true, facts });
   } catch (error) {
     logger.error({ error, locationId }, 'Failed to get location facts');
@@ -170,7 +172,10 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 
   try {
-    const location = await locationService.updateLocation(userId, locationId, parsed.data);
+    // Authority: a people_places id from the Book resolves to the canonical
+    // locations.id (promoting it if needed) before the normal patch flow.
+    const canonicalId = (await locationMergeService.resolveCanonicalLocationId(userId, locationId)) ?? locationId;
+    const location = await locationService.updateLocation(userId, canonicalId, parsed.data);
     if (!location) {
       res.status(404).json({ success: false, error: 'Location not found' });
       return;

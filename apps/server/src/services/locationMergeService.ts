@@ -52,13 +52,91 @@ function mergeUniqueStrings(...lists: Array<string[] | null | undefined>): strin
 }
 
 class LocationMergeService {
+  /**
+   * Hotfix for location-authority drift: the Location Book (GET /api/locations →
+   * locationService.listLocations) can emit a people_places id while merge resolves
+   * against the `locations` table. These id spaces are disjoint, which produced the
+   * "Source location not found" 500. Until listLocations is made canonical-id-first
+   * (see docs/location-id-consolidation-plan.md), resolve any incoming id to the
+   * canonical locations.id: (1) already a locations row → use it; (2) a people_places
+   * id → map by normalized name to the canonical locations row; (3) people_places with
+   * no canonical row yet → promote it to a canonical locations row. Returns the
+   * canonical locations.id or null when the id resolves to nothing the user owns.
+   */
+  async resolveCanonicalLocationId(
+    userId: string,
+    id: string,
+    opts: { promote?: boolean } = {}
+  ): Promise<string | null> {
+    const promote = opts.promote ?? true;
+    // (1) Already canonical.
+    const { data: existing } = await supabaseAdmin
+      .from('locations')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (existing) return (existing as { id: string }).id;
+
+    // (2) people_places id → map to canonical by normalized name.
+    const { data: pp } = await supabaseAdmin
+      .from('people_places')
+      .select('id, name, type')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!pp) return null;
+    const ppRow = pp as { id: string; name: string; type?: string | null };
+    const normalized = normalizeNameKey(ppRow.name);
+
+    const { data: byName } = await supabaseAdmin
+      .from('locations')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('normalized_name', normalized)
+      .maybeSingle();
+    if (byName) return (byName as { id: string }).id;
+
+    // (3) No canonical row yet. Read-only callers (e.g. GET facts) stop here with
+    // the people_places id; write callers promote it into `locations`.
+    if (!promote) return ppRow.id;
+
+    // Promote the people_places entry into `locations`, preserving provenance.
+    const { data: created, error: createErr } = await supabaseAdmin
+      .from('locations')
+      .insert({
+        user_id: userId,
+        name: ppRow.name,
+        normalized_name: normalized,
+        type: ppRow.type ?? 'place',
+        metadata: { promoted_from_people_place: ppRow.id, promoted_at: new Date().toISOString(), source: 'people_places_promotion' },
+      })
+      .select('id')
+      .single();
+    if (createErr || !created) {
+      logger.warn({ userId, id, err: createErr }, 'resolveCanonicalLocationId: could not promote people_place to canonical location');
+      return null;
+    }
+    return (created as { id: string }).id;
+  }
+
   async merge(
     userId: string,
     sourceId: string,
     targetId: string,
     opts: { reason?: string } = {}
   ): Promise<LocationMergeReport> {
-    if (sourceId === targetId) throw new Error('Cannot merge a location into itself');
+    // Resolve both ids to the canonical authority BEFORE any equality/lookup check,
+    // so a people_places-id payload from the Location Book merges correctly.
+    const [resolvedSourceId, resolvedTargetId] = await Promise.all([
+      this.resolveCanonicalLocationId(userId, sourceId),
+      this.resolveCanonicalLocationId(userId, targetId),
+    ]);
+    if (!resolvedSourceId) throw new Error('Source location not found');
+    if (!resolvedTargetId) throw new Error('Target location not found');
+    if (resolvedSourceId === resolvedTargetId) throw new Error('Cannot merge a location into itself');
+    sourceId = resolvedSourceId;
+    targetId = resolvedTargetId;
 
     const [{ data: sourceData }, { data: targetData }] = await Promise.all([
       supabaseAdmin.from('locations').select(LOC_COLUMNS).eq('id', sourceId).eq('user_id', userId).maybeSingle(),
