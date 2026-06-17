@@ -3,7 +3,7 @@ import {
   Brain, Sparkles, Zap, Heart, Users, Activity,
   AlertCircle, ClipboardCheck, Clock, TrendingUp, Target, Database,
   HeartPulse, Ghost, MapPin, ArrowRight, BookOpen, CheckCircle2,
-  CalendarDays, BarChart3,
+  CalendarDays, BarChart3, Network, Scale, UserCircle,
 } from 'lucide-react';
 import { useDiscoverySummary } from '../../hooks/useDiscoverySummary';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
@@ -44,6 +44,22 @@ const CORE_PANELS: PanelConfig[] = [
     icon: Users,
     route: '/discovery/relationships',
     accent: 'from-blue-600 to-cyan-700',
+  },
+  {
+    id: 'characters',
+    title: 'Character Analytics',
+    description: 'Mention patterns, sentiment trends, and interaction scores across your cast.',
+    icon: UserCircle,
+    route: '/discovery/characters',
+    accent: 'from-fuchsia-600 to-purple-700',
+  },
+  {
+    id: 'memory-fabric',
+    title: 'Memory Fabric',
+    description: 'Clusters, bridges, and outliers linking your memories together.',
+    icon: Network,
+    route: '/discovery/memory-fabric',
+    accent: 'from-cyan-600 to-teal-700',
   },
   {
     id: 'insights-predictions',
@@ -153,6 +169,15 @@ const DATA_CONTROL_PANELS: PanelConfig[] = [
     route: '/discovery/correction-dashboard',
     badgeKey: 'openContradictions',
     accent: 'from-red-600 to-rose-700',
+  },
+  {
+    id: 'truth-seeker',
+    title: 'Truth Seeker',
+    description: 'Step through contradictions one at a time with guided resolution.',
+    icon: Scale,
+    route: '/discovery/truth-seeker',
+    badgeKey: 'openContradictions',
+    accent: 'from-orange-600 to-amber-700',
   },
   {
     id: 'memory-fade',

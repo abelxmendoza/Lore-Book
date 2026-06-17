@@ -17,21 +17,52 @@ import type { RelationshipRole } from '../lexical/lexicalTypes';
 
 const NORM = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
+/** Bare role words — not valid link endpoints when no named target exists. */
+const ROLE_TOKENS = new Set([
+  'self', 'me', 'user', 'friend', 'cousin', 'coworker', 'colleague', 'mentor', 'boss', 'coach',
+  'partner', 'rival', 'acquaintance', 'sibling', 'mother', 'father', 'uncle', 'aunt',
+  'romantic_partner', 'ex_partner', 'close_friend', 'teammate', 'promoter', 'vendor',
+  'community_member', 'student', 'estranged', 'neutral',
+]);
+
+/** Trim trailing clauses and punctuation from captured names. */
+export function sanitizeRelationshipName(raw: string): string {
+  let name = raw.trim().replace(/^["']|["']$/g, '');
+  name = name.replace(/[.!?;:].*$/s, '');
+  name = name.replace(/\s+(?:on|with|and|who|that|too|we|i)\b[\s\S]*$/i, '');
+  name = name.replace(/[.,!?;:]+$/g, '');
+  return name.trim();
+}
+
+export function isValidRelationshipEndpoint(name: string): boolean {
+  const cleaned = sanitizeRelationshipName(name);
+  if (cleaned.length < 2 || cleaned.length > 80) return false;
+  const lower = cleaned.toLowerCase();
+  if (ROLE_TOKENS.has(lower)) return false;
+  if (/\b(?:we|hung|out|the|my|and|with|who|that|too)\b/i.test(cleaned)) return false;
+  return true;
+}
+
+function pushEntityName(group: RelationshipInputGroup, raw: string): void {
+  const name = sanitizeRelationshipName(raw);
+  if (isValidRelationshipEndpoint(name)) group.entityNames.push(name);
+}
+
 const MY_RELATION_NAME = /\b(?:my|My)\s+(?:estranged\s+)?(?:friend|cousin|brother|sister|mom|mother|dad|father|uncle|aunt|t[íi]o|t[íi]a|boss|manager|coworker|colleague|mentor|coach|girlfriend|boyfriend|partner|wife|husband|ex|rival|best\s+friend|close\s+friend)\s+(\p{Lu}\p{Ll}+(?:\s+\p{Lu}\p{Ll}+)?)\b/gu;
 
-const WENT_WITH = /\b(?:went|go|going|hung\s+out|kicked\s+it|linked\s+up|met|saw|chilled)\s+with\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,2})/gi;
+const WENT_WITH = /\b(?:went|go|going|hung\s+out|kicked\s+it|linked\s+up|met|saw|chilled)\s+with\s+([A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+){0,2})(?=[.,!?;:\s]|$|\s+(?:too|and|on)\b)/gi;
 
-const WORKS_AT = /\b([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,2})\s+works?\s+(?:at|for)\s+([A-Z][\w&'.-]+(?:\s+[A-Z][\w&'.-]+){0,3})/gi;
+const WORKS_AT = /\b([A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+){0,2})\s+works?\s+(?:at|for)\s+([A-Z][\w&'.-]+(?:\s+[A-Z][\w&'.-]+){0,3})(?=[.,!?;:\s]|$|\s+(?:on|and|with|who)\b)/gi;
 
-const USER_WORKS_AT = /\b(?:i|we)\s+(?:work|worked|working)\s+(?:at|for|with)\s+([A-Z][\w&'.-]+(?:\s+[A-Z][\w&'.-]+){0,3})/gi;
+const USER_WORKS_AT = /\b(?:i|we)\s+(?:work|worked|working)\s+(?:at|for|with)\s+([A-Z][\w&'.-]+(?:\s+[A-Z][\w&'.-]+){0,3})(?=[.,!?;:\s]|$|\s+(?:on|and|with|who)\b)/gi;
 
 const AND_WITH = /\b(?:with|and)\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,2})\b/g;
 
 function entityNamesFromLexical(entities: LexicalEntity[]): string[] {
   return entities
     .filter((e) => ['PERSON', 'ORGANIZATION', 'PLACE', 'OBJECT'].includes(e.type) && e.subcategory !== 'PROPER_NOUN')
-    .map((e) => e.surface.trim())
-    .filter(Boolean);
+    .map((e) => sanitizeRelationshipName(e.surface))
+    .filter(isValidRelationshipEndpoint);
 }
 
 function pushLink(
@@ -55,9 +86,11 @@ export function discoverEntityLinks(
   const seen = new Set<string>();
 
   for (const rel of relationships) {
+    const target = rel.target?.trim();
+    if (!target || !isValidRelationshipEndpoint(target)) continue;
     pushLink(out, seen, {
       subject: 'self',
-      object: rel.target ?? rel.role,
+      object: sanitizeRelationshipName(target),
       relationshipType: roleToCanonicalType(rel.role),
       scope: roleToScope(rel.role),
       role: rel.role,
@@ -76,7 +109,8 @@ export function discoverEntityLinks(
   MY_RELATION_NAME.lastIndex = 0;
   while ((m = MY_RELATION_NAME.exec(text)) !== null) {
     const fullCue = m[0];
-    const name = m[1].trim();
+    const name = sanitizeRelationshipName(m[1]);
+    if (!isValidRelationshipEndpoint(name)) continue;
     const role = inferRoleFromCue(fullCue);
     pushLink(out, seen, {
       subject: 'self',
@@ -92,7 +126,8 @@ export function discoverEntityLinks(
 
   WENT_WITH.lastIndex = 0;
   while ((m = WENT_WITH.exec(text)) !== null) {
-    const name = m[1].trim();
+    const name = sanitizeRelationshipName(m[1]);
+    if (!isValidRelationshipEndpoint(name)) continue;
     pushLink(out, seen, {
       subject: 'self',
       object: name,
@@ -107,9 +142,11 @@ export function discoverEntityLinks(
 
   USER_WORKS_AT.lastIndex = 0;
   while ((m = USER_WORKS_AT.exec(text)) !== null) {
+    const org = sanitizeRelationshipName(m[1]);
+    if (!isValidRelationshipEndpoint(org)) continue;
     pushLink(out, seen, {
       subject: 'self',
-      object: m[1].trim(),
+      object: org,
       relationshipType: 'WORKS_FOR',
       scope: 'PROFESSIONAL',
       role: 'coworker',
@@ -121,9 +158,12 @@ export function discoverEntityLinks(
 
   WORKS_AT.lastIndex = 0;
   while ((m = WORKS_AT.exec(text)) !== null) {
+    const person = sanitizeRelationshipName(m[1]);
+    const org = sanitizeRelationshipName(m[2]);
+    if (!isValidRelationshipEndpoint(person) || !isValidRelationshipEndpoint(org)) continue;
     pushLink(out, seen, {
-      subject: m[1].trim(),
-      object: m[2].trim(),
+      subject: person,
+      object: org,
       relationshipType: 'WORKS_FOR',
       scope: 'PROFESSIONAL',
       role: 'coworker',
@@ -185,8 +225,8 @@ export function groupInputsByRelationshipScope(
   for (const link of links) {
     const hint = link.hint ?? roleToRelationshipHint(link.role ?? 'friend') ?? 'SOCIAL_RELATIONSHIP';
     const g = ensure(link.scope, hint);
-    if (link.object && link.object !== 'self') g.entityNames.push(link.object);
-    if (link.subject && link.subject !== 'self') g.entityNames.push(link.subject);
+    if (link.object && link.object !== 'self') pushEntityName(g, link.object);
+    if (link.subject && link.subject !== 'self') pushEntityName(g, link.subject);
     if (link.role) g.roles.push(link.role);
     g.cues.push(link.cue);
     g.confidence = Math.max(g.confidence, link.confidence);
@@ -195,7 +235,7 @@ export function groupInputsByRelationshipScope(
   for (const rel of relationships) {
     const hint = roleToRelationshipHint(rel.role) ?? 'SOCIAL_RELATIONSHIP';
     const g = ensure(roleToScope(rel.role), hint);
-    if (rel.target) g.entityNames.push(rel.target);
+    if (rel.target) pushEntityName(g, rel.target);
     g.roles.push(rel.role);
     g.cues.push(rel.cue);
     g.confidence = Math.max(g.confidence, rel.confidence);
@@ -211,14 +251,14 @@ export function groupInputsByRelationshipScope(
   for (const e of entities) {
     if (e.type === 'ORGANIZATION') {
       const g = ensure('PROFESSIONAL', 'WORK_RELATIONSHIP');
-      g.entityNames.push(e.surface);
+      pushEntityName(g, e.surface);
       g.confidence = Math.max(g.confidence, e.confidence);
     }
   }
 
   return [...groups.values()].map((g) => ({
     ...g,
-    entityNames: [...new Set(g.entityNames.map((n) => n.trim()).filter(Boolean))],
+    entityNames: [...new Set(g.entityNames.map((n) => sanitizeRelationshipName(n)).filter(isValidRelationshipEndpoint))],
     roles: [...new Set(g.roles)],
     cues: [...new Set(g.cues)],
   })).filter((g) => g.entityNames.length > 0 || g.cues.length > 0);

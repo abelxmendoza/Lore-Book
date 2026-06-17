@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { DiscoveryLayout } from './DiscoveryLayout';
 import { DiscoveryOverview } from './DiscoveryOverview';
 import { LoadingSkeleton } from './LoadingSkeleton';
@@ -67,6 +67,18 @@ const LifeStatsPanel = lazy(() =>
 const AchievementsPanel = lazy(() =>
   import('./AchievementsPanel').then(m => ({ default: m.AchievementsPanel }))
 );
+const MemoryFabricPanel = lazy(() =>
+  import('./MemoryFabricPanel').then(m => ({ default: m.MemoryFabricPanel }))
+);
+const CharactersAnalyticsPanel = lazy(() =>
+  import('./CharactersAnalyticsPanel').then(m => ({ default: m.CharactersAnalyticsPanel }))
+);
+const TruthSeekerPanel = lazy(() =>
+  import('./TruthSeekerPanel').then(m => ({ default: m.TruthSeekerPanel }))
+);
+const AnalyticsModuleRoute = lazy(() =>
+  import('./AnalyticsModuleRoute').then(m => ({ default: m.AnalyticsModuleRoute }))
+);
 const KnowledgeRecords = lazy(() =>
   import('../../routes/WhatAIKnows')
 );
@@ -108,6 +120,15 @@ export const DiscoveryHub = () => (
         <Route path="activity"             element={<Panel><ActivityCalendarPanel /></Panel>} />
         <Route path="life-stats"           element={<Panel><LifeStatsPanel /></Panel>} />
         <Route path="achievements"         element={<Panel><AchievementsPanel /></Panel>} />
+        <Route path="characters"           element={<Panel><CharactersAnalyticsPanel /></Panel>} />
+        <Route path="memory-fabric"        element={<Panel><MemoryFabricPanel /></Panel>} />
+        <Route path="truth-seeker"         element={<Panel><TruthSeekerPanel /></Panel>} />
+        {/* Legacy analytics module keys → shared handler */}
+        <Route path="saga"                 element={<Panel><AnalyticsModuleRoute /></Panel>} />
+        <Route path="map"                  element={<Panel><AnalyticsModuleRoute /></Panel>} />
+        <Route path="predictions"          element={<Panel><AnalyticsModuleRoute /></Panel>} />
+        <Route path="search"               element={<Panel><AnalyticsModuleRoute /></Panel>} />
+        <Route path="insights"             element={<Navigate to="/discovery/insights-predictions" replace />} />
 
         {/* Data & Control panels */}
         <Route path="memory-management"    element={<Panel><MemoryManagementPanel /></Panel>} />

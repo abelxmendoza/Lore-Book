@@ -8,6 +8,7 @@ import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { ChatMessage, type Message } from '../../features/chat/message/ChatMessage';
 import { useChatStream } from '../../hooks/useChatStream';
 import { fetchJson } from '../../lib/api';
+import { fetchCharacterList } from '../../api/characterList';
 import { searchTimelines, fetchTimeline } from '../../api/timelineV2';
 import { useTimelineV2 } from '../../hooks/useTimelineV2';
 import type { ChronologyEntry, Timeline } from '../../types/timelineV2';
@@ -385,7 +386,7 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
   const handleEntityNameClick = async (name: string) => {
     try {
       // Try to find character first
-      const characters = await fetchJson<Array<{ id: string; name: string }>>('/api/characters/list');
+      const characters = await fetchCharacterList<{ id: string; name: string }>();
       const character = characters.find(c => c.name.toLowerCase() === name.toLowerCase());
       if (character) {
         openCharacter(character);

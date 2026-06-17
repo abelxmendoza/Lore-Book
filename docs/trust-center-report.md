@@ -62,12 +62,11 @@ Auth: required (`requireAuth`). Registered as `CORE_RUNTIME` in `routeRegistry.t
 
 | Route | Component |
 |-------|-----------|
-| `/trust` | `TrustCenterView` — full dashboard |
-| Book headers | `BookTrustSummary` — compact line linking to Trust Center |
+| `/gaps` | `KnowledgeGapDashboard` — trust coverage panel + timeline voids |
+| `/trust` | Redirects to `/gaps` |
+| Book headers | `BookTrustSummary` — compact line linking to Knowledge Gaps |
 
-Sidebar: **Trust Center** under "Explore your story" (Shield icon).
-
-Legacy `/gaps` (Knowledge Gap Dashboard) remains; Trust Center superset includes gap data.
+Trust coverage is embedded in Knowledge Gaps (not a standalone page). `TrustCoveragePanel` renders the full rollup; `BookTrustSummary` shows per-domain coverage in Characters, Locations, Projects, and Skills books.
 
 ## Response shape (`TrustOverview`)
 

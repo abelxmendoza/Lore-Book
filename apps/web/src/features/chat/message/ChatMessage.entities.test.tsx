@@ -50,4 +50,27 @@ describe('ChatMessage — entity chips on assistant replies', () => {
     renderMessage(base);
     expect(screen.queryByText('detected:')).not.toBeInTheDocument();
   });
+
+  it('shows relationship groups on user messages from ontology metadata', () => {
+    renderMessage({
+      id: 'u2',
+      role: 'user',
+      content: 'My cousin Marcus works at Armstrong Robotics.',
+      timestamp: new Date(),
+      metadata: {
+        ontology_enrichment: {
+          relationship_groups: [
+            { scope: 'FAMILY', entityNames: ['Marcus'] },
+            { scope: 'PROFESSIONAL', entityNames: ['Armstrong Robotics'] },
+          ],
+        },
+      },
+    });
+
+    expect(screen.getByText('relationships:')).toBeInTheDocument();
+    expect(screen.getByText(/family:/)).toBeInTheDocument();
+    expect(screen.getByText('Marcus')).toBeInTheDocument();
+    expect(screen.getByText(/work:/)).toBeInTheDocument();
+    expect(screen.getByText('Armstrong Robotics')).toBeInTheDocument();
+  });
 });

@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { EntityChipsRow } from '../message/EntityChipsRow';
 import type { Message } from '../message/ChatMessage';
 import { collectThreadEntities, type ThreadEntity } from '../utils/collectThreadEntities';
+import { collectThreadRelationshipGroups } from '../utils/relationshipMetadata';
+import { RelationshipGroupsRow } from '../message/RelationshipGroupsRow';
 
 interface ThreadEntityChipsProps {
   messages: Message[];
@@ -23,8 +25,9 @@ export const ThreadEntityChips = ({
   onSelectEntity,
 }: ThreadEntityChipsProps) => {
   const entities = useMemo(() => collectThreadEntities(messages), [messages]);
+  const relationshipGroups = useMemo(() => collectThreadRelationshipGroups(messages), [messages]);
 
-  if (entities.length === 0) return null;
+  if (entities.length === 0 && relationshipGroups.length === 0) return null;
 
   const isComposer = variant === 'composer';
 
@@ -58,6 +61,13 @@ export const ThreadEntityChips = ({
               : undefined
           }
         />
+        {relationshipGroups.length > 0 && (
+          <RelationshipGroupsRow
+            groups={relationshipGroups}
+            label={isComposer ? 'relationship context:' : 'relationships in thread:'}
+            max={isComposer ? 5 : 4}
+          />
+        )}
         {isComposer && selectedEntityId && (
           <p className="mt-1 text-[10px] text-white/35">
             Next message focuses on{' '}

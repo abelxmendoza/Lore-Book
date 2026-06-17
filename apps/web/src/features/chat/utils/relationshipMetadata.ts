@@ -48,3 +48,29 @@ export function extractRelationshipPersistStats(
     entityEdges: typeof row.entityEdges === 'number' ? row.entityEdges : 0,
   };
 }
+
+/** Aggregate relationship groups across a thread, merging entities by scope. */
+export function collectThreadRelationshipGroups(
+  messages: Array<{ metadata?: Record<string, unknown> | null }>
+): RelationshipGroupSummary[] {
+  const byScope = new Map<string, RelationshipGroupSummary>();
+
+  for (const message of messages) {
+    for (const group of extractRelationshipGroups(message.metadata)) {
+      const existing = byScope.get(group.scope);
+      if (!existing) {
+        byScope.set(group.scope, {
+          ...group,
+          entityNames: [...group.entityNames],
+        });
+        continue;
+      }
+      existing.entityNames = [...new Set([...existing.entityNames, ...group.entityNames])];
+      if (group.confidence != null) {
+        existing.confidence = Math.max(existing.confidence ?? 0, group.confidence);
+      }
+    }
+  }
+
+  return [...byScope.values()].filter((g) => g.entityNames.length > 0);
+}

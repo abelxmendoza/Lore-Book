@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractRelationshipGroups,
   extractRelationshipPersistStats,
+  collectThreadRelationshipGroups,
 } from './relationshipMetadata';
 
 describe('extractRelationshipGroups', () => {
@@ -63,5 +64,34 @@ describe('extractRelationshipPersistStats', () => {
   it('returns null when stats are absent', () => {
     expect(extractRelationshipPersistStats(null)).toBeNull();
     expect(extractRelationshipPersistStats({ relationship_persistence: { skipped: 1 } })).toBeNull();
+  });
+});
+
+describe('collectThreadRelationshipGroups', () => {
+  it('merges groups by scope across messages', () => {
+    const groups = collectThreadRelationshipGroups([
+      {
+        metadata: {
+          ontology_enrichment: {
+            relationship_groups: [{ scope: 'FAMILY', entityNames: ['Marcus'] }],
+          },
+        },
+      },
+      {
+        metadata: {
+          ontology_enrichment: {
+            relationship_groups: [
+              { scope: 'FAMILY', entityNames: ['Grandma Rose'] },
+              { scope: 'PROFESSIONAL', entityNames: ['Armstrong Robotics'] },
+            ],
+          },
+        },
+      },
+    ]);
+
+    expect(groups).toHaveLength(2);
+    const family = groups.find((g) => g.scope === 'FAMILY');
+    expect(family?.entityNames).toEqual(['Marcus', 'Grandma Rose']);
+    expect(groups.find((g) => g.scope === 'PROFESSIONAL')?.entityNames).toEqual(['Armstrong Robotics']);
   });
 });

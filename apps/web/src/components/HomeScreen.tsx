@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/supabase';
 import { fetchJson } from '../lib/api';
+import { fetchCharacterList } from '../api/characterList';
 import { cn } from '../lib/cn';
 import { LivingBiographyCard } from './biography/LivingBiographyCard';
 import { CareerHomeCard } from './career/CareerHomeCard';
@@ -301,8 +302,8 @@ export const HomeScreen = () => {
   // ── Fetch characters, skills, threads in parallel ──────────────────────────
   useEffect(() => {
     // Top characters
-    fetchJson<{ characters: Character[] }>('/api/characters/list')
-      .then(({ characters }) => {
+    fetchCharacterList<Character>()
+      .then((characters) => {
         const sorted = [...characters]
           .sort((a, b) => (b.importance_score ?? 0) - (a.importance_score ?? 0));
         setTopChars(sorted.slice(0, 3));

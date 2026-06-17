@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { HQIResult } from './HQIResultCard';
 import { fetchJson } from '../../lib/api';
+import { fetchCharacterList } from '../../api/characterList';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 
 type EntryDetail = {
@@ -121,8 +122,8 @@ export const HQIResultModal = ({ result, isOpen, onClose }: Props) => {
 
   const loadCharacterDetails = async (characterNames: string[]) => {
     try {
-      const allCharacters = await fetchJson<{ characters: CharacterInfo[] }>('/api/characters/list');
-      const matched = allCharacters.characters.filter(char => 
+      const allCharacters = await fetchCharacterList<CharacterInfo>();
+      const matched = allCharacters.filter(char =>
         characterNames.some(name => 
           char.name.toLowerCase().includes(name.toLowerCase()) ||
           name.toLowerCase().includes(char.name.toLowerCase())

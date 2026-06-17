@@ -3,7 +3,7 @@ import { X, Calendar, Tag, Users, Sparkles, MapPin, ChevronLeft, ChevronRight, F
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { ChatComposer } from '../chat/ChatComposer';
+import { ChatComposer } from '../../features/chat/composer/ChatComposer';
 import { MemoryComponents } from './MemoryComponents';
 import { KnowledgeGraphViewer } from '../graph/KnowledgeGraphViewer';
 import { ReactionList } from '../reactions/ReactionList';
@@ -72,7 +72,6 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
   const [insights, setInsights] = useState<any>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
-  const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [linkedSearchTerm, setLinkedSearchTerm] = useState('');
   const [expandedLinkedId, setExpandedLinkedId] = useState<string | null>(null);
@@ -309,7 +308,6 @@ export const MemoryDetailModal = ({ memory, onClose, onNavigate, allMemories = [
 
     const userMessage = { role: 'user' as const, content: message, timestamp: new Date() };
     setChatMessages(prev => [...prev, userMessage]);
-    setChatInput('');
     setChatLoading(true);
 
     try {
@@ -1042,8 +1040,6 @@ The user can ask questions about this memory, request to add details, update tag
                 </div>
                 <div className="border-t border-border/60 pt-4">
                   <ChatComposer
-                    input={chatInput}
-                    onInputChange={setChatInput}
                     onSubmit={handleChatSubmit}
                     loading={chatLoading}
                   />

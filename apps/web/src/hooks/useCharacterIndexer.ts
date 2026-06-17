@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { fetchCharacterList } from '../../api/characterList';
 import type { CharacterProfile } from '../api/characters';
 import { config } from '../config/env';
-import { fetchJson } from '../lib/api';
 import { findCharacterMentions, type CharacterMatch } from '../utils/characterLinking';
 import { useMockData } from '../contexts/MockDataContext';
 
@@ -19,10 +19,10 @@ export const useCharacterIndexer = () => {
     const load = async () => {
       try {
         const useMockFallback = isMockEnabled || config.dev.allowMockData;
-        const { characters: list } = await fetchJson<{ characters: CharacterProfile[] }>(
-          `/api/characters/list`,
-          undefined,
-          { useMockData: useMockFallback, mockData: { characters: EMPTY_CHARACTERS } }
+        const list = await fetchCharacterList<CharacterProfile>(
+          useMockFallback
+            ? { useMockData: true, mockData: { characters: EMPTY_CHARACTERS } }
+            : undefined
         );
         setCharacters(list ?? []);
       } catch (error) {

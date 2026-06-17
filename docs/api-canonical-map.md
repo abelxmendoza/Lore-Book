@@ -67,9 +67,10 @@ These are **different concepts** — do not merge.
 
 ## Next steps (no deletions until reviewed)
 
-1. Migrate web clients to `/api/books/*` and `/api/memory/*`
-2. Add OpenAPI generation from `routeRegistry.ts`
-3. Introduce `/api/v1` prefix for external API
-4. After 90-day sunset window, **review** legacy mounts for removal (not automatic)
+1. ~~Migrate web clients to `/api/books/*`~~ — **in progress**: Book surfaces + `fetchCharacterList()` helper use `/api/books/characters`; memory/governance namespaces still on legacy paths
+2. Wire remaining analytics modules via `AnalyticsModuleRoute` (saga, map, predictions, search)
+3. Add OpenAPI generation from `routeRegistry.ts`
+4. Introduce `/api/v1` prefix for external API
+5. After 90-day sunset window, **review** legacy mounts for removal (not automatic)
 
 See also: [api-consolidation-roadmap.md](./api-consolidation-roadmap.md), [api-inventory.md](./api-inventory.md).

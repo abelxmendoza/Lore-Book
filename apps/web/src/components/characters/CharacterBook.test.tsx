@@ -5,6 +5,7 @@ import { render } from '../../test/utils';
 import { CharacterBook } from './CharacterBook';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { fetchJson } from '../../lib/api';
+import { booksApi } from '../../api/books';
 
 vi.mock('../../hooks/useLoreKeeper', () => ({
   useLoreKeeper: vi.fn()
@@ -14,8 +15,19 @@ vi.mock('../../lib/api', () => ({
   fetchJson: vi.fn().mockResolvedValue({}),
 }));
 
+vi.mock('../../api/books', () => ({
+  booksApi: {
+    loadCharacters: vi.fn(),
+    loadLocations: vi.fn().mockResolvedValue({ locations: [], suggestions: [], counts: {} }),
+    loadProjects: vi.fn().mockResolvedValue({ projects: [], duplicate_groups: [], suggestions: [], counts: {} }),
+    loadSkills: vi.fn().mockResolvedValue({ skills: [], suggestions: [], counts: {} }),
+    loadFamily: vi.fn().mockResolvedValue({ tree: {}, households: [], familyGroups: [], analytics: [], graph: {}, counts: {} }),
+    loadDiscovery: vi.fn().mockResolvedValue({ counts: {}, contradictionCount: 0, revealedSignalCount: 0 }),
+  },
+}));
+
 vi.mock('../../contexts/MockDataContext', () => ({
-  useMockData: () => ({ useMockData: false }),
+  useMockData: () => ({ useMockData: false, runtimeDataMode: 'REAL' }),
   getGlobalMockDataEnabled: () => false,
   setGlobalMockDataEnabled: vi.fn(),
   subscribeToMockDataState: vi.fn(() => vi.fn()),
@@ -36,7 +48,7 @@ vi.mock('../../lib/supabase', () => {
       channel: vi.fn(() => channel),
       removeChannel: vi.fn(),
     },
-    useAuth: () => ({ user: { id: 'user-1' } })
+    useAuth: () => ({ user: { id: 'user-1' }, loading: false })
   };
 });
 
@@ -258,10 +270,13 @@ describe('CharacterBook', () => {
         refreshChapters: vi.fn(),
       } as any);
 
+      vi.mocked(booksApi.loadCharacters).mockResolvedValue({
+        characters: charactersWithAnalytics,
+        duplicate_groups: [],
+        counts: {} as any,
+      });
+
       vi.mocked(fetchJson).mockImplementation(async (url: RequestInfo) => {
-        if (url === '/api/characters/list') {
-          return { characters: charactersWithAnalytics };
-        }
         if (url === '/api/conversation/romantic-relationships') {
           return { success: true, relationships: [] };
         }
@@ -274,6 +289,12 @@ describe('CharacterBook', () => {
         return {};
       });
     });
+
+    async function waitForCharactersLoaded() {
+      await waitFor(() => {
+        expect(screen.getByText('High Impact Minor')).toBeInTheDocument();
+      }, { timeout: 5000 });
+    }
 
     it('shows "High impact on me (70+)" filter option', async () => {
       render(<CharacterBook />);
@@ -293,9 +314,7 @@ describe('CharacterBook', () => {
     it('shows "People by impact on you" when sort is By impact on me', async () => {
       const user = userEvent.setup();
       render(<CharacterBook />);
-      await waitFor(() => {
-        expect(screen.getByTestId('character-book-sort')).toBeInTheDocument();
-      }, { timeout: 5000 });
+      await waitForCharactersLoaded();
       const sortSelect = screen.getByTestId('character-book-sort');
       await user.selectOptions(sortSelect, 'impact');
       await waitFor(() => {
@@ -306,14 +325,13 @@ describe('CharacterBook', () => {
     it('filters to high-influence characters when "High impact on me (70+)" is selected', async () => {
       const user = userEvent.setup();
       render(<CharacterBook />);
-      await waitFor(() => {
-        expect(screen.getByTestId('character-book-filter')).toBeInTheDocument();
-      }, { timeout: 5000 });
+      await waitForCharactersLoaded();
       const filterSelect = screen.getByTestId('character-book-filter');
       await user.selectOptions(filterSelect, 'high_impact');
       await waitFor(() => {
         expect(filterSelect).toHaveValue('high_impact');
         expect(screen.getAllByText('High Impact Minor').length).toBeGreaterThan(0);
+        expect(screen.queryByText('Low Impact Minor')).not.toBeInTheDocument();
       });
     });
   });

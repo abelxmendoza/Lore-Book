@@ -142,7 +142,7 @@ export const TruthSeekerPanel = () => {
   return (
     <>
       <toast.ToastContainer />
-      <Card className="neon-surface border border-cyan/30">
+      <Card className="neon-surface border border-cyan/30" data-testid="truth-seeker-panel">
         <CardHeader className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <CardTitle className="font-techno text-lg flex items-center gap-2">

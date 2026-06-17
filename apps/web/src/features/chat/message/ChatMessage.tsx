@@ -55,6 +55,8 @@ export const SOURCE_TYPE_LABELS: Record<string, string> = {
 import type { RecallChatPayload } from './recallTypes';
 import { EntityClarificationChip, type EntityAmbiguity } from './EntityClarificationChip';
 import { EntityChipsRow } from './EntityChipsRow';
+import { RelationshipGroupsRow } from './RelationshipGroupsRow';
+import { extractRelationshipGroups } from '../utils/relationshipMetadata';
 import { SilenceMessage } from './SilenceMessage';
 import { RecallMessage } from './RecallMessage';
 
@@ -176,6 +178,7 @@ export const ChatMessage = ({
   };
 
   const isUser = message.role === 'user';
+  const relationshipGroups = extractRelationshipGroups(message.metadata);
   const isSystem = message.isSystemMessage;
 
   // System messages get special styling
@@ -641,6 +644,13 @@ export const ChatMessage = ({
         {!isUser && message.mentionedEntities && message.mentionedEntities.length > 0 && (
           <div className="mt-2 w-full min-w-0">
             <EntityChipsRow entities={message.mentionedEntities} />
+          </div>
+        )}
+
+        {/* Relationship groups — persisted from ontology pipeline on user turns */}
+        {isUser && relationshipGroups.length > 0 && (
+          <div className="mt-2 w-full min-w-0">
+            <RelationshipGroupsRow groups={relationshipGroups} />
           </div>
         )}
 

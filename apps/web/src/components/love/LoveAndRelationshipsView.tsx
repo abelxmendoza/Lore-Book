@@ -7,6 +7,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { fetchCharacterList } from '../../api/characterList';
 import { fetchJson } from '../../lib/api';
 import { useMockData } from '../../contexts/MockDataContext';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
@@ -138,9 +139,9 @@ export const LoveAndRelationshipsView = () => {
     }
 
     try {
-      const response = await fetchJson<{ characters: CharacterListItem[] }>('/api/characters/list');
+      const list = await fetchCharacterList<CharacterListItem>();
       setExistingCharacterNames(
-        (response.characters || []).flatMap(character => [
+        list.flatMap(character => [
           character.name,
           ...(Array.isArray(character.alias) ? character.alias : []),
         ])

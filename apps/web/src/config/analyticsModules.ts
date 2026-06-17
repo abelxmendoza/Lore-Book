@@ -89,7 +89,7 @@ export const ANALYTICS_MODULES: AnalyticsModule[] = [
     title: 'Insights',
     description: 'Correlations, loops, and recurring patterns.',
     tier: 'core',
-    route: '/discovery/insights',
+    route: '/discovery/insights-predictions',
     icon: Sparkles,
     metrics: ['strongestCorrelation', 'loopCount', 'stabilityScore'],
     defaultCharts: ['correlationMatrix', 'loopTimeline'],

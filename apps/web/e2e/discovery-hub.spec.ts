@@ -70,6 +70,16 @@ test.describe('Discovery Hub — panels and navigation', () => {
     await expect(page.getByText(/vicarious network intelligence/i)).toBeVisible();
   });
 
+  test('navigates to character analytics panel', async ({ page }) => {
+    await openPanelFromOverview(page, /character analytics/i);
+    await expect(page).toHaveURL(/\/discovery\/characters/);
+  });
+
+  test('memory fabric panel loads', async ({ page }) => {
+    await page.goto('/discovery/memory-fabric?mockData=true', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('memory-fabric-panel')).toBeVisible({ timeout: 20000 });
+  });
+
   test('sidebar discovery nav links work on desktop', async ({ page }, testInfo) => {
     test.skip(
       testInfo.project.name.includes('Mobile'),

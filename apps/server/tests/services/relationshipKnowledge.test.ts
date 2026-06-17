@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { discoverEntityLinks, groupInputsByRelationshipScope } from '../../src/services/ontology/relationshipDiscovery';
+import {
+  discoverEntityLinks,
+  groupInputsByRelationshipScope,
+  isValidRelationshipEndpoint,
+  sanitizeRelationshipName,
+} from '../../src/services/ontology/relationshipDiscovery';
 import { relationshipKnowledgeService } from '../../src/services/ontology/relationshipKnowledgeService';
 import { lexicalAnalyzerService } from '../../src/services/lexical/lexicalAnalyzerService';
 import { hintToScope, roleToScope } from '../../src/services/ontology/canonical/relationshipKnowledge';
@@ -49,6 +54,36 @@ describe('relationshipDiscovery', () => {
     const links = discoverEntityLinks(text, entities, []);
     expect(links.some((l) => l.subject === 'Marcus' && l.object === 'Juan')).toBe(true);
   });
+
+  it('sanitizes captured names and skips role-only links', () => {
+    expect(sanitizeRelationshipName('Armstrong Robotics. We hung')).toBe('Armstrong Robotics');
+    expect(sanitizeRelationshipName('Juan too.')).toBe('Juan');
+    expect(isValidRelationshipEndpoint('friend')).toBe(false);
+    expect(isValidRelationshipEndpoint('coworker')).toBe(false);
+
+    const text = 'My cousin Marcus works at Armstrong Robotics. We hung out with Juan too.';
+    const entities = [
+      { surface: 'Marcus', normalized: 'marcus', type: 'PERSON' as const, confidence: 0.8, source: 'test' },
+      { surface: 'Armstrong Robotics', normalized: 'armstrong robotics', type: 'ORGANIZATION' as const, confidence: 0.85, source: 'test' },
+      { surface: 'Juan', normalized: 'juan', type: 'PERSON' as const, confidence: 0.75, source: 'test' },
+    ];
+    const relationships = [
+      { role: 'cousin' as const, cue: 'my cousin', sentiment: 'neutral' as const, confidence: 0.82 },
+      { role: 'coworker' as const, cue: 'works at', sentiment: 'neutral' as const, confidence: 0.82 },
+      { role: 'friend' as const, cue: 'hung out with', sentiment: 'neutral' as const, confidence: 0.8 },
+    ];
+    const links = discoverEntityLinks(text, entities, relationships);
+    const objects = links.map((l) => l.object);
+
+    expect(objects).toContain('Marcus');
+    expect(objects).toContain('Juan');
+    expect(objects.some((o) => /Armstrong Robotics/i.test(o))).toBe(true);
+    expect(objects).not.toContain('friend');
+    expect(objects).not.toContain('coworker');
+    expect(objects).not.toContain('cousin');
+    expect(objects.some((o) => /\bWe hung\b/i.test(o))).toBe(false);
+    expect(objects.some((o) => /too\.?$/i.test(o))).toBe(false);
+  });
 });
 
 describe('relationshipKnowledgeService', () => {
@@ -59,9 +94,21 @@ describe('relationshipKnowledgeService', () => {
       text: 'My cousin Marcus works at Armstrong Robotics. We hung out with Juan too.',
     });
     const knowledge = relationshipKnowledgeService.buildFromLexical(result);
+    const endpoints = [
+      ...knowledge.entityLinks.map((l) => l.object),
+      ...knowledge.entityLinks.map((l) => l.subject),
+      ...knowledge.groups.flatMap((g) => g.entityNames),
+    ];
+    const objects = knowledge.entityLinks.map((l) => l.object);
+
     expect(knowledge.entityLinks.length).toBeGreaterThan(0);
     expect(knowledge.groups.length).toBeGreaterThan(0);
     expect(knowledge.entityKnowledge['Marcus']?.scopes).toContain('FAMILY');
+    expect(objects).toContain('Marcus');
+    expect(objects).toContain('Juan');
+    expect(endpoints.some((name) => /Armstrong Robotics/i.test(String(name)))).toBe(true);
+    expect(objects).not.toContain('friend');
+    expect(objects).not.toContain('coworker');
   });
 
   it('maps hints and roles to scopes', () => {

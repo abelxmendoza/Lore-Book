@@ -19,6 +19,15 @@ const PANEL_NAMES: Record<string, string> = {
   'memory-fade':            'Memory Fade Index',
   'activity':               'Activity Calendar',
   'life-stats':             'Life Stats',
+  'characters':             'Character Analytics',
+  'memory-fabric':          'Memory Fabric',
+  'truth-seeker':           'Truth Seeker',
+  'saga':                   'Sagas',
+  'map':                    'Life Map',
+  'predictions':            'Predictions',
+  'search':                 'Search Analytics',
+  'achievements':           'Achievements',
+  'knowledge-records':      'Knowledge Records',
 };
 
 export const PanelBreadcrumb = () => {

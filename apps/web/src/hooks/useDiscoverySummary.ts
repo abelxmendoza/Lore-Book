@@ -13,6 +13,7 @@
 
 import { useState, useEffect } from 'react';
 import { fetchJson } from '../lib/api';
+import { booksApi } from '../api/books';
 
 export interface DiscoverySummary {
   pendingProposals: number;
@@ -48,13 +49,14 @@ export function useDiscoverySummary(): UseDiscoverySummaryResult {
       setLoading(true);
       try {
         // All fetches run in parallel — fail individually, never block each other
-        const [mrqResult, contradictionsResult, fadingResult, insightsResult, bioResult] =
+        const [mrqResult, contradictionsResult, fadingResult, insightsResult, bioResult, discoveryResult] =
           await Promise.allSettled([
             fetchJson<{ items: unknown[] }>('/api/mrq/pending'),
             fetchJson<{ contradictions: unknown[] }>('/api/corrections/contradictions'),
             fetchJson<{ entries: unknown[] }>('/api/entries/fading?limit=20'),
             fetchJson<{ insights: Array<{ text?: string; body?: string }> }>('/api/insights?dismissed=false&limit=1'),
             fetchJson<{ card: { currentChapter?: { label: string } | null } }>('/api/biography/living'),
+            booksApi.loadDiscovery().catch(() => null),
           ]);
 
         if (cancelled) return;
@@ -64,7 +66,9 @@ export function useDiscoverySummary(): UseDiscoverySummaryResult {
         const openContradictions =
           contradictionsResult.status === 'fulfilled'
             ? (contradictionsResult.value.contradictions?.length ?? 0)
-            : 0;
+            : discoveryResult.status === 'fulfilled' && discoveryResult.value
+              ? (discoveryResult.value.contradictionCount ?? 0)
+              : 0;
         const fadingMemories =
           fadingResult.status === 'fulfilled' ? (fadingResult.value.entries?.length ?? 0) : 0;
 

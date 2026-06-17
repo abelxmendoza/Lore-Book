@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
+import { fetchCharacterList } from '../../api/characterList';
 import type { MemoryFilters } from '../../types/memory';
 import type { TimelineNode } from '../../types/timeline';
 import type { CharacterProfile } from '../../api/characters';
@@ -49,7 +50,7 @@ export const MemoryFiltersSidebar = ({ filters, onFiltersChange }: MemoryFilters
           method: 'POST',
           body: JSON.stringify({ layer_type: ['arc'] })
         }).catch(() => ({ results: [] })),
-        fetchJson<{ characters: CharacterProfile[] }>('/api/characters/list').catch(() => ({ characters: [] })),
+        fetchCharacterList<CharacterProfile>().catch(() => []),
         fetchJson<Array<{ name: string; count: number }>>('/api/entries?limit=500').then(async (entries: any) => {
           const tagMap = new Map<string, number>();
           (entries.entries || []).forEach((entry: any) => {
@@ -64,7 +65,7 @@ export const MemoryFiltersSidebar = ({ filters, onFiltersChange }: MemoryFilters
       setEras(erasRes.results || []);
       setSagas(sagasRes.results || []);
       setArcs(arcsRes.results || []);
-      setCharacters(charactersRes.characters || []);
+      setCharacters(charactersRes || []);
       setTags(tagsRes);
     } catch (error) {
       console.error('Failed to load filter options:', error);
