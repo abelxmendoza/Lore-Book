@@ -31,10 +31,11 @@ async function main() {
 
   const { data: facts } = await supabaseAdmin
     .from('entity_facts')
-    .select('id, entity_id, fact, category, created_at')
+    .select('id, entity_id, fact, category, created_at, superseded_at')
     .eq('user_id', uid)
     .eq('entity_type', 'character')
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .is('superseded_at', null);
 
   const orphans = (facts ?? []).filter((f) => !valid.has(f.entity_id));
 

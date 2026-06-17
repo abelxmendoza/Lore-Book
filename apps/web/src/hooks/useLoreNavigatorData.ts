@@ -19,6 +19,8 @@ export type BiographySection = {
     extractedAt?: string;
   };
   lastUpdated?: string;
+  originalContent?: string;
+  isEdited?: boolean;
 };
 
 export type Character = {
@@ -175,6 +177,9 @@ export const useLoreNavigatorData = (bookId?: string | null) => {
                   title: string;
                   text: string;
                   timeSpan: { start: string; end: string };
+                  originalText?: string;
+                  isEdited?: boolean;
+                  lastUpdated?: string;
                 }>;
               };
             }>(`/api/biography/${bookId}`);
@@ -186,6 +191,9 @@ export const useLoreNavigatorData = (bookId?: string | null) => {
                 content: ch.text,
                 order: idx + 1,
                 period: { from: ch.timeSpan.start, to: ch.timeSpan.end },
+                originalContent: ch.originalText,
+                isEdited: ch.isEdited,
+                lastUpdated: ch.lastUpdated,
               })),
               characters: [],
               locations: [],
@@ -204,27 +212,33 @@ export const useLoreNavigatorData = (bookId?: string | null) => {
         }
       }
 
-      // Load biography sections
+      // Load biography sections, characters, and locations in parallel
       let biography: BiographySection[] = [];
-      try {
-        const bioData = await fetchJson<{ sections: BiographySection[] }>('/api/biography/sections');
-        biography = bioData.sections || [];
-      } catch (error) {
-        console.warn('Failed to load biography sections:', error);
-      }
-
-      // Load characters and locations (canonical books BFF)
       let characters: Character[] = [];
       let locations: Location[] = [];
-      try {
-        const [charBook, locBook] = await Promise.all([
-          booksApi.loadCharacters(),
-          booksApi.loadLocations(),
-        ]);
-        characters = (charBook.characters || []) as Character[];
-        locations = (locBook.locations || []) as Location[];
-      } catch (error) {
-        console.warn('Failed to load characters/locations:', error);
+
+      const [sectionsResult, charBookResult, locBookResult] = await Promise.allSettled([
+        fetchJson<{ sections: BiographySection[] }>('/api/biography/sections'),
+        booksApi.loadCharacters(),
+        booksApi.loadLocations(),
+      ]);
+
+      if (sectionsResult.status === 'fulfilled') {
+        biography = sectionsResult.value.sections || [];
+      } else {
+        console.warn('Failed to load biography sections:', sectionsResult.reason);
+      }
+
+      if (charBookResult.status === 'fulfilled') {
+        characters = (charBookResult.value.characters || []) as Character[];
+      } else {
+        console.warn('Failed to load characters:', charBookResult.reason);
+      }
+
+      if (locBookResult.status === 'fulfilled') {
+        locations = (locBookResult.value.locations || []) as Location[];
+      } else {
+        console.warn('Failed to load locations:', locBookResult.reason);
       }
 
       // Use chapters from useLoreKeeper

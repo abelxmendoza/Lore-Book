@@ -27,10 +27,13 @@ import { useActiveChatMessages } from '../../contexts/ChatThreadContext';
 import { generateNicknames } from '../../utils/nicknameGenerator';
 import { mockDataService } from '../../services/mockDataService';
 import { useMockData } from '../../contexts/MockDataContext';
+import { useGuest } from '../../contexts/GuestContext';
+import { getGuestCharacters } from '../../services/guestLoreStore';
 import { getMockRomanticRelationships } from '../../mocks/romanticRelationships';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { DetectedCharacterSuggestions } from './DetectedCharacterSuggestions';
 import { CharacterMergePanel } from './CharacterMergePanel';
+import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
@@ -2450,6 +2453,7 @@ type RomanticRelationship = {
 export const CharacterBook = () => {
   const { user, loading: authLoading } = useAuth();
   const { useMockData: isMockDataEnabled, runtimeDataMode } = useMockData();
+  const { isGuest, guestState } = useGuest();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<CharacterCategory>('all');
@@ -2549,6 +2553,12 @@ export const CharacterBook = () => {
       setLoading(false);
       return;
     }
+
+    if (isGuest && guestState?.guestId) {
+      setCharacters(getGuestCharacters(guestState.guestId));
+      setLoading(false);
+      return;
+    }
     
     try {
       const response = await booksApi.loadCharacters();
@@ -2632,7 +2642,15 @@ export const CharacterBook = () => {
     void loadCharacters();
     void loadRelationships();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, isMockDataEnabled, authLoading]);
+  }, [user?.id, isMockDataEnabled, authLoading, isGuest, guestState?.guestId]);
+
+  useEffect(() => {
+    if (!isGuest) return;
+    const onGuestLore = () => { void loadCharacters(); };
+    window.addEventListener('lk:guest-lore-updated', onGuestLore);
+    return () => window.removeEventListener('lk:guest-lore-updated', onGuestLore);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGuest]);
 
   // Ensure protagonist exists; periodic self sync from chat (throttled).
   useEffect(() => {
@@ -2920,6 +2938,8 @@ export const CharacterBook = () => {
           {rescanError}
         </div>
       )}
+
+      <OntologyCompliancePanel book="characters" />
 
       <CharacterMergePanel
         characters={characters}

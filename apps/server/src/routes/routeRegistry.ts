@@ -35,6 +35,7 @@ import { calendarRouter } from './calendar';
 import { canonRouter } from './canon';
 import { chaptersRouter } from './chapters';
 import { charactersRouter } from './characters';
+import { guestRouter } from './guest';
 import { chatRouter } from './chat';
 import chatMemoryRouter from './chatMemory';
 import { chatOrchestrationRouter } from './chatOrchestration';
@@ -368,6 +369,13 @@ export const routeRegistry: RouteEntry[] = [
   },
 
   // ---- CHAT ---------------------------------------------------------------
+  {
+    path: '/api/guest',
+    router: guestRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Guest preview chat — stateless, no DB writes',
+  },
   {
     path: '/api/chat',
     router: chatRouter,

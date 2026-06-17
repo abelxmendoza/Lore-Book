@@ -41,4 +41,15 @@ router.get(
   })
 );
 
+/** GET /api/ontology/compliance — lexical rule violations across entity books */
+router.get(
+  '/compliance',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const { ontologyComplianceService } = await import('../services/ontology/ontologyComplianceService');
+    const report = await ontologyComplianceService.audit(req.user!.id);
+    res.json({ success: true, report });
+  })
+);
+
 export const ontologyRouter = router;

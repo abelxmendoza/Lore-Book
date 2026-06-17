@@ -97,6 +97,7 @@ import { EntityModalProvider } from './contexts/EntityModalContext';
 import { CurrentContextProvider } from './contexts/CurrentContextContext';
 import { SoulProfileChatProvider } from './contexts/SoulProfileChatContext';
 import { MockDataProvider } from './contexts/MockDataContext';
+import { LoreReadinessSimulationProvider } from './contexts/LoreReadinessSimulationContext';
 import { mockDataService } from './services/mockDataService';
 import { config } from './config/env';
 import { initMonitoring } from './lib/monitoring';
@@ -133,6 +134,7 @@ if (!rootElement) {
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <ChatThreadProvider>
           <MockDataProvider>
+            <LoreReadinessSimulationProvider>
             <LoreKeeperProvider>
             <GuestProvider>
               <EntityModalProvider>
@@ -147,6 +149,7 @@ if (!rootElement) {
               </EntityModalProvider>
             </GuestProvider>
             </LoreKeeperProvider>
+            </LoreReadinessSimulationProvider>
           </MockDataProvider>
           </ChatThreadProvider>
         </BrowserRouter>

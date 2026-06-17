@@ -9,6 +9,7 @@ import { LandingHeader } from '../components/landing/LandingHeader';
 import { LandingFooter } from '../components/landing/LandingFooter';
 import { CTASection } from '../components/landing/CTASection';
 import { CheckoutFlow } from '../components/subscription/CheckoutFlow';
+import { GuestExperienceCard } from '../components/guest/GuestExperienceCard';
 
 // ── Value pillars ─────────────────────────────────────────────────────────────
 
@@ -128,6 +129,14 @@ const UpgradePage = () => {
       <LandingHeader />
 
       <main className="pt-20">
+
+        {isGuest && (
+          <section className="px-4 sm:px-6 lg:px-8 pb-4">
+            <div className="max-w-3xl mx-auto rounded-2xl overflow-hidden border border-primary/20">
+              <GuestExperienceCard variant="banner" showEndSession={false} />
+            </div>
+          </section>
+        )}
 
         {/* Hero */}
         <section className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8">

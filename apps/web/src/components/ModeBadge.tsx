@@ -5,9 +5,10 @@
  * Placement: fixed, bottom-left, above any z-50 overlays.
  */
 
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useGuest } from '../contexts/GuestContext';
 import { getGlobalMockDataEnabled, subscribeToMockDataState } from '../contexts/MockDataContext';
-import { useState, useEffect } from 'react';
 
 const DEV_AUTH_BYPASS =
   typeof import.meta !== 'undefined' &&
@@ -16,15 +17,16 @@ const DEV_AUTH_BYPASS =
 
 interface Badge {
   label: string;
-  color: string; // Tailwind bg + text classes
+  color: string;
   title: string;
+  onClick?: () => void;
 }
 
 export const ModeBadge = () => {
+  const navigate = useNavigate();
   const { isGuest } = useGuest();
   const [isMockData, setIsMockData] = useState(getGlobalMockDataEnabled());
 
-  // Keep in sync with the global mock-data toggle
   useEffect(() => {
     return subscribeToMockDataState(setIsMockData);
   }, []);
@@ -43,7 +45,8 @@ export const ModeBadge = () => {
     badges.push({
       label: 'Guest',
       color: 'bg-blue-900/80 text-blue-200 border-blue-700/60',
-      title: 'Running as guest — memory writes are local only.',
+      title: 'Guest session — click to open guest account & upgrade options.',
+      onClick: () => navigate('/account'),
     });
   }
 
@@ -59,16 +62,29 @@ export const ModeBadge = () => {
 
   return (
     <div className="fixed bottom-4 left-4 z-40 flex flex-col gap-1 items-start">
-      {badges.map(b => (
-        <span
-          key={b.label}
-          title={b.title}
-          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-mono font-semibold tracking-wide backdrop-blur-sm ${b.color}`}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
-          {b.label}
-        </span>
-      ))}
+      {badges.map((b) => {
+        const className = `inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-mono font-semibold tracking-wide backdrop-blur-sm ${b.color} ${b.onClick ? 'cursor-pointer hover:opacity-90' : ''}`;
+        if (b.onClick) {
+          return (
+            <button
+              key={b.label}
+              type="button"
+              title={b.title}
+              onClick={b.onClick}
+              className={className}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+              {b.label}
+            </button>
+          );
+        }
+        return (
+          <span key={b.label} title={b.title} className={className}>
+            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+            {b.label}
+          </span>
+        );
+      })}
     </div>
   );
 };

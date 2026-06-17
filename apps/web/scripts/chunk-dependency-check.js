@@ -24,7 +24,7 @@ const REACT_DEPENDENT_PATTERNS = [
   /ui-vendor/i,
   /editor-vendor/i,
   /visualization-vendor/i,
-  /route-/i,
+  /^route-[a-z0-9]/i,
   /chat-components/i,
   /character-components/i,
   /timeline-components/i,

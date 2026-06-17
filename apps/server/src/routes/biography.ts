@@ -11,6 +11,7 @@ import { autoCompilationService } from '../services/biographyGeneration/autoComp
 import { dateAssignmentService } from '../services/dateAssignmentService';
 import { lorebookRecommendationEngine } from '../services/lorebook/lorebookRecommendationEngine';
 import { lorebookSearchParser } from '../services/lorebook/lorebookSearchParser';
+import { chatEditBiographySection, updateBiographySection } from '../services/biographySectionService';
 import { mainLifestoryService } from '../services/mainLifestoryService';
 import { getLivingBiographyCard, getBiographyChanges } from '../services/livingBiographyService';
 import { omegaChatService } from '../services/omegaChatService';
@@ -43,6 +44,9 @@ router.post('/main-lifestory/regenerate', requireAuth, async (req: Authenticated
   try {
     await mainLifestoryService.ensureMainLifestory(req.user!.id, true);
     const lifestory = await mainLifestoryService.getMainLifestory(req.user!.id);
+    if (!lifestory) {
+      return res.status(404).json({ error: 'Main lifestory not found' });
+    }
     res.json({ biography: lifestory, message: 'Main lifestory regenerated' });
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Failed to regenerate main lifestory');
@@ -196,6 +200,74 @@ router.post('/chat', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+const updateSectionSchema = z.object({
+  sectionId: z.string().min(1),
+  title: z.string().optional(),
+  content: z.string().optional(),
+  biographyId: z.string().uuid().optional(),
+});
+
+/**
+ * PATCH /api/biography/section
+ * Manually update a biography section (chapter) in main lifestory or a saved lorebook.
+ */
+router.patch('/section', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = updateSectionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+    }
+
+    const { sectionId, title, content, biographyId } = parsed.data;
+    await updateBiographySection(req.user!.id, sectionId, { title, content }, biographyId);
+    res.json({ ok: true });
+  } catch (error) {
+    logger.error({ err: error, userId: req.user!.id }, 'Failed to update biography section');
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to update section',
+    });
+  }
+});
+
+const sectionChatSchema = z.object({
+  sectionId: z.string().min(1),
+  focus: z.string().optional(),
+  message: z.string().min(1),
+  history: z
+    .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() }))
+    .optional(),
+  biographyId: z.string().uuid().optional(),
+});
+
+/**
+ * POST /api/biography/section/chat
+ * AI-assisted editing for a single biography section.
+ */
+router.post('/section/chat', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const parsed = sectionChatSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid request', details: parsed.error });
+    }
+
+    const { sectionId, focus = '', message, history = [], biographyId } = parsed.data;
+    const result = await chatEditBiographySection(
+      req.user!.id,
+      sectionId,
+      focus,
+      message,
+      history,
+      biographyId
+    );
+    res.json(result);
+  } catch (error) {
+    logger.error({ err: error, userId: req.user!.id }, 'Failed to process section chat edit');
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to process section edit',
+    });
+  }
+});
+
 /**
  * POST /api/biography/generate
  * Generate a new biography from NarrativeAtoms
@@ -257,13 +329,14 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
     const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
-      throw error;
+      logger.warn({ err: error, userId: req.user!.id }, 'Biographies list query failed, returning empty');
+      return res.json({ biographies: [] });
     }
 
     res.json({ biographies: data || [] });
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Failed to list biographies');
-    res.status(500).json({ error: 'Failed to list biographies' });
+    res.json({ biographies: [] });
   }
 });
 
@@ -344,55 +417,6 @@ router.post('/:id/save-as-core', requireAuth, async (req: AuthenticatedRequest, 
 });
 
 /**
- * GET /api/biography/:id
- * Get a specific biography
- */
-router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { supabaseAdmin } = await import('../services/supabaseClient');
-    const { data, error } = await supabaseAdmin
-      .from('biographies')
-      .select('*')
-      .eq('user_id', req.user!.id)
-      .eq('id', req.params.id)
-      .single();
-
-    if (error || !data) {
-      return res.status(404).json({ error: 'Biography not found' });
-    }
-
-    res.json({ biography: data.biography_data });
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Failed to get biography');
-    res.status(500).json({ error: 'Failed to get biography' });
-  }
-});
-
-/**
- * DELETE /api/biography/:id
- * Delete a specific biography
- */
-router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { supabaseAdmin } = await import('../services/supabaseClient');
-    const { error } = await supabaseAdmin
-      .from('biographies')
-      .delete()
-      .eq('user_id', req.user!.id)
-      .eq('id', req.params.id);
-
-    if (error) {
-      return res.status(500).json({ error: 'Failed to delete biography' });
-    }
-
-    res.json({ success: true });
-  } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Failed to delete biography');
-    res.status(500).json({ error: 'Failed to delete biography' });
-  }
-});
-
-/**
  * GET /api/biography/recommendations
  * Get top 4 recommended biographies
  */
@@ -415,8 +439,21 @@ router.get('/stats', requireAuth, async (req: AuthenticatedRequest, res) => {
     const stats = await contentAvailabilityService.getContentStats(req.user!.id);
     res.json({ stats });
   } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Failed to get content stats');
-    res.status(500).json({ error: 'Failed to get content stats' });
+    logger.warn({ error, userId: req.user!.id }, 'Content stats unavailable, returning empty snapshot');
+    res.json({
+      stats: {
+        totalJournalEntries: 0,
+        totalChatMessages: 0,
+        totalNarrativeAtoms: 0,
+        totalWordCount: 0,
+        totalCharacterCount: 0,
+        timelineSpan: { start: '', end: '', days: 0, months: 0, years: 0 },
+        domainCoverage: [],
+        entityCounts: { characters: 0, locations: 0, events: 0, skills: 0 },
+        contentDensity: { entriesPerMonth: 0, entriesPerYear: 0, averageWordsPerEntry: 0 },
+        mostActivePeriods: [],
+      },
+    });
   }
 });
 
@@ -631,7 +668,7 @@ router.get('/lorebook-recommendations', requireAuth, async (req: AuthenticatedRe
     res.json({ recommendations });
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Failed to get lorebook recommendations');
-    res.status(500).json({ error: 'Failed to get recommendations' });
+    res.json({ recommendations: [] });
   }
 });
 
@@ -651,8 +688,8 @@ router.get('/living', requireAuth, async (req: AuthenticatedRequest, res) => {
     const card = await getLivingBiographyCard(req.user!.id);
     res.json({ success: true, card });
   } catch (error) {
-    logger.error({ error, userId: req.user!.id }, 'Failed to build living biography card');
-    res.status(500).json({ success: false, error: 'Failed to build living biography card' });
+    logger.warn({ error, userId: req.user!.id }, 'Living biography card unavailable');
+    res.json({ success: false, card: null, error: 'Living biography not available yet' });
   }
 });
 
@@ -675,6 +712,55 @@ router.get('/living/changes', requireAuth, async (req: AuthenticatedRequest, res
   } catch (error) {
     logger.error({ error, userId: req.user!.id }, 'Failed to compute biography changes');
     res.status(500).json({ success: false, error: 'Failed to compute biography changes' });
+  }
+});
+
+/**
+ * GET /api/biography/:id
+ * Get a specific biography (must stay after all static GET paths)
+ */
+router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { supabaseAdmin } = await import('../services/supabaseClient');
+    const { data, error } = await supabaseAdmin
+      .from('biographies')
+      .select('*')
+      .eq('user_id', req.user!.id)
+      .eq('id', req.params.id)
+      .single();
+
+    if (error || !data) {
+      return res.status(404).json({ error: 'Biography not found' });
+    }
+
+    res.json({ biography: data.biography_data });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to get biography');
+    res.status(500).json({ error: 'Failed to get biography' });
+  }
+});
+
+/**
+ * DELETE /api/biography/:id
+ * Delete a specific biography
+ */
+router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { supabaseAdmin } = await import('../services/supabaseClient');
+    const { error } = await supabaseAdmin
+      .from('biographies')
+      .delete()
+      .eq('user_id', req.user!.id)
+      .eq('id', req.params.id);
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to delete biography' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error, userId: req.user!.id }, 'Failed to delete biography');
+    res.status(500).json({ error: 'Failed to delete biography' });
   }
 });
 

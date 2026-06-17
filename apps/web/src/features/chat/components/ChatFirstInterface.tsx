@@ -35,6 +35,7 @@ import { ChatSourceNavigator } from '../sources/ChatSourceNavigator';
 import { ChatSearchModal } from '../search/ChatSearchModal';
 import { ChatThreadList } from './ChatThreadList';
 import { GuestSignUpPrompt } from '../../../components/guest/GuestSignUpPrompt';
+import { GuestExperienceCard } from '../../../components/guest/GuestExperienceCard';
 import { CurrentContextBreadcrumbs } from '../../../components/CurrentContextBreadcrumbs';
 import { useGuest } from '../../../contexts/GuestContext';
 import { WorkSummaryImporter } from '../../../components/work/WorkSummaryImporter';
@@ -629,6 +630,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             )}
           </div>
         </div>
+
+        {isGuest && <GuestExperienceCard variant="compact" showEndSession={false} />}
 
         {/* Runtime status banner */}
         {backendStatus && !statusDismissed && (

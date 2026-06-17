@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import { useMockData } from './MockDataContext';
+import { getActiveGuestId, getGuestEntries } from '../services/guestLoreStore';
 import { fetchJson } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import type { CurrentContext } from '../types/currentContext';
@@ -128,6 +129,11 @@ function useLoreKeeperState() {
   );
 
   const refreshEntries = useCallback(async () => {
+    const guestId = getActiveGuestId();
+    if (guestId && !isMockEnabled) {
+      setEntries(getGuestEntries(guestId));
+      return;
+    }
     try {
       const data = await fetchJson<{ entries: JournalEntry[] }>('/api/entries', undefined, {
         useMockData: isMockEnabled,
@@ -141,6 +147,28 @@ function useLoreKeeperState() {
   }, [isMockEnabled]);
 
   const refreshTimeline = useCallback(async () => {
+    const guestId = getActiveGuestId();
+    if (guestId && !isMockEnabled) {
+      const guestEntries = getGuestEntries(guestId);
+      const byMonth = new Map<string, JournalEntry[]>();
+      for (const entry of guestEntries) {
+        const month = entry.date.slice(0, 7);
+        if (!byMonth.has(month)) byMonth.set(month, []);
+        byMonth.get(month)!.push(entry);
+      }
+      const unassigned = [...byMonth.entries()]
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([month, entries]) => ({ month, entries }));
+      setTimeline({ chapters: [], unassigned });
+      const tagCounts = new Map<string, number>();
+      for (const entry of guestEntries) {
+        for (const tag of entry.tags ?? []) {
+          tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+        }
+      }
+      setTags([...tagCounts.entries()].map(([name, count]) => ({ name, count })));
+      return;
+    }
     try {
       const [timelineData, tagData] = await Promise.all([
         fetchJson<{ timeline: TimelineResponse }>('/api/timeline', undefined, {

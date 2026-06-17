@@ -16,6 +16,7 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { fetchJson } from '../../lib/api';
 import type { BiographySpec, Domain, BiographyTone, BiographyDepth, BiographyAudience } from '../../../server/src/services/biographyGeneration/types';
+import { LoreBookGeneratingScreen, ensureMinGeneratingDuration } from './LoreBookGeneratingScreen';
 
 interface KnowledgeBaseCreatorProps {
   onGenerated: (biography: any) => void;
@@ -81,6 +82,7 @@ export const KnowledgeBaseCreator = ({ onGenerated, onClose }: KnowledgeBaseCrea
   const handleGenerate = async () => {
     setError(null);
     setGenerating(true);
+    const startedAt = Date.now();
 
     try {
       // Build spec based on scope
@@ -160,6 +162,7 @@ export const KnowledgeBaseCreator = ({ onGenerated, onClose }: KnowledgeBaseCrea
       setError(err.message || 'Failed to generate knowledge base');
       console.error('Failed to generate knowledge base:', err);
     } finally {
+      await ensureMinGeneratingDuration(startedAt);
       setGenerating(false);
     }
   };
@@ -180,6 +183,12 @@ export const KnowledgeBaseCreator = ({ onGenerated, onClose }: KnowledgeBaseCrea
   };
 
   return (
+    <>
+      {generating && (
+        <div className="fixed inset-0 z-[60]">
+          <LoreBookGeneratingScreen query={lorebookName.trim() || getScopeDescription()} />
+        </div>
+      )}
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
       <Card className="bg-black/90 border-border/60 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         <CardHeader className="border-b border-border/50">
@@ -455,5 +464,6 @@ export const KnowledgeBaseCreator = ({ onGenerated, onClose }: KnowledgeBaseCrea
         </CardContent>
       </Card>
     </div>
+    </>
   );
 };

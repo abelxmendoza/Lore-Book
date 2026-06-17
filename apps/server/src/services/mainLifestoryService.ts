@@ -109,9 +109,11 @@ class MainLifestoryService {
   }
 
   /**
-   * Get the main lifestory biography (always available)
+   * Get the main lifestory biography if it already exists.
+   * Does not trigger generation — use ensureMainLifestory for that.
    */
-  async getMainLifestory(userId: string): Promise<any | null> {
+  async getMainLifestory(userId: string, options?: { createIfMissing?: boolean }): Promise<any | null> {
+    const createIfMissing = options?.createIfMissing ?? false;
     try {
       const { data, error } = await supabaseAdmin
         .from('biographies')
@@ -124,9 +126,10 @@ class MainLifestoryService {
         .single();
 
       if (error || !data) {
-        // If doesn't exist, create it
+        if (!createIfMissing) {
+          return null;
+        }
         await this.ensureMainLifestory(userId, true);
-        // Try again
         const { data: newData } = await supabaseAdmin
           .from('biographies')
           .select('*')
@@ -136,7 +139,7 @@ class MainLifestoryService {
           .order('lorebook_version', { ascending: false })
           .limit(1)
           .single();
-        return newData;
+        return newData ?? null;
       }
 
       return data;

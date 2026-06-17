@@ -29,6 +29,7 @@ import { useMockData } from '../../contexts/MockDataContext';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { DetectedLocationSuggestions } from './DetectedLocationSuggestions';
 import { LocationMergePanel } from './LocationMergePanel';
+import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 
 // Comprehensive mock location data showcasing all app capabilities
 // Export for use in mock data service
@@ -659,7 +660,7 @@ export const LocationBook = () => {
         onClearSelection={() => setSelectedForMerge(new Set())}
       />
 
-      {/* Header */}
+      <OntologyCompliancePanel book="locations" />
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-white">Places</h2>

@@ -195,7 +195,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       timeline: 'Omni Timeline',
       characters: 'Characters',
       locations: 'Locations',
-      memoir: 'Biography Editor',
+      memoir: 'LoreBook Editor',
       lorebook: 'Lorebooks',
       photos: 'Photo Album',
       perceptions: 'Perceptions',

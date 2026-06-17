@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { config, log } from '../config/env';
-import { dispatchStoryDataUpdated } from '../lib/storyRefresh';
+import { getGlobalIsGuest } from '../contexts/MockDataContext';
+import { getGuestLoreSnapshot } from '../services/guestLoreStore';
 import type { CurrentContext, SoulProfileContext } from '../types/currentContext';
 
 type StreamChunk = {
@@ -84,7 +85,8 @@ export const useChatStream = () => {
     onMemoryFeedback?: (feedback: MemoryFeedbackEvent) => void,
     threadId?: string,
     threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>,
-    composerEntities?: Array<{ id: string; name: string; type: string; status?: string; aliases?: string[] }>
+    composerEntities?: Array<{ id: string; name: string; type: string; status?: string; aliases?: string[] }>,
+    guestOptions?: { guestId: string }
   ) => {
     setIsStreaming(true);
     const abortController = new AbortController();
@@ -93,10 +95,12 @@ export const useChatStream = () => {
     try {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
+      const useGuestStream = !token && getGlobalIsGuest() && guestOptions?.guestId;
 
-      // Use the configured API URL (empty in dev when using Vite proxy)
       const apiUrl = config.api.url;
-      const url = apiUrl ? `${apiUrl}/api/chat/stream` : '/api/chat/stream';
+      const url = useGuestStream
+        ? (apiUrl ? `${apiUrl}/api/guest/stream` : '/api/guest/stream')
+        : (apiUrl ? `${apiUrl}/api/chat/stream` : '/api/chat/stream');
 
       if (config.logging.logApiCalls) {
         log.debug('[useChatStream] Calling:', url);
@@ -110,25 +114,34 @@ export const useChatStream = () => {
         },
         credentials: 'omit',
         mode: 'cors',
-        body: JSON.stringify({
-          message,
-          conversationHistory,
-          ...(threadId ? { threadId } : {}),
-          ...(threadEntities && threadEntities.length > 0 ? { threadEntities } : {}),
-          ...(composerEntities && composerEntities.length > 0
+        body: JSON.stringify(
+          useGuestStream
             ? {
-                composerEntities: composerEntities.map((e) => ({
-                  id: e.id,
-                  name: e.name,
-                  type: e.type,
-                  ...(e.status ? { status: e.status } : {}),
-                })),
+                guestId: guestOptions!.guestId,
+                message,
+                conversationHistory,
+                guestLore: getGuestLoreSnapshot(guestOptions!.guestId),
               }
-            : {}),
-          ...(entityContext ? { entityContext } : {}),
-          ...(currentContext && currentContext.kind !== 'none' ? { currentContext } : {}),
-          ...(soulProfileContext && (soulProfileContext.lastReferencedInsightId || ((soulProfileContext.lastSurfacedInsights?.length ?? 0) > 0)) ? { soulProfileContext } : {})
-        }),
+            : {
+                message,
+                conversationHistory,
+                ...(threadId ? { threadId } : {}),
+                ...(threadEntities && threadEntities.length > 0 ? { threadEntities } : {}),
+                ...(composerEntities && composerEntities.length > 0
+                  ? {
+                      composerEntities: composerEntities.map((e) => ({
+                        id: e.id,
+                        name: e.name,
+                        type: e.type,
+                        ...(e.status ? { status: e.status } : {}),
+                      })),
+                    }
+                  : {}),
+                ...(entityContext ? { entityContext } : {}),
+                ...(currentContext && currentContext.kind !== 'none' ? { currentContext } : {}),
+                ...(soulProfileContext && (soulProfileContext.lastReferencedInsightId || ((soulProfileContext.lastSurfacedInsights?.length ?? 0) > 0)) ? { soulProfileContext } : {})
+              }
+        ),
         signal: abortController.signal
       }).catch((fetchError) => {
         console.error('[useChatStream] Fetch error:', {
