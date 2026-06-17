@@ -337,7 +337,8 @@ describe('CharacterBook', () => {
     async function waitForCharactersLoaded() {
       await waitFor(() => {
         expect(mockGetWithFallbackCharacters).toHaveBeenCalledWith(null, true);
-        expect(screen.getByText('High Impact Minor')).toBeInTheDocument();
+        const cards = screen.getAllByTestId('character-card');
+        expect(cards.some((card) => card.textContent?.includes('High Impact Minor'))).toBe(true);
       }, { timeout: 8000 });
     }
 
@@ -355,6 +356,15 @@ describe('CharacterBook', () => {
       }, { timeout: 5000 });
       expect(screen.getByText(/By impact on me/)).toBeInTheDocument();
     });
+
+    it('loads seeded demo characters for impact scenarios', async () => {
+      renderImpactBook();
+      await waitFor(() => {
+        expect(mockGetWithFallbackCharacters).toHaveBeenCalledWith(null, true);
+        expect(screen.getByText(/2 total/)).toBeInTheDocument();
+        expect(screen.getAllByTestId('character-card').length).toBeGreaterThan(0);
+      }, { timeout: 8000 });
+    }, 10_000);
 
     it('shows "People by impact on you" when sort is By impact on me', async () => {
       const user = userEvent.setup();
@@ -375,8 +385,9 @@ describe('CharacterBook', () => {
       await user.selectOptions(filterSelect, 'high_impact');
       await waitFor(() => {
         expect(filterSelect).toHaveValue('high_impact');
-        expect(screen.getAllByText('High Impact Minor').length).toBeGreaterThan(0);
-        expect(screen.queryByText('Low Impact Minor')).not.toBeInTheDocument();
+        const cards = screen.getAllByTestId('character-card');
+        expect(cards.some((card) => card.textContent?.includes('High Impact Minor'))).toBe(true);
+        expect(cards.every((card) => !card.textContent?.includes('Low Impact Minor'))).toBe(true);
       });
     }, 15_000);
   });
