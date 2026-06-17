@@ -40,6 +40,7 @@ const MIGRATIONS = [
   'supabase/migrations/20260617160000_dynamic_classifications.sql',
   'supabase/migrations/20260617170000_classifications_swimlane_keywords.sql',
   'supabase/migrations/20260617180000_relationship_scope_classifications.sql',
+  'supabase/migrations/20260617180000_relationship_peripherals_domain.sql',
   'supabase/migrations/20260617210000_entity_authority.sql',
 ];
 

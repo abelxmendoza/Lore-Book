@@ -18,6 +18,7 @@ import { LocationDetailModal } from './LocationDetailModal';
 import { Button } from '../ui/button';
 import { SearchWithAutocomplete } from '../ui/SearchWithAutocomplete';
 import { fetchJson } from '../../lib/api';
+import { booksApi } from '../../api/books';
 import { apiCache } from '../../lib/cache';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
@@ -437,9 +438,9 @@ export const LocationBook = () => {
   const loadLocations = async () => {
     setLoading(true);
     try {
-      apiCache.deletePattern(/\/api\/locations/);
-      const response = await fetchJson<{ locations: LocationProfile[] }>('/api/locations');
-      const locationList = response?.locations || [];
+      apiCache.deletePattern(/\/api\/(books\/)?locations/);
+      const response = await booksApi.loadLocations();
+      const locationList = (response?.locations || []) as LocationProfile[];
       
       // Use mock data service to determine what to show - pass current toggle state
       const result = mockDataService.getWithFallback.locations(

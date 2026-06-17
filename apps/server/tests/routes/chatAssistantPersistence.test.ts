@@ -140,6 +140,8 @@ describe('POST /api/chat/stream — assistant durability', () => {
       stream_status: 'complete',
       saved_from_stream: true,
     });
+    expect(res.text).toContain('"persistence"');
+    expect(res.text).toContain('"messageId":"user-msg-1"');
   });
 
   it('persists partial assistant content when stream yields then ends', async () => {

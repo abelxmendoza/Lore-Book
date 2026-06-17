@@ -20,6 +20,7 @@ export function mapDbMessageRow(row: DbChatMessageRow): Message {
     role: row.role === 'assistant' ? 'assistant' : 'user',
     content: row.content ?? '',
     timestamp: row.created_at ? new Date(row.created_at) : new Date(),
+    persistStatus: 'saved',
     ...(metadata ? { metadata } : {}),
     ...(mentionedEntities && mentionedEntities.length > 0 ? { mentionedEntities } : {}),
   };

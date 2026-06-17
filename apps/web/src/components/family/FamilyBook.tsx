@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { TreePine, Home, Users, BarChart3, Loader2, GitBranch } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
+import { booksApi } from '../../api/books';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { DEMO_FAMILY_SUMMARY, DEMO_FAMILY_CHARACTERS_BY_ID } from '../../mocks/family';
@@ -41,8 +42,8 @@ export function FamilyBook() {
 
     setLoading(true);
     try {
-      const data = await fetchJson<SummaryResponse>('/api/family/summary');
-      if (data.success) setSummary(data);
+      const data = await booksApi.loadFamily();
+      if (data.tree) setSummary({ success: true, ...data } as SummaryResponse);
     } catch {
       setSummary(null);
     } finally {

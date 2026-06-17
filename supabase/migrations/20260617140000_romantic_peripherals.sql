@@ -49,6 +49,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS romantic_peripherals_dedup_idx
 
 ALTER TABLE public.romantic_peripherals ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS romantic_peripherals_user_policy ON public.romantic_peripherals;
 CREATE POLICY romantic_peripherals_user_policy ON public.romantic_peripherals
   FOR ALL USING (auth.uid() = user_id);
 

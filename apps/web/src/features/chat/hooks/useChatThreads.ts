@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../../../lib/supabase';
 import { fetchJson } from '../../../lib/api';
+import { chatThreadsApi } from '../../../api/books';
 import { config } from '../../../config/env';
 import { runtimeDiagnostics } from '../services/runtimeDiagnostics';
 import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
@@ -170,7 +171,7 @@ export const useChatThreads = () => {
     setThreadsLoading(true);
     try {
       // Repair + recover before listing — ensures nothing is orphaned or drifted.
-      await fetchJson('/api/diagnostics/thread-health/repair', { method: 'POST' }).catch(() => {});
+      await chatThreadsApi.repairHealth().catch(() => {});
       await fetchJson<{ success: boolean; recovered?: number }>(
         '/api/conversation/threads/recover-orphans',
         { method: 'POST' }

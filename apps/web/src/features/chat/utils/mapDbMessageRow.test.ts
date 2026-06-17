@@ -36,4 +36,15 @@ describe('mapDbMessageRow', () => {
 
     expect(message.mentionedEntities).toBeUndefined();
   });
+
+  it('marks hydrated durable rows as saved in the database', () => {
+    const message = mapDbMessageRow({
+      id: 'user-db-1',
+      role: 'user',
+      content: 'Hello',
+      created_at: '2026-06-17T12:00:00.000Z',
+      metadata: {},
+    });
+    expect(message.persistStatus).toBe('saved');
+  });
 });

@@ -71,6 +71,8 @@ export type Message = {
   sources?: ChatSource[];
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   isStreaming?: boolean;
+  /** Whether this bubble has been confirmed in chat_messages. */
+  persistStatus?: 'pending' | 'saved' | 'failed';
   feedback?: 'positive' | 'negative' | null;
   isSystemMessage?: boolean;
   metadata?: {
@@ -331,6 +333,20 @@ export const ChatMessage = ({
             ) : (
               <p className="text-base sm:text-lg lg:text-xl text-white whitespace-pre-wrap leading-relaxed sm:leading-loose">
                 {message.content}
+              </p>
+            )}
+
+            {message.persistStatus === 'failed' && (
+              <p
+                className="text-[10px] text-red-400/80 mt-1.5"
+                data-testid="message-persist-failed"
+              >
+                Not backed up to cloud — kept in this session. Try sending again or reload.
+              </p>
+            )}
+            {message.persistStatus === 'pending' && !message.isStreaming && (
+              <p className="text-[10px] text-white/35 mt-1" data-testid="message-persist-pending">
+                Saving…
               </p>
             )}
             

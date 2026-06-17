@@ -50,6 +50,13 @@ describe('mergeThreadMessages', () => {
     expect(merged[0].mentionedEntities).toEqual(entities);
   });
 
+  it('promotes persistStatus to saved when server row is durable', () => {
+    const local = [msg('assistant-1', 'assistant', 'reply', { persistStatus: 'pending' })];
+    const server = [msg('db-a1', 'assistant', 'reply', { persistStatus: 'saved' })];
+    const merged = mergeThreadMessages(local, server);
+    expect(merged[0].persistStatus).toBe('saved');
+  });
+
   it('retains streaming assistant placeholder', () => {
     const local = [
       msg('user-1', 'user', 'question'),

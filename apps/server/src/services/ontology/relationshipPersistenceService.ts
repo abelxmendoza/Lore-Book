@@ -4,6 +4,7 @@
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { selfCharacterService } from '../selfCharacterService';
+import { entityRegistry } from '../entityRegistry/EntityRegistry';
 import type { DiscoveredEntityLink } from './canonical/relationshipKnowledge';
 import type { LexicalAnalysisResult } from '../lexical/lexicalTypes';
 import type { MeaningResolutionResult } from '../meaning/meaningResolutionTypes';
@@ -176,6 +177,12 @@ class RelationshipPersistenceService {
       index.set(entity.surface.trim().toLowerCase(), { id: entity.entityId, type, name: entity.surface });
     }
 
+    for (const rel of meaning.resolvedRelationships) {
+      if (!rel.targetName || !rel.targetEntityId) continue;
+      const key = rel.targetName.trim().toLowerCase();
+      index.set(key, { id: rel.targetEntityId, type: 'character', name: rel.targetName });
+    }
+
     const [{ data: chars }, orgResult, omegaResult] = await Promise.all([
       supabaseAdmin.from('characters').select('id, name, alias').eq('user_id', userId),
       supabaseAdmin.from('organizations').select('id, name').eq('user_id', userId),
@@ -216,6 +223,14 @@ class RelationshipPersistenceService {
     }
     const hit = refs.get(key);
     if (hit) return hit;
+
+    const canonical = await entityRegistry.resolveByName(label, userId);
+    if (canonical?.source === 'character') {
+      return { id: canonical.id, type: 'character', name: canonical.name };
+    }
+    if (canonical?.source === 'omega_entity') {
+      return { id: canonical.id, type: 'omega_entity', name: canonical.name };
+    }
 
     // Lazy self lookup if missing
     if (key === 'self') {

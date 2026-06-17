@@ -11,7 +11,12 @@ import { incrementAiRequestCount } from '../services/usageTracking';
 import { isFallbackEnabled, isFallbackError, streamFallbackResponse, writeFallbackToOpenStream } from '../services/devFallbackService';
 import { memoryFeedbackBus } from '../services/memoryFeedbackBus';
 import { messageCorrectionService } from '../services/messageCorrectionService';
-import { supabaseAdmin } from '../services/supabaseClient';
+import {
+  insertAssistantPlaceholder,
+  finalizeAssistantMessage,
+  userPersistResult,
+  type MessagePersistResult,
+} from '../services/chat/chatMessagePersistenceService';
 
 // AI endpoints get their own stricter limit: 30 req/15min in prod, unlimited in dev
 const aiRateLimit = createRateLimiter(30);
@@ -174,90 +179,70 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
     sseWrite({ type: 'metadata', data: result.metadata });
 
     // ── Durable assistant persistence ──────────────────────────────────────────
-    // Placeholder row at stream start so the assistant turn exists even if the
-    // client disconnects mid-stream; updated once with final/partial content.
     let fullResponse = '';
-    let assistantPersisted = false;
     const persistSessionId = result.metadata.sessionId ?? threadId ?? null;
     let assistantRowId: string | null = null;
+    let assistantPersistResult: MessagePersistResult | null = null;
+
+    const emitPersistence = (patch: {
+      user?: MessagePersistResult;
+      assistant?: MessagePersistResult;
+    }) => {
+      sseWrite({
+        type: 'metadata',
+        data: {
+          persistence: {
+            user: patch.user ?? userPersistResult(result.metadata.messageId),
+            assistant: patch.assistant,
+          },
+        },
+      });
+    };
+
+    emitPersistence({
+      user: userPersistResult(result.metadata.messageId),
+      assistant: { saved: false, role: 'assistant' },
+    });
 
     if (req.user?.id && persistSessionId) {
-      try {
-        const { data: placeholder, error: phErr } = await supabaseAdmin
-          .from('chat_messages')
-          .insert({
-            user_id: req.user.id,
-            session_id: persistSessionId,
-            role: 'assistant',
-            content: '',
-            metadata: { saved_from_stream: true, stream_status: 'streaming' },
-          })
-          .select('id')
-          .single();
-        if (!phErr && placeholder?.id) {
-          assistantRowId = placeholder.id;
-          result.metadata.assistantMessageId = placeholder.id;
-          sseWrite({ type: 'metadata', data: { assistantMessageId: placeholder.id } });
-        }
-      } catch (err) {
-        logger.warn({ err, sessionId: persistSessionId }, 'Assistant placeholder insert failed — will insert on complete');
+      const placeholder = await insertAssistantPlaceholder(req.user.id, persistSessionId);
+      if (placeholder.saved && placeholder.id) {
+        assistantRowId = placeholder.id;
+        result.metadata.assistantMessageId = placeholder.id;
+        sseWrite({ type: 'metadata', data: { assistantMessageId: placeholder.id } });
+      } else {
+        logger.warn(
+          { err: placeholder.error, sessionId: persistSessionId },
+          'Assistant placeholder insert failed — will insert on complete'
+        );
       }
     }
 
     const persistAssistant = async (status: 'complete' | 'partial' | 'failed'): Promise<void> => {
-      if (assistantPersisted || !req.user?.id || !persistSessionId) return;
-      if (fullResponse.trim().length === 0) {
-        // Remove empty placeholder so we do not leave blank assistant bubbles in DB.
-        if (assistantRowId) {
-          await supabaseAdmin.from('chat_messages').delete().eq('id', assistantRowId).eq('user_id', req.user.id);
-        }
-        return;
+      if (!req.user?.id || !persistSessionId) return;
+      assistantPersistResult = await finalizeAssistantMessage({
+        userId: req.user.id,
+        sessionId: persistSessionId,
+        assistantRowId,
+        content: fullResponse,
+        metadata: {
+          sources: result.metadata.sources,
+          connections: result.metadata.connections,
+          continuityWarnings: result.metadata.continuityWarnings,
+          response_mode: result.metadata.response_mode,
+          recall_sources: result.metadata.recall_sources,
+          mentionedEntities: result.metadata.mentionedEntities,
+          characterIds: result.metadata.characterIds,
+        },
+        status,
+      });
+      if (assistantPersistResult.id) {
+        result.metadata.assistantMessageId = assistantPersistResult.id;
       }
-      assistantPersisted = true;
-      const nowIso = new Date().toISOString();
-      const rowMetadata = {
-        sources: result.metadata.sources,
-        connections: result.metadata.connections,
-        continuityWarnings: result.metadata.continuityWarnings,
-        response_mode: result.metadata.response_mode,
-        recall_sources: result.metadata.recall_sources,
-        mentionedEntities: result.metadata.mentionedEntities,
-        characterIds: result.metadata.characterIds,
-        saved_from_stream: true,
-        stream_status: status,
-      };
-      try {
-        if (assistantRowId) {
-          const { error } = await supabaseAdmin
-            .from('chat_messages')
-            .update({ content: fullResponse, metadata: rowMetadata })
-            .eq('id', assistantRowId)
-            .eq('user_id', req.user.id);
-          if (error) {
-            assistantPersisted = false;
-            logger.error({ err: error, status, sessionId: persistSessionId }, 'Failed to update assistant message');
-            return;
-          }
-        } else {
-          const { error } = await supabaseAdmin.from('chat_messages').insert({
-            user_id: req.user.id,
-            session_id: persistSessionId,
-            role: 'assistant',
-            content: fullResponse,
-            metadata: rowMetadata,
-          });
-          if (error) {
-            assistantPersisted = false;
-            logger.error({ err: error, status, sessionId: persistSessionId }, 'Failed to persist assistant message');
-            return;
-          }
-        }
-        await supabaseAdmin.from('conversation_sessions')
-          .update({ updated_at: nowIso }).eq('id', persistSessionId).eq('user_id', req.user.id);
-      } catch (err) {
-        assistantPersisted = false;
-        logger.error({ err, status, sessionId: persistSessionId }, 'Assistant persistence threw');
-      }
+      emitPersistence({
+        user: userPersistResult(result.metadata.messageId),
+        assistant: assistantPersistResult,
+      });
     };
 
     try {

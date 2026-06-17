@@ -24,7 +24,7 @@ WHERE user_id IS NULL AND root_type = 'CONCEPT' AND label = 'life';
 INSERT INTO public.classifications (user_id, root_type, label, status, confidence, created_by, metadata)
 SELECT NULL, 'LOCATION', v.label, 'active', 0.9, 'system', v.metadata::jsonb
 FROM (VALUES
-  ('club metro', '{"category":"VENUE","subcategory":"NIGHTCLUB"}'),
+  ('neon lounge', '{"category":"VENUE","subcategory":"NIGHTCLUB"}'),
   ('blue room', '{"category":"VENUE","subcategory":"MUSIC_VENUE"}')
 ) AS v(label, metadata)
 WHERE NOT EXISTS (

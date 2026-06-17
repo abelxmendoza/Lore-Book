@@ -253,6 +253,23 @@ describe('Working Memory Assembler', () => {
         ],
         error: null,
       },
+      entity_relationships: {
+        data: [
+          {
+            id: 'er-work',
+            from_entity_id: 'char-ashley',
+            to_entity_id: 'org-amazon',
+            from_entity_type: 'character',
+            to_entity_type: 'omega_entity',
+            relationship_type: 'WORKS_FOR',
+            scope: 'PROFESSIONAL',
+            confidence: 0.9,
+            metadata: { role: 'coworker' },
+            updated_at: '2026-06-12T00:00:00Z',
+          },
+        ],
+        error: null,
+      },
       narrative_accounts: {
         data: [
           {
@@ -302,8 +319,9 @@ describe('Working Memory Assembler', () => {
     fromMock.mockClear();
     await assembleWorkingMemory({ userId: 'user-1', question: 'Who lives with me?' });
     const characterQueries = fromMock.mock.calls.filter(([table]) => table === 'characters').length;
-    expect(characterQueries).toBe(1);
+    expect(characterQueries).toBeLessThanOrEqual(2);
     expect(fromMock.mock.calls.some(([table]) => table === 'character_relationships')).toBe(true);
+    expect(fromMock.mock.calls.some(([table]) => table === 'entity_relationships')).toBe(true);
   });
 
   it('records per-query timing breakdown', async () => {
@@ -322,6 +340,47 @@ describe('Working Memory Assembler', () => {
     expect(result.intent).toBe('RELATIONSHIP_QUERY');
     expect(result.entities.some((entity) => entity.name === 'Sam Chen')).toBe(true);
     expect(result.relationships.some((item) => /romantic/i.test(item.content))).toBe(true);
+  });
+
+  it('surfaces thread relationship groups from pipeline metadata', async () => {
+    tableResults.chat_messages = {
+      data: [
+        {
+          id: 'chat-rel-1',
+          created_at: '2026-06-13T00:00:00Z',
+          session_id: 'thread-rel',
+          metadata: {
+            ontology_enrichment: {
+              relationship_groups: [
+                {
+                  scope: 'FAMILY',
+                  entityNames: ['Marcus', 'Grandma Rose'],
+                  confidence: 0.88,
+                  hint: 'FAMILY_RELATIONSHIP',
+                },
+              ],
+            },
+          },
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'Who is in my family?',
+      threadId: 'thread-rel',
+    });
+
+    expect(result.relationships.some((item) => item.source === 'thread_relationship_groups')).toBe(true);
+    expect(result.relationships.some((item) => /FAMILY.*Marcus/i.test(item.title))).toBe(true);
+  });
+
+  it('loads persisted entity_relationship edges for relationship queries', async () => {
+    const result = await assembleWorkingMemory({ userId: 'user-1', question: 'Who lives with me?' });
+
+    expect(result.relationships.some((item) => item.source === 'entity_relationships')).toBe(true);
+    expect(result.relationships.some((item) => /Amazon/i.test(`${item.title} ${item.content}`))).toBe(true);
   });
 
   it('assembles place context for Blue Room', async () => {

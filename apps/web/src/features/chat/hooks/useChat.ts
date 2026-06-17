@@ -13,6 +13,7 @@ import { apiCache } from '../../../lib/cache';
 import { fetchJson } from '../../../lib/api';
 import { dispatchStoryDataUpdated } from '../../../lib/storyRefresh';
 import type { Message, ChatSource } from '../message/ChatMessage';
+import { threadPersistenceTracker } from '../services/threadPersistenceTracker';
 import { parseSlashCommand, handleSlashCommand } from '../../../utils/chatCommands';
 import { analytics } from '../../../lib/monitoring';
 
@@ -218,7 +219,8 @@ export const useChat = () => {
       id: `user-${Date.now()}`,
       role: 'user',
       content: messageText.trim(),
-      timestamp: new Date()
+      timestamp: new Date(),
+      persistStatus: 'pending',
     };
 
     addMessage(userMessage, { touchActivity: true });
@@ -268,7 +270,8 @@ export const useChat = () => {
       role: 'assistant',
       content: '',
       timestamp: new Date(),
-      isStreaming: true
+      isStreaming: true,
+      persistStatus: 'pending',
     };
 
     addMessage(assistantMessage);
@@ -308,6 +311,38 @@ export const useChat = () => {
       .filter((e): e is { id: string; name: string; type: 'character' | 'location' | 'organization' | 'skill' } => e !== null);
     const mergedThreadEntities = mergeThreadEntities(options?.threadEntities ?? [], composerThread);
 
+    type PersistPayload = {
+      user?: { saved: boolean; id?: string; error?: string };
+      assistant?: { saved: boolean; id?: string; error?: string };
+    };
+
+    const applyPersistence = (persistence?: PersistPayload) => {
+      if (!persistence) return;
+      if (persistence.user) {
+        if (persistence.user.saved && persistence.user.id) {
+          persistedUserMessageId = persistence.user.id;
+          updateStreamMessage(userMessage.id, { id: persistence.user.id, persistStatus: 'saved' });
+        } else if (persistence.user.error) {
+          updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
+          threadPersistenceTracker.markSyncFailed(streamThreadId, persistence.user.error);
+        }
+      }
+      if (persistence.assistant) {
+        if (persistence.assistant.saved) {
+          const id = persistence.assistant.id ?? persistedAssistantMessageId ?? assistantMessageId;
+          persistedAssistantMessageId = id;
+          updateStreamMessage(assistantMessageId, { id, persistStatus: 'saved' });
+          threadPersistenceTracker.markPersisted(streamThreadId);
+        } else if (
+          persistence.assistant.error &&
+          persistence.assistant.error !== 'empty_content'
+        ) {
+          updateStreamMessage(assistantMessageId, { persistStatus: 'failed' });
+          threadPersistenceTracker.markSyncFailed(streamThreadId, persistence.assistant.error);
+        }
+      }
+    };
+
     try {
       await streamChat(
         messageText.trim(),
@@ -327,6 +362,7 @@ export const useChat = () => {
         },
         (meta) => {
           metadata = { ...(metadata ?? {}), ...meta };
+          if (meta.persistence) applyPersistence(meta.persistence);
           if (meta.messageId) {
             persistedUserMessageId = meta.messageId;
             updateStreamMessage(userMessage.id, { id: meta.messageId });
@@ -366,6 +402,7 @@ export const useChat = () => {
               id: persistedAssistantMessageId ?? assistantMessageId,
               content: accumulatedContent,
               isStreaming: false,
+              persistStatus: persistedAssistantMessageId ? 'saved' : metadata?.persistence?.assistant?.saved === false ? 'failed' : 'pending',
               ...metadata,
             sources: metadata?.sources,
             connections: metadata?.connections,
@@ -395,7 +432,10 @@ export const useChat = () => {
           );
 
           if (persistedUserMessageId) {
-            updateStreamMessage(userMessage.id, { id: persistedUserMessageId });
+            updateStreamMessage(userMessage.id, { id: persistedUserMessageId, persistStatus: 'saved' });
+          } else if (!metadata?.persistence?.user?.saved) {
+            updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
+            threadPersistenceTracker.markSyncFailed(streamThreadId, 'user_message_not_persisted');
           }
 
           // Reconcile with durable server copy after persistence settles.
@@ -463,8 +503,11 @@ export const useChat = () => {
           const useDemoFallback = (isGuest || getGlobalMockDataEnabled()) && isBackendUnavailable(error);
           updateStreamMessage(assistantMessageId, {
             content: useDemoFallback ? getDemoResponse(messageText) : friendlyErrorMessage(String(error)),
-            isStreaming: false
+            isStreaming: false,
+            persistStatus: 'failed',
           });
+          updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
+          threadPersistenceTracker.markSyncFailed(streamThreadId, String(error));
         },
         options?.entityContext,
         currentContext,

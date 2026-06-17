@@ -10,6 +10,15 @@ function sourceRank(id: string): number {
     : 1;
 }
 
+function mergePersistStatus(
+  a?: Message['persistStatus'],
+  b?: Message['persistStatus']
+): Message['persistStatus'] | undefined {
+  if (a === 'saved' || b === 'saved') return 'saved';
+  if (a === 'failed' || b === 'failed') return 'failed';
+  return a ?? b;
+}
+
 function toRow(m: Message) {
   return {
     id: m.id,
@@ -39,13 +48,26 @@ export function mergeThreadMessages(local: Message[], server: Message[]): Messag
               ...row.message,
               mentionedEntities:
                 row.message.mentionedEntities ?? existing.message.mentionedEntities,
+              persistStatus: mergePersistStatus(
+                row.message.persistStatus,
+                existing.message.persistStatus
+              ),
             }
           : row.message;
       byFingerprint.set(fp, { ...row, message });
     } else if (!existing.message.mentionedEntities && row.message.mentionedEntities) {
       byFingerprint.set(fp, {
         ...existing,
-        message: { ...existing.message, mentionedEntities: row.message.mentionedEntities },
+        message: {
+          ...existing.message,
+          mentionedEntities: row.message.mentionedEntities,
+          persistStatus: mergePersistStatus(existing.message.persistStatus, row.message.persistStatus),
+        },
+      });
+    } else if (row.message.persistStatus === 'saved' && existing.message.persistStatus !== 'saved') {
+      byFingerprint.set(fp, {
+        ...existing,
+        message: { ...existing.message, persistStatus: 'saved' },
       });
     }
   }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Briefcase, Plus, GitMerge, Search as SearchIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { fetchJson } from '../../lib/api';
+import { booksApi } from '../../api/books';
 import { useMockData } from '../../contexts/MockDataContext';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { ProjectProfileCard, type ProjectCardData } from './ProjectProfileCard';
@@ -74,12 +75,9 @@ export const ProjectBook = () => {
         setDuplicateGroups([]);
         return;
       }
-      const [{ projects: list }, dupes] = await Promise.all([
-        fetchJson<{ projects: ProjectCardData[] }>('/api/projects'),
-        fetchJson<{ duplicate_groups: DuplicateGroup[] }>('/api/projects/duplicates').catch(() => ({ duplicate_groups: [] })),
-      ]);
-      setProjects(list ?? []);
-      setDuplicateGroups(dupes.duplicate_groups ?? []);
+      const book = await booksApi.loadProjects();
+      setProjects((book.projects ?? []) as ProjectCardData[]);
+      setDuplicateGroups((book.duplicate_groups ?? []) as DuplicateGroup[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load projects');
     } finally {

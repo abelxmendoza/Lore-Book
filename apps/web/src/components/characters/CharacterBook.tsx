@@ -17,6 +17,7 @@ import { CharacterCardSkeleton } from '../ui/skeleton';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { fetchJson } from '../../lib/api';
+import { booksApi } from '../../api/books';
 import { apiCache } from '../../lib/cache';
 import { supabase, useAuth } from '../../lib/supabase';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
@@ -2550,8 +2551,8 @@ export const CharacterBook = () => {
     }
     
     try {
-      const response = await fetchJson<{ characters: Character[] }>('/api/characters/list');
-      const characterList = response?.characters || [];
+      const response = await booksApi.loadCharacters();
+      const characterList = (response?.characters || []) as Character[];
       
       // Use mock data service to determine what to show - pass current toggle state
       const result = mockDataService.getWithFallback.characters(

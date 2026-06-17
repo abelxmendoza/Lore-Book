@@ -55,7 +55,7 @@ function mockAuthenticatedBoot() {
       throw new Error('409 protected');
     }
     if (url.includes('/threads/recover-orphans')) return { success: true, recovered: 0 };
-    if (url.includes('/thread-health/repair')) return { repaired: 0, report: {} };
+    if (url.includes('health/repair')) return { repaired: 0, report: {} };
     if (url.includes('/threads?')) {
       return {
         success: true,
@@ -125,7 +125,7 @@ describe('useChatThreads.hydrateThreadMessages', () => {
     mockFetchJson.mockImplementation(async (url: string) => {
       if (url.includes('/messages')) throw new Error('Network error');
       if (url.includes('/threads/recover-orphans')) return { success: true };
-      if (url.includes('/thread-health/repair')) return { repaired: 0 };
+      if (url.includes('health/repair')) return { repaired: 0 };
       if (url.includes('/threads?')) {
         return {
           success: true,
@@ -162,7 +162,7 @@ describe('useChatThreads.hydrateThreadMessages', () => {
         throw new Error('409 protected');
       }
       if (url.includes('/threads/recover-orphans')) return { success: true, recovered: 0 };
-      if (url.includes('/thread-health/repair')) return { repaired: 0, report: {} };
+      if (url.includes('health/repair')) return { repaired: 0, report: {} };
       if (url.includes('/threads?')) {
         return {
           success: true,

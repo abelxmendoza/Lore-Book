@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
+import { booksApi } from '../api/books';
 import { useLoreKeeper } from './useLoreKeeper';
 import { useShouldUseMockData } from './useShouldUseMockData';
 import { getDemoLorebookById } from '../mocks/lorebooks';
@@ -212,22 +213,18 @@ export const useLoreNavigatorData = (bookId?: string | null) => {
         console.warn('Failed to load biography sections:', error);
       }
 
-      // Load characters
+      // Load characters and locations (canonical books BFF)
       let characters: Character[] = [];
-      try {
-        const charData = await fetchJson<{ characters: Character[] }>('/api/characters/list');
-        characters = charData.characters || [];
-      } catch (error) {
-        console.warn('Failed to load characters:', error);
-      }
-
-      // Load locations
       let locations: Location[] = [];
       try {
-        const locData = await fetchJson<{ locations: Location[] }>('/api/locations');
-        locations = locData.locations || [];
+        const [charBook, locBook] = await Promise.all([
+          booksApi.loadCharacters(),
+          booksApi.loadLocations(),
+        ]);
+        characters = (charBook.characters || []) as Character[];
+        locations = (locBook.locations || []) as Location[];
       } catch (error) {
-        console.warn('Failed to load locations:', error);
+        console.warn('Failed to load characters/locations:', error);
       }
 
       // Use chapters from useLoreKeeper

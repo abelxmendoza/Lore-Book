@@ -64,7 +64,7 @@ function makeStoredThread(id: string, title: string, messages: any[] = [makeMess
 
 function mockBackendThreadLoad(threads: ReturnType<typeof makeDbThread>[]) {
   mockFetchJson.mockImplementation(async (url: string) => {
-    if (url.includes('/thread-health/repair')) return { repaired: 0, report: {} };
+    if (url.includes('health/repair')) return { repaired: 0, report: {} };
     if (url.includes('recover-orphans')) return { success: true, recovered: 0 };
     if (url.includes('/threads?')) {
       return {
@@ -170,7 +170,7 @@ describe('useChatThreads', () => {
     const stored = [makeStoredThread('local-1', 'Local thread')];
     localStorage.setItem('lorekeeper_chat_threads_user-1', JSON.stringify(stored));
     mockFetchJson.mockImplementation(async (url: string) => {
-      if (url.includes('/thread-health/repair')) return { repaired: 0 };
+      if (url.includes('health/repair')) return { repaired: 0 };
       if (url.includes('recover-orphans')) return { success: true };
       if (url.includes('/threads?')) throw new Error('Network error');
       return { success: true };

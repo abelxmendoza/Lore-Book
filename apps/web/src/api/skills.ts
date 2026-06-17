@@ -1,4 +1,5 @@
 import { fetchJson } from '../lib/api';
+import { booksApi } from './books';
 import type { Skill, CreateSkillInput, UpdateSkillInput, SkillProgress, SkillCategory, SkillMetadata } from '../types/skill';
 
 import type { SkillProfile } from '../lib/skillProfile';
@@ -30,11 +31,20 @@ export const skillsApi = {
    * Get all skills
    */
   async getSkills(filters?: { active_only?: boolean; category?: SkillCategory }): Promise<Skill[]> {
-    const params = new URLSearchParams();
-    if (filters?.active_only) params.append('active_only', 'true');
-    if (filters?.category) params.append('category', filters.category);
+    if (!filters?.category) {
+      const book = await booksApi.loadSkills();
+      let skills = book.skills ?? [];
+      if (filters?.active_only) {
+        skills = skills.filter((s) => s.is_active !== false);
+      }
+      return skills;
+    }
 
-    const url = `/api/skills${params.toString() ? `?${params.toString()}` : ''}`;
+    const params = new URLSearchParams();
+    if (filters.active_only) params.append('active_only', 'true');
+    params.append('category', filters.category);
+
+    const url = `/api/skills?${params.toString()}`;
     const response = await fetchJson<{ skills: Skill[] }>(url);
     return response.skills;
   },

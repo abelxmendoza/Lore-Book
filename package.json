@@ -23,6 +23,9 @@
     "normalize:ontology": "npx tsx scripts/run-ontology-normalize.ts",
     "inference:sync": "npx tsx scripts/run-inference-sync.ts",
     "validate:inference": "npx tsx scripts/validate-inference.ts",
+    "audit:orphan-relationships": "npx tsx scripts/audit-orphan-relationships.ts",
+    "audit:orphan-entity-facts": "npx tsx scripts/audit-orphan-entity-facts.ts",
+    "remediate:orphan-entity-facts": "npx tsx scripts/remediate-orphan-entity-facts.ts",
     "prepare": "husky"
   },
   "devDependencies": {

@@ -54,7 +54,7 @@ function mockAuthenticatedBoot() {
     signOut: vi.fn(),
   });
   mockFetchJson.mockImplementation(async (url: string) => {
-    if (url.includes('thread-health/repair')) return { repaired: 0, report: {} };
+    if (url.includes('health/repair')) return { repaired: 0, report: {} };
     if (url.includes('recover-orphans')) return { success: true, recovered: 0 };
     if (url.includes('/threads?')) {
       return {

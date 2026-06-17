@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockFrom = vi.fn();
 const mockEnsureSelf = vi.fn();
 
+vi.mock('../../src/services/entityRegistry/EntityRegistry', () => ({
+  entityRegistry: {
+    resolveByName: vi.fn(async () => null),
+  },
+}));
+
 vi.mock('../../src/services/supabaseClient', () => ({
   supabaseAdmin: { from: (...args: unknown[]) => mockFrom(...args) },
 }));
