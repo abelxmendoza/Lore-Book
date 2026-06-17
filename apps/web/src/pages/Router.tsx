@@ -318,14 +318,6 @@ export const Router = () => {
         }
       />
       <Route
-        path="/story"
-        element={
-          <LazyRoute>
-            <AuthGate><App defaultSurface="story" /></AuthGate>
-          </LazyRoute>
-        }
-      />
-      <Route
         path="/documents"
         element={
           <LazyRoute>

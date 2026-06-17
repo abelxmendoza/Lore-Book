@@ -297,20 +297,6 @@ const SidebarContent = ({
             Life Saga
           </button>
           <button
-            onClick={() => handleSurfaceChange('story')}
-            aria-label="Open story dashboard"
-            aria-current={activeSurface === 'story' ? 'page' : undefined}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
-              activeSurface === 'story'
-                ? 'border-primary bg-primary/10 text-white'
-                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
-            )}
-          >
-            <BookOpen className="h-4 w-4 text-primary" aria-hidden="true" />
-            Story
-          </button>
-          <button
             onClick={() => handleSurfaceChange('documents')}
             aria-label="Open documents library"
             aria-current={activeSurface === 'documents' ? 'page' : undefined}
