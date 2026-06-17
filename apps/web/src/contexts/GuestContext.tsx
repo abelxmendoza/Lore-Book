@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useEffect, ReactNode } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { setGlobalIsGuest } from './MockDataContext';
 
@@ -22,7 +22,7 @@ interface GuestContextType {
 const GuestContext = createContext<GuestContextType | undefined>(undefined);
 
 const GUEST_STORAGE_KEY = 'lorekeeper_guest_state';
-const DEFAULT_CHAT_LIMIT = 5; // 5 messages for guests
+export const GUEST_CHAT_LIMIT = 5;
 
 // Generate a unique guest ID
 const generateGuestId = (): string => {
@@ -47,29 +47,28 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [guestState, clearGuestState]);
 
-  // Daily reset: new calendar day → 0/5. Once per load: if guest is at limit, reset to 0 so they see 0/5 now.
-  const hasResetLimitOnce = useRef(false);
+  // Daily reset: new calendar day → fresh guest allowance.
   useEffect(() => {
     if (!guestState?.isGuest) return;
     const now = Date.now();
     const today = new Date(now).toDateString();
     const sessionDay = new Date(guestState.createdAt).toDateString();
     if (today !== sessionDay) {
-      setGuestState({ ...guestState, chatMessagesUsed: 0, createdAt: now });
-      return;
+      setGuestState({
+        ...guestState,
+        chatMessagesUsed: 0,
+        chatLimit: guestState.chatLimit || GUEST_CHAT_LIMIT,
+        createdAt: now,
+      });
     }
-    if (guestState.chatMessagesUsed >= guestState.chatLimit && !hasResetLimitOnce.current) {
-      hasResetLimitOnce.current = true;
-      setGuestState({ ...guestState, chatMessagesUsed: 0 });
-    }
-  }, [guestState?.isGuest, guestState?.createdAt, guestState?.chatMessagesUsed, guestState?.chatLimit]);
+  }, [guestState?.isGuest, guestState?.createdAt, guestState?.chatLimit, setGuestState]);
 
   const startGuestSession = () => {
     const newGuestState: GuestState = {
       isGuest: true,
       guestId: generateGuestId(),
       chatMessagesUsed: 0,
-      chatLimit: DEFAULT_CHAT_LIMIT,
+      chatLimit: GUEST_CHAT_LIMIT,
       createdAt: Date.now(),
     };
     setGuestState(newGuestState);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { fetchCharacterList } from '../../api/characterList';
+import { fetchCharacterList } from '../api/characterList';
 import type { CharacterProfile } from '../api/characters';
 import { config } from '../config/env';
 import { findCharacterMentions, type CharacterMatch } from '../utils/characterLinking';

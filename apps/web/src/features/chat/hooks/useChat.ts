@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useChatThreadContext } from '../../../contexts/ChatThreadContext';
 import { useChatStream } from '../../../hooks/useChatStream';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
-import { useGuest } from '../../../contexts/GuestContext';
+import { useGuest, GUEST_CHAT_LIMIT } from '../../../contexts/GuestContext';
 import { useCurrentContext } from '../../../contexts/CurrentContextContext';
 import { useSoulProfileChatContextOptional } from '../../../contexts/SoulProfileChatContext';
 import { useConversationStore } from './useConversationStore';
@@ -26,6 +26,17 @@ export type ChatSendOptions = {
   threadEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
   composerEntities?: CertifiedEntityMatch[];
 };
+
+// Guest sessions have no auth token — treat auth failures like an unavailable backend.
+function isGuestStreamBlocked(error: string): boolean {
+  const lower = error.toLowerCase();
+  return (
+    lower.includes('401') ||
+    lower.includes('unauthorized') ||
+    lower.includes('not authenticated') ||
+    lower.includes('sign in')
+  );
+}
 
 // Returns true for network errors that indicate the backend is simply not running.
 function isBackendUnavailable(error: string): boolean {
@@ -162,8 +173,22 @@ export const useChat = () => {
   const sendMessage = useCallback(async (messageText: string, options?: ChatSendOptions) => {
     if (!messageText.trim() || loading) return;
 
-    // Block unauthenticated users before hitting the backend
-    if (!user) {
+    if (isGuest && !canSendChatMessage()) {
+      addMessage({
+        id: `limit-${Date.now()}`,
+        role: 'assistant',
+        content: `You've reached the guest chat limit (${guestState?.chatLimit ?? GUEST_CHAT_LIMIT} messages). Sign up to continue chatting and unlock unlimited access to all features!`,
+        timestamp: new Date(),
+        isSystemMessage: true,
+      });
+      analytics.track('guest_chat_limit_reached', {
+        messagesUsed: guestState?.chatMessagesUsed ?? GUEST_CHAT_LIMIT,
+      });
+      return;
+    }
+
+    // Block unauthenticated users (non-guest) before hitting the backend
+    if (!user && !isGuest) {
       const isDemo = getGlobalMockDataEnabled();
       addMessage({
         id: `authwall-${Date.now()}`,
@@ -171,18 +196,6 @@ export const useChat = () => {
         content: isDemo
           ? "You're in demo mode. Sign in to start chatting with your real Lore Book and save your memories."
           : "You need to sign in to chat. Create a free account to start building your lore and have your memories saved.",
-        timestamp: new Date(),
-        isSystemMessage: true,
-      });
-      return;
-    }
-
-    // Block guest sessions — no valid auth token, backend will reject
-    if (isGuest) {
-      addMessage({
-        id: `guestwall-${Date.now()}`,
-        role: 'assistant',
-        content: "Create a free account to start chatting. Your conversations, memories, and lore will be saved to your account.",
         timestamp: new Date(),
         isSystemMessage: true,
       });
@@ -243,9 +256,13 @@ export const useChat = () => {
     setLoadingStage('analyzing');
     setLoadingProgress(0);
     
-    // Increment guest message count
     if (isGuest) {
-      incrementChatMessage();
+      const limitReached = incrementChatMessage();
+      if (limitReached) {
+        analytics.track('guest_chat_limit_reached', {
+          messagesUsed: (guestState?.chatMessagesUsed ?? 0) + 1,
+        });
+      }
     }
     
     analytics.track('chat_message_sent', { 
@@ -500,7 +517,9 @@ export const useChat = () => {
           setStreamingMessageId(null);
           // In guest/mock-data mode, swap backend-unavailable errors for a demo response
           // so there is no console spam and no scary error text.
-          const useDemoFallback = (isGuest || getGlobalMockDataEnabled()) && isBackendUnavailable(error);
+          const useDemoFallback =
+            (isGuest && (isBackendUnavailable(error) || isGuestStreamBlocked(error))) ||
+            (getGlobalMockDataEnabled() && isBackendUnavailable(error));
           updateStreamMessage(assistantMessageId, {
             content: useDemoFallback ? getDemoResponse(messageText) : friendlyErrorMessage(String(error)),
             isStreaming: false,
@@ -528,7 +547,9 @@ export const useChat = () => {
       setStreamingMessageId(null);
 
       const errMsg = error instanceof Error ? error.message : 'Unknown error';
-      const useDemoFallback = (isGuest || getGlobalMockDataEnabled()) && isBackendUnavailable(errMsg);
+      const useDemoFallback =
+        (isGuest && (isBackendUnavailable(errMsg) || isGuestStreamBlocked(errMsg))) ||
+        (getGlobalMockDataEnabled() && isBackendUnavailable(errMsg));
 
       if (useDemoFallback) {
         updateStreamMessage(assistantMessageId, {
