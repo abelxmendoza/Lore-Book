@@ -25,7 +25,7 @@ export function ProjectDetailModal({ project, onClose, onPatch, onAskInChat }: P
   };
 
   return (
-    <Modal open onClose={onClose} className="max-w-2xl">
+    <Modal isOpen onClose={onClose} maxWidth="2xl">
       <div className="flex items-start gap-3 mb-6">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 border border-primary/30">
           <Briefcase className="h-6 w-6 text-primary" />

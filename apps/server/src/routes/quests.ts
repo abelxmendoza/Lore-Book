@@ -3,11 +3,10 @@ import { z } from 'zod';
 
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { questService, questStorage, questLinker, questExtractor } from '../services/quests';
+import { questService, questStorage, questLinker, questExtractor, questSuggestionService } from '../services/quests';
+import { progressionTracker } from '../services/progression/progressionTracker';
 import { supabaseAdmin } from '../services/supabaseClient';
 import { clampQuestScore, normalizeQuestType, optionalQuestString } from '../utils/questNormalize';
-import type { QuestSuggestion } from '../services/quests/types';
-
 const router = Router();
 
 /**
@@ -129,61 +128,178 @@ router.get('/analytics', requireAuth, async (req: AuthenticatedRequest, res) => 
 
 /**
  * GET /api/quests/suggestions
- * Get AI suggestions
+ * Pending quest suggestions from DB. Full story scan only when ?rescan=true or first visit.
  */
 router.get('/suggestions', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
+    const rescan = req.query.rescan === 'true';
 
-    // Suggestions come from BOTH journal entries and chat conversations, since
-    // hopes/dreams/plans surface in chat just as much as in journaling.
-    const [entriesRes, messagesRes] = await Promise.all([
-      supabaseAdmin
-        .from('journal_entries')
-        .select('content, date')
-        .eq('user_id', userId)
-        .order('date', { ascending: false })
-        .limit(40),
-      supabaseAdmin
-        .from('chat_messages')
-        .select('content, created_at')
-        .eq('user_id', userId)
-        .eq('role', 'user')
-        .order('created_at', { ascending: false })
-        .limit(60),
+    const [existing, pending, everScanned] = await Promise.all([
+      questStorage.getQuests(userId, { status: ['active', 'paused'] }),
+      questSuggestionService.getPendingSuggestions(userId),
+      questSuggestionService.hasAnySuggestions(userId),
     ]);
 
-    const chatAsEntries = (messagesRes.data || []).map((m: { content: string; created_at: string }) => ({
-      content: m.content,
-      date: m.created_at,
-    }));
+    const haveTitles = new Set(existing.map((q) => q.title.trim().toLowerCase()));
+    const shouldScan = rescan || (!everScanned && pending.length === 0);
 
-    // Newest-first across both sources so the extractor sees recent intent.
-    const combined = [...(entriesRes.data || []), ...chatAsEntries]
-      .filter(e => e.content?.trim())
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    if (shouldScan) {
+      const [entriesRes, messagesRes] = await Promise.all([
+        supabaseAdmin
+          .from('journal_entries')
+          .select('content, date')
+          .eq('user_id', userId)
+          .order('date', { ascending: false })
+          .limit(40),
+        supabaseAdmin
+          .from('chat_messages')
+          .select('content, created_at')
+          .eq('user_id', userId)
+          .eq('role', 'user')
+          .order('created_at', { ascending: false })
+          .limit(60),
+      ]);
 
-    const extracted = await questExtractor.extractQuests(userId, combined);
-    const existing = await questStorage.getQuests(userId, { status: ['active', 'paused'] });
-    const existingTitles = new Set(existing.map(q => q.title.trim().toLowerCase()));
+      const combined = [
+        ...((messagesRes.data as Array<{ content: string; created_at: string }> | null) ?? []).map((m) => ({
+          content: m.content,
+          date: m.created_at,
+        })),
+        ...((entriesRes.data as Array<{ content: string; date: string }> | null) ?? []).map((e) => ({
+          content: e.content,
+          date: e.date,
+        })),
+      ]
+        .filter((e) => e.content?.trim())
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const suggestions: QuestSuggestion[] = extracted
-      .filter(q => q.title?.trim() && !existingTitles.has(q.title.trim().toLowerCase()))
-      .map(q => ({
-        title: String(q.title).trim(),
-        description: optionalQuestString(q.description),
-        quest_type: normalizeQuestType(q.quest_type),
-        priority: clampQuestScore(q.priority),
-        importance: clampQuestScore(q.importance),
-        impact: clampQuestScore(q.impact),
-        confidence: 0.72,
-        reasoning: 'Detected from your recent journals and chats',
-      }));
+      const extracted = await questExtractor.extractQuests(userId, combined);
+      for (const q of extracted) {
+        if (!q.title?.trim() || haveTitles.has(q.title.trim().toLowerCase())) continue;
+        await questSuggestionService.upsertFromExtraction(
+          userId,
+          {
+            title: q.title,
+            description: q.description,
+            quest_type: q.quest_type,
+            priority: q.priority,
+            importance: q.importance,
+            impact: q.impact,
+            category: q.category,
+            confidence: 0.72,
+            reasoning: 'Detected from your recent journals and chats',
+          },
+          { source: 'llm_scan' }
+        );
+      }
+    }
 
-    res.json({ suggestions, count: suggestions.length });
+    const freshPending = shouldScan
+      ? await questSuggestionService.getPendingSuggestions(userId)
+      : pending;
+
+    const suggestions = freshPending
+      .filter((row) => !haveTitles.has(row.title.trim().toLowerCase()))
+      .map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: optionalQuestString(row.description ?? undefined),
+        quest_type: normalizeQuestType(row.quest_type),
+        priority: clampQuestScore(row.priority),
+        importance: clampQuestScore(row.importance),
+        impact: clampQuestScore(row.impact),
+        confidence: row.confidence,
+        reasoning: row.reasoning ?? 'Detected from your story',
+      }))
+      .sort((a, b) => Number(b.confidence ?? 0) - Number(a.confidence ?? 0))
+      .slice(0, 12);
+
+    res.json({ suggestions, count: suggestions.length, scanned: shouldScan });
   } catch (error) {
     logger.error({ err: error }, 'Failed to get quest suggestions');
     res.status(500).json({ error: 'Failed to get quest suggestions' });
+  }
+});
+
+/**
+ * POST /api/quests/suggestions/materialize
+ * Confirm a pending suggestion → real quest with unique id + XP/achievements.
+ */
+router.post('/suggestions/materialize', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const schema = z.object({
+      title: z.string().trim().min(1),
+      description: z.preprocess(optionalQuestString, z.string().optional()),
+      quest_type: z.preprocess(
+        (v) => normalizeQuestType(v ?? 'side'),
+        z.enum(['main', 'side', 'daily', 'achievement'])
+      ),
+      priority: z.preprocess((v) => clampQuestScore(v), z.number().min(1).max(10)).optional(),
+      importance: z.preprocess((v) => clampQuestScore(v), z.number().min(1).max(10)).optional(),
+      impact: z.preprocess((v) => clampQuestScore(v), z.number().min(1).max(10)).optional(),
+      category: z.preprocess(optionalQuestString, z.string().optional()),
+      suggestion_id: z.string().uuid().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid suggestion data', details: parsed.error.flatten() });
+    }
+    const d = parsed.data;
+    const quest = await questSuggestionService.materializeQuest(userId, {
+      title: d.title,
+      description: d.description,
+      quest_type: d.quest_type,
+      priority: d.priority,
+      importance: d.importance,
+      impact: d.impact,
+      category: d.category,
+      suggestionId: d.suggestion_id,
+    });
+    void progressionTracker.afterQuestMaterialized(userId);
+    res.status(201).json({ quest });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to materialize quest');
+    res.status(400).json({ error: 'Failed to add quest' });
+  }
+});
+
+router.post('/suggestions/reject-by-title', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const { title } = req.body as { title?: string };
+    if (!title?.trim()) {
+      return res.status(400).json({ error: 'title is required' });
+    }
+    await questSuggestionService.rejectByTitle(userId, title);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to reject quest by title');
+    res.status(400).json({ error: 'Failed to dismiss suggestion' });
+  }
+});
+
+router.post('/suggestions/:id/confirm', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const quest = await questSuggestionService.confirmSuggestion(userId, req.params.id as string);
+    void progressionTracker.afterQuestMaterialized(userId);
+    res.status(201).json({ quest });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to confirm quest suggestion');
+    res.status(400).json({ error: 'Failed to confirm quest suggestion' });
+  }
+});
+
+router.post('/suggestions/:id/reject', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    await questSuggestionService.rejectSuggestion(userId, req.params.id as string);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to reject quest suggestion');
+    res.status(400).json({ error: 'Failed to reject quest suggestion' });
   }
 });
 

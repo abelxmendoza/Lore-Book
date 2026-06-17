@@ -90,7 +90,19 @@ const TOPIC_KEYWORDS: Record<string, string[]> = {
   ],
   social: [
     'group', 'crew', 'team', 'circle', 'friends', 'my people', 'squad',
-    'club', 'community', 'network', 'colleagues',
+    'club', 'community', 'network', 'colleagues', 'communities', 'belong',
+  ],
+  goals: [
+    'goal', 'objective', 'aspiration', 'aim', 'priority', 'working toward',
+    'achieve', 'accomplish', 'on track', 'progress toward',
+  ],
+  skills: [
+    'skill', 'ability', 'good at', 'proficient', 'learning', 'practice',
+    'expertise', 'talent', 'competence', 'level up',
+  ],
+  projects: [
+    'project', 'building', 'working on', 'status', 'milestone', 'ship',
+    'launch', 'progress on', 'side project',
   ],
   identity: [
     'who am i', 'values', 'belief', 'purpose', 'meaning', 'identity',
@@ -651,6 +663,18 @@ export function scoreContext(
   filtered.foundationTimeline = loreData.foundationTimeline;
   filtered.workingMemory = loreData.workingMemory;
   filtered.workingMemoryPacket = loreData.workingMemoryPacket;
+  filtered.lifeArcSynthesisBlock = loreData.lifeArcSynthesisBlock;
+  filtered.lifeArcSynthesis = loreData.lifeArcSynthesis;
+  filtered.storyContextBlock = loreData.storyContextBlock;
+  filtered.storyContext = loreData.storyContext;
+
+  // Entity-scoped and knowledge blocks — already message-targeted; do not drop.
+  filtered.entityDossierBlock = loreData.entityDossierBlock;
+  filtered.entityArcNarrativeBlock = loreData.entityArcNarrativeBlock;
+  filtered.knowledgeGapBlock = loreData.knowledgeGapBlock;
+  filtered.crystallizedKnowledge = loreData.crystallizedKnowledge;
+  filtered.confirmedSkills = loreData.confirmedSkills;
+  filtered.romanticContext = loreData.romanticContext;
 
   // ── Compute final stats ─────────────────────────────────────────────────────
   const reductionPct = tokensBefore > 0

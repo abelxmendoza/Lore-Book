@@ -435,6 +435,7 @@ export class ConversationIngestionPipeline {
    * Extract temporal references from text using TimeEngine
    */
   private async extractTemporalReferences(
+    userId: string,
     normalizedText: string,
     originalText: string
   ): Promise<Array<{
@@ -446,6 +447,10 @@ export class ConversationIngestionPipeline {
     label?: string;
   }>> {
     const { timeEngine } = await import('../timeEngine');
+    const { resolveUserTimezone, clampOccurrenceDate } = await import('../../utils/temporalOccurrence');
+    const userTz = await resolveUserTimezone(userId);
+    timeEngine.setUserTimezone(userTz);
+    const now = new Date();
     const references: Array<{
       timestamp: Date;
       endTimestamp?: Date;
@@ -476,8 +481,10 @@ export class ConversationIngestionPipeline {
         for (const match of matches) {
           const ref = timeEngine.parseTimestamp(match, undefined, true);
           if (ref.confidence > 0.5) {
+            const ts = clampOccurrenceDate(ref.timestamp, now);
+            if (!ts) continue;
             references.push({
-              timestamp: ref.timestamp,
+              timestamp: ts,
               precision: ref.precision,
               confidence: ref.confidence,
               originalText: ref.originalText || match
@@ -501,8 +508,8 @@ export class ConversationIngestionPipeline {
                 : 'day';
 
       references.push({
-        timestamp: anchor.start,
-        endTimestamp: anchor.end,
+        timestamp: clampOccurrenceDate(anchor.start, now) ?? now,
+        endTimestamp: anchor.end ? clampOccurrenceDate(anchor.end, now) ?? undefined : undefined,
         precision: mappedPrecision,
         confidence: anchor.confidence,
         originalText: anchor.label,
@@ -989,34 +996,61 @@ export class ConversationIngestionPipeline {
             e => e.type === 'PERSON' || e.type === 'CHARACTER'
           );
           if (sender === 'USER' && personEntities.length > 0) {
-            import('../characterFoundationService').then(({ characterFoundationService }) => {
-              personEntities.forEach(entity => {
-                characterFoundationService.promoteOmegaEntityToCharacter(userId, entity as any, threadId).then(
-                  async (characterId) => {
-                    if (!characterId) return;
-                    if (threadId) {
-                      const { entityConversationLinkService } = await import('./entityConversationLinkService');
-                      entityConversationLinkService
-                        .linkEntity(userId, 'character', characterId, threadId, {
-                          linkKind: 'mention',
-                          entityName: (entity as any).primary_name,
-                        })
-                        .catch(() => {});
-                    }
-                    const { entityFactsService } = await import('../entityFactsService');
-                    entityFactsService.extractAndPersistFacts(
-                      userId,
-                      characterId,
-                      'character',
-                      (entity as any).primary_name,
-                      fullNormalizedText
-                    ).catch(err => logger.warn({ err }, 'Character facts extraction failed (non-blocking)'));
-                  }
-                ).catch(
-                  err => logger.warn({ err, name: (entity as any).primary_name }, 'Character promotion failed (non-blocking)')
+            const { characterFoundationService } = await import('../characterFoundationService');
+            const promotedCharacterIds: string[] = [];
+            for (const entity of personEntities) {
+              try {
+                const characterId = await characterFoundationService.promoteOmegaEntityToCharacter(
+                  userId,
+                  entity as any,
+                  threadId
                 );
-              });
-            }).catch(() => {});
+                if (!characterId) continue;
+                promotedCharacterIds.push(characterId);
+                if (threadId) {
+                  const { entityConversationLinkService } = await import('./entityConversationLinkService');
+                  await entityConversationLinkService
+                    .linkEntity(userId, 'character', characterId, threadId, {
+                      linkKind: 'mention',
+                      entityName: (entity as any).primary_name,
+                    })
+                    .catch(() => {});
+                }
+                const { entityFactsService } = await import('../entityFactsService');
+                entityFactsService
+                  .extractAndPersistFacts(
+                    userId,
+                    characterId,
+                    'character',
+                    (entity as any).primary_name,
+                    fullNormalizedText
+                  )
+                  .catch((err) => logger.warn({ err }, 'Character facts extraction failed (non-blocking)'));
+              } catch (err) {
+                logger.warn({ err, name: (entity as any).primary_name }, 'Character promotion failed (non-blocking)');
+              }
+            }
+
+            if (promotedCharacterIds.length > 0 || personEntities.length >= 2) {
+              try {
+                const { familyGraphInferenceService } = await import('../kinship/familyGraphInferenceService');
+                const { householdInferenceService } = await import('../kinship/householdInferenceService');
+                await familyGraphInferenceService.processMessage(
+                  userId,
+                  fullNormalizedText,
+                  messageId,
+                  promotedCharacterIds
+                );
+                await householdInferenceService.processMessage(
+                  userId,
+                  fullNormalizedText,
+                  messageId,
+                  promotedCharacterIds
+                );
+              } catch (err) {
+                logger.warn({ err, messageId }, 'Kinship/household inference failed (non-blocking)');
+              }
+            }
           }
 
           if (threadId && resolved.length > 0) {
@@ -1277,6 +1311,7 @@ export class ConversationIngestionPipeline {
             
             if (!temporalContext.start_time && !temporalContext.end_time) {
               const temporalRefs = await this.extractTemporalReferences(
+                userId,
                 normalized.normalized_text,
                 utteranceTexts[i]
               );
@@ -1346,6 +1381,7 @@ export class ConversationIngestionPipeline {
             // If no explicit time is found, try to extract temporal references
             if (!temporalContext.start_time && !temporalContext.end_time) {
               const temporalRefs = await this.extractTemporalReferences(
+                userId,
                 normalized.normalized_text,
                 utteranceTexts[i]
               );
@@ -1977,62 +2013,18 @@ export class ConversationIngestionPipeline {
           });
       }
 
-      // Step 12.12: Auto-detect and manage quests from user messages (async, non-blocking)
+      // Step 12.12: Detect quests from user messages → pending suggestions (user confirms on Quest Board)
       if (sender === 'USER' && rawText.length > 10) {
-        // 12.12.1: Extract new quests
-        questExtractor
-          .extractQuestsFromMessage(userId, rawText, conversationHistory)
-          .then(async (extractedQuests) => {
-            if (extractedQuests.length > 0) {
-              for (const quest of extractedQuests) {
-                try {
-                  // Check if a similar quest already exists (by title)
-                  const { questStorage } = await import('../quests/questStorage');
-                  const existingQuests = await questStorage.getQuests(userId, {
-                    search: quest.title.substring(0, 30), // Search by first 30 chars of title
-                    status: ['active', 'paused'], // Only check active/paused quests
-                  });
-
-                  // Check for duplicates (similar title)
-                  const isDuplicate = existingQuests.some(
-                    (q: any) => q.title.toLowerCase() === quest.title.toLowerCase() && q.status !== 'completed'
-                  );
-
-                  if (!isDuplicate) {
-                    // Create the quest
-                    await questService.createQuest(userId, {
-                      title: quest.title,
-                      description: quest.description,
-                      quest_type: quest.quest_type,
-                      priority: quest.priority,
-                      importance: quest.importance,
-                      impact: quest.impact,
-                      category: quest.category,
-                      source: 'extracted',
-                      metadata: {
-                        extracted_from_message: messageId,
-                        extracted_at: new Date().toISOString(),
-                      },
-                    });
-
-                    logger.info(
-                      { userId, questTitle: quest.title, questType: quest.quest_type },
-                      'Auto-detected and created quest from chat message'
-                    );
-                  } else {
-                    logger.debug(
-                      { userId, questTitle: quest.title },
-                      'Skipped duplicate quest detection'
-                    );
-                  }
-                } catch (err) {
-                  logger.warn({ err, userId, questTitle: quest.title, questType: quest.quest_type }, 'Failed to create auto-detected quest');
-                }
-              }
+        const { questSuggestionService } = await import('../quests/questSuggestionService');
+        questSuggestionService
+          .processChatMessageForQuestSuggestions(userId, messageId, rawText, conversationHistory)
+          .then((count) => {
+            if (count > 0) {
+              logger.debug({ userId, messageId, count }, 'Queued quest suggestions from chat');
             }
           })
           .catch(err => {
-            logger.warn({ err, userId, messageId }, 'Quest extraction failed (non-blocking)');
+            logger.warn({ err, userId, messageId }, 'Quest suggestion extraction failed (non-blocking)');
           });
 
         // 12.12.2: Extract progress updates and update existing quests

@@ -5,7 +5,11 @@ import { z } from 'zod';
 import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { unifiedFileIngestionService } from '../services/ingestion/unifiedFileIngestionService';
+import { userFileRegistry } from '../services/ingestion/userFileRegistry';
+import { resumeParsingService } from '../services/profileClaims/resumeParsingService';
 import { documentService } from '../services/documentService';
+import { resolveFileProvenance } from '../services/ingestion/fileProvenanceService';
+import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 
@@ -84,6 +88,103 @@ router.get('/language-style', requireAuth, async (req: AuthenticatedRequest, res
     res.json({ languageStyle: null });
   }
 });
+
+/** GET /api/documents/files — user's uploaded document library */
+router.get(
+  '/files',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const [files, resumes] = await Promise.all([
+      userFileRegistry.listForUser(userId),
+      resumeParsingService.getResumeDocuments(userId),
+    ]);
+
+    const resumeBySource = new Map<string, (typeof resumes)[0]>();
+    for (const r of resumes) {
+      const sid = (r.parsed_data as { source_file_id?: string })?.source_file_id;
+      if (sid) resumeBySource.set(sid, r);
+    }
+
+    const library = await Promise.all(
+      files.map(async (f) => {
+        const resume = resumeBySource.get(f.id);
+        return {
+          id: f.id,
+          filename: f.filename,
+          mimeType: f.mime_type,
+          kind: f.ingest_kind,
+          uploadedAt: f.uploaded_at,
+          processingStatus: f.processing_status,
+          storageUrl: await userFileRegistry.createSignedDownloadUrl(f),
+          derivedCounts: f.derived_counts,
+          errorMessage: f.error_message,
+          resumeDocumentId: resume?.id ?? null,
+          claimsGenerated: resume?.claims_generated ?? null,
+          parsedSummary: resume?.parsed_data
+            ? {
+                jobs: (resume.parsed_data as { structured?: { employment?: unknown[] } }).structured?.employment?.length ?? 0,
+                skills: (resume.parsed_data as { structured?: { skills?: unknown[] } }).structured?.skills?.length ?? 0,
+                schools: (resume.parsed_data as { structured?: { education?: unknown[] } }).structured?.education?.length ?? 0,
+              }
+            : null,
+        };
+      })
+    );
+
+    res.json({ success: true, files: library });
+  })
+);
+
+/** GET /api/documents/files/:fileId/provenance */
+router.get(
+  '/files/:fileId/provenance',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const provenance = await resolveFileProvenance(req.user!.id, req.params.fileId);
+    res.json({ success: true, ...provenance });
+  })
+);
+
+/** GET /api/documents/files/:fileId — single file + resume parse detail */
+router.get(
+  '/files/:fileId',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const file = await userFileRegistry.getForUser(userId, req.params.fileId);
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const resumes = await resumeParsingService.getResumeDocuments(userId);
+    const resume = resumes.find(
+      (r) => (r.parsed_data as { source_file_id?: string })?.source_file_id === file.id
+    );
+    const signedDownloadUrl = await userFileRegistry.createSignedDownloadUrl(file);
+
+    res.json({
+      success: true,
+      file: {
+        ...file,
+        storage_url: signedDownloadUrl,
+      },
+      resume: resume
+        ? {
+            id: resume.id,
+            fileName: resume.file_name,
+            processingStatus: resume.processing_status,
+            claimsGenerated: resume.claims_generated,
+            fileUrl: signedDownloadUrl,
+            parsedData: resume.parsed_data,
+            rawTextPreview: resume.raw_text?.slice(0, 2000) ?? null,
+            uploadedAt: resume.uploaded_at,
+            processedAt: resume.processed_at,
+          }
+        : null,
+    });
+  })
+);
 
 // ChatGPT conversation import
 router.post('/import-chatgpt', requireAuth, async (req: AuthenticatedRequest, res) => {

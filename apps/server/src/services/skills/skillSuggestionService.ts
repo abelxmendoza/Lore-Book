@@ -12,6 +12,7 @@ import { skillLoreService } from './skillLoreService';
 import { skillRelationshipService } from './skillRelationshipService';
 import { skillIndexService } from './skillIndexService';
 import { normalizeSkillKey } from './skillIdentity';
+import { progressionTracker } from '../progression/progressionTracker';
 
 export type SkillSuggestionRow = {
   id: string;
@@ -280,6 +281,9 @@ class SkillSuggestionService {
 
     skillIndexService.invalidate(userId);
     await skillRelationshipService.resolvePendingParentLinks(userId);
+
+    void progressionTracker.afterSkillMaterialized(userId, skill.id, input.suggestionId);
+
     return skill;
   }
 

@@ -35,6 +35,8 @@ import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { isCollectivePersonName } from '../utils/personNameValidation';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 
+import { characterAuthorityService } from './characterAuthorityService';
+import { filterValidAliases, isValidAliasForCharacter } from './characters/aliasConstraintService';
 import { supabaseAdmin } from './supabaseClient';
 
 // Pronouns/contractions/generics the extractors keep emitting as "people".
@@ -174,6 +176,17 @@ class CharacterRegistry {
 
     if (await this.isKnownNonPerson(userId, cleanName)) {
       return { action: 'reject', reason: 'known_location_or_org' };
+    }
+
+    // Authority resolver — single canonical identity check before fuzzy logic.
+    const authorityHit = await characterAuthorityService.resolveByName(userId, cleanName);
+    if (authorityHit.characterId && authorityHit.confidence >= 0.85) {
+      return {
+        action: 'merge',
+        characterId: authorityHit.characterId,
+        matchedName: authorityHit.matchedName ?? cleanName,
+        cleanName,
+      };
     }
 
     const { data } = await supabaseAdmin
@@ -324,7 +337,9 @@ class CharacterRegistry {
     const aliases = new Set((row.alias ?? []).map(a => a));
     const alreadyKnown = normalizeNameKey(mention) === normalizeNameKey(row.name)
       || (row.alias ?? []).some(a => normalizeNameKey(a) === normalizeNameKey(mention));
-    if (addAlias && !alreadyKnown) aliases.add(mention);
+    if (addAlias && !alreadyKnown && isValidAliasForCharacter(row.name, mention)) {
+      aliases.add(mention);
+    }
 
     const metadata = {
       ...(row.metadata ?? {}),
@@ -348,7 +363,7 @@ class CharacterRegistry {
       update.last_name = parsedName.lastName || null;
       logger.info({ characterId, from: row.name, to: mention }, 'Character name upgraded to fuller form');
     }
-    update.alias = aliases.size > 0 ? [...aliases] : null;
+    update.alias = aliases.size > 0 ? filterValidAliases(row.name, [...aliases]) : null;
 
     await supabaseAdmin
       .from('characters')

@@ -7,6 +7,7 @@ import { CharacterAvatar } from './CharacterAvatar';
 import { useState, useEffect } from 'react';
 import { fetchJson } from '../../lib/api';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
+import { getCharacterWittyTagline } from '../../lib/characterDisplay';
 
 export type SocialMedia = {
   instagram?: string;
@@ -250,6 +251,8 @@ export const CharacterProfileCard = ({
       ? `${character.first_name} ${character.last_name}`
       : character.name;
 
+  const cardBlurb = getCharacterWittyTagline(character) || character.summary;
+
   const getProximityColor = (level?: string | null) => {
     const colors: Record<string, string> = {
       'direct': 'bg-green-500/20 text-green-400 border-green-500/40',
@@ -455,9 +458,9 @@ export const CharacterProfileCard = ({
       </CardHeader>
       
       <CardContent className="space-y-1 sm:space-y-2 pt-0 px-2 sm:px-4 pb-1.5 sm:pb-3">
-        {character.summary && (
-          <p className="text-[9px] sm:text-xs text-white/70 line-clamp-1 leading-tight hidden sm:block" title={character.summary}>
-            {character.summary.length > 80 ? `${character.summary.slice(0, 80).trim()}…` : character.summary}
+        {cardBlurb && (
+          <p className="text-[9px] sm:text-xs text-white/70 line-clamp-2 leading-tight hidden sm:block italic" title={cardBlurb}>
+            {cardBlurb.length > 100 ? `${cardBlurb.slice(0, 100).trim()}…` : cardBlurb}
           </p>
         )}
         

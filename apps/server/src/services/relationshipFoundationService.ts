@@ -655,6 +655,33 @@ class RelationshipFoundationService {
     return { repaired };
   }
 
+  /** Assert a kinship edge from protagonist to a relative (message-scoped provenance). */
+  async assertProtagonistKinship(
+    userId: string,
+    kinCharacterId: string,
+    kinship: string,
+    messageId: string,
+    confidence = 0.85
+  ): Promise<boolean> {
+    const { data: chars } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, metadata')
+      .eq('user_id', userId);
+    const protagonist = await this.findProtagonist(userId, (chars ?? []) as CharacterRow[]);
+    if (!protagonist || protagonist.id === kinCharacterId) return false;
+
+    const [a, b] = normalizePair(protagonist.id, kinCharacterId);
+    return this.upsertRelationship(userId, {
+      charAId: a,
+      charBId: b,
+      relType: 'family',
+      evidenceIds: messageId ? [messageId] : [],
+      source: 'kinship_inference',
+      kinship,
+      confidence,
+    });
+  }
+
   private async upsertRelationship(
     userId: string,
     params: {

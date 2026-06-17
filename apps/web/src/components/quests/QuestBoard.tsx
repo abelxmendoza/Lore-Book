@@ -69,6 +69,18 @@ export const QuestBoard = () => {
 
   const { data: board, isLoading, error, refetch: refetchBoard } = useQuestBoard();
 
+  const existingQuestTitles = useMemo(() => {
+    if (!board) return [];
+    return [
+      ...(board.main_quests || []),
+      ...(board.side_quests || []),
+      ...(board.daily_quests || []),
+      ...(board.todays_quests || []),
+      ...(board.this_weeks_quests || []),
+      ...(board.completed_quests || []),
+    ].map((q: Quest) => q.title);
+  }, [board]);
+
   // Get all unique categories from quests
   const allCategories = useMemo(() => {
     if (!board) return [];
@@ -477,7 +489,10 @@ export const QuestBoard = () => {
 
       {/* Detected quest suggestions — pulled from your chats + journal */}
       <div className="flex-shrink-0">
-        <DetectedQuestSuggestions onQuestAdded={() => void refetchBoard()} />
+        <DetectedQuestSuggestions
+          existingQuestTitles={existingQuestTitles}
+          onQuestAdded={() => void refetchBoard()}
+        />
       </div>
 
       {/* Main Content - Side by Side */}

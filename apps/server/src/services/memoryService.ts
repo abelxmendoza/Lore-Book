@@ -20,6 +20,7 @@ import { correctionService } from './correctionService';
 import { embeddingService } from './embeddingService';
 import { peoplePlacesService } from './peoplePlacesService';
 import { skillExtractionService } from './skills/skillExtractionService';
+import { questSuggestionService } from './quests/questSuggestionService';
 import { supabaseAdmin } from './supabaseClient';
 import { ingestJournalEntry } from './unifiedErIngestion';
 import { dateAssignmentService } from './dateAssignmentService';
@@ -225,6 +226,16 @@ class MemoryService {
         })
         .catch(err => {
           logger.warn({ error: err, userId: payload.userId, entryId: entry.id }, 'Failed to extract skills from entry (non-blocking)');
+        });
+
+      questSuggestionService.processEntryForQuestSuggestions(payload.userId, entry.id, payload.content)
+        .then((count) => {
+          if (count > 0) {
+            logger.debug({ userId: payload.userId, entryId: entry.id, count }, 'Queued quest suggestions from journal');
+          }
+        })
+        .catch(err => {
+          logger.warn({ error: err, userId: payload.userId, entryId: entry.id }, 'Failed to extract quest suggestions from entry (non-blocking)');
         });
     }
 

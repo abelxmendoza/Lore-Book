@@ -371,7 +371,7 @@ export const ChatFirstInterface = () => {
       character: '/characters',
       location: '/locations',
       task: '/timeline',
-      hqi: '/search',
+      hqi: '/timeline?view=search',
       fabric: '/discovery',
     };
 

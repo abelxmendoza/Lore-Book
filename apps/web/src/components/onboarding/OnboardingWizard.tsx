@@ -137,7 +137,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
                 icon: Search,
                 title: 'Memory Explorer',
                 desc: 'Search and discover connections across your memories',
-                route: '/search',
+                route: '/timeline?view=search',
               },
               {
                 icon: Users,
@@ -306,7 +306,7 @@ export const OnboardingWizard = ({ onComplete }: OnboardingWizardProps) => {
             <Button
               variant="outline"
               className="h-auto py-6 flex flex-col items-center gap-2"
-              onClick={() => navigate('/search')}
+              onClick={() => navigate('/timeline?view=search')}
             >
               <Search className="h-6 w-6" />
               <span>Explore Memories</span>

@@ -1,7 +1,6 @@
 import { createHash } from 'crypto';
 import { v4 as uuid } from 'uuid';
 
-import { config } from '../../config';
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
@@ -15,8 +14,19 @@ const EMPTY_COUNTS: UserFileDerivedCounts = {
   events: 0,
 };
 
+const USER_FILES_BUCKET = 'user-files';
+const SIGNED_URL_TTL_SECONDS = 3600;
+
 function sha256(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex');
+}
+
+function storagePathFor(userId: string, id: string, filename: string): string {
+  return `${userId}/${id}-${filename}`;
+}
+
+function isHttpUrl(value: string): boolean {
+  return value.startsWith('http://') || value.startsWith('https://');
 }
 
 export class UserFileRegistry {
@@ -47,9 +57,9 @@ export class UserFileRegistry {
     let storageUrl: string | null = null;
 
     if (params.storeBinary !== false) {
-      const filePath = `${userId}/${id}-${params.filename}`;
+      const filePath = storagePathFor(userId, id, params.filename);
       const { error: uploadError } = await supabaseAdmin.storage
-        .from('user-files')
+        .from(USER_FILES_BUCKET)
         .upload(filePath, buffer, {
           contentType: params.mimeType,
           upsert: false,
@@ -58,7 +68,8 @@ export class UserFileRegistry {
       if (uploadError) {
         logger.warn({ error: uploadError, userId, filename: params.filename }, 'user_files storage upload failed');
       } else {
-        storageUrl = `${config.supabaseUrl}/storage/v1/object/public/user-files/${filePath}`;
+        // Private bucket: store object path; sign at read time.
+        storageUrl = filePath;
       }
     }
 
@@ -126,6 +137,65 @@ export class UserFileRegistry {
       .from('user_files')
       .update({ metadata: { ...meta, provenance_links: links } })
       .eq('id', fileId);
+  }
+
+  async listForUser(userId: string): Promise<UserFileRecord[]> {
+    const { data, error } = await supabaseAdmin
+      .from('user_files')
+      .select('*')
+      .eq('user_id', userId)
+      .order('uploaded_at', { ascending: false });
+
+    if (error) {
+      logger.error({ error, userId }, 'Failed to list user files');
+      throw error;
+    }
+    return (data ?? []) as UserFileRecord[];
+  }
+
+  async getForUser(userId: string, fileId: string): Promise<UserFileRecord | null> {
+    const { data, error } = await supabaseAdmin
+      .from('user_files')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('id', fileId)
+      .maybeSingle();
+
+    if (error) {
+      logger.error({ error, userId, fileId }, 'Failed to get user file');
+      throw error;
+    }
+    return (data as UserFileRecord) ?? null;
+  }
+
+  resolveStoragePath(file: Pick<UserFileRecord, 'user_id' | 'id' | 'filename' | 'storage_url'>): string | null {
+    if (!file.storage_url) return null;
+    if (isHttpUrl(file.storage_url)) {
+      const marker = `/object/public/${USER_FILES_BUCKET}/`;
+      const idx = file.storage_url.indexOf(marker);
+      if (idx >= 0) return file.storage_url.slice(idx + marker.length);
+      return null;
+    }
+    return file.storage_url;
+  }
+
+  async createSignedDownloadUrl(
+    file: Pick<UserFileRecord, 'user_id' | 'id' | 'filename' | 'storage_url'>,
+    expiresInSeconds = SIGNED_URL_TTL_SECONDS
+  ): Promise<string | null> {
+    const storagePath = this.resolveStoragePath(file);
+    if (!storagePath) return null;
+
+    const { data, error } = await supabaseAdmin.storage
+      .from(USER_FILES_BUCKET)
+      .createSignedUrl(storagePath, expiresInSeconds);
+
+    if (error) {
+      logger.warn({ error, storagePath, userId: file.user_id }, 'Failed to create signed download URL');
+      return null;
+    }
+
+    return data.signedUrl;
   }
 }
 

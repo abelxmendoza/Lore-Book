@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('mammoth', () => ({
@@ -42,5 +44,14 @@ describe('extractTextFromBuffer', () => {
 
   it('rejects legacy doc format', async () => {
     await expect(extractTextFromBuffer(Buffer.from('x'), 'doc')).rejects.toThrow(/not supported/);
+  });
+
+  it('extracts text from Abel robotics reference PDF', async () => {
+    const pdfPath = join(__dirname, '../fixtures/resumes/AbelMendoza_RoboticsEngineer_Resume2026-1.pdf');
+    const buffer = readFileSync(pdfPath);
+    const text = await extractTextFromBuffer(buffer, 'pdf');
+    expect(text).toContain('Abel Mendoza');
+    expect(text).toContain('RLH Industries');
+    expect(text).toContain('Armstrong Robotics');
   });
 });

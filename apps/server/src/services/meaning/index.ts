@@ -1,0 +1,13 @@
+export * from './meaningResolutionTypes';
+export { resolveEntities, loadCharacterNameMatches } from './entityResolutionService';
+export { resolveReferences } from './referenceResolutionService';
+export { resolveTemporalContext, inferSkillTemporal } from './temporalResolutionService';
+export { resolveFactuality, allowsHardMemoryCandidate, allowsPreferenceCandidate } from './factualityResolutionService';
+export { resolveRelationships, isFamilyOrRomantic } from './relationshipResolutionService';
+export { resolveSkills } from './skillContextResolutionService';
+export { detectContradictions } from './contradictionDetectionService';
+export { scoreMeaningConfidence, allowsMemoryWrite, applyConfirmationRules } from './meaningConfidenceScorer';
+export { buildOntologyActionCandidates, buildMemoryReviewCandidates } from './meaningCandidateBuilder';
+export { detectIdentityCollisions } from './identityCollisionService';
+export { processMeaningMemoryCandidates } from './meaningMemoryBridge';
+export { meaningResolutionService } from './meaningResolutionService';

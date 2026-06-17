@@ -407,6 +407,8 @@ Entities: ${entityList}
 **Relationships** – use ONLY these types and set kind (ASSERTED=lasting, EPISODIC=event-specific):
 ${RelationshipTypeEnum.join(', ')}.
 
+Detect BOTH positive bonds (friend_of, best_friend_of, close_friend_of, childhood_friend_of) AND adversarial ones (enemy_of, rival_of, ex_friend_of). Watch for conflict cues — arguing, falling out, "can't stand", dislike, betrayal, competition, rivalry, beef, drama, estrangement, cutting someone off — and emit enemy_of/rival_of/ex_friend_of. Equally surface friendships from cues like "my friend", "we're close", hanging out, having each other's back.
+
 **Scopes** – context per entity: recruiting, employment, family, education, music, etc.
 
 Return JSON: { "relationships": [...], "scopes": [...] }. Each relationship: from_entity, to_entity, relationship (from enum above), kind (ASSERTED|EPISODIC), confidence (0–1). Only include if confidence >= 0.6.`,

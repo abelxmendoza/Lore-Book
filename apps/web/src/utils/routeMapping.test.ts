@@ -17,11 +17,16 @@ describe('routeMapping', () => {
 
     it('strips query and hash', () => {
       expect(getSurfaceFromRoute('/timeline?foo=1')).toBe('timeline');
-      expect(getSurfaceFromRoute('/search#section')).toBe('search');
+      expect(getSurfaceFromRoute('/timeline?view=search#section')).toBe('timeline');
     });
 
     it('maps /memories to events (Life Log)', () => {
       expect(getSurfaceFromRoute('/memories')).toBe('events');
+    });
+
+    it('returns correct surface for /family', () => {
+      expect(getSurfaceFromRoute('/family')).toBe('family');
+      expect(getRouteFromSurface('family')).toBe('/family');
     });
 
     it('defaults to chat for unknown path', () => {

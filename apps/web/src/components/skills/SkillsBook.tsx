@@ -18,6 +18,7 @@ import { skillsApi } from '../../api/skills';
 import { useMockData } from '../../contexts/MockDataContext';
 import type { Skill, SkillCategory } from '../../types/skill';
 import { readSkillProfile } from '../../lib/skillProfile';
+import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { format, subDays } from 'date-fns';
 
 const ITEMS_PER_PAGE = 12; // Fixed at 12 per page
@@ -151,6 +152,12 @@ export const SkillsBook: React.FC = () => {
 
   useEffect(() => {
     void loadSkills();
+  }, [isMockDataEnabled]);
+
+  useEffect(() => {
+    return onStoryDataUpdated(() => {
+      void loadSkills();
+    }, 'skills');
   }, [isMockDataEnabled]);
 
   const loadSkills = async () => {

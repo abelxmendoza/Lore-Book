@@ -126,7 +126,33 @@ class OrganizationMergeService {
    * Merge one or more duplicate orgs into a primary. Re-points all child records,
    * unions aliases/metadata, and deletes the duplicates.
    */
+  /**
+   * Authority resolver (mirrors locationMergeService.resolveCanonicalLocationId).
+   * The Groups Book reads `organizations` directly, so it emits organizations.id;
+   * this guards against a stray people_places id by mapping to the canonical org by
+   * name. Orgs are not auto-created here, so an unmatched mention returns null.
+   */
+  async resolveCanonicalOrganizationId(userId: string, id: string): Promise<string | null> {
+    const { data: existing } = await supabaseAdmin
+      .from('organizations').select('id').eq('id', id).eq('user_id', userId).maybeSingle();
+    if (existing) return (existing as { id: string }).id;
+
+    const { data: pp } = await supabaseAdmin
+      .from('people_places').select('id, name').eq('id', id).eq('user_id', userId).maybeSingle();
+    if (!pp) return null;
+    const { data: byName } = await supabaseAdmin
+      .from('organizations').select('id').eq('user_id', userId).ilike('name', (pp as { name: string }).name).maybeSingle();
+    return byName ? (byName as { id: string }).id : null;
+  }
+
   async merge(userId: string, primaryId: string, duplicateIds: string[]): Promise<OrgMergeReport> {
+    // Resolve to the canonical `organizations` authority before lookups.
+    const resolvedPrimary = await this.resolveCanonicalOrganizationId(userId, primaryId);
+    if (resolvedPrimary) primaryId = resolvedPrimary;
+    duplicateIds = (await Promise.all(
+      duplicateIds.map(async (d) => (await this.resolveCanonicalOrganizationId(userId, d)) ?? d)
+    )).filter((d) => d !== primaryId);
+
     const report: OrgMergeReport = {
       primary_id: primaryId,
       merged_ids: [],

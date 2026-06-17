@@ -48,7 +48,8 @@ describe('Lore Keeper App - Core Functionality', () => {
         bubbles: true,
       }));
     });
-    cy.url().should('include', '/search');
+    cy.url().should('include', '/timeline');
+    cy.url().should('include', 'view=search');
   });
 
   it('should be responsive', () => {

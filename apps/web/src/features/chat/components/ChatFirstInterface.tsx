@@ -41,6 +41,8 @@ import { diagnoseEndpoints, logDiagnostics } from '../../../utils/errorDiagnosti
 import { analytics } from '../../../lib/monitoring';
 import { fetchJson } from '../../../lib/api';
 import { useLoreKeeper } from '../../../hooks/useLoreKeeper';
+import { dispatchStoryDataUpdated } from '../../../lib/storyRefresh';
+import type { UploadCompletePayload } from './DocumentUpload';
 import { ThreadSaveChip } from './ThreadSaveChip';
 import { WhatLoreBookKnows } from './WhatLoreBookKnows';
 import { WhatChangedSinceLastTime } from './WhatChangedSinceLastTime';
@@ -276,7 +278,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     setSelectedSource(null);
     const routeMap: Record<string, string> = {
       entry: '/timeline', chapter: '/timeline', character: '/characters',
-      location: '/locations', task: '/timeline', hqi: '/search', fabric: '/discovery',
+      location: '/locations', task: '/timeline', hqi: '/timeline?view=search', fabric: '/discovery',
     };
     navigate(routeMap[surface] || '/timeline');
     analytics.track('chat_source_navigated', { surface, id });
@@ -386,6 +388,49 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
       messageId: message.id,
     });
 
+    const appendSystemNote = (content: string) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `system-${Date.now()}`,
+          role: 'assistant' as const,
+          content,
+          timestamp: new Date(),
+          isSystemMessage: true,
+        },
+      ]);
+    };
+
+    if (action.kind === 'crud_confirm' && action.apiPath) {
+      void (async () => {
+        try {
+          await fetchJson(action.apiPath!, {
+            method: action.apiMethod ?? 'POST',
+            ...(action.apiBody ? { body: JSON.stringify(action.apiBody) } : {}),
+          });
+          window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
+          appendSystemNote(action.successMessage ?? 'Updated your lore.');
+        } catch (error) {
+          appendSystemNote(
+            error instanceof Error ? error.message : 'Could not complete that action.',
+          );
+        }
+      })();
+      return;
+    }
+
+    if (action.kind === 'navigate') {
+      if (action.surface === 'family') {
+        navigate('/family');
+        return;
+      }
+      if (action.targetId) {
+        sessionStorage.setItem('highlightItem', action.targetId);
+      }
+      navigate('/characters');
+      return;
+    }
+
     if (action.kind === 'open_sources') {
       const source = action.targetId
         ? message.sources?.find((s) => s.id === action.targetId)
@@ -396,7 +441,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
 
     if (action.kind === 'search') {
       const query = action.query || message.content.slice(0, 160);
-      navigate(`/search?q=${encodeURIComponent(query)}`);
+      navigate(`/timeline?view=search&q=${encodeURIComponent(query)}`);
       return;
     }
 
@@ -703,7 +748,27 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             disabled={isGuest && !canSendChatMessage()}
             initialPrompt={initialPrompt}
             initialDate={initialDate}
-            onUploadComplete={async () => {
+            onUploadComplete={async (result: UploadCompletePayload) => {
+              const now = new Date();
+              if (result.kind === 'resume') {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: `upload-user-${now.getTime()}`,
+                    role: 'user',
+                    content: `📎 Uploaded resume: **${result.fileName}**`,
+                    timestamp: now,
+                  },
+                  {
+                    id: `upload-assistant-${now.getTime()}`,
+                    role: 'assistant',
+                    content: result.chatFeedback,
+                    timestamp: now,
+                    isSystemMessage: true,
+                  },
+                ]);
+                dispatchStoryDataUpdated({ scopes: ['all'], delayMs: 1500 });
+              }
               await Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]);
             }}
           />

@@ -1,0 +1,94 @@
+Abel Mendoza
+Robotics & Embedded Systems Engineer
+Anaheim, CA
+test.candidate@example.com | (562) 322-2299
+linkedin.com/in/test-candidate | example.dev | github.com/test-candidate
+Professional Summary
+Robotics and embedded systems engineer with hands-on experience deploying, repairing, validating, and integrating
+autonomous robotic and industrial hardware systems in real-world environments. Skilled in ROS2, embedded Linux,
+hardware validation, sensor fusion, industrial communications, and full-stack system integration across software, elec-
+tronics, networking, and control layers. Proven ability to diagnose failures and restore systems under live operational
+pressure. Targeting aerospace, defense, robotics, and embedded autonomy roles. U.S. citizen eligible for ITAR/EAR
+work.
+Technical Skills
+Autonomy & Robotics: ROS2 Humble, PX4 Autopilot (SITL), MAVLink, MAVSDK, SLAM, Kalman filtering, ob-
+stacle avoidance
+Perception: OpenCV, ArUco tracking, Intel RealSense D455, YOLOv8 (Jetson TensorRT), depth sensing
+Embedded & Electronics: Raspberry Pi 4B, NVIDIA Jetson Orin Nano, STM32, PIC32, FPGA tooling, UART, SPI,
+I2C, PWM, GPIO
+Electrical Test & Validation: Multimeters, optical power meters, programmable electronic loads, DC-DC converter
+testing, relay logic validation, continuity testing
+Systems & Networking: Linux (Ubuntu 22.04), Docker, Tailscale VPN, WebSockets, TCP/UDP, distributed systems
+Programming: Python, C++, Go, TypeScript, JavaScript, Bash
+Tools: Git, VS Code, FastAPI, Next.js, React, CycloneDDS, MPLAB ICD3, Quartus
+Professional Experience
+Electronics Test & Validation Technician Apr 2026 – Present
+RLH Industries, Inc. — Orange, CA
+• Performed validation, calibration, and troubleshooting of fiber optic communication modules, verifying electrical →
+optical → electrical signal integrity across telecom and industrial communication systems
+• Measured voltage, current, resistance, and continuity using multimeters, programmable electronic loads, and bench
+power supplies
+• Validated optical transmission systems at 850nm and 1310nm wavelengths using calibrated optical power meters and
+dBm measurements
+• Executed DC-DC power converter testing and calibration including voltage regulation, load testing (∼95–100W),
+tolerance verification (±0.5%), and thermal drift observation
+• Calibrated relay threshold detection and alarm logic circuits (VR1/VR2), validating LED indicators, switching behav-
+ior, and fault conditions
+• Performed firmware flashing, embedded hardware bring-up, and web interface deployment for industrial Ethernet relay
+and I/O systems using MPLAB ICD3, PIC32 microcontrollers, MPFS2, USB Blaster, and Quartus
+• Conducted board-level troubleshooting and failure isolation using continuity testing, embedded network diagnostics,
+and known-good reference hardware (“golden boards”)
+• Assisted with FPGA programming, board-level validation, and integration testing for industrial communication and
+supervisory control systems
+Robotics Deployment Technician Jan 2025 – Dec 2025
+Armstrong Robotics — Hollywood, CA
+• Maintained 24/7 deployment of an autonomous robotic system in a high-volume production environment as the sole
+on-site technical owner
+• Assembled and integrated new hardware components to improve system autonomy and operational reliability
+
+-- 1 of 2 --
+
+• Performed repairs across mechanical, electrical, and control systems during live robotic operation
+• Diagnosed and resolved failures across hardware, perception, and control systems under real-time constraints
+• Replaced and calibrated Robotiq grippers on UFactory robotic arms and validated performance under production load
+• Calibrated vision systems using ArUco markers and supported live iteration with engineering teams
+• Acted as liaison between operators, staff, and engineers during system failures and recovery
+Field Robotics Agent Mar 2025 – May 2025
+Serve Robotics — Los Angeles, CA
+• Supported deployment and expansion of autonomous delivery robots across multiple LA regions
+• Diagnosed navigation, sensor, and connectivity issues during real-world operation and validated fixes under time
+pressure
+• Collaborated with engineering teams to surface edge cases and improve system reliability
+Technical Projects
+Omega-1 — Distributed Autonomous Robotics Platform
+Raspberry Pi 4B | Jetson Orin Nano | ROS2 | FastAPI | Next.js
+• Architected a distributed robotics system across multiple machines enabling real-time control, perception, and moni-
+toring over a VPN-secured network
+• Implemented GPS-free localization using Kalman filter sensor fusion combining odometry with ArUco-based landmark
+corrections
+• Built real-time obstacle avoidance system with ultrasonic sensing and dynamic motion-state recovery
+• Designed low-latency video streaming pipeline using custom MJPEG proxy infrastructure
+• Integrated YOLOv8 object detection on Jetson Orin with optimized compressed streaming
+• Debugged PWM clock interference corrupting servo signals and resolved through timing validation and signal clamping
+• Built full-stack control dashboard with React and Xbox controller teleoperation support
+PX4 Autonomous Mission Stack
+ROS2 | PX4 | Gazebo
+• Built UAV autonomy pipeline with offboard control, navigation logic, and mission-state handling
+• Implemented obstacle avoidance and telemetry visualization using ROS2 and MAVSDK
+Jetson RealSense Perception Stack
+Jetson Orin Nano | ROS2
+• Built RGB-D perception pipeline with depth streaming, IMU integration, and obstacle detection
+• Developed diagnostics to validate sensor data, frame rates, and runtime system performance
+Education
+California State University, Fullerton May 2024
+Bachelor of Science — Computer Science
+Rio Hondo Community College
+Electrical and Electronics Coursework
+Additional
+FAA Part 107 Certified
+U.S. Citizen — ITAR/EAR Eligible
+Comfortable with field operations, hardware deployment, and physically demanding environments
+Languages: English (native), Spanish (conversational)
+
+-- 2 of 2 --
+

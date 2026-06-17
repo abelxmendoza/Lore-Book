@@ -34,9 +34,9 @@ Resolved via `temporalQueryService.ts` + `temporalAnchorResolver.ts`.
 3. `temporalQueryService.ts` — classification + `occurredInWindow`
 4. Migration `20260617120000_temporal_timestamp_backfill.sql` — sync `timestamp` ← `date`
 
-## Remaining (Phases 6–8)
+## Remaining (Phases 6–8) — shipped
 
-- Wire user timezone in `timeEngine` middleware
-- Clamp future dates at extraction (`eventExtractionService`, `ingestionPipelineClass`)
-- Arc/episode synthesis: use min/max source event times, not `last_seen_at` alone
-- Validation audit script for the 8 golden temporal questions
+- User timezone persisted via `POST /api/time/timezone` + `resolveUserTimezone()` in ingestion
+- Future dates clamped at extraction (`temporalOccurrence.ts`, `eventExtractionService`, `ingestionPipelineClass`)
+- Arc clustering prefers `first_seen_at` over stale `last_seen_at` refresh (`arcInferenceService`)
+- Golden temporal question tests: `tests/scripts/temporalGoldenQuestions.test.ts`

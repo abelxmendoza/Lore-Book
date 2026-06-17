@@ -295,6 +295,50 @@ function classifyKinship(row: CharacterKinshipRow): { relation: FamilyRelationTy
   return null;
 }
 
+type LeadingKinship = { relation: FamilyRelationType; label: string; generation: number; side: 'maternal' | 'paternal' | 'both' | 'other' };
+
+/**
+ * Infer kinship ONLY when a name is title-leading — the kinship word is the first
+ * token (optionally after step/grand/great/half). This distinguishes real kin
+ * ("Tío Juan", "Abuela", "Step Dad Ben") from stage names/handles where a kinship
+ * word is a trailing suffix or inside a handle ("Goth Tio", "Oscuri.dad",
+ * "Mom Jeans"). Returns null for non-kin so they stay generic `related`.
+ */
+function inferLeadingKinship(rawName: string): LeadingKinship | null {
+  const name = (rawName ?? '').trim();
+  if (!name) return null;
+  // Handle/stage-name shapes: a dot/at/digit inside the token (Oscuri.dad, x_tio_2) → not kin.
+  if (/[.@\d]/.test(name)) return null;
+  const lower = name.toLowerCase().replace(/['’]/g, "'");
+  // Strip a leading possessive/article ("my tío juan").
+  const s = lower.replace(/^(my|our|the)\s+/, '');
+  const step = /^step[-\s]?/.test(s);
+  const body = s.replace(/^step[-\s]?/, '').replace(/^great[-\s]?/, '');
+
+  const test = (re: RegExp) => re.test(body);
+  // Grandparents (also matches "grand ma/pa")
+  if (test(/^(abuel(?:a|ita)|grand\s?ma|grandmother|nana|nonna|granny)\b/))
+    return { relation: 'grandparent', label: 'Grandmother', generation: -2, side: 'other' };
+  if (test(/^(abuel(?:o|ito)|grand\s?pa|grandfather|nono)\b/))
+    return { relation: 'grandparent', label: 'Grandfather', generation: -2, side: 'other' };
+  // Parents
+  if (test(/^(mom|mother|mamá|mama|mommy)\b/))
+    return { relation: step ? 'step_parent' : 'parent', label: step ? 'Step-mother' : 'Mother', generation: -1, side: 'maternal' };
+  if (test(/^(dad|father|papá|papa|daddy)\b/))
+    return { relation: step ? 'step_parent' : 'parent', label: step ? 'Step-father' : 'Father', generation: -1, side: 'paternal' };
+  // Aunts / uncles (title-leading, e.g. "Tía Grace", "Uncle Bob")
+  if (test(/^(t[íi]a|aunt|auntie)\b/))
+    return { relation: 'aunt', label: 'Aunt', generation: -1, side: 'other' };
+  if (test(/^(t[íi]o|uncle)\b/))
+    return { relation: 'uncle', label: 'Uncle', generation: -1, side: 'other' };
+  // Cousins / siblings
+  if (test(/^(primo|prima|cousin)\b/))
+    return { relation: 'cousin', label: 'Cousin', generation: 0, side: 'other' };
+  if (test(/^(hermano|hermana|brother|sister)\b/))
+    return { relation: step ? 'step_sibling' : 'sibling', label: 'Sibling', generation: 0, side: 'other' };
+  return null;
+}
+
 class FamilyTreeService {
   /** The user's own character row, only when explicitly marked as self/protagonist. */
   async findUserCharacterId(userId: string): Promise<string | null> {
@@ -317,7 +361,41 @@ class FamilyTreeService {
   /** User's personal family tree (centered on the user character). */
   async getUserFamilyTree(userId: string): Promise<FamilyTreeDTO | null> {
     const selfId = await this.findUserCharacterId(userId);
-    return this.buildUserCenteredFamilyTree(userId, selfId);
+    const tree = await this.buildUserCenteredFamilyTree(userId, selfId);
+    return tree ? this.enrichRelationsFromNames(tree) : tree;
+  }
+
+  /**
+   * Hierarchy fallback: family edges are often stored as a generic `related`
+   * relationship, which collapses everyone to generation 0. Re-derive relation +
+   * generation from kinship keywords — but ONLY when the name is TITLE-LEADING
+   * ("Tío Juan", "Abuela", "Step Dad Ben"), never when the kinship word is a
+   * trailing suffix or inside a handle ("Goth Tio", "Oscuri.dad", "Mom Jeans").
+   * Those are stage names, not kin. An explicit family edge or metadata.kinship
+   * (relation !== 'related') always wins and is left untouched, so a user
+   * correction in conversation overrides this name heuristic.
+   */
+  private enrichRelationsFromNames(tree: FamilyTreeDTO): FamilyTreeDTO {
+    let changed = false;
+    const members = tree.members.map((m) => {
+      if (m.is_self || m.is_placeholder) return m;
+      if (m.relation && m.relation !== 'related') return m; // explicit/context relation wins
+      const inferred = inferLeadingKinship(m.name);
+      if (!inferred) return m;
+      changed = true;
+      return {
+        ...m,
+        relation: inferred.relation,
+        relation_label: inferred.label,
+        generation: inferred.generation,
+        side: inferred.side,
+        kinship_title: m.kinship_title ?? inferred.label,
+        inference_status: m.inference_status ?? 'inferred',
+      };
+    });
+    if (!changed) return tree;
+    members.sort((a, b) => a.generation - b.generation || a.relation.localeCompare(b.relation) || a.name.localeCompare(b.name));
+    return this.withInferredParentPlaceholders({ ...tree, members });
   }
 
   /** Family tree centered on a specific character. */

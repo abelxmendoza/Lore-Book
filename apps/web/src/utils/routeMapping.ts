@@ -8,7 +8,6 @@ export type SurfaceKey =
   | 'home'
   | 'chat'
   | 'timeline'
-  | 'search'
   | 'characters'
   | 'locations'
   | 'memoir'
@@ -18,6 +17,7 @@ export type SurfaceKey =
   | 'events'
   | 'entities'
   | 'organizations'
+  | 'family'
   | 'skills'
   | 'projects'
   | 'discovery'
@@ -32,6 +32,8 @@ export type SurfaceKey =
   | 'quests'
   | 'gaps'
   | 'saga'
+  | 'story'
+  | 'documents'
   | 'intelligence';
 
 /**
@@ -41,7 +43,6 @@ export const routeToSurface: Record<string, SurfaceKey> = {
   '/': 'home',
   '/chat': 'chat',
   '/timeline': 'timeline',
-  '/search': 'search',
   '/characters': 'characters',
   '/locations': 'locations',
   '/memoir': 'memoir',
@@ -52,6 +53,7 @@ export const routeToSurface: Record<string, SurfaceKey> = {
   '/events': 'events',
   '/entities': 'entities',
   '/organizations': 'organizations',
+  '/family': 'family',
   '/skills': 'skills',
   '/projects': 'projects',
   '/discovery': 'discovery',
@@ -65,6 +67,8 @@ export const routeToSurface: Record<string, SurfaceKey> = {
   '/quests': 'quests',
   '/gaps': 'gaps',
   '/saga': 'saga',
+  '/story': 'story',
+  '/documents': 'documents',
   '/intelligence': 'intelligence',
 };
 
@@ -75,7 +79,6 @@ export const surfaceToRoute: Record<SurfaceKey, string> = {
   'home': '/',
   'chat': '/chat',
   'timeline': '/timeline',
-  'search': '/search',
   'characters': '/characters',
   'locations': '/locations',
   'memoir': '/memoir',
@@ -85,6 +88,7 @@ export const surfaceToRoute: Record<SurfaceKey, string> = {
   'events': '/events',
   'entities': '/entities',
   'organizations': '/organizations',
+  'family': '/family',
   'skills': '/skills',
   'projects': '/projects',
   'discovery': '/discovery',
@@ -99,6 +103,8 @@ export const surfaceToRoute: Record<SurfaceKey, string> = {
   'quests': '/quests',
   'gaps': '/gaps',
   'saga': '/saga',
+  'story': '/story',
+  'documents': '/documents',
   'intelligence': '/intelligence',
 };
 

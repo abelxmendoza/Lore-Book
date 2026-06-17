@@ -32,11 +32,11 @@ export interface UniversalSearchResponse {
   relationships: UniversalSearchResult[];
 }
 
-export const TimelineSearch = () => {
-  const [query, setQuery] = useState('');
+export const TimelineSearch = ({ initialQuery = '' }: { initialQuery?: string }) => {
+  const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<UniversalSearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [debounceTimer, setDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+  const [debounceTimer, setDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const search = useCallback(async (searchQuery: string) => {
     if (searchQuery.length < 2) {

@@ -22,6 +22,10 @@ import { normalizeNameKey, namesOverlapByContainment, splitPersonName } from '..
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { selfCharacterService } from '../services/selfCharacterService';
 import { asyncHandler } from '../utils/asyncHandler';
+import {
+  filterValidAliases,
+  shouldMergeCharacterRecords,
+} from '../services/characters/aliasConstraintService';
 
 const router = Router();
 
@@ -299,7 +303,9 @@ function mergeCharacterPayloads(characters: any[]): any[] {
   for (const character of characters) {
     const name = cleanEntityName(character.name);
     if (!name || looksLikeNonPersonName(name)) continue;
-    const aliases = uniqueNames(character.alias ?? []).filter(alias => normalizeNameKey(alias) !== normalizeNameKey(name));
+    const aliases = filterValidAliases(name, uniqueNames(character.alias ?? [])).filter(
+      alias => normalizeNameKey(alias) !== normalizeNameKey(name)
+    );
     const keys = [name, ...aliases].map(normalizeNameKey);
     const existingIndex = keys.map(key => keyToIndex.get(key)).find(index => index !== undefined);
 
@@ -312,8 +318,18 @@ function mergeCharacterPayloads(characters: any[]): any[] {
     }
 
     const existing = merged[existingIndex];
-    existing.alias = uniqueNames([...(existing.alias ?? []), ...aliases, name])
-      .filter(alias => normalizeNameKey(alias) !== normalizeNameKey(existing.name));
+    if (!shouldMergeCharacterRecords(existing.name, name, existing.alias ?? [], aliases)) {
+      const next = { ...character, name, alias: aliases };
+      merged.push(next);
+      const index = merged.length - 1;
+      for (const key of keys) keyToIndex.set(key, index);
+      continue;
+    }
+
+    existing.alias = filterValidAliases(
+      existing.name,
+      uniqueNames([...(existing.alias ?? []), ...aliases, name])
+    ).filter(alias => normalizeNameKey(alias) !== normalizeNameKey(existing.name));
     existing.summary = [existing.summary, character.summary].filter(Boolean).join(' ');
     existing.tags = uniqueNames([...(existing.tags ?? []), ...(character.tags ?? [])]);
     for (const field of ['pronouns', 'archetype', 'role', 'proximity', 'hasMet', 'relationshipDepth', 'likelihoodToMeet']) {
@@ -379,12 +395,16 @@ async function mergeExtractedCharacterData(
   const incomingName = cleanEntityName(characterData.name);
   const existingAliases = Array.isArray(existing.alias) ? existing.alias : [];
   const inferredCategories = inferCharacterCategories(characterData, incomingName ?? existing.name);
-  const aliases = uniqueNames([
-    ...existingAliases,
-    ...(characterData.alias ?? []),
-    opts.matchedMention,
-    opts.preferIncomingName ? existing.name : undefined,
-  ]).filter(alias => normalizeNameKey(alias) !== normalizeNameKey(opts.preferIncomingName && incomingName ? incomingName : existing.name));
+  const canonicalName = opts.preferIncomingName && incomingName ? incomingName : existing.name;
+  const aliases = filterValidAliases(
+    canonicalName,
+    uniqueNames([
+      ...existingAliases,
+      ...(characterData.alias ?? []),
+      opts.matchedMention,
+      opts.preferIncomingName ? existing.name : undefined,
+    ])
+  ).filter(alias => normalizeNameKey(alias) !== normalizeNameKey(canonicalName));
 
   const metadata = {
     ...((existing.metadata ?? {}) as Record<string, unknown>),
@@ -633,7 +653,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
           name: decision.cleanName,
           first_name: nameParts.firstName,
           last_name: nameParts.lastName || null,
-          alias: characterData.alias || [],
+          alias: filterValidAliases(decision.cleanName, characterData.alias ?? []),
           pronouns: characterData.pronouns || null,
           archetype: characterData.archetype || null,
           role: characterData.role || null,
@@ -1188,6 +1208,55 @@ router.get(
   })
 );
 
+router.post(
+  '/self/set-legal-name',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const bodySchema = z.object({
+      legalName: z.string().trim().min(1).max(120),
+    });
+    const { legalName } = bodySchema.parse(req.body ?? {});
+
+    const self = await selfCharacterService.ensureSelfCharacter(userId);
+    if (!self?.id) {
+      return res.status(500).json({ success: false, error: 'No self character' });
+    }
+
+    const parts = legalName.split(/\s+/).filter(Boolean);
+    const firstName = parts[0] ?? legalName;
+    const lastName = parts.length > 1 ? parts.slice(1).join(' ') : null;
+    const metadata = {
+      ...((self.metadata as Record<string, unknown>) ?? {}),
+      is_self: true,
+      is_user: true,
+      real_name: legalName,
+    };
+
+    const displayName = /^me$/i.test(String(self.name ?? '')) ? legalName : self.name;
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('characters')
+      .update({
+        name: displayName,
+        first_name: firstName,
+        last_name: lastName,
+        metadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', self.id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+
+    if (error || !updated) {
+      return res.status(500).json({ success: false, error: 'Failed to update legal name' });
+    }
+
+    return res.json({ success: true, character: updated, legalName });
+  })
+);
+
 router.get(
   '/suggestions',
   requireAuth,
@@ -1211,6 +1280,26 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     if (error || !character) {
       return res.status(404).json({ error: 'Character not found' });
+    }
+
+    const { data: rosterRows } = await supabaseAdmin
+      .from('characters')
+      .select('id, name')
+      .eq('user_id', req.user!.id);
+    const otherCanonicalNames = (rosterRows ?? [])
+      .filter((row) => row.id !== character.id)
+      .map((row) => row.name)
+      .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
+    const sanitizedAliases = filterValidAliases(character.name, character.alias ?? [], {
+      otherCanonicalNames,
+    });
+    if (JSON.stringify(sanitizedAliases) !== JSON.stringify(character.alias ?? [])) {
+      await supabaseAdmin
+        .from('characters')
+        .update({ alias: sanitizedAliases.length > 0 ? sanitizedAliases : null, updated_at: new Date().toISOString() })
+        .eq('id', character.id)
+        .eq('user_id', req.user!.id);
+      character.alias = sanitizedAliases;
     }
 
     // Get relationships
@@ -1265,6 +1354,35 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       .or(`source_character_id.eq.${character.id},target_character_id.eq.${character.id}`);
 
     const metadata = (character.metadata || {}) as Record<string, unknown>;
+    const isSelfCharacter = Boolean(
+      metadata.is_self || metadata.is_user || /^me$/i.test(character.name)
+    );
+    const pollutedHooks = !isSelfCharacter && Array.isArray(metadata.context_hooks)
+      ? metadata.context_hooks.some((hook) =>
+          typeof hook === 'string' &&
+          /interview|epirus|resume|warehouse diagnostics|caffeine and firmware/i.test(hook)
+        )
+      : false;
+
+    let wittyTagline =
+      (typeof metadata.witty_tagline === 'string' && metadata.witty_tagline) ||
+      (typeof metadata.character_blurb === 'string' ? metadata.character_blurb : null);
+
+    if (!wittyTagline || pollutedHooks) {
+      const { characterBlurbService } = await import('../services/characters/characterBlurbService');
+      const blurb = await characterBlurbService.refreshAndPersist(req.user!.id, character.id, {
+        isSelf: isSelfCharacter,
+      });
+      wittyTagline = blurb?.wittyTagline ?? wittyTagline;
+      if (blurb) {
+        metadata.witty_tagline = blurb.wittyTagline;
+        metadata.character_blurb = blurb.wittyTagline;
+        metadata.profile_summary = blurb.profileSummary;
+        metadata.context_hooks = blurb.contextHooks;
+        metadata.ontology_tags = blurb.ontologyTags;
+      }
+    }
+
     const social_media = metadata.social_media as Record<string, string> | undefined;
     const directRelationships = relationships?.map((rel) => {
       const relatedCharId = rel.source_character_id === character.id ? rel.target_character_id : rel.source_character_id;
@@ -1302,6 +1420,13 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       status: character.status || 'active',
       first_appearance: character.first_appearance,
       summary: character.summary,
+      witty_tagline: wittyTagline,
+      real_name:
+        (typeof metadata.real_name === 'string' && metadata.real_name) ||
+        [character.first_name, character.last_name].filter(Boolean).join(' ').trim() ||
+        null,
+      context_hooks: Array.isArray(metadata.context_hooks) ? metadata.context_hooks : [],
+      ontology_tags: Array.isArray(metadata.ontology_tags) ? metadata.ontology_tags : [],
       tags: character.tags || [],
       avatar_url: displayAvatarUrl(character),
       social_media: social_media || undefined,
@@ -1384,7 +1509,10 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     let nameToUpdate = updateData.name;
     let firstNameToUpdate = updateData.firstName;
     let lastNameToUpdate = updateData.lastName;
-    let aliasToUpdate = updateData.alias ?? existingChar?.alias ?? [];
+    let aliasToUpdate = filterValidAliases(
+      nameToUpdate ?? existingChar?.name ?? '',
+      updateData.alias ?? existingChar?.alias ?? []
+    );
 
     if (updateData.name && existingChar?.is_nickname && !updateData.isNickname) {
       // Real name provided for a nickname character
@@ -1644,10 +1772,13 @@ If no characters are found, return {"namedCharacters": [], "unnamedCharacters": 
       .map(char => {
         const rawName = char.name.trim();
         const fullName = aliasNames.get(normalizeNameKey(rawName)) ?? rawName;
-        const aliases = uniqueNames([
-          ...(Array.isArray(char.alias) ? char.alias.filter((a: any) => typeof a === 'string') : []),
-          rawName !== fullName ? rawName : undefined,
-        ]).filter(alias => normalizeNameKey(alias) !== normalizeNameKey(fullName));
+        const aliases = filterValidAliases(
+          fullName,
+          uniqueNames([
+            ...(Array.isArray(char.alias) ? char.alias.filter((a: any) => typeof a === 'string') : []),
+            rawName !== fullName ? rawName : undefined,
+          ])
+        ).filter(alias => normalizeNameKey(alias) !== normalizeNameKey(fullName));
         // Use provided first/last names or parse from full name
         const nameParts = char.firstName 
           ? { firstName: char.firstName, lastName: char.lastName }
@@ -2147,6 +2278,79 @@ router.delete('/:id/media/:mediaId', requireAuth, async (req: AuthenticatedReque
   }
   await supabaseAdmin.from('character_media').delete().eq('id', r.id).eq('user_id', userId);
   res.json({ deleted: true });
+});
+
+// ── Self-identity resolution: same-name disambiguation ───────────────────────
+// A character that shares the user's name may be the user OR a different person
+// with the same name (e.g. an estranged parent). Never auto-decide — surface
+// collisions, let the user confirm "this is me" (merge into self) or "different
+// person" (keep separate, optionally record the relationship).
+
+// GET /api/characters/self/name-collisions — non-self characters sharing the self's name(s)
+router.get('/self/name-collisions', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  try {
+    const self = await selfCharacterService.ensureSelfCharacter(userId);
+    const selfId = self?.id as string | undefined;
+    const selfNames = new Set<string>();
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (self?.name) selfNames.add(norm(String(self.name)));
+    for (const a of ((self?.metadata as any)?.aliases ?? []) as string[]) selfNames.add(norm(a));
+    // Also include the account display name if present.
+    const { data: acct } = await supabaseAdmin.auth.admin.getUserById(userId);
+    const display = acct?.user?.user_metadata?.full_name || acct?.user?.user_metadata?.name;
+    if (display) selfNames.add(norm(String(display)));
+
+    const { data: chars } = await supabaseAdmin
+      .from('characters').select('id, name, summary, metadata, importance_level').eq('user_id', userId);
+    const collisions = (chars ?? []).filter((c: any) => {
+      if (c.id === selfId) return false;
+      const m = c.metadata ?? {};
+      if (m.is_self === true || m.distinct_from_self === true || m.confirmed_distinct === true) return false;
+      return selfNames.has(norm(String(c.name ?? '')));
+    });
+    res.json({ self_id: selfId ?? null, collisions });
+  } catch (error) {
+    logger.error({ error, userId }, 'name-collisions failed');
+    res.status(500).json({ error: 'Failed to load name collisions' });
+  }
+});
+
+// POST /api/characters/:id/merge-into-self — "this is me": fold this card into the self character
+router.post('/:id/merge-into-self', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const sourceId = String(req.params.id);
+  try {
+    const self = await selfCharacterService.ensureSelfCharacter(userId);
+    if (!self?.id) return res.status(500).json({ error: 'No self character' });
+    if (self.id === sourceId) return res.status(400).json({ error: 'Already the self character' });
+    const report = await characterMergeService.merge(userId, sourceId, String(self.id), { mergedBy: 'USER', reason: 'Confirmed self (this is me)' });
+    res.json({ merged: true, self_id: self.id, report });
+  } catch (error: any) {
+    logger.error({ error, userId, sourceId }, 'merge-into-self failed');
+    res.status(500).json({ error: error?.message ?? 'Failed to merge into self' });
+  }
+});
+
+// POST /api/characters/:id/distinct-from-self — "different person": keep separate forever
+// body: { relationship?: string }  e.g. 'father' to record the estranged-parent case
+router.post('/:id/distinct-from-self', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const id = String(req.params.id);
+  const relationship = typeof req.body?.relationship === 'string' ? req.body.relationship.trim() : undefined;
+  try {
+    const { data: row } = await supabaseAdmin
+      .from('characters').select('id, metadata').eq('id', id).eq('user_id', userId).maybeSingle();
+    if (!row) return res.status(404).json({ error: 'Character not found' });
+    const metadata = { ...((row as any).metadata ?? {}), distinct_from_self: true, confirmed_distinct: true, is_self: false };
+    if (relationship) metadata.relationship_type = relationship;
+    const { data: updated } = await supabaseAdmin
+      .from('characters').update({ metadata }).eq('id', id).eq('user_id', userId).select('*').maybeSingle();
+    res.json({ ok: true, character: updated ?? null });
+  } catch (error) {
+    logger.error({ error, userId, id }, 'distinct-from-self failed');
+    res.status(500).json({ error: 'Failed to mark distinct' });
+  }
 });
 
 export const charactersRouter = router;

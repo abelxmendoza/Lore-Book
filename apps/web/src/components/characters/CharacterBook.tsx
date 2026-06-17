@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Search, Plus, User, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, BookOpen, Users, Heart, GraduationCap, Briefcase, Palette, MessageSquare, Link2, UserX, Eye, DollarSign, Activity, Smile, Home, Heart as HeartIcon, Tag, Zap, LayoutGrid, LayoutList, Flame, Wind, Moon, GitBranch, AlertTriangle, GitMerge, Star } from 'lucide-react';
 import { FamilyTreeView, createMockUserFamilyTree, createMockFamilyTreeForCharacter } from '../family/FamilyTreeView';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
+import { MyFamilyModal } from '../family/MyFamilyModal';
 import { CharacterProfileCard, type Character } from './CharacterProfileCard';
 import { MainCharacterProfileCard, buildSyntheticMainCharacter } from './MainCharacterProfileCard';
 import { MainCharacterDetailModal } from './MainCharacterDetailModal';
@@ -2340,7 +2341,7 @@ const getDemoDuplicateGroups = (): DuplicateGroup[] => ([
 
 const ITEMS_PER_PAGE = 18; // 3 columns × 6 rows on mobile, more on larger screens
 
-type CharacterCategory = 'all' | 'family' | 'friends' | 'romantic' | 'mentors' | 'professional' | 'creative' | 'public_figure' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
+type CharacterCategory = 'all' | 'family' | 'friends' | 'romantic' | 'rivals' | 'mentors' | 'professional' | 'creative' | 'public_figure' | 'mentioned' | 'direct' | 'indirect' | 'distant' | 'unmet' | 'third_party';
 
 // A public figure is an influencer/celebrity/artist/creator the user follows or
 // encountered rather than an intimate connection. Flagged by the pipeline
@@ -2397,6 +2398,17 @@ const relationshipSignalsFor = (char: Character): Set<string> => {
   if (/\b(summit staffing|northwind logistics|agency|recruiter|onboarding|hiring|background check|identity verification|paperwork|professional|colleague|coworker|co worker|job|career|client|manager|boss)\b/.test(text)) signals.add('professional');
   if (/\b(bandmate|creative|collaborator|collab|co founder|cofounder|artist|music|writing|producer|dj|show|set|song|studio|make music|record|perform)\b/.test(text)) signals.add('creative');
   if (/\b(friend|ally|buddy|roommate|homie|new friends?)\b/.test(text)) signals.add('friend');
+  // Adversarial: people you have conflicts with / don't get along with.
+  if (/\b(enemy|enemies|rival|rivalry|adversary|nemesis|opponent|conflict|feud|beef|fell out|fall(?:ing)? out|fallout|fight(?:ing)? with|hate|can'?t stand|toxic|estranged|cut (?:them )?off|ex.?friend|drama|tension|dislike|not on speaking terms|bad blood|backstabb)\b/.test(text)) {
+    signals.add('rival');
+  }
+  // Normalize detector relationship_types (enemy_of, rival_of, ex_friend_of) → rival.
+  for (const s of signals) {
+    if (/\b(enemy|rival|adversary|nemesis|opponent)\b/.test(s) || /(enemy|rival|adversary|ex_friend)_of/.test(s)) {
+      signals.add('rival');
+      break;
+    }
+  }
 
   // Potential categories explain "maybe later" cases without promoting them to
   // confirmed filters too early.
@@ -2424,6 +2436,8 @@ const characterMatchesRelationshipCategory = (char: Character, category: Charact
       return met && (signals.has('professional') || signals.has('colleague') || signals.has('coworker') || signals.has('co-worker') || signals.has('recruiter'));
     case 'creative':
       return met && (signals.has('creative') || signals.has('collaborator') || signals.has('bandmate'));
+    case 'rivals':
+      return signals.has('rival') || signals.has('enemy') || signals.has('adversary') || signals.has('nemesis') || signals.has('opponent');
     default:
       return true;
   }
@@ -2726,20 +2740,31 @@ export const CharacterBook = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isMockDataEnabled]);
 
-  // Ensure protagonist character exists and backfill from chat threads.
+  // Ensure protagonist character exists; backfill from chat in the background (throttled).
   useEffect(() => {
     if (!user?.id || isMockDataEnabled) return;
     let cancelled = false;
+    const SELF_SYNC_KEY = 'lk:self-sync-last';
+    const SELF_SYNC_MIN_MS = 30 * 60 * 1000;
+
     (async () => {
       try {
         await selfCharacterApi.ensureSelf();
         if (!cancelled) await loadCharacters();
-        const sync = await selfCharacterApi.syncFromConversations({ limit: 80 });
-        if (!cancelled && sync.processed > 0) {
-          apiCache.deletePattern(/\/api\/(characters|knowledge)/);
-          await loadCharacters();
-          window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
-        }
+
+        const lastSync = Number(sessionStorage.getItem(SELF_SYNC_KEY) || 0);
+        if (Date.now() - lastSync < SELF_SYNC_MIN_MS) return;
+        sessionStorage.setItem(SELF_SYNC_KEY, String(Date.now()));
+
+        void selfCharacterApi
+          .syncFromConversations({ limit: 20, sinceDays: 90 })
+          .then(async (sync) => {
+            if (cancelled || sync.processed <= 0) return;
+            apiCache.deletePattern(/\/api\/(characters|knowledge)/);
+            await loadCharacters();
+            window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
+          })
+          .catch(() => {});
       } catch {
         /* non-blocking */
       }
@@ -2764,6 +2789,7 @@ export const CharacterBook = () => {
     try { return (localStorage.getItem('lk_char_view') as 'grid' | 'list') || 'grid'; } catch { return 'grid'; }
   });
   const [showFamilyTree, setShowFamilyTree] = useState(false);
+  const [showMyFamily, setShowMyFamily] = useState(false);
   useEffect(() => {
     const handler = (e: Event) => {
       const ids: string[] = (e as CustomEvent<{ ids: string[] }>).detail?.ids ?? [];
@@ -2821,6 +2847,7 @@ export const CharacterBook = () => {
           case 'family':
           case 'friends':
           case 'romantic':
+          case 'rivals':
           case 'mentors':
           case 'professional':
           case 'creative':
@@ -2964,6 +2991,7 @@ export const CharacterBook = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6" data-testid="character-book">
+      <MyFamilyModal isOpen={showMyFamily} onClose={() => setShowMyFamily(false)} />
       <ChatFirstViewHint />
       <DetectedCharacterSuggestions
         demoMode={isMockDataEnabled}
@@ -3229,7 +3257,15 @@ export const CharacterBook = () => {
               <HeartIcon className="h-3 w-3 sm:h-4 sm:w-4" />
               <span>Romantic</span>
             </TabsTrigger>
-            <TabsTrigger 
+            <TabsTrigger
+              value="rivals"
+              className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 text-xs sm:text-sm flex-shrink-0"
+            >
+              <Flame className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Rivals & Conflicts</span>
+              <span className="sm:hidden">Rivals</span>
+            </TabsTrigger>
+            <TabsTrigger
               value="mentors"
               className="flex items-center gap-1 sm:gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-400 text-xs sm:text-sm flex-shrink-0"
             >
@@ -3307,6 +3343,16 @@ export const CharacterBook = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* My Family — always available: self card, family tree, same-name confirmation */}
+            <button
+              type="button"
+              onClick={() => setShowMyFamily(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+              title="My Family — your card, family tree, and same-name confirmation"
+            >
+              <Users className="h-3.5 w-3.5" />
+              My Family
+            </button>
             {/* Family Tree toggle — only shown in family category */}
             {activeCategory === 'family' && (
               <button

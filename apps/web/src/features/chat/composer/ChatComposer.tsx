@@ -9,7 +9,7 @@ import { ComposerHints } from './ComposerHints';
 import { MoodIndicator } from './MoodIndicator';
 import { TagSuggestions } from './TagSuggestions';
 import { useState, useRef, useEffect } from 'react';
-import { DocumentUpload } from '../components/DocumentUpload';
+import { DocumentUpload, type UploadCompletePayload } from '../components/DocumentUpload';
 import { ChatGPTImport } from '../components/ChatGPTImport';
 
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
@@ -18,7 +18,7 @@ type ChatComposerProps = {
   onSubmit: (message: string, certifiedEntities?: CertifiedEntityMatch[]) => void;
   loading: boolean;
   disabled?: boolean;
-  onUploadComplete?: () => void;
+  onUploadComplete?: (result: UploadCompletePayload) => void;
   initialPrompt?: string | null;
   initialDate?: string | null;
 };
@@ -111,9 +111,9 @@ export const ChatComposer = ({
         <div className="px-3 sm:px-4 py-2 border-b border-white/10 bg-black/50 max-h-[300px] sm:max-h-[350px] overflow-y-auto">
           <DocumentUpload
             compact={true}
-            onUploadComplete={async () => {
+            onUploadComplete={async (result) => {
               setShowUpload(false);
-              onUploadComplete?.();
+              onUploadComplete?.(result);
             }}
             onUploadError={(error) => {
               console.error('Document upload error:', error);

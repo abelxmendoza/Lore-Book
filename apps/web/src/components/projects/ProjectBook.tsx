@@ -11,6 +11,14 @@ interface DuplicateGroup {
   projects: ProjectCardData[];
 }
 
+// Demo-mode sample projects so the Projects Book is populated without an account.
+const DEMO_PROJECTS: ProjectCardData[] = [
+  { id: 'demo-lorebook', name: 'LoreBook', type: 'software', status: 'active', description: 'Building the life-memory app — chat, books, and timeline.', tags: ['code', 'startup'], updated_at: new Date().toISOString(), metadata: { source: 'demo' } },
+  { id: 'demo-amazon', name: 'Amazon Onboarding', type: 'career', status: 'active', description: 'Ramp-up at Amazon after the Clever Programmer bootcamp.', tags: ['career'], updated_at: new Date(Date.now() - 2 * 864e5).toISOString(), metadata: { source: 'demo' } },
+  { id: 'demo-mma', name: 'MMA Training', type: 'fitness', status: 'paused', description: 'Striking and conditioning at the gym.', tags: ['health'], updated_at: new Date(Date.now() - 9 * 864e5).toISOString(), metadata: { source: 'demo' } },
+  { id: 'demo-robotics', name: 'Robotics Build', type: 'hobby', status: 'completed', description: 'Weekend robotics project with the crew.', tags: ['robotics'], updated_at: new Date(Date.now() - 40 * 864e5).toISOString(), metadata: { source: 'demo' } },
+];
+
 /**
  * Projects Book — card grid + detail modal (Locations/Skills book pattern).
  */
@@ -31,8 +39,8 @@ export const ProjectBook = () => {
     setError(null);
     try {
       const [{ projects: list }, dupes] = await Promise.all([
-        fetchJson<{ projects: ProjectCardData[] }>('/api/projects'),
-        fetchJson<{ duplicate_groups: DuplicateGroup[] }>('/api/projects/duplicates').catch(() => ({ duplicate_groups: [] })),
+        fetchJson<{ projects: ProjectCardData[] }>('/api/projects', undefined, { mockData: { projects: DEMO_PROJECTS } }),
+        fetchJson<{ duplicate_groups: DuplicateGroup[] }>('/api/projects/duplicates', undefined, { mockData: { duplicate_groups: [] } }).catch(() => ({ duplicate_groups: [] })),
       ]);
       setProjects(list ?? []);
       setDuplicateGroups(dupes.duplicate_groups ?? []);

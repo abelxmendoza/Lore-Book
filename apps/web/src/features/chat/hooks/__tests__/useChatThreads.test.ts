@@ -63,9 +63,8 @@ function makeStoredThread(id: string, title: string, messages: any[] = [makeMess
 }
 
 function mockBackendThreadLoad(threads: ReturnType<typeof makeDbThread>[]) {
-  mockFetchJson.mockResolvedValueOnce({ success: true, deleted: 0, titlesUpdated: 0 });
   mockFetchJson.mockResolvedValueOnce({ threads, success: true });
-  mockFetchJson.mockResolvedValue({ success: true });
+  mockFetchJson.mockResolvedValue({ success: true, recovered: 0 });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -158,7 +157,6 @@ describe('useChatThreads', () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     const stored = [makeStoredThread('local-1', 'Local thread')];
     localStorage.setItem('lorekeeper_chat_threads_user-1', JSON.stringify(stored));
-    mockFetchJson.mockResolvedValueOnce({ success: true, deleted: 0, titlesUpdated: 0 });
     mockFetchJson.mockRejectedValueOnce(new Error('Network error'));
 
     const { result } = renderHook(() => useChatThreads());

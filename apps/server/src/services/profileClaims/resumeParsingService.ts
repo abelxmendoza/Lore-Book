@@ -7,6 +7,9 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 
 import { profileClaimsService, type CreateClaimInput, type ClaimType } from './profileClaimsService';
+import { detectEmploymentGaps } from './resumeLorePopulationService';
+import { mergeParsedResume, parseResumeHeuristics } from './resumeHeuristicParser';
+import type { ParsedResume } from './resumeStructuredTypes';
 
 
 
@@ -35,6 +38,8 @@ export interface ExtractedClaim {
   context?: string;
 }
 
+export type { ParsedResume } from './resumeStructuredTypes';
+
 /**
  * Resume Parsing Service
  * Parses resume documents and extracts profile claims
@@ -62,14 +67,16 @@ class ResumeParsingService {
       fileSize: number;
       sourceFileId?: string;
     }
-  ): Promise<{ document: ResumeDocument; claims: CreateClaimInput[] }> {
+  ): Promise<{ document: ResumeDocument; claims: CreateClaimInput[]; structured: ParsedResume }> {
     const document = await this.createResumeDocument(userId, fileData);
 
     await this.updateDocumentStatus(document.id, 'processing');
 
     try {
-      const extractedClaims = await this.extractClaimsFromResume(rawText);
+      const structured = await this.extractStructuredResume(rawText);
+      structured.employmentGaps = detectEmploymentGaps(structured.employment);
 
+      const extractedClaims = this.claimsFromStructured(structured);
       const claims: CreateClaimInput[] = extractedClaims.map((claim) => ({
         claim_type: claim.claim_type,
         claim_text: claim.claim_text,
@@ -89,6 +96,7 @@ class ResumeParsingService {
         .update({
           raw_text: rawText,
           parsed_data: {
+            structured,
             claims_extracted: extractedClaims,
             claim_count: claims.length,
             source_file_id: fileData.sourceFileId,
@@ -103,12 +111,17 @@ class ResumeParsingService {
         document: {
           ...document,
           raw_text: rawText,
-          parsed_data: { claims_extracted: extractedClaims, claim_count: claims.length },
+          parsed_data: {
+            structured,
+            claims_extracted: extractedClaims,
+            claim_count: claims.length,
+          },
           processing_status: 'completed',
           claims_generated: claims.length,
           processed_at: new Date().toISOString(),
         },
         claims,
+        structured,
       };
     } catch (processingError) {
       await this.updateDocumentStatus(
@@ -118,6 +131,177 @@ class ResumeParsingService {
       );
       throw processingError;
     }
+  }
+
+  /**
+   * Extract structured resume data using AI.
+   */
+  async extractStructuredResume(resumeText: string): Promise<ParsedResume> {
+    const prompt = `Parse this resume into structured JSON. Extract ALL of the following:
+
+{
+  "contact": {
+    "fullName": "string or null",
+    "email": "string or null",
+    "phone": "string or null",
+    "address": "string or null",
+    "website": "string or null",
+    "linkedin": "string or null"
+  },
+  "summary": "professional summary or null",
+  "employment": [
+    {
+      "company": "string",
+      "title": "string",
+      "location": "string or null",
+      "startDate": "YYYY-MM or YYYY-MM-DD or YYYY",
+      "endDate": "YYYY-MM or YYYY-MM-DD or null if current",
+      "isCurrent": boolean,
+      "description": "string or null"
+    }
+  ],
+  "education": [
+    {
+      "institution": "string",
+      "degree": "string or null",
+      "field": "string or null",
+      "startDate": "string or null",
+      "endDate": "string or null",
+      "gpa": "string or null"
+    }
+  ],
+  "skills": ["skill1", "skill2"],
+  "projects": [
+    {
+      "name": "string",
+      "description": "string or null",
+      "technologies": ["tech"],
+      "startDate": "string or null",
+      "endDate": "string or null",
+      "url": "string or null"
+    }
+  ],
+  "certifications": [
+    { "name": "string", "issuer": "string or null", "date": "string or null" }
+  ]
+}
+
+Rules:
+- List employment in reverse chronological order as on the resume.
+- Use ISO-like dates when possible.
+- Extract every job, school, skill, project, and contact field you can find.
+- Return ONLY valid JSON matching this shape.
+
+Resume:
+${resumeText.substring(0, 12000)}`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: config.defaultModel || 'gpt-5.4-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a resume parser. Return only valid JSON.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+      });
+
+      const raw = JSON.parse(response.choices[0].message.content || '{}');
+      const llmParsed: ParsedResume = {
+        contact: raw.contact ?? {},
+        summary: raw.summary ?? undefined,
+        employment: Array.isArray(raw.employment) ? raw.employment : [],
+        education: Array.isArray(raw.education) ? raw.education : [],
+        skills: Array.isArray(raw.skills) ? raw.skills : [],
+        projects: Array.isArray(raw.projects) ? raw.projects : [],
+        certifications: Array.isArray(raw.certifications) ? raw.certifications : [],
+        employmentGaps: [],
+      };
+      const heuristics = parseResumeHeuristics(resumeText);
+      return mergeParsedResume(llmParsed, heuristics);
+    } catch (error) {
+      logger.error({ error }, 'Structured resume parse failed, falling back to heuristics');
+      const heuristics = parseResumeHeuristics(resumeText);
+      if (heuristics.employment.length > 0 || heuristics.skills.length > 0) {
+        return heuristics;
+      }
+      const claims = await this.extractClaimsFromResume(resumeText);
+      return this.structuredFromClaims(claims);
+    }
+  }
+
+  private structuredFromClaims(claims: ExtractedClaim[]): ParsedResume {
+    return {
+      contact: {},
+      employment: claims
+        .filter((c) => c.claim_type === 'role')
+        .map((c) => ({ company: c.context ?? 'Unknown', title: c.claim_text, description: c.context })),
+      education: claims
+        .filter((c) => c.claim_type === 'education')
+        .map((c) => ({ institution: c.claim_text })),
+      skills: claims.filter((c) => c.claim_type === 'skill').map((c) => c.claim_text),
+      projects: claims
+        .filter((c) => c.claim_type === 'project')
+        .map((c) => ({ name: c.claim_text })),
+      certifications: claims
+        .filter((c) => c.claim_type === 'certification')
+        .map((c) => ({ name: c.claim_text })),
+      employmentGaps: [],
+    };
+  }
+
+  claimsFromStructured(structured: ParsedResume): ExtractedClaim[] {
+    const claims: ExtractedClaim[] = [];
+
+    for (const job of structured.employment) {
+      const text = `${job.title} at ${job.company}`;
+      const dates = [job.startDate, job.endDate ?? (job.isCurrent ? 'Present' : null)].filter(Boolean).join(' – ');
+      claims.push({
+        claim_type: 'role',
+        claim_text: text,
+        confidence: 0.9,
+        context: dates || job.description,
+      });
+    }
+    for (const edu of structured.education) {
+      claims.push({
+        claim_type: 'education',
+        claim_text: [edu.degree, edu.field, edu.institution].filter(Boolean).join(' — '),
+        confidence: 0.88,
+        context: [edu.startDate, edu.endDate].filter(Boolean).join(' – ') || undefined,
+      });
+    }
+    for (const skill of structured.skills) {
+      claims.push({
+        claim_type: 'skill',
+        claim_text: skill,
+        confidence: 0.85,
+      });
+    }
+    for (const project of structured.projects) {
+      claims.push({
+        claim_type: 'project',
+        claim_text: project.name,
+        confidence: 0.85,
+        context: project.description,
+      });
+    }
+    for (const cert of structured.certifications) {
+      claims.push({
+        claim_type: 'certification',
+        claim_text: cert.name,
+        confidence: 0.85,
+        context: cert.issuer,
+      });
+    }
+    if (structured.contact.email) {
+      claims.push({ claim_type: 'experience', claim_text: `Email: ${structured.contact.email}`, confidence: 0.95 });
+    }
+
+    return claims.filter((c) => c.claim_text?.trim());
   }
 
   /**
@@ -272,7 +456,7 @@ ${resumeText.substring(0, 4000)}`;
       fileUrl?: string | null;
       sourceFileId?: string;
     }
-  ): Promise<{ document: ResumeDocument; claims: CreateClaimInput[] }> {
+  ): Promise<{ document: ResumeDocument; claims: CreateClaimInput[]; structured: ParsedResume }> {
     const rawText = await this.extractTextFromFile(fileBuffer, fileData.fileType);
     return this.processResumeFromText(userId, rawText, fileData);
   }

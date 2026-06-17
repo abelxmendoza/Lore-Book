@@ -1,7 +1,13 @@
 describe('Search Feature', () => {
   beforeEach(() => {
     cy.loginAsGuest();
-    cy.navigateToSurface('search');
+    cy.visit('/timeline?view=search', {
+      onBeforeLoad: (win: Window) => {
+        win.localStorage.setItem('dev-notice-dismissed', 'true');
+        win.localStorage.setItem('VITE_USE_MOCK_DATA', 'true');
+      },
+    });
+    cy.waitForApp();
   });
 
   it('should display search interface', () => {

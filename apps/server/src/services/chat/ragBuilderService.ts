@@ -512,6 +512,21 @@ export async function buildRAGPacket(
     }, 'RAGBuilder: working memory assembled');
   } catch (e) { logger.debug({ e }, 'RAGBuilder: working memory assembly failed'); }
 
+  let lifeArcSynthesisBlock = '';
+  let lifeArcSynthesis: Awaited<ReturnType<typeof import('../continuityRuntime/arcs/lifeArcSynthesisService').synthesizeLifeArcs>> | null = null;
+  let storyContextBlock = '';
+  let storyContext: Awaited<ReturnType<typeof import('../storyContextService').buildStoryContext>> | null = null;
+  try {
+    const intent = workingMemory?.intent;
+    const { isStoryIntent, buildStoryContext } = await import('../storyContextService');
+    if (intent && isStoryIntent(intent)) {
+      storyContext = await buildStoryContext(userId, intent);
+      storyContextBlock = storyContext.text;
+      lifeArcSynthesisBlock = storyContextBlock;
+      lifeArcSynthesis = storyContext.synthesis;
+    }
+  } catch (e) { logger.debug({ e }, 'RAGBuilder: story context assembly failed'); }
+
   let confirmedSkills: Array<{ id: string; name: string; category: string; skill_key: string }> = [];
   try {
     const { skillIndexService } = await import('../skills/skillIndexService');
@@ -545,6 +560,10 @@ export async function buildRAGPacket(
     foundationTimeline,
     workingMemory,
     workingMemoryPacket,
+    lifeArcSynthesisBlock,
+    lifeArcSynthesis,
+    storyContextBlock,
+    storyContext,
     confirmedSkills,
   };
 

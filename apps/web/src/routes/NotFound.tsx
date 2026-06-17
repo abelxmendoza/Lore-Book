@@ -51,7 +51,7 @@ export default function NotFound() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => navigate('/search')}
+            onClick={() => navigate('/timeline?view=search')}
             className="border-border/60 bg-white/5 hover:bg-white/10 text-white"
           >
             <Search className="h-4 w-4 mr-2" />

@@ -10,6 +10,11 @@ import { fetchJson } from '../../lib/api';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
 import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
+import {
+  getCharacterContextHooks,
+  getCharacterWittyTagline,
+  getMainCharacterDisplayName,
+} from '../../lib/characterDisplay';
 import type { Character } from './CharacterProfileCard';
 
 type CharacterAttribute = {
@@ -77,13 +82,13 @@ const getAttributeColor = (type: string) => {
 export const MainCharacterProfileCard = ({ character, user, onClick, interactive = true }: Props) => {
   const [attributes, setAttributes] = useState<CharacterAttribute[]>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
+  const [wittyTagline, setWittyTagline] = useState<string | null>(getCharacterWittyTagline(character));
+  const [roleTagline, setRoleTagline] = useState<string | null>(character.role ?? null);
+  const [contextHooks, setContextHooks] = useState<string[]>(getCharacterContextHooks(character));
+  const [profileSummary, setProfileSummary] = useState<string | null>(character.summary ?? null);
 
-  const displayName =
-    character.name?.trim() ||
-    (user?.user_metadata?.full_name as string | undefined) ||
-    (user?.user_metadata?.name as string | undefined) ||
-    user?.email?.split('@')[0] ||
-    'You';
+  const displayName = getMainCharacterDisplayName(character, user);
+  const showMeBadge = /^me$/i.test(character.name?.trim() ?? '') && displayName !== 'Me';
 
   const avatarUrl =
     character.avatar_url ||
@@ -119,6 +124,10 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
             isCurrent: a.isCurrent,
           }))
         );
+        setWittyTagline(profile.wittyTagline ?? getCharacterWittyTagline(profile.character));
+        setRoleTagline(profile.roleTagline ?? profile.character.role ?? null);
+        setContextHooks(profile.contextHooks ?? getCharacterContextHooks(profile.character));
+        setProfileSummary(profile.profileSummary ?? profile.character.summary ?? null);
       } catch {
         if (!cancelled && !isSyntheticSelfId(character.id)) {
           fetchJson<{ attributes: CharacterAttribute[] }>(
@@ -144,8 +153,11 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
   }, [character.id]);
 
   const summary =
+    wittyTagline ||
+    profileSummary ||
     character.summary ||
-    'Your story grows with every conversation — attributes and facts sync from chat.';
+    'Your story grows with every conversation — attributes and facts sync from chat and resume.';
+  const subtitle = roleTagline || character.role || 'Protagonist · Your story';
 
   return (
     <Card
@@ -193,12 +205,17 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
                   <h3 className="text-lg sm:text-xl font-bold text-white group-hover:text-amber-100 transition-colors truncate">
                     {displayName}
                   </h3>
+                  {showMeBadge && (
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/80 border border-amber-500/30 rounded px-1.5 py-0.5">
+                      Me
+                    </span>
+                  )}
                   <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/80 border border-amber-500/30 rounded px-1.5 py-0.5">
                     you
                   </span>
                 </div>
                 <p className="text-sm text-amber-200/70 mt-0.5 font-medium">
-                  {character.role || 'Protagonist · Your story'}
+                  {subtitle}
                 </p>
                 {character.archetype && (
                   <Badge
@@ -217,9 +234,22 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
           </CardHeader>
 
           <CardContent className="px-4 sm:px-5 pb-4 pt-0 space-y-3">
-            <p className="text-xs sm:text-sm text-white/65 leading-relaxed line-clamp-2 sm:line-clamp-3">
+            <p className="text-xs sm:text-sm text-white/75 leading-relaxed line-clamp-3 sm:line-clamp-4 italic">
               {summary}
             </p>
+            {contextHooks.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {contextHooks.slice(0, 4).map((hook) => (
+                  <Badge
+                    key={hook}
+                    variant="outline"
+                    className="bg-amber-500/10 text-amber-200/90 border-amber-500/25 text-[10px] px-2 py-0.5"
+                  >
+                    {hook}
+                  </Badge>
+                ))}
+              </div>
+            )}
 
             {/* Quick stats */}
             <div className="flex flex-wrap gap-3 text-[10px] sm:text-xs text-white/45 font-mono">
@@ -263,7 +293,7 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
             ) : (
               <p className="text-[10px] text-white/35 italic">
                 {canOpenDetail
-                  ? 'Attributes appear as LoreBook learns about you from chat and journal.'
+                  ? 'Upload a resume or keep chatting — LoreBook fills in occupation, skills, and contact.'
                   : 'Keep chatting — your main character profile builds automatically.'}
               </p>
             )}

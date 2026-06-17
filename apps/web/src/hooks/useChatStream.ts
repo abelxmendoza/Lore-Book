@@ -60,7 +60,7 @@ export const useChatStream = () => {
           const feedback: MemoryFeedbackEvent = await res.json();
           onMemoryFeedback(feedback);
           if (feedback.pipelineComplete) {
-            dispatchStoryDataUpdated({ scopes: ['all'], delayMs: 500 });
+            dispatchStoryDataUpdated({ scopes: ['all', 'skills', 'quests'], delayMs: 500 });
           }
           return;
         }

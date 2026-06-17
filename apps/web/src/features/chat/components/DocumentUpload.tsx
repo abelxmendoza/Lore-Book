@@ -3,8 +3,27 @@ import { Upload, FileText, X, CheckCircle, AlertCircle, Loader2, Image as ImageI
 import { Button } from '../../../components/ui/button';
 import { PhotoUploadReview } from './PhotoUploadReview';
 
+export type ResumeUploadResult = {
+  kind: 'resume';
+  fileName: string;
+  chatFeedback: string;
+  userFileId?: string;
+  claimsCreated?: number;
+  momentsCreated?: number;
+  eventsCreated?: number;
+};
+
+export type DocumentUploadResult = {
+  kind: 'document';
+  fileName: string;
+  message: string;
+  entriesCreated?: number;
+};
+
+export type UploadCompletePayload = ResumeUploadResult | DocumentUploadResult;
+
 interface DocumentUploadProps {
-  onUploadComplete?: () => void;
+  onUploadComplete?: (result: UploadCompletePayload) => void;
   onUploadError?: (error: string) => void;
   compact?: boolean;
 }
@@ -42,11 +61,16 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       return;
     }
 
-    // Check if it's a resume file
     const fileName = file.name.toLowerCase();
-    const isResume = fileName.includes('resume') || 
-                     fileName.includes('cv') || 
-                     fileName.includes('curriculum');
+    const fileExtension = '.' + (file.name.split('.').pop()?.toLowerCase() ?? '');
+    const allowedExtensions = ['.txt', '.md', '.pdf', '.doc', '.docx'];
+
+    // In chat (compact), PDF/DOC/DOCX uploads are treated as resumes
+    const isResume =
+      fileName.includes('resume') ||
+      fileName.includes('cv') ||
+      fileName.includes('curriculum') ||
+      (compact && (fileExtension === '.pdf' || fileExtension === '.docx' || fileExtension === '.doc'));
 
     // Validate file type for documents
     const allowedTypes = [
@@ -56,8 +80,6 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ];
-    const allowedExtensions = ['.txt', '.md', '.pdf', '.doc', '.docx'];
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
 
     if (
       !allowedTypes.includes(file.type) &&
@@ -222,7 +244,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         throw new Error('Authentication required. Please log in.');
       }
 
-      setUploadProgress('Extracting claims from resume...');
+      setUploadProgress('Saving to library and building your timelines...');
 
       const formData = new FormData();
       formData.append('resume', file);
@@ -242,14 +264,29 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
       const data = await response.json();
 
+      const feedbackText =
+        typeof data.chatFeedback === 'string' && data.chatFeedback.trim()
+          ? data.chatFeedback
+          : data.message || `Resume processed! ${data.claimsCreated ?? 0} claims added to your lore.`;
+
       setUploadResult({
         success: true,
-        message: data.message || `Resume processed! ${data.claims?.length || 0} claims extracted.`,
-        entriesCreated: data.claims?.length
+        message: 'Resume saved to library and memory.',
+        entriesCreated: data.momentsCreated ?? data.claimsCreated,
       });
 
       setUploadProgress(null);
-      onUploadComplete?.();
+      onUploadComplete?.({
+        kind: 'resume',
+        fileName: file.name,
+        chatFeedback: feedbackText,
+        userFileId: data.userFileId,
+        claimsCreated: data.claimsCreated,
+        momentsCreated: data.momentsCreated,
+        eventsCreated: data.eventsCreated,
+      });
+
+      window.dispatchEvent(new Event('lk:characters-updated'));
 
       // Clear file input
       if (fileInputRef.current) {
@@ -321,7 +358,12 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
       });
 
       setUploadProgress(null);
-      onUploadComplete?.();
+      onUploadComplete?.({
+        kind: 'document',
+        fileName: file.name,
+        message: data.message || 'Document processed successfully!',
+        entriesCreated: data.entriesCreated,
+      });
 
       // Clear file input
       if (fileInputRef.current) {
@@ -369,11 +411,13 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({
         return;
       }
 
-      // Check if it's a resume
       const fileName = file.name.toLowerCase();
-      const isResume = fileName.includes('resume') || 
-                       fileName.includes('cv') || 
-                       fileName.includes('curriculum');
+      const fileExtension = '.' + (file.name.split('.').pop()?.toLowerCase() ?? '');
+      const isResume =
+        fileName.includes('resume') ||
+        fileName.includes('cv') ||
+        fileName.includes('curriculum') ||
+        (compact && (fileExtension === '.pdf' || fileExtension === '.docx' || fileExtension === '.doc'));
 
       if (isResume) {
         uploadResume(file);

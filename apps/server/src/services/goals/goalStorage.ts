@@ -1,4 +1,5 @@
 import { logger } from '../../logger';
+import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../supabaseClient';
 
 import type {
@@ -12,6 +13,13 @@ import type {
  * Handles storage and retrieval of goals
  */
 export class GoalStorage {
+  private normalizeGoalId(goal: Goal): string {
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidPattern.test(goal.id)) return goal.id;
+    if (goal.source_id && uuidPattern.test(goal.source_id)) return goal.source_id;
+    return randomUUID();
+  }
+
   /**
    * Save goals
    */
@@ -23,7 +31,7 @@ export class GoalStorage {
         .from('goals')
         .upsert(
           goals.map(g => ({
-            id: g.id,
+            id: this.normalizeGoalId(g),
             user_id: g.user_id,
             title: g.title,
             description: g.description,
@@ -73,7 +81,13 @@ export class GoalStorage {
             message: i.message,
             confidence: i.confidence,
             timestamp: i.timestamp,
-            related_goal_id: i.related_goal_id,
+            related_goal_id: this.normalizeGoalId({
+              id: i.related_goal_id,
+              title: '',
+              created_at: i.timestamp,
+              updated_at: i.timestamp,
+              source_id: i.related_goal_id.replace(/^goal_(entry|task|arc)_/, ''),
+            }),
             metadata: i.metadata || {},
           }))
         )

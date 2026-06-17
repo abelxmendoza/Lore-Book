@@ -20,6 +20,7 @@ import { useAuth } from '../lib/supabase';
 import { fetchJson } from '../lib/api';
 import { cn } from '../lib/cn';
 import { LivingBiographyCard } from './biography/LivingBiographyCard';
+import { CareerHomeCard } from './career/CareerHomeCard';
 import { fetchWhatChanged } from '../api/whatChanged';
 import { skillsApi } from '../api/skills';
 import { useQuestBoard } from '../hooks/useQuests';
@@ -357,6 +358,9 @@ export const HomeScreen = () => {
 
         {/* ── 3. Who you are right now — Living Biography (hero) ──────────── */}
         <LivingBiographyCard />
+
+        {/* ── 3b. Career — resume-sourced job history ─────────────────────── */}
+        <CareerHomeCard />
 
         {/* ── 4–6. Three panels: People · Quests · Skills ─────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

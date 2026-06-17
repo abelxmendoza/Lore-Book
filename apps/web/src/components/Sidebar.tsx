@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase, TreePine, FileText } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -167,18 +167,18 @@ const SidebarContent = ({
           </button>
           <button
             type="button"
-            onClick={() => handleSurfaceChange('search')}
-            aria-label="Open universal search"
-            aria-current={activeSurface === 'search' ? 'page' : undefined}
+            onClick={() => handleSurfaceChange('family')}
+            aria-label="Open family view"
+            aria-current={activeSurface === 'family' ? 'page' : undefined}
             className={cn(
-              "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ml-3",
-              activeSurface === 'search'
-                ? 'border-primary/40 bg-primary/10 text-white'
-                : 'border-transparent text-white/50 hover:border-primary/30 hover:text-white/80 hover:bg-primary/5'
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'family'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
             )}
           >
-            <BookOpen className="h-3.5 w-3.5 text-primary/70 shrink-0" aria-hidden="true" />
-            <span className="flex-1 text-left">Search</span>
+            <TreePine className="h-4 w-4 text-emerald-400 shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Family</span>
           </button>
           <button
             type="button"
@@ -295,6 +295,34 @@ const SidebarContent = ({
           >
             <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
             Life Saga
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('story')}
+            aria-label="Open story dashboard"
+            aria-current={activeSurface === 'story' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'story'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <BookOpen className="h-4 w-4 text-primary" aria-hidden="true" />
+            Story
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('documents')}
+            aria-label="Open documents library"
+            aria-current={activeSurface === 'documents' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'documents'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <FileText className="h-4 w-4 text-primary" aria-hidden="true" />
+            Documents
           </button>
           <button
             onClick={() => handleSurfaceChange('discovery')}

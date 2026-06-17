@@ -1,0 +1,81 @@
+Abel Mendoza
+Failure Analysis Technician | Electronics Test and Validation | Hardware Troubleshooting
+Anaheim, CA
+[test.candidate@example.com](mailto:test.candidate@example.com) | (562) 322-2299
+linkedin.com/in/test-candidate
+Professional Summary
+Electronics and robotics technician with hands-on experience performing hardware validation, troubleshooting, failure
+isolation, root cause analysis, component-level rework, and corrective action across industrial electronics and autonomous
+robotic systems. Experienced with DC-DC converter testing, relay logic validation, embedded hardware bring-up, robotics
+deployment support, and diagnostic testing using programmable electronic loads, bench power supplies, multimeters,
+and network diagnostic tools. Strong background working with electromechanical systems, documenting findings, and
+collaborating with engineering teams to improve reliability, quality, and product performance.
+Technical Skills
+Failure Analysis and Troubleshooting: Root Cause Analysis, Failure Isolation, Hardware Validation, Board-Level
+Debugging, Reliability Analysis, Diagnostic Testing, Corrective Actions
+Electronics and Embedded Systems: DC-DC Converters, Relay Logic Circuits, PIC32 Microcontrollers, Raspberry
+Pi, FPGA Tooling, Embedded Linux, UART, SPI, I2C, GPIO
+Electronics Rework and Assembly: Component-Level PCB Rework, Through-Hole Soldering, Resistor and Capacitor
+Replacement, Inspection, Repair Verification
+Test Equipment: Digital Multimeters, Bench Power Supplies, Programmable Electronic Loads, Optical Power Meters,
+Continuity Testing
+Programming: Python, C++, Bash, JavaScript
+Documentation: Technical Reports, Validation Records, Test Procedures, Engineering Documentation
+Professional Experience
+Electronics Test and Validation Technician Apr 2026 – May 2026
+RLH Industries, Orange, CA
+• Performed root cause investigation, troubleshooting, and validation testing on industrial electronic assemblies including
+DC-DC power converters, relay systems, and fiber optic communication hardware
+• Performed component-level PCB rework, replacing and re-soldering resistors, capacitors, and other electronic compo-
+nents that failed quality inspection or electrical testing, improving product reliability and test yield
+• Conducted board-level failure isolation using multimeters, programmable electronic loads, continuity testing, embedded
+diagnostics, and known-good reference hardware
+• Executed DC-DC converter validation including voltage regulation testing, load characterization, tolerance verification,
+and thermal drift analysis
+• Validated optical communication systems operating at 850nm and 1310nm wavelengths using calibrated optical power
+meters
+• Diagnosed hardware anomalies, documented findings, and communicated results to engineering teams to support cor-
+rective actions and product reliability improvements
+• Performed firmware flashing, embedded hardware bring-up, and industrial Ethernet device deployment using PIC32-
+based systems, MPLAB ICD3, MPFS2, USB Blaster, and Quartus
+Robotics Deployment Technician Jan 2025 – Dec 2025
+Armstrong Robotics, Hollywood, CA
+• Diagnosed and resolved hardware, sensor, communication, and control system failures during live deployment of au-
+tonomous robotic systems
+• Performed failure investigation and corrective actions across mechanical, electrical, and electromechanical subsystems
+operating in production environments
+• Replaced, calibrated, and validated robotic grippers and automation hardware to maintain operational reliability
+• Collaborated directly with engineering teams to identify recurring failure modes and improve system performance
+
+-- 1 of 2 --
+
+• Documented operational issues and troubleshooting procedures to support maintenance and future deployments
+Field Robotics Agent Mar 2025 – May 2025
+Serve Robotics, Los Angeles, CA
+• Investigated hardware, sensor, navigation, and connectivity failures affecting autonomous delivery robots in live field
+operations
+• Performed systematic troubleshooting and verification testing to restore operational status
+• Escalated technical findings to engineering teams and contributed data supporting reliability improvements
+Technical Projects
+Omega-1 Autonomous Robotics Platform
+Raspberry Pi 4B | Python | Embedded Linux
+• Integrated motor controllers, sensors, power systems, and embedded hardware into a custom autonomous robotics
+platform
+• Diagnosed communication, timing, and signal integrity issues affecting servo control, sensor performance, and system
+stability
+• Performed hardware validation and debugging across power distribution, motor control, ultrasonic sensing, and vision
+subsystems
+• Developed diagnostic tools to monitor system health and validate hardware performance
+Education
+California State University, Fullerton May 2024
+Bachelor of Science in Computer Science
+Rio Hondo College
+Electrical and Electronics Coursework
+Additional
+U.S. Citizen - ITAR/EAR Eligible
+FAA Part 107 Certified
+Languages: English (Native), Spanish (Conversational)
+Comfortable working in laboratory, manufacturing, production, and field environments
+
+-- 2 of 2 --
+

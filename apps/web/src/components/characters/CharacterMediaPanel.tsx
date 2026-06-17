@@ -25,6 +25,21 @@ type Props = {
   kind: 'photo' | 'message';
 };
 
+// Demo-mode sample content so the Photo Gallery / Messages tabs are populated
+// when browsing without an account (fetchJson serves mockData when not logged in).
+const DEMO_MEDIA: Record<'photo' | 'message', CharacterMediaItem[]> = {
+  photo: [
+    { id: 'demo-p1', character_id: 'demo', kind: 'photo', url: 'https://picsum.photos/seed/lk-photo-1/500/500', text: null, caption: 'Rooftop after the show', source: 'demo', created_at: new Date().toISOString() },
+    { id: 'demo-p2', character_id: 'demo', kind: 'photo', url: 'https://picsum.photos/seed/lk-photo-2/500/500', text: null, caption: 'Costco run with Abuela', source: 'demo', created_at: new Date(Date.now() - 864e5).toISOString() },
+    { id: 'demo-p3', character_id: 'demo', kind: 'photo', url: 'https://picsum.photos/seed/lk-photo-3/500/500', text: null, caption: 'Club Metro night', source: 'demo', created_at: new Date(Date.now() - 3 * 864e5).toISOString() },
+  ],
+  message: [
+    { id: 'demo-m1', character_id: 'demo', kind: 'message', url: null, text: 'hey! are we still on for saturday? 🖤', caption: 'iMessage', source: 'imessage', created_at: new Date().toISOString() },
+    { id: 'demo-m2', character_id: 'demo', kind: 'message', url: 'https://picsum.photos/seed/lk-dm-1/360/640', text: 'Screenshot: planning the goth night out', caption: 'DM screenshot', source: 'instagram', created_at: new Date(Date.now() - 2 * 864e5).toISOString() },
+    { id: 'demo-m3', character_id: 'demo', kind: 'message', url: null, text: 'congrats on the Amazon offer, knew you would get it', caption: 'Text', source: 'imessage', created_at: new Date(Date.now() - 5 * 864e5).toISOString() },
+  ],
+};
+
 async function compressImage(file: File, maxDim = 1600, quality = 0.82): Promise<string> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
@@ -53,7 +68,9 @@ export function CharacterMediaPanel({ characterId, characterName, kind }: Props)
     setError(null);
     try {
       const { media } = await fetchJson<{ media: CharacterMediaItem[] }>(
-        `/api/characters/${characterId}/media?kind=${kind}`
+        `/api/characters/${characterId}/media?kind=${kind}`,
+        undefined,
+        { mockData: { media: DEMO_MEDIA[kind] } }
       );
       setItems(media ?? []);
     } catch (e) {

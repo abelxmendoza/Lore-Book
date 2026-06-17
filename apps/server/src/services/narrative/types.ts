@@ -1,84 +1,183 @@
 /**
- * Narrative Engine Type Definitions
+ * Narrative IR — canonical intermediate representation for story compilation.
+ * All story surfaces (timeline, memoir, biography, family, project histories) consume this.
  */
+import type { LifeArcConflict } from '../continuityRuntime/arcs/lifeArcSynthesisService';
 
-export type NarrativeType =
-  | 'chronological'
-  | 'thematic'
-  | 'character_focused'
-  | 'emotional_arc'
-  | 'event_sequence'
-  | 'reflection'
-  | 'growth_story';
+export type StoryState = 'draft' | 'confirmed' | 'compiled' | 'archived';
 
-export type NarrativeStyle = 'descriptive' | 'reflective' | 'analytical' | 'poetic' | 'journalistic';
+export type ArcStatus =
+  | 'emerging'
+  | 'active'
+  | 'growing'
+  | 'plateaued'
+  | 'declining'
+  | 'completed';
 
-export type NarrativeStatus = 'draft' | 'complete' | 'archived';
+export type ArcMomentum = 'positive' | 'neutral' | 'negative';
 
-export interface NarrativeSegment {
+export type NarrativeEvidence = {
   id: string;
-  entry_ids: string[];
-  title: string;
-  content: string;
-  start_date: string;
-  end_date: string;
-  theme?: string;
-  characters?: string[];
-  emotional_tone?: string;
-  significance?: number; // 0-1
-  metadata: Record<string, any>;
-}
+  label: string;
+  source: string;
+  date?: string | null;
+  confidence: number;
+  storyState?: StoryState;
+};
 
-export interface NarrativeTransition {
-  from_segment_id: string;
-  to_segment_id: string;
-  transition_text: string;
-  connection_type: 'temporal' | 'thematic' | 'emotional' | 'causal' | 'character';
-  strength: number; // 0-1
-}
-
-export interface Narrative {
-  id?: string;
-  user_id: string;
-  type: NarrativeType;
-  style: NarrativeStyle;
+export type CompiledChapter = {
   title: string;
   summary: string;
-  segments: NarrativeSegment[];
-  transitions: NarrativeTransition[];
-  entry_ids: string[]; // All entries included
-  start_date: string;
-  end_date: string;
+  startDate: string | null;
+  endDate: string | null;
+  dominantTheme: string;
+  confidence: number;
+  evidenceCount: number;
+  evidence: NarrativeEvidence[];
+  storyState: StoryState;
+};
+
+export type NarrativeArc = {
+  id: string;
+  title: string;
+  category: string;
+  status: ArcStatus;
+  momentum: ArcMomentum;
+  confidence: number;
+  score: number;
+  evidence: NarrativeEvidence[];
+  storyState: StoryState;
+  startDate: string | null;
+  latestActivity: string | null;
+};
+
+export type TurningPointKind =
+  | 'breakup'
+  | 'new_relationship'
+  | 'job_offer'
+  | 'career_change'
+  | 'move'
+  | 'graduation'
+  | 'launch'
+  | 'death'
+  | 'achievement'
+  | 'major_failure'
+  | 'awakening'
+  | 'other';
+
+export type NarrativeTurningPoint = {
+  id: string;
+  title: string;
+  date: string | null;
+  kind: TurningPointKind;
+  importance: number;
+  affectedArcIds: string[];
+  evidence: NarrativeEvidence[];
+  confidence: number;
+  storyState: StoryState;
+};
+
+export type NarrativeScene = {
+  id: string;
+  title: string;
+  arcCategory: string;
+  cues: string[];
+  confidence: number;
+  evidence: string[];
+};
+
+export type NarrativeRelationship = {
+  id: string;
+  name: string;
+  role: string;
+  confidence: number;
+};
+
+export type NarrativeGoal = {
+  id: string;
+  title: string;
+  status: string;
+};
+
+export type NarrativeProject = {
+  id: string;
+  name: string;
+  type: string;
+};
+
+export type NarrativeCommunity = {
+  id: string;
+  name: string;
+};
+
+export type TimelineEntry = {
+  date: string;
+  label: string;
+  source: string;
+  confidence: number;
+};
+
+export type NarrativeFamilySummary = {
+  householdCount: number;
+  memberCount: number;
+  groupCount: number;
+  headOfHousehold?: string | null;
+};
+
+export type BookOutlineChapter = {
+  title: string;
+  summary: string;
+  startDate: string | null;
+  endDate: string | null;
   themes: string[];
+};
+
+export type BookOutline = {
+  title: string;
+  kind: 'autobiography' | 'family_chronicle' | 'relationship_story' | 'career_story' | 'year_in_review';
+  chapters: BookOutlineChapter[];
+  timeline: TimelineEntry[];
   characters: string[];
-  emotional_arc?: {
-    start: string;
-    end: string;
-    trajectory: 'rising' | 'falling' | 'stable' | 'cyclical';
+  locations: string[];
+  themes: string[];
+  generatedAt: string;
+};
+
+export type StoryHealthMetrics = {
+  coverage: number;
+  missingPeriods: Array<{ start: string; end: string; label: string }>;
+  orphanEventCount: number;
+  unresolvedEntityCount: number;
+  unsupportedConclusionCount: number;
+  confidenceDistribution: { low: number; medium: number; high: number };
+  storyStateCounts: Record<StoryState, number>;
+};
+
+export type NarrativeIR = {
+  generatedAt: string;
+  currentChapter: CompiledChapter;
+  activeArcs: NarrativeArc[];
+  dormantArcs: NarrativeArc[];
+  conflicts: LifeArcConflict[];
+  goals: NarrativeGoal[];
+  projects: NarrativeProject[];
+  relationships: NarrativeRelationship[];
+  communities: NarrativeCommunity[];
+  turningPoints: NarrativeTurningPoint[];
+  scenes: NarrativeScene[];
+  timeline: TimelineEntry[];
+  family: NarrativeFamilySummary;
+  evidence: NarrativeEvidence[];
+  provenance: {
+    confidence: number;
+    signalInventory: Record<string, number>;
+    why: string;
   };
-  status: NarrativeStatus;
-  metadata: Record<string, any>;
-  created_at?: string;
-  updated_at?: string;
-}
+};
 
-export interface NarrativeQuery {
-  start_date?: string;
-  end_date?: string;
-  type?: NarrativeType;
-  theme?: string;
-  character?: string;
-  min_entries?: number;
-  max_entries?: number;
-}
-
-export interface NarrativeStats {
-  total_narratives: number;
-  by_type: Record<NarrativeType, number>;
-  by_status: Record<NarrativeStatus, number>;
-  average_segments: number;
-  average_length_days: number;
-  most_common_themes: string[];
-  most_common_characters: string[];
-}
-
+export type GoldenStoryAnswer = {
+  question: string;
+  answer: string;
+  confidence: number;
+  evidence: NarrativeEvidence[];
+};

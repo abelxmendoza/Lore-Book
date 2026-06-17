@@ -197,6 +197,7 @@ export interface QuestStats {
 }
 
 export interface QuestSuggestion {
+  id?: string;
   title: string;
   description?: string;
   quest_type: QuestType;

@@ -30,6 +30,8 @@ export type ChatSendOptions = {
 function isBackendUnavailable(error: string): boolean {
   return (
     error.includes('Backend server is not running') ||
+    error.includes('Backend unavailable') ||
+    error.includes('Service unavailable (503)') ||
     error.includes('Failed to fetch') ||
     error.includes('ERR_CONNECTION_REFUSED') ||
     error.includes('NetworkError') ||
@@ -63,6 +65,9 @@ function isOpenAIError(error: string): boolean {
 
 // Map a raw error string to a user-facing message.
 function friendlyErrorMessage(errMsg: string): string {
+  if (isBackendUnavailable(errMsg)) {
+    return 'The LoreBook server is busy or restarting — often after the Characters page syncs chat history. Wait a few seconds and try again.';
+  }
   if (isOpenAIRateLimited(errMsg)) {
     if (
       errMsg.includes('Response generation failed') ||
@@ -388,7 +393,7 @@ export const useChat = () => {
               );
             }
             dispatchStoryDataUpdated({
-              scopes: ['all'],
+              scopes: ['all', 'skills', 'quests'],
               characterIds: ids,
             });
           };

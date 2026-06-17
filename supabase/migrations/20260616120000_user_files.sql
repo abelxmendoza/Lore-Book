@@ -36,3 +36,6 @@ CREATE POLICY user_files_delete ON public.user_files
   FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
 COMMENT ON TABLE public.user_files IS 'Canonical registry for every user-uploaded artifact; all ingestion flows through this table.';
+
+-- PostgREST does not always pick up new tables until the schema cache reloads.
+NOTIFY pgrst, 'reload schema';

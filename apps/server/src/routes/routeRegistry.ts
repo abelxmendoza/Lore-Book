@@ -47,6 +47,8 @@ import { correctionsRouter } from './corrections';
 import { decisionsRouter } from './decisions';
 import { devRouter } from './dev';
 import { documentsRouter } from './documents';
+import { careerRouter } from './career';
+import { profileClaimsRouter } from './profileClaims';
 import { entriesRouter } from './entries';
 import { evolutionRouter } from './evolution';
 import { githubRouter } from './github';
@@ -145,9 +147,14 @@ import entityResolutionRouter from './entityResolution';
 import memoryRecallRouter from './memoryRecall';
 import organizationsRouter from './organizations';
 import familyTreesRouter from './familyTrees';
+import familyRouter from './family';
 import groupCandidatesRouter from './groupCandidates';
 import lifeArcRouter from './lifeArc';
 import { lifeRouter } from './life';
+import { storyRouter } from './story';
+import { ontologyRouter } from './ontology';
+import { lexicalRouter } from './lexical';
+import { meaningRouter } from './meaning';
 import metaControlRouter from './metaControl';
 import entityAmbiguityRouter from './entityAmbiguity';
 import entityMeaningDriftRouter from './entityMeaningDrift';
@@ -281,6 +288,18 @@ export const routeRegistry: RouteEntry[] = [
     router: documentsRouter,
     classification: 'CORE_RUNTIME',
     description: 'Document upload and processing',
+  },
+  {
+    path: '/api/career',
+    router: careerRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Career summary read model (resume, jobs, skills, timeline)',
+  },
+  {
+    path: '/api/profile-claims',
+    router: profileClaimsRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Profile claims inbox — confirm or reject resume/chat claims',
   },
   {
     path: '/api/photos',
@@ -515,6 +534,30 @@ export const routeRegistry: RouteEntry[] = [
     classification: 'EXPERIMENTAL',
     description: 'Holistic life view',
   },
+  {
+    path: '/api/story',
+    router: storyRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Narrative IR — chapters, arcs, turning points, story surfaces',
+  },
+  {
+    path: '/api/ontology',
+    router: ontologyRouter,
+    classification: 'ADMIN',
+    description: 'Ontology hierarchy explorer and analytics',
+  },
+  {
+    path: '/api/lexical',
+    router: lexicalRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Lexical analyzer — pre-ontology signal extraction for LoreBook',
+  },
+  {
+    path: '/api/meaning',
+    router: meaningRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Meaning resolution — ambiguity, references, collisions before action planning',
+  },
 
   // ---- MEMORY ENGINE EXTENSIONS -------------------------------------------
   {
@@ -560,6 +603,12 @@ export const routeRegistry: RouteEntry[] = [
     router: familyTreesRouter,
     classification: 'CORE_RUNTIME',
     description: 'Family trees and character group affiliations',
+  },
+  {
+    path: '/api/family',
+    router: familyRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Family graph, households, and relationship analytics',
   },
   {
     path: '/api/group-candidates',
@@ -1008,8 +1057,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/resume',
     router: resumeRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Resume / profile claim parsing',
+    classification: 'CORE_RUNTIME',
+    description: 'Resume upload, parse, and lore population',
   },
   {
     path: '/api/tasks',

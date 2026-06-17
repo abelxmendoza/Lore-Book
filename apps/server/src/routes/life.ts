@@ -1,6 +1,7 @@
 /**
- * Life API — Phase 4 User-Visible Intelligence
+ * Life API — Phase 4 User-Visible Intelligence + Story Surface
  * GET /api/life/summary, /api/life/era-summary
+ * GET /api/life/arcs, /api/life/current-chapter, /api/life/conflicts, /api/life/momentum
  */
 
 import { Router } from 'express';
@@ -13,6 +14,8 @@ import {
 } from '../services/userVisibleIntelligence';
 import type { EdgeWithIds } from '../services/userVisibleIntelligence';
 import { getRelationshipsInRange } from '../services/temporalRelationshipQueries';
+import { lifeStoryApiService } from '../services/lifeStoryApiService';
+import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 
@@ -59,5 +62,45 @@ router.get('/era-summary', requireAuth, async (req: AuthenticatedRequest, res) =
   const result = summarizeEra(resolved, start, end);
   res.json(result);
 });
+
+/** GET /api/life/arcs — candidate life arcs with provenance (read-only synthesis) */
+router.get(
+  '/arcs',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const payload = await lifeStoryApiService.getLifeArcsResponse(req.user!.id);
+    res.json(payload);
+  })
+);
+
+/** GET /api/life/current-chapter — dominant chapter narrative + why */
+router.get(
+  '/current-chapter',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const payload = await lifeStoryApiService.getCurrentChapterResponse(req.user!.id);
+    res.json(payload);
+  })
+);
+
+/** GET /api/life/conflicts — goal/time/resource tensions shaping life */
+router.get(
+  '/conflicts',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const payload = await lifeStoryApiService.getLifeConflictsResponse(req.user!.id);
+    res.json(payload);
+  })
+);
+
+/** GET /api/life/momentum — per-arc momentum indicators */
+router.get(
+  '/momentum',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const payload = await lifeStoryApiService.getLifeMomentumResponse(req.user!.id);
+    res.json(payload);
+  })
+);
 
 export const lifeRouter = router;

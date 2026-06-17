@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, User as UserIcon, Copy, Sparkles, ExternalLink, Check, Search, GitFork, CornerDownRight } from 'lucide-react';
+import { Bot, User as UserIcon, Copy, Sparkles, ExternalLink, Check, Search, GitFork, CornerDownRight, UserCheck, BookOpen } from 'lucide-react';
 import { MarkdownRenderer } from '../../../components/chat/MarkdownRenderer';
 import { ChatLoadingDots } from '../components/ChatLoadingDots';
 import { parseConnections } from '../../../utils/parseConnections';
@@ -31,10 +31,15 @@ export type ChatSource = {
 export type ChatSuggestedAction = {
   id: string;
   label: string;
-  kind: 'open_sources' | 'search' | 'prefill' | 'fork';
+  kind: 'open_sources' | 'search' | 'prefill' | 'fork' | 'navigate' | 'crud_confirm';
   prompt?: string;
   query?: string;
   targetId?: string;
+  surface?: 'characters' | 'family' | 'timeline';
+  apiMethod?: 'POST' | 'PATCH';
+  apiPath?: string;
+  apiBody?: Record<string, unknown>;
+  successMessage?: string;
 };
 
 /** User-facing labels for source types (no jargon like HQI) */
@@ -592,6 +597,8 @@ export const ChatMessage = ({
                   action.kind === 'search' ? Search :
                   action.kind === 'fork' ? GitFork :
                   action.kind === 'open_sources' ? ExternalLink :
+                  action.kind === 'crud_confirm' ? UserCheck :
+                  action.kind === 'navigate' ? BookOpen :
                   CornerDownRight;
                 return (
                   <button

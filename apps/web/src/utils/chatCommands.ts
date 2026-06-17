@@ -17,7 +17,7 @@ export type CommandResult = {
   content?: string;
   data?: any;
   navigation?: {
-    surface: 'timeline' | 'characters' | 'memoir' | 'search';
+    surface: 'timeline' | 'characters' | 'memoir';
     id?: string;
     query?: string;
   };
@@ -62,7 +62,7 @@ export const handleSlashCommand = async (
       return {
         type: 'navigation',
         navigation: {
-          surface: 'search',
+          surface: 'timeline',
           query: args.trim()
         }
       };

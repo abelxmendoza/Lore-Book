@@ -3,7 +3,8 @@
  * Fetches arc + chronology data once, routes between three views.
  */
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { LayoutTemplate, BookOpen, Search, Sparkles, Menu, CalendarDays, Calendar } from 'lucide-react';
 import { useLifeArcs } from '../../hooks/useLifeArcs';
 import { useChronology } from '../../hooks/useChronology';
@@ -16,8 +17,7 @@ import { TimelineSwimlanes } from './TimelineSwimlanes';
 import { TimelineStoryView } from './TimelineStoryView';
 import { TimelineStitchedView } from './TimelineStitchedView';
 import { TimelineCalendarView } from './TimelineCalendarView';
-import { formatEventDateShort } from './timelineEventUtils';
-import type { ChronologyEntry } from '../../types/timelineV2';
+import { TimelineSearch } from '../search/TimelineSearch';
 import type { LifeArc } from '../../hooks/useLifeArcs';
 
 type View = 'swimlanes' | 'events' | 'story' | 'search' | 'calendar';
@@ -35,9 +35,15 @@ type OmniTimelineProps = {
 };
 
 export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
-  const [view, setView] = useState<View>('swimlanes');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const urlView = searchParams.get('view');
+  const urlQuery = searchParams.get('q') ?? '';
+  const initialView = useMemo<View>(() => (urlView === 'search' ? 'search' : 'swimlanes'), [urlView]);
+  const [view, setView] = useState<View>(initialView);
+
+  useEffect(() => {
+    if (urlView === 'search') setView('search');
+  }, [urlView]);
   const [stitchedArc, setStitchedArc] = useState<LifeArc | null>(null);
 
   const { user }                     = useAuth();
@@ -51,10 +57,6 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
 
   const loading = arcsLoading || entriesLoading;
 
-  const handleSelectEvent = (entry: ChronologyEntry) => {
-    setSelectedEventId(entry.id);
-    openMemory(entry);
-  };
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-black" data-testid="omni-timeline">
@@ -179,60 +181,15 @@ export const OmniTimeline = ({ onOpenAppSidebar }: OmniTimelineProps) => {
           />
         )}
         {view === 'search' && (
-          <div className="h-full overflow-y-auto flex flex-col items-center justify-start pt-6 sm:pt-16 px-3 sm:px-4 pb-8">
-            <div className="w-full max-w-2xl">
-              <div className="relative mb-6 sm:mb-8">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-white/30 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search memories, arcs, people, places…"
-                  autoFocus
-                  className="w-full h-12 sm:h-14 pl-12 pr-4 rounded-2xl bg-white/5 border border-white/10 text-white text-base placeholder:text-white/25 focus:outline-none focus:border-primary/50 focus:bg-white/8 transition-all"
-                />
+          <div className="h-full overflow-y-auto pt-6 sm:pt-10 px-3 sm:px-4 pb-8">
+            <div className="w-full max-w-3xl mx-auto">
+              <div className="mb-4">
+                <h2 className="text-xl sm:text-2xl font-semibold text-white">Universal Timeline Search</h2>
+                <p className="text-xs sm:text-sm text-white/60 mt-1">
+                  Search across people, places, skills, jobs, projects, eras, and more — open any one to render its timeline chronologically.
+                </p>
               </div>
-              {searchQuery.length < 2 ? (
-                <div className="space-y-2">
-                  <p className="text-xs text-white/30 uppercase tracking-widest font-mono mb-3 text-center sm:text-left">Recent arcs</p>
-                  {arcs.slice(0, 6).map(arc => (
-                    <button
-                      key={arc.id}
-                      type="button"
-                      onClick={() => { setView('story'); }}
-                      className="w-full text-left px-4 py-3 rounded-xl border border-white/8 bg-white/3 hover:bg-white/6 transition-colors"
-                    >
-                      <p className="text-sm text-white font-medium">{arc.title}</p>
-                      <p className="text-xs text-white/40 mt-0.5">
-                        {arc.track ?? arc.arc_type} · {arc.start_date?.slice(0, 4)}{arc.end_date ? ` – ${arc.end_date.slice(0, 4)}` : ' – now'}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {entries
-                    .filter(e => e.content.toLowerCase().includes(searchQuery.toLowerCase()))
-                    .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
-                    .slice(0, 20)
-                    .map(entry => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() => handleSelectEvent(entry)}
-                        className="w-full text-left px-4 py-3 rounded-xl border border-white/8 bg-white/3 hover:border-primary/30 hover:bg-white/6 transition-colors"
-                      >
-                        <p className="text-sm font-semibold text-white/90 mb-1">
-                          {formatEventDateShort(entry.start_time)}
-                        </p>
-                        <p className="text-sm text-white/70 line-clamp-3">{entry.content}</p>
-                      </button>
-                    ))}
-                  {entries.filter(e => e.content.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
-                    <p className="text-center text-white/30 text-sm pt-8">No memories match &ldquo;{searchQuery}&rdquo;</p>
-                  )}
-                </div>
-              )}
+              <TimelineSearch initialQuery={urlQuery} />
             </div>
           </div>
         )}

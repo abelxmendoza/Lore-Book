@@ -4,6 +4,7 @@ export type UserFileDerivedCounts = {
   entities: number;
   relationships: number;
   events: number;
+  characterAttributes?: number;
 };
 
 export type UserFileRecord = {
@@ -40,6 +41,10 @@ export type UnifiedIngestResult = {
   charactersCreated?: number;
   sectionsCreated?: number;
   claimsCreated?: number;
+  skillsCreated?: number;
+  organizationsCreated?: number;
+  eventsCreated?: number;
   entryIds?: string[];
+  structured?: Record<string, unknown>;
   error?: string;
 };

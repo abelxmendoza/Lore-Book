@@ -165,12 +165,43 @@ function mergeText(left: string | null, right: string | null): string | null {
 }
 
 class CharacterMergeService {
+  /**
+   * Authority resolver (mirrors locationMergeService.resolveCanonicalLocationId).
+   * The Characters Book reads the `characters` table directly, so it normally emits
+   * characters.id. This guards against any caller passing a people_places `person`
+   * id (the secondary mention store): map it to the canonical character by name.
+   * Characters are not auto-created here (creation is gated), so an unmatched
+   * person mention returns null rather than promoting.
+   */
+  async resolveCanonicalCharacterId(userId: string, id: string): Promise<string | null> {
+    const { data: existing } = await supabaseAdmin
+      .from('characters').select('id').eq('id', id).eq('user_id', userId).maybeSingle();
+    if (existing) return (existing as { id: string }).id;
+
+    const { data: pp } = await supabaseAdmin
+      .from('people_places').select('id, name, type').eq('id', id).eq('user_id', userId).maybeSingle();
+    if (!pp) return null;
+    const ppRow = pp as { name: string; type?: string | null };
+    if (ppRow.type && ppRow.type !== 'person') return null; // not a person mention
+
+    const { data: byName } = await supabaseAdmin
+      .from('characters').select('id').eq('user_id', userId).ilike('name', ppRow.name).maybeSingle();
+    return byName ? (byName as { id: string }).id : null;
+  }
+
   async merge(
     userId: string,
     sourceId: string,
     targetId: string,
     opts: { mergedBy?: 'SYSTEM' | 'USER'; reason?: string } = {}
   ): Promise<MergeReport> {
+    // Resolve both ids to the canonical `characters` authority before any check.
+    const [resolvedSource, resolvedTarget] = await Promise.all([
+      this.resolveCanonicalCharacterId(userId, sourceId),
+      this.resolveCanonicalCharacterId(userId, targetId),
+    ]);
+    if (resolvedSource) sourceId = resolvedSource;
+    if (resolvedTarget) targetId = resolvedTarget;
     if (sourceId === targetId) throw new Error('Cannot merge a character into itself');
 
     const [{ data: sourceData }, { data: targetData }] = await Promise.all([

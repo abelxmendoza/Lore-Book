@@ -1,0 +1,39 @@
+{
+  "groups": [
+    {
+      "name": "Neon Scene Collective",
+      "group_type": "scene",
+      "membership_model": "fuzzy",
+      "user_relationship": "member",
+      "description": "A fictional underground music scene — nights at local venues and community events.",
+      "aliases": ["Underground Scene"],
+      "members": [
+        { "wanted": "Velvet Hour", "role": "Performer" },
+        { "wanted": "DJ Nova", "role": "DJ" },
+        { "wanted": "Andrew", "role": "Venue connection" }
+      ]
+    },
+    {
+      "name": "Aunt Grace's Household",
+      "group_type": "family",
+      "membership_model": "strict",
+      "user_relationship": "member",
+      "description": "Extended family household — cousins and aunt visits on weekends.",
+      "ensureCharacters": [
+        { "name": "Aunt Grace", "archetype": "family", "relType": "family", "role": "Aunt" },
+        { "name": "Jerry", "archetype": "family", "relType": "family", "role": "Cousin" },
+        { "name": "James", "archetype": "family", "relType": "family", "role": "Cousin" }
+      ]
+    },
+    {
+      "name": "CodeCamp Academy",
+      "group_type": "institution",
+      "membership_model": "fuzzy",
+      "user_relationship": "alumnus",
+      "description": "A fictional coding bootcamp that taught front-end development.",
+      "members": [
+        { "wanted": "Jordan Lee", "role": "Teacher / Founder" }
+      ]
+    }
+  ]
+}

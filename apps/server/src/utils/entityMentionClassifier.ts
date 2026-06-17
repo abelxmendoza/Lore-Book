@@ -6,6 +6,7 @@
 
 import { normalizeNameKey } from './nameNormalization';
 import { classifyEntity, isCharacterEligible, isUnknownEntity, toOmegaType } from '../services/entities/entityClassifier';
+import { hasKinshipTitle } from '../services/kinship/kinshipGlossary';
 
 export type MentionKind =
   | 'person'
@@ -159,11 +160,12 @@ export function classifyMentionKind(name: string, rawContext?: string): MentionC
   return { kind: 'unknown', reason: 'no classifying evidence' };
 }
 
-/** Single-token names need multiple mentions before auto-promotion to the Characters book. */
+/** Single-token names need multiple mentions before auto-promotion — except kinship-titled relatives. */
 export function shouldDeferCharacterPromotion(name: string, mentionCount: number): boolean {
-  const key = normalizeNameKey(name);
-  const tokens = key.split(' ').filter(Boolean);
   if (mentionCount >= 2) return false;
+  if (hasKinshipTitle(name)) return false;
+  const tokens = normalizeNameKey(name).split(' ').filter(Boolean);
+  if (tokens.length >= 2) return false;
   return true;
 }
 

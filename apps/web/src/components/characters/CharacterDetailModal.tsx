@@ -43,6 +43,11 @@ import { CharacterKnowledgeBase } from './CharacterKnowledgeBase';
 import { CharacterMediaPanel } from './CharacterMediaPanel';
 import { isSelfCharacter, isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
+import {
+  getCharacterContextHooks,
+  getCharacterRealName,
+  getCharacterWittyTagline,
+} from '../../lib/characterDisplay';
 import { useChatStream } from '../../hooks/useChatStream';
 
 type SocialMedia = {
@@ -166,9 +171,25 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const { useMockData: isMockDataEnabled } = useMockData();
   const isMainCharacter = isMainCharacterProp ?? isSelfCharacter(character);
   const [editedCharacter, setEditedCharacter] = useState<CharacterDetail>(character as CharacterDetail);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [profileWittyTagline, setProfileWittyTagline] = useState<string | null>(
+    getCharacterWittyTagline(character)
+  );
+  const [profileContextHooks, setProfileContextHooks] = useState<string[]>(
+    getCharacterContextHooks(character)
+  );
+  const [profileRealName, setProfileRealName] = useState<string | null>(
+    getCharacterRealName(character)
+  );
+  const [deleteStep, setDeleteStep] = useState<null | 'warn' | 'type'>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const canDeleteCharacter =
+    !isMainCharacter &&
+    !isSyntheticSelfId(character.id) &&
+    !character.id.startsWith('dummy-') &&
+    !character.id.startsWith('temp-');
 
   const getImportanceColor = (level?: string | null) => {
     const colors: Record<string, string> = {
@@ -209,6 +230,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     } finally {
       setDeleteBusy(false);
     }
+  };
+
+  const resetDeleteFlow = () => {
+    setDeleteStep(null);
+    setDeleteConfirmText('');
+    setDeleteError(null);
   };
 
   const getImportanceLabel = (level?: string | null) => {
@@ -1044,6 +1071,56 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    const applySelfProfile = (profile: Awaited<ReturnType<typeof selfCharacterApi.getProfile>>) => {
+      const selfCharacterName = profile.character.name || character.name;
+      const selfMemories = (profile.recentMemories ?? []).map(memory =>
+        selfMemoryToCard(memory, selfCharacterName)
+      );
+      setEditedCharacter({
+        ...(profile.character as CharacterDetail),
+        importance_level: 'protagonist',
+        shared_memories: (profile.recentMemories ?? []).map(memory => ({
+          id: memory.id,
+          entry_id: memory.entry_id,
+          date: memory.date,
+          summary: memory.summary ?? memory.content.slice(0, 140),
+        })),
+        analytics: {
+          ...(profile.character.analytics ?? {}),
+          closeness_score: 100,
+          relationship_depth: 100,
+          interaction_frequency: profile.stats.messageCount,
+          recency_score: selfMemories.length > 0 ? 1 : 0,
+          character_influence_on_user: 100,
+          user_influence_over_character: 100,
+          importance_score: 100,
+          priority_score: 100,
+          relevance_score: 100,
+          value_score: 100,
+          sentiment_score: 0,
+          trust_score: 100,
+          support_score: 100,
+          conflict_score: 0,
+          engagement_score: Math.min(100, profile.stats.messageCount),
+          activity_level: Math.min(100, profile.stats.messageCount),
+          shared_experiences: selfMemories.length,
+          relationship_duration_days: 0,
+          trend: 'stable',
+        },
+      });
+      setCharacterAttributes(profile.attributes ?? []);
+      setCharacterFacts(profile.facts ?? []);
+      setFactsLoaded(true);
+      setKnowledgeClaims(profile.knowledgeClaims ?? []);
+      setKnowledgeLoaded(true);
+      setSharedMemoryCards(selfMemories);
+      setProfileWittyTagline(profile.wittyTagline ?? getCharacterWittyTagline(profile.character));
+      setProfileContextHooks(profile.contextHooks ?? getCharacterContextHooks(profile.character));
+      setProfileRealName(profile.realName ?? getCharacterRealName(profile.character));
+    };
+
     const loadFullDetails = async () => {
       setLoadingDetails(true);
       if (isMainCharacter && !isMockDataEnabled) {
@@ -1051,69 +1128,32 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
           if (isSyntheticSelfId(character.id)) {
             await selfCharacterApi.ensureSelf().catch(() => {});
           }
-          await selfCharacterApi.syncFromConversations({ limit: 200, sinceDays: 365 }).catch(() => {});
           const profile = await selfCharacterApi.getProfile();
-          const selfCharacterName = profile.character.name || character.name;
-          const selfMemories = (profile.recentMemories ?? []).map(memory =>
-            selfMemoryToCard(memory, selfCharacterName)
-          );
-          setEditedCharacter({
-            ...(profile.character as CharacterDetail),
-            importance_level: 'protagonist',
-            shared_memories: (profile.recentMemories ?? []).map(memory => ({
-              id: memory.id,
-              entry_id: memory.entry_id,
-              date: memory.date,
-              summary: memory.summary ?? memory.content.slice(0, 140),
-            })),
-            analytics: {
-              ...(profile.character.analytics ?? {}),
-              closeness_score: 100,
-              relationship_depth: 100,
-              interaction_frequency: profile.stats.messageCount,
-              recency_score: selfMemories.length > 0 ? 1 : 0,
-              character_influence_on_user: 100,
-              user_influence_over_character: 100,
-              importance_score: 100,
-              priority_score: 100,
-              relevance_score: 100,
-              value_score: 100,
-              sentiment_score: 0,
-              trust_score: 100,
-              support_score: 100,
-              conflict_score: 0,
-              engagement_score: Math.min(100, profile.stats.messageCount),
-              activity_level: Math.min(100, profile.stats.messageCount),
-              shared_experiences: selfMemories.length,
-              relationship_duration_days: 0,
-              trend: 'stable',
-            },
-          });
-          setCharacterAttributes(profile.attributes ?? []);
-          setCharacterFacts(profile.facts ?? []);
-          setFactsLoaded(true);
-          setKnowledgeClaims(profile.knowledgeClaims ?? []);
-          setKnowledgeLoaded(true);
-          setSharedMemoryCards(selfMemories);
+          if (cancelled) return;
+          applySelfProfile(profile);
         } catch (error) {
           console.error('Failed to load self profile:', error);
+          if (!cancelled) {
+            setEditedCharacter({
+              ...character,
+              importance_level: 'protagonist',
+            } as CharacterDetail);
+            setSharedMemoryCards([]);
+          }
+        } finally {
+          if (!cancelled) setLoadingDetails(false);
+        }
+        return;
+      }
+      if (isSyntheticSelfId(character.id) && !isMockDataEnabled) {
+        if (!cancelled) {
           setEditedCharacter({
             ...character,
             importance_level: 'protagonist',
           } as CharacterDetail);
           setSharedMemoryCards([]);
-        } finally {
           setLoadingDetails(false);
         }
-        return;
-      }
-      if (isSyntheticSelfId(character.id) && !isMockDataEnabled) {
-        setEditedCharacter({
-          ...character,
-          importance_level: 'protagonist',
-        } as CharacterDetail);
-        setSharedMemoryCards([]);
-        setLoadingDetails(false);
         return;
       }
       if (isMockDataEnabled || isSyntheticSelfId(character.id)) {
@@ -1132,16 +1172,27 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
             summary: memory.title,
           })),
         } as CharacterDetail;
-        setEditedCharacter(demoCharacter);
-        setSharedMemoryCards(mockMemories);
-        setLoadingDetails(false);
+        if (!cancelled) {
+          setEditedCharacter(demoCharacter);
+          setSharedMemoryCards(mockMemories);
+          setLoadingDetails(false);
+        }
         return;
       }
 
       try {
-        const response = await fetchJson<CharacterDetail>(`/api/characters/${character.id}`);
+        const response = await fetchJson<CharacterDetail & {
+          witty_tagline?: string | null;
+          real_name?: string | null;
+          context_hooks?: string[];
+        }>(`/api/characters/${character.id}`);
+
+        if (cancelled) return;
 
         setEditedCharacter(response);
+        setProfileWittyTagline(response.witty_tagline ?? getCharacterWittyTagline(response));
+        setProfileContextHooks(response.context_hooks ?? getCharacterContextHooks(response));
+        setProfileRealName(response.real_name ?? getCharacterRealName(response));
         
         // Load full entry details for shared memories
         if (response.shared_memories && response.shared_memories.length > 0) {
@@ -1154,11 +1205,14 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         setEditedCharacter(character as CharacterDetail);
         setSharedMemoryCards([]);
       } finally {
-        setLoadingDetails(false);
+        if (!cancelled) setLoadingDetails(false);
       }
     };
     void loadFullDetails();
-  }, [character, character.id, character.name, isMockDataEnabled, isMainCharacter]);
+    return () => {
+      cancelled = true;
+    };
+  }, [character.id, character.name, isMockDataEnabled, isMainCharacter]);
 
   // Load character attributes
   useEffect(() => {
@@ -1742,11 +1796,17 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   const firstName = hasHonorificFirstName
     ? editedCharacter.name
     : editedCharacter.first_name || (HONORIFIC_RE.test(nameParts[0] ?? '') ? editedCharacter.name : nameParts[0]) || editedCharacter.name;
-  const displayName = hasHonorificFirstName
+  const displayName = isMainCharacter && profileRealName
+    ? profileRealName
+    : hasHonorificFirstName
     ? editedCharacter.name
     : editedCharacter.first_name && editedCharacter.last_name
       ? `${editedCharacter.first_name} ${editedCharacter.last_name}`
       : editedCharacter.name;
+  const wittyTagline =
+    profileWittyTagline ||
+    getCharacterWittyTagline(editedCharacter) ||
+    (isMainCharacter ? null : null);
   const isRomanticRelationshipType = (type = '') => /\b(romantic|dating|date|boyfriend|girlfriend|partner|spouse|wife|husband|fianc|lover|crush|situationship|ex)\b/i.test(type);
   const romanticConnections = (editedCharacter.relationships ?? [])
     .filter(rel => rel.character_name && rel.character_name !== 'You' && isRomanticRelationshipType(rel.relationship_type));
@@ -1880,12 +1940,39 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                           <Star className="h-3 w-3 fill-amber-300 text-amber-300" />
                           Main Character
                         </Badge>
+                        {/^me$/i.test(editedCharacter.name) && profileRealName && (
+                          <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/70 border border-amber-500/25 rounded px-1.5 py-0.5">
+                            Me
+                          </span>
+                        )}
                         <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/70 border border-amber-500/25 rounded px-1.5 py-0.5">
                           you
                         </span>
                       </>
                     )}
 	                </div>
+                {wittyTagline && (
+                  <p className="text-sm sm:text-base text-white/75 italic leading-snug mb-2 max-w-2xl">
+                    {wittyTagline}
+                  </p>
+                )}
+                {profileContextHooks.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {profileContextHooks.slice(0, 5).map((hook) => (
+                      <Badge
+                        key={hook}
+                        variant="outline"
+                        className={`text-[9px] sm:text-[10px] px-1.5 py-0.5 ${
+                          isMainCharacter
+                            ? 'bg-amber-500/10 text-amber-200/90 border-amber-500/25'
+                            : 'bg-primary/10 text-primary/90 border-primary/25'
+                        }`}
+                      >
+                        {hook}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
                 {/* Compact info row on mobile */}
                 <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1 sm:mb-2">
                   {editedCharacter.role && (
@@ -1903,6 +1990,11 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                         {editedCharacter.pronouns}
                       </Badge>
                     </Tooltip>
+                  )}
+                  {editedCharacter.metadata?.kinship_label && (
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-300 border-amber-500/30 text-[9px] sm:text-sm px-1.5 sm:px-3 py-0.5 sm:py-1">
+                      {String(editedCharacter.metadata.kinship_label)}
+                    </Badge>
                   )}
                   {editedCharacter.importance_level && (
                     <Tooltip content={getImportanceTooltip(editedCharacter.importance_level, editedCharacter.importance_score, editedCharacter.analytics?.character_influence_on_user)}>
@@ -2000,17 +2092,6 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               </div>
             </div>
             <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
-            {!isMainCharacter && (
-            <Button
-              variant="ghost"
-              onClick={() => setShowDeleteConfirm(true)}
-              className="flex-shrink-0 hover:bg-red-500/15 text-white/40 hover:text-red-400 h-8 w-8 sm:h-10 sm:w-10 p-0"
-              aria-label="Delete character"
-              title="Delete character"
-            >
-              <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
-            </Button>
-            )}
             <Button variant="ghost" onClick={onClose} className="flex-shrink-0 hover:bg-white/10 h-8 w-8 sm:h-10 sm:w-10 p-0" aria-label="Close">
               <X className="h-4 w-4 sm:h-5 sm:w-5" />
             </Button>
@@ -2021,10 +2102,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row min-h-0">
           {/* Tab Navigation — vertical stack, no horizontal scroll */}
           <nav
-            className="flex-shrink-0 border-b md:border-b-0 md:border-r border-border/60 md:w-44 lg:w-48 overflow-y-auto overflow-x-hidden bg-black/20"
+            className="flex-shrink-0 border-b md:border-b-0 md:border-r border-border/60 md:w-44 lg:w-48 overflow-y-auto overflow-x-hidden bg-black/20 flex flex-col min-h-0"
             aria-label="Character sections"
           >
-            <div className="flex flex-col">
+            <div className="flex flex-col flex-1 min-h-0">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.key;
@@ -2047,6 +2128,23 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 );
               })}
             </div>
+            {canDeleteCharacter && (
+              <div className="mt-auto border-t border-red-500/15 p-2 sm:p-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteStep('warn');
+                    setDeleteConfirmText('');
+                    setDeleteError(null);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs sm:text-sm font-medium text-red-300/80 hover:text-red-200 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition text-left"
+                  aria-label="Delete character"
+                >
+                  <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+                  <span>Delete character</span>
+                </button>
+              </div>
+            )}
           </nav>
 
           <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-8 bg-black/40 min-h-0 pb-[max(5rem,env(safe-area-inset-bottom,0px))] sm:pb-32">
@@ -4609,16 +4707,37 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
 
       </div>
 
-      {showDeleteConfirm && (
+      {deleteStep && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-md rounded-xl border border-red-500/25 bg-neutral-950 p-5 shadow-2xl">
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <h3 className="text-lg font-semibold text-white">Delete {editedCharacter.name}?</h3>
-                <p className="text-sm text-white/60 mt-1">
-                  This removes the character card, facts, relationships, and memory links. Events stay, but this action cannot be undone.
-                </p>
+              <div className="min-w-0">
+                {deleteStep === 'warn' ? (
+                  <>
+                    <h3 className="text-lg font-semibold text-white">Delete {displayName}?</h3>
+                    <p className="text-sm text-white/60 mt-1">
+                      This removes the character card, facts, relationships, and memory links. Timeline events stay, but this cannot be undone.
+                    </p>
+                    <p className="text-xs text-white/45 mt-2">
+                      Step 1 of 2 — you will need to type the character name to confirm.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-semibold text-white">Type the name to confirm</h3>
+                    <p className="text-sm text-white/60 mt-1">
+                      Enter <span className="font-mono text-red-200">{displayName}</span> to permanently delete this character.
+                    </p>
+                    <Input
+                      className="mt-3 bg-black/40 border-red-500/20"
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      placeholder={displayName}
+                      autoFocus
+                    />
+                  </>
+                )}
               </div>
             </div>
             {deleteError && (
@@ -4627,21 +4746,26 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               </div>
             )}
             <div className="mt-5 flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={deleteBusy}
-              >
+              <Button variant="ghost" onClick={resetDeleteFlow} disabled={deleteBusy}>
                 Cancel
               </Button>
-              <Button
-                onClick={() => void deleteCharacter()}
-                disabled={deleteBusy}
-                className="bg-red-500/20 hover:bg-red-500/30 text-red-100 border border-red-500/30"
-                leftIcon={<Trash2 className="h-4 w-4" />}
-              >
-                {deleteBusy ? 'Deleting...' : 'Delete'}
-              </Button>
+              {deleteStep === 'warn' ? (
+                <Button
+                  onClick={() => setDeleteStep('type')}
+                  className="bg-red-500/15 hover:bg-red-500/25 text-red-100 border border-red-500/30"
+                >
+                  Continue
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => void deleteCharacter()}
+                  disabled={deleteBusy || deleteConfirmText.trim() !== displayName}
+                  className="bg-red-500/20 hover:bg-red-500/30 text-red-100 border border-red-500/30 disabled:opacity-40"
+                  leftIcon={<Trash2 className="h-4 w-4" />}
+                >
+                  {deleteBusy ? 'Deleting...' : 'Delete permanently'}
+                </Button>
+              )}
             </div>
           </div>
         </div>

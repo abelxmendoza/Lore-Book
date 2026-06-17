@@ -38,6 +38,10 @@ export type SelfProfileResponse = {
   }>;
   stats: SelfProfileStats;
   profileSummary: string | null;
+  realName: string | null;
+  wittyTagline: string | null;
+  roleTagline: string | null;
+  contextHooks: string[];
 };
 
 export const selfCharacterApi = {
@@ -57,4 +61,10 @@ export const selfCharacterApi = {
 
   getProfile: () =>
     fetchJson<SelfProfileResponse>('/api/characters/self/profile'),
+
+  setLegalName: (legalName: string) =>
+    fetchJson<{ success: boolean; legalName: string }>('/api/characters/self/set-legal-name', {
+      method: 'POST',
+      body: JSON.stringify({ legalName }),
+    }),
 };

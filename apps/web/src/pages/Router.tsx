@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthGate } from '../components/AuthGate';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
@@ -26,12 +26,24 @@ const Terms = lazy(() => import('../routes/Terms'));
 const PrivacyPolicy = lazy(() => import('../routes/PrivacyPolicy'));
 const UserGuide = lazy(() => import('../components/guide/UserGuide'));
 const WhatAIKnows = lazy(() => import('../routes/WhatAIKnows'));
+const OntologyExplorerPage = lazy(() => import('../routes/OntologyExplorer'));
 
 // Lazy load landing pages
 const Landing = lazy(() => import('../routes/Landing'));
 const Features = lazy(() => import('../routes/Features'));
 const Investors = lazy(() => import('../routes/Investors'));
 const About = lazy(() => import('../routes/About'));
+
+/** Legacy /search URLs → Timeline search tab */
+const SearchRedirect = () => {
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  const q = params.get('q');
+  const target = q
+    ? `/timeline?view=search&q=${encodeURIComponent(q)}`
+    : '/timeline?view=search';
+  return <Navigate to={target} replace />;
+};
 
 // Loading fallback component
 const LoadingFallback = () => (
@@ -124,14 +136,7 @@ export const Router = () => {
           </LazyRoute>
         } 
       />
-      <Route 
-        path="/search" 
-        element={
-          <LazyRoute>
-            <AuthGate><App defaultSurface="search" /></AuthGate>
-          </LazyRoute>
-        } 
-      />
+      <Route path="/search" element={<SearchRedirect />} />
       <Route 
         path="/characters" 
         element={
@@ -193,7 +198,7 @@ export const Router = () => {
         path="/memories"
         element={
           <LazyRoute>
-            <AuthGate><App defaultSurface="search" /></AuthGate>
+            <AuthGate><App defaultSurface="events" /></AuthGate>
           </LazyRoute>
         }
       />
@@ -236,6 +241,14 @@ export const Router = () => {
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="entities" /></AuthGate>
+          </LazyRoute>
+        } 
+      />
+      <Route 
+        path="/family" 
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="family" /></AuthGate>
           </LazyRoute>
         } 
       />
@@ -301,6 +314,22 @@ export const Router = () => {
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="saga" /></AuthGate>
+          </LazyRoute>
+        }
+      />
+      <Route
+        path="/story"
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="story" /></AuthGate>
+          </LazyRoute>
+        }
+      />
+      <Route
+        path="/documents"
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="documents" /></AuthGate>
           </LazyRoute>
         }
       />
@@ -424,6 +453,16 @@ export const Router = () => {
       />
 
       {/* Admin Routes - Protected in production */}
+      <Route
+        path="/ontology"
+        element={
+          <LazyRoute>
+            <AuthGate>
+              <OntologyExplorerPage />
+            </AuthGate>
+          </LazyRoute>
+        }
+      />
       <Route 
         path="/admin" 
         element={

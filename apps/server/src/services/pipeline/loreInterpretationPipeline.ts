@@ -1,0 +1,147 @@
+/**
+ * LoreBook Interpretation Pipeline
+ *
+ *   1. Lexer   → lexicalAnalyzerService
+ *   2. Parser  → meaningResolutionService
+ *   3. Mapper  → ontologyEnrichmentService
+ *   4. Planner → buildActionsFromMeaning (resolved meaning only)
+ */
+import { logger } from '../../logger';
+import { supabaseAdmin } from '../supabaseClient';
+import { lexicalAnalyzerService } from '../lexical/lexicalAnalyzerService';
+import type { AnalyzeMessageInput, LexicalAnalysisResult } from '../lexical/lexicalTypes';
+import { processLexicalMemoryCandidates } from '../lexical/lexicalMemoryBridge';
+import { enrichFromLexicalAnalysis, enrichFromMeaningResolution } from '../ontology/ontologyEnrichmentService';
+import { meaningResolutionService } from '../meaning/meaningResolutionService';
+import type { MeaningResolutionResult } from '../meaning/meaningResolutionTypes';
+
+export type LoreInterpretationResult = {
+  lexical: LexicalAnalysisResult;
+  meaning: MeaningResolutionResult;
+};
+
+export async function runLoreInterpretationPipeline(
+  input: AnalyzeMessageInput,
+  opts: { priorMentionedNames?: string[] } = {}
+): Promise<LoreInterpretationResult> {
+  const lexical = lexicalAnalyzerService.analyzeMessage(input);
+  let lexicalResultId: string | undefined;
+
+  try {
+    lexicalResultId = await persistLexicalAnalysis(lexical);
+  } catch (err) {
+    logger.warn({ err, messageId: input.messageId }, 'Pipeline: lexical persist failed');
+  }
+
+  const meaning = await meaningResolutionService.resolveAndIntegrate({
+    userId: input.userId,
+    messageId: input.messageId,
+    text: input.text,
+    threadId: input.threadId,
+    lexicalResult: lexical,
+    timestamp: new Date().toISOString(),
+    priorMentionedNames: opts.priorMentionedNames,
+    lexicalResultId,
+  });
+
+  const ontologyMeta = {
+    ...enrichFromLexicalAnalysis(lexical),
+    ...enrichFromMeaningResolution(meaning),
+  };
+
+  await attachPipelineMetadata(input.messageId, input.userId, lexical, meaning, ontologyMeta);
+
+  // Keep existing lexical → MRQ path until planner fully owns memory candidates
+  if (meaningResolutionService.allowsMemoryWrite(meaning)) {
+    try {
+      await processLexicalMemoryCandidates(input.userId, input.messageId, lexical);
+    } catch (err) {
+      logger.warn({ err, messageId: input.messageId }, 'Pipeline: lexical MRQ fallback failed');
+    }
+  }
+
+  return { lexical, meaning };
+}
+
+export async function resolveMeaningForPlanner(
+  input: AnalyzeMessageInput,
+  opts: { priorMentionedNames?: string[] } = {}
+): Promise<MeaningResolutionResult> {
+  const lexical = lexicalAnalyzerService.analyzeMessage(input);
+  return meaningResolutionService.resolve({
+    userId: input.userId,
+    messageId: input.messageId,
+    text: input.text,
+    threadId: input.threadId,
+    lexicalResult: lexical,
+    timestamp: new Date().toISOString(),
+    priorMentionedNames: opts.priorMentionedNames,
+  });
+}
+
+async function persistLexicalAnalysis(analysis: LexicalAnalysisResult): Promise<string | undefined> {
+  const { data, error } = await supabaseAdmin.from('lexical_analysis_results').insert({
+    user_id: analysis.userId,
+    thread_id: analysis.threadId ?? null,
+    message_id: analysis.messageId,
+    raw_text: analysis.rawText,
+    normalized_text: analysis.normalizedText,
+    result_json: analysis,
+    confidence: analysis.confidence,
+  }).select('id').single();
+
+  if (error) {
+    const code = (error as { code?: string }).code;
+    if (code === 'PGRST205' || code === '42P01') return undefined;
+    throw error;
+  }
+  return data?.id;
+}
+
+async function attachPipelineMetadata(
+  messageId: string,
+  userId: string,
+  lexical: LexicalAnalysisResult,
+  meaning: MeaningResolutionResult,
+  ontologyMeta: Record<string, unknown>
+): Promise<void> {
+  const { data: existing } = await supabaseAdmin
+    .from('chat_messages')
+    .select('metadata')
+    .eq('id', messageId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const metadata = {
+    ...(existing?.metadata as Record<string, unknown> ?? {}),
+    interpretation_pipeline: {
+      version: 2,
+      phases: ['lexer', 'parser', 'mapper'],
+      lexical_confidence: lexical.confidence,
+      meaning_confidence: meaning.confidence,
+      factuality: meaning.factuality,
+      allows_memory_write: meaningResolutionService.allowsMemoryWrite(meaning),
+    },
+    lexical_analysis: {
+      confidence: lexical.confidence,
+      ambiguity_flags: lexical.ambiguityFlags,
+      entity_count: lexical.entities.length,
+      skill_count: lexical.skills.length,
+    },
+    meaning_resolution: {
+      confidence: meaning.confidence,
+      factuality: meaning.factuality,
+      identity_collision_count: meaning.identityCollisions.length,
+      contradiction_count: meaning.contradictions.length,
+      ontology_action_count: meaning.ontologyActionCandidates.length,
+      memory_review_count: meaning.memoryReviewCandidates.length,
+    },
+    ontology_enrichment: ontologyMeta,
+  };
+
+  await supabaseAdmin
+    .from('chat_messages')
+    .update({ metadata })
+    .eq('id', messageId)
+    .eq('user_id', userId);
+}

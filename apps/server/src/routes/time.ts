@@ -146,4 +146,20 @@ router.get(
   })
 );
 
+router.post(
+  '/timezone',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const timezone = String(req.body?.timezone ?? '').trim();
+    if (!timezone) {
+      res.status(400).json({ error: 'timezone required' });
+      return;
+    }
+    const { setUserTimezone } = await import('../utils/temporalOccurrence');
+    await setUserTimezone(userId, timezone);
+    res.json({ timezone });
+  })
+);
+
 export default router;

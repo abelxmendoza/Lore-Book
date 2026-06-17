@@ -31,10 +31,11 @@ describe('entityMentionClassifier', () => {
     expect(classifyMentionKind('Alex', 'Alex said she would call').kind).toBe('person');
   });
 
-  it('defers all first mentions from automatic character promotion', () => {
+  it('defers single-token first mentions but promotes kinship and multi-token names', () => {
     expect(shouldDeferCharacterPromotion('Alex', 1)).toBe(true);
     expect(shouldDeferCharacterPromotion('Alex', 2)).toBe(false);
-    expect(shouldDeferCharacterPromotion('Alex Morgan', 1)).toBe(true);
-    expect(shouldDeferCharacterPromotion('Alex Morgan', 2)).toBe(false);
+    expect(shouldDeferCharacterPromotion('Alex Morgan', 1)).toBe(false);
+    expect(shouldDeferCharacterPromotion('Tío Juan', 1)).toBe(false);
+    expect(shouldDeferCharacterPromotion('Abuela', 1)).toBe(false);
   });
 });

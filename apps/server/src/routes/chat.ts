@@ -195,17 +195,22 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
             connections: result.metadata.connections,
             continuityWarnings: result.metadata.continuityWarnings,
             response_mode: result.metadata.response_mode,
+            recall_sources: result.metadata.recall_sources,
             saved_from_stream: true,
-            stream_status: status, // complete | partial | failed
+            stream_status: status,
           },
         });
-        if (error) { assistantPersisted = false; logger.warn({ err: error, status }, 'Failed to persist assistant message'); return; }
+        if (error) {
+          assistantPersisted = false;
+          logger.error({ err: error, status, sessionId: persistSessionId }, 'Failed to persist assistant message');
+          return;
+        }
         // Ordering: thread rises to top on assistant completion (Task 3).
         await supabaseAdmin.from('conversation_sessions')
           .update({ updated_at: nowIso }).eq('id', persistSessionId).eq('user_id', req.user.id);
       } catch (err) {
         assistantPersisted = false;
-        logger.warn({ err, status }, 'Assistant persistence threw');
+        logger.error({ err, status, sessionId: persistSessionId }, 'Assistant persistence threw');
       }
     };
 

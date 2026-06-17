@@ -8,6 +8,7 @@
 import { logger } from '../logger';
 import { entityFactsService } from './entityFactsService';
 import { entityAttributeDetector, type DetectedAttribute } from './conversationCentered/entityAttributeDetector';
+import { characterBlurbService } from './characters/characterBlurbService';
 import { supabaseAdmin } from './supabaseClient';
 
 export const SELF_REFERENCE_PATTERN =
@@ -39,6 +40,10 @@ export type SelfProfile = {
   recentMemories: SelfProfileMemory[];
   stats: SelfProfileStats;
   profileSummary: string | null;
+  realName: string | null;
+  wittyTagline: string | null;
+  roleTagline: string | null;
+  contextHooks: string[];
 };
 
 function buildProfileSummary(
@@ -179,7 +184,16 @@ class SelfCharacterService {
     if (!character) return null;
 
     const characterId = character.id as string;
-    const metadata = (character.metadata as Record<string, unknown>) ?? {};
+    let metadata = (character.metadata as Record<string, unknown>) ?? {};
+
+    if (!metadata.witty_tagline && !metadata.character_blurb) {
+      await characterBlurbService.refreshAndPersist(userId, characterId, { isSelf: true });
+      const refreshed = await this.ensureSelfCharacter(userId);
+      if (refreshed) {
+        Object.assign(character, refreshed);
+        metadata = (refreshed.metadata as Record<string, unknown>) ?? {};
+      }
+    }
 
     const [
       attributes,
@@ -221,7 +235,22 @@ class SelfCharacterService {
 
     const profileSummary =
       (typeof character.summary === 'string' && character.summary.trim()) ||
+      (typeof metadata.profile_summary === 'string' ? metadata.profile_summary : null) ||
       buildProfileSummary(attributes, facts);
+
+    const wittyTagline =
+      (typeof metadata.witty_tagline === 'string' && metadata.witty_tagline) ||
+      (typeof metadata.character_blurb === 'string' ? metadata.character_blurb : null);
+
+    const realName =
+      (typeof metadata.real_name === 'string' && metadata.real_name.trim()) ||
+      [character.first_name, character.last_name].filter(Boolean).join(' ').trim() ||
+      null;
+
+    const roleTagline = (typeof character.role === 'string' && character.role.trim()) || null;
+    const contextHooks = Array.isArray(metadata.context_hooks)
+      ? (metadata.context_hooks as string[])
+      : [];
 
     return {
       character: {
@@ -230,6 +259,12 @@ class SelfCharacterService {
         summary: profileSummary ?? character.summary,
         memory_count: messageCount ?? 0,
         knowledge_count: facts.filter(f => f.status === 'active').length + (knowledgeClaims?.length ?? 0),
+        metadata: {
+          ...metadata,
+          real_name: realName ?? metadata.real_name,
+          witty_tagline: wittyTagline,
+          character_blurb: wittyTagline,
+        },
       },
       attributes,
       facts,
@@ -265,7 +300,15 @@ class SelfCharacterService {
         lastSyncedAt: (metadata.self_last_synced_at as string) ?? null,
       },
       profileSummary,
+      realName,
+      wittyTagline,
+      roleTagline,
+      contextHooks,
     };
+  }
+
+  async refreshCharacterBlurb(userId: string, characterId: string, isSelf = false) {
+    return characterBlurbService.refreshAndPersist(userId, characterId, { isSelf });
   }
 }
 

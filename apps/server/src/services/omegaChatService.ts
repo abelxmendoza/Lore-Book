@@ -29,6 +29,8 @@ import { epiphanySessionManager } from './epiphanyEngine/epiphanySessionManager'
 import { intentDetectionService } from './intentDetectionService';
 import { locationService } from './locationService';
 import { memoirService } from './memoirService';
+import { buildActionsFromMeaning } from './ontology/actionPlanService';
+import { runLoreInterpretationPipeline, resolveMeaningForPlanner } from './pipeline/loreInterpretationPipeline';
 import { resolveMessageEntitiesForDisplay } from './chat/messageEntityDisplayService';
 import { loadEntityAnalyticsForContext } from './chat/entityAnalyticsLoader';
 import { perceptionService } from './perceptionService';
@@ -117,10 +119,15 @@ export type MemorySuggestion = {
 export type ChatSuggestedAction = {
   id: string;
   label: string;
-  kind: 'open_sources' | 'search' | 'prefill' | 'fork';
+  kind: 'open_sources' | 'search' | 'prefill' | 'fork' | 'navigate' | 'crud_confirm';
   prompt?: string;
   query?: string;
   targetId?: string;
+  surface?: 'characters' | 'family' | 'timeline';
+  apiMethod?: 'POST' | 'PATCH';
+  apiPath?: string;
+  apiBody?: Record<string, unknown>;
+  successMessage?: string;
 };
 
 function buildSuggestedActions(input: {
@@ -130,8 +137,9 @@ function buildSuggestedActions(input: {
   timelineUpdates: string[];
   memorySuggestion: MemorySuggestion | null;
   disambiguationPrompt: StreamingChatResponse['metadata']['disambiguationPrompt'] | null;
+  ontologyActions?: ChatSuggestedAction[];
 }): ChatSuggestedAction[] {
-  const actions: ChatSuggestedAction[] = [];
+  const actions: ChatSuggestedAction[] = [...(input.ontologyActions ?? [])];
   const add = (action: ChatSuggestedAction) => {
     if (!actions.some((existing) => existing.id === action.id)) actions.push(action);
   };
@@ -207,7 +215,7 @@ function buildSuggestedActions(input: {
     });
   }
 
-  return actions.slice(0, 4);
+  return actions.slice(0, 6);
 }
 
 export type StreamingChatResponse = {
@@ -672,6 +680,19 @@ class OmegaChatService {
       .update({ updated_at: new Date().toISOString() })
       .eq('id', sessionId)
       .eq('user_id', userId);
+
+    if (!isTrivialMessage(message)) {
+      try {
+        await runLoreInterpretationPipeline({
+          userId,
+          messageId: savedMessage.id,
+          text: message,
+          threadId: sessionId,
+        });
+      } catch (pipeErr) {
+        logger.warn({ err: pipeErr, messageId: savedMessage.id }, 'Lore interpretation pipeline failed — continuing chat');
+      }
+    }
 
     if (!entityContext) {
       ingestionQueue.enqueue(
@@ -1705,6 +1726,15 @@ class OmegaChatService {
       }, 10000); // After 10 seconds, assume user has read the response
     }
 
+    const meaning = entryId
+      ? await resolveMeaningForPlanner({
+          userId,
+          messageId: entryId,
+          text: message,
+          threadId: sessionId,
+        }).catch(() => null)
+      : null;
+    const ontologyActions = meaning ? buildActionsFromMeaning(meaning) : [];
     const suggestedActions = buildSuggestedActions({
       message,
       sources,
@@ -1712,6 +1742,7 @@ class OmegaChatService {
       timelineUpdates,
       memorySuggestion,
       disambiguationPrompt,
+      ontologyActions,
     });
 
     return {
@@ -2318,6 +2349,17 @@ class OmegaChatService {
         // Set entryId for tracking and RL
         entryId = savedMessage.id;
 
+        try {
+          await runLoreInterpretationPipeline({
+            userId,
+            messageId: savedMessage.id,
+            text: message,
+            threadId: sessionId,
+          });
+        } catch (pipeErr) {
+          logger.warn({ err: pipeErr, messageId: savedMessage.id }, 'Lore interpretation pipeline failed — continuing chat');
+        }
+
         // Enqueue ingestion — tracked by pipelineRunService (matches chatStream path).
         // Skip when entityContext is set: ingestMessageWithContext() fires separately
         // and enqueueing here too would double-ingest the same content.
@@ -2421,6 +2463,15 @@ class OmegaChatService {
       });
     }
 
+    const meaning = entryId
+      ? await resolveMeaningForPlanner({
+          userId,
+          messageId: entryId,
+          text: message,
+          threadId: sessionId,
+        }).catch(() => null)
+      : null;
+    const ontologyActions = meaning ? buildActionsFromMeaning(meaning) : [];
     const suggestedActions = buildSuggestedActions({
       message,
       sources,
@@ -2428,6 +2479,7 @@ class OmegaChatService {
       timelineUpdates,
       memorySuggestion,
       disambiguationPrompt: null,
+      ontologyActions,
     });
 
     return {

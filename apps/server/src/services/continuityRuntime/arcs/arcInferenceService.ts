@@ -126,8 +126,17 @@ function inferDominantEmotion(candidates: RawCandidate[]): string | null {
 }
 
 function candidateDate(c: RawCandidate): Date | null {
-  const d = c.first_seen_at ?? c.last_seen_at;
-  return d ? new Date(d) : null;
+  const first = c.first_seen_at ? new Date(c.first_seen_at) : null;
+  const last = c.last_seen_at ? new Date(c.last_seen_at) : null;
+  return first ?? last;
+}
+
+function candidateLatest(c: RawCandidate, earliest: Date): Date {
+  const first = c.first_seen_at ? new Date(c.first_seen_at) : earliest;
+  const last = c.last_seen_at ? new Date(c.last_seen_at) : first;
+  const spanDays = (last.getTime() - first.getTime()) / (1000 * 60 * 60 * 24);
+  if (spanDays > 365 * 3 && c.occurrence_count <= 3) return first;
+  return last.getTime() > first.getTime() ? last : first;
 }
 
 // ─── Clustering ───────────────────────────────────────────────────────────────
@@ -186,7 +195,7 @@ function clusterCandidates(candidates: RawCandidate[]): CandidateCluster[] {
         track: inferTrack(candidate, arcType),
         dominant_emotion: null, // populated after all candidates are assigned
         earliest: date,
-        latest: new Date(Math.max(date.getTime(), new Date(candidate.last_seen_at ?? date).getTime())),
+        latest: candidateLatest(candidate, date),
       });
     }
   }

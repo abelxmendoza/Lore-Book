@@ -128,7 +128,14 @@ router.post('/suggestions/materialize', requireAuth, async (req: AuthenticatedRe
     const userId = req.user!.id;
     const schema = z.object({
       skill_name: z.string().min(1).max(100),
-      skill_category: z.enum(['professional', 'creative', 'physical', 'social', 'intellectual', 'emotional', 'practical', 'artistic', 'technical', 'other']),
+      skill_category: z.preprocess(
+        (v) => {
+          const n = String(v ?? 'other').toLowerCase().trim();
+          const valid = ['professional', 'creative', 'physical', 'social', 'intellectual', 'emotional', 'practical', 'artistic', 'technical', 'other'];
+          return valid.includes(n) ? n : 'other';
+        },
+        z.enum(['professional', 'creative', 'physical', 'social', 'intellectual', 'emotional', 'practical', 'artistic', 'technical', 'other'])
+      ),
       skill_type: z.string().optional(),
       monetization: z.string().optional(),
       proficiency: z.number().optional(),

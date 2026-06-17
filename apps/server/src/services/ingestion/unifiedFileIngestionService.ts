@@ -4,6 +4,7 @@ import { relationshipFoundationService } from '../relationshipFoundationService'
 import { eventRecoveryService } from '../eventRecoveryService';
 import { profileClaimsService } from '../profileClaims/profileClaimsService';
 import { resumeParsingService } from '../profileClaims/resumeParsingService';
+import { resumeLorePopulationService } from '../profileClaims/resumeLorePopulationService';
 import { memoryService } from '../memoryService';
 import { supabaseAdmin } from '../supabaseClient';
 
@@ -131,7 +132,7 @@ export class UnifiedFileIngestionService {
         ? 'docx'
         : 'txt';
 
-    const { document, claims } = await resumeParsingService.processResumeFromText(
+    const { document, claims, structured } = await resumeParsingService.processResumeFromText(
       userId,
       artifact.text,
       {
@@ -143,6 +144,12 @@ export class UnifiedFileIngestionService {
     );
 
     const createdClaims = await profileClaimsService.batchCreateClaims(userId, claims);
+
+    const lore = await resumeLorePopulationService.populate(userId, structured, {
+      sourceFileId,
+      resumeDocumentId: document.id,
+      fileName: filename,
+    });
 
     const summaryEntry = await memoryService.saveEntry({
       userId,
@@ -157,31 +164,37 @@ export class UnifiedFileIngestionService {
       },
     });
 
-    const factsCreated = await this.promoteResumeClaimsToEntityFacts(
-      userId,
-      createdClaims,
-      sourceFileId
-    );
+    const factsCreated =
+      (await this.promoteResumeClaimsToEntityFacts(userId, createdClaims, sourceFileId)) + lore.facts;
 
     await this.runGraphRecovery(userId, sourceFileId);
 
     const derivedCounts = {
-      moments: 1,
+      moments: lore.journalEntries + 1,
       facts: factsCreated,
-      entities: 0,
+      entities: lore.organizations,
       relationships: 0,
-      events: 0,
+      events: lore.timelineEvents,
     };
 
     await userFileRegistry.updateDerivedCounts(sourceFileId, derivedCounts);
-    await userFileRegistry.appendProvenanceLink(sourceFileId, { type: 'journal_entry', id: summaryEntry.id });
+    for (const entryId of [summaryEntry.id, ...lore.entryIds]) {
+      await userFileRegistry.appendProvenanceLink(sourceFileId, { type: 'journal_entry', id: entryId });
+    }
     await userFileRegistry.appendProvenanceLink(sourceFileId, { type: 'resume_document', id: document.id });
 
     return {
-      derivedCounts,
-      momentsCreated: 1,
+      derivedCounts: {
+        ...derivedCounts,
+        characterAttributes: lore.characterAttributes,
+      },
+      momentsCreated: lore.journalEntries + 1,
       claimsCreated: createdClaims.length,
-      entryIds: [summaryEntry.id],
+      entryIds: [summaryEntry.id, ...lore.entryIds],
+      skillsCreated: lore.skills,
+      organizationsCreated: lore.organizations,
+      eventsCreated: lore.timelineEvents,
+      structured,
     };
   }
 

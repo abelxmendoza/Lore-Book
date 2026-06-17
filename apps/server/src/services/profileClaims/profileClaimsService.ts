@@ -264,6 +264,18 @@ class ProfileClaimsService {
   }
 
   /**
+   * Reject a claim (user says this is wrong or not applicable)
+   */
+  async rejectClaim(userId: string, claimId: string, notes?: string): Promise<ProfileClaim> {
+    return this.updateClaim(userId, claimId, {
+      user_confirmed: false,
+      user_notes: notes ?? null,
+      verified_status: 'downgraded',
+      confidence: 0.15,
+    });
+  }
+
+  /**
    * Add evidence to a claim
    */
   async addEvidence(

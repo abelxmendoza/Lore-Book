@@ -6,6 +6,8 @@ import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { unifiedFileIngestionService } from '../services/ingestion/unifiedFileIngestionService';
 import { resumeParsingService } from '../services/profileClaims/resumeParsingService';
+import { buildResumeChatFeedback } from '../services/profileClaims/resumeFeedbackService';
+import type { ParsedResume } from '../services/profileClaims/resumeStructuredTypes';
 
 const router = Router();
 
@@ -57,13 +59,32 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req: Authent
     }
 
     const documents = await resumeParsingService.getResumeDocuments(userId);
-    const document = documents[0];
+    const document = documents.find(
+      (d) => (d.parsed_data as { source_file_id?: string })?.source_file_id === result.userFileId
+    ) ?? documents[0];
 
     logger.info({
       userId,
       userFileId: result.userFileId,
       claimsCreated: result.claimsCreated,
     }, 'Resume processed via unified ingestion');
+
+    const structured = result.structured as ParsedResume | undefined;
+    const feedback = structured
+      ? buildResumeChatFeedback({
+          parsed: structured,
+          fileName: file.originalname || 'resume.pdf',
+          userFileId: result.userFileId,
+          counts: {
+            claims: result.claimsCreated ?? 0,
+            journalEntries: result.momentsCreated ?? 0,
+            timelineEvents: result.eventsCreated ?? 0,
+            skills: result.skillsCreated ?? 0,
+            organizations: result.organizationsCreated ?? 0,
+            characterAttributes: result.derivedCounts?.characterAttributes ?? 0,
+          },
+        })
+      : null;
 
     res.status(201).json({
       success: true,
@@ -74,11 +95,24 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req: Authent
             file_name: document.file_name,
             processing_status: document.processing_status,
             claims_generated: document.claims_generated,
+            parsed_data: document.parsed_data,
+            file_url: document.file_url,
           }
         : null,
       claimsCreated: result.claimsCreated ?? 0,
       derivedCounts: result.derivedCounts,
-      message: `Resume processed. ${result.claimsCreated ?? 0} claims extracted.`,
+      skillsCreated: result.skillsCreated ?? 0,
+      organizationsCreated: result.organizationsCreated ?? 0,
+      eventsCreated: result.eventsCreated ?? 0,
+      momentsCreated: result.momentsCreated ?? 0,
+      chatFeedback: feedback?.chatFeedback ?? null,
+      careerTimeline: feedback?.careerTimeline ?? [],
+      educationTimeline: feedback?.educationTimeline ?? [],
+      savedToLibrary: true,
+      fileName: file.originalname,
+      message: feedback?.chatFeedback
+        ? `Resume saved to your library and memory.`
+        : `Resume processed. ${result.claimsCreated ?? 0} claims, ${result.momentsCreated ?? 0} timeline entries, ${result.skillsCreated ?? 0} skills added to your lore.`,
     });
   } catch (error: any) {
     logger.error({ error }, 'Failed to process resume');

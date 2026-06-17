@@ -10,7 +10,6 @@ import { AuthGate } from '../components/AuthGate';
 import { SkipLink } from '../components/SkipLink';
 import { AgentPanel } from '../components/AgentPanel';
 import { CreateChapterModal } from '../components/CreateChapterModal';
-import { TimelineSearch } from '../components/search/TimelineSearch';
 import { Sidebar } from '../components/Sidebar';
 import { Button } from '../components/ui/button';
 import { Logo } from '../components/Logo';
@@ -41,6 +40,9 @@ import { EventsBook } from '../components/events/EventsBook';
 import { IntelligenceDashboard } from '../components/diagnostics/IntelligenceDashboard';
 import { EntityResolutionBook } from '../components/entities/EntityResolutionBook';
 import { OrganizationsBook } from '../components/organizations/OrganizationsBook';
+import { FamilyBook } from '../components/family/FamilyBook';
+import { StoryBook } from '../components/story/StoryBook';
+import { DocumentsBook } from '../components/documents/DocumentsBook';
 import { SkillsBook } from '../components/skills/SkillsBook';
 import { PrivacySettings } from '../components/security/PrivacySettings';
 import { PrivacyPolicy } from '../components/security/PrivacyPolicy';
@@ -147,15 +149,14 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       key: 'k',
       meta: true,
       handler: () => {
-        navigate('/search');
-        setActiveSurface('search');
-        // Focus search input if it exists
+        navigate('/timeline?view=search');
+        setActiveSurface('timeline');
         setTimeout(() => {
           const searchInput = document.querySelector('input[type="search"], input[placeholder*="search" i]') as HTMLInputElement;
           searchInput?.focus();
         }, 100);
       },
-      description: 'Open search'
+      description: 'Open timeline search'
     },
     {
       key: 'n',
@@ -187,25 +188,12 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
     }, 100);
   };
 
-  const renderSearchSurface = () => (
-    <div className="h-full space-y-4 sm:space-y-6">
-      <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel p-4 sm:p-6">
-        <div className="mb-4">
-          <h2 className="text-xl sm:text-2xl font-semibold mb-2">Universal Timeline Search</h2>
-          <p className="text-xs sm:text-sm text-white/60">Search across people, places, skills, jobs, projects, eras, and more. Use Life Log to browse moments from your life.</p>
-        </div>
-        <TimelineSearch />
-      </div>
-    </div>
-  );
-
-  // Get surface display name
+  // Viewport-locked surfaces (chat/lorebook/memoir/saga/timeline) must clamp this
   const getSurfaceName = (surface: SurfaceKey): string => {
     const names: Record<SurfaceKey, string> = {
       home: 'Home',
       chat: 'Chat',
       timeline: 'Omni Timeline',
-      search: 'Search',
       characters: 'Characters',
       locations: 'Locations',
       memoir: 'Biography Editor',
@@ -215,6 +203,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       events: 'Life Log',
       entities: 'Entities',
       organizations: 'Groups & Organizations',
+      family: 'Family',
       skills: 'Skills',
       projects: 'Projects',
       subscription: 'Subscription',
@@ -229,6 +218,8 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       quests: 'Quests',
       gaps: 'Knowledge Gaps',
       saga: 'Life Saga',
+      story: 'Story',
+      documents: 'Documents',
       intelligence: 'Intelligence Health',
     };
     return names[surface] || 'Lore Book';
@@ -312,7 +303,6 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
             <OmniTimeline onOpenAppSidebar={() => setIsMobileDrawerOpen(true)} />
           </div>
         )}
-        {activeSurface === 'search' && renderSearchSurface()}
         {activeSurface === 'characters' && <CharacterBook />}
         {activeSurface === 'locations' && <LocationBook />}
         {activeSurface === 'projects' && <ProjectBook />}
@@ -343,6 +333,9 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                         {activeSurface === 'intelligence' && <IntelligenceDashboard />}
                         {activeSurface === 'entities' && <EntityResolutionBook />}
                         {activeSurface === 'organizations' && <OrganizationsBook />}
+                        {activeSurface === 'family' && <FamilyBook />}
+                        {activeSurface === 'story' && <StoryBook />}
+                        {activeSurface === 'documents' && <DocumentsBook />}
                         {activeSurface === 'skills' && <SkillsBook />}
                         {activeSurface === 'subscription' && (
           <div className="rounded-lg sm:rounded-2xl border border-border/60 bg-black/40 shadow-panel min-h-[calc(100vh-8rem)] sm:min-h-[calc(100vh-4rem)] p-4 sm:p-6">

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, Briefcase, Heart, GitBranch } from 'lucide-react';
 import { skillsApi, type SkillSuggestion } from '../../api/skills';
+import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { monetizationLabel, usageLabel } from '../../lib/skillProfile';
 import { getMockSkillSuggestions } from '../../mocks/skillSuggestions';
 
@@ -71,6 +72,13 @@ export const DetectedSkillSuggestions = ({
     void fetchSuggestions();
   }, [fetchSuggestions]);
 
+  useEffect(() => {
+    if (demoMode) return;
+    return onStoryDataUpdated(() => {
+      void fetchSuggestions({ silent: true });
+    }, 'skills');
+  }, [fetchSuggestions, demoMode]);
+
   const existingSet = useMemo(
     () => new Set(existingSkillNames.map(n => n.toLowerCase())),
     [existingSkillNames]
@@ -80,7 +88,7 @@ export const DetectedSkillSuggestions = ({
     () =>
       suggestions
         .filter(s => s.skill_name?.trim())
-        .filter(s => !existingSet.has(keyFor(s)))
+        .filter(s => !existingSet.has(s.skill_name.trim().toLowerCase()))
         .filter(s => !dismissed.has(keyFor(s)) && !added.has(keyFor(s)))
         .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
         .slice(0, 12),

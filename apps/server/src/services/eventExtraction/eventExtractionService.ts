@@ -6,6 +6,7 @@
  */
 
 import { logger } from '../../logger';
+import { clampOccurrenceDate } from '../../utils/temporalOccurrence';
 import { supabaseAdmin } from '../supabaseClient';
 import { openai } from '../openaiClient';
 
@@ -154,9 +155,15 @@ Respond with JSON:
       const result = JSON.parse(response.choices[0].message.content || '{}');
       
       // Validate and set defaults
+      const now = new Date();
+      const eventDate = clampOccurrenceDate(result.event_date, now);
+      const eventDateEnd = result.event_date_end
+        ? clampOccurrenceDate(result.event_date_end, now)
+        : undefined;
+
       return {
-        event_date: result.event_date || new Date().toISOString(),
-        event_date_end: result.event_date_end || undefined,
+        event_date: (eventDate ?? now).toISOString(),
+        event_date_end: eventDateEnd?.toISOString(),
         location_ids: result.location_ids || [],
         participant_ids: result.participant_ids || [],
         tags: result.tags || [],

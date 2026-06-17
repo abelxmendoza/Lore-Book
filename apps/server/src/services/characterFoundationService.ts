@@ -18,15 +18,28 @@ import { v4 as uuid } from 'uuid';
 import { logger } from '../logger';
 import { splitPersonName } from '../utils/nameNormalization';
 import { shouldDeferCharacterPromotion } from '../utils/entityMentionClassifier';
+import { parseKinshipFromName } from './kinship/kinshipGlossary';
 import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities/entityClassifier';
 import { characterRegistry } from './characterRegistry';
+import { characterAuthorityService } from './characterAuthorityService';
 import { assignCharacterAvatar } from './characterAvatarService';
+import { mergeOntologyIntoMetadata } from './ontology/ontologyEnrichmentService';
 import { supabaseAdmin } from './supabaseClient';
 import type { PeoplePlaceEntity } from '../types';
 
 function parseNameParts(fullName: string): { firstName: string; lastName: string } {
   const parts = splitPersonName(fullName);
   return { firstName: parts.firstName, lastName: parts.lastName ?? '' };
+}
+
+function kinshipMetadata(name: string): Record<string, string> {
+  const parsed = parseKinshipFromName(name);
+  if (!parsed) return {};
+  return {
+    kinship_role: parsed.role.toLowerCase(),
+    kinship_label: parsed.canonicalLabel,
+    relationship_type: 'family',
+  };
 }
 
 type CharacterRow = {
@@ -127,6 +140,7 @@ class CharacterFoundationService {
     if (existingByEntityId?.[0]) {
       const existing = existingByEntityId[0] as CharacterRow;
       await this.updateCharacter(existing, entity);
+      await characterAuthorityService.linkSourceRecord(userId, existing.id, 'people_places', entity.id, entity.name, 'source_entity', 1);
       logger.debug({ characterId: existing.id, name: entity.name }, 'Updated existing character');
       return existing.id;
     }
@@ -153,6 +167,7 @@ class CharacterFoundationService {
     }
     if (decision.action === 'merge') {
       await characterRegistry.mergeMention(userId, decision.characterId, decision.cleanName, { source_entity_id: entity.id });
+      await characterAuthorityService.linkSourceRecord(userId, decision.characterId, 'people_places', entity.id, entity.name, 'registry_merge', 0.95);
       logger.info({ mention: entity.name, mergedInto: decision.matchedName }, 'Registry merged foundation mention into existing character');
       return decision.characterId;
     }
@@ -182,7 +197,7 @@ class CharacterFoundationService {
       first_appearance: firstAppearance,
       tags: [],
       avatar_url: avatarUrl,
-      metadata: {
+      metadata: mergeOntologyIntoMetadata({
         source_entity_id: entity.id,
         mention_count: entity.total_mentions,
         source_memory_count: entity.related_entries?.length ?? 0,
@@ -191,7 +206,8 @@ class CharacterFoundationService {
         generated_at: new Date().toISOString(),
         first_name: firstName || undefined,
         last_name: lastName || undefined,
-      },
+        ...kinshipMetadata(cleanedName),
+      }, cleanedName, entity.type),
     };
 
     const { error } = await supabaseAdmin.from('characters').insert(character);
@@ -201,6 +217,8 @@ class CharacterFoundationService {
     }
 
     logger.info({ characterId, name: entity.name, aliases }, 'Created new character');
+    await characterAuthorityService.registerCharacterAuthority(userId, characterId, cleanedName, aliases);
+    await characterAuthorityService.linkSourceRecord(userId, characterId, 'people_places', entity.id, cleanedName, 'source_entity', 1);
     return characterId;
     });
   }
@@ -228,14 +246,14 @@ class CharacterFoundationService {
         first_appearance: firstAppearance,
         updated_at: new Date().toISOString(),
         ...(existing.avatar_url ? {} : { avatar_url: await assignCharacterAvatar(existing.id) }),
-        metadata: {
+        metadata: mergeOntologyIntoMetadata({
           ...(existing.metadata ?? {}),
           source_entity_id: entity.id,
           mention_count: entity.total_mentions,
           source_memory_count: entity.related_entries?.length ?? 0,
           source_entry_ids: entity.related_entries ?? [],
           last_refreshed_at: new Date().toISOString(),
-        },
+        }, existing.name, entity.type),
       })
       .eq('id', existing.id);
   }
@@ -489,6 +507,7 @@ class CharacterFoundationService {
         generated_at: new Date().toISOString(),
         first_name: firstName || undefined,
         last_name: lastName || undefined,
+        ...kinshipMetadata(cleanedName),
       },
     });
 

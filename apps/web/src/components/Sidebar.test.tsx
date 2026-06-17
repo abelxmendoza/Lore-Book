@@ -33,7 +33,6 @@ vi.mock('../utils/routeMapping', () => ({
     characters: '/characters',
     locations: '/locations',
     timeline: '/timeline',
-    search: '/search',
     discovery: '/discovery',
     perceptions: '/perceptions',
     events: '/events',
@@ -89,7 +88,6 @@ describe('Sidebar', () => {
     expect(screen.getAllByRole('button', { name: /Open characters view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open locations view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open life log/i }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole('button', { name: /Open universal search/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open groups view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open skills view/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole('button', { name: /Open love and relationships/i }).length).toBeGreaterThanOrEqual(1);

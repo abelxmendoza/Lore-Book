@@ -1,15 +1,18 @@
 import { useNavigate } from 'react-router-dom';
 import { Users, MapPin, Building2 } from 'lucide-react';
 
-interface EntityChip {
+export interface EntityChip {
   id: string;
   name: string;
   type: 'character' | 'location' | 'organization';
+  confidence?: number;
+  provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
+  mentionStatus?: 'confirmed' | 'mentioned_only';
 }
 
 interface EntityChipsRowProps {
   entities: EntityChip[];
-  /** Leading label; defaults to the per-message "mentioned:" */
+  /** Leading label; defaults to the per-message "detected:" */
   label?: string;
   /** Max chips before collapsing to "+N more" */
   max?: number;
@@ -37,9 +40,27 @@ const COLOR = {
   organization: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20',
 };
 
+const PROVENANCE_LABEL: Record<NonNullable<EntityChip['provenance']>, string> = {
+  character_book: 'Character Book',
+  location_book: 'Location Book',
+  organization_book: 'Organizations',
+  omega_entity: 'Detected (omega)',
+};
+
+function chipTitle(entity: EntityChip, mode: EntityChipsRowProps['mode'], selected: boolean): string {
+  if (mode === 'focus') {
+    return selected ? `Clear focus on ${entity.name}` : `Focus next message on ${entity.name}`;
+  }
+  const parts = [`${entity.name} (${entity.type})`];
+  if (entity.provenance) parts.push(`source: ${PROVENANCE_LABEL[entity.provenance]}`);
+  if (entity.confidence != null) parts.push(`confidence: ${Math.round(entity.confidence * 100)}%`);
+  if (entity.mentionStatus === 'mentioned_only') parts.push('status: detected, not yet confirmed');
+  return parts.join(' · ');
+}
+
 export const EntityChipsRow = ({
   entities,
-  label = 'mentioned:',
+  label = 'detected:',
   max = 5,
   mode = 'navigate',
   selectedId = null,
@@ -66,22 +87,18 @@ export const EntityChipsRow = ({
       <span className="text-[10px] text-white/30 mr-0.5">{label}</span>
       {visible.map(entity => {
         const selected = mode === 'focus' && selectedId === entity.id;
+        const tentative = entity.mentionStatus === 'mentioned_only' || entity.provenance === 'omega_entity';
         return (
         <button
           key={entity.id}
           type="button"
           onClick={() => handleClick(entity)}
-          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${COLOR[entity.type]} ${selected ? 'ring-2 ring-primary/80 ring-offset-1 ring-offset-black/80' : ''}`}
-          title={
-            mode === 'focus'
-              ? selected
-                ? `Clear focus on ${entity.name}`
-                : `Focus next message on ${entity.name}`
-              : `View ${entity.type}: ${entity.name}`
-          }
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${COLOR[entity.type]} ${tentative ? 'border-dashed opacity-90' : ''} ${selected ? 'ring-2 ring-primary/80 ring-offset-1 ring-offset-black/80' : ''}`}
+          title={chipTitle(entity, mode, selected)}
         >
           {ICON[entity.type]}
           <span>{entity.name}</span>
+          {tentative && <span className="text-[9px] opacity-60">?</span>}
         </button>
         );
       })}

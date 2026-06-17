@@ -15,6 +15,8 @@ import { openai } from '../lib/openai';
 import { jaroWinkler } from '../utils/jaroWinkler';
 import { normalizeNameKey } from '../utils/nameNormalization';
 import { classifyEntity, toOmegaType } from './entities/entityClassifier';
+import { expandEntityCandidates } from './kinship/multiEntitySplitter';
+import { extractKinshipMentions } from './kinship/kinshipGlossary';
 import { resolveWithCore } from './entities/entityResolutionBridge';
 import type { ResolutionContext } from './entities/entityResolutionCore';
 import type {
@@ -255,8 +257,13 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
           };
         });
 
-      return uniqueEntities([...deterministicCandidates, ...llmEntities])
-        .filter(entity => entity.type !== 'UNKNOWN');
+      const expanded = expandEntityCandidates(text, [...deterministicCandidates, ...llmEntities]);
+      return uniqueEntities(
+        expanded.map((e) => ({
+          name: e.name,
+          type: (e.type === 'UNKNOWN' ? 'PERSON' : e.type) as EntityType,
+        }))
+      ).filter((entity) => entity.type !== 'UNKNOWN');
     } catch (error: any) {
       // FIX 3: Never downgrade errors - throw instead of returning empty
       // FIX 4: Rate-limit circuit breaker
@@ -286,13 +293,24 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
       }
     }
 
-    return [...candidates]
+    for (const kin of extractKinshipMentions(text)) {
+      candidates.add(kin.sourcePhrase);
+    }
+
+    const base = [...candidates]
       .map(name => {
         const classification = classifyEntity(name, text);
         return { name, type: toOmegaType(classification.type) as EntityType, confidence: classification.confidence };
       })
       .filter(entity => entity.confidence >= 0.8 && entity.type !== 'UNKNOWN')
       .map(({ name, type }) => ({ name, type }));
+
+    return uniqueEntities(
+      expandEntityCandidates(text, base).map((e) => ({
+        name: e.name,
+        type: (e.type === 'UNKNOWN' ? 'PERSON' : e.type) as EntityType,
+      }))
+    );
   }
 
   /**

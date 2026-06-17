@@ -35,9 +35,11 @@ export async function extractTextFromBuffer(
   if (fileType === 'pdf') {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParseModule = require('pdf-parse');
-      const pdfParse: (buf: Buffer) => Promise<{ text: string }> = pdfParseModule.default ?? pdfParseModule;
-      const pdfData = await pdfParse(buffer);
+      const { PDFParse } = require('pdf-parse') as {
+        PDFParse: new (opts: { data: Buffer }) => { getText: () => Promise<{ text: string }> };
+      };
+      const parser = new PDFParse({ data: buffer });
+      const pdfData = await parser.getText();
       return pdfData.text?.trim() ?? '';
     } catch (error) {
       logger.error({ error, fileType }, 'Failed to parse PDF file');
