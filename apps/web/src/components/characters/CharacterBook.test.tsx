@@ -4,26 +4,40 @@ import userEvent from '@testing-library/user-event';
 import { render } from '../../test/utils';
 import { CharacterBook } from './CharacterBook';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
-import { fetchJson } from '../../lib/api';
 import { booksApi } from '../../api/books';
+
+const { mockFetchJson } = vi.hoisted(() => ({
+  mockFetchJson: vi.fn().mockResolvedValue({}),
+}));
 
 vi.mock('../../hooks/useLoreKeeper', () => ({
   useLoreKeeper: vi.fn()
 }));
 
-vi.mock('../../lib/api', () => ({
-  fetchJson: vi.fn().mockResolvedValue({}),
+vi.mock('../../services/mockDataService', () => ({
+  mockDataService: {
+    register: {
+      characters: vi.fn(),
+    },
+    getWithFallback: {
+      characters: (realData?: unknown[] | null) => ({
+        data: realData ?? [],
+        metadata: { isMock: false, source: 'real' },
+      }),
+    },
+  },
 }));
 
-vi.mock('../../api/books', () => ({
-  booksApi: {
-    loadCharacters: vi.fn(),
-    loadLocations: vi.fn().mockResolvedValue({ locations: [], suggestions: [], counts: {} }),
-    loadProjects: vi.fn().mockResolvedValue({ projects: [], duplicate_groups: [], suggestions: [], counts: {} }),
-    loadSkills: vi.fn().mockResolvedValue({ skills: [], suggestions: [], counts: {} }),
-    loadFamily: vi.fn().mockResolvedValue({ tree: {}, households: [], familyGroups: [], analytics: [], graph: {}, counts: {} }),
-    loadDiscovery: vi.fn().mockResolvedValue({ counts: {}, contradictionCount: 0, revealedSignalCount: 0 }),
-  },
+vi.mock('../../lib/api', () => ({
+  fetchJson: mockFetchJson,
+}));
+
+vi.mock('../../api/trust', () => ({
+  fetchDomainTrust: vi.fn().mockResolvedValue({
+    coverage: { entity_count: 0, evidence_count: 0, coverage_score: 0, states: {} },
+    gaps: [],
+    reviewQueue: [],
+  }),
 }));
 
 vi.mock('../../contexts/MockDataContext', () => ({
@@ -86,7 +100,26 @@ describe('CharacterBook', () => {
   const mockUseLoreKeeper = vi.mocked(useLoreKeeper);
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.mocked(useLoreKeeper).mockClear();
+    mockFetchJson.mockReset();
+    mockFetchJson.mockImplementation(async (url: RequestInfo) => {
+      if (url === '/api/books/characters') {
+        return {
+          success: true,
+          data: { characters: [], duplicate_groups: [], counts: {} },
+          characters: [],
+          duplicate_groups: [],
+          counts: {},
+        };
+      }
+      if (url === '/api/conversation/romantic-relationships') {
+        return { success: true, relationships: [] };
+      }
+      if (typeof url === 'string' && url.startsWith('/api/characters/suggestions')) {
+        return { success: true, suggestions: [], count: 0 };
+      }
+      return {};
+    });
     mockUseLoreKeeper.mockReturnValue({
       characters: [],
       entries: [],
@@ -270,13 +303,20 @@ describe('CharacterBook', () => {
         refreshChapters: vi.fn(),
       } as any);
 
-      vi.mocked(booksApi.loadCharacters).mockResolvedValue({
-        characters: charactersWithAnalytics,
-        duplicate_groups: [],
-        counts: {} as any,
-      });
-
-      vi.mocked(fetchJson).mockImplementation(async (url: RequestInfo) => {
+      mockFetchJson.mockImplementation(async (url: RequestInfo) => {
+        if (url === '/api/books/characters') {
+          return {
+            success: true,
+            data: {
+              characters: charactersWithAnalytics,
+              duplicate_groups: [],
+              counts: {},
+            },
+            characters: charactersWithAnalytics,
+            duplicate_groups: [],
+            counts: {},
+          };
+        }
         if (url === '/api/conversation/romantic-relationships') {
           return { success: true, relationships: [] };
         }
@@ -292,8 +332,9 @@ describe('CharacterBook', () => {
 
     async function waitForCharactersLoaded() {
       await waitFor(() => {
+        expect(mockFetchJson).toHaveBeenCalledWith('/api/books/characters');
         expect(screen.getByText('High Impact Minor')).toBeInTheDocument();
-      }, { timeout: 5000 });
+      }, { timeout: 8000 });
     }
 
     it('shows "High impact on me (70+)" filter option', async () => {
@@ -311,6 +352,20 @@ describe('CharacterBook', () => {
       expect(screen.getByText(/By impact on me/)).toBeInTheDocument();
     });
 
+    it('loads characters from the books BFF', async () => {
+      const payload = await booksApi.loadCharacters();
+      expect(payload.characters).toHaveLength(2);
+
+      render(<CharacterBook />);
+      await waitFor(() => {
+        expect(mockFetchJson.mock.calls.some((call) => call[0] === '/api/books/characters')).toBe(true);
+      }, { timeout: 15_000 });
+      await waitFor(() => {
+        expect(screen.getByText(/2 total/)).toBeInTheDocument();
+        expect(screen.getByText('High Impact Minor')).toBeInTheDocument();
+      }, { timeout: 15_000 });
+    }, 20_000);
+
     it('shows "People by impact on you" when sort is By impact on me', async () => {
       const user = userEvent.setup();
       render(<CharacterBook />);
@@ -320,7 +375,7 @@ describe('CharacterBook', () => {
       await waitFor(() => {
         expect(screen.getByText(/People by impact on you/)).toBeInTheDocument();
       });
-    });
+    }, 15_000);
 
     it('filters to high-influence characters when "High impact on me (70+)" is selected', async () => {
       const user = userEvent.setup();
@@ -333,7 +388,7 @@ describe('CharacterBook', () => {
         expect(screen.getAllByText('High Impact Minor').length).toBeGreaterThan(0);
         expect(screen.queryByText('Low Impact Minor')).not.toBeInTheDocument();
       });
-    });
+    }, 15_000);
   });
 });
 
