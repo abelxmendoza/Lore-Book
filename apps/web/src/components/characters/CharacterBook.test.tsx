@@ -105,6 +105,10 @@ describe('CharacterBook', () => {
   beforeEach(() => {
     impactDemoMode.current = false;
     impactDemoCharacters.current = [];
+    mockGetWithFallbackCharacters.mockImplementation((realData?: unknown[] | null, useMock?: boolean) => ({
+      data: useMock ? impactDemoCharacters.current : (realData ?? []),
+      metadata: { isMock: !!useMock, source: useMock ? 'mock' : 'real' },
+    }));
     vi.mocked(useLoreKeeper).mockClear();
     mockFetchJson.mockReset();
     mockFetchJson.mockImplementation(async (url: RequestInfo) => {
