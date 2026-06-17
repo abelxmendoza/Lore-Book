@@ -155,6 +155,77 @@ describe('useChatThreads.hydrateThreadMessages', () => {
     expect(hydrated?.messages).toHaveLength(2);
   });
 
+  it('hydrates mentionedEntities from assistant message metadata', async () => {
+    mockFetchJson.mockImplementation(async (url: string, opts?: RequestInit & { method?: string }) => {
+      const method = opts?.method;
+      if (method === 'DELETE' && String(url).includes('/threads/')) {
+        throw new Error('409 protected');
+      }
+      if (url.includes('/threads/recover-orphans')) return { success: true, recovered: 0 };
+      if (url.includes('/thread-health/repair')) return { repaired: 0, report: {} };
+      if (url.includes('/threads?')) {
+        return {
+          success: true,
+          threads: [
+            {
+              id: 'thread-entities',
+              title: 'Entity reload',
+              updated_at: '2026-06-01T00:00:02Z',
+              metadata: {},
+            },
+          ],
+          total: 1,
+          hasMore: false,
+          nextCursor: null,
+        };
+      }
+      if (url.includes('/ensure-visible')) {
+        return { success: true, thread: { title: 'Entity reload', updatedAt: '2026-06-01T00:00:02Z' } };
+      }
+      if (url.includes('/messages')) {
+        return {
+          success: true,
+          messages: [
+            {
+              id: 'db-u-entities',
+              role: 'user',
+              content: 'I visited Tía Maria in San Diego.',
+              created_at: '2026-06-01T00:00:00Z',
+              metadata: {},
+            },
+            {
+              id: 'db-a-entities',
+              role: 'assistant',
+              content: 'That sounds like a meaningful visit.',
+              created_at: '2026-06-01T00:00:01Z',
+              metadata: {
+                mentionedEntities: [
+                  { id: 'c1', name: 'Tía Maria', type: 'character' },
+                  { id: 'l1', name: 'San Diego', type: 'location' },
+                ],
+                saved_from_stream: true,
+              },
+            },
+          ],
+        };
+      }
+      return { success: true };
+    });
+
+    const { result } = renderHook(() => useChatThreads());
+    await waitFor(() => expect(result.current.threadsReady).toBe(true));
+
+    await act(async () => {
+      await result.current.hydrateThreadMessages('thread-entities');
+    });
+
+    const assistant = result.current.getThread('thread-entities')?.messages.find((m) => m.role === 'assistant');
+    expect(assistant?.mentionedEntities).toEqual([
+      { id: 'c1', name: 'Tía Maria', type: 'character' },
+      { id: 'l1', name: 'San Diego', type: 'location' },
+    ]);
+  });
+
   it('restores thread in list when protected delete fails', async () => {
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsReady).toBe(true));

@@ -406,6 +406,7 @@ lorekeeper/
 | [docs/architecture/COGNITION_RUNTIME.md](docs/architecture/COGNITION_RUNTIME.md) | Pipeline, mode router, extraction types |
 | [docs/thread-intelligence-architecture.md](docs/thread-intelligence-architecture.md) | Episode segmentation, thread cache, durability |
 | [docs/location-domain-health-report.md](docs/location-domain-health-report.md) | Canonical location authority consolidation |
+| [docs/api-canonical-map.md](docs/api-canonical-map.md) | Canonical API namespaces, BFF routes, deprecation aliases |
 
 ---
 

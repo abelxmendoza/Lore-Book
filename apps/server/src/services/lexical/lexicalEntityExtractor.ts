@@ -2,6 +2,7 @@
  * Candidate entity extraction — proper nouns, organizations, skills, roles, dates.
  */
 import { discoverEntities } from '../ontology/lexicalIntelligence';
+import { mapDomainToLexicalEntityType } from '../ontology/canonical';
 import type { LexicalEntity, LexicalEntityType } from './lexicalTypes';
 import { normalizeLexicalText, padForScan, titleCase } from './lexicalNormalizer';
 
@@ -68,7 +69,7 @@ export function extractLexicalEntities(text: string): LexicalEntity[] {
   for (const d of discoverEntities(text)) {
     pushEntity(out, seen, {
       surface: d.surface,
-      type: mapDomainToEntityType(d.domain, d.category),
+      type: mapDomainToLexicalEntityType(d.domain, d.category),
       subcategory: d.subcategory ?? d.category,
       confidence: d.confidence,
       source: d.reason,
@@ -173,23 +174,14 @@ export function extractLexicalEntities(text: string): LexicalEntity[] {
     if (out.some((e) => normalizeLexicalText(e.surface) === normalizeLexicalText(pn))) continue;
     pushEntity(out, seen, {
       surface: pn,
-      type: 'PERSON',
-      confidence: 0.45,
+      type: 'OBJECT',
+      subcategory: 'PROPER_NOUN',
+      confidence: 0.35,
       source: 'proper_noun',
     });
   }
 
   return out;
-}
-
-function mapDomainToEntityType(domain: string, category: string): LexicalEntityType {
-  if (category === 'FAMILY' || domain === 'PERSON') return 'PERSON';
-  if (domain === 'LOCATION') return 'PLACE';
-  if (domain === 'EVENT') return 'EVENT';
-  if (domain === 'TIME') return 'TIME';
-  if (domain === 'PROJECT' || category === 'INITIATIVE') return 'PROJECT';
-  if (category === 'ORGANIZATION') return 'ORGANIZATION';
-  return 'PERSON';
 }
 
 export { titleCase, padForScan };

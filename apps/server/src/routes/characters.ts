@@ -28,6 +28,12 @@ import {
   filterValidAliases,
   shouldMergeCharacterRecords,
 } from '../services/characters/aliasConstraintService';
+import {
+  confirmPeripheral,
+  dismissPeripheral,
+  listPeripheralsForCharacter,
+  promotePeripheralToCharacter,
+} from '../services/relationshipPeripheralService';
 
 const router = Router();
 
@@ -2288,6 +2294,53 @@ router.post('/classify-backfill', requireAuth, async (req: AuthenticatedRequest,
     res.status(500).json({ error: 'Backfill failed' });
   }
 });
+
+// GET /api/characters/:id/peripherals — vicarious links (family, social, work, etc.)
+router.get(
+  '/:id/peripherals',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const characterId = String(req.params.id);
+    const domain = req.query.domain as string | undefined;
+    const includeDismissed = req.query.includeDismissed === 'true';
+    const peripherals = await listPeripheralsForCharacter(userId, characterId, {
+      domain: domain as import('../services/ontology/vicariousRelationshipIntelligence').RelationshipPeripheryDomain | undefined,
+      includeDismissed,
+    });
+    res.json({ success: true, peripherals });
+  })
+);
+
+router.post(
+  '/:id/peripherals/:peripheralId/confirm',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const peripheral = await confirmPeripheral(userId, String(req.params.peripheralId));
+    res.json({ success: true, peripheral });
+  })
+);
+
+router.post(
+  '/:id/peripherals/:peripheralId/dismiss',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const peripheral = await dismissPeripheral(userId, String(req.params.peripheralId));
+    res.json({ success: true, peripheral });
+  })
+);
+
+router.post(
+  '/:id/peripherals/:peripheralId/promote',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const result = await promotePeripheralToCharacter(userId, String(req.params.peripheralId));
+    res.json({ success: true, ...result });
+  })
+);
 
 // GET /api/characters/:id/conversations
 // Conversation threads where this character was mentioned (origin + subsequent).

@@ -66,6 +66,8 @@ test.describe('Discovery Hub — panels and navigation', () => {
   test('relationships panel loads', async ({ page }) => {
     await page.goto('/discovery/relationships?mockData=true', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/discovery\/relationships/);
+    await expect(page.getByTestId('periphery-intelligence-card')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/vicarious network intelligence/i)).toBeVisible();
   });
 
   test('sidebar discovery nav links work on desktop', async ({ page }, testInfo) => {

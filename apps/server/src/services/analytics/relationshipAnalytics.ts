@@ -5,6 +5,7 @@
 
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
+import { getPeripheryAnalytics } from '../relationshipPeripheralService';
 
 import { BaseAnalyticsModule } from './base';
 import type { AnalyticsPayload, MemoryData, CharacterData } from './types';
@@ -80,6 +81,11 @@ export class RelationshipAnalyticsModule extends BaseAnalyticsModule {
     
     // NEW: Compute heatmap
     const heatmap = this.computeHeatmapMatrix(memories, characters);
+
+    const peripheryIntelligence = await getPeripheryAnalytics(userId).catch((err) => {
+      logger.debug({ err, userId }, 'Periphery analytics unavailable');
+      return null;
+    });
 
     // Build enhanced graph with additional metadata
     const characterMap = new Map(characters.map(c => [c.id, c]));
@@ -159,6 +165,7 @@ export class RelationshipAnalyticsModule extends BaseAnalyticsModule {
         forecast,
         arcAppearances,
         heatmap,
+        peripheryIntelligence,
       },
     };
 
@@ -1070,6 +1077,7 @@ export class RelationshipAnalyticsModule extends BaseAnalyticsModule {
         forecast: [],
         arcAppearances: [],
         heatmap: [],
+        peripheryIntelligence: null,
       },
     };
   }

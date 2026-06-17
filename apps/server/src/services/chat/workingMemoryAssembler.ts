@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '../supabaseClient';
-import { classifyEntity, type EntityClass } from '../entities/entityClassifier';
+import { classifyEntity, type EntityClass, type RootType } from '../entities/entityClassifier';
 import { normalizeNameKey } from '../../utils/nameNormalization';
 import {
   classifyTemporalQuery,
@@ -37,6 +37,7 @@ export type WorkingMemoryEntity = {
   id: string | null;
   name: string;
   type: EntityClass | string;
+  rootType?: RootType;
   source: 'characters' | 'locations' | 'organizations' | 'people_places' | 'projects' | 'question';
   confidence: number;
 };
@@ -636,6 +637,7 @@ async function resolveTargetEntities(
         id: row.id,
         name: row.name,
         type: row.type ?? classification.type,
+        rootType: classification.rootType,
         source: 'people_places',
         confidence: 0.82,
       });
@@ -643,7 +645,7 @@ async function resolveTargetEntities(
   }
 
   if (entities.length === 0) {
-    entities.push({ id: null, name: target, type: classification.type, source: 'question', confidence: classification.confidence });
+    entities.push({ id: null, name: target, type: classification.type, rootType: classification.rootType, source: 'question', confidence: classification.confidence });
   }
 
   const seen = new Set<string>();

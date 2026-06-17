@@ -231,6 +231,26 @@ class InferenceOrchestrator {
         }
         return { updatedFields: insightKeys.length, fields: insightKeys };
       }
+      case 'projects_suggestions': {
+        const { projectSuggestionService } = await import('../projects/projectSuggestionService');
+        const pending = await projectSuggestionService.getPendingSuggestions(userId);
+        return { pending: pending.length };
+      }
+      case 'skills_suggestions': {
+        const { skillSuggestionService } = await import('../skills/skillSuggestionService');
+        const pending = await skillSuggestionService.getPendingSuggestions(userId);
+        return { pending: pending.length };
+      }
+      case 'quests_suggestions': {
+        const { questSuggestionService } = await import('../quests/questSuggestionService');
+        const pending = await questSuggestionService.getPendingSuggestions(userId);
+        return { pending: pending.length };
+      }
+      case 'romantic_rescan': {
+        if (tier !== 't2') return { skipped: true };
+        const { romanticConversationRescanService } = await import('../romanticConversationRescanService');
+        return (await romanticConversationRescanService.rescan(userId)) as unknown as Record<string, unknown>;
+      }
       default:
         return {};
     }

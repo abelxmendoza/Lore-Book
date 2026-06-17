@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase, TreePine, FileText } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase, TreePine, FileText } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -309,6 +309,20 @@ const SidebarContent = ({
           >
             <FileText className="h-4 w-4 text-primary" aria-hidden="true" />
             Documents
+          </button>
+          <button
+            onClick={() => handleSurfaceChange('gaps')}
+            aria-label="Open knowledge gaps and coverage"
+            aria-current={activeSurface === 'gaps' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'gaps'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <HelpCircle className="h-4 w-4 text-primary" aria-hidden="true" />
+            Knowledge Gaps
           </button>
           <button
             onClick={() => handleSurfaceChange('discovery')}

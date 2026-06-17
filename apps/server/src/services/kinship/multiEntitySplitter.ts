@@ -41,13 +41,13 @@ export function expandEntityCandidates(
     const parts = splitCompoundMention(c.name);
     for (const part of parts) {
       const classification = classifyEntity(part, text);
-      push(part, c.type === 'UNKNOWN' ? toOmegaType(classification.type) as EntityType : c.type);
+      push(part, c.type === 'UNKNOWN' ? toOmegaType(classification.rootType) as EntityType : c.type);
     }
   }
 
   for (const kin of extractKinshipMentions(text)) {
     const classification = classifyEntity(kin.sourcePhrase, text);
-    const type = toOmegaType(classification.type);
+    const type = toOmegaType(classification.rootType);
     if (type === 'PERSON' || type === 'CHARACTER' || type === 'UNKNOWN') {
       push(kin.sourcePhrase, 'PERSON', kin.role.toLowerCase());
     }

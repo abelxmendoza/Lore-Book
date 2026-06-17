@@ -7,6 +7,7 @@ import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { ProjectProfileCard, type ProjectCardData } from './ProjectProfileCard';
 import { ProjectDetailModal } from './ProjectDetailModal';
 import { DetectedProjectSuggestions } from './DetectedProjectSuggestions';
+import { BookTrustSummary } from '../trust/BookTrustSummary';
 
 interface DuplicateGroup {
   match_type: 'exact' | 'containment';
@@ -203,6 +204,7 @@ export const ProjectBook = () => {
           <div>
             <h1 className="text-2xl font-bold text-white tracking-tight">Projects Book</h1>
             <p className="text-sm text-white/45">{projects.length} active threads in your life</p>
+            <BookTrustSummary domain="projects" className="mt-1" />
           </div>
         </div>
         <button

@@ -9,6 +9,7 @@ import { familyGraphService } from '../services/kinship/familyGraphService';
 import { householdService } from '../services/kinship/householdService';
 import { familyTreeService } from '../services/familyTreeService';
 import { supabaseAdmin } from '../services/supabaseClient';
+import { listPeripheralsForUser } from '../services/relationshipPeripheralService';
 
 const router = Router();
 
@@ -72,6 +73,19 @@ router.get(
     const userId = req.user!.id;
     const analytics = await familyGraphService.getAnalytics(userId);
     res.json({ success: true, analytics });
+  })
+);
+
+router.get(
+  '/peripherals',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const domain = (req.query.domain as string) || 'family';
+    const peripherals = await listPeripheralsForUser(userId, {
+      domain: domain as import('../services/ontology/vicariousRelationshipIntelligence').RelationshipPeripheryDomain,
+    });
+    res.json({ success: true, peripherals });
   })
 );
 

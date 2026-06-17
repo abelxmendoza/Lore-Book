@@ -9,18 +9,15 @@
  * relationships, temporal reasoning, and story synthesis.
  */
 import { GLOSSARY, type GlossaryEntry, type RootType } from './glossary';
+import { CANONICAL_ROOT_TYPES, CHARACTER_ELIGIBLE_ROOTS } from './canonical';
 
 export type { RootType } from './glossary';
 
 /** Stable root types — the governed top of the ontology (mirrors the classification sprint). */
-export const ROOT_TYPES: RootType[] = [
-  'PERSON', 'FAMILY', 'GROUP', 'ORGANIZATION', 'LOCATION', 'EVENT', 'PROJECT',
-  'PRODUCT', 'APP', 'BRAND', 'MEDIA', 'SKILL', 'GOAL', 'PET', 'VEHICLE',
-  'FOODDRINK', 'CONCEPT', 'TIME', 'UNKNOWN',
-];
+export const ROOT_TYPES: RootType[] = [...CANONICAL_ROOT_TYPES];
 
 /** Which roots may be promoted to a Character card. */
-export const CHARACTER_ELIGIBLE: ReadonlySet<RootType> = new Set<RootType>(['PERSON']);
+export const CHARACTER_ELIGIBLE: ReadonlySet<RootType> = CHARACTER_ELIGIBLE_ROOTS;
 
 /**
  * Discovery Hub panels — mirrors apps/web/src/components/discovery/DiscoveryHub.tsx routes.

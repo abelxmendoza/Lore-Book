@@ -41,6 +41,7 @@ import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
 import { CharacterTimelinePanel } from './CharacterTimelinePanel';
 import { CharacterKnowledgeBase } from './CharacterKnowledgeBase';
 import { CharacterMediaPanel } from './CharacterMediaPanel';
+import { RelationshipPeripheralsPanel } from './RelationshipPeripheralsPanel';
 import { isSelfCharacter, isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import {
@@ -156,7 +157,7 @@ type CharacterDetailModalProps = {
   isMainCharacter?: boolean;
 };
 
-type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'photos' | 'messages';
+type TabKey = 'info' | 'social' | 'relationships' | 'network' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'photos' | 'messages';
 
 const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
   { key: 'info',         label: 'Info',              shortLabel: 'Info',    icon: FileText },
@@ -165,6 +166,7 @@ const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof
   { key: 'photos',       label: 'Photo Gallery',     shortLabel: 'Photos',  icon: ImageIcon },
   { key: 'messages',     label: 'Messages',          shortLabel: 'Msgs',    icon: MessageSquare },
   { key: 'relationships', label: 'Connections',      shortLabel: 'Links',   icon: Network },
+  { key: 'network',       label: 'Their network',    shortLabel: 'Network', icon: Link2 },
   { key: 'history',      label: 'History',           shortLabel: 'History', icon: Calendar },
   { key: 'timeline',     label: 'Timeline',          shortLabel: 'Time',    icon: Clock },
   { key: 'insights',     label: 'Insights',          shortLabel: 'Insights', icon: BarChart3 },
@@ -2134,6 +2136,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     }`}
                     aria-current={isActive ? 'page' : undefined}
                     aria-label={tab.label}
+                    data-testid={tab.key === 'network' ? 'character-tab-network' : undefined}
                   >
                     <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
                     <span className="truncate">{tab.label}</span>
@@ -3722,6 +3725,15 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                   </div>
                 )}
               </div>
+            )}
+
+            {!loadingDetails && activeTab === 'network' && editedCharacter.id && (
+              <RelationshipPeripheralsPanel
+                anchorKind="character"
+                anchorId={editedCharacter.id}
+                anchorName={editedCharacter.name}
+                onUpdate={onUpdate}
+              />
             )}
 
             {!loadingDetails && activeTab === 'perceptions' && (

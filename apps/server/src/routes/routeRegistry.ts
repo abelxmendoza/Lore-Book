@@ -179,6 +179,13 @@ import { voidRouter } from './voids';
 import biasEthicsRouter from './biasEthics';
 import thoughtsRouter from './thoughts';
 import { countsRouter } from './counts';
+import { booksRouter } from './books';
+import { memoryNamespaceRouter } from './memoryNamespace';
+import { governanceRouter } from './governance';
+import { chatThreadsHealthRouter } from './chatThreadsHealth';
+import { narrativeThemeThreadsRouter } from './narrativeThemeThreads';
+import { trustRouter } from './trust';
+import { deprecateRoute } from '../middleware/deprecation';
 
 // ---------------------------------------------------------------------------
 
@@ -223,6 +230,48 @@ export const routeRegistry: RouteEntry[] = [
     requiresAuth: true,
     classification: 'CORE_RUNTIME',
     description: 'Lore inference orchestrator — sync materialized views across books',
+  },
+  {
+    path: '/api/books',
+    router: booksRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Books BFF — aggregate one-call payloads per LoreBook surface',
+  },
+  {
+    path: '/api/trust',
+    router: trustRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Trust Center — coverage, confidence, unknowns, conflicts, review queue',
+  },
+  {
+    path: '/api/memory',
+    router: memoryNamespaceRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Canonical memory namespace — claims, recall, coverage, graph recovery',
+  },
+  {
+    path: '/api/governance',
+    router: governanceRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Canonical governance — contradictions, alerts, belief reconciliation',
+  },
+  {
+    path: '/api/chat-threads',
+    router: chatThreadsHealthRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Chat thread durability health and repair (canonical)',
+  },
+  {
+    path: '/api/narrative/theme-threads',
+    router: narrativeThemeThreadsRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Saga/arc theme threads — canonical successor to /api/threads',
   },
   {
     path: '/api/counts',
@@ -635,14 +684,14 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/locations',
     router: locationsRouter,
-    requiresAuth: false,
+    requiresAuth: true,
     classification: 'CORE_RUNTIME',
     description: 'Location entity management — used in lorebook, character profiles, entity detail',
   },
   {
     path: '/api/projects',
     router: projectsRouter,
-    requiresAuth: false,
+    requiresAuth: true,
     classification: 'CORE_RUNTIME',
     description: 'Projects Book — canonical project entities (mirrors locations authority)',
   },
@@ -671,7 +720,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/knowledge',
     router: knowledgeRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Knowledge crystallization — durable claims with evidence traceability',
   },
 
@@ -1093,7 +1142,7 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/quests',
     router: questRouter,
-    classification: 'EXPERIMENTAL',
+    classification: 'CORE_RUNTIME',
     description: 'Quest system',
   },
   {
@@ -1328,14 +1377,14 @@ export function registerRoutes(
     seenPaths.add(entry.path);
 
     if (entry.requiresAuth === false) {
-      publicRoutesApp.use(entry.path, entry.router);
+      publicRoutesApp.use(entry.path, deprecateRoute(entry.path), entry.router);
       publicCount++;
       logger.debug(`Registered public route: ${entry.path}`);
     } else {
       const mountPath = entry.path.startsWith('/api')
         ? entry.path.slice(4) || '/'
         : entry.path;
-      protectedRoutesApp.use(mountPath, entry.router);
+      protectedRoutesApp.use(mountPath, deprecateRoute(entry.path), entry.router);
       protectedCount++;
       logger.debug(`Registered protected route: ${entry.path} -> ${mountPath}`);
     }

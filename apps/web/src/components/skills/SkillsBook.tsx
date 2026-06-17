@@ -20,6 +20,7 @@ import type { Skill, SkillCategory } from '../../types/skill';
 import { readSkillProfile } from '../../lib/skillProfile';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { format, subDays } from 'date-fns';
+import { BookTrustSummary } from '../trust/BookTrustSummary';
 
 const ITEMS_PER_PAGE = 12; // Fixed at 12 per page
 
@@ -470,6 +471,7 @@ export const SkillsBook: React.FC = () => {
               <p className="text-white/60">
                 {sortedSkills.length} skill{sortedSkills.length !== 1 ? 's' : ''} found
               </p>
+              <BookTrustSummary domain="skills" className="mt-1" />
             </div>
           </div>
         </div>

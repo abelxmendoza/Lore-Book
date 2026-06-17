@@ -4,7 +4,6 @@
  */
 import { Router } from 'express';
 
-import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { contradictionEngine } from '../services/contradiction/contradictionEngine';
 import { contradictionAlertService } from '../services/contradictionAlertService';

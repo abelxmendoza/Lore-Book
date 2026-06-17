@@ -15,8 +15,8 @@ import {
   applyRomanticLexicalHit,
   resolveRomanticPartner,
 } from './romanticLexicalIngestionService';
-import { ingestVicariousFromMessage } from './romanticPeripheralService';
-import { hasVicariousRomanticSignals } from './ontology/vicariousRomanticIntelligence';
+import { ingestRelationshipPeripheralsFromMessage } from './relationshipPeripheralService';
+import { hasVicariousRelationshipSignals } from './ontology/vicariousRelationshipIntelligence';
 import { supabaseAdmin } from './supabaseClient';
 
 export type RomanticRescanSummary = {
@@ -101,8 +101,8 @@ class RomanticConversationRescanService {
     }
 
     for (const episode of episodes) {
-      if (!hasVicariousRomanticSignals(episode.text)) continue;
-      const result = await ingestVicariousFromMessage(
+      if (!hasVicariousRelationshipSignals(episode.text)) continue;
+      const result = await ingestRelationshipPeripheralsFromMessage(
         userId,
         episode.text,
         episode.id,

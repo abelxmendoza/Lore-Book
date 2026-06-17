@@ -16,6 +16,7 @@ import { supabaseAdmin } from '../supabaseClient';
 import { countMissingAssistantTurns, hasOrderingConflict } from './threadDurabilityChecks';
 import { isGenericThreadTitle, deriveTitleFromMessages } from '../../utils/threadTitleUtils';
 import { loadThreadMessages } from './threadContentService';
+import { backfillMentionedEntitiesForUser } from '../chat/entityMentionBackfillService';
 
 const ORPHAN_AGE_MS = 60 * 60 * 1000;
 
@@ -205,7 +206,7 @@ class ThreadRecoveryService {
     };
   }
 
-  async repairUser(userId: string): Promise<{ repaired: number; results: RepairResult[] }> {
+  async repairUser(userId: string): Promise<{ repaired: number; results: RepairResult[]; entityBackfilled: number }> {
     const { sessions, messages } = await this.loadAll(userId);
     const bySession = this.groupBySession(messages);
     const results: RepairResult[] = [];
@@ -229,8 +230,9 @@ class ThreadRecoveryService {
         results.push(await this.repairThread(userId, s.id));
       }
     }
-    logger.info({ userId, repaired: results.length }, 'threadRecovery: repairUser complete');
-    return { repaired: results.length, results };
+    const entityBackfilled = await backfillMentionedEntitiesForUser(userId);
+    logger.info({ userId, repaired: results.length, entityBackfilled }, 'threadRecovery: repairUser complete');
+    return { repaired: results.length, results, entityBackfilled };
   }
 }
 

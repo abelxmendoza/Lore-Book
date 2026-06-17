@@ -23,7 +23,7 @@ import { classifyEntity, isCharacterEligible, isUnknownEntity } from './entities
 import { characterRegistry } from './characterRegistry';
 import { characterAuthorityService } from './characterAuthorityService';
 import { assignCharacterAvatar } from './characterAvatarService';
-import { mergeOntologyIntoMetadata } from './ontology/ontologyEnrichmentService';
+import { mergeOntologyIntoMetadataAsync } from './ontology/ontologyEnrichmentService';
 import { supabaseAdmin } from './supabaseClient';
 import type { PeoplePlaceEntity } from '../types';
 
@@ -189,6 +189,18 @@ class CharacterFoundationService {
 
     const { firstName, lastName } = parseNameParts(cleanedName);
     const avatarUrl = await assignCharacterAvatar(characterId, { archetype: entity.type === 'person' ? 'human' : null });
+    const metadata = await mergeOntologyIntoMetadataAsync({
+      source_entity_id: entity.id,
+      mention_count: entity.total_mentions,
+      source_memory_count: entity.related_entries?.length ?? 0,
+      source_entry_ids: entity.related_entries ?? [],
+      generated_by: 'character_foundation',
+      generated_at: new Date().toISOString(),
+      first_name: firstName || undefined,
+      last_name: lastName || undefined,
+      ...kinshipMetadata(cleanedName),
+    }, cleanedName, entity.type, { userId, rootType: 'PERSON' });
+
     const character: CharacterRow = {
       id: characterId,
       user_id: userId,
@@ -198,17 +210,7 @@ class CharacterFoundationService {
       first_appearance: firstAppearance,
       tags: [],
       avatar_url: avatarUrl,
-      metadata: mergeOntologyIntoMetadata({
-        source_entity_id: entity.id,
-        mention_count: entity.total_mentions,
-        source_memory_count: entity.related_entries?.length ?? 0,
-        source_entry_ids: entity.related_entries ?? [],
-        generated_by: 'character_foundation',
-        generated_at: new Date().toISOString(),
-        first_name: firstName || undefined,
-        last_name: lastName || undefined,
-        ...kinshipMetadata(cleanedName),
-      }, cleanedName, entity.type),
+      metadata,
     };
 
     const { error } = await supabaseAdmin.from('characters').insert(character);
@@ -240,6 +242,15 @@ class CharacterFoundationService {
       ? new Date(entity.first_mentioned_at).toISOString().split('T')[0]
       : existing.first_appearance;
 
+    const enrichedMetadata = await mergeOntologyIntoMetadataAsync({
+      ...(existing.metadata ?? {}),
+      source_entity_id: entity.id,
+      mention_count: entity.total_mentions,
+      source_memory_count: entity.related_entries?.length ?? 0,
+      source_entry_ids: entity.related_entries ?? [],
+      last_refreshed_at: new Date().toISOString(),
+    }, existing.name, entity.type, { userId: existing.user_id, rootType: 'PERSON' });
+
     await supabaseAdmin
       .from('characters')
       .update({
@@ -247,14 +258,7 @@ class CharacterFoundationService {
         first_appearance: firstAppearance,
         updated_at: new Date().toISOString(),
         ...(existing.avatar_url ? {} : { avatar_url: await assignCharacterAvatar(existing.id) }),
-        metadata: mergeOntologyIntoMetadata({
-          ...(existing.metadata ?? {}),
-          source_entity_id: entity.id,
-          mention_count: entity.total_mentions,
-          source_memory_count: entity.related_entries?.length ?? 0,
-          source_entry_ids: entity.related_entries ?? [],
-          last_refreshed_at: new Date().toISOString(),
-        }, existing.name, entity.type),
+        metadata: enrichedMetadata,
       })
       .eq('id', existing.id);
   }

@@ -8,6 +8,7 @@ export type RomanticPeripheral = {
   peripheral_person_id: string | null;
   peripheral_person_type: 'character' | 'omega_entity' | null;
   peripheral_surface: string;
+  domain?: 'romantic' | 'family' | 'social' | 'professional' | 'mentor' | 'adversarial' | 'creative';
   role: string;
   tier: 'suspected' | 'confirmed' | 'dismissed';
   confidence: number;

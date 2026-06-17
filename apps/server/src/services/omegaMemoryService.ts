@@ -253,7 +253,7 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
           const classification = classifyEntity(e.name, text);
           return {
             name: e.name,
-            type: toOmegaType(classification.type) as EntityType,
+            type: toOmegaType(classification.rootType) as EntityType,
           };
         });
 
@@ -300,7 +300,7 @@ Only extract entities clearly mentioned. Be conservative with confidence scores.
     const base = [...candidates]
       .map(name => {
         const classification = classifyEntity(name, text);
-        return { name, type: toOmegaType(classification.type) as EntityType, confidence: classification.confidence };
+        return { name, type: toOmegaType(classification.rootType) as EntityType, confidence: classification.confidence };
       })
       .filter(entity => entity.confidence >= 0.8 && entity.type !== 'UNKNOWN')
       .map(({ name, type }) => ({ name, type }));

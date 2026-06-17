@@ -35,6 +35,7 @@ import { isSelfCharacter } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import { impactOnUserWithPublicFigureCap, isPublicFigureCharacter } from '../../lib/publicFigure';
 import { CharacterAvatar } from './CharacterAvatar';
+import { BookTrustSummary } from '../trust/BookTrustSummary';
 
 // ── Demo filter-field normalization ──────────────────────────────────────────
 // Every category tab (proximity, mentioned, etc.) must have matches in demo
@@ -3184,6 +3185,7 @@ export const CharacterBook = () => {
               {characters.length} total · {filteredCharacters.length} shown
               {loading && ' · Loading...'}
             </p>
+            <BookTrustSummary domain="characters" className="mt-1" />
           </div>
           <div className="flex items-center gap-2">
             {/* My Family — always available: self card, family tree, same-name confirmation */}

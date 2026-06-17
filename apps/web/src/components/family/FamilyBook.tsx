@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { TreePine, Home, Users, BarChart3, Loader2 } from 'lucide-react';
+import { TreePine, Home, Users, BarChart3, Loader2, GitBranch } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
@@ -9,11 +9,12 @@ import { HierarchicalFamilyTree } from './HierarchicalFamilyTree';
 import { FamilyTreeView } from './FamilyTreeView';
 import { HouseholdDirectory, type HouseholdDTO } from './HouseholdDirectory';
 import { FamilyAnalyticsPanel, type RelationshipAnalyticDTO } from './FamilyAnalyticsPanel';
+import { FamilyExtendedNetworkPanel } from './FamilyExtendedNetworkPanel';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
 import type { FamilyTree } from '../../types/socialRoles';
 import type { Character } from '../characters/CharacterProfileCard';
 
-type Tab = 'tree' | 'households' | 'groups' | 'analytics';
+type Tab = 'tree' | 'households' | 'groups' | 'analytics' | 'extended';
 
 type SummaryResponse = {
   success: boolean;
@@ -80,6 +81,7 @@ export function FamilyBook() {
     { key: 'households', label: 'Households', icon: Home },
     { key: 'groups', label: 'Family Groups', icon: Users },
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { key: 'extended', label: 'Extended family', icon: GitBranch },
   ];
 
   return (
@@ -210,6 +212,12 @@ export function FamilyBook() {
           {tab === 'analytics' && (
             <FamilyAnalyticsPanel
               analytics={summary?.analytics ?? []}
+              onMemberClick={(id, name) => void openCharacter(id, name)}
+            />
+          )}
+
+          {tab === 'extended' && (
+            <FamilyExtendedNetworkPanel
               onMemberClick={(id, name) => void openCharacter(id, name)}
             />
           )}

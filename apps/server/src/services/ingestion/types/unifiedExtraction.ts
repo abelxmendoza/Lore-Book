@@ -32,8 +32,11 @@ export interface UnifiedSemanticUnit {
 }
 
 // ─── ENTITY LAYER ─────────────────────────────────────────────────────────────
+// LLM-facing entity types — map to canonical RootType via llmEntityTypeToRootType().
 
-export type EntityType = 'PERSON' | 'PLACE' | 'ORGANIZATION' | 'CONCEPT' | 'ANIMAL' | 'OBJECT';
+export type { LlmEntityType as EntityType } from '../../ontology/canonical';
+import type { LlmEntityType } from '../../ontology/canonical';
+export type EntityType = LlmEntityType;
 
 export interface UnifiedEntityAttribute {
   attribute: string;

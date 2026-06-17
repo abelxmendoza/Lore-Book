@@ -4,6 +4,14 @@ import { Calendar, Clock, AlertCircle, Sparkles, ArrowRight, Filter, HelpCircle,
 import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
+import { fetchTrustOverview } from '../../api/trust';
+import { TrustCoveragePanel } from '../trust/TrustCoveragePanel';
+import { useMockData } from '../../contexts/MockDataContext';
+import {
+  MOCK_ENTITY_KNOWLEDGE_GAPS,
+  MOCK_VOID_PERIODS,
+  MOCK_VOID_STATS,
+} from '../../mocks/knowledgeGaps';
 
 interface EntityKnowledgeGap {
   id: string;
@@ -44,24 +52,37 @@ interface VoidStats {
 }
 
 export const KnowledgeGapDashboard: React.FC = () => {
+  const { useMockData: isMockData } = useMockData();
   const [significanceFilter, setSignificanceFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
   const [voidData, setVoidData] = useState<{ voids: VoidPeriod[]; totalGaps: number } | null>(null);
   const [statsData, setStatsData] = useState<VoidStats | null>(null);
   const [entityGaps, setEntityGaps] = useState<EntityKnowledgeGap[]>([]);
+  const [trustOverview, setTrustOverview] = useState<Awaited<ReturnType<typeof fetchTrustOverview>> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
-        const [voidsResult, statsResult, gapsResult] = await Promise.all([
+
+        if (isMockData) {
+          setVoidData({ voids: MOCK_VOID_PERIODS, totalGaps: MOCK_VOID_STATS.totalGaps });
+          setStatsData(MOCK_VOID_STATS);
+          setEntityGaps(MOCK_ENTITY_KNOWLEDGE_GAPS);
+          setTrustOverview(await fetchTrustOverview());
+          return;
+        }
+
+        const [voidsResult, statsResult, gapsResult, trustResult] = await Promise.all([
           fetchJson<{ voids: VoidPeriod[]; totalGaps: number }>('/api/voids/gaps'),
           fetchJson<VoidStats>('/api/voids/stats'),
           fetchJson<{ gaps: EntityKnowledgeGap[] }>('/api/voids/knowledge-gaps').catch(() => ({ gaps: [] })),
+          fetchTrustOverview().catch(() => null),
         ]);
         setVoidData(voidsResult);
         setStatsData(statsResult);
         setEntityGaps(gapsResult.gaps ?? []);
+        setTrustOverview(trustResult);
       } catch (error) {
         console.error('Failed to fetch void data:', error);
         setVoidData({ voids: [], totalGaps: 0 });
@@ -77,8 +98,8 @@ export const KnowledgeGapDashboard: React.FC = () => {
         setIsLoading(false);
       }
     };
-    loadData();
-  }, []);
+    void loadData();
+  }, [isMockData]);
 
   if (isLoading) {
     return (
@@ -137,10 +158,14 @@ export const KnowledgeGapDashboard: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-white">Knowledge Gaps</h1>
           <p className="text-white/60 mt-1">
-            {stats?.totalGaps || 0} periods where your story is missing
+            Coverage, unknowns, and {stats?.totalGaps || 0} timeline periods to fill in
           </p>
         </div>
       </div>
+
+      {trustOverview && (
+        <TrustCoveragePanel overview={trustOverview} demoMode={isMockData} />
+      )}
 
       {/* Statistics Cards */}
       {stats && (

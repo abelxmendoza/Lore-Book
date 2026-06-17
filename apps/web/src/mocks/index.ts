@@ -100,6 +100,9 @@ export {
   ROMANTIC_LORE_CHARACTERS,
 } from './romanticLoreStory';
 export { MOCK_ROMANTIC_PERIPHERALS, getMockPeripheralsForRelationship } from './romanticPeripherals';
+export { MOCK_CHARACTER_PERIPHERALS, getMockPeripheralsForCharacter } from './characterPeripherals';
 export { MOCK_GOALS_VALUES_DATA } from './goalsValues';
 export { MOCK_MEMORY_PROPOSALS } from './memoryProposals';
 export { mockContradictions, mockContradictionDetails } from './contradictionData';
+export { getMockTrustOverview, getMockDomainTrust } from './trustOverview';
+export { MOCK_ENTITY_KNOWLEDGE_GAPS, MOCK_VOID_PERIODS, MOCK_VOID_STATS } from './knowledgeGaps';

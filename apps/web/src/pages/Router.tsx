@@ -310,6 +310,14 @@ export const Router = () => {
         }
       />
       <Route
+        path="/trust"
+        element={
+          <LazyRoute>
+            <Navigate to="/gaps" replace />
+          </LazyRoute>
+        }
+      />
+      <Route
         path="/saga"
         element={
           <LazyRoute>

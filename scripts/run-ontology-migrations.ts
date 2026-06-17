@@ -37,6 +37,8 @@ const MIGRATIONS = [
   'supabase/migrations/20260617140000_organizations_type_check.sql',
   'supabase/migrations/20260617140000_romantic_peripherals.sql',
   'supabase/migrations/20260617150000_user_inference_state.sql',
+  'supabase/migrations/20260617160000_dynamic_classifications.sql',
+  'supabase/migrations/20260617170000_classifications_swimlane_keywords.sql',
   'supabase/migrations/20260617210000_entity_authority.sql',
 ];
 

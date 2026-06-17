@@ -8,7 +8,11 @@ export type InferenceDomain =
   | 'character_rescan'
   | 'relationship_classify'
   | 'achievements_check'
-  | 'essence_profile';
+  | 'essence_profile'
+  | 'projects_suggestions'
+  | 'skills_suggestions'
+  | 'quests_suggestions'
+  | 'romantic_rescan';
 
 export type InferenceTier = 't1' | 't2';
 
@@ -50,12 +54,16 @@ export const T1_DOMAIN_ORDER: InferenceDomain[] = [
   'social_standing',
   'character_importance',
   'achievements_check',
+  'projects_suggestions',
+  'skills_suggestions',
+  'quests_suggestions',
 ];
 
 export const T2_EXTRA_DOMAINS: InferenceDomain[] = [
   'character_rescan',
   'relationship_classify',
   'essence_profile',
+  'romantic_rescan',
 ];
 
 export const ALL_DOMAINS: InferenceDomain[] = [...T1_DOMAIN_ORDER, ...T2_EXTRA_DOMAINS];

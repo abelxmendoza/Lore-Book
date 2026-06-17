@@ -23,6 +23,7 @@ import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
 import { mockDataService } from '../../services/mockDataService';
+import { BookTrustSummary } from '../trust/BookTrustSummary';
 import { useMockData } from '../../contexts/MockDataContext';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { DetectedLocationSuggestions } from './DetectedLocationSuggestions';
@@ -869,6 +870,7 @@ export const LocationBook = () => {
                     <p className="text-xs text-teal-300/40 mt-0.5">
                       Page {currentPage} of {totalPages} · {filteredLocations.length} places
                     </p>
+                    <BookTrustSummary domain="locations" className="mt-1" />
                   </div>
                 </div>
                 <div className="text-xs text-teal-300/35 font-mono">

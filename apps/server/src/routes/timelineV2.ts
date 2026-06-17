@@ -5,7 +5,7 @@ import type { AuthenticatedRequest } from '../middleware/auth';
 import { timelineService } from '../services/timelineV2';
 import { asyncHandler } from '../utils/asyncHandler';
 import chronologyRouter from './chronology';
-import timelineHierarchyRouter from './timelineHierarchy';
+import { timelineHierarchyRouter } from './timelineHierarchy';
 
 const router = Router();
 

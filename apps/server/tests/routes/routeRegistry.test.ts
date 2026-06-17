@@ -89,6 +89,21 @@ describe('Route Registry', () => {
     }
   });
 
+  it('registers Trust Center and canonical API namespaces as CORE_RUNTIME', () => {
+    const corePaths = routeRegistry
+      .filter((entry) => entry.classification === 'CORE_RUNTIME')
+      .map((entry) => entry.path);
+    const canonical = [
+      '/api/trust',
+      '/api/books',
+      '/api/knowledge',
+      '/api/quests',
+    ];
+    for (const path of canonical) {
+      expect(corePaths, `${path} should be CORE_RUNTIME`).toContain(path);
+    }
+  });
+
   it('photos and documents use protected mounts (not public)', () => {
     const photos = routeRegistry.find((e) => e.path === '/api/photos');
     const documents = routeRegistry.find((e) => e.path === '/api/documents');

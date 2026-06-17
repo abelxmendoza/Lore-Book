@@ -18,6 +18,8 @@ import { RelationshipForecastCard } from './RelationshipForecastCard';
 import { ArcAppearanceCard } from './ArcAppearanceCard';
 import { useMockData } from '../../contexts/MockDataContext';
 import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { RelationshipPeripheryIntelligenceCard } from './RelationshipPeripheryIntelligenceCard';
+import { MOCK_PERIPHERY_ANALYTICS } from '../../mocks/familyPeripherals';
 import type { AnalyticsPayload, InsightData } from '../../hooks/useAnalytics';
 
 // Mock data for development/demo
@@ -90,7 +92,8 @@ const MOCK_RELATIONSHIPS_DATA: AnalyticsPayload = {
       { character: 'Mike', values: [5, 6, 4, 7, 6, 5, 6, 5, 4, 6, 5, 4] },
       { character: 'Dad', values: [6, 7, 6, 8, 7, 6, 7, 6, 7, 8, 6, 7] },
       { character: 'Mom', values: [7, 8, 7, 9, 8, 7, 8, 7, 8, 9, 7, 8] }
-    ]
+    ],
+    peripheryIntelligence: MOCK_PERIPHERY_ANALYTICS,
   },
   insights: [
     { id: '1', text: 'Sarah appears most frequently in your entries and shows consistently positive sentiment', category: 'relationship', score: 0.9 },
@@ -142,6 +145,7 @@ export const RelationshipsAnalyticsPanel = () => {
   const forecast = Array.isArray(metadata.forecast) ? metadata.forecast : [];
   const arcAppearances = Array.isArray(metadata.arcAppearances) ? metadata.arcAppearances : [];
   const heatmap = Array.isArray(metadata.heatmap) ? metadata.heatmap : [];
+  const peripheryIntelligence = metadata.peripheryIntelligence as typeof MOCK_PERIPHERY_ANALYTICS | null | undefined;
 
   return (
     <div className="space-y-6">
@@ -213,6 +217,11 @@ export const RelationshipsAnalyticsPanel = () => {
             height={500}
           />
         </div>
+      )}
+
+      {/* Vicarious periphery intelligence */}
+      {peripheryIntelligence && peripheryIntelligence.total > 0 && (
+        <RelationshipPeripheryIntelligenceCard data={peripheryIntelligence} />
       )}
 
       {/* Sentiment Timeline */}

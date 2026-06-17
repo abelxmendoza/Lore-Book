@@ -11,9 +11,13 @@ import { supabaseAdmin } from '../supabaseClient';
 import { lexicalAnalyzerService } from '../lexical/lexicalAnalyzerService';
 import type { AnalyzeMessageInput, LexicalAnalysisResult } from '../lexical/lexicalTypes';
 import { processLexicalMemoryCandidates } from '../lexical/lexicalMemoryBridge';
-import { enrichFromLexicalAnalysis, enrichFromMeaningResolution } from '../ontology/ontologyEnrichmentService';
+import { enrichFromLexicalAnalysis, enrichFromMeaningResolution, enrichFromLexicalAnalysisAsync } from '../ontology/ontologyEnrichmentService';
 import { meaningResolutionService } from '../meaning/meaningResolutionService';
 import type { MeaningResolutionResult } from '../meaning/meaningResolutionTypes';
+import {
+  parseLexicalAnalysisResult,
+  parseMeaningResolutionResult,
+} from '../ontology/canonical';
 
 export type LoreInterpretationResult = {
   lexical: LexicalAnalysisResult;
@@ -45,7 +49,7 @@ export async function runLoreInterpretationPipeline(
   });
 
   const ontologyMeta = {
-    ...enrichFromLexicalAnalysis(lexical),
+    ...(await enrichFromLexicalAnalysisAsync(lexical, input.userId)),
     ...enrichFromMeaningResolution(meaning),
   };
 
@@ -60,7 +64,10 @@ export async function runLoreInterpretationPipeline(
     }
   }
 
-  return { lexical, meaning };
+  return {
+    lexical: validateLexicalResult(lexical),
+    meaning: validateMeaningResult(meaning),
+  };
 }
 
 export async function resolveMeaningForPlanner(
@@ -80,14 +87,15 @@ export async function resolveMeaningForPlanner(
 }
 
 async function persistLexicalAnalysis(analysis: LexicalAnalysisResult): Promise<string | undefined> {
+  const validated = validateLexicalResult(analysis);
   const { data, error } = await supabaseAdmin.from('lexical_analysis_results').insert({
-    user_id: analysis.userId,
-    thread_id: analysis.threadId ?? null,
-    message_id: analysis.messageId,
-    raw_text: analysis.rawText,
-    normalized_text: analysis.normalizedText,
-    result_json: analysis,
-    confidence: analysis.confidence,
+    user_id: validated.userId,
+    thread_id: validated.threadId ?? null,
+    message_id: validated.messageId,
+    raw_text: validated.rawText,
+    normalized_text: validated.normalizedText,
+    result_json: validated,
+    confidence: validated.confidence,
   }).select('id').single();
 
   if (error) {
@@ -144,4 +152,22 @@ async function attachPipelineMetadata(
     .update({ metadata })
     .eq('id', messageId)
     .eq('user_id', userId);
+}
+
+function validateLexicalResult(result: LexicalAnalysisResult): LexicalAnalysisResult {
+  try {
+    return parseLexicalAnalysisResult(result) as LexicalAnalysisResult;
+  } catch (err) {
+    logger.warn({ err, messageId: result.messageId }, 'Pipeline: lexical schema validation failed');
+    return result;
+  }
+}
+
+function validateMeaningResult(result: MeaningResolutionResult): MeaningResolutionResult {
+  try {
+    return parseMeaningResolutionResult(result) as MeaningResolutionResult;
+  } catch (err) {
+    logger.warn({ err, messageId: result.messageId }, 'Pipeline: meaning schema validation failed');
+    return result;
+  }
 }

@@ -2,8 +2,6 @@
  * Auto-Tagging Service
  * AI-powered classification for entries: tags, lane, hierarchy, characters
  */
-
-
 import { config } from '../config';
 import { openai } from '../lib/openai';
 import { logger } from '../logger';
@@ -13,8 +11,7 @@ import { memoryService } from './memoryService';
 import { peoplePlacesService } from './peoplePlacesService';
 import { ruleBasedTagExtractionService } from './ruleBasedTagExtraction';
 import { timelineManager } from './timelineManager';
-
-
+import { classificationService } from './ontology/classificationService';
 
 export type AutoTaggingResult = {
   tags: string[];
@@ -31,22 +28,13 @@ export type AutoTaggingResult = {
 };
 
 class AutoTaggingService {
-  /**
-   * Auto-tag an entry with AI
-   */
   async autoTagEntry(userId: string, entry: MemoryEntry): Promise<AutoTaggingResult> {
     try {
-      // Use rule-based tag extraction first (FREE - no API call)
       const ruleBasedTags = await ruleBasedTagExtractionService.suggestTags(entry.content, userId);
-      
-      // Extract lane from content patterns (FREE)
-      const lane = this.extractLane(entry.content, entry.tags || []);
-      
-      // Extract character mentions using rule-based extraction (FREE)
+      const lane = await this.extractLane(entry.content, entry.tags || [], userId);
       const characters = await peoplePlacesService.listEntities(userId);
       const characterMentions = this.extractCharacterMentions(entry.content, characters.map(c => c.name));
 
-      // If we have good rule-based results, use them (skip API call)
       if (ruleBasedTags.length >= 3) {
         return {
           tags: ruleBasedTags.slice(0, 7),
@@ -60,8 +48,6 @@ class AutoTaggingService {
         };
       }
 
-      // Fallback to API only if rule-based didn't produce enough tags
-      // Get context: recent entries, existing timeline hierarchy
       const recentEntries = await memoryService.searchEntries(userId, { limit: 10 });
       const context = recentEntries
         .slice(0, 5)
@@ -69,8 +55,9 @@ class AutoTaggingService {
         .join('\n');
 
       const characterNames = characters.map(c => c.name).join(', ');
+      const swimlanes = await classificationService.getSwimlanes(userId);
+      const laneLabels = swimlanes.map((l) => l.label).join(' | ');
 
-      // Get existing timeline hierarchy for context
       const [recentArcs, recentSagas, recentEras] = await Promise.all([
         timelineManager.search(userId, { layer_type: ['arc'], date_from: entry.date }),
         timelineManager.search(userId, { layer_type: ['saga'], date_from: entry.date }),
@@ -86,12 +73,12 @@ class AutoTaggingService {
             role: 'system',
             content: `You are an AI assistant that classifies journal entries. Return JSON with:
 {
-  "tags": ["tag1", "tag2", ...], // 3-7 relevant tags
-  "lane": "life" | "robotics" | "mma" | "work" | "creative", // primary lane
-  "arc_candidates": ["arc_id or null"], // if this fits an existing arc
-  "saga_candidates": ["saga_id or null"], // if this fits an existing saga
-  "era_candidates": ["era_id or null"], // if this fits an existing era
-  "character_mentions": ["character_name1", ...], // characters mentioned
+  "tags": ["tag1", "tag2", ...],
+  "lane": "<one of available lanes>",
+  "arc_candidates": ["arc_id or null"],
+  "saga_candidates": ["saga_id or null"],
+  "era_candidates": ["era_id or null"],
+  "character_mentions": ["character_name1", ...],
   "confidence_scores": {
     "tags": 0.0-1.0,
     "lane": 0.0-1.0,
@@ -99,7 +86,7 @@ class AutoTaggingService {
   }
 }
 
-Available lanes: life, robotics, mma, work, creative
+Available lanes: ${laneLabels}
 Available characters: ${characterNames || 'none'}
 Recent arcs: ${recentArcs.slice(0, 3).map(a => `${a.id}: ${a.title}`).join(', ') || 'none'}
 Recent sagas: ${recentSagas.slice(0, 3).map(s => `${s.id}: ${s.title}`).join(', ') || 'none'}
@@ -113,29 +100,27 @@ Recent eras: ${recentEras.slice(0, 3).map(e => `${e.id}: ${e.title}`).join(', ')
       });
 
       const result = JSON.parse(completion.choices[0]?.message?.content || '{}') as AutoTaggingResult;
-      
-      // Validate and normalize
-      const validLanes = ['life', 'robotics', 'mma', 'work', 'creative'];
+      const validLanes = swimlanes.map((l) => l.label);
+      const defaultLane = swimlanes.find((l) => l.isDefault)?.label ?? 'life';
+
       if (!validLanes.includes(result.lane)) {
-        result.lane = 'life'; // Default fallback
+        result.lane = defaultLane;
         result.confidence_scores.lane = 0.5;
       }
 
-      // Filter out invalid character mentions
       const validCharacters = characters.map(c => c.name.toLowerCase());
-      result.character_mentions = result.character_mentions.filter(name =>
+      result.character_mentions = (result.character_mentions ?? []).filter(name =>
         validCharacters.includes(name.toLowerCase())
       );
 
       return result;
     } catch (error) {
       logger.error({ error, entryId: entry.id }, 'Auto-tagging failed, using rule-based');
-      // Fallback to rule-based on error
       const ruleBasedTags = await ruleBasedTagExtractionService.suggestTags(entry.content, userId);
-      const lane = this.extractLane(entry.content, entry.tags || []);
+      const lane = await this.extractLane(entry.content, entry.tags || [], userId);
       const characters = await peoplePlacesService.listEntities(userId);
       const characterMentions = this.extractCharacterMentions(entry.content, characters.map(c => c.name));
-      
+
       return {
         tags: ruleBasedTags.length > 0 ? ruleBasedTags : (entry.tags || []),
         lane,
@@ -149,36 +134,10 @@ Recent eras: ${recentEras.slice(0, 3).map(e => `${e.id}: ${e.title}`).join(', ')
     }
   }
 
-  /**
-   * Extract lane from content patterns (FREE - rule-based)
-   */
-  private extractLane(content: string, tags: string[]): string {
-    const lowerContent = content.toLowerCase();
-    const lowerTags = tags.map(t => t.toLowerCase()).join(' ');
-
-    const lanePatterns = {
-      robotics: ['robot', 'robotics', 'ai', 'machine learning', 'automation', 'sensor', 'actuator', 'arduino', 'raspberry pi'],
-      mma: ['mma', 'fighting', 'martial arts', 'training', 'gym', 'sparring', 'fight', 'jiu jitsu', 'boxing', 'wrestling'],
-      work: ['work', 'meeting', 'project', 'deadline', 'office', 'colleague', 'boss', 'client', 'presentation'],
-      creative: ['art', 'creative', 'design', 'music', 'writing', 'drawing', 'painting', 'photography', 'film'],
-      life: [] // Default
-    };
-
-    for (const [lane, keywords] of Object.entries(lanePatterns)) {
-      if (lane === 'life') continue;
-      for (const keyword of keywords) {
-        if (lowerContent.includes(keyword) || lowerTags.includes(keyword)) {
-          return lane;
-        }
-      }
-    }
-
-    return 'life'; // Default
+  private async extractLane(content: string, tags: string[], userId?: string): Promise<string> {
+    return classificationService.matchSwimlane(content, tags, userId);
   }
 
-  /**
-   * Extract character mentions from content (FREE - rule-based)
-   */
   private extractCharacterMentions(content: string, characterNames: string[]): string[] {
     const mentions: string[] = [];
     const lowerContent = content.toLowerCase();
@@ -192,9 +151,6 @@ Recent eras: ${recentEras.slice(0, 3).map(e => `${e.id}: ${e.title}`).join(', ')
     return mentions;
   }
 
-  /**
-   * Apply auto-tagging results to entry metadata
-   */
   async applyAutoTags(userId: string, entryId: string, result: AutoTaggingResult): Promise<MemoryEntry> {
     try {
       const entry = await memoryService.getEntry(userId, entryId);
@@ -212,11 +168,9 @@ Recent eras: ${recentEras.slice(0, 3).map(e => `${e.id}: ${e.title}`).join(', ')
         auto_tagged_at: new Date().toISOString()
       };
 
-      // Merge auto-tags with existing tags (avoid duplicates)
       const existingTags = entry.tags || [];
       const newTags = [...new Set([...existingTags, ...result.tags])];
 
-      // Update entry
       const updated = await memoryService.updateEntry(userId, entryId, {
         tags: newTags,
         metadata: updatedMetadata
@@ -231,4 +185,3 @@ Recent eras: ${recentEras.slice(0, 3).map(e => `${e.id}: ${e.title}`).join(', ')
 }
 
 export const autoTaggingService = new AutoTaggingService();
-

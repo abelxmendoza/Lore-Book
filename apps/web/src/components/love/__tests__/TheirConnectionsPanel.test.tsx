@@ -18,7 +18,7 @@ describe('TheirConnectionsPanel', () => {
       <TheirConnectionsPanel relationshipId="rel-003" anchorName="Sam" />
     );
 
-    expect(await screen.findByTestId('their-connections-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('relationship-peripherals-panel')).toBeInTheDocument();
     expect(screen.getByTestId('peripheral-card-periph-sam-marcus')).toBeInTheDocument();
     expect(screen.getByText('Marcus')).toBeInTheDocument();
     expect(screen.getByTestId('peripheral-tier-suspected')).toBeInTheDocument();
@@ -42,6 +42,6 @@ describe('TheirConnectionsPanel', () => {
       <TheirConnectionsPanel relationshipId="rel-002" anchorName="Jordan" />
     );
 
-    expect(await screen.findByTestId('their-connections-empty')).toBeInTheDocument();
+    expect(await screen.findByTestId('relationship-peripherals-empty')).toBeInTheDocument();
   });
 });

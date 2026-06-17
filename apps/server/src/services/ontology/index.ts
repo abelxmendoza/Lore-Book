@@ -12,3 +12,4 @@ export * from './placeIntelligence';
 export * from './groupIntelligence';
 export * from './romanticIntelligence';
 export * from './vicariousRomanticIntelligence';
+export * from './vicariousRelationshipIntelligence';

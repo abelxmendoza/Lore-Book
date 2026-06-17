@@ -34,9 +34,9 @@ import { skillNetworkBuilder } from './skillNetworkBuilder';
 import { groupNetworkBuilder } from './groupNetworkBuilder';
 import { romanticRelationshipDetector } from './romanticRelationshipDetector';
 import { ingestRomanticLexicalFromMessage } from '../romanticLexicalIngestionService';
-import { ingestVicariousFromMessage } from '../romanticPeripheralService';
+import { ingestRelationshipPeripheralsFromMessage } from '../relationshipPeripheralService';
 import { hasRomanticSignals } from '../ontology/romanticIntelligence';
-import { hasVicariousRomanticSignals } from '../ontology/vicariousRomanticIntelligence';
+import { hasVicariousRelationshipSignals } from '../ontology/vicariousRelationshipIntelligence';
 import { relationshipDriftDetector } from './relationshipDriftDetector';
 import { relationshipCycleDetector } from './relationshipCycleDetector';
 import { breakupDetector } from './breakupDetector';
@@ -445,7 +445,7 @@ export class ConversationIngestionPipeline {
         ...lexicalResult.relationships.map((r) => r.partnerName),
         ...validEntities.map((e) => e.name),
       ];
-      await ingestVicariousFromMessage(userId, rawText, messageId, anchorNames, validEntities);
+      await ingestRelationshipPeripheralsFromMessage(userId, rawText, messageId, anchorNames, validEntities);
     } catch (err) {
       logger.warn({ err }, 'Romantic relationship detection failed (non-blocking)');
     }
@@ -2257,7 +2257,7 @@ export class ConversationIngestionPipeline {
       }
 
       // Step 11.3: Detect romantic relationships (async, non-blocking)
-      if (sender === 'USER' && (unitIds.length > 0 || hasRomanticSignals(rawText) || hasVicariousRomanticSignals(rawText))) {
+      if (sender === 'USER' && (unitIds.length > 0 || hasRomanticSignals(rawText) || hasVicariousRelationshipSignals(rawText))) {
         try {
           const romanticDetectionPromise = this.detectRomanticRelationshipsAsync(userId, rawText, unitIds, messageId);
           romanticDetectionPromise.catch((err: unknown) => {

@@ -183,7 +183,7 @@ class PeoplePlacesService {
     // places, households, and unknowns never get promoted to Character cards.
     // PERSON is only returned when there is positive evidence (honorific,
     // kinship, or a person-predicate in the surrounding text).
-    return toStorageType(classifyEntity(name, context).type);
+    return toStorageType(classifyEntity(name, context).rootType);
   }
 
   private fallbackDetect(content: string): DetectedEntity[] {
@@ -303,7 +303,7 @@ class PeoplePlacesService {
           // Re-run the deterministic classifier over the LLM's candidate so the
           // model can never force an unknown into 'person' → Character. The LLM
           // type is advisory; evidence-based classification wins.
-          type: toStorageType(classifyEntity(item.name, content).type),
+          type: toStorageType(classifyEntity(item.name, content).rootType),
           corrected_names: [],
         }));
     } catch (error) {

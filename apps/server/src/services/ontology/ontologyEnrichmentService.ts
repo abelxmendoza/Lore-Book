@@ -1,9 +1,14 @@
 /**
  * Ontology enrichment — persist lexical intelligence onto entity metadata during ingestion.
+ * Dynamic subcategories resolve from the classifications table when available.
  */
 import { enrichEntity, classifyQueryType } from '../ontology/lexicalIntelligence';
 import type { RootType } from '../ontology/glossary';
 import type { LexicalAnalysisResult } from '../lexical/lexicalTypes';
+import { entityClassToRootType } from '../ontology/canonical';
+import type { EntityClass } from '../ontology/canonical';
+import { isRootType } from '../ontology/canonical/rootType';
+import { classificationService } from '../ontology/classificationService';
 
 export function buildOntologyMetadata(name: string, context = ''): Record<string, unknown> {
   const enriched = enrichEntity(name, context);
@@ -27,6 +32,45 @@ export function buildOntologyMetadata(name: string, context = ''): Record<string
   };
 }
 
+/** Async enrichment — resolves dynamic classifications from DB. */
+export async function buildOntologyMetadataAsync(
+  name: string,
+  context = '',
+  opts: { userId?: string; rootType?: RootType } = {}
+): Promise<Record<string, unknown>> {
+  const base = buildOntologyMetadata(name, context);
+  const primaryRoot = opts.rootType ?? (base.domains as RootType[] | undefined)?.[0];
+  if (!primaryRoot) return base;
+
+  const subcategoryLabels = (base.subcategories as string[] | undefined) ?? [];
+  const normalizedSubs = subcategoryLabels.map((s) => s.toLowerCase().replace(/_/g, ' '));
+
+  const [entityClassification, subcategoryMatches] = await Promise.all([
+    classificationService.resolveForEntityName(name, primaryRoot, opts.userId),
+    classificationService.resolveSubcategoryLabels(primaryRoot, normalizedSubs, opts.userId),
+  ]);
+
+  const dynamicClassifications = [...subcategoryMatches];
+  if (entityClassification && !dynamicClassifications.some((c) => c.label === entityClassification.label)) {
+    dynamicClassifications.push(entityClassification);
+  }
+
+  if (dynamicClassifications.length === 0) return base;
+
+  return {
+    ...base,
+    root_type: primaryRoot,
+    dynamic_classifications: dynamicClassifications.map((c) => ({
+      id: c.id,
+      label: c.label,
+      root_type: c.rootType,
+      category: c.metadata.category,
+      subcategory: c.metadata.subcategory,
+    })),
+    classification_ids: dynamicClassifications.map((c) => c.id).filter(Boolean),
+  };
+}
+
 /** Map lexical analysis ontology candidates into message-level enrichment metadata. */
 export function enrichFromLexicalAnalysis(analysis: LexicalAnalysisResult): Record<string, unknown> {
   const base = buildOntologyMetadata(analysis.rawText.slice(0, 200), analysis.rawText);
@@ -39,6 +83,22 @@ export function enrichFromLexicalAnalysis(analysis: LexicalAnalysisResult): Reco
     ontology_enriched_at: new Date().toISOString(),
     source: 'lexical_analyzer',
   };
+}
+
+export async function enrichFromLexicalAnalysisAsync(
+  analysis: LexicalAnalysisResult,
+  userId?: string
+): Promise<Record<string, unknown>> {
+  const base = enrichFromLexicalAnalysis(analysis);
+  const primaryRoot = (base.domains as RootType[] | undefined)?.[0];
+  if (!primaryRoot || !userId) return base;
+
+  const resolved = await buildOntologyMetadataAsync(
+    analysis.rawText.slice(0, 200),
+    analysis.rawText,
+    { userId, rootType: primaryRoot }
+  );
+  return { ...base, ...resolved, source: 'lexical_analyzer' };
 }
 
 /** Map meaning resolution into ontology metadata — planner consumes resolved meaning only. */
@@ -70,5 +130,42 @@ export function mergeOntologyIntoMetadata(
   return {
     ...(existing ?? {}),
     ...buildOntologyMetadata(name, context),
+  };
+}
+
+export async function mergeOntologyIntoMetadataAsync(
+  existing: Record<string, unknown> | null | undefined,
+  name: string,
+  context = '',
+  opts: { userId?: string; rootType?: RootType | EntityClass } = {}
+): Promise<Record<string, unknown>> {
+  const rootType = opts.rootType
+    ? (isRootType(opts.rootType) ? opts.rootType : entityClassToRootType(opts.rootType as EntityClass))
+    : undefined;
+
+  const enriched = await buildOntologyMetadataAsync(name, context, {
+    userId: opts.userId,
+    rootType,
+  });
+
+  return {
+    ...(existing ?? {}),
+    ...enriched,
+  };
+}
+
+/** Attach dynamic classification to a classifier result. */
+export async function enrichClassificationMetadata(
+  name: string,
+  rootType: RootType,
+  userId?: string
+): Promise<Record<string, unknown>> {
+  const resolved = await classificationService.resolveForEntityName(name, rootType, userId);
+  if (!resolved) return {};
+  return {
+    root_type: rootType,
+    dynamic_label: resolved.label,
+    classification_id: resolved.id,
+    classification_metadata: resolved.metadata,
   };
 }

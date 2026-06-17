@@ -5,7 +5,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { logger } from '../logger';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { TenantAccessError } from '../lib/tenantOwnership';
 import { omegaMemoryService } from '../services/omegaMemoryService';

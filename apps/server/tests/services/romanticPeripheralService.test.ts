@@ -52,10 +52,11 @@ vi.mock('../../src/services/supabaseClient', () => {
 });
 
 import {
-  applyVicariousHit,
-  ingestVicariousFromMessage,
+  applyVicariousRelationshipHit,
+  ingestRelationshipPeripheralsFromMessage,
+  listPeripheralsForCharacter,
   listPeripheralsForRelationship,
-} from '../../src/services/romanticPeripheralService';
+} from '../../src/services/relationshipPeripheralService';
 
 describe('romanticPeripheralService', () => {
   beforeEach(() => {
@@ -76,7 +77,7 @@ describe('romanticPeripheralService', () => {
   });
 
   it('ingests vicarious message', async () => {
-    const result = await ingestVicariousFromMessage(
+    const result = await ingestRelationshipPeripheralsFromMessage(
       'u-1',
       'Sam was texting Marcus while we were still seeing each other.',
       'msg-1',
@@ -87,6 +88,7 @@ describe('romanticPeripheralService', () => {
 
   it('applyVicariousHit resolves anchor and upserts', async () => {
     const hit = {
+      domain: 'romantic' as const,
       subjectName: 'Sam',
       objectName: null,
       objectSurface: 'Marcus',
@@ -100,9 +102,20 @@ describe('romanticPeripheralService', () => {
       proximity: 'third_party' as const,
     };
 
-    const saved = await applyVicariousHit('u-1', hit, 'msg-1');
+    const saved = await applyVicariousRelationshipHit('u-1', hit, 'msg-1');
     expect(saved).toBeTruthy();
     expect(mocks.resolveRomanticPartner).toHaveBeenCalledWith('u-1', 'Sam');
+  });
+
+  it('lists peripherals for character', async () => {
+    const chain = mocks.from();
+    chain.neq.mockResolvedValue({
+      data: [{ ...mocks.peripheralRow, domain: 'social' }],
+      error: null,
+    });
+
+    const rows = await listPeripheralsForCharacter('u-1', 'char-sam');
+    expect(rows).toHaveLength(1);
   });
 
   it('lists peripherals for relationship', async () => {

@@ -48,7 +48,7 @@ import {
   dismissPeripheral,
   listPeripheralsForRelationship,
   promotePeripheralToCharacter,
-} from '../services/romanticPeripheralService';
+} from '../services/relationshipPeripheralService';
 import { skillNetworkBuilder } from '../services/conversationCentered/skillNetworkBuilder';
 import { conversationService } from '../services/conversationService';
 import { threadIntelligenceService } from '../services/conversationCentered/threadIntelligenceService';
