@@ -572,6 +572,96 @@ router.get(
 );
 
 /**
+ * GET /api/conversation/threads/:id/summary
+ * Living thread summary + continuity card for recall UI.
+ */
+router.get(
+  '/threads/:id/summary',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const id = req.params.id as string;
+    const userId = req.user!.id;
+
+    const { data: thread } = await supabaseAdmin
+      .from('conversation_sessions')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!thread) {
+      return res.status(404).json({ success: false, error: 'Thread not found' });
+    }
+
+    const meta = await threadIntelligenceService.syncFromStoredMessages(userId, id);
+    const { card } = await threadIntelligenceService.getContinuity(userId, id);
+    const recallText = meta.summary_long || meta.summary_medium || meta.summary_short || card;
+
+    res.json({
+      success: true,
+      summary: {
+        short: meta.summary_short,
+        medium: meta.summary_medium,
+        long: meta.summary_long,
+        version: meta.summary_version,
+        messageCount: meta.message_count,
+        people: meta.people,
+        places: meta.places,
+        themes: meta.themes,
+      },
+      continuity: card,
+      recallText,
+    });
+  })
+);
+
+/**
+ * POST /api/conversation/threads/:id/summary/refresh
+ * Force-regenerate thread summaries from stored messages.
+ */
+router.post(
+  '/threads/:id/summary/refresh',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const id = req.params.id as string;
+    const userId = req.user!.id;
+
+    const { data: thread } = await supabaseAdmin
+      .from('conversation_sessions')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!thread) {
+      return res.status(404).json({ success: false, error: 'Thread not found' });
+    }
+
+    const { threadSummaryService } = await import('../services/conversationCentered/threadSummaryService');
+    const refreshed = await threadSummaryService.refresh(userId, id);
+    const meta = await threadIntelligenceService.getThreadMeta(userId, id);
+    const { card } = await threadIntelligenceService.getContinuity(userId, id);
+    const recallText = refreshed.long || refreshed.medium || refreshed.short || card;
+
+    res.json({
+      success: true,
+      summary: {
+        short: refreshed.short,
+        medium: refreshed.medium,
+        long: refreshed.long,
+        version: refreshed.version,
+        messageCount: meta.message_count,
+        people: meta.people,
+        places: meta.places,
+        themes: meta.themes,
+      },
+      continuity: card,
+      recallText,
+    });
+  })
+);
+
+/**
  * GET /api/conversation/threads/:id/messages
  * Get all messages in a thread
  */

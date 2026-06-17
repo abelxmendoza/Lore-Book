@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useChatThreadContext } from '../../../contexts/ChatThreadContext';
 import { useChatStream } from '../../../hooks/useChatStream';
@@ -125,6 +125,37 @@ export const useChat = () => {
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [sources, setSources] = useState<ChatSource[]>([]);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const streamingMessageIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    streamingMessageIdRef.current = streamingMessageId;
+  }, [streamingMessageId]);
+
+  // Finalize in-flight assistant bubbles when the tab backgrounds or closes.
+  useEffect(() => {
+    const finalizePartialStream = () => {
+      const streamId = streamingMessageIdRef.current;
+      if (!streamId) return;
+      updateMessage(streamId, { isStreaming: false });
+      setStreamingMessageId(null);
+      setLoading(false);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+    };
+
+    const onHide = () => finalizePartialStream();
+    window.addEventListener('pagehide', onHide);
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') onHide();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [updateMessage]);
 
   // Send message
   const sendMessage = useCallback(async (messageText: string, options?: ChatSendOptions) => {

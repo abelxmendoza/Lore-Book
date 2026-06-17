@@ -14,6 +14,10 @@ import {
 import { dedupeConversationThreads, ensureLocalUniqueTitle } from '../utils/threadDedupeUtils';
 import { mergeThreadMessages, countMissingAssistantTurns } from '../utils/mergeThreadMessages';
 import { mapDbMessageRow } from '../utils/mapDbMessageRow';
+import {
+  persistAuthThreadCache,
+  readAuthThreadFromCache,
+} from '../utils/threadLocalCache';
 
 export type ChatThread = {
   id: string;
@@ -347,8 +351,13 @@ export const useChatThreads = () => {
 
         let messages = (result.messages || []).map(dbMessageToMessage);
         const localMessages = existing?.messages ?? [];
+        const cachedThread = userId ? readAuthThreadFromCache(userId, id) : null;
+        const cacheMessages = cachedThread?.messages ?? [];
 
         messages = mergeThreadMessages(localMessages, messages);
+        if (cacheMessages.length > 0) {
+          messages = mergeThreadMessages(cacheMessages, messages);
+        }
 
         // If server snapshot is still missing assistant replies, keep local cache entirely.
         if (
@@ -470,6 +479,7 @@ export const useChatThreads = () => {
         const sorted = touchActivity ? sortThreadsByActivity(next) : next;
         threadsRef.current = sorted;
         if (!isAuthenticated) persistLocal(sorted, currentThreadIdRef.current);
+        else if (userId) persistAuthThreadCache(userId, sorted, currentThreadIdRef.current);
         return sorted;
       });
 
@@ -540,6 +550,7 @@ export const useChatThreads = () => {
         const sorted = touchActivity ? sortThreadsByActivity(next) : next;
         threadsRef.current = sorted;
         if (!isAuthenticated) persistLocal(sorted, currentThreadIdRef.current);
+        else if (userId) persistAuthThreadCache(userId, sorted, currentThreadIdRef.current);
         return sorted;
       });
 
@@ -588,6 +599,7 @@ export const useChatThreads = () => {
       setThreads((prev) => {
         const next = prev.filter((t) => t.id !== id);
         if (!isAuthenticated) persistLocal(next, currentThreadIdRef.current);
+        else if (userId) persistAuthThreadCache(userId, next, currentThreadIdRef.current);
         return next;
       });
       if (currentThreadIdRef.current === id) {
@@ -635,6 +647,7 @@ export const useChatThreads = () => {
       if (isAuthenticated) {
         if (id) localStorage.setItem(lastThreadKey(userId), id);
         else localStorage.removeItem(lastThreadKey(userId));
+        if (userId) persistAuthThreadCache(userId, threadsRef.current, id);
       } else {
         persistLocal(threadsRef.current, id);
       }

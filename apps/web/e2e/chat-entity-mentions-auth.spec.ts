@@ -53,6 +53,9 @@ const sessionPayload = {
 };
 
 function mockApiResponse(url: string, method: string | undefined): { status: number; body: unknown } | null {
+  if (url.includes('/api/user/terms-status')) {
+    return { status: 200, body: { accepted: true, acceptedAt: new Date().toISOString(), version: '1.0' } };
+  }
   if (url.includes('/api/diagnostics/thread-health/repair') && method === 'POST') {
     return { status: 200, body: { repaired: 0, report: {} } };
   }

@@ -9,6 +9,7 @@ import { ComposerHints } from './ComposerHints';
 import { MoodIndicator } from './MoodIndicator';
 import { TagSuggestions } from './TagSuggestions';
 import { useState, useRef, useEffect } from 'react';
+import { useVisualViewportInset } from '../hooks/useVisualViewportInset';
 import { DocumentUpload, type UploadCompletePayload } from '../components/DocumentUpload';
 import { ChatGPTImport } from '../components/ChatGPTImport';
 
@@ -62,6 +63,7 @@ export const ChatComposer = ({
   const [showChatGPTImport, setShowChatGPTImport] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isFocused, setIsFocused] = useState(false);
+  const keyboardInset = useVisualViewportInset(true);
 
   const isExpanded = isFocused || input.length > 0;
 
@@ -76,7 +78,11 @@ export const ChatComposer = ({
   };
 
   return (
-    <div className="border-t border-white/10 bg-black/40 backdrop-blur-sm chat-composer flex-shrink-0 safe-area-bottom">
+    <div
+      data-testid="chat-composer"
+      className="border-t border-white/10 bg-black/40 backdrop-blur-sm chat-composer flex-shrink-0 safe-area-bottom"
+      style={{ paddingBottom: keyboardInset > 0 ? keyboardInset : undefined }}
+    >
       {/* Command Suggestions */}
       {showCommandSuggestions && commandSuggestions.length > 0 && (
         <CommandSuggestions

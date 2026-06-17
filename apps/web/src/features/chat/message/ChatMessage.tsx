@@ -249,6 +249,7 @@ export const ChatMessage = ({
 
   return (
     <div
+      data-testid={isUser ? 'chat-message-user' : 'chat-message-assistant'}
       className={`flex gap-3 sm:gap-4 lg:gap-6 items-start ${isUser ? 'justify-end' : 'justify-start'} group chat-message w-full mb-4 sm:mb-6 lg:mb-8`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
@@ -258,7 +259,7 @@ export const ChatMessage = ({
           <Bot className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />
         </div>
       )}
-      <div className={`min-w-0 w-full ${isUser ? 'flex flex-col items-end max-w-full' : 'flex-1 flex flex-col'}`}>
+      <div className={`min-w-0 w-full ${isUser ? 'flex flex-col items-end max-w-[92%] sm:max-w-[85%] md:max-w-[75%]' : 'flex-1 flex flex-col'}`}>
         <div
           className={`relative w-full ${
             isUser

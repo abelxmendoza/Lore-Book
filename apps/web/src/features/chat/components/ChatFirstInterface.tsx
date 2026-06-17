@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 function useIsMobile(breakpoint = 640): boolean {
@@ -27,6 +27,7 @@ import { useMessageCorrection } from '../hooks/useMessageCorrection';
 import { ChatLoadingPulse } from './ChatLoadingPulse';
 import { ChatComposer } from '../composer/ChatComposer';
 import { ThreadEntityChips } from './ThreadEntityChips';
+import { ThreadSummaryBar } from './ThreadSummaryBar';
 import { collectThreadEntities, toEntityContext } from '../utils/collectThreadEntities';
 import type { CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
 import { ChatSourcesBar } from '../sources/ChatSourcesBar';
@@ -141,6 +142,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
     }
     sendMessage(msg, { ...chatSendOptions, composerEntities: certifiedEntities });
   };
+
+  const handleRecallPrompt = useCallback(
+    (prompt: string) => {
+      sendMessage(prompt, chatSendOptions);
+    },
+    [sendMessage, chatSendOptions]
+  );
 
   // Track greeting_shown when the greeting first appears.
   // greeting_responded is tracked inside handleSubmit above.
@@ -472,7 +480,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
   };
 
   return (
-    <div className="flex h-screen lg:h-full bg-black w-full overflow-hidden">
+    <div className="flex h-[100dvh] max-h-[100dvh] lg:h-full bg-black w-full overflow-hidden">
       <ChatThreadList
         threads={threads}
         currentThreadId={activeThreadId}
@@ -543,7 +551,7 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
             ) : (
               <h2 className="text-xs sm:text-sm font-semibold text-white/90 flex-shrink-0">Lore Book</h2>
             )}
-            <CurrentContextBreadcrumbs />
+            {!isMobile && <CurrentContextBreadcrumbs />}
             <ThreadSaveChip threadId={activeThreadId} />
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
@@ -693,6 +701,13 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
         {/* What Changed Since Last Time — proves continuity before the user types anything */}
         <WhatChangedSinceLastTime thread={threads.find(t => t.id === activeThreadId)} />
 
+        <ThreadSummaryBar
+          threadId={activeThreadId}
+          messageCount={messages.length}
+          isMobile={isMobile}
+          onRecallInChat={user ? handleRecallPrompt : undefined}
+        />
+
         {/* Messages Area */}
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {messages.length === 0 ? (
@@ -737,8 +752,8 @@ export const ChatFirstInterface = ({ onOpenAppSidebar }: { onOpenAppSidebar?: ()
           )}
         </div>
 
-        {/* What LoreBook Knows strip — only shown when context panel is closed */}
-        {!contextPanelOpen && <WhatLoreBookKnows />}
+        {/* What LoreBook Knows strip — desktop only; mobile uses context menu */}
+        {!contextPanelOpen && !isMobile && <WhatLoreBookKnows />}
 
         {/* Confirmed thread entities — focus to build on established knowledge */}
         <ThreadEntityChips
