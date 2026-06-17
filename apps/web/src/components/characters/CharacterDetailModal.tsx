@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { CharacterPerceptionsTab } from '../perceptions/CharacterPerceptionsTab';
-import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2 } from 'lucide-react';
+import { X, Save, Instagram, Twitter, Facebook, Linkedin, Github, Globe, Mail, Phone, Calendar, Users, Tag, Sparkles, FileText, Network, MessageSquare, Brain, Clock, Database, Layers, TrendingUp, TrendingDown, Minus, Heart, Star, Zap, BarChart3, Lightbulb, Award, User, Hash, Info, Link2, Eye, Building2, UserCircle, TreePine, AlertCircle, AlertTriangle, Briefcase, DollarSign, Activity, Smile, Heart as HeartIcon, Home, Trash2, RefreshCw, Loader2, ImageIcon } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -40,6 +40,7 @@ import { EntityProvenancePanel } from './EntityProvenancePanel';
 import { ContradictionResolutionPanel } from './ContradictionResolutionPanel';
 import { CharacterTimelinePanel } from './CharacterTimelinePanel';
 import { CharacterKnowledgeBase } from './CharacterKnowledgeBase';
+import { CharacterMediaPanel } from './CharacterMediaPanel';
 import { isSelfCharacter, isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import { useChatStream } from '../../hooks/useChatStream';
@@ -144,12 +145,14 @@ type CharacterDetailModalProps = {
   isMainCharacter?: boolean;
 };
 
-type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge';
+type TabKey = 'info' | 'social' | 'relationships' | 'perceptions' | 'history' | 'timeline' | 'chat' | 'insights' | 'metadata' | 'knowledge' | 'photos' | 'messages';
 
 const tabs: Array<{ key: TabKey; label: string; shortLabel: string; icon: typeof FileText }> = [
   { key: 'info',         label: 'Info',              shortLabel: 'Info',    icon: FileText },
   { key: 'knowledge',    label: 'What I Know',       shortLabel: 'Know',    icon: Brain },
   { key: 'chat',         label: 'Intelligence Chat', shortLabel: 'Chat',    icon: MessageSquare },
+  { key: 'photos',       label: 'Photo Gallery',     shortLabel: 'Photos',  icon: ImageIcon },
+  { key: 'messages',     label: 'Messages',          shortLabel: 'Msgs',    icon: MessageSquare },
   { key: 'relationships', label: 'Connections',      shortLabel: 'Links',   icon: Network },
   { key: 'history',      label: 'History',           shortLabel: 'History', icon: Calendar },
   { key: 'timeline',     label: 'Timeline',          shortLabel: 'Time',    icon: Clock },
@@ -4507,6 +4510,22 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 mockMode={isMockDataEnabled}
                 active={activeTab === 'knowledge'}
                 onAskInChat={askInChat}
+              />
+            )}
+
+            {!loadingDetails && activeTab === 'photos' && (
+              <CharacterMediaPanel
+                characterId={character.id}
+                characterName={editedCharacter.name}
+                kind="photo"
+              />
+            )}
+
+            {!loadingDetails && activeTab === 'messages' && (
+              <CharacterMediaPanel
+                characterId={character.id}
+                characterName={editedCharacter.name}
+                kind="message"
               />
             )}
 

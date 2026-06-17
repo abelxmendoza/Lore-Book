@@ -7,6 +7,7 @@ interface EntityCounts {
   events: number;
   organizations: number;
   skills: number;
+  projects: number;
 }
 
 const CACHE_TTL = 60_000; // 1 minute

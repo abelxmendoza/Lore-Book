@@ -2063,4 +2063,90 @@ router.get('/:id/scene-candidates', requireAuth, async (req: AuthenticatedReques
   }
 });
 
+// ── Character media: Photos + Messages (DM screenshots / text) ────────────────
+// GET /api/characters/:id/media?kind=photo|message
+router.get('/:id/media', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const characterId = String(req.params.id);
+  const kind = req.query.kind ? String(req.query.kind) : undefined;
+  let q = supabaseAdmin
+    .from('character_media')
+    .select('id, character_id, kind, url, text, caption, source, metadata, created_at')
+    .eq('user_id', userId)
+    .eq('character_id', characterId)
+    .order('created_at', { ascending: false });
+  if (kind === 'photo' || kind === 'message') q = q.eq('kind', kind);
+  const { data, error } = await q;
+  if (error) {
+    logger.error({ error, characterId }, 'list character media failed');
+    return res.status(500).json({ error: 'Failed to load media' });
+  }
+  res.json({ media: data ?? [] });
+});
+
+// POST /api/characters/:id/media  { kind, dataUrl?, text?, caption?, source? }
+// Image items (a photo, or a message screenshot) pass a base64 dataUrl (compress
+// client-side to stay under the API body limit). Pure-text messages omit dataUrl.
+router.post('/:id/media', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const characterId = String(req.params.id);
+  const schema = z.object({
+    kind: z.enum(['photo', 'message']),
+    dataUrl: z.string().optional(),
+    text: z.string().optional(),
+    caption: z.string().optional(),
+    source: z.string().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid media', details: parsed.error.flatten() });
+  const { kind, dataUrl, text, caption, source } = parsed.data;
+  if (!dataUrl && !text) return res.status(400).json({ error: 'Provide an image or text' });
+
+  let url: string | null = null;
+  let storage_path: string | null = null;
+  try {
+    if (dataUrl) {
+      const match = /^data:(image\/[a-zA-Z+]+);base64,(.+)$/.exec(dataUrl);
+      if (!match) return res.status(400).json({ error: 'Invalid image data URL' });
+      const contentType = match[1];
+      const buffer = Buffer.from(match[2], 'base64');
+      const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
+      storage_path = `${userId}/characters/${characterId}/${randomUUID()}.${ext}`;
+      const { error: upErr } = await supabaseAdmin.storage.from('photos').upload(storage_path, buffer, { contentType, upsert: false });
+      if (upErr) {
+        logger.error({ error: upErr, characterId }, 'character media upload failed');
+        return res.status(500).json({ error: 'Upload failed' });
+      }
+      url = supabaseAdmin.storage.from('photos').getPublicUrl(storage_path).data.publicUrl;
+    }
+    const { data, error } = await supabaseAdmin
+      .from('character_media')
+      .insert({ user_id: userId, character_id: characterId, kind, url, storage_path, text: text ?? null, caption: caption ?? null, source: source ?? null })
+      .select('id, character_id, kind, url, text, caption, source, metadata, created_at')
+      .single();
+    if (error) {
+      logger.error({ error, characterId }, 'insert character media failed');
+      return res.status(500).json({ error: 'Could not save media' });
+    }
+    res.json({ media: data });
+  } catch (e) {
+    logger.error({ error: e, characterId }, 'character media error');
+    res.status(500).json({ error: 'Could not save media' });
+  }
+});
+
+// DELETE /api/characters/:id/media/:mediaId
+router.delete('/:id/media/:mediaId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const { data: row } = await supabaseAdmin
+    .from('character_media').select('id, storage_path').eq('id', String(req.params.mediaId)).eq('user_id', userId).maybeSingle();
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  const r = row as { id: string; storage_path: string | null };
+  if (r.storage_path) {
+    await supabaseAdmin.storage.from('photos').remove([r.storage_path]).catch(() => {});
+  }
+  await supabaseAdmin.from('character_media').delete().eq('id', r.id).eq('user_id', userId);
+  res.json({ deleted: true });
+});
+
 export const charactersRouter = router;

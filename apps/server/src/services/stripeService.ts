@@ -58,6 +58,43 @@ export interface SubscriptionData {
   cancelAtPeriodEnd: boolean;
 }
 
+export type CheckoutIntent = {
+  clientSecret: string | null;
+  intentType: 'payment' | 'setup' | null;
+};
+
+/** Ensure every user has a subscriptions row (trigger may have missed legacy accounts). */
+export async function ensureSubscriptionRow(userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('subscriptions')
+    .upsert(
+      { user_id: userId, status: 'active', plan_type: 'free' },
+      { onConflict: 'user_id', ignoreDuplicates: true }
+    );
+  if (error) {
+    logger.error({ error, userId }, 'ensureSubscriptionRow failed');
+    throw new Error('Could not initialize subscription record');
+  }
+}
+
+/** Extract PaymentElement client secret from a Stripe subscription. */
+export function extractCheckoutIntent(subscription: Stripe.Subscription): CheckoutIntent {
+  const invoice = subscription.latest_invoice as Stripe.Invoice & {
+    payment_intent?: Stripe.PaymentIntent | string | null;
+  };
+  const paymentIntent =
+    typeof invoice?.payment_intent === 'object' ? invoice.payment_intent : null;
+  const setupIntent = subscription.pending_setup_intent as Stripe.SetupIntent | string | null;
+  const setupObj = typeof setupIntent === 'object' ? setupIntent : null;
+  const clientSecret = paymentIntent?.client_secret ?? setupObj?.client_secret ?? null;
+  const intentType: CheckoutIntent['intentType'] = paymentIntent?.client_secret
+    ? 'payment'
+    : setupObj?.client_secret
+      ? 'setup'
+      : null;
+  return { clientSecret, intentType };
+}
+
 /**
  * Create a Stripe customer for a user
  */
@@ -66,6 +103,8 @@ export async function createCustomer(userId: string, email: string): Promise<str
     throw new Error('Stripe is not configured');
   }
 
+  await ensureSubscriptionRow(userId);
+
   const customer = await stripe.customers.create({
     email,
     metadata: {
@@ -73,11 +112,15 @@ export async function createCustomer(userId: string, email: string): Promise<str
     },
   });
 
-  // Update subscription record with customer ID
-  await supabase
+  const { error } = await supabase
     .from('subscriptions')
     .update({ stripe_customer_id: customer.id })
     .eq('user_id', userId);
+
+  if (error) {
+    logger.error({ error, userId }, 'Failed to save stripe_customer_id');
+    throw new Error('Could not save billing customer');
+  }
 
   return customer.id;
 }
@@ -93,6 +136,8 @@ export async function createSubscription(
   if (!stripe || !config.subscriptionPriceId) {
     throw new Error('Stripe or subscription price ID is not configured');
   }
+
+  await ensureSubscriptionRow(userId);
 
   const trialEnd = Math.floor(Date.now() / 1000) + (trialDays * 24 * 60 * 60);
 
@@ -172,7 +217,9 @@ export async function getSubscription(subscriptionId: string): Promise<Stripe.Su
   }
 
   try {
-    return await stripe.subscriptions.retrieve(subscriptionId);
+    return await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ['latest_invoice.payment_intent', 'pending_setup_intent'],
+    });
   } catch (error) {
     console.error('Error retrieving subscription:', error);
     return null;

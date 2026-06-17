@@ -105,6 +105,17 @@ export function useSubscription() {
       await fetchSubscription();
       return result;
     } catch (err) {
+      if (err instanceof Error) {
+        if (err.message.includes('billing_not_configured')) {
+          throw new Error('Billing is not configured on this server. Add STRIPE_SECRET_KEY and SUBSCRIPTION_PRICE_ID.');
+        }
+        if (err.message.includes('billing_not_required')) {
+          throw new Error('Your account already has full access — billing is not required.');
+        }
+        if (err.message.includes('checkout_unavailable')) {
+          throw new Error('Checkout could not start. Verify your Stripe price ID is active.');
+        }
+      }
       throw new Error(err instanceof Error ? err.message : 'Failed to create subscription');
     }
   }, [fetchSubscription]);

@@ -16,6 +16,9 @@ import {
   createBillingPortalSession,
   handleWebhook,
   verifyWebhookSignature,
+  getSubscription,
+  extractCheckoutIntent,
+  ensureSubscriptionRow,
 } from '../services/stripeService';
 import { getCurrentUsage } from '../services/usageTracking';
 
@@ -139,11 +142,31 @@ router.post('/create', authMiddleware, async (req: AuthenticatedRequest, res: Re
 
     // Check if user already has a subscription
     const existing = await getUserSubscription(req.user.id);
+    await ensureSubscriptionRow(req.user.id);
+
     if (existing?.stripeSubscriptionId) {
-      return res.status(400).json({
-        error: 'Subscription exists',
-        message: 'You already have an active subscription.',
-      });
+      const paidStatuses = new Set(['trial', 'active']);
+      if (paidStatuses.has(existing.status) && existing.planType === 'premium') {
+        return res.status(400).json({
+          error: 'Subscription exists',
+          message: 'You already have an active subscription.',
+        });
+      }
+
+      // Resume incomplete checkout (user abandoned PaymentElement)
+      const stripeSub = await getSubscription(existing.stripeSubscriptionId);
+      if (stripeSub && ['incomplete', 'trialing', 'past_due'].includes(stripeSub.status)) {
+        const { clientSecret, intentType } = extractCheckoutIntent(stripeSub);
+        if (clientSecret) {
+          return res.json({
+            subscriptionId: stripeSub.id,
+            clientSecret,
+            intentType,
+            status: stripeSub.status,
+            trialEnd: stripeSub.trial_end ? new Date(stripeSub.trial_end * 1000).toISOString() : null,
+          });
+        }
+      }
     }
 
     // Create or get Stripe customer
@@ -160,15 +183,14 @@ router.post('/create', authMiddleware, async (req: AuthenticatedRequest, res: Re
     // pending_setup_intent (collect card now, charge after trial). Prefer the
     // PaymentIntent (immediate charge) and fall back to the SetupIntent. The
     // `intentType` tells the client whether to call confirmPayment or confirmSetup.
-    const invoice = subscription.latest_invoice as any;
-    const paymentIntent = invoice?.payment_intent;
-    const setupIntent = (subscription as any).pending_setup_intent;
-    const clientSecret = paymentIntent?.client_secret ?? setupIntent?.client_secret ?? null;
-    const intentType: 'payment' | 'setup' | null = paymentIntent?.client_secret
-      ? 'payment'
-      : setupIntent?.client_secret
-        ? 'setup'
-        : null;
+    const { clientSecret, intentType } = extractCheckoutIntent(subscription);
+
+    if (!clientSecret) {
+      return res.status(502).json({
+        error: 'checkout_unavailable',
+        message: 'Could not start checkout — no payment intent from Stripe. Check SUBSCRIPTION_PRICE_ID and Stripe dashboard.',
+      });
+    }
 
     return res.json({
       subscriptionId: subscription.id,

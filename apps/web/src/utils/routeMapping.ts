@@ -19,6 +19,7 @@ export type SurfaceKey =
   | 'entities'
   | 'organizations'
   | 'skills'
+  | 'projects'
   | 'discovery'
   | 'continuity'
   | 'subscription'
@@ -52,6 +53,7 @@ export const routeToSurface: Record<string, SurfaceKey> = {
   '/entities': 'entities',
   '/organizations': 'organizations',
   '/skills': 'skills',
+  '/projects': 'projects',
   '/discovery': 'discovery',
   '/continuity': 'continuity',
   '/subscription': 'subscription',
@@ -84,6 +86,7 @@ export const surfaceToRoute: Record<SurfaceKey, string> = {
   'entities': '/entities',
   'organizations': '/organizations',
   'skills': '/skills',
+  'projects': '/projects',
   'discovery': '/discovery',
   'continuity': '/continuity',
   'subscription': '/subscription',

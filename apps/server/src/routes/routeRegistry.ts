@@ -56,6 +56,7 @@ import { insightsRouter } from './insights';
 import { integrationsRouter } from './integrations';
 import { legalRouter } from './legal';
 import { locationsRouter } from './locations';
+import { projectsRouter } from './projects';
 import { memoirRouter } from './memoir';
 import { moodsRouter } from './moods';
 import { memoryGraphRouter } from './memoryGraph';
@@ -572,6 +573,13 @@ export const routeRegistry: RouteEntry[] = [
     requiresAuth: false,
     classification: 'CORE_RUNTIME',
     description: 'Location entity management — used in lorebook, character profiles, entity detail',
+  },
+  {
+    path: '/api/projects',
+    router: projectsRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Projects Book — canonical project entities (mirrors locations authority)',
   },
   {
     path: '/api/location-resolution',

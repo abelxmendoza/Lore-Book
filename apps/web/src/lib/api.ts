@@ -148,7 +148,7 @@ export const fetchJson = async <T>(
 
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        let errorMessage = error.error || error.message || `HTTP ${res.status}: ${res.statusText}`;
+        let errorMessage = error.message || error.error || `HTTP ${res.status}: ${res.statusText}`;
         const isSchemaIncomplete = res.status === 503 && (error.error === 'Database schema incomplete' || Array.isArray(error.missingTables));
         if (isSchemaIncomplete) {
           errorMessage = error.message || 'Database schema incomplete. Run: ./scripts/run-base-migrations.sh';

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, ExternalLink } from 'lucide-react';
+import { BookMarked, CalendarDays, MessageSquareText, Search, Sparkles, Users, BookOpen, MapPin, Crown, Shield, Compass, Settings, UserCog, HelpCircle, Images, Eye, Calendar, Hash, Building2, Zap, X, Heart, Target, ExternalLink, Briefcase } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Logo } from './Logo';
@@ -214,6 +214,24 @@ const SidebarContent = ({
             <span className="flex-1 text-left">Skills</span>
             {counts && counts.skills > 0 && (
               <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.skills}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSurfaceChange('projects')}
+            aria-label="Open projects view"
+            aria-current={activeSurface === 'projects' ? 'page' : undefined}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition",
+              activeSurface === 'projects'
+                ? 'border-primary bg-primary/10 text-white'
+                : 'border-transparent text-white/70 hover:border-primary hover:bg-primary/10'
+            )}
+          >
+            <Briefcase className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left">Projects</span>
+            {counts && counts.projects > 0 && (
+              <span className="ml-auto text-xs text-white/40 bg-white/8 rounded-full px-1.5 py-0.5 leading-none">{counts.projects}</span>
             )}
           </button>
           <button

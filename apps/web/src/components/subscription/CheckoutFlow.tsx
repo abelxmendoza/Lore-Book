@@ -213,11 +213,19 @@ export const CheckoutFlow = ({ onCancel, onSuccess }: { onCancel: () => void; on
   }
 
   if (checkoutError) {
+    const isConfig = /not configured|billing_not_configured|checkout_unavailable/i.test(checkoutError);
     return (
       <div className="min-h-screen bg-gradient-to-br from-black via-purple-950/20 to-black p-6 flex items-center justify-center">
         <Card className="bg-black/40 border-border/60 max-w-md">
           <CardContent className="p-6 space-y-4">
-            <p className="text-red-400 text-sm text-center">{checkoutError}</p>
+            <p className={isConfig ? 'text-amber-300 text-sm text-center' : 'text-red-400 text-sm text-center'}>
+              {checkoutError}
+            </p>
+            {isConfig && (
+              <p className="text-white/40 text-xs text-center">
+                Server needs STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, SUBSCRIPTION_PRICE_ID, and VITE_STRIPE_PUBLISHABLE_KEY.
+              </p>
+            )}
             <Button className="w-full" onClick={onCancel}>
               Back to pricing
             </Button>

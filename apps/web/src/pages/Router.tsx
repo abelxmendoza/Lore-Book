@@ -140,16 +140,24 @@ export const Router = () => {
           </LazyRoute>
         } 
       />
-      <Route 
-        path="/locations" 
+      <Route
+        path="/locations"
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="locations" /></AuthGate>
           </LazyRoute>
-        } 
+        }
       />
-      <Route 
-        path="/memoir" 
+      <Route
+        path="/projects"
+        element={
+          <LazyRoute>
+            <AuthGate><App defaultSurface="projects" /></AuthGate>
+          </LazyRoute>
+        }
+      />
+      <Route
+        path="/memoir"
         element={
           <LazyRoute>
             <AuthGate><App defaultSurface="memoir" /></AuthGate>

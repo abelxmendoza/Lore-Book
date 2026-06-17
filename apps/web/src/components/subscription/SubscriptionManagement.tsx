@@ -164,7 +164,7 @@ function PrivilegedAccessPanel({ authority }: { authority: NonNullable<ReturnTyp
 // ── Main component ────────────────────────────────────────────────────────────
 
 export const SubscriptionManagement = () => {
-  const { subscription, loading, cancelSubscription, reactivateSubscription, getBillingPortalUrl } = useSubscription();
+  const { subscription, loading, cancelSubscription, reactivateSubscription, getBillingPortalUrl, refresh } = useSubscription();
   const [canceling, setCanceling] = useState(false);
   const [reactivating, setReactivating] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -208,7 +208,7 @@ export const SubscriptionManagement = () => {
     return (
       <CheckoutFlow
         onCancel={() => setShowCheckout(false)}
-        onSuccess={() => setShowCheckout(false)}
+        onSuccess={() => { void refresh(); setShowCheckout(false); }}
       />
     );
   }
@@ -437,7 +437,7 @@ export const SubscriptionManagement = () => {
 
       {/* ── Trust footnote ──────────────────────────────────────────────── */}
       <p className="text-xs text-white/25 text-center">
-        No credit card required to start&nbsp;·&nbsp;Cancel any time&nbsp;·&nbsp;Your data is never deleted
+        7-day free trial&nbsp;·&nbsp;Cancel any time&nbsp;·&nbsp;Your data is never deleted
       </p>
     </div>
   );

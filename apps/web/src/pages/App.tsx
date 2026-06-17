@@ -24,6 +24,7 @@ import { ChatFirstInterface } from '../features/chat/components/ChatFirstInterfa
 import { ConversationPersistenceInspector } from '../features/chat/components/ConversationPersistenceInspector';
 import { CharacterBook } from '../components/characters/CharacterBook';
 import { LocationBook } from '../components/locations/LocationBook';
+import { ProjectBook } from '../components/projects/ProjectBook';
 import { PhotoAlbum } from '../components/photos/PhotoAlbum';
 import { BiographyEditor } from '../components/biography/BiographyEditor';
 import { LoreBook } from '../components/lorebook/LoreBook';
@@ -215,6 +216,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       entities: 'Entities',
       organizations: 'Groups & Organizations',
       skills: 'Skills',
+      projects: 'Projects',
       subscription: 'Subscription',
       pricing: 'Pricing',
       security: 'Privacy & Security',
@@ -313,6 +315,7 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
         {activeSurface === 'search' && renderSearchSurface()}
         {activeSurface === 'characters' && <CharacterBook />}
         {activeSurface === 'locations' && <LocationBook />}
+        {activeSurface === 'projects' && <ProjectBook />}
         {activeSurface === 'memoir' && (
           <div className="fixed inset-0 lg:relative lg:inset-auto h-full w-full overflow-hidden">
             <BiographyEditor />

@@ -58,7 +58,7 @@ export const PricingPage = ({ onSurfaceChange }: { onSurfaceChange?: (surface: '
         <div className="text-center space-y-4">
           <h1 className="text-4xl font-bold text-white">Choose Your Plan</h1>
           <p className="text-xl text-white/60">
-            Start with a 7-day free trial. No credit card required until trial ends.
+            Start with a 7-day free trial. Add a card to begin — you won't be charged until the trial ends.
           </p>
         </div>
 
