@@ -3,10 +3,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockFrom = vi.fn();
 const mockEnsureSelf = vi.fn();
 const mockResolveByName = vi.fn();
+const mockCreateEntity = vi.fn();
 
 vi.mock('../../src/services/entityRegistry/EntityRegistry', () => ({
   entityRegistry: {
     resolveByName: (...args: unknown[]) => mockResolveByName(...args),
+  },
+}));
+
+vi.mock('../../src/services/omegaMemoryService', () => ({
+  omegaMemoryService: {
+    createEntity: (...args: unknown[]) => mockCreateEntity(...args),
   },
 }));
 
@@ -40,6 +47,7 @@ describe('relationshipPersistenceService', () => {
     vi.clearAllMocks();
     mockEnsureSelf.mockResolvedValue({ id: 'self-char', name: 'Me' });
     mockResolveByName.mockResolvedValue(null);
+    mockCreateEntity.mockResolvedValue(null);
   });
 
   it('persists resolved entity link to entity_relationships', async () => {
@@ -390,5 +398,49 @@ describe('relationshipPersistenceService', () => {
 
     expect(result.persisted).toBe(1);
     expect(update).toHaveBeenCalled();
+  });
+
+  it('creates mentioned-only omega entities for unresolved person endpoints', async () => {
+    const insert = vi.fn(async () => ({ error: null }));
+    mockCreateEntity.mockResolvedValue({
+      id: 'omega-marcus',
+      primary_name: 'Marcus',
+      type: 'PERSON',
+    });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'characters') {
+        return chain({ data: [{ id: 'self-char', name: 'Me', alias: [] }], error: null });
+      }
+      if (table === 'entity_relationships') {
+        const b = chain({ data: null, error: null });
+        b.insert = insert;
+        return b;
+      }
+      return chain({ data: [], error: null });
+    });
+
+    const lexical = {
+      entityLinks: [{
+        subject: 'self',
+        object: 'Marcus',
+        relationshipType: 'CO_MENTIONED_WITH',
+        scope: 'FAMILY',
+        role: 'cousin',
+        cue: 'my cousin Marcus',
+        confidence: 0.88,
+      }],
+    } as LexicalAnalysisResult;
+
+    const result = await relationshipPersistenceService.persistFromInterpretation(
+      'user-1',
+      'msg-1',
+      lexical,
+      { resolvedEntities: [], resolvedRelationships: [] } as MeaningResolutionResult
+    );
+
+    expect(mockCreateEntity).toHaveBeenCalledWith('user-1', 'Marcus', 'PERSON');
+    expect(result.persisted).toBe(1);
+    expect(result.entityEdges).toBe(1);
+    expect(insert).toHaveBeenCalled();
   });
 });

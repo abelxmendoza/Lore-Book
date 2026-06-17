@@ -18,15 +18,9 @@ class TimelineAgentInterface:
     def __init__(
         self, base_path: Path | None = None, max_context_events: int = 20, user_id: str | None = None
     ) -> None:
-        self.manager = TimelineManager(base_path=base_path, user_id=user_id)
-        self,
-        base_path: Path | None = None,
-        max_context_events: int = 20,
-        user_id: str | None = None,
-    ) -> None:
         safe_user = re.sub(r"[^a-zA-Z0-9_-]", "_", user_id or "shared")
         scoped_base = (base_path or Path(__file__).resolve().parent / "timeline") / safe_user
-        self.manager = TimelineManager(base_path=scoped_base)
+        self.manager = TimelineManager(base_path=scoped_base, user_id=user_id)
         self.max_context_events = max_context_events
         self.user_id = user_id
 
@@ -40,13 +34,6 @@ class TimelineAgentInterface:
             filtered.append(event)
         return filtered
 
-    def load_timeline_context(self, request_user_id: str | None = None) -> List[dict]:
-        """Load a limited set of recent, non-archived events for prompt injection."""
-
-        if request_user_id is not None:
-            assert request_user_id == self.manager.user_id
-        events = self.manager.get_events(include_archived=False)
-        sorted_events = sorted(events, key=lambda e: e.date, reverse=True)
     def load_timeline_context(
         self,
         *,

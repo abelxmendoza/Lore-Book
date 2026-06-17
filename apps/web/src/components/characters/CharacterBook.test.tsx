@@ -83,6 +83,18 @@ vi.mock('../../api/selfCharacter', () => ({
   },
 }));
 
+vi.mock('../../contexts/GuestContext', () => ({
+  useGuest: () => ({
+    isGuest: false,
+    guestState: null,
+    startGuestSession: vi.fn(),
+    endGuestSession: vi.fn(),
+    incrementChatMessage: vi.fn(() => false),
+    canSendChatMessage: () => true,
+  }),
+  GUEST_CHAT_LIMIT: 5,
+}));
+
 vi.mock('../../contexts/ChatThreadContext', () => ({
   ChatThreadProvider: ({ children }: { children?: React.ReactNode }) => children,
   useActiveChatMessages: () => [],

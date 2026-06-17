@@ -42,6 +42,15 @@ function indexHasName(index: Map<string, ResolvedEntityRef>, name: string): bool
   return index.has(name.trim().toLowerCase());
 }
 
+function displayNameForLinkKey(links: DiscoveredEntityLink[], key: string): string {
+  const lower = key.trim().toLowerCase();
+  for (const link of links) {
+    if (link.object.trim().toLowerCase() === lower) return link.object.trim();
+    if (link.subject.trim().toLowerCase() === lower) return link.subject.trim();
+  }
+  return key.trim();
+}
+
 class RelationshipPersistenceService {
   private endpointCache = new Map<string, ResolvedEntityRef | null>();
 
@@ -236,7 +245,70 @@ class RelationshipPersistenceService {
       }
     }
 
+    const stillUnresolved = [...needed].filter((name) => !indexHasName(index, name));
+    for (const name of stillUnresolved) {
+      const ref = await this.ensureMentionEntityRef(
+        userId,
+        displayNameForLinkKey(links, name),
+        links
+      );
+      if (ref) {
+        index.set(name.trim().toLowerCase(), ref);
+        index.set(ref.name.trim().toLowerCase(), ref);
+      }
+    }
+
     return index;
+  }
+
+  private inferMentionEntityType(
+    name: string,
+    links: DiscoveredEntityLink[]
+  ): 'PERSON' | 'ORGANIZATION' | 'LOCATION' {
+    const key = name.trim().toLowerCase();
+    for (const link of links) {
+      if (link.object.trim().toLowerCase() === key && link.relationshipType === 'WORKS_FOR') {
+        return 'ORGANIZATION';
+      }
+      if (link.subject.trim().toLowerCase() === key && link.relationshipType === 'WORKS_FOR') {
+        return 'PERSON';
+      }
+    }
+    return 'PERSON';
+  }
+
+  /** Create a mentioned-only omega entity so relationship edges can persist before promotion. */
+  private async ensureMentionEntityRef(
+    userId: string,
+    name: string,
+    links: DiscoveredEntityLink[]
+  ): Promise<ResolvedEntityRef | null> {
+    const trimmed = name.trim();
+    if (!trimmed || SELF_ALIASES.has(trimmed.toLowerCase())) return null;
+
+    const canonical = await entityRegistry.resolveByName(trimmed, userId);
+    if (canonical?.source === 'character') {
+      return { id: canonical.id, type: 'character', name: canonical.name };
+    }
+    if (canonical?.source === 'omega_entity') {
+      return { id: canonical.id, type: 'omega_entity', name: canonical.name };
+    }
+
+    try {
+      const { omegaMemoryService } = await import('../omegaMemoryService');
+      const entityType = this.inferMentionEntityType(trimmed, links);
+      const created = await omegaMemoryService.createEntity(userId, trimmed, entityType);
+      if (created?.id) {
+        return {
+          id: created.id,
+          type: 'omega_entity',
+          name: String(created.primary_name ?? trimmed),
+        };
+      }
+    } catch (err) {
+      logger.warn({ err, userId, name: trimmed }, 'Failed to create mention entity for relationship edge');
+    }
+    return null;
   }
 
   private async resolveEndpoint(

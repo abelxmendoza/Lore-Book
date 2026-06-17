@@ -19,7 +19,12 @@ import { analytics } from '../../../lib/monitoring';
 
 type LoadingStage = 'analyzing' | 'searching' | 'connecting' | 'reasoning' | 'generating';
 
-import { mergeThreadEntities, toComposerThreadEntity, type CertifiedEntityMatch } from '../../../lib/certifiedEntityMatch';
+import { applyGuestLoreUpdates } from '../../../services/guestLoreStore';
+import {
+  mergeThreadEntities,
+  toComposerThreadEntity,
+  type CertifiedEntityMatch,
+} from '../../../lib/certifiedEntityMatch';
 
 export type ChatSendOptions = {
   entityContext?: { type: 'CHARACTER' | 'LOCATION' | 'ENTITY'; id: string };
@@ -97,24 +102,20 @@ function friendlyErrorMessage(errMsg: string): string {
   return `Sorry, I encountered an error. Please try again.`;
 }
 
-// Friendly demo response shown when the backend is unreachable and the user
-// is in guest or mock-data mode. Gives a sense of what the real system would say.
+// Shown only when the guest preview backend is unreachable.
 function getDemoResponse(message: string): string {
   const lower = message.toLowerCase();
-  const prefix = '*(Demo mode — backend not connected)*\n\n';
+  const prefix = '*(Guest preview — server unavailable)*\n\n';
   if (/villain|character|person|who is|tell me about/.test(lower)) {
-    return prefix + "In the full version I'd recall everything I know about that character from your lore — relationships, backstory, past mentions. Sign up to enable real memory.";
+    return prefix + "I'd extract and track that character from your message — start the backend or sign up for the full experience with persistent memory.";
   }
   if (/remember|recall|what do you know|what did i|have i ever/.test(lower)) {
-    return prefix + "In the full version I'd search through your stored memories and surface matching entries with dates and context. Sign up to enable real recall.";
-  }
-  if (/chapter|story|timeline|arc|saga/.test(lower)) {
-    return prefix + "In the full version I'd pull your story timeline, chapter summaries, and narrative arcs. Sign up for full lore access.";
+    return prefix + "I'd search your stored memories and surface matching entries. Connect to the server or create an account to enable real recall.";
   }
   if (/log this|save this|remember this|journal entry|lore note/.test(lower)) {
-    return prefix + "Got it — in the full version this would be saved to your memory and available for recall. Sign up to start building your lore.";
+    return prefix + "Got it — this would be saved to your temporary guest lore and available in Characters and Timeline. Start the backend to try it live.";
   }
-  return prefix + "Your message was received. In the full version the AI would respond using your stored lore and memories. Start the backend (`npm run dev:server`) or sign up for the hosted version.";
+  return prefix + "Your message was received. Start the backend (`npm run dev:server`) to try guest chat with real extraction, or sign up for the hosted version.";
 }
 
 export const useChat = () => {
@@ -393,6 +394,18 @@ export const useChat = () => {
             progressIntervalRef.current = null;
           }
           
+          if (meta.loreUpdates && isGuest && guestState?.guestId) {
+            applyGuestLoreUpdates(guestState.guestId, meta.loreUpdates);
+            Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]).catch(() => {});
+            const ids: string[] | undefined = meta.characterIds;
+            if (ids && ids.length > 0) {
+              window.dispatchEvent(
+                new CustomEvent('lk:characters-updated', { detail: { ids } })
+              );
+            }
+            dispatchStoryDataUpdated({ scopes: ['all'], characterIds: ids });
+          }
+
           if (meta.sources && meta.sources.length > 0) {
             setLoadingStage('searching');
             setLoadingProgress(40);
@@ -448,17 +461,20 @@ export const useChat = () => {
           { touchActivity: true }
           );
 
-          if (persistedUserMessageId) {
+          if (isGuest) {
+            updateStreamMessage(userMessage.id, { persistStatus: 'saved' });
+          } else if (persistedUserMessageId) {
             updateStreamMessage(userMessage.id, { id: persistedUserMessageId, persistStatus: 'saved' });
           } else if (!metadata?.persistence?.user?.saved) {
             updateStreamMessage(userMessage.id, { persistStatus: 'failed' });
             threadPersistenceTracker.markSyncFailed(streamThreadId, 'user_message_not_persisted');
           }
 
-          // Reconcile with durable server copy after persistence settles.
-          setTimeout(() => {
-            void hydrateThreadMessages(streamThreadId).catch(() => {});
-          }, 1200);
+          if (!isGuest) {
+            setTimeout(() => {
+              void hydrateThreadMessages(streamThreadId).catch(() => {});
+            }, 1200);
+          }
 
           // If there's a disambiguation prompt, attach it to the user message
           if (metadata?.disambiguationPrompt) {
@@ -474,15 +490,13 @@ export const useChat = () => {
             setLoadingProgress(0);
           }, 300);
 
-          // Accurate mood score from the full message (once per send, not per keystroke)
-          fetchJson<{ mood: number }>('/api/moods/score', {
-            method: 'POST',
-            body: JSON.stringify({ text: messageText.trim() }),
-          }).catch(() => {});
+          if (!isGuest) {
+            fetchJson<{ mood: number }>('/api/moods/score', {
+              method: 'POST',
+              body: JSON.stringify({ text: messageText.trim() }),
+            }).catch(() => {});
+          }
 
-          // Ingestion pipeline is async — fire a first refresh at 4s (catches fast completions)
-          // and a second at 11s (catches slow LLM-backed steps: event assembly, interest extraction).
-          // The 3s fixed delay was too short; pipeline can take 8-15s end-to-end.
           const doRefresh = () => {
             apiCache.deletePattern(/\/api\/(entries|timeline|chapters|characters|entity-resolution|family-trees|organizations)/);
             Promise.all([refreshEntries(), refreshTimeline(), refreshChapters()]).catch(() => {});
@@ -505,8 +519,12 @@ export const useChat = () => {
               characterIds: ids,
             });
           };
-          setTimeout(doRefresh, 4000);
-          setTimeout(doRefresh, 11000);
+          if (isGuest) {
+            doRefresh();
+          } else {
+            setTimeout(doRefresh, 4000);
+            setTimeout(doRefresh, 11000);
+          }
         },
         (error) => {
           if (progressIntervalRef.current) {
@@ -536,7 +554,8 @@ export const useChat = () => {
         },
         threadId,
         mergedThreadEntities.length > 0 ? mergedThreadEntities : undefined,
-        options?.composerEntities
+        options?.composerEntities,
+        isGuest && guestState?.guestId ? { guestId: guestState.guestId } : undefined
       );
     } catch (error) {
       if (progressIntervalRef.current) {
