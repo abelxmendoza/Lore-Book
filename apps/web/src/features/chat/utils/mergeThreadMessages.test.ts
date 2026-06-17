@@ -25,6 +25,31 @@ describe('mergeThreadMessages', () => {
     expect(merged[0].id).toBe('db-a1');
   });
 
+  it('keeps mentionedEntities when hydrating a durable assistant row over a local stream id', () => {
+    const entities = [{ id: 'c1', name: 'Tía Maria', type: 'character' as const }];
+    const local = [
+      msg('assistant-1', 'assistant', 'reply', { mentionedEntities: entities }),
+    ];
+    const server = [
+      msg('db-a1', 'assistant', 'reply', {
+        mentionedEntities: entities,
+        metadata: { mentionedEntities: entities },
+      }),
+    ];
+    const merged = mergeThreadMessages(local, server);
+    expect(merged[0].id).toBe('db-a1');
+    expect(merged[0].mentionedEntities).toEqual(entities);
+  });
+
+  it('preserves local mentionedEntities when server row lacks them but local id is kept', () => {
+    const entities = [{ id: 'l1', name: 'San Diego', type: 'location' as const }];
+    const local = [msg('assistant-1', 'assistant', 'reply', { mentionedEntities: entities })];
+    const server = [msg('db-a1', 'assistant', 'reply')];
+    const merged = mergeThreadMessages(local, server);
+    expect(merged[0].id).toBe('db-a1');
+    expect(merged[0].mentionedEntities).toEqual(entities);
+  });
+
   it('retains streaming assistant placeholder', () => {
     const local = [
       msg('user-1', 'user', 'question'),

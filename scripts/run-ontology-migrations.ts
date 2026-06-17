@@ -35,6 +35,7 @@ const MIGRATIONS = [
   'supabase/migrations/20260617120000_spatial_ontology.sql',
   'supabase/migrations/20260617130000_social_group_ontology.sql',
   'supabase/migrations/20260617140000_organizations_type_check.sql',
+  'supabase/migrations/20260617140000_romantic_peripherals.sql',
   'supabase/migrations/20260617150000_user_inference_state.sql',
   'supabase/migrations/20260617210000_entity_authority.sql',
 ];

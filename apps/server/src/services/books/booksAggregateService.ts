@@ -79,53 +79,33 @@ export async function loadCharactersBook(userId: string, opts?: { includeDuplica
   return { characters: characters ?? [], duplicate_groups, counts };
 }
 
-export async function loadLocationsBook(userId: string, opts?: { rescan?: boolean }) {
-  const [locations, counts, pending] = await Promise.all([
+export async function loadLocationsBook(userId: string) {
+  const [locations, counts, suggestions] = await Promise.all([
     locationService.listLocations(userId),
     loadCounts(userId),
-    locationSuggestionService.getPendingSuggestions(userId).catch(() => []),
+    locationSuggestionService.getSuggestions(userId).catch(() => []),
   ]);
-
-  let suggestions = pending;
-  if (opts?.rescan) {
-    const scanned = await locationSuggestionService.scanAndPersist(userId).catch(() => ({ suggestions: [] }));
-    suggestions = scanned.suggestions ?? pending;
-  }
 
   return { locations, suggestions, counts };
 }
 
-export async function loadProjectsBook(userId: string, opts?: { rescan?: boolean }) {
-  const [projects, duplicate_groups, counts] = await Promise.all([
+export async function loadProjectsBook(userId: string) {
+  const [projects, duplicate_groups, counts, suggestions] = await Promise.all([
     projectService.listProjects(userId),
     projectService.listDuplicates(userId),
     loadCounts(userId),
+    projectSuggestionService.getPendingSuggestions(userId).catch(() => []),
   ]);
-
-  let suggestions: unknown[] = [];
-  if (opts?.rescan) {
-    const scanned = await projectSuggestionService.scanUserProjects(userId, { force: true }).catch(() => null);
-    suggestions = scanned?.pending ?? [];
-  } else {
-    suggestions = await projectSuggestionService.getPendingSuggestions(userId).catch(() => []);
-  }
 
   return { projects, duplicate_groups, suggestions, counts };
 }
 
-export async function loadSkillsBook(userId: string, opts?: { rescan?: boolean }) {
-  const [skills, counts, pending, everScanned] = await Promise.all([
+export async function loadSkillsBook(userId: string) {
+  const [skills, counts, suggestions] = await Promise.all([
     skillService.getSkills(userId, { active_only: false }),
     loadCounts(userId),
-    skillSuggestionService.getPendingSuggestions(userId),
-    skillSuggestionService.hasAnySuggestions(userId),
+    skillSuggestionService.getPendingSuggestions(userId).catch(() => []),
   ]);
-
-  let suggestions = pending;
-  if (opts?.rescan || !everScanned) {
-    await skillSuggestionService.scanUserSkills(userId).catch(() => undefined);
-    suggestions = await skillSuggestionService.getPendingSuggestions(userId);
-  }
 
   return { skills, suggestions, counts };
 }
@@ -174,6 +154,6 @@ export async function loadDiscoverySummary(userId: string) {
   return {
     counts,
     contradictionCount: contradictions.contradictions?.length ?? 0,
-    revealedSignalCount: revealed.signals?.length ?? 0,
+    revealedSignalCount: revealed.categories?.length ?? 0,
   };
 }

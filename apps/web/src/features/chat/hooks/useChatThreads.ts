@@ -13,6 +13,7 @@ import {
 } from '../utils/threadTitleUtils';
 import { dedupeConversationThreads, ensureLocalUniqueTitle } from '../utils/threadDedupeUtils';
 import { mergeThreadMessages, countMissingAssistantTurns } from '../utils/mergeThreadMessages';
+import { mapDbMessageRow } from '../utils/mapDbMessageRow';
 
 export type ChatThread = {
   id: string;
@@ -64,14 +65,8 @@ function dbRowToThread(t: any): ChatThread {
   return normalizeThreadTitle(thread);
 }
 
-function dbMessageToMessage(row: any): Message {
-  return {
-    id: row.id,
-    role: row.role === 'assistant' ? 'assistant' : 'user',
-    content: row.content ?? '',
-    timestamp: row.created_at ? new Date(row.created_at) : new Date(),
-    ...(row.metadata ? { metadata: row.metadata } : {}),
-  };
+function dbMessageToMessage(row: Parameters<typeof mapDbMessageRow>[0]): Message {
+  return mapDbMessageRow(row);
 }
 
 const STALE_EMPTY_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours

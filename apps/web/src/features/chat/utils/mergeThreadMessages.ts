@@ -33,7 +33,20 @@ export function mergeThreadMessages(local: Message[], server: Message[]): Messag
     const fp = fingerprint(row.role, row.content || ' ');
     const existing = byFingerprint.get(fp);
     if (!existing || sourceRank(row.id) > sourceRank(existing.id)) {
-      byFingerprint.set(fp, row);
+      const message =
+        existing && sourceRank(row.id) > sourceRank(existing.id)
+          ? {
+              ...row.message,
+              mentionedEntities:
+                row.message.mentionedEntities ?? existing.message.mentionedEntities,
+            }
+          : row.message;
+      byFingerprint.set(fp, { ...row, message });
+    } else if (!existing.message.mentionedEntities && row.message.mentionedEntities) {
+      byFingerprint.set(fp, {
+        ...existing,
+        message: { ...existing.message, mentionedEntities: row.message.mentionedEntities },
+      });
     }
   }
 

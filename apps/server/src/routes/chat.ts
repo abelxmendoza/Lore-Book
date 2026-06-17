@@ -221,6 +221,8 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
         continuityWarnings: result.metadata.continuityWarnings,
         response_mode: result.metadata.response_mode,
         recall_sources: result.metadata.recall_sources,
+        mentionedEntities: result.metadata.mentionedEntities,
+        characterIds: result.metadata.characterIds,
         saved_from_stream: true,
         stream_status: status,
       };

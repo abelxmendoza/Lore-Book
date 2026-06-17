@@ -190,6 +190,27 @@ const FAMILY_NAME_HINT =
   /\b(mom|mother|mamá|mama|dad|father|papá|papa|james|jerry|leslie|step\s*dad|stepdad|ben\b|abuela|t[íi]o|t[íi]a|uncle|aunt|ralph|grace|cousin|sibling|brother|sister)\b/i;
 
 class RelationshipFoundationService {
+  private validCharCache = new Map<string, Set<string>>();
+
+  /** Cleared at the start of each recovery pass so inserts never target deleted characters. */
+  private invalidateCharacterCache(userId: string): void {
+    this.validCharCache.delete(userId);
+  }
+
+  private async validCharacterIds(userId: string): Promise<Set<string>> {
+    const cached = this.validCharCache.get(userId);
+    if (cached) return cached;
+    const { data } = await supabaseAdmin.from('characters').select('id').eq('user_id', userId);
+    const ids = new Set((data ?? []).map((c) => c.id));
+    this.validCharCache.set(userId, ids);
+    return ids;
+  }
+
+  private async bothCharactersExist(userId: string, idA: string, idB: string): Promise<boolean> {
+    const valid = await this.validCharacterIds(userId);
+    return valid.has(idA) && valid.has(idB);
+  }
+
   async findProtagonist(userId: string, chars?: CharacterRow[]): Promise<CharacterRow | null> {
     const list =
       chars ??
@@ -217,6 +238,7 @@ class RelationshipFoundationService {
 
   /** Full recovery: journal + facts + chat + orgs + repair pass. */
   async recoverRelationshipGraph(userId: string): Promise<RecoveryStats> {
+    this.invalidateCharacterCache(userId);
     const totals: RecoveryStats = {
       created: 0,
       updated: 0,
@@ -369,6 +391,8 @@ class RelationshipFoundationService {
     const protagonist = await this.findProtagonist(userId, chars as CharacterRow[]);
     if (!protagonist) return stats;
 
+    const validIds = new Set(chars.map((c) => c.id));
+
     const { data: facts } = await supabaseAdmin
       .from('entity_facts')
       .select('id, fact, category, entity_id, confidence')
@@ -379,6 +403,8 @@ class RelationshipFoundationService {
     const processed = new Set<string>();
 
     for (const row of facts ?? []) {
+      if (!validIds.has(row.entity_id)) continue;
+
       const parsed =
         row.category === 'relationship' || row.category === 'history' || row.category === 'general'
           ? parseRelationshipFact(String(row.fact ?? ''))
@@ -401,6 +427,7 @@ class RelationshipFoundationService {
       }
 
       if (!charAId || !charBId || charAId === charBId) continue;
+      if (!validIds.has(charAId) || !validIds.has(charBId)) continue;
 
       const pairKey = `${normalizePair(charAId, charBId).join('::')}::${parsed.relType}`;
       if (processed.has(pairKey)) continue;
@@ -696,6 +723,11 @@ class RelationshipFoundationService {
     }
   ): Promise<boolean> {
     const [srcId, tgtId] = normalizePair(params.charAId, params.charBId);
+
+    if (!(await this.bothCharactersExist(userId, srcId, tgtId))) {
+      logger.debug({ userId, srcId, tgtId, source: params.source }, 'Skipping relationship — character id missing');
+      return false;
+    }
 
     const { data: existing } = await supabaseAdmin
       .from('character_relationships')

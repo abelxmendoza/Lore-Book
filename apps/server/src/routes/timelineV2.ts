@@ -4,6 +4,8 @@ import { requireAuth } from '../middleware/auth';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { timelineService } from '../services/timelineV2';
 import { asyncHandler } from '../utils/asyncHandler';
+import chronologyRouter from './chronology';
+import timelineHierarchyRouter from './timelineHierarchy';
 
 const router = Router();
 
@@ -15,6 +17,10 @@ const createSchema = z.object({
 });
 
 const patchSchema = createSchema.partial();
+
+// Canonical nested mounts (legacy /api/chronology and /api/timeline-hierarchy remain active)
+router.use('/chronology', chronologyRouter);
+router.use('/hierarchy', timelineHierarchyRouter);
 
 // GET / — list all timelines for user
 router.get(
