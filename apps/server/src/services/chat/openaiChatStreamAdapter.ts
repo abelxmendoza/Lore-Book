@@ -13,6 +13,12 @@ export type LorekeeperChatStreamChunk = {
       content?: string | null;
     };
   }>;
+  /** Set on the terminal chunk when stream_options.include_usage is enabled. */
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  } | null;
 };
 
 export type LorekeeperChatStream = AsyncIterable<LorekeeperChatStreamChunk>;
@@ -27,12 +33,28 @@ function asChatDeltaChunk(content: string): LorekeeperChatStreamChunk {
   };
 }
 
+function usageFromResponse(response: { usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null } | null | undefined): LorekeeperChatStreamChunk['usage'] {
+  const u = response?.usage;
+  if (!u) return null;
+  return {
+    prompt_tokens: u.input_tokens,
+    completion_tokens: u.output_tokens,
+    total_tokens: u.total_tokens,
+  };
+}
+
 async function* normalizeResponsesStream(
   stream: AsyncIterable<ResponseStreamEvent>
 ): AsyncIterable<LorekeeperChatStreamChunk> {
   for await (const event of stream) {
     if (event.type === 'response.output_text.delta' && event.delta) {
       yield asChatDeltaChunk(event.delta);
+    }
+    if (event.type === 'response.completed') {
+      const usage = usageFromResponse(event.response);
+      if (usage) {
+        yield { choices: [], usage };
+      }
     }
     if (event.type === 'response.failed') {
       const message = event.response?.error?.message || 'Responses API stream failed';
@@ -67,10 +89,12 @@ export async function createOpenAIChatStream(params: {
   });
 
   if (!config.useResponsesApiForChat) {
+    // https://developers.openai.com/cookbook/examples/how_to_stream_completions
     return openai.chat.completions.create({
       model,
       ...(temperature != null ? { temperature } : {}),
       stream: true,
+      stream_options: { include_usage: true },
       messages: params.messages,
     });
   }
@@ -87,6 +111,7 @@ export async function createOpenAIChatStream(params: {
     'openai.responses.stream'
   );
 
+  // store: false — stateless like Anthropic Messages API; Lorekeeper persists turns.
   const stream = await openai.responses.create({
     model,
     instructions: typeof systemPrompt?.content === 'string' ? systemPrompt.content : undefined,

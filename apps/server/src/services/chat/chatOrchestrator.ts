@@ -144,6 +144,7 @@ export class ChatOrchestrator {
         messages,
         temperature: 0.7,
         stream: true,
+        stream_options: { include_usage: true },
       });
 
       // 5. Build sources

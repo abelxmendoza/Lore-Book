@@ -1,6 +1,15 @@
 /**
  * Durable chat_messages writes for stream and non-stream paths.
  * Returns structured results so routes can surface persistence truth to clients.
+ *
+ * Streaming persistence follows provider guidance:
+ * - OpenAI: accumulate `delta.content`, persist after stream ends; handle usage-only
+ *   final chunk when `stream_options.include_usage` is set.
+ *   https://developers.openai.com/cookbook/examples/how_to_stream_completions
+ * - Anthropic (conceptual parity): Messages API is stateless — Lorekeeper stores
+ *   full history and persists assistant text after `message_stop` equivalent.
+ *   https://platform.claude.com/docs/en/build-with-claude/working-with-messages
+ *   https://platform.claude.com/docs/en/build-with-claude/streaming
  */
 import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';

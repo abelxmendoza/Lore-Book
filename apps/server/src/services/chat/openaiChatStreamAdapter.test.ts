@@ -41,7 +41,12 @@ import { createOpenAIChatStream } from './openaiChatStreamAdapter';
 async function* makeResponseEvents() {
   yield { type: 'response.output_text.delta', delta: 'Hello' };
   yield { type: 'response.output_text.delta', delta: ' there' };
-  yield { type: 'response.completed' };
+  yield {
+    type: 'response.completed',
+    response: {
+      usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+    },
+  };
 }
 
 describe('createOpenAIChatStream', () => {
@@ -70,6 +75,7 @@ describe('createOpenAIChatStream', () => {
     expect(mockChatCreate).toHaveBeenCalledWith({
       model: 'gpt-5.5',
       stream: true,
+      stream_options: { include_usage: true },
       messages: [
         { role: 'system', content: 'System' },
         { role: 'user', content: 'Hi' },
@@ -94,9 +100,21 @@ describe('createOpenAIChatStream', () => {
     });
 
     const chunks: Array<string | null | undefined> = [];
-    for await (const chunk of stream) chunks.push(chunk.choices[0]?.delta.content);
+    let terminalUsage: unknown;
+    for await (const chunk of stream) {
+      if (chunk.choices.length === 0 && chunk.usage) {
+        terminalUsage = chunk.usage;
+      } else {
+        chunks.push(chunk.choices[0]?.delta.content);
+      }
+    }
 
     expect(chunks).toEqual(['Hello', ' there']);
+    expect(terminalUsage).toEqual({
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 15,
+    });
     expect(mockResponsesCreate).toHaveBeenCalledWith({
       model: 'gpt-5.5',
       instructions: 'System prompt',

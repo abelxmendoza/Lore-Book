@@ -17,6 +17,10 @@ import {
   userPersistResult,
   type MessagePersistResult,
 } from '../services/chat/chatMessagePersistenceService';
+import {
+  parseChatCompletionStreamChunk,
+  type ChatStreamTokenUsage,
+} from '../services/chat/chatStreamChunk';
 
 // AI endpoints get their own stricter limit: 30 req/15min in prod, unlimited in dev
 const aiRateLimit = createRateLimiter(30);
@@ -180,6 +184,7 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
 
     // ── Durable assistant persistence ──────────────────────────────────────────
     let fullResponse = '';
+    let streamTokenUsage: ChatStreamTokenUsage | null = null;
     const persistSessionId = result.metadata.sessionId ?? threadId ?? null;
     let assistantRowId: string | null = null;
     let assistantPersistResult: MessagePersistResult | null = null;
@@ -233,6 +238,7 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
           recall_sources: result.metadata.recall_sources,
           mentionedEntities: result.metadata.mentionedEntities,
           characterIds: result.metadata.characterIds,
+          ...(streamTokenUsage ? { tokenUsage: streamTokenUsage } : {}),
         },
         status,
       });
@@ -248,16 +254,20 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
     try {
       for await (const chunk of result.stream) {
         if (clientGone) break;
-        const content = chunk.choices[0]?.delta?.content;
-        if (content) {
-          fullResponse += content;
-          sseWrite({ type: 'chunk', content });
+        const { contentDelta, usage } = parseChatCompletionStreamChunk(chunk);
+        if (usage) streamTokenUsage = usage;
+        if (contentDelta) {
+          fullResponse += contentDelta;
+          sseWrite({ type: 'chunk', content: contentDelta });
         }
       }
       await persistAssistant(clientGone ? 'partial' : 'complete');
       if (!res.writableEnded) {
         if (!clientGone) {
-          sseWrite({ type: 'done' });
+          sseWrite({
+            type: 'done',
+            ...(streamTokenUsage ? { usage: streamTokenUsage } : {}),
+          });
         }
         res.end();
       }
