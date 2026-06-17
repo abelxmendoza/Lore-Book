@@ -16,6 +16,7 @@ import { OrganizationDetailModal } from './OrganizationDetailModal';
 import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import { GroupSuggestions } from '../groups/GroupSuggestions';
 import { GroupMergePanel } from '../groups/GroupMergePanel';
+import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { deriveOrganizationProfile } from '../../lib/organizationProfile';
 import { isEventGroup, isTopLevelGroup } from '../../lib/groupTaxonomy';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -1339,6 +1340,8 @@ export const OrganizationsBook: React.FC = () => {
         onToggleSelected={toggleSelectedForMerge}
         onClearSelection={() => setSelectedForMerge(new Set())}
       />
+
+      <OntologyCompliancePanel book="organizations" />
 
       {!isMockDataEnabled && (
         <>

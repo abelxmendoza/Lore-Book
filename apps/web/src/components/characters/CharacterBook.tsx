@@ -33,6 +33,7 @@ import { getMockRomanticRelationships } from '../../mocks/romanticRelationships'
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { DetectedCharacterSuggestions } from './DetectedCharacterSuggestions';
 import { CharacterMergePanel } from './CharacterMergePanel';
+import { OntologyCompliancePanel } from '../ontology/OntologyCompliancePanel';
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 import { isSelfCharacter } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
@@ -2937,6 +2938,8 @@ export const CharacterBook = () => {
           {rescanError}
         </div>
       )}
+
+      <OntologyCompliancePanel book="characters" />
 
       <CharacterMergePanel
         characters={characters}
