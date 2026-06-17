@@ -666,20 +666,39 @@ async function loadProtagonistRelationshipCandidates(
     list.find((c) => /^me$/i.test(c.name)) ?? list.find((c) => /abel\s+mendoza/i.test(c.name)) ?? list[0];
   if (!protagonist) return [];
 
-  const rels = await scope.traced(
-    'character_relationships',
-    'protagonist relationship edges',
-    `relationships:protagonist:${protagonist.id}`,
-    () =>
-      supabaseAdmin
-        .from('character_relationships')
-        .select('id, relationship_type, status, metadata, source_character_id, target_character_id, updated_at')
-        .eq('user_id', userId)
-        .or(`source_character_id.eq.${protagonist.id},target_character_id.eq.${protagonist.id}`)
-        .limit(12)
-  );
-
   const nameMap = new Map(list.map((c) => [c.id, c.name]));
+
+  const [rels, edges] = await Promise.all([
+    scope.traced(
+      'character_relationships',
+      'protagonist relationship edges',
+      `relationships:protagonist:${protagonist.id}`,
+      () =>
+        supabaseAdmin
+          .from('character_relationships')
+          .select('id, relationship_type, status, metadata, source_character_id, target_character_id, updated_at')
+          .eq('user_id', userId)
+          .or(`source_character_id.eq.${protagonist.id},target_character_id.eq.${protagonist.id}`)
+          .limit(12)
+    ),
+    scope.traced(
+      'entity_relationships',
+      'stored entity relationship edges for protagonist',
+      `entity-relationships:protagonist:${protagonist.id}`,
+      () =>
+        supabaseAdmin
+          .from('entity_relationships')
+          .select(
+            'id, from_entity_id, to_entity_id, from_entity_type, to_entity_type, relationship_type, scope, confidence, metadata, updated_at'
+          )
+          .eq('user_id', userId)
+          .or(
+            `and(from_entity_id.eq.${protagonist.id},from_entity_type.eq.character),and(to_entity_id.eq.${protagonist.id},to_entity_type.eq.character)`
+          )
+          .limit(12)
+    ),
+  ]);
+
   const out: Candidate[] = [];
 
   for (const rel of (rels ?? []) as any[]) {
@@ -702,94 +721,63 @@ async function loadProtagonistRelationshipCandidates(
       reasons: ['protagonist relationship edge'],
     });
   }
-  return out;
-}
-
-async function loadStoredEntityRelationshipCandidates(
-  scope: WmaRequestScope,
-  userId: string
-): Promise<Candidate[]> {
-  const list = await fetchAllCharacters(scope, userId);
-  const protagonist =
-    list.find((c) => /^me$/i.test(c.name)) ?? list.find((c) => /abel\s+mendoza/i.test(c.name)) ?? list[0];
-  if (!protagonist) return [];
-
-  const edges = await scope.traced(
-    'entity_relationships',
-    'stored entity relationship edges for protagonist',
-    `entity-relationships:protagonist:${protagonist.id}`,
-    () =>
-      supabaseAdmin
-        .from('entity_relationships')
-        .select(
-          'id, from_entity_id, to_entity_id, from_entity_type, to_entity_type, relationship_type, scope, confidence, metadata, updated_at'
-        )
-        .eq('user_id', userId)
-        .or(
-          `and(from_entity_id.eq.${protagonist.id},from_entity_type.eq.character),and(to_entity_id.eq.${protagonist.id},to_entity_type.eq.character)`
-        )
-        .limit(12)
-  );
 
   const edgeRows = (edges ?? []) as Array<{
     id: string;
     from_entity_id: string;
     to_entity_id: string;
-    from_entity_type: string;
-    to_entity_type: string;
     relationship_type: string;
     scope?: string | null;
     confidence?: number;
     metadata?: Record<string, unknown>;
     updated_at?: string;
   }>;
-  if (edgeRows.length === 0) return [];
 
-  const foreignIds = [...new Set(
-    edgeRows.map((edge) => (edge.from_entity_id === protagonist.id ? edge.to_entity_id : edge.from_entity_id))
-  )];
-  if (foreignIds.length === 0) return [];
+  if (edgeRows.length > 0) {
+    const unresolvedIds = [
+      ...new Set(
+        edgeRows.map((edge) =>
+          edge.from_entity_id === protagonist.id ? edge.to_entity_id : edge.from_entity_id
+        )
+      ),
+    ].filter((id) => !nameMap.has(id));
 
-  const [chars, orgs, omega] = await Promise.all([
-    scope.traced('characters', 'names for entity relationship endpoints', `entity-rel-names:chars`, () =>
-      supabaseAdmin.from('characters').select('id, name').eq('user_id', userId).in('id', foreignIds)
-    ),
-    scope.traced('organizations', 'org names for entity relationship endpoints', `entity-rel-names:orgs`, () =>
-      supabaseAdmin.from('organizations').select('id, name').eq('user_id', userId).in('id', foreignIds)
-    ),
-    scope.traced('omega_entities', 'omega names for entity relationship endpoints', `entity-rel-names:omega`, () =>
-      supabaseAdmin.from('omega_entities').select('id, primary_name').eq('user_id', userId).in('id', foreignIds)
-    ),
-  ]);
+    if (unresolvedIds.length > 0) {
+      const [orgs, omega] = await Promise.all([
+        scope.traced('organizations', 'org names for entity relationship endpoints', `entity-rel-names:orgs`, () =>
+          supabaseAdmin.from('organizations').select('id, name').eq('user_id', userId).in('id', unresolvedIds)
+        ),
+        scope.traced('omega_entities', 'omega names for entity relationship endpoints', `entity-rel-names:omega`, () =>
+          supabaseAdmin.from('omega_entities').select('id, primary_name').eq('user_id', userId).in('id', unresolvedIds)
+        ),
+      ]);
+      for (const o of (orgs ?? []) as Array<{ id: string; name: string }>) nameMap.set(o.id, o.name);
+      for (const oe of (omega ?? []) as Array<{ id: string; primary_name: string }>) {
+        nameMap.set(oe.id, oe.primary_name);
+      }
+    }
 
-  const nameById = new Map<string, string>();
-  for (const c of (chars ?? []) as Array<{ id: string; name: string }>) nameById.set(c.id, c.name);
-  for (const o of (orgs ?? []) as Array<{ id: string; name: string }>) nameById.set(o.id, o.name);
-  for (const oe of (omega ?? []) as Array<{ id: string; primary_name: string }>) {
-    nameById.set(oe.id, oe.primary_name);
+    for (const edge of edgeRows) {
+      const otherId = edge.from_entity_id === protagonist.id ? edge.to_entity_id : edge.from_entity_id;
+      const otherName = nameMap.get(otherId) ?? 'Unknown';
+      const role = (edge.metadata?.role as string | undefined) ?? undefined;
+      out.push({
+        id: `entity-relationship:${edge.id}`,
+        type: 'relationship',
+        title: role ? `${role} — ${otherName}` : `${edge.relationship_type} — ${otherName}`,
+        content: `${edge.relationship_type}${edge.scope ? ` (${edge.scope})` : ''}${role ? ` · ${role}` : ''}`,
+        source: 'entity_relationships',
+        date: edge.updated_at ?? null,
+        confidence: Number(edge.confidence ?? 0.82),
+        relevance: 0.93,
+        importance: 0.82,
+        significance: 0.78,
+        relationshipDistance: 0.86,
+        reasons: ['persisted entity relationship edge'],
+      });
+    }
   }
 
-  const out: Candidate[] = [];
-  for (const edge of edgeRows) {
-    const outgoing = edge.from_entity_id === protagonist.id;
-    const otherId = outgoing ? edge.to_entity_id : edge.from_entity_id;
-    const otherName = nameById.get(otherId) ?? 'Unknown';
-    const role = (edge.metadata?.role as string | undefined) ?? undefined;
-    out.push({
-      id: `entity-relationship:${edge.id}`,
-      type: 'relationship',
-      title: role ? `${role} — ${otherName}` : `${edge.relationship_type} — ${otherName}`,
-      content: `${edge.relationship_type}${edge.scope ? ` (${edge.scope})` : ''}${role ? ` · ${role}` : ''}`,
-      source: 'entity_relationships',
-      date: edge.updated_at ?? null,
-      confidence: Number(edge.confidence ?? 0.82),
-      relevance: 0.93,
-      importance: 0.82,
-      significance: 0.78,
-      relationshipDistance: 0.86,
-      reasons: ['persisted entity relationship edge'],
-    });
-  }
   return out;
 }
 
@@ -826,28 +814,29 @@ async function loadThreadRelationshipGroupCandidates(
       hint?: string;
       roles?: string[];
     }> | undefined;
-    if (!groups?.length) continue;
 
-    for (const g of groups) {
-      const names = (g.entityNames ?? []).filter(Boolean);
-      if (names.length === 0) continue;
-      const id = `thread-rel-group:${g.scope}:${[...names].sort().join('|')}`;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      out.push({
-        id,
-        type: 'relationship',
-        title: `${g.scope} — ${names.join(', ')}`,
-        content: `${g.scope} cluster: ${names.join(', ')}${g.hint ? ` (${g.hint})` : ''}`,
-        source: 'thread_relationship_groups',
-        date: msg.created_at ?? null,
-        confidence: g.confidence ?? 0.72,
-        relevance: 0.92,
-        importance: 0.78,
-        significance: 0.72,
-        relationshipDistance: 0.82,
-        reasons: ['recent thread relationship group from interpretation pipeline'],
-      });
+    if (groups?.length) {
+      for (const g of groups) {
+        const names = (g.entityNames ?? []).filter(Boolean);
+        if (names.length === 0) continue;
+        const id = `thread-rel-group:${g.scope}:${[...names].sort().join('|')}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push({
+          id,
+          type: 'relationship',
+          title: `${g.scope} — ${names.join(', ')}`,
+          content: `${g.scope} cluster: ${names.join(', ')}${g.hint ? ` (${g.hint})` : ''}`,
+          source: 'thread_relationship_groups',
+          date: msg.created_at ?? null,
+          confidence: g.confidence ?? 0.72,
+          relevance: 0.92,
+          importance: 0.78,
+          significance: 0.72,
+          relationshipDistance: 0.82,
+          reasons: ['recent thread relationship group from interpretation pipeline'],
+        });
+      }
     }
 
     const entityKnowledge = enrichment.entity_relationship_knowledge as Record<
@@ -1857,16 +1846,13 @@ export async function assembleWorkingMemory(
     intent === 'COMMUNITY_QUERY' ||
     (intent === 'PERSON_QUERY' && !isPersonish);
 
-  const [personCandidates, relationshipCandidates, storedEntityRelationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, textualCandidates] =
+  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, textualCandidates] =
     await Promise.all([
       !temporalQuery && isPersonish
         ? loadPersonCandidates(scope, input.userId, primaryEntity!, target ?? primaryEntity!.name, characterRow)
         : Promise.resolve([] as Candidate[]),
       !temporalQuery && wantsProtagonistRels
         ? loadProtagonistRelationshipCandidates(scope, input.userId)
-        : Promise.resolve([] as Candidate[]),
-      !temporalQuery && wantsProtagonistRels
-        ? loadStoredEntityRelationshipCandidates(scope, input.userId)
         : Promise.resolve([] as Candidate[]),
       !temporalQuery && input.threadId
         ? loadThreadRelationshipGroupCandidates(scope, input.userId, input.threadId)
@@ -1883,7 +1869,6 @@ export async function assembleWorkingMemory(
   const merged = [
     ...personCandidates,
     ...relationshipCandidates,
-    ...storedEntityRelationshipCandidates,
     ...threadRelationshipCandidates,
     ...goalCandidates,
     ...skillCandidates,

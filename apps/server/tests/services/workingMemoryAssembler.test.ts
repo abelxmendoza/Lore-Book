@@ -319,9 +319,93 @@ describe('Working Memory Assembler', () => {
     fromMock.mockClear();
     await assembleWorkingMemory({ userId: 'user-1', question: 'Who lives with me?' });
     const characterQueries = fromMock.mock.calls.filter(([table]) => table === 'characters').length;
-    expect(characterQueries).toBeLessThanOrEqual(2);
+    expect(characterQueries).toBe(1);
     expect(fromMock.mock.calls.some(([table]) => table === 'character_relationships')).toBe(true);
     expect(fromMock.mock.calls.some(([table]) => table === 'entity_relationships')).toBe(true);
+  });
+
+  it('dedupes thread relationship groups across repeated messages', async () => {
+    tableResults.chat_messages = {
+      data: [
+        {
+          id: 'chat-rel-1',
+          created_at: '2026-06-13T00:00:00Z',
+          session_id: 'thread-rel',
+          metadata: {
+            ontology_enrichment: {
+              relationship_groups: [
+                { scope: 'FAMILY', entityNames: ['Marcus'], confidence: 0.9 },
+              ],
+            },
+          },
+        },
+        {
+          id: 'chat-rel-2',
+          created_at: '2026-06-13T01:00:00Z',
+          session_id: 'thread-rel',
+          metadata: {
+            ontology_enrichment: {
+              relationship_groups: [
+                { scope: 'FAMILY', entityNames: ['Marcus'], confidence: 0.88 },
+              ],
+            },
+          },
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'Tell me about my family',
+      threadId: 'thread-rel',
+    });
+
+    const groupItems = result.relationships.filter((item) => item.source === 'thread_relationship_groups');
+    expect(groupItems).toHaveLength(1);
+  });
+
+  it('includes entity relationship knowledge links from thread metadata', async () => {
+    tableResults.chat_messages = {
+      data: [
+        {
+          id: 'chat-rel-knowledge',
+          created_at: '2026-06-14T00:00:00Z',
+          session_id: 'thread-knowledge',
+          metadata: {
+            ontology_enrichment: {
+              entity_relationship_knowledge: {
+                Marcus: {
+                  linkedEntities: [
+                    {
+                      name: 'self',
+                      relationshipType: 'CO_MENTIONED_WITH',
+                      scope: 'FAMILY',
+                      role: 'cousin',
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ],
+      error: null,
+    };
+
+    const result = await assembleWorkingMemory({
+      userId: 'user-1',
+      question: 'Who is Marcus to me?',
+      threadId: 'thread-knowledge',
+    });
+
+    expect(
+      result.relationships.some(
+        (item) =>
+          item.source === 'thread_entity_relationship_knowledge' &&
+          /Marcus → self/i.test(item.title)
+      )
+    ).toBe(true);
   });
 
   it('records per-query timing breakdown', async () => {

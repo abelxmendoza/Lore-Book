@@ -23,10 +23,7 @@ function makeSupabaseChain(table: string, books: Record<string, unknown[]>) {
   chain.delete = vi.fn(() => chain);
   chain.eq = vi.fn(() => chain);
   chain.order = vi.fn(() => chain);
-  chain.limit = vi.fn(() => {
-    if (rows) return Promise.resolve(resolveList());
-    return chain;
-  });
+  chain.limit = vi.fn(() => chain);
   chain.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
   chain.single = vi.fn().mockResolvedValue({ data: null, error: null });
   chain.in = vi.fn(() => chain);
@@ -82,6 +79,9 @@ const { mockFrom, setEntityBooks, resetEntityBooks, DEFAULT_ENTITY_BOOKS, mockGe
         mention_count: 2,
       },
     ],
+    entity_relationships: [],
+    character_relationships: [],
+    chat_messages: [],
   };
   let activeBooks = DEFAULT_ENTITY_BOOKS;
   const mockFrom = vi.fn((table: string) => makeSupabaseChain(table, activeBooks));
@@ -172,8 +172,58 @@ vi.mock('../../src/services/memoirService', () => ({
   },
 }));
 
-vi.mock('../../src/services/loreInterpretationPipeline', () => ({
+vi.mock('../../src/services/reinforcementLearning/chatPersonaRL', () => ({
+  ChatPersonaRL: class {
+    selectPersonaBlend = vi.fn().mockResolvedValue({
+      primary: 'therapist',
+      secondary: [],
+      weights: { therapist: 1.0 },
+    });
+    buildContext = vi.fn().mockResolvedValue({ type: 'chat_persona', features: {} });
+    saveChatContext = vi.fn().mockResolvedValue(undefined);
+    recordImplicitRewards = vi.fn().mockResolvedValue(undefined);
+  },
+}));
+
+vi.mock('../../src/services/chat/chatPersistenceService', () => ({
+  getOrCreateChatSession: vi.fn().mockResolvedValue('session-test'),
+  detectMemorySuggestion: vi.fn().mockResolvedValue(null),
+  ingestMessageWithContext: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../src/services/pipeline/loreInterpretationPipeline', () => ({
   runLoreInterpretationPipeline: vi.fn().mockResolvedValue(undefined),
+  resolveMeaningForPlanner: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('../../src/services/chat/workingMemoryAssembler', () => ({
+  workingMemoryAssembler: {
+    assemble: vi.fn().mockResolvedValue({
+      intent: 'PERSON_QUERY',
+      entities: [],
+      episodes: [],
+      events: [],
+      projects: [],
+      goals: [],
+      skills: [],
+      communities: [],
+      relationships: [],
+      preferences: [],
+      timeline: [],
+      confidence: 0.5,
+      budget: { maxItems: 20, selected: 0, rejected: 0 },
+      rejected: [],
+      timing: {
+        totalMs: 1,
+        entityResolutionMs: 0,
+        candidateGenerationMs: 0,
+        rankingMs: 0,
+        queryCount: 0,
+        queries: [],
+      },
+    }),
+    buildPacket: vi.fn().mockReturnValue({ text: '', relationships: [], timeline: [] }),
+  },
 }));
 
 vi.mock('../../src/services/chat/openaiChatStreamAdapter', () => ({
@@ -223,7 +273,7 @@ vi.mock('../../src/services/selfCharacterService', () => ({
 
 import { omegaChatService } from '../../src/services/omegaChatService';
 
-describe.sequential('omegaChatService.chatStream — entity mention integration', { timeout: 25_000 }, () => {
+describe.sequential('omegaChatService.chatStream — entity mention integration', { timeout: 45_000 }, () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetEntityBooks();

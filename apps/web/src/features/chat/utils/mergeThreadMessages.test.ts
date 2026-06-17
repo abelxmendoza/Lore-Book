@@ -93,6 +93,19 @@ describe('mergeThreadMessages', () => {
     const merged = mergeThreadMessages(local, server);
     expect(merged.find((m) => m.role === 'assistant')?.content).toContain('Partial');
   });
+
+  it('preserves ontology metadata when server row wins fingerprint merge', () => {
+    const metadata = {
+      ontology_enrichment: {
+        relationship_groups: [{ scope: 'FAMILY', entityNames: ['Marcus'] }],
+      },
+    };
+    const local = [msg('assistant-1', 'assistant', 'reply')];
+    const server = [msg('db-a1', 'assistant', 'reply', { metadata })];
+    const merged = mergeThreadMessages(local, server);
+    expect(merged[0].id).toBe('db-a1');
+    expect(merged[0].metadata).toEqual(metadata);
+  });
 });
 
 describe('countMissingAssistantTurns', () => {

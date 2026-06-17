@@ -27,7 +27,24 @@ export interface RelationshipPersistResult {
 const MIN_CONFIDENCE = 0.65;
 const SELF_ALIASES = new Set(['self', 'me', 'user', 'protagonist']);
 
+function collectNeededLinkNames(links: DiscoveredEntityLink[]): Set<string> {
+  const needed = new Set<string>();
+  for (const link of links) {
+    const subject = link.subject.trim().toLowerCase();
+    const object = link.object.trim().toLowerCase();
+    if (subject && !SELF_ALIASES.has(subject)) needed.add(subject);
+    if (object && !SELF_ALIASES.has(object)) needed.add(object);
+  }
+  return needed;
+}
+
+function indexHasName(index: Map<string, ResolvedEntityRef>, name: string): boolean {
+  return index.has(name.trim().toLowerCase());
+}
+
 class RelationshipPersistenceService {
+  private endpointCache = new Map<string, ResolvedEntityRef | null>();
+
   async persistFromInterpretation(
     userId: string,
     messageId: string,
@@ -39,7 +56,8 @@ class RelationshipPersistenceService {
       return { persisted: 0, skipped: 0, characterEdges: 0, entityEdges: 0 };
     }
 
-    const refs = await this.buildRefIndex(userId, meaning);
+    this.endpointCache.clear();
+    const refs = await this.buildRefIndex(userId, meaning, links);
     let persisted = 0;
     let skipped = 0;
     let characterEdges = 0;
@@ -161,7 +179,8 @@ class RelationshipPersistenceService {
 
   private async buildRefIndex(
     userId: string,
-    meaning: MeaningResolutionResult
+    meaning: MeaningResolutionResult,
+    links: DiscoveredEntityLink[]
   ): Promise<Map<string, ResolvedEntityRef>> {
     const index = new Map<string, ResolvedEntityRef>();
 
@@ -183,6 +202,10 @@ class RelationshipPersistenceService {
       index.set(key, { id: rel.targetEntityId, type: 'character', name: rel.targetName });
     }
 
+    const needed = collectNeededLinkNames(links);
+    const unresolved = [...needed].filter((name) => !indexHasName(index, name));
+    if (unresolved.length === 0) return index;
+
     const [{ data: chars }, orgResult, omegaResult] = await Promise.all([
       supabaseAdmin.from('characters').select('id, name, alias').eq('user_id', userId),
       supabaseAdmin.from('organizations').select('id, name').eq('user_id', userId),
@@ -193,20 +216,24 @@ class RelationshipPersistenceService {
 
     for (const c of chars ?? []) {
       const ref: ResolvedEntityRef = { id: c.id, type: 'character', name: String(c.name ?? '') };
-      index.set(String(c.name ?? '').trim().toLowerCase(), ref);
-      for (const a of (c.alias as string[] | null) ?? []) {
-        index.set(String(a).trim().toLowerCase(), ref);
+      const keys = [String(c.name ?? '').trim().toLowerCase(), ...(c.alias as string[] | null ?? []).map((a) => String(a).trim().toLowerCase())];
+      for (const key of keys) {
+        if (needed.has(key)) index.set(key, ref);
       }
     }
 
     for (const o of orgs ?? []) {
-      const ref: ResolvedEntityRef = { id: o.id, type: 'omega_entity', name: String(o.name ?? '') };
-      index.set(String(o.name ?? '').trim().toLowerCase(), ref);
+      const key = String(o.name ?? '').trim().toLowerCase();
+      if (needed.has(key)) {
+        index.set(key, { id: o.id, type: 'omega_entity', name: String(o.name ?? '') });
+      }
     }
 
     for (const oe of omega ?? []) {
-      const ref: ResolvedEntityRef = { id: oe.id, type: 'omega_entity', name: String(oe.primary_name ?? '') };
-      index.set(String(oe.primary_name ?? '').trim().toLowerCase(), ref);
+      const key = String(oe.primary_name ?? '').trim().toLowerCase();
+      if (needed.has(key)) {
+        index.set(key, { id: oe.id, type: 'omega_entity', name: String(oe.primary_name ?? '') });
+      }
     }
 
     return index;
@@ -218,28 +245,38 @@ class RelationshipPersistenceService {
     refs: Map<string, ResolvedEntityRef>
   ): Promise<ResolvedEntityRef | null> {
     const key = label.trim().toLowerCase();
-    if (SELF_ALIASES.has(key)) {
-      return refs.get('self') ?? null;
-    }
-    const hit = refs.get(key);
-    if (hit) return hit;
-
-    const canonical = await entityRegistry.resolveByName(label, userId);
-    if (canonical?.source === 'character') {
-      return { id: canonical.id, type: 'character', name: canonical.name };
-    }
-    if (canonical?.source === 'omega_entity') {
-      return { id: canonical.id, type: 'omega_entity', name: canonical.name };
+    const cacheKey = `${userId}:${key}`;
+    if (this.endpointCache.has(cacheKey)) {
+      return this.endpointCache.get(cacheKey) ?? null;
     }
 
-    // Lazy self lookup if missing
-    if (key === 'self') {
-      const self = await selfCharacterService.ensureSelfCharacter(userId).catch(() => null);
-      if (self?.id) {
-        return { id: self.id, type: 'character', name: String(self.name ?? 'self') };
+    const resolve = async (): Promise<ResolvedEntityRef | null> => {
+      if (SELF_ALIASES.has(key)) {
+        return refs.get('self') ?? null;
       }
-    }
-    return null;
+      const hit = refs.get(key);
+      if (hit) return hit;
+
+      const canonical = await entityRegistry.resolveByName(label, userId);
+      if (canonical?.source === 'character') {
+        return { id: canonical.id, type: 'character', name: canonical.name };
+      }
+      if (canonical?.source === 'omega_entity') {
+        return { id: canonical.id, type: 'omega_entity', name: canonical.name };
+      }
+
+      if (key === 'self') {
+        const self = await selfCharacterService.ensureSelfCharacter(userId).catch(() => null);
+        if (self?.id) {
+          return { id: self.id, type: 'character', name: String(self.name ?? 'self') };
+        }
+      }
+      return null;
+    };
+
+    const resolved = await resolve();
+    this.endpointCache.set(cacheKey, resolved);
+    return resolved;
   }
 
   private async upsertEntityRelationship(

@@ -77,7 +77,7 @@ describe('loreInterpretationPipeline relationship persistence', () => {
       userId: 'user-1',
       rawText: 'My cousin Marcus works at Acme.',
       confidence: 0.9,
-      factuality: 'asserted',
+      factuality: 'fact',
       resolvedEntities: [],
       resolvedRelationships: [],
       resolvedSkills: [],
@@ -89,6 +89,8 @@ describe('loreInterpretationPipeline relationship persistence', () => {
       ambiguities: [],
       ontologyActionCandidates: [],
       memoryReviewCandidates: [],
+      temporalContext: { defaultStatus: 'present', statements: [] },
+      createdAt: new Date().toISOString(),
     });
     mockEnrichLexical.mockResolvedValue({ relationship_groups: [{ scope: 'FAMILY', entityNames: ['Marcus'] }] });
     mockEnrichMeaning.mockResolvedValue({});
@@ -144,5 +146,19 @@ describe('loreInterpretationPipeline relationship persistence', () => {
         }),
       })
     );
+  });
+
+  it('continues pipeline when relationship persistence throws', async () => {
+    mockPersist.mockRejectedValueOnce(new Error('db unavailable'));
+
+    await expect(
+      runLoreInterpretationPipeline({
+        userId: 'user-1',
+        messageId: 'msg-1',
+        text: 'My cousin Marcus works at Acme.',
+      })
+    ).resolves.toBeDefined();
+
+    expect(mockMeaningResolve).toHaveBeenCalled();
   });
 });

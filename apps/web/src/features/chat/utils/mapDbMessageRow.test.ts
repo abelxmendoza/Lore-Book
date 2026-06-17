@@ -47,4 +47,29 @@ describe('mapDbMessageRow', () => {
     });
     expect(message.persistStatus).toBe('saved');
   });
+
+  it('preserves ontology relationship metadata on durable rows', () => {
+    const message = mapDbMessageRow({
+      id: 'asst-db-3',
+      role: 'assistant',
+      content: 'Noted.',
+      created_at: '2026-06-17T12:00:00.000Z',
+      metadata: {
+        ontology_enrichment: {
+          relationship_groups: [{ scope: 'FAMILY', entityNames: ['Marcus'] }],
+        },
+        relationship_persistence: { persisted: 1, skipped: 0, characterEdges: 1, entityEdges: 0 },
+      },
+    });
+
+    expect(message.metadata?.ontology_enrichment).toEqual({
+      relationship_groups: [{ scope: 'FAMILY', entityNames: ['Marcus'] }],
+    });
+    expect(message.metadata?.relationship_persistence).toEqual({
+      persisted: 1,
+      skipped: 0,
+      characterEdges: 1,
+      entityEdges: 0,
+    });
+  });
 });

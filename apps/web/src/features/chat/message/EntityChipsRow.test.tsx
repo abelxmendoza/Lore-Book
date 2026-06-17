@@ -68,4 +68,30 @@ describe('EntityChipsRow', () => {
     fireEvent.click(screen.getByRole('button', { name: /Tía Maria/i }));
     expect(onSelect).toHaveBeenCalledWith(maya);
   });
+
+  it('renders organization chips with entity styling', () => {
+    renderRow([
+      {
+        id: 'o1',
+        name: 'Acme Corp',
+        type: 'organization',
+        confidence: 1,
+        provenance: 'organization_book',
+      },
+    ]);
+    expect(screen.getByText('Acme Corp')).toBeInTheDocument();
+  });
+
+  it('shows overflow count when entities exceed max without rendering hidden chips', () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({
+      id: `c${i}`,
+      name: `Person ${i}`,
+      type: 'character' as const,
+    }));
+    renderRow(many, { max: 2 });
+    expect(screen.getByText('Person 0')).toBeInTheDocument();
+    expect(screen.getByText('Person 1')).toBeInTheDocument();
+    expect(screen.getByText('+3 more')).toBeInTheDocument();
+    expect(screen.queryByText('Person 4')).not.toBeInTheDocument();
+  });
 });
