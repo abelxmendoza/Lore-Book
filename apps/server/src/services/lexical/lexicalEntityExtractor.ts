@@ -7,8 +7,8 @@ import type { LexicalEntity, LexicalEntityType } from './lexicalTypes';
 import { normalizeLexicalText, padForScan, titleCase } from './lexicalNormalizer';
 
 const ORG_CUES = [
-  /\b(?:worked|work|working|employed|interned|joined|started)\s+(?:at|for|with)\s+([A-Z][\w&'. -]{2,60})/g,
-  /\b(?:at|for)\s+([A-Z][\w&'. -]{2,60})\s+(?:as|where|when)\b/g,
+  /\b(?:worked|works?|working|employed|interned|joined|started)\s+(?:at|for|with)\s+([A-Z][\w&'-]+(?:\s+[A-Z][\w&'-]+){0,3})(?=[.,!?;:\s]|$|\s+(?:on|and|with|who)\b)/g,
+  /\b(?:at|for)\s+([A-Z][\w&'-]+(?:\s+[A-Z][\w&'-]+){0,3})\s+(?:as|where|when)\b/g,
 ];
 
 const ROLE_CUES = [
@@ -82,7 +82,7 @@ export function extractLexicalEntities(text: string): LexicalEntity[] {
     while ((m = re.exec(text)) !== null) {
       const raw = m[1].trim().replace(/[,.]$/, '');
       const name = raw.replace(/\s+and\b[\s\S]*$/i, '').replace(/\s+i['']m\b[\s\S]*$/i, '').trim();
-      if (name.length < 2) continue;
+      if (name.length < 2 || !/[A-Z]/.test(name)) continue;
       pushEntity(out, seen, {
         surface: name,
         type: 'ORGANIZATION',

@@ -48,13 +48,13 @@ function pushEntityName(group: RelationshipInputGroup, raw: string): void {
   if (isValidRelationshipEndpoint(name)) group.entityNames.push(name);
 }
 
-const MY_RELATION_NAME = /\b(?:my|My)\s+(?:estranged\s+)?(?:friend|cousin|brother|sister|mom|mother|dad|father|uncle|aunt|t[íi]o|t[íi]a|boss|manager|coworker|colleague|mentor|coach|girlfriend|boyfriend|partner|wife|husband|ex|rival|best\s+friend|close\s+friend)\s+(\p{Lu}\p{Ll}+(?:\s+\p{Lu}\p{Ll}+)?)\b/gu;
+const MY_RELATION_NAME = /\b(?:my|My)\s+(?:estranged\s+)?(?:friend|cousin|brother|sister|mom|mother|dad|father|uncle|aunt|t[íi]o|t[íi]a|boss|manager|coworker|colleague|mentor|coach|girlfriend|boyfriend|partner|wife|husband|ex|rival|best\s+friend|close\s+friend)\s+(\p{Lu}\p{Ll}+(?:\s+\p{Lu}\p{Ll}+)?)(?=\s|[,.!?]|$)/gu;
 
-const WENT_WITH = /\b(?:went|go|going|hung\s+out|kicked\s+it|linked\s+up|met|saw|chilled)\s+with\s+([A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+){0,2})(?=[.,!?;:\s]|$|\s+(?:too|and|on)\b)/gi;
+const WENT_WITH = /\b(?:went|go|going|hung\s+out|kicked\s+it|linked\s+up|met|saw|chilled)\s+with\s+([\p{Lu}][\p{Ll}]+(?:\s+[\p{Lu}][\p{Ll}]+)?)(?=[.,!?;:\s]|$|\s+(?:too|and|on)\b)/giu;
 
-const WORKS_AT = /\b([A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+){0,2})\s+works?\s+(?:at|for)\s+([A-Z][\w&'.-]+(?:\s+[A-Z][\w&'.-]+){0,3})(?=[.,!?;:\s]|$|\s+(?:on|and|with|who)\b)/gi;
+const WORKS_AT = /\b([\p{Lu}][\p{Ll}]+)\s+works?\s+(?:at|for)\s+([A-Z][\w&'-]+(?:\s+[A-Z][\w&'-]+){0,3})(?=[.,!?;:\s]|$|\s+(?:on|and|with|who)\b)/giu;
 
-const USER_WORKS_AT = /\b(?:i|we)\s+(?:work|worked|working)\s+(?:at|for|with)\s+([A-Z][\w&'.-]+(?:\s+[A-Z][\w&'.-]+){0,3})(?=[.,!?;:\s]|$|\s+(?:on|and|with|who)\b)/gi;
+const USER_WORKS_AT = /\b(?:i|we)\s+(?:work|worked|working)\s+(?:at|for|with)\s+([A-Z][\w&'-]+(?:\s+[A-Z][\w&'-]+){0,3})(?=[.,!?;:\s]|$|\s+(?:on|and|with|who)\b)/giu;
 
 const AND_WITH = /\b(?:with|and)\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,2})\b/g;
 
