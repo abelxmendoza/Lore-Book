@@ -14,6 +14,7 @@ import type { CompiledLorebook } from '../../hooks/useLoreReadiness';
 import type { LoreReadinessSummary } from '../../lib/loreReadiness';
 import { lorebookEditUrl } from '../../lib/lorebookLibrary';
 import { cn } from '../../lib/cn';
+import { LoreReadinessSimulator } from './LoreReadinessSimulator';
 
 type LoreReadinessPanelProps = {
   readiness: LoreReadinessSummary;
@@ -107,6 +108,8 @@ export const LoreReadinessPanel = ({
 
   return (
     <div className={cn('space-y-6', compact && 'space-y-4')}>
+      <LoreReadinessSimulator compact={compact} />
+
       {/* Flow strip */}
       <div className={cn('rounded-2xl border border-white/10 bg-black/30 p-4', compact && 'p-3')}>
         <p className="text-xs font-mono uppercase tracking-widest text-white/35 mb-3">How lorebooks are made</p>

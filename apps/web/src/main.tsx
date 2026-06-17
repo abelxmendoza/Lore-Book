@@ -97,6 +97,7 @@ import { EntityModalProvider } from './contexts/EntityModalContext';
 import { CurrentContextProvider } from './contexts/CurrentContextContext';
 import { SoulProfileChatProvider } from './contexts/SoulProfileChatContext';
 import { MockDataProvider } from './contexts/MockDataContext';
+import { LoreReadinessSimulationProvider } from './contexts/LoreReadinessSimulationContext';
 import { mockDataService } from './services/mockDataService';
 import { config } from './config/env';
 import { initMonitoring } from './lib/monitoring';
@@ -135,6 +136,7 @@ if (!rootElement) {
           <MockDataProvider>
             <LoreKeeperProvider>
             <GuestProvider>
+              <LoreReadinessSimulationProvider>
               <EntityModalProvider>
                 <CurrentContextProvider>
                   <SoulProfileChatProvider>
@@ -145,6 +147,7 @@ if (!rootElement) {
                   </SoulProfileChatProvider>
                 </CurrentContextProvider>
               </EntityModalProvider>
+              </LoreReadinessSimulationProvider>
             </GuestProvider>
             </LoreKeeperProvider>
           </MockDataProvider>

@@ -17,6 +17,7 @@ import { BookPage } from './BookPage';
 import { useSwipeGesture } from '../../hooks/useSwipeGesture';
 import { calculatePagesForSection, fontSizeToPixels, lineHeightToMultiplier, getViewportDimensions, type BookPage as BookPageType } from '../../utils/pageCalculator';
 import { LorebookStats } from './LorebookStats';
+import { LoreBookGeneratingScreen, ensureMinGeneratingDuration } from './LoreBookGeneratingScreen';
 import {
   DEFAULT_DEMO_LOREBOOK,
   getDemoLorebookById,
@@ -110,6 +111,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   const [lineHeight, setLineHeight] = useState<'normal' | 'relaxed' | 'loose'>('relaxed');
   const [showChat, setShowChat] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingQuery, setGeneratingQuery] = useState<string | null>(null);
   const [noStoryYet, setNoStoryYet] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [selectedBiography, setSelectedBiography] = useState<Biography | null>(null);
@@ -624,7 +626,9 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   };
 
   const handleGenerateFromQuery = async (query: string) => {
+    const startedAt = Date.now();
     setGenerating(true);
+    setGeneratingQuery(query);
     setShowLibrary(false);
     setGenerationError(null);
     try {
@@ -646,12 +650,16 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
           : "That book couldn't be compiled right now."
       );
     } finally {
+      await ensureMinGeneratingDuration(startedAt);
       setGenerating(false);
+      setGeneratingQuery(null);
     }
   };
 
   const handleGenerateFromSpec = async (spec: any, _type?: string) => {
+    const startedAt = Date.now();
     setGenerating(true);
+    setGeneratingQuery(spec?.title ?? spec?.lorebookName ?? spec?.themes ?? null);
     setShowLibrary(false);
     setGenerationError(null);
     try {
@@ -673,7 +681,9 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
           : "That book couldn't be compiled right now."
       );
     } finally {
+      await ensureMinGeneratingDuration(startedAt);
       setGenerating(false);
+      setGeneratingQuery(null);
     }
   };
 
@@ -705,6 +715,11 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
       })();
     }
   }, [searchParams, shouldUseMock, showLibrary, openDemoBookForReading, openBiographyForReading]);
+
+  // Full-screen generating animation
+  if (generating) {
+    return <LoreBookGeneratingScreen query={generatingQuery} />;
+  }
 
   // Library landing — shown on first load or when user returns to library
   if (showLibrary) {

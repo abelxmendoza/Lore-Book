@@ -6,8 +6,8 @@ import {
   type ContentStatsSnapshot,
   type LoreReadinessSummary,
 } from '../lib/loreReadiness';
-import { getMockContentStats } from '../mocks/loreReadiness';
-import { useShouldUseMockData } from './useShouldUseMockData';
+import { getMockCompiledBooks, getMockContentStats } from '../mocks/loreReadiness';
+import { useLoreReadinessSimulation } from '../contexts/LoreReadinessSimulationContext';
 
 export type CompiledLorebook = {
   id: string;
@@ -24,6 +24,7 @@ type UseLoreReadinessResult = {
   loading: boolean;
   refresh: () => Promise<void>;
   hasCompiledBook: boolean;
+  isSimulated: boolean;
 };
 
 function normalizeStats(raw: Partial<ContentStatsSnapshot> | undefined): ContentStatsSnapshot {
@@ -43,8 +44,8 @@ function normalizeStats(raw: Partial<ContentStatsSnapshot> | undefined): Content
   };
 }
 
-export function useLoreReadiness(mockPreset: 'sparse' | 'building' | 'rich' = 'rich'): UseLoreReadinessResult {
-  const shouldUseMock = useShouldUseMockData();
+export function useLoreReadiness(): UseLoreReadinessResult {
+  const { isSimulating, preset, compiledMode } = useLoreReadinessSimulation();
   const [readiness, setReadiness] = useState<LoreReadinessSummary | null>(null);
   const [compiledBooks, setCompiledBooks] = useState<CompiledLorebook[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,24 +56,9 @@ export function useLoreReadiness(mockPreset: 'sparse' | 'building' | 'rich' = 'r
       let stats = EMPTY_CONTENT_STATS;
       let books: CompiledLorebook[] = [];
 
-      if (shouldUseMock) {
-        stats = getMockContentStats(mockPreset);
-        books = [
-          {
-            id: 'demo-1',
-            title: 'The Builder Years',
-            lorebook_name: 'Career arc',
-            created_at: new Date().toISOString(),
-            chapterCount: 6,
-          },
-          {
-            id: 'demo-2',
-            title: 'Love & Loss in the City',
-            lorebook_name: 'Relationships',
-            created_at: new Date().toISOString(),
-            chapterCount: 4,
-          },
-        ];
+      if (isSimulating) {
+        stats = getMockContentStats(preset);
+        books = getMockCompiledBooks(compiledMode);
       } else {
         const [statsResult, listResult] = await Promise.allSettled([
           fetchJson<{ stats: ContentStatsSnapshot }>('/api/biography/stats'),
@@ -103,7 +89,7 @@ export function useLoreReadiness(mockPreset: 'sparse' | 'building' | 'rich' = 'r
     } finally {
       setLoading(false);
     }
-  }, [shouldUseMock, mockPreset]);
+  }, [isSimulating, preset, compiledMode]);
 
   useEffect(() => {
     void load();
@@ -115,5 +101,6 @@ export function useLoreReadiness(mockPreset: 'sparse' | 'building' | 'rich' = 'r
     loading,
     refresh: load,
     hasCompiledBook: compiledBooks.length > 0,
+    isSimulated: isSimulating,
   };
 }

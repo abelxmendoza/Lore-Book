@@ -1,5 +1,15 @@
 import type { ContentStatsSnapshot } from '../lib/loreReadiness';
 
+/** Zero knowledge — all topics locked, editor locked. */
+export const MOCK_CONTENT_STATS_EMPTY: ContentStatsSnapshot = {
+  totalJournalEntries: 0,
+  totalChatMessages: 0,
+  totalNarrativeAtoms: 0,
+  totalWordCount: 0,
+  domainCoverage: [],
+  entityCounts: { characters: 0, locations: 0, events: 0, skills: 0 },
+};
+
 /** Sparse account — most topics locked, simulates early user. */
 export const MOCK_CONTENT_STATS_SPARSE: ContentStatsSnapshot = {
   totalJournalEntries: 4,
@@ -13,7 +23,7 @@ export const MOCK_CONTENT_STATS_SPARSE: ContentStatsSnapshot = {
   entityCounts: { characters: 1, locations: 1, events: 2, skills: 0 },
 };
 
-/** Mid collection — some domains building, one ready. */
+/** Mid collection — some domains building, few ready. */
 export const MOCK_CONTENT_STATS_BUILDING: ContentStatsSnapshot = {
   totalJournalEntries: 18,
   totalChatMessages: 142,
@@ -28,7 +38,7 @@ export const MOCK_CONTENT_STATS_BUILDING: ContentStatsSnapshot = {
   entityCounts: { characters: 4, locations: 3, events: 8, skills: 2 },
 };
 
-/** Rich mock — multiple books can be compiled (demo / showcase). */
+/** Rich mock — multiple topics ready to compile. */
 export const MOCK_CONTENT_STATS_RICH: ContentStatsSnapshot = {
   totalJournalEntries: 48,
   totalChatMessages: 320,
@@ -46,10 +56,36 @@ export const MOCK_CONTENT_STATS_RICH: ContentStatsSnapshot = {
   entityCounts: { characters: 12, locations: 8, events: 24, skills: 6 },
 };
 
-export type MockReadinessPreset = 'sparse' | 'building' | 'rich';
+export type LoreReadinessKnowledgePreset = 'empty' | 'sparse' | 'building' | 'rich';
 
-export function getMockContentStats(preset: MockReadinessPreset = 'rich'): ContentStatsSnapshot {
+export type LoreReadinessCompiledMode = 'none' | 'one' | 'two';
+
+export const LORE_READINESS_PRESET_OPTIONS: Array<{
+  id: LoreReadinessKnowledgePreset;
+  label: string;
+  description: string;
+  overallLevel: 'needs_more' | 'building' | 'ready';
+}> = [
+  { id: 'empty', label: 'Empty', description: 'No knowledge collected', overallLevel: 'needs_more' },
+  { id: 'sparse', label: 'Sparse', description: 'Early chats only', overallLevel: 'needs_more' },
+  { id: 'building', label: 'Building', description: 'Some topics filling in', overallLevel: 'building' },
+  { id: 'rich', label: 'Rich', description: 'Ready to compile several books', overallLevel: 'ready' },
+];
+
+export const LORE_READINESS_COMPILED_OPTIONS: Array<{
+  id: LoreReadinessCompiledMode;
+  label: string;
+  description: string;
+}> = [
+  { id: 'none', label: 'No books', description: 'Editor locked' },
+  { id: 'one', label: '1 compiled', description: 'Editor unlocks for one book' },
+  { id: 'two', label: '2 compiled', description: 'Multiple books in library' },
+];
+
+export function getMockContentStats(preset: LoreReadinessKnowledgePreset): ContentStatsSnapshot {
   switch (preset) {
+    case 'empty':
+      return MOCK_CONTENT_STATS_EMPTY;
     case 'sparse':
       return MOCK_CONTENT_STATS_SPARSE;
     case 'building':
@@ -58,3 +94,37 @@ export function getMockContentStats(preset: MockReadinessPreset = 'rich'): Conte
       return MOCK_CONTENT_STATS_RICH;
   }
 }
+
+export type MockCompiledBook = {
+  id: string;
+  title: string;
+  lorebook_name?: string;
+  created_at: string;
+  chapterCount?: number;
+};
+
+const MOCK_BOOK_CATALOG: MockCompiledBook[] = [
+  {
+    id: 'demo-1',
+    title: 'The Builder Years',
+    lorebook_name: 'Career arc',
+    created_at: new Date().toISOString(),
+    chapterCount: 6,
+  },
+  {
+    id: 'demo-2',
+    title: 'Love & Loss in the City',
+    lorebook_name: 'Relationships',
+    created_at: new Date().toISOString(),
+    chapterCount: 4,
+  },
+];
+
+export function getMockCompiledBooks(mode: LoreReadinessCompiledMode): MockCompiledBook[] {
+  if (mode === 'none') return [];
+  if (mode === 'one') return MOCK_BOOK_CATALOG.slice(0, 1);
+  return MOCK_BOOK_CATALOG;
+}
+
+/** @deprecated use LoreReadinessKnowledgePreset */
+export type MockReadinessPreset = Exclude<LoreReadinessKnowledgePreset, 'empty'>;

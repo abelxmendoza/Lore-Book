@@ -3,6 +3,29 @@ import { render as rtlRender, screen, waitFor, fireEvent } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom';
 import { LibraryLanding } from './LibraryLanding';
 
+vi.mock('../../hooks/useLoreReadiness', () => ({
+  useLoreReadiness: () => ({
+    readiness: {
+      knowledgeScore: 72,
+      overallProgress: 0.72,
+      overallLevel: 'building',
+      canGenerateAnyBook: true,
+      readyTopicCount: 2,
+      stats: {
+        totalNarrativeAtoms: 14,
+        totalChatMessages: 142,
+        entityCounts: { characters: 4, locations: 3, events: 8, skills: 2 },
+      },
+      topics: [],
+    },
+    compiledBooks: [],
+    loading: false,
+    refresh: async () => {},
+    hasCompiledBook: false,
+    isSimulated: false,
+  }),
+}));
+
 // LibraryLanding calls useNavigate(), so it must render inside a Router
 const render: typeof rtlRender = (ui, options) =>
   rtlRender(<MemoryRouter>{ui}</MemoryRouter>, options);
