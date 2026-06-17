@@ -6,7 +6,7 @@ export const MOCK_ROMANTIC_PERIPHERALS: RomanticPeripheral[] = [
   {
     id: 'periph-sam-marcus',
     anchor_relationship_id: 'rel-003',
-    anchor_person_id: 'char-sam',
+    anchor_person_id: 'char-003',
     anchor_person_type: 'character',
     peripheral_person_id: null,
     peripheral_person_type: null,
