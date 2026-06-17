@@ -21,6 +21,7 @@ import { embeddingService } from './embeddingService';
 import { peoplePlacesService } from './peoplePlacesService';
 import { skillExtractionService } from './skills/skillExtractionService';
 import { questSuggestionService } from './quests/questSuggestionService';
+import { projectSuggestionService } from './projects/projectSuggestionService';
 import { supabaseAdmin } from './supabaseClient';
 import { ingestJournalEntry } from './unifiedErIngestion';
 import { dateAssignmentService } from './dateAssignmentService';
@@ -236,6 +237,16 @@ class MemoryService {
         })
         .catch(err => {
           logger.warn({ error: err, userId: payload.userId, entryId: entry.id }, 'Failed to extract quest suggestions from entry (non-blocking)');
+        });
+
+      projectSuggestionService.processEntryForProjectSuggestions(payload.userId, entry.id, payload.content)
+        .then((count) => {
+          if (count > 0) {
+            logger.debug({ userId: payload.userId, entryId: entry.id, count }, 'Queued project suggestions from journal');
+          }
+        })
+        .catch(err => {
+          logger.warn({ error: err, userId: payload.userId, entryId: entry.id }, 'Failed to extract project suggestions from entry (non-blocking)');
         });
     }
 

@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchJson } from '../lib/api';
 import { useLoreKeeper } from './useLoreKeeper';
 import { useShouldUseMockData } from './useShouldUseMockData';
+import { getDemoLorebookById } from '../mocks/lorebooks';
+import { isDemoBookId } from '../lib/lorebookLibrary';
 
 export type BiographySection = {
   id: string;
@@ -119,7 +121,7 @@ const dummyChapters: Chapter[] = [
   { id: 'ch-3', title: 'Personal Development' }
 ];
 
-export const useLoreNavigatorData = () => {
+export const useLoreNavigatorData = (bookId?: string | null) => {
   const shouldUseMock = useShouldUseMockData();
   const [data, setData] = useState<LoreNavigatorData>({
     biography: [],
@@ -135,6 +137,72 @@ export const useLoreNavigatorData = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      // Book-scoped editor: load sections for a specific saved or demo lorebook
+      if (bookId) {
+        if (isDemoBookId(bookId)) {
+          const demo = getDemoLorebookById(bookId);
+          if (demo) {
+            setData({
+              biography: demo.outline.sections.map((s) => ({
+                id: s.id,
+                title: s.title,
+                content: s.content,
+                order: s.order,
+                period: s.period,
+                lastUpdated: demo.outline.lastUpdated,
+              })),
+              characters: [],
+              locations: [],
+              chapters: demo.loreChapters.map((ch) => ({
+                id: ch.id,
+                title: ch.title,
+                start_date: ch.start_date,
+                end_date: ch.end_date,
+                summary: ch.summary ?? ch.description,
+              })),
+            });
+            return;
+          }
+        } else {
+          try {
+            const bio = await fetchJson<{
+              biography: {
+                id: string;
+                title: string;
+                chapters: Array<{
+                  id: string;
+                  title: string;
+                  text: string;
+                  timeSpan: { start: string; end: string };
+                }>;
+              };
+            }>(`/api/biography/${bookId}`);
+            const b = bio.biography;
+            setData({
+              biography: (b.chapters ?? []).map((ch, idx) => ({
+                id: ch.id,
+                title: ch.title,
+                content: ch.text,
+                order: idx + 1,
+                period: { from: ch.timeSpan.start, to: ch.timeSpan.end },
+              })),
+              characters: [],
+              locations: [],
+              chapters: (b.chapters ?? []).map((ch) => ({
+                id: ch.id,
+                title: ch.title,
+                start_date: ch.timeSpan.start,
+                end_date: ch.timeSpan.end,
+                summary: ch.text.slice(0, 120),
+              })),
+            });
+            return;
+          } catch (error) {
+            console.warn('Failed to load biography for editor:', error);
+          }
+        }
+      }
+
       // Load biography sections
       let biography: BiographySection[] = [];
       try {
@@ -217,7 +285,7 @@ export const useLoreNavigatorData = () => {
     } finally {
       setLoading(false);
     }
-  }, [loreChapters, shouldUseMock]);
+  }, [loreChapters, shouldUseMock, bookId]);
 
   useEffect(() => {
     void loadData();

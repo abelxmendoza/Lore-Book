@@ -9,7 +9,8 @@ const render: typeof rtlRender = (ui, options) =>
 
 describe('LibraryLanding', () => {
   const mockOnGenerate = vi.fn();
-  const mockOnOpenDemoBook = vi.fn();
+  const mockOnReadBook = vi.fn();
+  const mockOnEditBook = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -77,19 +78,26 @@ describe('LibraryLanding', () => {
     expect(mockOnGenerate).not.toHaveBeenCalled();
   });
 
-  it('renders demo books when onOpenDemoBook is provided', () => {
-    // isMockData={true} is required — demo books only render in mock/demo mode
-    render(<LibraryLanding onGenerate={mockOnGenerate} onOpenDemoBook={mockOnOpenDemoBook} isMockData={true} />);
-    expect(screen.getByText('The Creative Renaissance')).toBeInTheDocument();
+  it('renders demo books when onReadBook is provided', () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} onReadBook={mockOnReadBook} onEditBook={mockOnEditBook} isMockData={true} />);
+    expect(screen.getByText('The Keeper of Marrowvale')).toBeInTheDocument();
   });
 
-  it('calls onOpenDemoBook when a demo book is clicked', async () => {
-    render(<LibraryLanding onGenerate={mockOnGenerate} onOpenDemoBook={mockOnOpenDemoBook} isMockData={true} />);
-    const demoBookTitle = screen.getByText('The Creative Renaissance');
-    const demoBookBtn = demoBookTitle.closest('button') ?? demoBookTitle;
-    fireEvent.click(demoBookBtn);
+  it('calls onReadBook when Read is clicked on a demo book', async () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} onReadBook={mockOnReadBook} onEditBook={mockOnEditBook} isMockData={true} />);
+    const readBtn = screen.getAllByRole('button', { name: /^Read$/i })[0];
+    fireEvent.click(readBtn);
     await waitFor(() => {
-      expect(mockOnOpenDemoBook).toHaveBeenCalled();
+      expect(mockOnReadBook).toHaveBeenCalledWith('demo-1');
+    });
+  });
+
+  it('calls onEditBook when Edit is clicked on a demo book', async () => {
+    render(<LibraryLanding onGenerate={mockOnGenerate} onReadBook={mockOnReadBook} onEditBook={mockOnEditBook} isMockData={true} />);
+    const editBtn = screen.getAllByRole('button', { name: /^Edit$/i })[0];
+    fireEvent.click(editBtn);
+    await waitFor(() => {
+      expect(mockOnEditBook).toHaveBeenCalledWith('demo-1');
     });
   });
 });

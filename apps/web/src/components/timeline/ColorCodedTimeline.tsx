@@ -261,13 +261,25 @@ export const ColorCodedTimeline = ({
     microaction: 8
   };
   
-  // Use dummy data if requested or if no real data exists
-  // Check mock data toggle
   const { useMockData: isMockDataEnabled } = useMockData();
-  const shouldUseDummy = useDummyData || (isMockDataEnabled && hierarchyNodes.length === 0 && chapters.length === 0 && sections.length === 0 && entries.length === 0);
-  
-  const dummyData = shouldUseDummy 
-    ? generateDummyTimelineData() 
+
+  // Use dummy data only when explicitly requested, or when mock mode is on and
+  // no caller provided any timeline payload (avoids fake Eras/Memories bleeding in).
+  const hasProvidedData =
+    hierarchyNodes.length > 0 ||
+    chapters.length > 0 ||
+    sections.length > 0 ||
+    entries.length > 0 ||
+    sagas.length > 0 ||
+    arcs.length > 0 ||
+    eras.length > 0 ||
+    memories.length > 0;
+
+  const shouldUseDummy =
+    useDummyData || (isMockDataEnabled && !hasProvidedData);
+
+  const dummyData = shouldUseDummy
+    ? generateDummyTimelineData()
     : { eras: [], sagas: [], arcs: [], chapters: [], memories: [] };
   
   const finalChapters = chapters.length > 0 ? chapters : dummyData.chapters;
@@ -556,6 +568,10 @@ export const ColorCodedTimeline = ({
   };
 
   const timelineItems = buildTimelineItems();
+
+  if (timelineItems.length === 0) {
+    return null;
+  }
 
   // Get color for a timeline item
   const getItemColor = (item: TimelineItem): string => {

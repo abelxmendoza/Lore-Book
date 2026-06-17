@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Briefcase, Plus, GitMerge, Search as SearchIcon } from 'lucide-react';
 
 import { fetchJson } from '../../lib/api';
+import { useMockData } from '../../contexts/MockDataContext';
+import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import { ProjectProfileCard, type ProjectCardData } from './ProjectProfileCard';
 import { ProjectDetailModal } from './ProjectDetailModal';
+import { DetectedProjectSuggestions } from './DetectedProjectSuggestions';
 
 interface DuplicateGroup {
   match_type: 'exact' | 'containment';
@@ -23,6 +26,7 @@ const DEMO_PROJECTS: ProjectCardData[] = [
  * Projects Book — card grid + detail modal (Locations/Skills book pattern).
  */
 export const ProjectBook = () => {
+  const { useMockData: isMockDataEnabled } = useMockData();
   const [projects, setProjects] = useState<ProjectCardData[]>([]);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [loading, setLoading] = useState(false);
@@ -38,9 +42,14 @@ export const ProjectBook = () => {
     setLoading(true);
     setError(null);
     try {
+      if (isMockDataEnabled) {
+        setProjects(DEMO_PROJECTS);
+        setDuplicateGroups([]);
+        return;
+      }
       const [{ projects: list }, dupes] = await Promise.all([
-        fetchJson<{ projects: ProjectCardData[] }>('/api/projects', undefined, { mockData: { projects: DEMO_PROJECTS } }),
-        fetchJson<{ duplicate_groups: DuplicateGroup[] }>('/api/projects/duplicates', undefined, { mockData: { duplicate_groups: [] } }).catch(() => ({ duplicate_groups: [] })),
+        fetchJson<{ projects: ProjectCardData[] }>('/api/projects'),
+        fetchJson<{ duplicate_groups: DuplicateGroup[] }>('/api/projects/duplicates').catch(() => ({ duplicate_groups: [] })),
       ]);
       setProjects(list ?? []);
       setDuplicateGroups(dupes.duplicate_groups ?? []);
@@ -51,7 +60,14 @@ export const ProjectBook = () => {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [isMockDataEnabled]);
+
+  useEffect(() => {
+    if (isMockDataEnabled) return;
+    return onStoryDataUpdated(() => {
+      void load();
+    }, 'projects');
+  }, [isMockDataEnabled]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -165,6 +181,12 @@ export const ProjectBook = () => {
 
       {notice && <div className="mb-3 rounded-xl bg-primary/10 border border-primary/30 px-4 py-2.5 text-sm text-primary">{notice}</div>}
       {error && <div className="mb-3 rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-2.5 text-sm text-red-300">{error}</div>}
+
+      <DetectedProjectSuggestions
+        demoMode={isMockDataEnabled}
+        existingProjectNames={projects.map((p) => p.name)}
+        onProjectAdded={() => void load()}
+      />
 
       {duplicateGroups.length > 0 && (
         <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">

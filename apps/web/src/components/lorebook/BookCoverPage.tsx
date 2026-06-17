@@ -9,6 +9,7 @@ interface BookCoverPageProps {
   chapterCount?: number;
   theme?: ReadingTheme;
   onOpen: () => void;
+  onEdit?: () => void;
 }
 
 const ORNAMENT = '— ✦ —';
@@ -51,6 +52,7 @@ export const BookCoverPage = ({
   chapterCount,
   theme = 'lore',
   onOpen,
+  onEdit,
 }: BookCoverPageProps) => {
   const t = COVER_THEMES[theme];
 
@@ -101,11 +103,24 @@ export const BookCoverPage = ({
         </div>
 
         {/* Open CTA */}
-        <button
-          className={`px-8 py-2.5 rounded-full text-sm tracking-widest uppercase font-mono transition-all ${t.btnBg} ${t.btnText}`}
-        >
-          Begin Reading
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+            className={`px-8 py-2.5 rounded-full text-sm tracking-widest uppercase font-mono transition-all ${t.btnBg} ${t.btnText}`}
+          >
+            Begin Reading
+          </button>
+          {onEdit && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              className={`px-6 py-2.5 rounded-full text-sm tracking-widest uppercase font-mono transition-all border ${t.border} ${t.sub} hover:opacity-80`}
+            >
+              Edit Book
+            </button>
+          )}
+        </div>
 
         {/* Bottom ornament */}
         <div className={`font-serif text-lg mt-8 ${t.ornament}`}>{ORNAMENT}</div>

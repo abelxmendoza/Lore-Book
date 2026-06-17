@@ -9,6 +9,7 @@ type LorebookEmptyStateProps = {
   reason: 'no-story' | 'generation-failed';
   message?: string | null;
   onGenerateFromSpec: (spec: any, type?: string) => void;
+  onBackToLibrary?: () => void;
 };
 
 const HEADLINES: Record<LorebookEmptyStateProps['reason'], { title: string; body: string }> = {
@@ -33,7 +34,7 @@ const HEADLINES: Record<LorebookEmptyStateProps['reason'], { title: string; body
  * lorebook recommendation engine — no new intelligence, no new fetches
  * beyond what those surfaces already expose.
  */
-export const LorebookEmptyState = ({ reason, message, onGenerateFromSpec }: LorebookEmptyStateProps) => {
+export const LorebookEmptyState = ({ reason, message, onGenerateFromSpec, onBackToLibrary }: LorebookEmptyStateProps) => {
   const [card, setCard] = useState<LivingBiographyCard | null>(null);
   const [loading, setLoading] = useState(true);
   const counts = useEntityCounts();
@@ -52,6 +53,15 @@ export const LorebookEmptyState = ({ reason, message, onGenerateFromSpec }: Lore
 
         <div className="text-center">
           <BookOpen className="h-12 w-12 mx-auto mb-4 text-primary/40" />
+          {onBackToLibrary && (
+            <button
+              type="button"
+              onClick={onBackToLibrary}
+              className="mb-4 text-xs font-mono text-white/40 hover:text-white/70 transition-colors"
+            >
+              ← Back to library
+            </button>
+          )}
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2" style={{ fontFamily: 'Georgia, serif' }}>
             {headline.title}
           </h2>

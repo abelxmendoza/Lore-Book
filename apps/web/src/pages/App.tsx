@@ -41,7 +41,6 @@ import { IntelligenceDashboard } from '../components/diagnostics/IntelligenceDas
 import { EntityResolutionBook } from '../components/entities/EntityResolutionBook';
 import { OrganizationsBook } from '../components/organizations/OrganizationsBook';
 import { FamilyBook } from '../components/family/FamilyBook';
-import { StoryBook } from '../components/story/StoryBook';
 import { DocumentsBook } from '../components/documents/DocumentsBook';
 import { SkillsBook } from '../components/skills/SkillsBook';
 import { PrivacySettings } from '../components/security/PrivacySettings';
@@ -218,7 +217,6 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
       quests: 'Quests',
       gaps: 'Knowledge Gaps',
       saga: 'Life Saga',
-      story: 'Story',
       documents: 'Documents',
       intelligence: 'Intelligence Health',
     };
@@ -334,7 +332,6 @@ const AppContent = ({ defaultSurface }: AppContentProps) => {
                         {activeSurface === 'entities' && <EntityResolutionBook />}
                         {activeSurface === 'organizations' && <OrganizationsBook />}
                         {activeSurface === 'family' && <FamilyBook />}
-                        {activeSurface === 'story' && <StoryBook />}
                         {activeSurface === 'documents' && <DocumentsBook />}
                         {activeSurface === 'skills' && <SkillsBook />}
                         {activeSurface === 'subscription' && (

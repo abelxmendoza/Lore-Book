@@ -3,7 +3,7 @@ import {
   Bot, Send, Loader2, Sparkles, PanelLeftClose, PanelLeftOpen,
   MessageSquare, X, ChevronLeft, BookMarked, List, FileText,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { useChatStream } from '../../hooks/useChatStream';
@@ -12,6 +12,9 @@ import { useLoreNavigatorData } from '../../hooks/useLoreNavigatorData';
 import { LoreNavigator, type SelectedItem } from './LoreNavigator';
 import { LoreContentViewer } from './LoreContentViewer';
 import { BiographyGenerator } from './BiographyGenerator';
+import { lorebookReadUrl, isDemoBookId } from '../../lib/lorebookLibrary';
+import { getDemoLorebookById } from '../../mocks/lorebooks';
+import { fetchJson } from '../../lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -193,6 +196,26 @@ const BottomTabBar = ({ activeTab, onTabChange, unreadChat }: BottomTabBarProps)
 
 export const BiographyEditor = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const bookId = searchParams.get('book');
+  const demoBook = bookId ? getDemoLorebookById(bookId) : undefined;
+  const [apiBookTitle, setApiBookTitle] = useState<string | null>(null);
+  const bookTitle = demoBook?.title ?? apiBookTitle ?? null;
+
+  useEffect(() => {
+    if (!bookId || isDemoBookId(bookId)) {
+      setApiBookTitle(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const result = await fetchJson<{ biography: { title: string } }>(`/api/biography/${bookId}`);
+        setApiBookTitle(result.biography.title);
+      } catch {
+        setApiBookTitle(null);
+      }
+    })();
+  }, [bookId]);
 
   // Chat state
   const [messages, setMessages] = useState<BiographyMessage[]>([]);
@@ -213,7 +236,7 @@ export const BiographyEditor = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { streamChat, isStreaming } = useChatStream();
-  const { data, loading: dataLoading, refresh: refreshData } = useLoreNavigatorData();
+  const { data, loading: dataLoading, refresh: refreshData } = useLoreNavigatorData(bookId);
 
   // Welcome message
   useEffect(() => {
@@ -359,16 +382,18 @@ export const BiographyEditor = () => {
         <div className="flex items-center gap-2.5 min-w-0">
           <button
             type="button"
-            onClick={() => navigate('/lorebook')}
+            onClick={() => navigate(bookId ? lorebookReadUrl(bookId) : '/lorebook')}
             className="flex items-center gap-1 text-xs text-white/40 hover:text-white/70 transition-colors shrink-0 font-mono"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">LoreBooks</span>
+            <span className="hidden sm:inline">{bookId ? 'Back to book' : 'LoreBooks'}</span>
           </button>
           <div className="w-px h-3.5 bg-white/10 shrink-0" />
           <div className="flex items-center gap-2 min-w-0">
             <BookMarked className="h-4 w-4 text-primary shrink-0" />
-            <h1 className="text-sm font-semibold text-white truncate">Lore Editor</h1>
+            <h1 className="text-sm font-semibold text-white truncate">
+              {bookTitle ?? 'Lore Editor'}
+            </h1>
             {selectedItem && (
               <>
                 <span className="text-white/20 shrink-0">/</span>

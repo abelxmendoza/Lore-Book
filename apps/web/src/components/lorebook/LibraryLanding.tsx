@@ -26,61 +26,12 @@ const CATEGORIES: BookCategory[] = [
   { id: 'event',        label: 'An Event',         icon: Calendar,   prompt: 'the story of ',                gradient: 'from-violet-600 to-purple-700',   description: 'One moment, zoomed in' },
 ];
 
-// Demo books shown in mock/demo mode
-const DEMO_BOOKS = [
-  {
-    id: 'demo-1',
-    title: 'The Creative Renaissance',
-    scope: 'Full biography',
-    period: '2022 – 2024',
-    chapters: 5,
-    pages: 48,
-    gradient: 'from-purple-900 via-purple-800 to-indigo-900',
-    accent: 'text-purple-300',
-    border: 'border-purple-700/40',
-    lastRead: '2 days ago',
-  },
-  {
-    id: 'demo-2',
-    title: 'Sarah Chen',
-    scope: 'A friendship',
-    period: '2018 – present',
-    chapters: 3,
-    pages: 24,
-    gradient: 'from-rose-900 via-pink-800 to-rose-900',
-    accent: 'text-pink-300',
-    border: 'border-pink-700/40',
-    lastRead: '1 week ago',
-  },
-  {
-    id: 'demo-3',
-    title: 'Music & Production',
-    scope: 'Skill arc',
-    period: '1.5 years',
-    chapters: 4,
-    pages: 36,
-    gradient: 'from-cyan-900 via-teal-800 to-cyan-900',
-    accent: 'text-cyan-300',
-    border: 'border-cyan-700/40',
-    lastRead: '3 days ago',
-  },
-  {
-    id: 'demo-4',
-    title: 'The Tech-to-Creative Shift',
-    scope: 'Life era',
-    period: '2021 – 2022',
-    chapters: 2,
-    pages: 18,
-    gradient: 'from-amber-900 via-orange-800 to-amber-900',
-    accent: 'text-amber-300',
-    border: 'border-amber-700/40',
-    lastRead: 'Today',
-  },
-];
+import { DEMO_LOREBOOK_CATALOG } from '../../mocks/lorebooks';
 
 interface LibraryLandingProps {
   onGenerate: (query: string) => void;
-  onOpenDemoBook?: (bookId: string) => void;
+  onReadBook?: (bookId: string) => void;
+  onEditBook?: (bookId: string) => void;
   generating?: boolean;
   isMockData?: boolean;
   /** Slot rendered below the "Recently generated" section — e.g. saved books, recommendations. */
@@ -89,7 +40,8 @@ interface LibraryLandingProps {
 
 export const LibraryLanding = ({
   onGenerate,
-  onOpenDemoBook,
+  onReadBook,
+  onEditBook,
   generating = false,
   isMockData = false,
   bottomSlot,
@@ -204,7 +156,7 @@ export const LibraryLanding = ({
           </div>
         </div>
 
-        {/* Edit Lore entry point */}
+        {/* Global lore editor — not tied to a specific generated book */}
         <div className="mb-8 sm:mb-10">
           <button
             type="button"
@@ -215,56 +167,68 @@ export const LibraryLanding = ({
               <Edit3 className="h-4 w-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white/70 group-hover:text-white transition-colors">Edit Lore</p>
-              <p className="text-xs text-white/35 mt-0.5">Browse and edit biography sections, characters, locations, and chapters with AI</p>
+              <p className="text-sm font-semibold text-white/70 group-hover:text-white transition-colors">Edit living lore</p>
+              <p className="text-xs text-white/35 mt-0.5">Browse and edit biography sections, characters, locations, and chapters</p>
             </div>
             <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-white/50 group-hover:translate-x-0.5 shrink-0 transition-all" />
           </button>
         </div>
 
-        {/* Recently generated section */}
+        {/* Your library */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-white/35 uppercase tracking-widest font-mono">Recently generated</p>
-            {isMockData && <span className="text-xs text-white/25 font-mono">{DEMO_BOOKS.length} books</span>}
+            <p className="text-xs text-white/35 uppercase tracking-widest font-mono">Your library</p>
+            {isMockData && <span className="text-xs text-white/25 font-mono">{DEMO_LOREBOOK_CATALOG.length} books</span>}
           </div>
 
           {isMockData ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {DEMO_BOOKS.map((book) => (
-                <button
-                  type="button"
+              {DEMO_LOREBOOK_CATALOG.map((book) => (
+                <div
                   key={book.id}
-                  onClick={() => onOpenDemoBook?.(book.id)}
-                  className={`group relative flex items-stretch gap-0 rounded-2xl border ${book.border} overflow-hidden text-left transition-all hover:scale-[1.015] hover:shadow-xl hover:shadow-black/40 active:scale-[0.99]`}
+                  className={`group relative flex items-stretch gap-0 rounded-2xl border ${book.border} overflow-hidden text-left transition-all hover:shadow-xl hover:shadow-black/40`}
                 >
                   <div className={`w-14 shrink-0 bg-gradient-to-b ${book.gradient} flex items-center justify-center`}>
                     <BookOpen className="h-5 w-5 text-white/60" />
                   </div>
                   <div className="flex-1 bg-white/3 group-hover:bg-white/5 transition-colors px-4 py-4">
                     <div className="flex items-start justify-between gap-2">
-                      <div>
+                      <div className="min-w-0">
                         <p className={`text-xs font-mono uppercase tracking-wider mb-1 ${book.accent}`}>{book.scope}</p>
                         <h3 className="text-white font-semibold text-base leading-snug mb-1 font-serif">{book.title}</h3>
                         <p className="text-xs text-white/40">{book.period}</p>
                       </div>
-                      <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-white/50 shrink-0 mt-1 transition-colors" />
                     </div>
                     <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/8">
                       <span className="text-xs text-white/30">{book.chapters} chapters</span>
                       <span className="text-white/15">·</span>
                       <span className="text-xs text-white/30">{book.pages} pages</span>
-                      <span className="text-white/15">·</span>
-                      <span className="text-xs text-white/30">{book.lastRead}</span>
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={() => onReadBook?.(book.id)}
+                        className="flex-1 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary text-xs font-medium py-2 transition-colors"
+                      >
+                        Read
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onEditBook?.(book.id)}
+                        className="flex-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-xs font-medium py-2 transition-colors inline-flex items-center justify-center gap-1"
+                      >
+                        <Edit3 className="h-3 w-3" />
+                        Edit
+                      </button>
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-12 rounded-2xl border border-white/8 bg-white/2 text-center">
+            <div className="flex flex-col items-center justify-center py-8 rounded-2xl border border-white/8 bg-white/2 text-center">
               <BookOpen className="h-10 w-10 text-white/15 mb-3" />
-              <p className="text-sm text-white/35">No books yet — generate your first one above.</p>
+              <p className="text-sm text-white/35">Generate a book above — saved copies appear here.</p>
             </div>
           )}
         </div>

@@ -1,7 +1,7 @@
 /** Fired after chat ingestion finishes so family trees, timelines, and groups can refresh. */
 export const STORY_DATA_UPDATED = 'lk:story-data-updated';
 
-export type StoryRefreshScope = 'family' | 'timeline' | 'organizations' | 'characters' | 'skills' | 'quests' | 'story' | 'all';
+export type StoryRefreshScope = 'family' | 'timeline' | 'organizations' | 'characters' | 'skills' | 'quests' | 'projects' | 'story' | 'all';
 
 export type StoryDataUpdatedDetail = {
   scopes?: StoryRefreshScope[];
@@ -22,6 +22,9 @@ export function dispatchStoryDataUpdated(detail: StoryDataUpdatedDetail = { scop
     }
     if (detail.scopes?.includes('all') || detail.scopes?.includes('quests')) {
       window.dispatchEvent(new Event('lk:quests-updated'));
+    }
+    if (detail.scopes?.includes('all') || detail.scopes?.includes('projects')) {
+      window.dispatchEvent(new Event('lk:projects-updated'));
     }
   };
   const delay = detail.delayMs ?? 0;

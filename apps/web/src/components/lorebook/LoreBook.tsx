@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, Type, AlignJustify, Loader2, Download, Menu, X } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { BookOpen, ChevronLeft, ChevronRight, BookMarked, MessageSquare, Type, AlignJustify, Loader2, Download, Menu, X, Edit3 } from 'lucide-react';
 import { LibraryLanding } from './LibraryLanding';
 import { LorebookEmptyState } from './LorebookEmptyState';
 import { SavedBiographies } from './SavedBiographies';
@@ -17,6 +17,11 @@ import { BookPage } from './BookPage';
 import { useSwipeGesture } from '../../hooks/useSwipeGesture';
 import { calculatePagesForSection, fontSizeToPixels, lineHeightToMultiplier, getViewportDimensions, type BookPage as BookPageType } from '../../utils/pageCalculator';
 import { LorebookStats } from './LorebookStats';
+import {
+  DEFAULT_DEMO_LOREBOOK,
+  getDemoLorebookById,
+} from '../../mocks/lorebooks';
+import { isDemoBookId, lorebookEditUrl, lorebookReadUrl } from '../../lib/lorebookLibrary';
 
 // Biography types (define locally to avoid server import)
 type Biography = {
@@ -88,153 +93,13 @@ function biographyToOutline(biography: Biography): MemoirOutline {
   };
 }
 
-// Dummy book data for demonstration
-const dummyBook: MemoirOutline = {
-  id: 'dummy-book-1',
-  title: 'The Chronicles of Aetheria',
-  lastUpdated: new Date().toISOString(),
-  autoUpdate: false,
-  sections: [
-    {
-      id: 'section-1',
-      title: 'The Awakening',
-      content: `The first light of dawn crept over the horizon, painting the sky in hues of orange and violet. Elara stood at the edge of the ancient forest, her hand resting on the gnarled bark of the World Tree. The air hummed with an energy she had never felt before—a resonance that seemed to call to something deep within her soul.
-
-She had been drawn here by dreams, visions that had plagued her sleep for weeks. In them, she saw a realm beyond the veil, a place where magic flowed like water and time moved in strange currents. The elders had warned her against seeking answers in the old places, but Elara had always been one to follow her instincts.
-
-As her fingers traced the intricate patterns carved into the tree's surface, she felt a warmth spread through her palm. The symbols began to glow, faintly at first, then brighter, until the entire clearing was bathed in an ethereal light. The ground beneath her feet trembled, and she heard a voice—ancient, wise, and filled with sorrow.
-
-"Child of the lost bloodline," it whispered, "you have come at last. The balance has shifted, and the old magic stirs once more. You must choose: embrace the power that flows in your veins, or turn away and let darkness consume all that remains."
-
-Elara's heart raced. This was it—the moment that would define everything. She took a deep breath and pressed her hand fully against the tree. "I choose to embrace it," she said, her voice steady despite the fear that clawed at her chest.
-
-The light exploded outward, and Elara felt herself being pulled into something vast and infinite. When her vision cleared, she was no longer in the forest. She stood in a realm of swirling colors and impossible geometries, where the very fabric of reality seemed to bend and fold around her.
-
-This was the beginning of everything.`,
-      order: 1,
-      period: { from: '2024-01-01', to: '2024-01-15' },
-      focus: 'Character introduction and world-building'
-    },
-    {
-      id: 'section-2',
-      title: 'The Academy of Shadows',
-      content: `The Academy of Shadows was not a place one found—it found you. Elara had been wandering the strange realm for what felt like days when the structure materialized before her. It was a building that defied logic: walls that curved inward, staircases that led to nowhere, and windows that showed different times of day depending on which angle you viewed them from.
-
-A figure emerged from the shadows—tall, cloaked, with eyes that seemed to see through everything. "Welcome, Initiate," the figure said, their voice echoing strangely. "I am Master Thorne. You have been expected."
-
-Elara followed Master Thorne through corridors that shifted and changed as they walked. Doors appeared where none had been before, and she caught glimpses of other students practicing spells that made the air shimmer. In one room, a young man was attempting to weave light into solid form. In another, a girl was learning to read the threads of fate itself.
-
-"You will learn many things here," Master Thorne explained as they walked. "But the most important lesson is this: magic is not a tool to be wielded. It is a relationship. You must understand it, respect it, and above all, you must never try to control it completely. The moment you do, it will turn on you."
-
-They stopped before a massive door covered in runes that seemed to writhe and shift. "This is the Library of Infinite Knowledge," Master Thorne said. "Within these walls, you will find answers to questions you haven't even thought to ask yet. But beware—knowledge comes with a price. The deeper you go, the more it will change you."
-
-Elara pushed open the door and stepped inside. The library stretched into infinity, shelves upon shelves of books that seemed to rearrange themselves when she wasn't looking. She reached for a volume bound in what looked like dragon scales, and as her fingers touched it, she felt a jolt of understanding flood through her mind.
-
-She was home.`,
-      order: 2,
-      period: { from: '2024-01-16', to: '2024-02-28' },
-      focus: 'World expansion and magical system introduction'
-    },
-    {
-      id: 'section-3',
-      title: 'The First Trial',
-      content: `The Trial of Elements came without warning. One moment, Elara was studying ancient texts in the library. The next, she found herself standing in a circular chamber with four archways, each leading to a different realm of elemental power.
-
-Fire. Water. Earth. Air.
-
-She had to master each one, or fail and be cast out of the Academy forever. The pressure was immense, but Elara had never been one to back down from a challenge.
-
-She chose Fire first, stepping through the archway into a realm of endless flame. The heat was intense, but she focused on the energy within herself, finding the spark that resonated with the fire around her. Slowly, she learned to dance with the flames rather than fight them, to become one with the element rather than dominate it.
-
-Water came next—a realm of endless ocean where she had to learn to breathe beneath the waves and command the currents. Earth taught her patience and strength, showing her how to feel the heartbeat of the world itself. Air was the most difficult, requiring her to let go of all control and trust in the wind to carry her.
-
-When she emerged from the final archway, Master Thorne was waiting. "You have passed," they said, a rare smile touching their lips. "But remember, this was only the beginning. The real trials lie ahead, and they will test not just your power, but your heart."
-
-Elara nodded, feeling changed in ways she couldn't yet understand. She had touched the elements, and they had touched her in return. Something fundamental had shifted within her, and she knew that nothing would ever be the same.`,
-      order: 3,
-      period: { from: '2024-03-01', to: '2024-03-20' },
-      focus: 'Character growth and magical mastery'
-    },
-    {
-      id: 'section-4',
-      title: 'The Shadow Council',
-      content: `Not all who studied at the Academy were allies. Elara learned this the hard way when she discovered the existence of the Shadow Council—a secret organization of mages who believed that magic should be hoarded and controlled, not shared freely with the world.
-
-The Council had been watching her since her arrival, drawn by the power they sensed within her. They approached her one evening as she walked through the gardens, their leader—a mage named Valdris—stepping out from behind a statue.
-
-"You have potential," Valdris said, his voice smooth as silk and twice as dangerous. "But you waste it on these... common teachings. Join us, and we will show you what true power looks like. We will teach you to bend reality itself to your will."
-
-Elara felt the pull of his words, the temptation to take the easy path to power. But something in his eyes made her hesitate. There was a hunger there, a darkness that spoke of corruption and loss of self.
-
-"I'm not interested," she said, turning to leave.
-
-Valdris's hand shot out, grabbing her arm. "You will be," he hissed. "One way or another, you will be. The old ways are dying, Elara. Those who cling to them will die with them. Choose wisely."
-
-As he disappeared into the shadows, Elara felt a chill run down her spine. The Academy was not the safe haven she had thought it was. There were forces at play here, forces that wanted to use her for their own ends.
-
-She would need to be careful. And she would need to be strong.`,
-      order: 4,
-      period: { from: '2024-03-21', to: '2024-04-10' },
-      focus: 'Introduction of conflict and antagonists'
-    },
-    {
-      id: 'section-5',
-      title: 'The Prophecy Revealed',
-      content: `The truth came to her in a dream, or perhaps it was a vision—the distinction had become blurred. She stood in a place that was neither here nor there, before a figure that was both ancient and ageless.
-
-"You are the Last Keeper," the figure said, their voice resonating with the weight of eons. "The one who will either restore the balance or watch as everything falls into darkness. The choice has always been yours, but now you must make it with full knowledge of what it means."
-
-Images flooded her mind: a world where magic had been stripped away, leaving only emptiness and despair. A world where the Shadow Council ruled with an iron fist, using their power to subjugate all who opposed them. And then, another vision—a world where magic flowed freely, where the barriers between realms had been healed, where balance had been restored.
-
-"The path will not be easy," the figure continued. "You will face trials that will break you, choices that will tear you apart. You will lose friends, make enemies, and question everything you believe in. But if you stay true to yourself, if you remember why you chose this path in the first place, you can succeed."
-
-When Elara awoke, she found a book on her nightstand that hadn't been there before. It was bound in silver and gold, and when she opened it, the pages were blank—until she touched them. Then, words began to appear, written in a language she somehow understood.
-
-It was the Prophecy of the Last Keeper. And it was about her.
-
-She read through the night, learning of the ancient conflict that had torn the realms apart, of the Keepers who had maintained the balance for millennia, and of the dark force that had destroyed them all—except for one. Her.
-
-The weight of destiny settled on her shoulders, heavy but not crushing. She had been chosen, yes, but she would make her own choices. She would write her own story, prophecy be damned.`,
-      order: 5,
-      period: { from: '2024-04-11', to: '2024-05-01' },
-      focus: 'Revelation of destiny and greater purpose'
-    }
-  ]
-};
-
-const dummyChapters: Chapter[] = [
-  {
-    id: 'chapter-1',
-    title: 'The Beginning',
-    start_date: '2024-01-01',
-    end_date: '2024-01-31',
-    description: 'Elara discovers her magical heritage',
-    summary: 'The awakening of power and the journey to the Academy begins.'
-  },
-  {
-    id: 'chapter-2',
-    title: 'Learning and Growth',
-    start_date: '2024-02-01',
-    end_date: '2024-03-31',
-    description: 'Training at the Academy and mastering the elements',
-    summary: 'Elara undergoes rigorous training and faces her first major trial.'
-  },
-  {
-    id: 'chapter-3',
-    title: 'Shadows and Light',
-    start_date: '2024-04-01',
-    end_date: '2024-05-31',
-    description: 'The Shadow Council emerges and the prophecy is revealed',
-    summary: 'Dark forces gather as Elara learns the truth about her destiny.'
-  }
-];
-
 interface LoreBookProps {
   onOpenAppSidebar?: () => void;
 }
 
 export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const shouldUseMock = useShouldUseMockData();
   const { chapters: loreChapters } = useLoreKeeper();
   const [outline, setOutline] = useState<MemoirOutline | null>(null);
@@ -260,11 +125,14 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   const [showStats, setShowStats] = useState(false);
   const [viewportDimensions, setViewportDimensions] = useState(getViewportDimensions());
   const pageContainerRef = useRef<HTMLDivElement>(null);
+  const urlBookHandledRef = useRef<string | null>(null);
 
   // New library / reading experience state
   const [showLibrary, setShowLibrary] = useState(true);
   const [isCoverVisible, setIsCoverVisible] = useState(false);
   const [theme, setTheme] = useState<ReadingTheme>('lore');
+  const [activeBookId, setActiveBookId] = useState<string | null>(null);
+  const [activeBookMeta, setActiveBookMeta] = useState<{ scope?: string; period?: string } | null>(null);
 
   const cycleFontSize = () => {
     const order: Array<typeof fontSize> = ['sm', 'base', 'lg', 'xl'];
@@ -304,7 +172,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         // Logged-in users: real data, or the "not enough story yet" surface.
         // Unauthenticated only: allow the demo book fallback.
         if (!loadedOutline && shouldUseMock) {
-          loadedOutline = dummyBook;
+          loadedOutline = DEFAULT_DEMO_LOREBOOK.outline;
           storyUnavailable = false;
         }
 
@@ -322,13 +190,13 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
             summary: ch.summary || ''
           })));
         } else {
-          setChapters(shouldUseMock ? dummyChapters : []);
+          setChapters(shouldUseMock ? DEFAULT_DEMO_LOREBOOK.loreChapters : []);
         }
       } catch (error) {
         console.error('Failed to load lore book data:', error);
         if (shouldUseMock) {
-          setOutline(dummyBook);
-          setChapters(dummyChapters);
+          setOutline(DEFAULT_DEMO_LOREBOOK.outline);
+          setChapters(DEFAULT_DEMO_LOREBOOK.loreChapters);
         } else {
           setOutline(null);
           setChapters([]);
@@ -355,10 +223,10 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
   }, [searchParams]);
 
   // Helper function to flatten sections
-  const flattenSections = (sections: MemoirSection[]): MemoirSection[] => {
+  const flattenSections = useCallback((sections: MemoirSection[]): MemoirSection[] => {
     const result: MemoirSection[] = [];
     const sorted = [...sections].sort((a, b) => a.order - b.order);
-    
+
     for (const section of sorted) {
       result.push(section);
       if (section.children && section.children.length > 0) {
@@ -366,7 +234,19 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
       }
     }
     return result;
-  };
+  }, []);
+
+  const flatSections = useMemo(() => {
+    return outline ? flattenSections(outline.sections || []) : [];
+  }, [outline, flattenSections]);
+
+  // Reset reading position when switching books
+  useEffect(() => {
+    setCurrentPageIndex(0);
+    setCurrentSectionIndex(0);
+    setIsAnimating(false);
+    setAnimationDirection('none');
+  }, [outline?.id]);
 
   // Handle viewport resize
   useEffect(() => {
@@ -380,7 +260,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
 
   // Calculate pages when outline, sections, or settings change
   useEffect(() => {
-    if (!outline || !outline.sections || outline.sections.length === 0) {
+    if (!outline || flatSections.length === 0) {
       setAllPages([]);
       setCurrentPageIndex(0);
       return;
@@ -391,7 +271,6 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
 
     // Wait for container to have a proper size
     const calculatePages = () => {
-      const flatSections = flattenSections(outline.sections);
       const allCalculatedPages: BookPageType[] = [];
 
       flatSections.forEach((section, sectionIndex) => {
@@ -445,11 +324,10 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
       });
 
       setAllPages(allCalculatedPages);
-      
-      // Reset to first page if current page is out of bounds
-      if (currentPageIndex >= allCalculatedPages.length) {
-        setCurrentPageIndex(0);
-      }
+
+      setCurrentPageIndex((prev) =>
+        prev >= allCalculatedPages.length ? 0 : prev
+      );
     };
 
     // Use ResizeObserver to wait for container to have proper dimensions
@@ -506,26 +384,9 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         clearTimeout(timeoutId);
       }
     };
-  }, [outline, fontSize, lineHeight, viewportDimensions, currentPageIndex, flattenSections]);
+  }, [outline, flatSections, fontSize, lineHeight, viewportDimensions]);
 
-  // Update current page index when section changes (for section-based navigation)
-  useEffect(() => {
-    if (allPages.length === 0) return;
-
-    // Find first page of current section
-    const firstPageOfSection = allPages.findIndex(
-      page => page.sectionIndex === currentSectionIndex
-    );
-    
-    if (firstPageOfSection >= 0) {
-      setCurrentPageIndex(firstPageOfSection);
-    }
-  }, [currentSectionIndex, allPages]);
-
-  // Helper to get flat sections - memoize to prevent recalculation
-  const flatSections = useMemo(() => {
-    return outline ? flattenSections(outline.sections || []) : [];
-  }, [outline]);
+  const activeSectionIndex = allPages[currentPageIndex]?.sectionIndex ?? currentSectionIndex;
 
   const currentPage = useMemo(() => {
     return allPages.length > 0 && currentPageIndex < allPages.length ? allPages[currentPageIndex] : null;
@@ -596,22 +457,20 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
 
   // Legacy section navigation (for sidebar)
   const goToSection = useCallback((index: number) => {
-    if (allPages.length === 0) {
+    if (index < 0 || index >= flatSections.length) return;
+
+    setIsAnimating(false);
+    setAnimationDirection('none');
     setCurrentSectionIndex(index);
-      return;
-    }
-    
-    // Find first page of the section
+
     const firstPageOfSection = allPages.findIndex(
-      page => page.sectionIndex === index
+      (page) => page.sectionIndex === index
     );
-    
+
     if (firstPageOfSection >= 0) {
-      goToPage(firstPageOfSection);
-    } else {
-      setCurrentSectionIndex(index);
+      setCurrentPageIndex(firstPageOfSection);
     }
-  }, [allPages, goToPage]);
+  }, [allPages, flatSections.length]);
 
   // Swipe gesture handlers
   const swipeHandlers = useSwipeGesture({
@@ -686,9 +545,56 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     setOutline(biographyToOutline(biography));
     setCurrentSectionIndex(0);
     setSelectedBiography(biography);
+    setActiveBookId(biography.id);
+    setActiveBookMeta(null);
     setNoStoryYet(false);
     setGenerationError(null);
   };
+
+  const openDemoBookForReading = useCallback((bookId: string) => {
+    const book = getDemoLorebookById(bookId) ?? DEFAULT_DEMO_LOREBOOK;
+    setOutline(book.outline);
+    setChapters(book.loreChapters);
+    setCurrentPageIndex(0);
+    setCurrentSectionIndex(0);
+    setIsAnimating(false);
+    setAnimationDirection('none');
+    setActiveBookId(bookId);
+    setActiveBookMeta({ scope: book.scope, period: book.period });
+    setSelectedBiography(null);
+    setShowLibrary(false);
+    setIsCoverVisible(true);
+    setGenerationError(null);
+    navigate(lorebookReadUrl(bookId), { replace: true });
+  }, [navigate]);
+
+  const openBiographyForReading = useCallback((biography: Biography) => {
+    handleLoadBiography(biography);
+    setCurrentPageIndex(0);
+    setCurrentSectionIndex(0);
+    setIsAnimating(false);
+    setAnimationDirection('none');
+    setShowLibrary(false);
+    setIsCoverVisible(true);
+    navigate(lorebookReadUrl(biography.id), { replace: true });
+  }, [navigate]);
+
+  const goToLibrary = useCallback(() => {
+    setShowLibrary(true);
+    setIsCoverVisible(false);
+    setActiveBookId(null);
+    setActiveBookMeta(null);
+    urlBookHandledRef.current = null;
+    navigate('/lorebook', { replace: true });
+  }, [navigate]);
+
+  const goToEditActiveBook = useCallback(() => {
+    if (!activeBookId) {
+      navigate('/memoir');
+      return;
+    }
+    navigate(lorebookEditUrl(activeBookId));
+  }, [activeBookId, navigate]);
 
   const handleSaveAsCore = async (biographyId: string, name: string) => {
     try {
@@ -718,6 +624,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
       if (result.biography) {
         handleLoadBiography(result.biography);
         setIsCoverVisible(true);
+        navigate(lorebookReadUrl(result.biography.id), { replace: true });
       }
     } catch (error) {
       console.error('Failed to generate biography:', error);
@@ -744,6 +651,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
       if (result.biography) {
         handleLoadBiography(result.biography);
         setIsCoverVisible(true);
+        navigate(lorebookReadUrl(result.biography.id), { replace: true });
       }
     } catch (error) {
       console.error('Failed to generate biography from spec:', error);
@@ -758,6 +666,35 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     }
   };
 
+  // Deep-link: open a specific book from ?book=
+  useEffect(() => {
+    const bookId = searchParams.get('book');
+    if (!bookId || searchParams.get('focus')) return;
+    if (urlBookHandledRef.current === bookId && !showLibrary) return;
+
+    if (isDemoBookId(bookId) && shouldUseMock) {
+      urlBookHandledRef.current = bookId;
+      openDemoBookForReading(bookId);
+      return;
+    }
+
+    if (!isDemoBookId(bookId)) {
+      urlBookHandledRef.current = bookId;
+      void (async () => {
+        try {
+          const result = await fetchJson<{ biography: Biography }>(`/api/biography/${bookId}`);
+          if (result.biography) {
+            openBiographyForReading(result.biography);
+          }
+        } catch (error) {
+          console.warn('Failed to open book from URL:', error);
+          setGenerationError("That book couldn't be found in your library.");
+          setShowLibrary(false);
+        }
+      })();
+    }
+  }, [searchParams, shouldUseMock, showLibrary, openDemoBookForReading, openBiographyForReading]);
+
   // Library landing — shown on first load or when user returns to library
   if (showLibrary) {
     return (
@@ -765,23 +702,22 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         onGenerate={(query) => {
           void handleGenerateFromQuery(query);
         }}
-        onOpenDemoBook={() => {
-          setOutline(dummyBook);
-          setChapters(dummyChapters);
-          setIsCoverVisible(true);
-          setShowLibrary(false);
+        onReadBook={(bookId) => {
+          if (isDemoBookId(bookId) && shouldUseMock) {
+            openDemoBookForReading(bookId);
+          }
+        }}
+        onEditBook={(bookId) => {
+          navigate(lorebookEditUrl(bookId));
         }}
         generating={generating}
         isMockData={shouldUseMock}
         bottomSlot={
           !shouldUseMock && (
-            <div className="space-y-8">
+            <div className="space-y-8 mt-8">
               <SavedBiographies
-                onLoadBiography={(biography) => {
-                  handleLoadBiography(biography);
-                  setIsCoverVisible(true);
-                  setShowLibrary(false);
-                }}
+                onReadBook={openBiographyForReading}
+                onEditBook={(bookId) => navigate(lorebookEditUrl(bookId))}
                 onSaveAsCore={handleSaveAsCore}
               />
               <div>
@@ -801,6 +737,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         reason={generationError ? 'generation-failed' : 'no-story'}
         message={generationError}
         onGenerateFromSpec={handleGenerateFromSpec}
+        onBackToLibrary={goToLibrary}
       />
     );
   }
@@ -928,10 +865,12 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
       <div className={`h-screen w-full theme-${theme}`} data-testid="lorebook-cover">
         <BookCoverPage
           title={outline.title || 'My Lore Book'}
-          scope={outline.metadata?.languageStyle}
+          scope={activeBookMeta?.scope ?? outline.metadata?.languageStyle}
+          period={activeBookMeta?.period}
           chapterCount={flatSections.length}
           theme={theme}
           onOpen={() => setIsCoverVisible(false)}
+          onEdit={activeBookId ? goToEditActiveBook : undefined}
         />
       </div>
     );
@@ -960,7 +899,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
           )}
           <button
             type="button"
-            onClick={() => setShowLibrary(true)}
+            onClick={goToLibrary}
             className={`flex items-center gap-0.5 px-2 py-2 rounded-lg text-sm font-mono active:bg-white/10 ${theme === 'daylight' ? 'text-[#3a2e1a]/60' : 'text-white/50'}`}
           >
             <ChevronLeft className="h-4 w-4" />
@@ -976,8 +915,18 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
           {outline?.title || 'Lore Book'}
         </span>
 
-        {/* Right: font cycle + theme cycle + chapter list */}
+        {/* Right: edit + font cycle + theme cycle + chapter list */}
         <div className="flex items-center gap-0.5">
+          {activeBookId && (
+            <button
+              type="button"
+              onClick={goToEditActiveBook}
+              className={`p-2.5 rounded-lg active:bg-white/10 ${theme === 'daylight' ? 'text-[#3a2e1a]/60' : 'text-white/50'}`}
+              aria-label="Edit this book"
+            >
+              <Edit3 className="h-5 w-5" />
+            </button>
+          )}
           <button
             type="button"
             onClick={cycleFontSize}
@@ -1010,7 +959,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
         style={{ background: theme === 'daylight' ? '#ece6d8' : theme === 'parchment' ? '#1a1208' : 'rgba(0,0,0,0.7)', borderColor: theme === 'daylight' ? 'rgba(100,80,40,0.15)' : 'rgba(255,255,255,0.07)' }}>
         {/* Left: back + title + page count */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <button type="button" onClick={() => setShowLibrary(true)}
+          <button type="button" onClick={goToLibrary}
             className={`flex items-center gap-1 text-xs font-mono shrink-0 transition-colors ${theme === 'daylight' ? 'text-[#6b5a3a] hover:text-[#1a1208]' : 'text-white/40 hover:text-white'}`}>
             <ChevronLeft className="h-3.5 w-3.5" />
             Library
@@ -1030,6 +979,14 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
 
         {/* Right: actions + typography + theme */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {activeBookId && (
+            <button type="button" onClick={goToEditActiveBook}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${theme === 'daylight' ? 'text-[#6b5a3a]/60 hover:text-[#1a1208]' : 'text-white/35 hover:text-white'}`}
+              title="Edit this book">
+              <Edit3 className="h-4 w-4" />
+              <span className="hidden xl:inline">Edit</span>
+            </button>
+          )}
           {/* Chat toggle */}
           <button type="button" onClick={() => setShowChat(c => !c)}
             className={`p-1.5 rounded transition-colors ${showChat ? 'text-primary' : theme === 'daylight' ? 'text-[#6b5a3a]/60 hover:text-[#1a1208]' : 'text-white/35 hover:text-white'}`}
@@ -1126,7 +1083,7 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
                       setShowSidebar(false);
                     }}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-all ${
-                      index === currentSectionIndex
+                      index === activeSectionIndex
                         ? 'bg-primary/20 text-primary border border-primary/30'
                         : 'text-white/60 hover:text-white hover:bg-white/5'
                     }`}

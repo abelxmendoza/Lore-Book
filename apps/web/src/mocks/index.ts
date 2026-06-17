@@ -25,7 +25,17 @@ export { narrativeSkills } from './skills';
 // Event mock data
 export { narrativeEvents } from './events';
 
-// Timeline mock data (already exists)
+// Lorebook mock data
+export {
+  DEMO_LOREBOOKS,
+  DEMO_LOREBOOK_CATALOG,
+  DEFAULT_DEMO_LOREBOOK,
+  getDemoLorebookById,
+  type DemoLorebook,
+  type DemoMemoirOutline,
+  type DemoLoreChapter,
+} from './lorebooks';
+
 export { generateMockTimelines, generateMockChronologyEntries } from './timelineMockData';
 
 // Entity Relationship Diagrams

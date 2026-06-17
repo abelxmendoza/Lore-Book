@@ -2057,6 +2057,18 @@ export class ConversationIngestionPipeline {
             logger.warn({ err, userId, messageId }, 'Skill suggestion extraction failed (non-blocking)');
           });
 
+        const { projectSuggestionService } = await import('../projects/projectSuggestionService');
+        projectSuggestionService
+          .processChatMessageForProjectSuggestions(userId, messageId, rawText, conversationHistory)
+          .then((count) => {
+            if (count > 0) {
+              logger.debug({ userId, messageId, count }, 'Queued project suggestions from chat');
+            }
+          })
+          .catch((err) => {
+            logger.warn({ err, userId, messageId }, 'Project suggestion extraction failed (non-blocking)');
+          });
+
         // 12.12.3: Detect life changes and handle conflicting quests
         questExtractor
           .detectLifeChanges(userId, rawText, conversationHistory)

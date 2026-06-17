@@ -9,7 +9,6 @@ import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 import { useMockData } from '../../contexts/MockDataContext';
 import { MemoirOutlineEditor } from './MemoirOutlineEditor';
 import { ContinuityPanel } from '../ContinuityPanel';
-import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { parseQuery } from '../../utils/parseQuery';
 import { Badge } from '../ui/badge';
 import { RichTextEditor } from './RichTextEditor';
@@ -1036,44 +1035,6 @@ export const MemoirEditor = () => {
           </Button>
         </div>
       </div>
-
-      {/* Color-Coded Timeline */}
-      {outline && outline.sections.length > 0 && (() => {
-        const sortedSections = [...outline.sections].sort((a, b) => {
-          const aDate = a.period?.from || '';
-          const bDate = b.period?.from || '';
-          return aDate.localeCompare(bDate);
-        });
-        
-        return (
-          <div className="px-6 py-4 border-b border-border/50 bg-black/20">
-            <ColorCodedTimeline
-              chapters={chapters || []}
-              sections={sortedSections.map(s => ({
-                id: s.id,
-                title: s.title,
-                period: s.period,
-                order: s.order
-              }))}
-              currentItemId={highlightedSectionId ? `section-${highlightedSectionId}` : selectedSectionId ? `section-${selectedSectionId}` : undefined}
-              onItemClick={(item) => {
-                if (item.type === 'section' && item.sectionIndex !== undefined) {
-                  const section = sortedSections[item.sectionIndex];
-                  if (section) {
-                    setSelectedSectionId(section.id);
-                    startEditing(section);
-                  }
-                } else if (item.type === 'chapter' && item.chapterId) {
-                  // Could navigate to chapter view if needed
-                  console.log('Chapter clicked:', item.chapterId);
-                }
-              }}
-              showLabel={true}
-              sectionIndexMap={new Map(sortedSections.map((s, idx) => [s.id, idx]))}
-            />
-          </div>
-        );
-      })()}
 
       {/* Upload Result */}
       {uploadResult && (

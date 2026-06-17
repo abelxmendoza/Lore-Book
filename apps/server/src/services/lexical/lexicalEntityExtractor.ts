@@ -187,6 +187,7 @@ function mapDomainToEntityType(domain: string, category: string): LexicalEntityT
   if (domain === 'LOCATION') return 'PLACE';
   if (domain === 'EVENT') return 'EVENT';
   if (domain === 'TIME') return 'TIME';
+  if (domain === 'PROJECT' || category === 'INITIATIVE') return 'PROJECT';
   if (category === 'ORGANIZATION') return 'ORGANIZATION';
   return 'PERSON';
 }

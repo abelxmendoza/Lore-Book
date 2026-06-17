@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Calendar, Clock, MapPin, Users, Sparkles, AlertCircle, Search,
   RefreshCw, ChevronLeft, ChevronRight, Filter, X, Cake, PartyPopper,
-  Music2, Building2, Briefcase, Plane, Heart, List, LayoutGrid,
+  Music2, Building2, Briefcase, Plane, Heart, LayoutGrid,
   CalendarDays, Repeat2, Star, TrendingUp, BookOpen,
 } from 'lucide-react';
 import {
@@ -36,7 +36,6 @@ import { Input } from '../ui/input';
 import { fetchJson } from '../../lib/api';
 import { EventDetailModal } from './EventDetailModal';
 import { EventProfileCard, type Event } from './EventProfileCard';
-import { ColorCodedTimeline } from '../timeline/ColorCodedTimeline';
 import { ChatFirstViewHint } from '../ChatFirstViewHint';
 import { memoryEntryToCard, type MemoryCard } from '../../types/memory';
 import { MemoryDetailModal } from '../memory-explorer/MemoryDetailModal';
@@ -65,7 +64,7 @@ type RecurringScene = {
 };
 
 type ViewMode = 'events' | 'calendar' | 'recurring';
-type MomentsLayout = 'grid' | 'timeline' | 'facts';
+type MomentsLayout = 'grid' | 'facts';
 type EventCategory = 'all' | 'recent' | 'birthdays' | 'parties' | 'concerts_shows' | 'conventions' | 'work' | 'travel' | 'family' | 'festivals' | 'with_people' | 'with_locations';
 type ImpactFilter = 'all' | 'direct_participant' | 'indirect_affected' | 'related_person_affected' | 'observer' | 'ripple_effect';
 type SignificanceFilter = 'all' | 'major' | 'moderate' | 'minor';
@@ -142,7 +141,6 @@ const VIEWS: { value: ViewMode; label: string; icon: React.ElementType }[] = [
 
 const MOMENTS_LAYOUTS: { value: MomentsLayout; label: string; icon: React.ElementType }[] = [
   { value: 'grid', label: 'Browse', icon: LayoutGrid },
-  { value: 'timeline', label: 'Timeline', icon: List },
   { value: 'facts', label: 'Search facts', icon: BookOpen },
 ];
 
@@ -1224,13 +1222,6 @@ export const EventsBook: React.FC = () => {
             )}
           </div>
         )
-      )}
-
-      {/* ══ MOMENTS — TIMELINE ══ */}
-      {viewMode === 'events' && momentsLayout === 'timeline' && (
-        <div className="mt-2">
-          <ColorCodedTimeline />
-        </div>
       )}
 
       {/* ══ MOMENTS — FACT SEARCH ══ */}

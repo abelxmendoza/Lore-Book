@@ -33,6 +33,11 @@ export const BookPage = ({
   className = '',
 }: BookPageProps) => {
   const pageRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    textRef.current?.scrollTo(0, 0);
+  }, [content, pageNumber, sectionTitle]);
 
   useEffect(() => {
     const page = pageRef.current;
@@ -114,7 +119,8 @@ export const BookPage = ({
         )}
 
         {/* Page Content */}
-        <main 
+        <main
+          ref={textRef}
           className={`book-page-text ${fontSizeClasses[fontSize]} ${lineHeightClasses[lineHeight]}`}
           style={{
             fontSize: `${fontSizePx[fontSize]}px`,

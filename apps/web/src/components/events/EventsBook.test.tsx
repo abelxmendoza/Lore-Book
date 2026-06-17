@@ -21,10 +21,6 @@ vi.mock('../../contexts/MockDataContext', () => ({
   MockDataProvider: ({ children }: { children?: unknown }) => children,
 }));
 
-vi.mock('../timeline/ColorCodedTimeline', () => ({
-  ColorCodedTimeline: () => null,
-}));
-
 vi.mock('./EventDetailModal', () => ({ EventDetailModal: () => null }));
 vi.mock('../memory-explorer/MemoryDetailModal', () => ({ MemoryDetailModal: () => null }));
 

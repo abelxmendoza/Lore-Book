@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { BookOpen, Trash2, RefreshCw, Eye, Download, Loader2, Star } from 'lucide-react';
+import { BookOpen, Trash2, RefreshCw, Eye, Download, Loader2, Star, Edit3 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { fetchJson } from '../../lib/api';
@@ -27,11 +27,12 @@ interface SavedBiography {
 }
 
 interface SavedBiographiesProps {
-  onLoadBiography: (biography: Biography) => void;
+  onReadBook: (biography: Biography) => void;
+  onEditBook: (bookId: string) => void;
   onSaveAsCore?: (biographyId: string, name: string) => void;
 }
 
-export const SavedBiographies = ({ onLoadBiography, onSaveAsCore }: SavedBiographiesProps) => {
+export const SavedBiographies = ({ onReadBook, onEditBook, onSaveAsCore }: SavedBiographiesProps) => {
   const [biographies, setBiographies] = useState<SavedBiography[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -69,8 +70,8 @@ export const SavedBiographies = ({ onLoadBiography, onSaveAsCore }: SavedBiograp
     }
   };
 
-  const handleLoad = (biography: Biography) => {
-    onLoadBiography(biography);
+  const handleRead = (biography: Biography) => {
+    onReadBook(biography);
   };
 
   const formatDate = (dateString: string) => {
@@ -107,9 +108,9 @@ export const SavedBiographies = ({ onLoadBiography, onSaveAsCore }: SavedBiograp
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-white">Generated Views</h3>
+          <h3 className="text-lg font-semibold text-white">Your library</h3>
           <p className="text-xs text-white/50 mt-1">
-            Ephemeral queries — compiled artifacts from your living memory
+            Generated books — read or edit any saved copy
           </p>
         </div>
         <Button
@@ -151,13 +152,22 @@ export const SavedBiographies = ({ onLoadBiography, onSaveAsCore }: SavedBiograp
 
               <div className="flex gap-2">
                 <Button
-                  onClick={() => handleLoad(bio.biography_data)}
+                  onClick={() => handleRead(bio.biography_data)}
                   variant="outline"
                   size="sm"
                   className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary border-primary/30"
                   leftIcon={<Eye className="h-3 w-3" />}
                 >
-                  View
+                  Read
+                </Button>
+                <Button
+                  onClick={() => onEditBook(bio.id)}
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 bg-white/5 hover:bg-white/10 text-white/80 border-white/15"
+                  leftIcon={<Edit3 className="h-3 w-3" />}
+                >
+                  Edit
                 </Button>
                 {onSaveAsCore && (
                   <Button
