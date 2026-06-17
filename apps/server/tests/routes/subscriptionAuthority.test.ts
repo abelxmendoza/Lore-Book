@@ -50,6 +50,22 @@ vi.mock('../../src/services/stripeService', () => ({
   createBillingPortalSession: vi.fn(),
   handleWebhook: vi.fn(),
   verifyWebhookSignature: vi.fn(),
+  ensureSubscriptionRow: vi.fn().mockResolvedValue(undefined),
+  getSubscription: vi.fn(),
+  extractCheckoutIntent: vi.fn((sub: {
+    latest_invoice?: { payment_intent?: { client_secret?: string } | null };
+    pending_setup_intent?: { client_secret?: string } | null;
+  }) => {
+    const pi = sub.latest_invoice?.payment_intent;
+    const si = sub.pending_setup_intent;
+    if (pi && typeof pi === 'object' && pi.client_secret) {
+      return { clientSecret: pi.client_secret, intentType: 'payment' as const };
+    }
+    if (si?.client_secret) {
+      return { clientSecret: si.client_secret, intentType: 'setup' as const };
+    }
+    return { clientSecret: null, intentType: null };
+  }),
 }));
 
 vi.mock('../../src/services/usageTracking', () => ({

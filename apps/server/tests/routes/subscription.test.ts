@@ -15,7 +15,32 @@ vi.mock('../../src/middleware/auth', () => ({
     next();
   },
 }));
-vi.mock('../../src/services/stripeService', () => ({ getUserSubscription: vi.fn(), createCustomer: vi.fn(), createSubscription: vi.fn(), cancelSubscription: vi.fn(), reactivateSubscription: vi.fn(), createBillingPortalSession: vi.fn(), handleWebhook: vi.fn(), verifyWebhookSignature: vi.fn() }));
+vi.mock('../../src/services/stripeService', () => ({
+  getUserSubscription: vi.fn(),
+  createCustomer: vi.fn(),
+  createSubscription: vi.fn(),
+  cancelSubscription: vi.fn(),
+  reactivateSubscription: vi.fn(),
+  createBillingPortalSession: vi.fn(),
+  handleWebhook: vi.fn(),
+  verifyWebhookSignature: vi.fn(),
+  ensureSubscriptionRow: vi.fn().mockResolvedValue(undefined),
+  getSubscription: vi.fn(),
+  extractCheckoutIntent: vi.fn((sub: {
+    latest_invoice?: { payment_intent?: { client_secret?: string } | null };
+    pending_setup_intent?: { client_secret?: string } | null;
+  }) => {
+    const pi = sub.latest_invoice?.payment_intent;
+    const si = sub.pending_setup_intent;
+    if (pi && typeof pi === 'object' && pi.client_secret) {
+      return { clientSecret: pi.client_secret, intentType: 'payment' as const };
+    }
+    if (si?.client_secret) {
+      return { clientSecret: si.client_secret, intentType: 'setup' as const };
+    }
+    return { clientSecret: null, intentType: null };
+  }),
+}));
 vi.mock('../../src/services/usageTracking', () => ({ getCurrentUsage: vi.fn() }));
 vi.mock('../../src/lib/accountAuthority', () => ({
   resolveAccountAuthority: vi.fn().mockResolvedValue({
@@ -126,6 +151,8 @@ describe('Subscription API Routes', () => {
     it('rejects when the user already has a subscription', async () => {
       vi.mocked(stripeService.getUserSubscription).mockResolvedValue({
         stripeSubscriptionId: 'sub_existing',
+        status: 'trial',
+        planType: 'premium',
       } as any);
 
       const res = await request(app).post('/api/subscription/create').expect(400);
