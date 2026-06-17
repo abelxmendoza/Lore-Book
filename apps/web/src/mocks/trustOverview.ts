@@ -183,20 +183,3 @@ export function getMockDomainTrust(domain: TrustDomain) {
   };
 }
 
-/** Demo entity knowledge gaps (voids dashboard — "things Lorebook doesn't know") */
-export const MOCK_ENTITY_KNOWLEDGE_GAPS = [
-  {
-    id: 'mock-eg-tio-ray',
-    gap_type: 'unknown_entity' as const,
-    label: 'Tío Ray',
-    prompt: 'Who is Tío Ray to you — family, friend, or a nickname?',
-    created_at: new Date(Date.now() - 2 * 864e5).toISOString(),
-  },
-  {
-    id: 'mock-eg-club-metro',
-    gap_type: 'sparse_entity' as const,
-    label: 'Neon Lounge',
-    prompt: 'What role does Neon Lounge play in your story?',
-    created_at: new Date(Date.now() - 5 * 864e5).toISOString(),
-  },
-];

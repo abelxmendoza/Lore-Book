@@ -72,11 +72,13 @@ export function detectLexicalRelationships(text: string): LexicalRelationshipSig
 
 function mapRelationshipHint(hint: string): RelationshipRole | null {
   switch (hint) {
-    case 'FAMILY_RELATIONSHIP': return 'father';
+    case 'FAMILY_RELATIONSHIP': return 'cousin';
     case 'WORK_RELATIONSHIP': return 'coworker';
     case 'ADVERSARIAL_RELATIONSHIP': return 'rival';
     case 'ROMANTIC_RELATIONSHIP': return 'romantic_partner';
-    case 'FRIENDSHIP': return 'friend';
+    case 'SOCIAL_RELATIONSHIP': return 'friend';
+    case 'MENTOR_RELATIONSHIP': return 'mentor';
+    case 'CREATIVE_RELATIONSHIP': return 'promoter';
     default: return null;
   }
 }

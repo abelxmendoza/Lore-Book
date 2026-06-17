@@ -98,6 +98,9 @@ describe('inferenceOrchestrator.sync', () => {
       'social_standing',
       'character_importance',
       'achievements_check',
+      'projects_suggestions',
+      'skills_suggestions',
+      'quests_suggestions',
     ]);
     expect(report.skipped).toEqual([]);
   });

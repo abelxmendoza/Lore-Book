@@ -24,9 +24,10 @@ test.describe('Trust Center (Knowledge Gaps)', () => {
   });
 
   test('loads trust coverage panel in knowledge gaps', async ({ page }) => {
-    await expect(page.getByTestId('trust-coverage-panel')).toBeVisible({ timeout: 20000 });
-    await expect(page.getByText(/lore coverage/i)).toBeVisible();
-    await expect(page.getByText(/review next/i)).toBeVisible();
+    const panel = page.getByTestId('trust-coverage-panel');
+    await expect(panel).toBeVisible({ timeout: 20000 });
+    await expect(panel.getByRole('heading', { name: /lore coverage/i })).toBeVisible();
+    await expect(panel.getByRole('heading', { name: /^review next$/i })).toBeVisible();
   });
 
   test('/trust redirects to knowledge gaps', async ({ page }) => {

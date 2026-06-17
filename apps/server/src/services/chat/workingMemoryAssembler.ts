@@ -705,6 +705,95 @@ async function loadProtagonistRelationshipCandidates(
   return out;
 }
 
+async function loadThreadRelationshipGroupCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  threadId?: string | null
+): Promise<Candidate[]> {
+  if (!threadId) return [];
+
+  const messages = await scope.traced(
+    'chat_messages',
+    'thread relationship groups from pipeline metadata',
+    `thread-rel-groups:${threadId}`,
+    () =>
+      supabaseAdmin
+        .from('chat_messages')
+        .select('id, created_at, metadata')
+        .eq('user_id', userId)
+        .eq('thread_id', threadId)
+        .order('created_at', { ascending: false })
+        .limit(15)
+  );
+
+  const out: Candidate[] = [];
+  const seen = new Set<string>();
+
+  for (const msg of (messages ?? []) as Array<{ id: string; created_at?: string; metadata?: Record<string, unknown> }>) {
+    const enrichment = (msg.metadata?.ontology_enrichment ?? {}) as Record<string, unknown>;
+    const groups = enrichment.relationship_groups as Array<{
+      scope: string;
+      entityNames: string[];
+      confidence?: number;
+      hint?: string;
+      roles?: string[];
+    }> | undefined;
+    if (!groups?.length) continue;
+
+    for (const g of groups) {
+      const names = (g.entityNames ?? []).filter(Boolean);
+      if (names.length === 0) continue;
+      const id = `thread-rel-group:${g.scope}:${[...names].sort().join('|')}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({
+        id,
+        type: 'relationship',
+        title: `${g.scope} — ${names.join(', ')}`,
+        content: `${g.scope} cluster: ${names.join(', ')}${g.hint ? ` (${g.hint})` : ''}`,
+        source: 'thread_relationship_groups',
+        date: msg.created_at ?? null,
+        confidence: g.confidence ?? 0.72,
+        relevance: 0.92,
+        importance: 0.78,
+        significance: 0.72,
+        relationshipDistance: 0.82,
+        reasons: ['recent thread relationship group from interpretation pipeline'],
+      });
+    }
+
+    const entityKnowledge = enrichment.entity_relationship_knowledge as Record<
+      string,
+      { linkedEntities?: Array<{ name: string; relationshipType: string; scope: string; role?: string }> }
+    > | undefined;
+    if (entityKnowledge) {
+      for (const [entityName, knowledge] of Object.entries(entityKnowledge)) {
+        for (const link of knowledge.linkedEntities ?? []) {
+          const id = `thread-rel-link:${entityName}:${link.name}:${link.relationshipType}`;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          out.push({
+            id,
+            type: 'relationship',
+            title: `${entityName} → ${link.name}`,
+            content: `${link.relationshipType}${link.role ? ` (${link.role})` : ''} · ${link.scope}`,
+            source: 'thread_entity_relationship_knowledge',
+            date: msg.created_at ?? null,
+            confidence: 0.75,
+            relevance: 0.88,
+            importance: 0.72,
+            significance: 0.68,
+            relationshipDistance: 0.78,
+            reasons: ['entity relationship knowledge from recent thread message'],
+          });
+        }
+      }
+    }
+  }
+
+  return out;
+}
+
 async function loadPersonCandidates(
   scope: WmaRequestScope,
   userId: string,
@@ -1680,13 +1769,16 @@ export async function assembleWorkingMemory(
     intent === 'COMMUNITY_QUERY' ||
     (intent === 'PERSON_QUERY' && !isPersonish);
 
-  const [personCandidates, relationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, textualCandidates] =
+  const [personCandidates, relationshipCandidates, threadRelationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, textualCandidates] =
     await Promise.all([
       !temporalQuery && isPersonish
         ? loadPersonCandidates(scope, input.userId, primaryEntity!, target ?? primaryEntity!.name, characterRow)
         : Promise.resolve([] as Candidate[]),
       !temporalQuery && wantsProtagonistRels
         ? loadProtagonistRelationshipCandidates(scope, input.userId)
+        : Promise.resolve([] as Candidate[]),
+      !temporalQuery && input.threadId
+        ? loadThreadRelationshipGroupCandidates(scope, input.userId, input.threadId)
         : Promise.resolve([] as Candidate[]),
       !temporalQuery ? loadGoalCandidates(scope, input.userId, target, intent, input.question) : Promise.resolve([] as Candidate[]),
       !temporalQuery ? loadSkillCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
@@ -1700,6 +1792,7 @@ export async function assembleWorkingMemory(
   const merged = [
     ...personCandidates,
     ...relationshipCandidates,
+    ...threadRelationshipCandidates,
     ...goalCandidates,
     ...skillCandidates,
     ...communityCandidates,

@@ -54,3 +54,20 @@ export {
   matchesGlossaryLexicon,
   glossaryLexiconForDomains,
 } from './glossaryLexicon';
+
+export type {
+  CanonicalRelationshipType,
+  RelationshipScope,
+  EntityRelationshipKnowledge,
+  RelationshipInputGroup,
+  DiscoveredEntityLink,
+} from './relationshipKnowledge';
+
+export {
+  HINT_TO_SCOPE,
+  roleToScope,
+  roleToCanonicalType,
+  roleToRelationshipHint,
+  hintToScope,
+  hintToDefaultRole,
+} from './relationshipKnowledge';

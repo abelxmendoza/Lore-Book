@@ -9,6 +9,7 @@ import { entityClassToRootType } from '../ontology/canonical';
 import type { EntityClass } from '../ontology/canonical';
 import { isRootType } from '../ontology/canonical/rootType';
 import { classificationService } from '../ontology/classificationService';
+import { relationshipKnowledgeService } from '../ontology/relationshipKnowledgeService';
 
 export function buildOntologyMetadata(name: string, context = ''): Record<string, unknown> {
   const enriched = enrichEntity(name, context);
@@ -90,15 +91,54 @@ export async function enrichFromLexicalAnalysisAsync(
   userId?: string
 ): Promise<Record<string, unknown>> {
   const base = enrichFromLexicalAnalysis(analysis);
+  const relationshipMeta = relationshipKnowledgeService.buildEnrichmentMetadata(analysis);
   const primaryRoot = (base.domains as RootType[] | undefined)?.[0];
-  if (!primaryRoot || !userId) return base;
 
-  const resolved = await buildOntologyMetadataAsync(
-    analysis.rawText.slice(0, 200),
-    analysis.rawText,
-    { userId, rootType: primaryRoot }
+  let merged = { ...base, ...relationshipMeta };
+
+  if (primaryRoot && userId) {
+    const resolved = await buildOntologyMetadataAsync(
+      analysis.rawText.slice(0, 200),
+      analysis.rawText,
+      { userId, rootType: primaryRoot }
+    );
+    const scopeClassifications = await relationshipKnowledgeService.resolveScopeClassifications(
+      analysis.relationshipGroups ?? [],
+      userId
+    );
+    merged = {
+      ...merged,
+      ...resolved,
+      relationship_scope_classifications: scopeClassifications,
+      source: 'lexical_analyzer',
+    };
+  }
+
+  return merged;
+}
+
+/** Attach relationship + ontology knowledge from meaning resolution. */
+export async function enrichFromMeaningResolutionAsync(
+  meaning: import('../meaning/meaningResolutionTypes').MeaningResolutionResult,
+  lexical: LexicalAnalysisResult,
+  userId?: string
+): Promise<Record<string, unknown>> {
+  const base = enrichFromMeaningResolution(meaning);
+  const relationshipMeta = relationshipKnowledgeService.buildEnrichmentMetadata(lexical, meaning);
+
+  if (!userId) return { ...base, ...relationshipMeta };
+
+  const scopeClassifications = await relationshipKnowledgeService.resolveScopeClassifications(
+    relationshipMeta.relationship_groups as import('./canonical/relationshipKnowledge').RelationshipInputGroup[] ?? [],
+    userId
   );
-  return { ...base, ...resolved, source: 'lexical_analyzer' };
+
+  return {
+    ...base,
+    ...relationshipMeta,
+    relationship_scope_classifications: scopeClassifications,
+    source: 'meaning_resolution',
+  };
 }
 
 /** Map meaning resolution into ontology metadata — planner consumes resolved meaning only. */

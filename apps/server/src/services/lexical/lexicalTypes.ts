@@ -37,6 +37,12 @@ export type LexicalIntentKind =
 export type RelationshipRole =
   | 'mother'
   | 'father'
+  | 'estranged_father'
+  | 'estranged_mother'
+  | 'uncle'
+  | 'aunt'
+  | 'grandmother'
+  | 'grandfather'
   | 'sibling'
   | 'cousin'
   | 'friend'
@@ -204,6 +210,11 @@ export interface LexicalAnalysisResult {
   ontologyCandidates: OntologyCandidate[];
   memoryCandidates: MemoryCandidate[];
   glossaryMatches: GlossaryMatch[];
+
+  /** Typed entity-to-entity links discovered from the message. */
+  entityLinks?: import('../ontology/canonical/relationshipKnowledge').DiscoveredEntityLink[];
+  /** Inputs clustered by relationship scope (family, work, social, …). */
+  relationshipGroups?: import('../ontology/canonical/relationshipKnowledge').RelationshipInputGroup[];
 
   confidence: number;
   ambiguityFlags: string[];

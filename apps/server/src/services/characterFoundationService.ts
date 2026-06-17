@@ -24,6 +24,7 @@ import { characterRegistry } from './characterRegistry';
 import { characterAuthorityService } from './characterAuthorityService';
 import { assignCharacterAvatar } from './characterAvatarService';
 import { mergeOntologyIntoMetadataAsync } from './ontology/ontologyEnrichmentService';
+import { relationshipPersistenceService } from './ontology/relationshipPersistenceService';
 import { supabaseAdmin } from './supabaseClient';
 import type { PeoplePlaceEntity } from '../types';
 
@@ -40,6 +41,33 @@ function kinshipMetadata(name: string): Record<string, string> {
     kinship_label: parsed.canonicalLabel,
     relationship_type: 'family',
   };
+}
+
+async function attachStoredRelationshipKnowledge(
+  userId: string,
+  characterId: string,
+  characterName: string,
+  metadata: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  try {
+    const stored = await relationshipPersistenceService.loadCharacterRelationshipKnowledge(userId, characterId);
+    if (Object.keys(stored).length === 0) return metadata;
+    const existingKnowledge =
+      typeof metadata.entity_relationship_knowledge === 'object' && metadata.entity_relationship_knowledge !== null
+        ? (metadata.entity_relationship_knowledge as Record<string, unknown>)
+        : {};
+    return {
+      ...metadata,
+      ...stored,
+      entity_relationship_knowledge: {
+        ...existingKnowledge,
+        [characterName]: stored,
+      },
+    };
+  } catch (err) {
+    logger.debug({ err, userId, characterId }, 'Failed to attach stored relationship knowledge');
+    return metadata;
+  }
 }
 
 type CharacterRow = {
@@ -189,7 +217,11 @@ class CharacterFoundationService {
 
     const { firstName, lastName } = parseNameParts(cleanedName);
     const avatarUrl = await assignCharacterAvatar(characterId, { archetype: entity.type === 'person' ? 'human' : null });
-    const metadata = await mergeOntologyIntoMetadataAsync({
+    const metadata = await attachStoredRelationshipKnowledge(
+      userId,
+      characterId,
+      cleanedName,
+      await mergeOntologyIntoMetadataAsync({
       source_entity_id: entity.id,
       mention_count: entity.total_mentions,
       source_memory_count: entity.related_entries?.length ?? 0,
@@ -199,7 +231,8 @@ class CharacterFoundationService {
       first_name: firstName || undefined,
       last_name: lastName || undefined,
       ...kinshipMetadata(cleanedName),
-    }, cleanedName, entity.type, { userId, rootType: 'PERSON' });
+    }, cleanedName, entity.type, { userId, rootType: 'PERSON' })
+    );
 
     const character: CharacterRow = {
       id: characterId,
@@ -242,14 +275,19 @@ class CharacterFoundationService {
       ? new Date(entity.first_mentioned_at).toISOString().split('T')[0]
       : existing.first_appearance;
 
-    const enrichedMetadata = await mergeOntologyIntoMetadataAsync({
+    const enrichedMetadata = await attachStoredRelationshipKnowledge(
+      existing.user_id,
+      existing.id,
+      existing.name,
+      await mergeOntologyIntoMetadataAsync({
       ...(existing.metadata ?? {}),
       source_entity_id: entity.id,
       mention_count: entity.total_mentions,
       source_memory_count: entity.related_entries?.length ?? 0,
       source_entry_ids: entity.related_entries ?? [],
       last_refreshed_at: new Date().toISOString(),
-    }, existing.name, entity.type, { userId: existing.user_id, rootType: 'PERSON' });
+    }, existing.name, entity.type, { userId: existing.user_id, rootType: 'PERSON' })
+    );
 
     await supabaseAdmin
       .from('characters')

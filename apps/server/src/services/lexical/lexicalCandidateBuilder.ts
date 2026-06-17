@@ -8,12 +8,14 @@ import type {
   MemoryCandidate,
   OntologyCandidate,
 } from './lexicalTypes';
+import { roleToCanonicalType, roleToScope } from '../ontology/canonical/relationshipKnowledge';
 
 export function buildOntologyCandidates(
   entities: LexicalEntity[],
   skills: LexicalAnalysisResult['skills'],
   relationships: LexicalAnalysisResult['relationships'],
-  events: LexicalAnalysisResult['events']
+  events: LexicalAnalysisResult['events'],
+  glossaryMatches: LexicalAnalysisResult['glossaryMatches'] = []
 ): OntologyCandidate[] {
   const candidates: OntologyCandidate[] = [];
 
@@ -42,11 +44,11 @@ export function buildOntologyCandidates(
 
   for (const rel of relationships) {
     candidates.push({
-      predicate: 'has_relationship',
-      object: rel.role,
+      predicate: roleToCanonicalType(rel.role).toLowerCase(),
+      object: rel.target ?? rel.role,
       objectType: 'RELATIONSHIP',
       confidence: rel.confidence,
-      source: 'relationship_signal',
+      source: `relationship:${roleToScope(rel.role).toLowerCase()}`,
     });
   }
 
@@ -67,6 +69,16 @@ export function buildOntologyCandidates(
       objectType: 'ROLE',
       confidence: role.confidence,
       source: 'entity:role',
+    });
+  }
+
+  for (const gm of glossaryMatches.filter((g) => g.relationshipHint)) {
+    candidates.push({
+      predicate: 'relationship_hint',
+      object: gm.relationshipHint!,
+      objectType: 'RELATIONSHIP',
+      confidence: gm.confidence,
+      source: `glossary:${gm.alias}`,
     });
   }
 
@@ -113,8 +125,9 @@ export function buildMemoryCandidates(
   }
 
   for (const rel of relationships) {
+    const target = rel.target ? ` (${rel.target})` : '';
     candidates.push({
-      claim: `User has a ${rel.sentiment === 'estranged' ? 'estranged ' : ''}${rel.role} relationship`,
+      claim: `User has a ${rel.sentiment === 'estranged' ? 'estranged ' : ''}${rel.role.replace(/_/g, ' ')} relationship${target}`,
       category: 'relationship',
       confidence: rel.confidence,
       requiresConfirmation: rel.confidence < 0.85,

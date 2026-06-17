@@ -11,13 +11,14 @@ import { supabaseAdmin } from '../supabaseClient';
 import { lexicalAnalyzerService } from '../lexical/lexicalAnalyzerService';
 import type { AnalyzeMessageInput, LexicalAnalysisResult } from '../lexical/lexicalTypes';
 import { processLexicalMemoryCandidates } from '../lexical/lexicalMemoryBridge';
-import { enrichFromLexicalAnalysis, enrichFromMeaningResolution, enrichFromLexicalAnalysisAsync } from '../ontology/ontologyEnrichmentService';
+import { enrichFromLexicalAnalysisAsync, enrichFromMeaningResolutionAsync } from '../ontology/ontologyEnrichmentService';
 import { meaningResolutionService } from '../meaning/meaningResolutionService';
 import type { MeaningResolutionResult } from '../meaning/meaningResolutionTypes';
 import {
   parseLexicalAnalysisResult,
   parseMeaningResolutionResult,
 } from '../ontology/canonical';
+import { relationshipPersistenceService } from '../ontology/relationshipPersistenceService';
 
 export type LoreInterpretationResult = {
   lexical: LexicalAnalysisResult;
@@ -50,10 +51,24 @@ export async function runLoreInterpretationPipeline(
 
   const ontologyMeta = {
     ...(await enrichFromLexicalAnalysisAsync(lexical, input.userId)),
-    ...enrichFromMeaningResolution(meaning),
+    ...(await enrichFromMeaningResolutionAsync(meaning, lexical, input.userId)),
   };
 
   await attachPipelineMetadata(input.messageId, input.userId, lexical, meaning, ontologyMeta);
+
+  try {
+    const persistResult = await relationshipPersistenceService.persistFromInterpretation(
+      input.userId,
+      input.messageId,
+      lexical,
+      meaning
+    );
+    if (persistResult.persisted > 0) {
+      await attachRelationshipPersistStats(input.messageId, input.userId, persistResult);
+    }
+  } catch (err) {
+    logger.warn({ err, messageId: input.messageId }, 'Pipeline: relationship persist failed');
+  }
 
   // Keep existing lexical → MRQ path until planner fully owns memory candidates
   if (meaningResolutionService.allowsMemoryWrite(meaning)) {
@@ -143,8 +158,37 @@ async function attachPipelineMetadata(
       contradiction_count: meaning.contradictions.length,
       ontology_action_count: meaning.ontologyActionCandidates.length,
       memory_review_count: meaning.memoryReviewCandidates.length,
+      relationship_count: meaning.resolvedRelationships.length,
+      relationship_group_count: (ontologyMeta.relationship_groups as unknown[] | undefined)?.length ?? 0,
     },
     ontology_enrichment: ontologyMeta,
+  };
+
+  await supabaseAdmin
+    .from('chat_messages')
+    .update({ metadata })
+    .eq('id', messageId)
+    .eq('user_id', userId);
+}
+
+async function attachRelationshipPersistStats(
+  messageId: string,
+  userId: string,
+  stats: { persisted: number; skipped: number; characterEdges: number; entityEdges: number }
+): Promise<void> {
+  const { data: existing } = await supabaseAdmin
+    .from('chat_messages')
+    .select('metadata')
+    .eq('id', messageId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const metadata = {
+    ...(existing?.metadata as Record<string, unknown> ?? {}),
+    relationship_persistence: {
+      ...stats,
+      at: new Date().toISOString(),
+    },
   };
 
   await supabaseAdmin

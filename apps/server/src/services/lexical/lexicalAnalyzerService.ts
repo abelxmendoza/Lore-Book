@@ -16,6 +16,7 @@ import { detectLexicalPlaces } from './lexicalPlaceDetector';
 import { detectLexicalEvents } from './lexicalEventDetector';
 import { scoreLexicalConfidence } from './lexicalConfidenceScorer';
 import { buildMemoryCandidates, buildOntologyCandidates } from './lexicalCandidateBuilder';
+import { discoverEntityLinks, groupInputsByRelationshipScope } from '../ontology/relationshipDiscovery';
 import type { AnalyzeMessageInput, LexicalAnalysisResult } from './lexicalTypes';
 
 class LexicalAnalyzerService {
@@ -32,8 +33,11 @@ class LexicalAnalyzerService {
     const events = detectLexicalEvents(text);
     const glossaryMatches = mapGlossaryMatches(text);
 
-    const ontologyCandidates = buildOntologyCandidates(entities, skills, relationships, events);
+    const ontologyCandidates = buildOntologyCandidates(entities, skills, relationships, events, glossaryMatches);
     const memoryCandidates = buildMemoryCandidates(skills, emotions, relationships, events, entities);
+
+    const entityLinks = discoverEntityLinks(text, entities, relationships);
+    const relationshipGroups = groupInputsByRelationshipScope(text, entityLinks, entities, relationships);
 
     const scoring = scoreLexicalConfidence({
       messageId,
@@ -70,6 +74,8 @@ class LexicalAnalyzerService {
       ontologyCandidates,
       memoryCandidates,
       glossaryMatches,
+      entityLinks,
+      relationshipGroups,
       confidence: scoring.confidence,
       ambiguityFlags: scoring.ambiguityFlags,
       needsClarification: scoring.needsClarification,

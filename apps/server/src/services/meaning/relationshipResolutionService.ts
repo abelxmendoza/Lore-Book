@@ -2,6 +2,8 @@
  * Relationship resolution — normalize kinship, work, and social roles.
  */
 import { discoverRelationshipHints, inferRelationshipRole } from '../ontology/lexicalIntelligence';
+import { discoverEntityLinks } from '../ontology/relationshipDiscovery';
+import { hintToDefaultRole, roleToScope } from '../ontology/canonical/relationshipKnowledge';
 import type { LexicalAnalysisResult } from '../lexical/lexicalTypes';
 import type { RelationshipRole, ResolvedRelationship } from './meaningResolutionTypes';
 import { padForScan } from '../lexical/lexicalNormalizer';
@@ -106,6 +108,10 @@ export function resolveRelationships(
     seen.add(rel.role);
     results.push({
       role: rel.role as RelationshipRole,
+      targetName: rel.target,
+      targetEntityId: rel.target
+        ? charByName.get(rel.target.trim().toLowerCase())?.id
+        : undefined,
       cue: rel.cue,
       sentiment: rel.sentiment === 'estranged' ? 'estranged' : 'neutral',
       confidence: rel.confidence,
@@ -114,16 +120,38 @@ export function resolveRelationships(
     });
   }
 
+  // Enrich with discovered entity links (named targets from patterns)
+  const links = lexical.entityLinks ?? discoverEntityLinks(text, lexical.entities, lexical.relationships);
+  for (const link of links) {
+    if (link.subject !== 'self' || !link.object || link.object === link.role) continue;
+    const role = (link.role ?? hintToDefaultRole(link.hint ?? 'SOCIAL_RELATIONSHIP')) as RelationshipRole;
+    const dedupeKey = `${role}:${link.object}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    results.push({
+      role,
+      targetName: link.object,
+      targetEntityId: charByName.get(link.object.trim().toLowerCase())?.id,
+      cue: link.cue,
+      sentiment: role.startsWith('estranged') ? 'estranged' : 'neutral',
+      confidence: link.confidence,
+      resolutionReason: `entity_link:${link.relationshipType}`,
+      requiresConfirmation: FAMILY_ROMANTIC.includes(role) || roleToScope(role) === 'FAMILY',
+    });
+  }
+
   return results;
 }
 
 function mapHint(hint: string): RelationshipRole | null {
   switch (hint) {
-    case 'FAMILY_RELATIONSHIP': return 'father';
+    case 'FAMILY_RELATIONSHIP': return 'cousin';
     case 'WORK_RELATIONSHIP': return 'coworker';
     case 'ROMANTIC_RELATIONSHIP': return 'romantic_partner';
-    case 'FRIENDSHIP': return 'friend';
+    case 'SOCIAL_RELATIONSHIP': return 'friend';
     case 'ADVERSARIAL_RELATIONSHIP': return 'rival';
+    case 'MENTOR_RELATIONSHIP': return 'mentor';
+    case 'CREATIVE_RELATIONSHIP': return 'promoter';
     default: return null;
   }
 }

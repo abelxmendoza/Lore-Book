@@ -17,7 +17,7 @@ import type { RelationshipRole } from '../lexical/lexicalTypes';
 
 const NORM = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
-const MY_RELATION_NAME = /\bmy\s+(?:estranged\s+)?(?:friend|cousin|brother|sister|mom|mother|dad|father|uncle|aunt|t[íi]o|t[íi]a|boss|manager|coworker|colleague|mentor|coach|girlfriend|boyfriend|partner|wife|husband|ex|rival|best\s+friend|close\s+friend)\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,2})/gi;
+const MY_RELATION_NAME = /\b(?:my|My)\s+(?:estranged\s+)?(?:friend|cousin|brother|sister|mom|mother|dad|father|uncle|aunt|t[íi]o|t[íi]a|boss|manager|coworker|colleague|mentor|coach|girlfriend|boyfriend|partner|wife|husband|ex|rival|best\s+friend|close\s+friend)\s+(\p{Lu}\p{Ll}+(?:\s+\p{Lu}\p{Ll}+)?)\b/gu;
 
 const WENT_WITH = /\b(?:went|go|going|hung\s+out|kicked\s+it|linked\s+up|met|saw|chilled)\s+with\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,2})/gi;
 
@@ -67,17 +67,8 @@ export function discoverEntityLinks(
     });
   }
 
-  for (const h of discoverRelationshipHints(text)) {
-    pushLink(out, seen, {
-      subject: 'self',
-      object: h.cue,
-      relationshipType: roleToCanonicalType(hintToDefaultRole(h.hint)),
-      scope: hintToScope(h.hint),
-      role: hintToDefaultRole(h.hint),
-      hint: h.hint,
-      cue: h.cue,
-      confidence: h.confidence,
-    });
+  for (const _h of discoverRelationshipHints(text)) {
+    // Glossary hints drive grouping via groupInputsByRelationshipScope — not entity links.
   }
 
   let m: RegExpExecArray | null;
@@ -243,8 +234,8 @@ function inferRoleFromCue(cue: string): RelationshipRole {
   if (/\bbrother\b|\bsister\b|\bsibling\b/.test(c)) return 'sibling';
   if (/\bmother\b|\bmom\b/.test(c)) return 'mother';
   if (/\bfather\b|\bdad\b/.test(c)) return 'father';
-  if (/\buncle\b|\bt[íi]o\b/.test(c)) return 'father';
-  if (/\baunt\b|\bt[íi]a\b/.test(c)) return 'mother';
+  if (/\buncle\b|\bt[íi]o\b/.test(c)) return 'uncle';
+  if (/\baunt\b|\bt[íi]a\b/.test(c)) return 'aunt';
   if (/\bboss\b|\bmanager\b/.test(c)) return 'boss';
   if (/\bcoworker\b|\bcolleague\b/.test(c)) return 'coworker';
   if (/\bmentor\b/.test(c)) return 'mentor';
