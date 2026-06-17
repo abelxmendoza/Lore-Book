@@ -75,6 +75,7 @@ function mapActionHint(hint: string): LexicalIntentKind {
     case 'IDENTITY_CLAIM': return 'IDENTITY_CLAIM';
     case 'DISAMBIGUATE': return 'DISAMBIGUATE';
     case 'OPEN_SURFACE': return 'NAVIGATE';
+    case 'ENTITY_AUTHORITY': return 'ACTION';
     case 'RELATIONSHIP_CLAIM': return 'ACTION';
     default: return 'ACTION';
   }

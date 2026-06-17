@@ -50,9 +50,17 @@ export const BookPage = ({
       }
     };
 
+    const handleAnimationEnd = (_e: AnimationEvent) => {
+      if (onAnimationEnd) {
+        onAnimationEnd();
+      }
+    };
+
     page.addEventListener('transitionend', handleTransitionEnd);
+    page.addEventListener('animationend', handleAnimationEnd);
     return () => {
       page.removeEventListener('transitionend', handleTransitionEnd);
+      page.removeEventListener('animationend', handleAnimationEnd);
     };
   }, [onAnimationEnd, fontSize, lineHeight, content]);
 

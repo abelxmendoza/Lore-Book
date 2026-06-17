@@ -66,6 +66,7 @@ describe('Route Registry', () => {
       '/api/entity-resolution',
       '/api/goals',
       '/api/life-arcs',
+      '/api/life-arc',
       '/api/voids',
       '/api/insights',
       '/api/predictions',
@@ -73,6 +74,15 @@ describe('Route Registry', () => {
       '/api/documents',
       '/api/photos',
       '/api/entity-ambiguity',
+      '/api/analytics',
+      '/api/mrq',
+      '/api/habits',
+      '/api/values',
+      '/api/decisions',
+      '/api/essence',
+      '/api/reactions',
+      '/api/perception-reaction-engine',
+      '/api/achievements',
     ];
     for (const path of promoted) {
       expect(corePaths, `${path} should be CORE_RUNTIME`).toContain(path);

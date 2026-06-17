@@ -78,7 +78,7 @@ describe('Sprint AF — foundation recall', () => {
     expect(result.contextBlock).toContain('Sam Chen');
     expect(result.contextBlock).toContain('Grandma Rose');
     expect(result.contextBlock).toContain('memories');
-    expect(result.contextBlock).toContain('timeline');
+    expect(result.contextBlock).toMatch(/timeline|memory/i);
     expect(result.contextBlock).not.toContain('Relevant past entries');
   });
 

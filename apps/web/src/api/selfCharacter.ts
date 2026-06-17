@@ -62,6 +62,57 @@ export const selfCharacterApi = {
   getProfile: () =>
     fetchJson<SelfProfileResponse>('/api/characters/self/profile'),
 
+  repairIdentity: () =>
+    fetchJson<{ success: boolean; repaired: boolean; selfId: string | null; character?: Character }>(
+      '/api/characters/self/repair',
+      { method: 'POST' }
+    ),
+
+  restoreAll: () =>
+    fetchJson<{
+      success: boolean;
+      report: {
+        beforeCount: number;
+        afterCount: number;
+        fromPeoplePlaces: number;
+        fromOmegaEntities: number;
+        fromMergeHistory: number;
+        fromIdentityIndex: number;
+        restoredNames: string[];
+        skippedNames: string[];
+      };
+      characterCount: number;
+    }>('/api/characters/restore', { method: 'POST' }),
+
+  rescanConversations: () =>
+    fetchJson<{
+      success: boolean;
+      summary: {
+        scannedEpisodes: number;
+        personsDiscovered: number;
+        omegaResolved: number;
+        charactersPromoted: number;
+        charactersSkipped: number;
+        restoredFromEvidence: number;
+        promotedNames: string[];
+      };
+    }>('/api/characters/rescan', { method: 'POST' }),
+
+  inferPublicFigures: () =>
+    fetchJson<{
+      success: boolean;
+      scanned: number;
+      publicFigures: number;
+      updated: number;
+      metInferred: number;
+      sceneNetwork: {
+        score: number;
+        tier: string;
+        public_figure_count: number;
+        deepest_stage: string;
+      } | null;
+    }>('/api/characters/public-figures/infer', { method: 'POST' }),
+
   setLegalName: (legalName: string) =>
     fetchJson<{ success: boolean; legalName: string }>('/api/characters/self/set-legal-name', {
       method: 'POST',

@@ -213,6 +213,14 @@ class CharacterMergeService {
     if (!source) throw new Error('Source character not found');
     if (!target) throw new Error('Target character not found');
 
+    const targetIsSelf = target.metadata?.is_self === true || target.metadata?.is_user === true;
+    const sourceIsSelf = source.metadata?.is_self === true || source.metadata?.is_user === true;
+    if (sourceIsSelf && !targetIsSelf) {
+      throw new Error(
+        'Cannot merge the protagonist into another character. Merge the other person into your protagonist card instead.'
+      );
+    }
+
     const report: MergeReport = {
       sourceId, sourceName: source.name, targetId, targetName: target.name,
       relationshipsMoved: 0, memoriesMoved: 0, timelineEventsMoved: 0,
@@ -233,7 +241,9 @@ class CharacterMergeService {
     await this.mergeEntityMentions(userId, sourceId, targetId);
     const omega = await this.mergeOmega(userId, source, target);
     report.omegaMerged = omega.merged;
-    const cardUpdate = await this.mergeCardData(userId, source, target, omega.adoptOmegaId);
+    const cardUpdate = await this.mergeCardData(userId, source, target, omega.adoptOmegaId, {
+      preserveTargetIdentity: targetIsSelf || opts.reason?.toLowerCase().includes('self') === true,
+    });
     report.canonicalName = cardUpdate.name;
     report.aliases = cardUpdate.aliases;
 
@@ -445,7 +455,15 @@ class CharacterMergeService {
   }
 
   /** Merge the card itself: aliases, fill-empty fields, metadata. */
-  private async mergeCardData(userId: string, source: CharRow, target: CharRow, adoptOmegaId?: string): Promise<{ name: string; aliases: string[] }> {
+  private async mergeCardData(
+    userId: string,
+    source: CharRow,
+    target: CharRow,
+    adoptOmegaId?: string,
+    opts: { preserveTargetIdentity?: boolean } = {}
+  ): Promise<{ name: string; aliases: string[] }> {
+    const targetIsSelf = target.metadata?.is_self === true || target.metadata?.is_user === true;
+    const preserveTargetIdentity = opts.preserveTargetIdentity === true || targetIsSelf;
     const targetKey = normalizeNameKey(target.name);
     const aliasSet = new Map<string, string>(); // normalized → original casing
     for (const a of [...(target.alias ?? []), ...(source.alias ?? []), source.name]) {
@@ -455,7 +473,9 @@ class CharacterMergeService {
       if (!aliasSet.has(key)) aliasSet.set(key, a);
     }
     const aliases = [...aliasSet.values()];
-    const displayName = bestDisplayName(source, target, aliases);
+    const displayName = preserveTargetIdentity
+      ? cleanName(target.name)
+      : bestDisplayName(source, target, aliases);
     const displayNameKey = normalizeNameKey(displayName);
     const finalAliases = aliases.filter(alias => normalizeNameKey(alias) !== displayNameKey);
     const nameParts = splitDisplayName(displayName);
@@ -474,6 +494,13 @@ class CharacterMergeService {
       aliases_learned_from_merges: finalAliases,
       last_merged_at: new Date().toISOString(),
     };
+    if (preserveTargetIdentity) {
+      metadata.is_self = true;
+      metadata.is_user = true;
+    } else {
+      delete metadata.is_self;
+      delete metadata.is_user;
+    }
     // User overrides: keep target's; adopt source's only where target has none
     if (!tm.standing_override && sm.standing_override) metadata.standing_override = sm.standing_override;
     if (tm.impact_override == null && sm.impact_override != null) metadata.impact_override = sm.impact_override;

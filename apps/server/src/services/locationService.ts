@@ -55,6 +55,10 @@ type LocationRecord = {
   current_state?: Record<string, unknown> | null;
   social_graph?: Record<string, unknown> | null;
   associated_character_ids?: string[] | null;
+  root_type?: string | null;
+  spatial_category?: string | null;
+  spatial_subcategory?: string | null;
+  parent_location_id?: string | null;
 };
 
 type LocationCharacterLink = {
@@ -433,6 +437,10 @@ class LocationService {
           currentState: location.record?.current_state ?? {},
           socialGraph: location.record?.social_graph ?? {},
           metadata: location.record?.metadata ?? {},
+          root_type: location.record?.root_type ?? null,
+          spatial_category: location.record?.spatial_category ?? null,
+          spatial_subcategory: location.record?.spatial_subcategory ?? null,
+          parent_location_id: location.record?.parent_location_id ?? null,
           visitCount,
           firstVisited,
           lastVisited,

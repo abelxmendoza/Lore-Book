@@ -157,3 +157,143 @@ export function computeChildren(loc: LocationProfile, all: LocationProfile[]): L
 
 /** Export residential place types for server-side sync. */
 export { RESIDENCE_PLACE_TYPES, PLACE_TAXONOMY };
+
+const ROOM_RE =
+  /\b(kitchen|bathroom|bedroom|garage|living\s?room|dining\s?room|backyard|basement|attic|patio|porch|closet)\b/i;
+const EVENT_AS_PLACE_RE =
+  /\b(show|concert|festival|gig|party|anniversary|graduation|birthday|meetup|gathering|wedding|funeral|quincea[ñn]era|reunion|ceremony|recital|premiere|kickback|function)\b/i;
+
+type SpatialLoc = Pick<LocationProfile, 'name' | 'metadata'> & {
+  parent_location_id?: string | null;
+  root_type?: string | null;
+  spatial_category?: string | null;
+};
+
+export function isRoomLocation(loc: SpatialLoc): boolean {
+  const meta = loc.metadata ?? {};
+  if (loc.spatial_category === 'ROOM' || meta.spatial_category === 'ROOM') return true;
+  if (meta.spatial_classification && typeof meta.spatial_classification === 'object') {
+    const sc = meta.spatial_classification as { category?: string };
+    if (sc.category === 'ROOM') return true;
+  }
+  return ROOM_RE.test(loc.name ?? '');
+}
+
+export function isEventAsPlace(loc: SpatialLoc): boolean {
+  const meta = loc.metadata ?? {};
+  if (loc.root_type === 'EVENT' || meta.spatial_hidden === true) return true;
+  if (loc.spatial_category === 'EVENT_LOCATION') return true;
+  const name = loc.name ?? '';
+  if (!EVENT_AS_PLACE_RE.test(name)) return false;
+  // "Club Metro" is a venue; "Club Metro Anniversary" is an event.
+  if (/\bclub\s+metro\b/i.test(name) && !EVENT_AS_PLACE_RE.test(name.replace(/\bclub\s+metro\b/i, ''))) {
+    return false;
+  }
+  return true;
+}
+
+/** Top-level Places Book cards — excludes rooms, events, and nested children. */
+export function isTopLevelPlace(loc: SpatialLoc): boolean {
+  if (loc.parent_location_id) return false;
+  const meta = loc.metadata ?? {};
+  if (meta.parent_location_id) return false;
+  return !isRoomLocation(loc) && !isEventAsPlace(loc);
+}
+
+export function isHouseholdLocation(loc: SpatialLoc): boolean {
+  if (loc.spatial_category === 'HOUSEHOLD' || loc.spatial_category === 'PROPERTY') return true;
+  const meta = loc.metadata ?? {};
+  const sc = meta.spatial_classification as { category?: string } | undefined;
+  if (sc?.category === 'HOUSEHOLD' || sc?.category === 'PROPERTY') return true;
+  if (meta.place_significance && Array.isArray(meta.place_significance) && (meta.place_significance as string[]).includes('home')) {
+    return true;
+  }
+  return classifyLocation(loc) === 'residence';
+}
+
+export function isVenueLocation(loc: SpatialLoc): boolean {
+  if (loc.spatial_category === 'VENUE') return true;
+  const sc = (loc.metadata?.spatial_classification as { category?: string } | undefined)?.category;
+  if (sc === 'VENUE') return true;
+  return classifyLocation(loc) === 'venue';
+}
+
+export function getPossessiveOwner(loc: SpatialLoc): string | null {
+  const meta = loc.metadata ?? {};
+  const owner = meta.possessive_owner;
+  return typeof owner === 'string' && owner.trim() ? owner.trim() : null;
+}
+
+const normKey = (s: string) => s.trim().toLowerCase().replace(/['']/g, "'").replace(/\s+/g, ' ');
+
+/** Rooms and nested spaces inside a household or property. */
+export function computeRoomChildren(parent: LocationProfile, all: LocationProfile[]): LocationProfile[] {
+  const parentId = parent.id;
+  const parentKey = normKey(parent.name);
+
+  return all
+    .filter((loc) => {
+      if (loc.id === parent.id) return false;
+      if (loc.parent_location_id === parentId) return true;
+      const meta = loc.metadata ?? {};
+      if (meta.parent_location_id === parentId) return true;
+      if (typeof meta.parent_household_name === 'string' && normKey(meta.parent_household_name) === parentKey) {
+        return true;
+      }
+      if (!isRoomLocation(loc)) return false;
+      if (loc.parent_location_id) return false;
+      if (/\bfamily\b/i.test(loc.name) && /\b(family|home|house|household)\b/i.test(parent.name)) return true;
+      if (parent.city && new RegExp(`\\bin\\s+${parent.city}`, 'i').test(loc.name)) return true;
+      return false;
+    })
+    .sort((a, b) => b.visitCount - a.visitCount);
+}
+
+export type HostedEventRef = { id: string; name: string; subcategory?: string; linkedVenue?: string };
+
+/** Events hosted at a venue or home (not shown as top-level place cards). */
+export function computeHostedEvents(container: LocationProfile, all: LocationProfile[]): HostedEventRef[] {
+  const canonical = normKey(
+    String(container.metadata?.canonical_venue_name ?? container.name)
+  );
+
+  return all
+    .filter((loc) => {
+      if (loc.id === container.id) return false;
+      if (!isEventAsPlace(loc) && loc.root_type !== 'EVENT') return false;
+      const linked = normKey(String(loc.metadata?.linked_venue_name ?? ''));
+      if (linked && (linked === canonical || linked.includes(canonical) || canonical.includes(linked))) {
+        return true;
+      }
+      const locKey = normKey(loc.name);
+      return locKey.includes(canonical) && canonical.length >= 4;
+    })
+    .map((loc) => ({
+      id: loc.id,
+      name: loc.name,
+      subcategory: loc.spatial_subcategory ?? undefined,
+      linkedVenue: typeof loc.metadata?.linked_venue_name === 'string' ? loc.metadata.linked_venue_name : undefined,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function countRoomsForHousehold(parent: LocationProfile, all: LocationProfile[]): number {
+  return computeRoomChildren(parent, all).length;
+}
+
+const ROOM_ICONS: Record<string, string> = {
+  KITCHEN: '🍳',
+  BATHROOM: '🚿',
+  BEDROOM: '🛏️',
+  GARAGE: '🚗',
+  LIVING_ROOM: '🛋️',
+  DINING_ROOM: '🍽️',
+  BACKYARD: '🌿',
+  BASEMENT: '📦',
+  ATTIC: '🏚️',
+};
+
+export function roomIcon(subcategory?: string | null): string {
+  if (!subcategory) return '🚪';
+  return ROOM_ICONS[subcategory.toUpperCase()] ?? '🚪';
+}

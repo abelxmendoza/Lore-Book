@@ -1,7 +1,7 @@
 // © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
 
 import { useState, useEffect } from 'react';
-import { Heart, Search, Filter, TrendingUp, Users, Sparkles, Ban, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Heart, Search, Filter, TrendingUp, Users, Sparkles, Ban, RotateCcw, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -20,6 +20,10 @@ import { RelationshipCard } from './RelationshipCard';
 import { RelationshipDetailModal } from './RelationshipDetailModal';
 import { RankingView } from './RankingView';
 import { DetectedCharacterSuggestions } from '../characters/DetectedCharacterSuggestions';
+import { RomanticLexicalInsights } from './RomanticLexicalInsights';
+import { RomanticStoryShowcase } from './RomanticStoryShowcase';
+import { romanticRelationshipsApi, type RomanticRescanSummary } from '../../api/romanticRelationships';
+import { apiCache } from '../../lib/cache';
 
 type RomanticRelationship = {
   id: string;
@@ -114,6 +118,10 @@ export const LoveAndRelationshipsView = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRelationship, setSelectedRelationship] = useState<string | null>(null);
   const [existingCharacterNames, setExistingCharacterNames] = useState<string[]>([]);
+  const [rescanning, setRescanning] = useState(false);
+  const [rescanNotice, setRescanNotice] = useState<string | null>(null);
+  const [rescanError, setRescanError] = useState<string | null>(null);
+  const [rescanSummary, setRescanSummary] = useState<RomanticRescanSummary | null>(null);
 
   useEffect(() => {
     loadRelationships();
@@ -181,6 +189,37 @@ export const LoveAndRelationshipsView = () => {
     }
   };
 
+  const handleRescan = async () => {
+    if (shouldUseMockData) {
+      setRescanNotice('Demo mode — sign in to rescan your real love story from conversations.');
+      setRescanError(null);
+      return;
+    }
+    setRescanning(true);
+    setRescanNotice(null);
+    setRescanError(null);
+    try {
+      apiCache.deletePattern(/\/api\/conversation\/romantic/);
+      const result = await romanticRelationshipsApi.rescan();
+      setRescanSummary(result.summary);
+      const s = result.summary;
+      const total = s.relationshipsUpserted;
+      setRescanNotice(
+        total > 0
+          ? `Rescanned ${s.romanticEpisodes} romantic moment${s.romanticEpisodes === 1 ? '' : 's'} — ${total} relationship${total === 1 ? '' : 's'} updated from glossary + ontology parsing.`
+          : s.romanticEpisodes > 0
+            ? `Found ${s.romanticEpisodes} romantic episode${s.romanticEpisodes === 1 ? '' : 's'} — relationships are already up to date.`
+            : 'Rescan complete — no romantic language detected in your history yet. Mention someone in chat to start tracking.'
+      );
+      await loadRelationships();
+      window.dispatchEvent(new CustomEvent('lk:romantic-relationships-updated'));
+    } catch (error) {
+      setRescanError(error instanceof Error ? error.message : 'Romantic rescan failed');
+    } finally {
+      setRescanning(false);
+    }
+  };
+
   const filteredRelationships = relationships.filter(rel => {
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
@@ -240,7 +279,7 @@ export const LoveAndRelationshipsView = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="love-relationships-view">
       {/* Hero Section */}
       <Card className="border-pink-500/30 bg-gradient-to-br from-pink-950/20 via-purple-950/20 to-pink-950/20">
         <CardHeader className="p-4 sm:p-6">
@@ -267,6 +306,17 @@ export const LoveAndRelationshipsView = () => {
                   <span>Demo</span>
                 </Badge>
               )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void handleRescan()}
+                disabled={rescanning}
+                className="border-pink-500/30 bg-pink-500/10 text-pink-100 hover:bg-pink-500/20 text-[10px] sm:text-xs h-8"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${rescanning ? 'animate-spin' : ''}`} />
+                {rescanning ? 'Rescanning…' : 'Rescan love story'}
+              </Button>
               <Badge variant="outline" className="bg-pink-500/20 text-pink-300 border-pink-500/30 text-[10px] sm:text-xs">
                 <Sparkles className="w-3 h-3 mr-1" />
                 AI-Powered
@@ -275,6 +325,26 @@ export const LoveAndRelationshipsView = () => {
           </div>
         </CardHeader>
       </Card>
+
+      {(rescanNotice || rescanError) && (
+        <p
+          className={`text-xs rounded border px-3 py-2 ${
+            rescanError
+              ? 'text-red-300 border-red-500/30 bg-red-500/10'
+              : 'text-emerald-200 border-emerald-500/25 bg-emerald-500/10'
+          }`}
+        >
+          {rescanError ?? rescanNotice}
+        </p>
+      )}
+
+      <RomanticStoryShowcase demoMode={shouldUseMockData} />
+
+      <RomanticLexicalInsights
+        demoMode={shouldUseMockData}
+        rescanSummary={rescanSummary}
+        relationships={relationships}
+      />
 
       <DetectedCharacterSuggestions
         variant="romantic"
@@ -289,6 +359,9 @@ export const LoveAndRelationshipsView = () => {
         }
         onCharacterAdded={() => {
           void loadCharacterNames();
+          void loadRelationships();
+        }}
+        onRescanComplete={() => {
           void loadRelationships();
         }}
       />

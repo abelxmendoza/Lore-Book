@@ -109,7 +109,8 @@ class CharacterFoundationService {
   async promoteEntityToCharacter(
     userId: string,
     entity: PeoplePlaceEntity,
-    threadId: string | null = null
+    threadId: string | null = null,
+    options?: { forcePromote?: boolean }
   ): Promise<string | null> {
     if (entity.type !== 'person') {
       logger.debug({ entityName: entity.name, type: entity.type }, 'Skipping non-person entity');
@@ -146,7 +147,7 @@ class CharacterFoundationService {
     }
 
     const mentions = entity.total_mentions ?? entity.related_entries?.length ?? 1;
-    if (shouldDeferCharacterPromotion(entity.name, mentions)) {
+    if (!options?.forcePromote && shouldDeferCharacterPromotion(entity.name, mentions)) {
       logger.debug({ name: entity.name, mentions }, 'Deferring entity to promotion candidate (not auto-creating character)');
       return null;
     }
@@ -405,10 +406,27 @@ class CharacterFoundationService {
    * the Characters Book. Deduped by metadata.omega_entity_id — safe to call
    * multiple times for the same entity.
    */
+  private async reviveIfArchived(userId: string, characterId: string): Promise<void> {
+    const { data } = await supabaseAdmin
+      .from('characters')
+      .select('status')
+      .eq('id', characterId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (data?.status === 'archived') {
+      await supabaseAdmin
+        .from('characters')
+        .update({ status: 'active', updated_at: new Date().toISOString() })
+        .eq('id', characterId)
+        .eq('user_id', userId);
+    }
+  }
+
   async promoteOmegaEntityToCharacter(
     userId: string,
     entity: { id: string; primary_name: string; type: string; aliases?: string[] | null; mention_count?: number },
-    threadId?: string | null
+    threadId?: string | null,
+    options?: { forcePromote?: boolean }
   ): Promise<string | null> {
     if (entity.type !== 'PERSON' && entity.type !== 'CHARACTER') return null;
 
@@ -431,7 +449,10 @@ class CharacterFoundationService {
       .eq('metadata->>omega_entity_id', entity.id)
       .limit(1);
 
-    if (existing?.[0]) return existing[0].id as string;
+    if (existing?.[0]) {
+      await this.reviveIfArchived(userId, existing[0].id as string);
+      return existing[0].id as string;
+    }
 
     // Registry choke point: cross-pipeline dedup, junk gate, gray-zone defer.
     const decision = await characterRegistry.classifyForCreation(userId, entity.primary_name);
@@ -449,6 +470,7 @@ class CharacterFoundationService {
     }
     if (decision.action === 'merge') {
       await characterRegistry.mergeMention(userId, decision.characterId, decision.cleanName, { omega_entity_id: entity.id });
+      await this.reviveIfArchived(userId, decision.characterId);
       logger.info({ mention: entity.primary_name, mergedInto: decision.matchedName }, 'Registry merged chat mention into existing character');
       if (threadId) {
         import('./conversationCentered/entityConversationLinkService').then(({ entityConversationLinkService }) => {
@@ -468,7 +490,7 @@ class CharacterFoundationService {
     }
 
     const mentions = entity.mention_count ?? 1;
-    if (shouldDeferCharacterPromotion(decision.cleanName, mentions)) {
+    if (!options?.forcePromote && shouldDeferCharacterPromotion(decision.cleanName, mentions)) {
       logger.debug({ name: entity.primary_name, mentions }, 'Deferring mention to promotion candidate (not auto-creating character)');
       return null;
     }
@@ -515,6 +537,17 @@ class CharacterFoundationService {
       logger.error({ error, name: entity.primary_name }, 'Failed to promote omega entity to character');
       return null;
     }
+
+    await characterAuthorityService.registerCharacterAuthority(userId, characterId, cleanedName, aliases);
+    await characterAuthorityService.linkSourceRecord(
+      userId,
+      characterId,
+      'omega_entities',
+      entity.id,
+      cleanedName,
+      'omega_promote',
+      1
+    );
 
     if (threadId) {
       import('./conversationCentered/entityConversationLinkService').then(({ entityConversationLinkService }) => {

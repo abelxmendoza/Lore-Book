@@ -21,6 +21,8 @@ import { displayAvatarUrl, backfillMissingAvatars } from '../services/characterA
 import { normalizeNameKey, namesOverlapByContainment, splitPersonName } from '../utils/nameNormalization';
 import { classifyMentionKind } from '../utils/entityMentionClassifier';
 import { selfCharacterService } from '../services/selfCharacterService';
+import { characterRestoreService } from '../services/characterRestoreService';
+import { characterConversationRescanService } from '../services/characterConversationRescanService';
 import { asyncHandler } from '../utils/asyncHandler';
 import {
   filterValidAliases,
@@ -713,6 +715,25 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(409).json({ error: 'Character with this canonical name already exists' });
     }
     if (createResult.type === 'merge') {
+      const { characterAuthorityService } = await import('../services/characterAuthorityService');
+      await characterAuthorityService.registerCharacterAuthority(
+        userId,
+        createResult.character.id,
+        createResult.character.name,
+        (createResult.character.alias as string[] | null) ?? []
+      );
+      if (createResult.character.status === 'archived') {
+        const { data: revived } = await supabaseAdmin
+          .from('characters')
+          .update({ status: 'active', updated_at: new Date().toISOString() })
+          .eq('id', createResult.character.id)
+          .eq('user_id', userId)
+          .select('*')
+          .single();
+        if (revived) {
+          return res.status(200).json({ character: revived, deduplicated: true, restored: true });
+        }
+      }
       return res.status(200).json({ character: createResult.character, deduplicated: true });
     }
 
@@ -726,6 +747,28 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         logger.debug({ err, characterId: createResult.character.id }, 'Failed to calculate initial importance');
       });
 
+    const { characterAuthorityService } = await import('../services/characterAuthorityService');
+    await characterAuthorityService.registerCharacterAuthority(
+      userId,
+      createResult.character.id,
+      createResult.character.name,
+      (createResult.character.alias as string[] | null) ?? []
+    );
+    if (characterData.omegaEntityId) {
+      await characterAuthorityService.linkSourceRecord(
+        userId,
+        createResult.character.id,
+        'omega_entities',
+        characterData.omegaEntityId,
+        createResult.character.name,
+        'suggestion_add',
+        1
+      );
+    }
+    void import('../services/characterIdentityIndexService').then(({ characterIdentityIndexService }) =>
+      characterIdentityIndexService.rebuild(userId).catch(() => {})
+    );
+
     res.status(201).json({ character: createResult.character });
   } catch (error) {
     logger.error({ err: error }, 'Failed to create character');
@@ -738,12 +781,17 @@ router.get('/duplicates', requireAuth, async (req: AuthenticatedRequest, res) =>
     const userId = req.user!.id;
     const { data, error } = await supabaseAdmin
       .from('characters')
-      .select('id, name, alias, metadata, created_at, updated_at')
+      .select('id, name, alias, metadata, status, created_at, updated_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: true });
     if (error) throw error;
 
-    const rows = data ?? [];
+    const rows = (data ?? []).filter((row) => {
+      if (row.status === 'archived') return false;
+      const meta = (row.metadata ?? {}) as Record<string, unknown>;
+      if (meta.is_self === true || meta.is_user === true) return false;
+      return true;
+    });
     const byKey = new Map<string, typeof rows>();
     for (const row of rows) {
       const key = normalizeNameKey(row.name);
@@ -799,7 +847,19 @@ router.post('/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'Invalid merge request', details: parsed.error.flatten() });
     }
     const { source_id, target_id, reason } = parsed.data;
-    const report = await characterMergeService.merge(req.user!.id, source_id, target_id, {
+    const userId = req.user!.id;
+    const { data: mergeRows } = await supabaseAdmin
+      .from('characters')
+      .select('id, metadata')
+      .eq('user_id', userId)
+      .in('id', [source_id, target_id]);
+    const selfInvolved = (mergeRows ?? []).some(
+      row => row.metadata?.is_self === true || row.metadata?.is_user === true
+    );
+    if (selfInvolved) {
+      return res.status(400).json({ error: 'Cannot merge your own protagonist card' });
+    }
+    const report = await characterMergeService.merge(userId, source_id, target_id, {
       mergedBy: 'USER',
       reason,
     });
@@ -813,6 +873,10 @@ router.post('/merge', requireAuth, async (req: AuthenticatedRequest, res) => {
     socialStandingService.recompute(req.user!.id).catch(err => {
       logger.debug({ err }, 'Failed to recompute standing after character merge');
     });
+    const { refreshCharacterGraphAfterConsolidation } = await import(
+      '../services/characterGraphRefreshService'
+    );
+    await refreshCharacterGraphAfterConsolidation(userId, { focusCharacterId: target_id });
     res.json({ merged: true, report, character: mergedCharacter ?? null });
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to merge characters');
@@ -1099,6 +1163,25 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
         logger.debug({ err }, 'Avatar backfill failed (non-blocking)');
       });
 
+      const userId = req.user!.id;
+      void (async () => {
+        const { getInferenceState } = await import('../services/inference/inferenceStateService');
+        const state = await getInferenceState(userId);
+        const pfStale = charactersData.some((c) => {
+          const meta = (c.metadata ?? {}) as Record<string, unknown>;
+          if (!meta.public_figure && !meta.figure_type) return false;
+          const conn = meta.public_figure_connection as { updated_at?: string } | undefined;
+          if (!conn?.updated_at) return true;
+          return Date.now() - new Date(conn.updated_at).getTime() > 24 * 60 * 60 * 1000;
+        });
+        const t1Stale = !state.last_t1_run_at
+          || Date.now() - new Date(state.last_t1_run_at).getTime() > 30 * 60 * 1000;
+        if (pfStale || t1Stale) {
+          const { inferenceOrchestrator } = await import('../services/inference/inferenceOrchestrator');
+          inferenceOrchestrator.schedule(userId, 'list_stale');
+        }
+      })().catch((err) => logger.debug({ err, userId }, 'Inference schedule on list failed'));
+
       return res.json({ characters: charactersWithStats });
     }
 
@@ -1209,6 +1292,32 @@ router.get(
 );
 
 router.post(
+  '/restore',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const report = await characterRestoreService.restoreAllCharacters(userId);
+    const { data: characters } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, alias, status, importance_level, metadata')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    return res.json({ success: true, report, characterCount: characters?.length ?? 0 });
+  })
+);
+
+router.post(
+  '/self/repair',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const result = await selfCharacterService.repairSelfCharacterIdentity(userId);
+    const character = await selfCharacterService.ensureSelfCharacter(userId);
+    return res.json({ success: true, ...result, character });
+  })
+);
+
+router.post(
   '/self/set-legal-name',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
@@ -1263,9 +1372,36 @@ router.get(
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
     const context = req.query.context === 'romantic' ? 'romantic' : 'general';
+    const rescan = req.query.rescan === 'true';
+
+    const { count: characterCount } = await supabaseAdmin
+      .from('characters')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    const shouldRescan =
+      rescan ||
+      ((characterCount ?? 0) < 5 &&
+        !(await characterConversationRescanService.hasCompletedRescan(userId)));
+
+    let rescanSummary: Awaited<ReturnType<typeof characterConversationRescanService.rescan>> | null = null;
+    if (shouldRescan) {
+      rescanSummary = await characterConversationRescanService.rescan(userId);
+    }
+
     const { characterSuggestionService } = await import('../services/characterSuggestionService');
     const suggestions = await characterSuggestionService.getSuggestions(userId, { context });
-    res.json({ success: true, suggestions, count: suggestions.length });
+    res.json({ success: true, suggestions, count: suggestions.length, rescanSummary });
+  })
+);
+
+router.post(
+  '/rescan',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const summary = await characterConversationRescanService.rescan(userId);
+    return res.json({ success: true, summary });
   })
 );
 
@@ -1597,6 +1733,13 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         });
     }
 
+    if (updateData.status !== undefined) {
+      const { refreshCharacterGraphAfterConsolidation } = await import(
+        '../services/characterGraphRefreshService'
+      );
+      void refreshCharacterGraphAfterConsolidation(userId, { focusCharacterId: updated.id });
+    }
+
     res.json({ character: updated });
   } catch (error) {
     logger.error({ err: error }, 'Failed to update character');
@@ -1625,6 +1768,11 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     socialStandingService.recompute(userId).catch(err => {
       logger.debug({ err }, 'Failed to recompute standing after character deletion');
     });
+
+    const { refreshCharacterGraphAfterConsolidation } = await import(
+      '../services/characterGraphRefreshService'
+    );
+    void refreshCharacterGraphAfterConsolidation(userId);
 
     res.json({ deleted: true, report });
   } catch (error) {
@@ -2088,6 +2236,23 @@ router.get('/:id/lifecycle', requireAuth, async (req: AuthenticatedRequest, res)
   } catch (error) {
     logger.error({ error, entityId }, 'Failed to run entity lifecycle diagnostics');
     res.status(500).json({ error: 'Failed to run lifecycle diagnostics' });
+  }
+});
+
+// POST /api/characters/public-figures/infer
+// Infer contextual interactions with public figures and update scene network standing.
+router.post('/public-figures/infer', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { publicFigureRelationshipService } = await import('../services/publicFigure/publicFigureRelationshipService');
+    const { socialStandingService } = await import('../services/socialStandingService');
+    const report = await publicFigureRelationshipService.inferForUser(userId);
+    await socialStandingService.recompute(userId);
+    res.json({ success: true, ...report });
+  } catch (error) {
+    logger.error({ error, userId }, 'Public figure inference failed');
+    res.status(500).json({ error: 'Inference failed' });
   }
 });
 

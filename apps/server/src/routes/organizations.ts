@@ -11,6 +11,8 @@ import { organizationService, type OrgRelationshipType } from '../services/organ
 import { organizationMergeService } from '../services/organizationMergeService';
 import { organizationRelationshipInferenceService } from '../services/organizationRelationshipInferenceService';
 import { organizationNetworkService } from '../services/organizationNetworkService';
+import { organizationDomainAuditService } from '../services/organizationDomainAuditService';
+import { organizationNormalizationService } from '../services/organizationNormalizationService';
 
 const router = Router();
 
@@ -36,12 +38,55 @@ const ORG_REL_TYPES = [
 // GET /api/organizations
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   const userId = req.user!.id;
+  const normalize = req.query.normalize === 'true';
   try {
+    if (normalize) {
+      await organizationNormalizationService.normalizeUserOrganizations(userId).catch((err) => {
+        logger.warn({ err, userId }, 'Background organization normalization failed');
+      });
+    }
     const organizations = await organizationService.listOrganizations(userId);
     res.json({ success: true, organizations });
   } catch (error) {
     logger.error({ error, userId }, 'Failed to list organizations');
     res.status(500).json({ success: false, error: 'Failed to fetch organizations' });
+  }
+});
+
+// GET /api/organizations/audit
+router.get('/audit', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  try {
+    const audit = await organizationDomainAuditService.audit(userId);
+    res.json({ success: true, audit });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to audit organizations');
+    res.status(500).json({ success: false, error: 'Failed to audit organizations' });
+  }
+});
+
+// POST /api/organizations/normalize
+router.post('/normalize', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  const dryRun = req.query.dry_run === 'true';
+  try {
+    const report = await organizationNormalizationService.normalizeUserOrganizations(userId, { dryRun });
+    res.json({ success: true, report });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to normalize organizations');
+    res.status(500).json({ success: false, error: 'Failed to normalize organizations' });
+  }
+});
+
+// GET /api/organizations/merge-suggestions
+router.get('/merge-suggestions', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const userId = req.user!.id;
+  try {
+    const suggestions = await organizationNormalizationService.getMergeSuggestions(userId);
+    res.json({ success: true, suggestions, count: suggestions.length });
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to get merge suggestions');
+    res.status(500).json({ success: false, error: 'Failed to get merge suggestions' });
   }
 });
 

@@ -11,6 +11,10 @@ import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
 import { isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import {
+  getSceneNetwork,
+  formatSceneNetworkTier,
+} from '../../lib/publicFigure';
+import {
   getCharacterContextHooks,
   getCharacterWittyTagline,
   getMainCharacterDisplayName,
@@ -82,16 +86,25 @@ const getAttributeColor = (type: string) => {
 export const MainCharacterProfileCard = ({ character, user, onClick, interactive = true }: Props) => {
   const [attributes, setAttributes] = useState<CharacterAttribute[]>([]);
   const [loadingAttributes, setLoadingAttributes] = useState(false);
+  const [resolvedCharacter, setResolvedCharacter] = useState(character);
   const [wittyTagline, setWittyTagline] = useState<string | null>(getCharacterWittyTagline(character));
   const [roleTagline, setRoleTagline] = useState<string | null>(character.role ?? null);
   const [contextHooks, setContextHooks] = useState<string[]>(getCharacterContextHooks(character));
   const [profileSummary, setProfileSummary] = useState<string | null>(character.summary ?? null);
 
-  const displayName = getMainCharacterDisplayName(character, user);
-  const showMeBadge = /^me$/i.test(character.name?.trim() ?? '') && displayName !== 'Me';
+  useEffect(() => {
+    setResolvedCharacter(character);
+    setWittyTagline(getCharacterWittyTagline(character));
+    setRoleTagline(character.role ?? null);
+    setContextHooks(getCharacterContextHooks(character));
+    setProfileSummary(character.summary ?? null);
+  }, [character]);
+
+  const displayName = getMainCharacterDisplayName(resolvedCharacter, user);
+  const showMeBadge = /^me$/i.test(resolvedCharacter.name?.trim() ?? '') && displayName !== 'Me';
 
   const avatarUrl =
-    character.avatar_url ||
+    resolvedCharacter.avatar_url ||
     (user?.user_metadata?.custom_avatar_url as string | undefined) ||
     (user?.user_metadata?.avatar_url as string | undefined) ||
     null;
@@ -115,6 +128,7 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
         }
         const profile = await selfCharacterApi.getProfile();
         if (cancelled) return;
+        setResolvedCharacter(profile.character as Character);
         setAttributes(
           (profile.attributes ?? []).map((a, i) => ({
             id: `attr-${i}`,
@@ -155,9 +169,10 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
   const summary =
     wittyTagline ||
     profileSummary ||
-    character.summary ||
+    resolvedCharacter.summary ||
     'Your story grows with every conversation — attributes and facts sync from chat and resume.';
-  const subtitle = roleTagline || character.role || 'Protagonist · Your story';
+  const subtitle = roleTagline || resolvedCharacter.role || 'Protagonist · Your story';
+  const sceneNetwork = getSceneNetwork(resolvedCharacter);
 
   return (
     <Card
@@ -181,9 +196,9 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
         <div className="relative flex sm:flex-col items-center justify-center gap-3 sm:w-36 md:w-44 px-4 py-4 sm:py-6 bg-gradient-to-br from-amber-500/15 via-primary/10 to-purple-600/10 border-b sm:border-b-0 sm:border-r border-amber-500/20">
           <CharacterAvatar
             url={avatarUrl}
-            characterId={character.id}
-            archetype={character.archetype}
-            role={character.role}
+            characterId={resolvedCharacter.id}
+            archetype={resolvedCharacter.archetype}
+            role={resolvedCharacter.role}
             name={displayName}
             size={56}
             className="sm:w-16 sm:h-16 ring-2 ring-amber-400/50 ring-offset-2 ring-offset-black/80"
@@ -217,13 +232,21 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
                 <p className="text-sm text-amber-200/70 mt-0.5 font-medium">
                   {subtitle}
                 </p>
-                {character.archetype && (
+                {sceneNetwork && (
+                  <p className="text-[11px] text-fuchsia-200/70 mt-1 capitalize">
+                    Scene network · {formatSceneNetworkTier(sceneNetwork.tier)} ({sceneNetwork.score ?? 0})
+                    {(sceneNetwork.public_figure_count ?? 0) > 0
+                      ? ` · ${sceneNetwork.public_figure_count} public figure${sceneNetwork.public_figure_count === 1 ? '' : 's'}`
+                      : ''}
+                  </p>
+                )}
+                {resolvedCharacter.archetype && (
                   <Badge
                     variant="outline"
                     className="mt-2 bg-primary/15 text-primary border-primary/30 text-[10px] px-1.5 py-0"
                   >
                     <Sparkles className="h-2.5 w-2.5 mr-1" />
-                    {character.archetype}
+                    {resolvedCharacter.archetype}
                   </Badge>
                 )}
               </div>
@@ -253,22 +276,22 @@ export const MainCharacterProfileCard = ({ character, user, onClick, interactive
 
             {/* Quick stats */}
             <div className="flex flex-wrap gap-3 text-[10px] sm:text-xs text-white/45 font-mono">
-              {(character.memory_count ?? 0) > 0 && (
+              {(resolvedCharacter.memory_count ?? 0) > 0 && (
                 <span className="flex items-center gap-1">
                   <BookOpen className="h-3 w-3 text-amber-400/70" />
-                  {character.memory_count} memories
+                  {resolvedCharacter.memory_count} memories
                 </span>
               )}
-              {(character.relationship_count ?? 0) > 0 && (
+              {(resolvedCharacter.relationship_count ?? 0) > 0 && (
                 <span className="flex items-center gap-1">
                   <Users className="h-3 w-3 text-amber-400/70" />
-                  {character.relationship_count} connections
+                  {resolvedCharacter.relationship_count} connections
                 </span>
               )}
-              {character.tags && character.tags.length > 0 && (
+              {resolvedCharacter.tags && resolvedCharacter.tags.length > 0 && (
                 <span className="flex items-center gap-1 truncate max-w-[12rem]">
                   <Tag className="h-3 w-3 text-amber-400/70 flex-shrink-0" />
-                  {character.tags.slice(0, 3).join(' · ')}
+                  {resolvedCharacter.tags.slice(0, 3).join(' · ')}
                 </span>
               )}
             </div>

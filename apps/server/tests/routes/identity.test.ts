@@ -7,6 +7,13 @@ import { personaService } from '../../src/services/personaService';
 
 vi.mock('../../src/middleware/auth');
 vi.mock('../../src/services/personaService');
+vi.mock('../../src/services/analytics/orchestrator', () => ({
+  buildAnalyticsContext: vi.fn().mockResolvedValue({ userId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', timeRange: '30' }),
+  runLegacyAnalytics: vi.fn().mockResolvedValue({
+    value: { pulse: { persona: '1', motifs: ['a', 'b'] } },
+    diagnostics: {},
+  }),
+}));
 vi.mock('../../src/realtime/orchestratorEmitter', () => ({ emitDelta: vi.fn() }));
 
 const app = express();

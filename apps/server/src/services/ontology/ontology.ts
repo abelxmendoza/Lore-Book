@@ -22,6 +22,78 @@ export const ROOT_TYPES: RootType[] = [
 /** Which roots may be promoted to a Character card. */
 export const CHARACTER_ELIGIBLE: ReadonlySet<RootType> = new Set<RootType>(['PERSON']);
 
+/**
+ * Discovery Hub panels — mirrors apps/web/src/components/discovery/DiscoveryHub.tsx routes.
+ * Used by lexical navigation chips and ontology explorer diagnostics.
+ */
+export const DISCOVERY_SURFACES = {
+  overview: 'discovery',
+  soulProfile: 'discovery/soul-profile',
+  revealedSelf: 'discovery/revealed-self',
+  contradictions: 'discovery/contradictions',
+  identity: 'discovery/identity',
+  relationships: 'discovery/relationships',
+  insightsPredictions: 'discovery/insights-predictions',
+  valuesHabits: 'discovery/values-habits',
+  decisions: 'discovery/decisions',
+  lifeArc: 'discovery/life-arc',
+  shadow: 'discovery/shadow',
+  xp: 'discovery/xp',
+  reactionsResilience: 'discovery/reactions-resilience',
+  activity: 'discovery/activity',
+  lifeStats: 'discovery/life-stats',
+  achievements: 'discovery/achievements',
+  memoryManagement: 'discovery/memory-management',
+  memoryReview: 'discovery/memory-review',
+  continuity: 'discovery/continuity',
+  correctionDashboard: 'discovery/correction-dashboard',
+  memoryFade: 'discovery/memory-fade',
+  knowledgeRecords: 'discovery/knowledge-records',
+} as const;
+
+/** Main LoreBook surfaces — Books + primary navigation targets. */
+export const BOOK_SURFACES = {
+  characters: 'characters',
+  locations: 'locations',
+  organizations: 'organizations',
+  family: 'family',
+  love: 'love',
+  timeline: 'timeline',
+  lorebook: 'lorebook',
+  quests: 'quests',
+  chat: 'chat',
+  entityAuthority: 'entity-authority',
+} as const;
+
+/** Glossary category layers for explorer / analytics grouping. */
+export const ONTOLOGY_LAYER_LABELS: Record<string, string> = {
+  FAMILY: 'Kinship & Family',
+  VENUE: 'Places & Venues',
+  DWELLING: 'Homes & Households',
+  SHOW: 'Events & Shows',
+  MUSIC_GROUP: 'Bands & Crews',
+  COMMUNITY: 'Communities & Scenes',
+  COMPANY: 'Organizations',
+  INITIATIVE: 'Projects & Initiatives',
+  CAPABILITY: 'Skills & Capabilities',
+  OBJECTIVE: 'Goals & Aspirations',
+  RELATIONSHIP_VERB: 'Relationship Language',
+  NAV_VERB: 'Navigation & Surfaces',
+  ESSENCE_SIGNAL: 'Soul Profile Signals',
+  SHADOW_SIGNAL: 'Shadow & Inner Patterns',
+  IDENTITY_SIGNAL: 'Identity Shifts',
+  CONTRADICTION_SIGNAL: 'Stated vs Revealed',
+  DECISION_SIGNAL: 'Decision Memory',
+  MEMORY_SIGNAL: 'Memory & Recall',
+  CORRECTION_VERB: 'Corrections',
+  RECALL_VERB: 'Recall Queries',
+  ENTITY_AUTHORITY: 'Entity Authority',
+  ANALYTICS_SIGNAL: 'Analytics & Achievements',
+  INSIGHT_SIGNAL: 'Patterns & Insights',
+  HABIT: 'Habits & Routines',
+  VALUE: 'Values & Priorities',
+};
+
 export interface OntologySubcategory {
   subcategory: string;
   keywords: string[];
@@ -77,7 +149,8 @@ export function buildOntology(): OntologyDomain[] {
 export function ontologyRows(): Array<{
   root: RootType; category: string; subcategory: string;
   keyword: string; aliases: string[]; confidence: number; weight: number;
-  relationshipHint?: string; queryHint?: string; aliasCount: number;
+  relationshipHint?: string; queryHint?: string; actionHint?: string;
+  surfaceTarget?: string; aliasCount: number; layerLabel?: string;
 }> {
   return GLOSSARY.map((e) => ({
     root: e.domain,
@@ -89,8 +162,19 @@ export function ontologyRows(): Array<{
     weight: e.weight,
     relationshipHint: e.relationshipHint,
     queryHint: e.queryHint,
+    actionHint: e.actionHint,
+    surfaceTarget: e.surfaceTarget,
     aliasCount: e.aliases.length,
+    layerLabel: ONTOLOGY_LAYER_LABELS[e.category],
   }));
 }
 
-export const ontology = { build: buildOntology, rows: ontologyRows, ROOT_TYPES, CHARACTER_ELIGIBLE };
+export const ontology = {
+  build: buildOntology,
+  rows: ontologyRows,
+  ROOT_TYPES,
+  CHARACTER_ELIGIBLE,
+  DISCOVERY_SURFACES,
+  BOOK_SURFACES,
+  ONTOLOGY_LAYER_LABELS,
+};

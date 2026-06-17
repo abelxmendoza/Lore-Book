@@ -9,9 +9,23 @@ import { continuityRouter } from '../../src/routes/continuity';
 import { requireAuth } from '../../src/middleware/auth';
 
 // Mock dependencies
-vi.mock('../../src/services/continuityService');
+vi.mock('../../src/services/continuityService', () => ({
+  continuityService: {
+    listEvents: vi.fn(),
+    explainEvent: vi.fn(),
+    revertEvent: vi.fn(),
+    getReversalLog: vi.fn(),
+  },
+}));
+vi.mock('../../src/services/continuity/continuityService', () => ({
+  continuityService: {
+    getContinuityEvents: vi.fn(),
+    getGoals: vi.fn(),
+    getContradictions: vi.fn(),
+    runContinuityAnalysis: vi.fn(),
+  },
+}));
 vi.mock('../../src/middleware/auth');
-vi.mock('../../src/services/supabaseClient');
 
 const app = express();
 app.use(express.json());
@@ -29,14 +43,14 @@ describe('Continuity Routes', () => {
   });
 
   describe('GET /api/continuity/events', () => {
-    it('should list continuity events without filters', async () => {
-      const { continuityService } = await import('../../src/services/continuityService');
+    it('should list continuity events without filters (dashboard path)', async () => {
+      const { continuityService: analysisService } = await import('../../src/services/continuity/continuityService');
       const mockEvents = [
-        { id: 'event-1', type: 'contradiction', severity: 'medium' },
-        { id: 'event-2', type: 'identity_drift', severity: 'high' },
+        { id: 'event-1', event_type: 'contradiction', severity: 7, description: 'Test' },
+        { id: 'event-2', event_type: 'identity_drift', severity: 6, description: 'Drift' },
       ];
 
-      vi.mocked(continuityService.listEvents).mockResolvedValue(mockEvents as any);
+      vi.mocked(analysisService.getContinuityEvents).mockResolvedValue(mockEvents as any);
 
       const response = await request(app)
         .get('/api/continuity/events')
@@ -44,23 +58,25 @@ describe('Continuity Routes', () => {
 
       expect(response.body).toHaveProperty('events');
       expect(response.body.events).toHaveLength(2);
+      expect(analysisService.getContinuityEvents).toHaveBeenCalledWith('test-user-id', undefined, 50);
     });
 
-    it('should filter by type', async () => {
-      const { continuityService } = await import('../../src/services/continuityService');
-      vi.mocked(continuityService.listEvents).mockResolvedValue([]);
+    it('should filter by type via dashboard service', async () => {
+      const { continuityService: analysisService } = await import('../../src/services/continuity/continuityService');
+      vi.mocked(analysisService.getContinuityEvents).mockResolvedValue([]);
 
       await request(app)
         .get('/api/continuity/events?type=contradiction')
         .expect(200);
 
-      expect(continuityService.listEvents).toHaveBeenCalledWith(
+      expect(analysisService.getContinuityEvents).toHaveBeenCalledWith(
         'test-user-id',
-        expect.objectContaining({ type: 'contradiction' })
+        'contradiction',
+        50
       );
     });
 
-    it('should filter by severity', async () => {
+    it('should filter by severity via explainability service', async () => {
       const { continuityService } = await import('../../src/services/continuityService');
       vi.mocked(continuityService.listEvents).mockResolvedValue([]);
 
@@ -74,7 +90,7 @@ describe('Continuity Routes', () => {
       );
     });
 
-    it('should filter by reversible', async () => {
+    it('should filter by reversible via explainability service', async () => {
       const { continuityService } = await import('../../src/services/continuityService');
       vi.mocked(continuityService.listEvents).mockResolvedValue([]);
 
@@ -86,6 +102,53 @@ describe('Continuity Routes', () => {
         'test-user-id',
         expect.objectContaining({ reversible: true })
       );
+    });
+  });
+
+  describe('GET /api/continuity/goals', () => {
+    it('returns active and abandoned goals', async () => {
+      const { continuityService: analysisService } = await import('../../src/services/continuity/continuityService');
+      const mockGoals = {
+        active: [],
+        abandoned: [{ id: 'g1', event_type: 'abandoned_goal', description: 'Learn Spanish' }],
+      };
+      vi.mocked(analysisService.getGoals).mockResolvedValue(mockGoals as any);
+
+      const response = await request(app).get('/api/continuity/goals').expect(200);
+      expect(response.body.abandoned).toHaveLength(1);
+    });
+  });
+
+  describe('GET /api/continuity/contradictions', () => {
+    it('returns contradiction events', async () => {
+      const { continuityService: analysisService } = await import('../../src/services/continuity/continuityService');
+      vi.mocked(analysisService.getContradictions).mockResolvedValue([
+        { id: 'c1', event_type: 'contradiction', description: 'Conflict' },
+      ] as any);
+
+      const response = await request(app).get('/api/continuity/contradictions').expect(200);
+      expect(response.body.contradictions).toHaveLength(1);
+    });
+  });
+
+  describe('POST /api/continuity/run', () => {
+    it('triggers continuity analysis', async () => {
+      const { continuityService: analysisService } = await import('../../src/services/continuity/continuityService');
+      vi.mocked(analysisService.runContinuityAnalysis).mockResolvedValue({
+        events: [],
+        summary: {
+          contradictions: 0,
+          abandonedGoals: 0,
+          arcShifts: 0,
+          identityDrifts: 0,
+          emotionalTransitions: 0,
+          thematicDrifts: 0,
+        },
+      });
+
+      const response = await request(app).post('/api/continuity/run').expect(200);
+      expect(response.body.success).toBe(true);
+      expect(analysisService.runContinuityAnalysis).toHaveBeenCalledWith('test-user-id');
     });
   });
 

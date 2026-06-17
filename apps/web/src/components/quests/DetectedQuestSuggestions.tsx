@@ -6,6 +6,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { questsApi } from '../../api/quests';
+import { useMockData } from '../../contexts/MockDataContext';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { useCreateQuest } from '../../hooks/useQuests';
+import { mockDataService } from '../../services/mockDataService';
+import { MOCK_QUEST_SUGGESTIONS } from '../../mocks/quests';
 import { clampQuestScore, normalizeQuestType, optionalQuestString } from '../../lib/questNormalize';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
 import type { QuestSuggestion } from '../../types/quest';
@@ -27,6 +32,9 @@ const typeColor = (t?: string) => TYPE_COLORS[t ?? ''] ?? 'bg-white/10 text-whit
 const keyFor = (s: QuestSuggestion) => s.id ?? `${s.title}__${s.quest_type}`.toLowerCase();
 
 export const DetectedQuestSuggestions = ({ onQuestAdded, existingQuestTitles = [] }: Props) => {
+  const { useMockData: isMockDataEnabled } = useMockData();
+  const shouldUseMock = useShouldUseMockData();
+  const createQuest = useCreateQuest();
   const [suggestions, setSuggestions] = useState<QuestSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [rescanning, setRescanning] = useState(false);
@@ -40,14 +48,26 @@ export const DetectedQuestSuggestions = ({ onQuestAdded, existingQuestTitles = [
     if (opts?.rescan) setRescanning(true);
     else if (!opts?.silent) setLoading(true);
     try {
+      if (shouldUseMock && isMockDataEnabled) {
+        const existing = mockDataService.get.questSuggestions();
+        const mockSuggestions = existing.length > 0 ? existing : MOCK_QUEST_SUGGESTIONS;
+        mockDataService.register.questSuggestions(mockSuggestions);
+        setSuggestions(mockSuggestions);
+        return;
+      }
       setSuggestions(await questsApi.getSuggestions({ rescan: opts?.rescan }));
     } catch {
-      if (!opts?.silent) setSuggestions([]);
+      if (shouldUseMock && isMockDataEnabled) {
+        mockDataService.register.questSuggestions(MOCK_QUEST_SUGGESTIONS);
+        setSuggestions(MOCK_QUEST_SUGGESTIONS);
+      } else if (!opts?.silent) {
+        setSuggestions([]);
+      }
     } finally {
       setLoading(false);
       setRescanning(false);
     }
-  }, []);
+  }, [isMockDataEnabled, shouldUseMock]);
 
   useEffect(() => {
     void fetchSuggestions();
@@ -84,7 +104,19 @@ export const DetectedQuestSuggestions = ({ onQuestAdded, existingQuestTitles = [
     setAdding(k);
     setAddError(null);
     try {
-      await questsApi.materializeSuggestion(s);
+      if (shouldUseMock && isMockDataEnabled) {
+        await createQuest.mutateAsync({
+          title: s.title,
+          description: optionalQuestString(s.description),
+          quest_type: normalizeQuestType(s.quest_type),
+          priority: clampQuestScore(s.priority),
+          importance: clampQuestScore(s.importance),
+          impact: clampQuestScore(s.impact),
+          source: 'suggested',
+        });
+      } else {
+        await questsApi.materializeSuggestion(s);
+      }
       setAdded(prev => new Set(prev).add(k));
       setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
       onQuestAdded?.();
@@ -102,6 +134,7 @@ export const DetectedQuestSuggestions = ({ onQuestAdded, existingQuestTitles = [
     const k = keyFor(s);
     setDismissed(prev => new Set(prev).add(k));
     setSuggestions(prev => prev.filter(item => keyFor(item) !== k));
+    if (shouldUseMock && isMockDataEnabled) return;
     try {
       if (s.id) await questsApi.rejectSuggestion(s.id);
       else await questsApi.rejectSuggestionByTitle(s.title);

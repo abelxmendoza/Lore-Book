@@ -5,6 +5,9 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { locationMergeService } from '../services/locationMergeService';
 import { locationService } from '../services/locationService';
 import { locationSuggestionService } from '../services/locationSuggestionService';
+import { locationDomainAuditService } from '../services/locationDomainAuditService';
+import { locationNormalizationService } from '../services/locationNormalizationService';
+import { placeDuplicateScore } from '../services/ontology/placeIntelligence';
 import { logger } from '../logger';
 import { asyncHandler } from '../utils/asyncHandler';
 import { normalizeNameKey, namesOverlapByContainment } from '../utils/nameNormalization';
@@ -13,9 +16,47 @@ import { supabaseAdmin } from '../services/supabaseClient';
 const router = Router();
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
-  const locations = await locationService.listLocations(req.user!.id);
+  const userId = req.user!.id;
+  const normalize = req.query.normalize === 'true';
+  if (normalize) {
+    await locationNormalizationService.normalizeUserLocations(userId).catch((err) => {
+      logger.warn({ err, userId }, 'Background location normalization failed');
+    });
+  }
+  const locations = await locationService.listLocations(userId);
   res.json({ locations });
 });
+
+router.get(
+  '/audit',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const audit = await locationDomainAuditService.audit(userId);
+    res.json({ success: true, audit });
+  })
+);
+
+router.post(
+  '/normalize',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const dryRun = req.query.dry_run === 'true';
+    const report = await locationNormalizationService.normalizeUserLocations(userId, { dryRun });
+    res.json({ success: true, report });
+  })
+);
+
+router.get(
+  '/merge-suggestions',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const suggestions = await locationNormalizationService.getMergeSuggestions(userId);
+    res.json({ success: true, suggestions, count: suggestions.length });
+  })
+);
 
 router.get(
   '/suggestions',
@@ -65,8 +106,11 @@ router.get(
 
     const rows = data ?? [];
     const groups: Array<{
-      match_type: 'exact' | 'containment';
+      match_type: 'exact' | 'containment' | 'alias';
       canonical_name: string;
+      confidence: number;
+      reason: string;
+      evidence: string[];
       locations: typeof rows;
     }> = [];
 
@@ -79,7 +123,14 @@ router.get(
 
     for (const [canonical_name, locations] of byKey.entries()) {
       if (locations.length > 1) {
-        groups.push({ match_type: 'exact', canonical_name, locations });
+        groups.push({
+          match_type: 'exact',
+          canonical_name,
+          confidence: 1,
+          reason: 'normalized name match',
+          evidence: ['exact duplicate normalized_name'],
+          locations,
+        });
       }
     }
 
@@ -90,13 +141,26 @@ router.get(
         const right = rows[j];
         const leftKey = normalizeNameKey(left.name);
         const rightKey = normalizeNameKey(right.name);
-        if (leftKey === rightKey || !namesOverlapByContainment(leftKey, rightKey)) continue;
+        if (leftKey === rightKey) continue;
+
+        const aliasScore = placeDuplicateScore(left.name, right.name);
+        const containment = namesOverlapByContainment(leftKey, rightKey);
+        if (!containment && aliasScore < 0.65) continue;
+
         const pairKey = [left.id, right.id].sort().join(':');
         if (seenPairs.has(pairKey)) continue;
         seenPairs.add(pairKey);
+
+        const match_type = aliasScore >= 0.65 ? 'alias' as const : 'containment' as const;
         groups.push({
-          match_type: 'containment',
-          canonical_name: leftKey.length <= rightKey.length ? leftKey : rightKey,
+          match_type,
+          canonical_name: leftKey.length <= rightKey.length ? left.name : right.name,
+          confidence: aliasScore >= 0.65 ? aliasScore : 0.75,
+          reason: match_type === 'alias' ? 'venue alias / token overlap' : 'name containment',
+          evidence: [
+            `score: ${aliasScore.toFixed(2)}`,
+            `names: "${left.name}" ↔ "${right.name}"`,
+          ],
           locations: [left, right],
         });
       }

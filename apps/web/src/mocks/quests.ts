@@ -10,7 +10,121 @@ const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 const lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-export const MOCK_QUESTS: Quest[] = [
+const daysAgo = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
+
+type CompletedTemplate = {
+  title: string;
+  description: string;
+  quest_type: Quest['quest_type'];
+  category: string;
+  tags: string[];
+  priority: number;
+  importance: number;
+  impact: number;
+  completedDaysAgo: number;
+  durationDays: number;
+  source?: Quest['source'];
+  completionNotes?: string;
+};
+
+const COMPLETED_QUEST_TEMPLATES: CompletedTemplate[] = [
+  { title: 'Land First Freelance Client', description: 'Closed a small branding + web package for a local café after sharing portfolio drafts.', quest_type: 'main', category: 'career', tags: ['freelance', 'career'], priority: 9, importance: 9, impact: 9, completedDaysAgo: 12, durationDays: 45, completionNotes: 'Signed contract and delivered v1 on time.' },
+  { title: 'Finish Album Mix for Demo Reel', description: 'Mixed and mastered three tracks with Alex Rivera for the creative reel.', quest_type: 'main', category: 'creative', tags: ['music', 'production'], priority: 8, importance: 8, impact: 8, completedDaysAgo: 18, durationDays: 21 },
+  { title: 'Publish Personal Essay on Transition', description: 'Wrote and published an essay about leaving tech for creative work.', quest_type: 'side', category: 'creative', tags: ['writing', 'publishing'], priority: 7, importance: 8, impact: 7, completedDaysAgo: 25, durationDays: 14 },
+  { title: '30-Day Meditation Streak', description: 'Completed daily 10-minute meditation for 30 consecutive days.', quest_type: 'daily', category: 'health', tags: ['mindfulness', 'daily'], priority: 7, importance: 8, impact: 7, completedDaysAgo: 8, durationDays: 30 },
+  { title: 'Run First 5K', description: 'Trained for and completed a local 5K charity run.', quest_type: 'achievement', category: 'health', tags: ['fitness', 'running'], priority: 6, importance: 7, impact: 6, completedDaysAgo: 40, durationDays: 56 },
+  { title: 'Set Up Home Studio Acoustics', description: 'Treated walls, positioned monitors, and calibrated room for mixing.', quest_type: 'side', category: 'creative', tags: ['studio', 'music'], priority: 7, importance: 6, impact: 7, completedDaysAgo: 55, durationDays: 10 },
+  { title: 'Complete React Advanced Course', description: 'Finished hooks, patterns, and performance modules with capstone project.', quest_type: 'side', category: 'education', tags: ['react', 'learning'], priority: 7, importance: 7, impact: 7, completedDaysAgo: 70, durationDays: 28, source: 'extracted' },
+  { title: 'Organize Digital Photo Archive', description: 'Sorted three years of photos into albums with backups.', quest_type: 'side', category: 'personal', tags: ['photos', 'organization'], priority: 5, importance: 5, impact: 4, completedDaysAgo: 33, durationDays: 5 },
+  { title: 'Plan Summer Road Trip', description: 'Researched routes, booked stays, and built shared itinerary with Alex.', quest_type: 'side', category: 'personal', tags: ['travel', 'planning'], priority: 6, importance: 6, impact: 5, completedDaysAgo: 90, durationDays: 7 },
+  { title: 'Launch Newsletter: Signal & Story', description: 'Published first three issues on creative process and life transitions.', quest_type: 'main', category: 'career', tags: ['writing', 'newsletter'], priority: 8, importance: 8, impact: 8, completedDaysAgo: 48, durationDays: 35 },
+  { title: 'Complete Tax Prep for Last Year', description: 'Gathered receipts, filed return, and set aside quarterly estimates.', quest_type: 'side', category: 'finance', tags: ['taxes', 'admin'], priority: 8, importance: 7, impact: 6, completedDaysAgo: 110, durationDays: 4 },
+  { title: 'Host Friendsgiving Dinner', description: 'Cooked for eight people and documented recipes for future quests.', quest_type: 'side', category: 'personal', tags: ['friends', 'cooking'], priority: 5, importance: 6, impact: 5, completedDaysAgo: 95, durationDays: 3 },
+  { title: 'Ship Portfolio v1', description: 'Deployed first version of portfolio with writing, music, and contact form.', quest_type: 'main', category: 'career', tags: ['portfolio', 'web'], priority: 9, importance: 9, impact: 8, completedDaysAgo: 130, durationDays: 42 },
+  { title: 'Read 12 Books This Year', description: 'Hit annual reading goal spanning fiction, memoir, and craft books.', quest_type: 'achievement', category: 'personal', tags: ['reading', 'goals'], priority: 6, importance: 7, impact: 6, completedDaysAgo: 15, durationDays: 340 },
+  { title: 'Fix Sleep for 21 Nights', description: 'Maintained 11 PM–7 AM schedule with wind-down routine.', quest_type: 'daily', category: 'health', tags: ['sleep', 'routine'], priority: 8, importance: 9, impact: 8, completedDaysAgo: 60, durationDays: 21 },
+  { title: 'Learn Basic Video Editing', description: 'Edited three behind-the-scenes studio clips for social.', quest_type: 'side', category: 'creative', tags: ['video', 'learning'], priority: 6, importance: 6, impact: 6, completedDaysAgo: 75, durationDays: 18 },
+  { title: 'Reconnect with Marcus', description: 'Scheduled monthly creative check-ins after a long busy stretch.', quest_type: 'side', category: 'relationships', tags: ['friends', 'community'], priority: 7, importance: 8, impact: 7, completedDaysAgo: 22, durationDays: 14 },
+  { title: 'Clear Credit Card Debt', description: 'Paid off remaining balance using freelance income plan.', quest_type: 'main', category: 'finance', tags: ['debt', 'finance'], priority: 9, importance: 9, impact: 9, completedDaysAgo: 145, durationDays: 90 },
+  { title: 'Submit Track to Local Compilation', description: 'Sent demo track and metadata before deadline.', quest_type: 'side', category: 'creative', tags: ['music', 'submission'], priority: 7, importance: 7, impact: 7, completedDaysAgo: 38, durationDays: 6 },
+  { title: 'Attend Songwriting Workshop', description: 'Completed weekend intensive and drafted two new song sketches.', quest_type: 'side', category: 'creative', tags: ['music', 'workshop'], priority: 6, importance: 7, impact: 6, completedDaysAgo: 52, durationDays: 2 },
+  { title: 'Build Habit Tracker Spreadsheet', description: 'Created simple tracker for exercise, journaling, and practice hours.', quest_type: 'daily', category: 'productivity', tags: ['habits', 'tracking'], priority: 5, importance: 6, impact: 5, completedDaysAgo: 100, durationDays: 1 },
+  { title: 'Complete First Paid Photo Shoot', description: 'Shot portraits for a friend\'s small business launch.', quest_type: 'side', category: 'creative', tags: ['photography', 'paid'], priority: 7, importance: 7, impact: 7, completedDaysAgo: 65, durationDays: 12 },
+  { title: 'Migrate Email to New Domain', description: 'Moved accounts, updated DNS, and tested deliverability.', quest_type: 'side', category: 'admin', tags: ['email', 'tech'], priority: 6, importance: 5, impact: 5, completedDaysAgo: 120, durationDays: 3 },
+  { title: 'Finish Coursera Music Theory', description: 'Completed fundamentals course with final composition assignment.', quest_type: 'main', category: 'education', tags: ['music', 'theory'], priority: 8, importance: 8, impact: 8, completedDaysAgo: 200, durationDays: 45 },
+  { title: 'Volunteer at Community Garden', description: 'Helped with spring planting day and met neighbors.', quest_type: 'side', category: 'community', tags: ['volunteer', 'outdoors'], priority: 4, importance: 5, impact: 4, completedDaysAgo: 85, durationDays: 1 },
+  { title: 'Record Voiceover for Friend\'s Podcast', description: 'Recorded intro narration and delivered edited files.', quest_type: 'side', category: 'creative', tags: ['audio', 'voice'], priority: 5, importance: 5, impact: 5, completedDaysAgo: 28, durationDays: 4 },
+  { title: 'Complete Apartment Deep Clean', description: 'Decluttered closets, donated items, and reorganized workspace.', quest_type: 'side', category: 'personal', tags: ['home', 'organization'], priority: 6, importance: 5, impact: 4, completedDaysAgo: 14, durationDays: 2 },
+  { title: 'Pass AWS Cloud Practitioner', description: 'Studied and passed certification exam.', quest_type: 'achievement', category: 'education', tags: ['aws', 'certification'], priority: 7, importance: 7, impact: 7, completedDaysAgo: 180, durationDays: 30 },
+  { title: 'Write 30 Journal Entries', description: 'Hit monthly journaling goal with morning pages.', quest_type: 'daily', category: 'personal', tags: ['journaling', 'reflection'], priority: 6, importance: 7, impact: 6, completedDaysAgo: 5, durationDays: 30 },
+  { title: 'Launch GitHub Open Source Template', description: 'Published starter template used by two side projects.', quest_type: 'side', category: 'career', tags: ['open-source', 'github'], priority: 6, importance: 6, impact: 6, completedDaysAgo: 160, durationDays: 8 },
+  { title: 'Plan Q1 Creative Goals', description: 'Mapped EP release, portfolio, and income targets for the quarter.', quest_type: 'main', category: 'planning', tags: ['goals', 'quarterly'], priority: 8, importance: 8, impact: 7, completedDaysAgo: 105, durationDays: 3 },
+  { title: 'Complete Therapy Intake Series', description: 'Finished initial six sessions and set ongoing cadence.', quest_type: 'main', category: 'health', tags: ['therapy', 'wellbeing'], priority: 9, importance: 9, impact: 9, completedDaysAgo: 150, durationDays: 42 },
+  { title: 'Fix Bike and Commute Twice Weekly', description: 'Repaired brakes and established bike commute habit.', quest_type: 'daily', category: 'health', tags: ['bike', 'commute'], priority: 5, importance: 6, impact: 5, completedDaysAgo: 42, durationDays: 21 },
+  { title: 'Edit Wedding Video for Cousin', description: 'Delivered highlight reel and full ceremony cut.', quest_type: 'side', category: 'creative', tags: ['video', 'family'], priority: 6, importance: 6, impact: 6, completedDaysAgo: 210, durationDays: 20 },
+  { title: 'Set Up Automated Backups', description: 'Configured cloud backups for projects, photos, and DAW files.', quest_type: 'side', category: 'admin', tags: ['backup', 'tech'], priority: 7, importance: 7, impact: 6, completedDaysAgo: 88, durationDays: 2 },
+  { title: 'Finish Short Story Draft', description: 'Completed 4,200-word draft for writers\' group.', quest_type: 'side', category: 'creative', tags: ['writing', 'fiction'], priority: 6, importance: 7, impact: 6, completedDaysAgo: 35, durationDays: 18 },
+  { title: 'Host Studio Listening Party', description: 'Shared EP works-in-progress with close friends for feedback.', quest_type: 'side', category: 'community', tags: ['music', 'feedback'], priority: 5, importance: 6, impact: 6, completedDaysAgo: 20, durationDays: 5 },
+  { title: 'Complete LinkedIn Profile Overhaul', description: 'Rewrote headline, added portfolio links, and refreshed recommendations.', quest_type: 'side', category: 'career', tags: ['linkedin', 'branding'], priority: 6, importance: 7, impact: 6, completedDaysAgo: 72, durationDays: 4 },
+  { title: 'Learn Fingerstyle Guitar Basics', description: 'Practiced daily and learned three complete pieces.', quest_type: 'side', category: 'creative', tags: ['guitar', 'practice'], priority: 5, importance: 6, impact: 5, completedDaysAgo: 125, durationDays: 40 },
+  { title: 'Run No-Spend Month', description: 'Tracked expenses and avoided non-essential purchases for 30 days.', quest_type: 'achievement', category: 'finance', tags: ['budget', 'savings'], priority: 7, importance: 8, impact: 7, completedDaysAgo: 240, durationDays: 30 },
+  { title: 'Migrate Notes to LoreKeeper', description: 'Imported old journals and tagged key life chapters.', quest_type: 'main', category: 'personal', tags: ['journal', 'migration'], priority: 8, importance: 8, impact: 8, completedDaysAgo: 7, durationDays: 6, source: 'extracted' },
+  { title: 'Complete Client Retainer Renewal', description: 'Negotiated and signed renewed six-month retainer.', quest_type: 'main', category: 'career', tags: ['client', 'income'], priority: 9, importance: 9, impact: 9, completedDaysAgo: 3, durationDays: 10 },
+  { title: 'Finish Annual Health Checkup', description: 'Completed physical, labs, and follow-up plan.', quest_type: 'side', category: 'health', tags: ['health', 'checkup'], priority: 7, importance: 8, impact: 6, completedDaysAgo: 50, durationDays: 14 },
+  { title: 'Build Sample Pack for Drums', description: 'Recorded and packaged 24 one-shot samples for EP production.', quest_type: 'side', category: 'creative', tags: ['samples', 'drums'], priority: 6, importance: 6, impact: 6, completedDaysAgo: 30, durationDays: 9 },
+  { title: 'Complete 50 Push-Up Challenge', description: 'Worked up to 50 consecutive push-ups over four weeks.', quest_type: 'achievement', category: 'health', tags: ['fitness', 'challenge'], priority: 5, importance: 5, impact: 5, completedDaysAgo: 115, durationDays: 28 },
+  { title: 'Organize Music Sample Library', description: 'Tagged 800+ samples and removed duplicates.', quest_type: 'side', category: 'creative', tags: ['samples', 'organization'], priority: 5, importance: 5, impact: 5, completedDaysAgo: 62, durationDays: 4 },
+  { title: 'Write Thank-You Notes Post-Launch', description: 'Sent personalized notes to everyone who supported EP preview.', quest_type: 'side', category: 'relationships', tags: ['gratitude', 'community'], priority: 4, importance: 5, impact: 4, completedDaysAgo: 16, durationDays: 2 },
+  { title: 'Complete Intro to Ableton Course', description: 'Finished DAW workflow modules and built practice arrangement.', quest_type: 'side', category: 'education', tags: ['ableton', 'music'], priority: 7, importance: 7, impact: 7, completedDaysAgo: 175, durationDays: 21 },
+  { title: 'Plan Weekly Creative Review Ritual', description: 'Established Sunday review for goals, habits, and next steps.', quest_type: 'daily', category: 'productivity', tags: ['review', 'habits'], priority: 6, importance: 7, impact: 6, completedDaysAgo: 45, durationDays: 7 },
+  { title: 'Deliver Brand Assets to Café Client', description: 'Handed off logo variants, color tokens, and usage guide.', quest_type: 'main', category: 'career', tags: ['branding', 'client'], priority: 8, importance: 8, impact: 8, completedDaysAgo: 9, durationDays: 21 },
+  { title: 'Complete Digital Detox Weekend', description: 'Unplugged for 48 hours and journaled reflections after.', quest_type: 'side', category: 'health', tags: ['detox', 'mindfulness'], priority: 5, importance: 6, impact: 5, completedDaysAgo: 58, durationDays: 2 },
+];
+
+function makeCompletedQuest(id: string, t: CompletedTemplate): Quest {
+  const completedAt = daysAgo(t.completedDaysAgo);
+  const startedAt = daysAgo(t.completedDaysAgo + t.durationDays);
+  const hours = Math.max(2, Math.round(t.durationDays * 1.5 + t.impact));
+  return {
+    id,
+    user_id: 'user-1',
+    title: t.title,
+    description: t.description,
+    quest_type: t.quest_type,
+    priority: t.priority,
+    importance: t.importance,
+    impact: t.impact,
+    difficulty: Math.min(9, Math.max(3, Math.round(t.impact * 0.8))),
+    effort_hours: hours,
+    status: 'completed',
+    started_at: startedAt.toISOString(),
+    completed_at: completedAt.toISOString(),
+    progress_percentage: 100,
+    completion_notes: t.completionNotes ?? 'Completed and logged in Quest Log.',
+    milestones: [
+      { id: 'm1', description: 'Started quest', achieved: true, achieved_at: startedAt.toISOString() },
+      { id: 'm2', description: 'Reached midpoint', achieved: true, achieved_at: daysAgo(t.completedDaysAgo + Math.floor(t.durationDays / 2)).toISOString() },
+      { id: 'm3', description: 'Finished quest', achieved: true, achieved_at: completedAt.toISOString() },
+    ],
+    reward_description: 'Another chapter closed — progress you can see.',
+    motivation_notes: 'Logged from conversations and journal entries.',
+    estimated_completion_date: completedAt.toISOString(),
+    actual_completion_date: completedAt.toISOString(),
+    time_spent_hours: hours,
+    tags: t.tags,
+    category: t.category,
+    source: t.source ?? 'extracted',
+    created_at: startedAt.toISOString(),
+    updated_at: completedAt.toISOString(),
+    last_activity_at: completedAt.toISOString(),
+  };
+}
+
+export const MOCK_COMPLETED_QUESTS: Quest[] = COMPLETED_QUEST_TEMPLATES.map((t, i) =>
+  makeCompletedQuest(`quest-completed-${i + 1}`, t)
+);
+
+const MOCK_IN_PROGRESS_QUESTS: Quest[] = [
   {
     id: 'quest-1',
     user_id: 'user-1',
@@ -186,40 +300,6 @@ export const MOCK_QUESTS: Quest[] = [
     created_at: lastMonth.toISOString(),
     updated_at: new Date(lastMonth.getTime() + 20 * 24 * 60 * 60 * 1000).toISOString(),
     last_activity_at: new Date(lastMonth.getTime() + 20 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'quest-7',
-    user_id: 'user-1',
-    title: 'Complete Project X',
-    description: 'Finish the client project with all requirements met and delivered on time.',
-    quest_type: 'main',
-    priority: 10,
-    importance: 9,
-    impact: 9,
-    difficulty: 8,
-    effort_hours: 80,
-    status: 'completed',
-    started_at: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-    completed_at: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    progress_percentage: 100,
-    completion_notes: 'Successfully delivered all features. Client was very happy with the result.',
-    milestones: [
-      { id: 'm1', description: 'Complete planning phase', achieved: true, achieved_at: new Date(now.getTime() - 55 * 24 * 60 * 60 * 1000).toISOString() },
-      { id: 'm2', description: 'Complete development phase', achieved: true, achieved_at: new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000).toISOString() },
-      { id: 'm3', description: 'Complete testing phase', achieved: true, achieved_at: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString() },
-      { id: 'm4', description: 'Deliver to client', achieved: true, achieved_at: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString() },
-    ],
-    reward_description: 'Client payment, positive review, portfolio addition',
-    motivation_notes: 'This project will help establish my reputation as a reliable developer.',
-    estimated_completion_date: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    actual_completion_date: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    time_spent_hours: 75,
-    tags: ['client-work', 'project', 'career'],
-    category: 'career',
-    source: 'manual',
-    created_at: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-    updated_at: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    last_activity_at: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
   },
   {
     id: 'quest-8',
@@ -591,6 +671,11 @@ export const MOCK_QUESTS: Quest[] = [
   },
 ];
 
+export const MOCK_QUESTS: Quest[] = [
+  ...MOCK_IN_PROGRESS_QUESTS,
+  ...MOCK_COMPLETED_QUESTS,
+];
+
 // Calculate time-based quests for mock data
 const calculateTodaysQuests = () => {
   const today = new Date();
@@ -699,38 +784,103 @@ export const MOCK_QUEST_ANALYTICS: QuestAnalytics = {
     abandoned: MOCK_QUESTS.filter(q => q.status === 'abandoned').length,
     archived: MOCK_QUESTS.filter(q => q.status === 'archived').length,
   },
-  average_completion_time_hours: 50,
-  completion_rate: 0.14, // 1 out of 7 completed
+  average_completion_time_hours: 28,
+  completion_rate: MOCK_QUESTS.filter(q => q.status === 'completed').length / MOCK_QUESTS.length,
   average_priority: MOCK_QUESTS.reduce((sum, q) => sum + q.priority, 0) / MOCK_QUESTS.length,
   average_importance: MOCK_QUESTS.reduce((sum, q) => sum + q.importance, 0) / MOCK_QUESTS.length,
   average_impact: MOCK_QUESTS.reduce((sum, q) => sum + q.impact, 0) / MOCK_QUESTS.length,
   most_impactful_quests: MOCK_QUESTS.sort((a, b) => b.impact - a.impact).slice(0, 3),
   quest_activity_timeline: [
-    { date: lastMonth.toISOString().split('T')[0], created: 2, completed: 0, abandoned: 0 },
-    { date: lastWeek.toISOString().split('T')[0], created: 3, completed: 0, abandoned: 0 },
-    { date: yesterday.toISOString().split('T')[0], created: 1, completed: 1, abandoned: 0 },
+    { date: daysAgo(180).toISOString().split('T')[0], created: 4, completed: 2, abandoned: 0 },
+    { date: daysAgo(90).toISOString().split('T')[0], created: 3, completed: 5, abandoned: 0 },
+    { date: daysAgo(30).toISOString().split('T')[0], created: 2, completed: 8, abandoned: 0 },
+    { date: daysAgo(7).toISOString().split('T')[0], created: 1, completed: 3, abandoned: 0 },
+    { date: yesterday.toISOString().split('T')[0], created: 0, completed: 2, abandoned: 0 },
   ],
 };
 
 export const MOCK_QUEST_SUGGESTIONS: QuestSuggestion[] = [
+  // High-confidence "detected" quests — pulled almost verbatim from recent chats.
   {
-    title: 'Start Morning Meditation Routine',
-    description: 'Based on your journal entries about stress and anxiety, a daily meditation practice could help improve your mental well-being.',
-    quest_type: 'daily',
-    priority: 6,
-    importance: 7,
-    impact: 6,
-    confidence: 0.85,
-    reasoning: 'You mentioned feeling stressed in recent entries. Meditation has been shown to reduce stress and improve focus.',
+    id: 'mock-qs-finish-ep',
+    title: 'Finish Mixing the EP',
+    description: 'You and Alex Rivera have three of five tracks mixed. Block studio time to finish the last two and lock the master.',
+    quest_type: 'main',
+    priority: 9,
+    importance: 9,
+    impact: 9,
+    confidence: 0.94,
+    reasoning: 'You keep returning to the EP in conversation and mentioned only two tracks remain before mastering.',
+    source_entry_id: 'mock-chat-ep-session',
   },
   {
-    title: 'Network with Industry Professionals',
-    description: 'You expressed interest in finding new opportunities. Attending networking events or joining professional communities could help.',
+    id: 'mock-qs-cafe-referral',
+    title: 'Ask the Café Client for a Referral',
+    description: 'The branding handoff went well. Follow up to ask if they know other local businesses who need similar work.',
+    quest_type: 'side',
+    priority: 8,
+    importance: 8,
+    impact: 8,
+    confidence: 0.89,
+    reasoning: 'You said the café owner was thrilled with the brand assets — a warm referral is the fastest path to your next contract.',
+    source_entry_id: 'mock-chat-cafe-handoff',
+  },
+  {
+    id: 'mock-qs-cowrite-alex',
+    title: 'Plan a Co-Writing Session with Alex Rivera',
+    description: 'Schedule a dedicated writing block to start the next batch of songs while the momentum from the EP is still fresh.',
     quest_type: 'side',
     priority: 7,
     importance: 8,
     impact: 7,
-    confidence: 0.75,
-    reasoning: 'Career growth is important to you, and networking is a key factor in professional development.',
+    confidence: 0.86,
+    reasoning: 'You and Alex have collaborated well on the demo reel and EP; you mentioned wanting to "keep writing before the spark fades."',
+    source_entry_id: 'mock-chat-alex-cowrite',
+  },
+  {
+    id: 'mock-qs-tax-buffer',
+    title: 'Set Up a Quarterly Tax Savings Buffer',
+    description: 'Now that freelance income is steady, move a fixed percentage of each payment into a separate tax account.',
+    quest_type: 'main',
+    priority: 8,
+    importance: 9,
+    impact: 8,
+    confidence: 0.83,
+    reasoning: 'You filed last year\'s taxes manually and flagged how stressful the lump sum was — automating savings prevents a repeat.',
+    source_entry_id: 'mock-chat-freelance-income',
+  },
+  // Mid-confidence "suggested" quests — AI inferences from patterns across your story.
+  {
+    id: 'mock-qs-newsletter-growth',
+    title: 'Grow Signal & Story to 500 Subscribers',
+    description: 'Your newsletter has momentum after three issues. Set a concrete subscriber target and a simple weekly promotion habit.',
+    quest_type: 'main',
+    priority: 7,
+    importance: 8,
+    impact: 8,
+    confidence: 0.78,
+    reasoning: 'You launched the newsletter recently and it ties directly to your goal of building a creative income stream.',
+  },
+  {
+    id: 'mock-qs-ep-release-plan',
+    title: 'Draft an EP Release Plan',
+    description: 'Map out the release: distribution, cover art, a single, and a small launch showcase with Marcus and friends.',
+    quest_type: 'side',
+    priority: 7,
+    importance: 7,
+    impact: 7,
+    confidence: 0.74,
+    reasoning: 'With the EP nearly mixed, a release plan turns finished tracks into an actual launch rather than files on a drive.',
+  },
+  {
+    id: 'mock-qs-strength-training',
+    title: 'Add a Twice-Weekly Strength Routine',
+    description: 'You\'ve kept up running and the meditation streak — pairing in two short strength sessions rounds out your health habits.',
+    quest_type: 'daily',
+    priority: 5,
+    importance: 6,
+    impact: 6,
+    confidence: 0.68,
+    reasoning: 'Your health quests (5K, meditation, sleep) show consistency; strength work is a natural next step you haven\'t started.',
   },
 ];

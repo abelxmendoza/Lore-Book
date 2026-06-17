@@ -114,17 +114,30 @@ class SocialStandingService {
 
       // Saturating signals so one chatty week doesn't dominate forever
       const sat = (v: number, k: number) => v / (v + k);
+      const isPublicFigure = Boolean(c.metadata?.public_figure);
+      const pfConnection = c.metadata?.public_figure_connection as { stage?: string; confidence?: number } | undefined;
+      const stageBoost: Record<string, number> = {
+        distant_fan: 0,
+        scene_presence: 0.08,
+        brief_contact: 0.15,
+        growing: 0.22,
+        connected: 0.3,
+      };
+      const connectionBoost = isPublicFigure ? (stageBoost[pfConnection?.stage ?? ''] ?? 0) : 0;
+
       const score = Math.min(1,
         0.30 * sat(mentions, 6) +
         0.20 * sat(facts, 5) +
         0.20 * depth +
         0.15 * sat(degree + events, 4) +
-        0.15 * recency
+        0.15 * recency +
+        connectionBoost
       );
 
-      const isPublicFigure = Boolean(c.metadata?.public_figure);
       const computedTier: SocialStanding['tier'] =
-        isPublicFigure && score < 0.6 ? 'public_figure'
+        isPublicFigure && score < 0.6 && (pfConnection?.stage === 'distant_fan' || !pfConnection?.stage) ? 'public_figure'
+        : isPublicFigure && (pfConnection?.stage === 'brief_contact' || pfConnection?.stage === 'growing' || pfConnection?.stage === 'connected') ? (score >= 0.4 ? 'close' : 'regular')
+        : isPublicFigure && pfConnection?.stage === 'scene_presence' ? 'regular'
         : score >= 0.6 ? 'inner_circle'
         : score >= 0.4 ? 'close'
         : score >= 0.2 ? 'regular'

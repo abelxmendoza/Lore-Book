@@ -12,6 +12,7 @@ import { useTermsAcceptance } from '../hooks/useTermsAcceptance';
 import { useGuest } from '../contexts/GuestContext';
 import { useMockData } from '../contexts/MockDataContext';
 import { useRuntimeIdentity } from '../hooks/useRuntimeIdentity';
+import { InferenceSyncProvider } from './InferenceSyncProvider';
 
 const AuthScreen = ({ onEmailLogin, onGuestLogin, onDemoMode }: { onEmailLogin: (email: string) => Promise<void>; onGuestLogin: () => void; onDemoMode: () => void }) => {
   const [email, setEmail] = useState('');
@@ -417,5 +418,9 @@ export const AuthGate = ({ children }: { children: ReactNode }) => {
     }
   }
 
-  return <>{children}</>;
+  return (
+    <InferenceSyncProvider>
+      {children}
+    </InferenceSyncProvider>
+  );
 };

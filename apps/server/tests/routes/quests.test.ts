@@ -39,6 +39,11 @@ vi.mock('../../src/services/quests', () => ({
   questExtractor: {
     extractQuests: vi.fn(),
   },
+  questSuggestionService: {
+    getPendingSuggestions: vi.fn().mockResolvedValue([]),
+    hasAnySuggestions: vi.fn().mockResolvedValue(false),
+    upsertSuggestions: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
 const app = express();

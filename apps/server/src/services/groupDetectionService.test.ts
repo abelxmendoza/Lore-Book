@@ -81,7 +81,7 @@ describe('groupDetectionService', () => {
       'I was contacted about my I-9 and background check for the agency K-force thats hiring me for the Amazon job.'
     );
 
-    const kforce = groups.find(group => group.name === 'TechStaff');
+    const kforce = groups.find(group => group.name === 'Kforce');
     expect(kforce).toBeDefined();
     expect(kforce?.group_type).toBe('company');
     // Even though "Amazon" appears in the same sentence, the agency is not a
@@ -117,11 +117,11 @@ describe('groupDetectionService', () => {
       'Sam the recruiter and Kelly both work for TechStaff and are handling my onboarding.'
     );
 
-    const kforce = groups.find(group => group.name === 'TechStaff');
-    expect(kforce).toBeDefined();
-    expect(kforce?.group_type).toBe('company');
-    expect(kforce?.is_public_entity).toBe(false);
-    expect(kforce?.members).toEqual(expect.arrayContaining(['Sam', 'Kelly']));
+    const agency = groups.find(group => group.name === 'TechStaff');
+    expect(agency).toBeDefined();
+    expect(agency?.group_type).toBe('company');
+    expect(agency?.is_public_entity).toBe(false);
+    expect(agency?.members).toEqual(expect.arrayContaining(['Sam', 'Kelly']));
   });
 
   it('classifies suppliers and contractors as vendors', () => {

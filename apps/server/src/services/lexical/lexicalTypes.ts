@@ -166,6 +166,7 @@ export interface GlossaryMatch {
   relationshipHint?: string;
   queryHint?: string;
   actionHint?: string;
+  surfaceTarget?: string;
   confidence: number;
 }
 

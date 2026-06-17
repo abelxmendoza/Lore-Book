@@ -46,6 +46,106 @@ export type SelfProfile = {
   contextHooks: string[];
 };
 
+type CharacterRow = Record<string, unknown> & {
+  id: string;
+  name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  metadata?: Record<string, unknown> | null;
+  importance_level?: string | null;
+  created_at?: string | null;
+};
+
+function normalizeIdentityKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+async function getUserIdentityNames(userId: string): Promise<string[]> {
+  const names = new Set<string>();
+  try {
+    const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
+    const meta = data.user?.user_metadata ?? {};
+    const fullName = String(meta.full_name ?? meta.name ?? '').trim();
+    if (fullName) {
+      names.add(normalizeIdentityKey(fullName));
+      fullName.split(/\s+/).filter((part) => part.length > 1).forEach((part) => names.add(normalizeIdentityKey(part)));
+    }
+  } catch {
+    /* non-blocking */
+  }
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('first_name, last_name')
+      .eq('user_id', userId)
+      .maybeSingle();
+    const profileName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ').trim();
+    if (profileName) {
+      names.add(normalizeIdentityKey(profileName));
+      profileName.split(/\s+/).filter((part) => part.length > 1).forEach((part) => names.add(normalizeIdentityKey(part)));
+    }
+  } catch {
+    /* non-blocking */
+  }
+  return Array.from(names);
+}
+
+function nameMatchesUserIdentity(name: string, identityNames: string[]): boolean {
+  if (!name.trim() || identityNames.length === 0) return false;
+  const key = normalizeIdentityKey(name);
+  return identityNames.some((identity) => key === identity || key.includes(identity) || identity.includes(key));
+}
+
+function isReservedSelfName(name: string): boolean {
+  return /^(me|myself|self|you)$/i.test(name.trim());
+}
+
+function scoreSelfCandidate(character: CharacterRow, identityNames: string[]): number {
+  const metadata = (character.metadata ?? {}) as Record<string, unknown>;
+  if (metadata.distinct_from_self === true || metadata.confirmed_distinct === true) return -1000;
+
+  let score = 0;
+  const name = String(character.name ?? '');
+  const realName = typeof metadata.real_name === 'string' ? metadata.real_name : '';
+
+  if (isReservedSelfName(name)) score += 120;
+  if (realName.trim()) score += 80;
+  if (identityNames.length && nameMatchesUserIdentity(name, identityNames)) score += 90;
+  if (realName && identityNames.length && nameMatchesUserIdentity(realName, identityNames)) score += 100;
+  if (metadata.is_self === true) score += 40;
+  if (metadata.is_user === true) score += 30;
+  if (character.importance_level === 'protagonist') score += 15;
+
+  if (!isReservedSelfName(name) && identityNames.length > 0 && !nameMatchesUserIdentity(name, identityNames)) {
+    score -= 60;
+  }
+  if (name.includes(' / ')) score -= 20;
+
+  return score;
+}
+
+async function getPreferredRealName(userId: string): Promise<string | null> {
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('first_name, last_name')
+      .eq('user_id', userId)
+      .maybeSingle();
+    const profileName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ').trim();
+    if (profileName) return profileName;
+  } catch {
+    /* non-blocking */
+  }
+  try {
+    const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
+    const fullName = String(data.user?.user_metadata?.full_name ?? data.user?.user_metadata?.name ?? '').trim();
+    if (fullName) return fullName;
+  } catch {
+    /* non-blocking */
+  }
+  return null;
+}
+
 function buildProfileSummary(
   attributes: DetectedAttribute[],
   facts: Awaited<ReturnType<typeof entityFactsService.getEntityFacts>>
@@ -78,7 +178,128 @@ function buildProfileSummary(
 }
 
 class SelfCharacterService {
+  /**
+   * Fix corrupted protagonist identity — e.g. a third-party card (stage name) that
+   * inherited `is_self` or absorbed the self row during a bad merge.
+   */
+  async repairSelfCharacterIdentity(userId: string): Promise<{ repaired: boolean; selfId: string | null }> {
+    const { data: characters, error } = await supabaseAdmin
+      .from('characters')
+      .select('id, name, first_name, last_name, metadata, importance_level, created_at')
+      .eq('user_id', userId);
+
+    if (error) {
+      logger.warn({ error, userId }, 'repairSelfCharacterIdentity: failed to load characters');
+      return { repaired: false, selfId: null };
+    }
+
+    const rows = (characters ?? []) as CharacterRow[];
+    if (rows.length === 0) return { repaired: false, selfId: null };
+
+    const identityNames = await getUserIdentityNames(userId);
+    const candidates = rows.filter((row) => {
+      const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+      if (metadata.distinct_from_self === true || metadata.confirmed_distinct === true) return false;
+      return (
+        metadata.is_self === true ||
+        metadata.is_user === true ||
+        isReservedSelfName(String(row.name ?? ''))
+      );
+    });
+
+    let canonical = [...candidates].sort(
+      (a, b) => scoreSelfCandidate(b, identityNames) - scoreSelfCandidate(a, identityNames)
+    )[0];
+
+    let repaired = false;
+
+    const demoteSelfFlags = async (characterId: string) => {
+      const row = rows.find((item) => item.id === characterId);
+      if (!row) return;
+      const metadata = {
+        ...((row.metadata ?? {}) as Record<string, unknown>),
+        is_self: false,
+        is_user: false,
+      };
+      const { error: updateError } = await supabaseAdmin
+        .from('characters')
+        .update({ metadata, updated_at: new Date().toISOString() })
+        .eq('id', characterId)
+        .eq('user_id', userId);
+      if (!updateError) repaired = true;
+    };
+
+    for (const row of rows) {
+      const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+      const flagged = metadata.is_self === true || metadata.is_user === true;
+      if (!flagged) continue;
+      if (!canonical || row.id !== canonical.id) {
+        await demoteSelfFlags(row.id);
+      }
+    }
+
+    if (!canonical || scoreSelfCandidate(canonical, identityNames) < 0) {
+      if (canonical) await demoteSelfFlags(canonical.id);
+      return { repaired, selfId: null };
+    }
+
+    const metadata = { ...((canonical.metadata ?? {}) as Record<string, unknown>) };
+    const realName =
+      (typeof metadata.real_name === 'string' && metadata.real_name.trim()) ||
+      (await getPreferredRealName(userId));
+
+    const canonicalName = String(canonical.name ?? '');
+    const nameWasCorrupted =
+      !isReservedSelfName(canonicalName) &&
+      identityNames.length > 0 &&
+      !nameMatchesUserIdentity(canonicalName, identityNames);
+
+    const updatePayload: Record<string, unknown> = {
+      metadata: {
+        ...metadata,
+        is_self: true,
+        is_user: true,
+        ...(realName ? { real_name: realName } : {}),
+        ...(nameWasCorrupted ? { previous_primary_name: canonicalName } : {}),
+      },
+      importance_level: 'protagonist',
+      archetype: 'protagonist',
+      updated_at: new Date().toISOString(),
+    };
+
+    if (nameWasCorrupted) {
+      updatePayload.name = 'Me';
+      if (realName) {
+        const parts = realName.split(/\s+/).filter(Boolean);
+        updatePayload.first_name = parts[0] ?? realName;
+        updatePayload.last_name = parts.length > 1 ? parts.slice(1).join(' ') : null;
+      }
+      repaired = true;
+    }
+
+    const { error: canonicalError } = await supabaseAdmin
+      .from('characters')
+      .update(updatePayload)
+      .eq('id', canonical.id)
+      .eq('user_id', userId);
+
+    if (canonicalError) {
+      logger.warn({ canonicalError, userId, characterId: canonical.id }, 'repairSelfCharacterIdentity: canonical update failed');
+      return { repaired, selfId: canonical.id };
+    }
+
+    if (nameWasCorrupted) {
+      logger.info(
+        { userId, characterId: canonical.id, previousName: canonicalName, realName },
+        'Repaired corrupted protagonist identity'
+      );
+    }
+
+    return { repaired: repaired || nameWasCorrupted, selfId: canonical.id };
+  }
+
   async ensureSelfCharacter(userId: string): Promise<Record<string, unknown> | null> {
+    await this.repairSelfCharacterIdentity(userId);
     const ref = await entityAttributeDetector.ensureUserCharacter(userId);
     if (!ref) return null;
 

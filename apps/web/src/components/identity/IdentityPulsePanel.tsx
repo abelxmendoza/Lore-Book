@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { useIdentityPulse } from '../../hooks/useIdentityPulse';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
 import { IdentityPulseHeader } from './IdentityPulseHeader';
 import { IdentitySnapshot } from './IdentitySnapshot';
 import { MotifEvolution } from './MotifEvolution';
 import { IdentityStatements } from './IdentityStatements';
 import { ReflectiveInsights } from './ReflectiveInsights';
 import { LoadingSkeleton } from '../discovery/LoadingSkeleton';
+import { EmptyState } from '../discovery/EmptyState';
 import type { IdentityPulse } from '../../api/identity';
 
 // Mock data for demonstration
@@ -125,16 +127,27 @@ export const IdentityPulsePanel = () => {
   const [timeRange, setTimeRange] = useState<string>('30');
   const [compareMode, setCompareMode] = useState(false);
   const [selectedMotif, setSelectedMotif] = useState<string | null>(null);
-  const { pulse, loading, refresh } = useIdentityPulse(timeRange);
+  const shouldUseMock = useShouldUseMockData();
+  const { pulse, loading } = useIdentityPulse(timeRange);
   const { pulse: pastPulse } = useIdentityPulse('180'); // For compare mode
 
-  // Use mock data if no real data available
-  const displayPulse = pulse || MOCK_IDENTITY_PULSE;
-  const displayPastPulse = compareMode ? (pastPulse || MOCK_IDENTITY_PULSE) : null;
-  const isMockData = !pulse;
+  const displayPulse = pulse ?? (shouldUseMock ? MOCK_IDENTITY_PULSE : null);
+  const displayPastPulse = compareMode
+    ? (pastPulse ?? (shouldUseMock ? MOCK_IDENTITY_PULSE : null))
+    : null;
+  const isMockData = shouldUseMock && !pulse;
 
-  if (loading && !pulse) {
+  if (loading && !displayPulse) {
     return <LoadingSkeleton />;
+  }
+
+  if (!displayPulse) {
+    return (
+      <EmptyState
+        title="No identity data yet"
+        description="Keep journaling and your identity pulse will appear here as patterns emerge."
+      />
+    );
   }
 
   return (

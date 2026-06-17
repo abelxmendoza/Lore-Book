@@ -88,13 +88,15 @@ export function getOpenAIConcurrency() {
 }
 
 // Wrap chat.completions.create once, globally. Preserves streaming + non-streaming.
-const _rawCreate = openai.chat.completions.create.bind(openai.chat.completions);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(openai.chat.completions as any).create = (...args: any[]) => {
-  const [params, ...rest] = args;
-  const normalized = normalizeOpenAIChatParams((params ?? {}) as TokenParams);
-  return openaiSemaphore.run(() => _rawCreate(normalized, ...rest));
-};
+if (openai.chat?.completions?.create) {
+  const _rawCreate = openai.chat.completions.create.bind(openai.chat.completions);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (openai.chat.completions as any).create = (...args: any[]) => {
+    const [params, ...rest] = args;
+    const normalized = normalizeOpenAIChatParams((params ?? {}) as TokenParams);
+    return openaiSemaphore.run(() => _rawCreate(normalized, ...rest));
+  };
+}
 
 // Responses API chat path must share the same gate; otherwise flipping
 // OPENAI_CHAT_USE_RESPONSES reintroduces the same detector fan-out 429 storm.

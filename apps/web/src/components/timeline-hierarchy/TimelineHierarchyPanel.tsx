@@ -236,6 +236,7 @@ export const TimelineHierarchyPanel = () => {
           currentItemId={currentTimelineItem}
           onItemClick={handleTimelineItemClick}
           showLabel={true}
+          useDummyData={false}
         />
       </div>
 

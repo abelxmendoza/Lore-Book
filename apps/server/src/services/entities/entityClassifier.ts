@@ -74,6 +74,7 @@ const PLACES = new Set([
 
 const VENUES = new Set([
   'club metro',
+  'blue room',
 ]);
 
 const BANDS_AND_ORGS = new Set([

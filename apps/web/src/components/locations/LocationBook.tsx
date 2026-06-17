@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { MapPin, RefreshCw, ChevronLeft, ChevronRight, SlidersHorizontal, X, BookOpen } from 'lucide-react';
-import { classifyLocation, KIND_META, type LocationKind } from '../../lib/locationTaxonomy';
+import { classifyLocation, KIND_META, isTopLevelPlace, type LocationKind } from '../../lib/locationTaxonomy';
 import {
   PLACE_ADVANCED_FILTER_GROUPS,
   PLACE_LIFESTYLE_FILTERS,
@@ -447,10 +447,17 @@ export const LocationBook = () => {
       );
       
       setLocations(result.data);
+      setSelectedLocation((sel) => {
+        if (!sel) return null;
+        const updated = result.data.find((l) => l.id === sel.id);
+        return updated ?? sel;
+      });
     } catch {
-      // On error, use mock data if enabled
-      const result = mockDataService.getWithFallback.locations(null, isMockDataEnabled);
-      setLocations(result.data);
+      setLocations((prev) => {
+        if (prev.length > 0) return prev;
+        const result = mockDataService.getWithFallback.locations(null, isMockDataEnabled);
+        return result.data;
+      });
     } finally {
       setLoading(false);
     }
@@ -458,6 +465,9 @@ export const LocationBook = () => {
 
   useEffect(() => {
     void loadLocations();
+    const onInference = () => { void loadLocations(); };
+    window.addEventListener('lk:inference-complete', onInference);
+    return () => window.removeEventListener('lk:inference-complete', onInference);
   }, []);
 
   // Refresh when mock data toggle changes
@@ -485,7 +495,7 @@ export const LocationBook = () => {
   }, [selectedAdvancedFilter]);
 
   const filteredLocations = useMemo(() => {
-    let locs = locations;
+    let locs = locations.filter(isTopLevelPlace);
 
     locs = locs.filter(loc => placeMatchesLifestyleFilter(loc, selectedLifestyle));
 
@@ -872,6 +882,7 @@ export const LocationBook = () => {
                   <LocationProfileCard
                     key={location.id || `loc-${index}`}
                     location={location}
+                    allLocations={locations}
                     selectionMode={selectionMode}
                     selected={selectedForMerge.has(location.id)}
                     onClick={() =>

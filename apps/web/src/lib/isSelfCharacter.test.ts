@@ -12,4 +12,13 @@ describe('isSelfCharacter', () => {
     expect(isSelfCharacter({ id: '1', name: 'Me' } as Character)).toBe(true);
     expect(isSelfCharacter({ id: '1', name: 'Sarah' } as Character)).toBe(false);
   });
+
+  it('ignores characters explicitly marked distinct from self', () => {
+    const c = {
+      id: '1',
+      name: 'Hell Fairy',
+      metadata: { is_self: true, distinct_from_self: true },
+    } as Character;
+    expect(isSelfCharacter(c)).toBe(false);
+  });
 });

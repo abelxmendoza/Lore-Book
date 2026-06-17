@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { TreePine, Home, Users, BarChart3, Loader2 } from 'lucide-react';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
+import { useShouldUseMockData } from '../../hooks/useShouldUseMockData';
+import { DEMO_FAMILY_SUMMARY, DEMO_FAMILY_CHARACTERS_BY_ID } from '../../mocks/family';
 import { FamilyTreePanel } from './FamilyTreePanel';
 import { HierarchicalFamilyTree } from './HierarchicalFamilyTree';
+import { FamilyTreeView } from './FamilyTreeView';
 import { HouseholdDirectory, type HouseholdDTO } from './HouseholdDirectory';
 import { FamilyAnalyticsPanel, type RelationshipAnalyticDTO } from './FamilyAnalyticsPanel';
 import { CharacterDetailModal } from '../characters/CharacterDetailModal';
@@ -21,6 +24,7 @@ type SummaryResponse = {
 };
 
 export function FamilyBook() {
+  const shouldUseMock = useShouldUseMockData();
   const [tab, setTab] = useState<Tab>('tree');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
@@ -28,6 +32,12 @@ export function FamilyBook() {
   const [viewMode, setViewMode] = useState<'hierarchical' | 'visual'>('hierarchical');
 
   const load = useCallback(async () => {
+    if (shouldUseMock) {
+      setSummary(DEMO_FAMILY_SUMMARY);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const data = await fetchJson<SummaryResponse>('/api/family/summary');
@@ -37,7 +47,7 @@ export function FamilyBook() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [shouldUseMock]);
 
   useEffect(() => {
     void load();
@@ -47,6 +57,15 @@ export function FamilyBook() {
 
   const openCharacter = async (characterId: string, name: string) => {
     if (characterId.startsWith('head-') || characterId.startsWith('group-') || characterId.startsWith('__')) return;
+
+    if (shouldUseMock) {
+      const mockCharacter = DEMO_FAMILY_CHARACTERS_BY_ID[characterId];
+      setSelectedCharacter(
+        mockCharacter ?? ({ id: characterId, name, user_id: '', status: 'active' } as Character)
+      );
+      return;
+    }
+
     try {
       const r = await fetchJson<{ character?: Character }>(`/api/characters/${characterId}`);
       if (r.character) setSelectedCharacter(r.character);
@@ -69,6 +88,11 @@ export function FamilyBook() {
         <h1 className="text-2xl sm:text-3xl font-semibold text-white flex items-center gap-3">
           <TreePine className="h-7 w-7 text-emerald-400" />
           Family
+          {shouldUseMock && (
+            <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-full border border-emerald-500/35 bg-emerald-500/10 text-emerald-200">
+              Demo mode
+            </span>
+          )}
         </h1>
         <p className="text-sm text-white/55 max-w-2xl">
           Living family graphs inferred from your conversations — trees, households, groups, and relationship strength.
@@ -123,6 +147,13 @@ export function FamilyBook() {
                   tree={summary.tree}
                   onMemberClick={(m) => void openCharacter(m.id, m.name)}
                 />
+              ) : shouldUseMock && summary?.tree?.members?.length ? (
+                <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                  <FamilyTreeView
+                    tree={summary.tree}
+                    onMemberClick={(m) => void openCharacter(m.id, m.name)}
+                  />
+                </div>
               ) : (
                 <FamilyTreePanel
                   scope="mine"
@@ -158,6 +189,18 @@ export function FamilyBook() {
                       {g.name}
                     </h3>
                     <p className="text-xs text-white/40 mt-2">Inferred from kinship co-mentions</p>
+                    {!!g.metadata && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {Object.entries(g.metadata).map(([k, v]) => (
+                          <span
+                            key={`${g.id}-${k}`}
+                            className="text-[10px] px-1.5 py-0.5 rounded border border-purple-400/20 bg-purple-500/10 text-purple-200/80"
+                          >
+                            {k}: {String(v)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </article>
                 ))
               )}

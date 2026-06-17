@@ -19,11 +19,21 @@ vi.mock('../lib/supabase', () => {
     },
     isSupabaseConfigured: () => true,
     getConfigDebug: () => ({ url: 'test', keyPresent: true }),
+    useAuth: () => ({
+      user: { id: 'test-user' },
+      loading: false,
+      session: null,
+      signOut: vi.fn(),
+    }),
     // Export mocks for use in tests
     __mockGetSession: mockGetSession,
     __mockOnAuthStateChange: mockOnAuthStateChange
   };
 });
+
+vi.mock('./InferenceSyncProvider', () => ({
+  InferenceSyncProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 
 // Mock useGuest hook - need to export useGuest for AuthGate to use
 vi.mock('../contexts/GuestContext', () => ({

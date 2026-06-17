@@ -42,6 +42,13 @@ import { relationshipTreeBuilder, type RelationshipCategory } from '../services/
 import { romanticRelationshipAnalytics } from '../services/conversationCentered/romanticRelationshipAnalytics';
 import { enrichRomanticRelationshipsForUser } from '../services/conversationCentered/romanticRelationshipEnrichment';
 import { romanticRelationshipDetector } from '../services/conversationCentered/romanticRelationshipDetector';
+import { romanticConversationRescanService } from '../services/romanticConversationRescanService';
+import {
+  confirmPeripheral,
+  dismissPeripheral,
+  listPeripheralsForRelationship,
+  promotePeripheralToCharacter,
+} from '../services/romanticPeripheralService';
 import { skillNetworkBuilder } from '../services/conversationCentered/skillNetworkBuilder';
 import { conversationService } from '../services/conversationService';
 import { threadIntelligenceService } from '../services/conversationCentered/threadIntelligenceService';
@@ -128,31 +135,59 @@ router.post(
 
 /**
  * GET /api/conversation/threads
- * Get all conversation threads for user
+ * Paginated conversation threads — keyset on (updated_at, id) for stable infinite scroll.
  */
 router.get(
   '/threads',
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const limit = Math.min(Number(req.query.limit) || 50, 100);
+    const limit = Math.min(Number(req.query.limit) || 30, 100);
+    const cursorRaw = typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
 
-    const { data: threads, error } = await supabaseAdmin
+    const { count: totalCount } = await supabaseAdmin
+      .from('conversation_sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    let query = supabaseAdmin
       .from('conversation_sessions')
       .select('id, title, updated_at, metadata')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false })
-      .limit(limit);
+      .order('id', { ascending: false })
+      .limit(limit + 1);
 
+    if (cursorRaw) {
+      try {
+        const cursor = JSON.parse(Buffer.from(cursorRaw, 'base64url').toString('utf8')) as {
+          updatedAt: string;
+          id: string;
+        };
+        if (cursor.updatedAt && cursor.id) {
+          query = query.or(
+            `updated_at.lt.${cursor.updatedAt},and(updated_at.eq.${cursor.updatedAt},id.lt.${cursor.id})`
+          );
+        }
+      } catch {
+        // ignore malformed cursor — return first page
+      }
+    }
+
+    const { data: pageRows, error } = await query;
     if (error) throw error;
+
+    const rows = pageRows ?? [];
+    const hasMore = rows.length > limit;
+    const threads = hasMore ? rows.slice(0, limit) : rows;
 
     const { getLinkedSessionIds } = await import('../services/conversationCentered/threadContentService');
     const linkedIds = await getLinkedSessionIds(userId);
-    const existingIds = new Set((threads ?? []).map((t) => t.id));
+    const existingIds = new Set(threads.map((t) => t.id));
     const missingLinked = linkedIds.filter((id) => !existingIds.has(id));
 
     let extraRows: typeof threads = [];
-    if (missingLinked.length > 0) {
+    if (!cursorRaw && missingLinked.length > 0) {
       const { data: linkedThreads } = await supabaseAdmin
         .from('conversation_sessions')
         .select('id, title, updated_at, metadata')
@@ -161,12 +196,21 @@ router.get(
       extraRows = linkedThreads ?? [];
     }
 
-    const merged = [...(threads ?? []), ...extraRows].sort(
+    const merged = [...threads, ...extraRows].sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     );
 
+    const last = merged[merged.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? Buffer.from(JSON.stringify({ updatedAt: last.updated_at, id: last.id }), 'utf8').toString('base64url')
+        : null;
+
     res.json({
       success: true,
+      total: totalCount ?? merged.length,
+      hasMore,
+      nextCursor,
       threads: merged.map((t) => ({
         id: t.id,
         title: t.title ?? DRAFT_THREAD_TITLE,
@@ -228,7 +272,7 @@ router.delete(
   requireAuth,
   asyncHandler(async (req: AuthenticatedRequest, res) => {
     const userId = req.user!.id;
-    const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour ago
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // 24 hours ago
 
     // Find thread IDs where metadata has no messages and the thread is old enough.
     const { data: candidates, error: fetchErr } = await supabaseAdmin
@@ -283,6 +327,32 @@ router.delete(
       .in('id', emptyIds);
 
     res.json({ success: true, deleted: emptyIds.length });
+  })
+);
+
+/**
+ * POST /api/conversation/lexical-rescan
+ * Scan all chat + journal text for keyword groups via lexical intelligence.
+ */
+router.post(
+  '/lexical-rescan',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const schema = z.object({
+      keywords: z.array(z.string().min(1).max(120)).min(1).max(30),
+      promote: z.boolean().optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    });
+    const body = schema.parse(req.body);
+    const { keywordLexicalRescanService } = await import(
+      '../services/conversationCentered/keywordLexicalRescanService'
+    );
+    const summary = await keywordLexicalRescanService.rescan(userId, body.keywords, {
+      promote: body.promote,
+      limit: body.limit,
+    });
+    res.json({ success: true, summary });
   })
 );
 
@@ -2247,6 +2317,80 @@ router.get(
       success: true,
       relationships: enriched,
     });
+  })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships/rescan
+ * Replay chat + journal through lexical romantic intelligence.
+ */
+router.post(
+  '/romantic-relationships/rescan',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const summary = await romanticConversationRescanService.rescan(userId);
+    res.json({ success: true, summary });
+  })
+);
+
+/**
+ * GET /api/conversation/romantic-relationships/:id/peripherals
+ * Vicarious romantic connections for a relationship subject.
+ */
+router.get(
+  '/romantic-relationships/:id/peripherals',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const id = req.params.id as string;
+    const includeDismissed = req.query.includeDismissed === 'true';
+
+    const peripherals = await listPeripheralsForRelationship(userId, id, includeDismissed);
+    res.json({ success: true, peripherals });
+  })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships/:id/peripherals/:peripheralId/confirm
+ */
+router.post(
+  '/romantic-relationships/:id/peripherals/:peripheralId/confirm',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const peripheralId = req.params.peripheralId as string;
+    const peripheral = await confirmPeripheral(userId, peripheralId);
+    res.json({ success: true, peripheral });
+  })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships/:id/peripherals/:peripheralId/dismiss
+ */
+router.post(
+  '/romantic-relationships/:id/peripherals/:peripheralId/dismiss',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const peripheralId = req.params.peripheralId as string;
+    const peripheral = await dismissPeripheral(userId, peripheralId);
+    res.json({ success: true, peripheral });
+  })
+);
+
+/**
+ * POST /api/conversation/romantic-relationships/:id/peripherals/:peripheralId/promote
+ * Promote peripheral to Character Book entry.
+ */
+router.post(
+  '/romantic-relationships/:id/peripherals/:peripheralId/promote',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const userId = req.user!.id;
+    const peripheralId = req.params.peripheralId as string;
+    const result = await promotePeripheralToCharacter(userId, peripheralId);
+    res.json({ success: true, ...result });
   })
 );
 

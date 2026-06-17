@@ -108,6 +108,7 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
 
   return (
     <Card
+      data-testid={`relationship-card-${relationship.id}`}
       className={cn(
         "border-border/60 bg-gradient-to-br from-black/40 to-black/60 cursor-pointer transition-all duration-300 hover:border-pink-500/50 hover:shadow-xl hover:shadow-pink-500/20 hover:-translate-y-1 group",
         isActive && "border-pink-500/30 bg-gradient-to-br from-pink-950/10 to-purple-950/10"
@@ -164,6 +165,12 @@ export const RelationshipCard = ({ relationship, onClick }: RelationshipCardProp
           {formatRelationshipType(relationship.relationship_type)}
           {relationship.exclusivity_status && ` · ${relationship.exclusivity_status}`}
         </p>
+
+        {(relationship.metadata?.lexical_evidence as string | undefined) && (
+          <p className="text-[11px] text-white/40 italic leading-relaxed mb-3 line-clamp-2 border-l-2 border-purple-500/30 pl-2">
+            {relationship.metadata?.lexical_evidence as string}
+          </p>
+        )}
 
         {/* Still Learning — not enough evidence to score honestly yet */}
         {stillLearning ? (

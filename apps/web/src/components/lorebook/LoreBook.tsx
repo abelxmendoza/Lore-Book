@@ -455,6 +455,17 @@ export const LoreBook = ({ onOpenAppSidebar }: LoreBookProps = {}) => {
     setAnimationDirection('none');
   }, []);
 
+  // Fallback unlock: if animation end doesn't fire (reduced motion, dropped frame, etc.)
+  // don't let pagination controls stay disabled.
+  useEffect(() => {
+    if (!isAnimating) return;
+    const timeoutId = window.setTimeout(() => {
+      setIsAnimating(false);
+      setAnimationDirection('none');
+    }, 350);
+    return () => window.clearTimeout(timeoutId);
+  }, [isAnimating]);
+
   // Legacy section navigation (for sidebar)
   const goToSection = useCallback((index: number) => {
     if (index < 0 || index >= flatSections.length) return;

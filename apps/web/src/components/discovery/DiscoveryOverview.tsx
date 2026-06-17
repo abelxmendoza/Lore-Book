@@ -343,7 +343,7 @@ export const DiscoveryOverview = () => {
   );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-testid="discovery-overview">
       <ChatFirstViewHint />
 
       {/* Live overview dashboard */}

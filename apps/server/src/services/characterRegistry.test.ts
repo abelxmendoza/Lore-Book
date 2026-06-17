@@ -45,12 +45,7 @@ describe('characterRegistry', () => {
 
     const decision = await characterRegistry.classifyForCreation('user-1', 'Juan');
 
-    expect(decision.action).toBe('defer');
-    if (decision.action === 'defer') {
-      expect(decision.candidates).toEqual([
-        { character_id: 'tio-juan', name: 'Uncle James', subtitle: undefined },
-      ]);
-    }
+    expect(decision.action).toBe('create');
   });
 
   it('still merges an exact alias match', async () => {

@@ -87,7 +87,7 @@ const DEMO_ROMANTIC: CharacterSuggestion[] = [
     source: 'chat_extract',
     archetype: 'romantic',
     relationship: 'romantic',
-    context: 'Two dates in the demo storyline — add her to track the connection',
+    context: 'Ch.4 lore — glossary cue "went on a date". Coffee with Priya turned into a four-hour talk.',
   },
   {
     id: 'sug:character:daniel',
@@ -97,7 +97,7 @@ const DEMO_ROMANTIC: CharacterSuggestion[] = [
     source: 'chat_extract',
     archetype: 'romantic',
     relationship: 'romantic',
-    context: 'Mentioned as a situationship in the demo romance arc',
+    context: 'Ch.4 lore — talking stage with Sam\'s party circle. Lexical cue: "talking stage".',
   },
 ];
 

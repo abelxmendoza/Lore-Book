@@ -108,7 +108,7 @@ function getDemoResponse(message: string): string {
 export const useChat = () => {
   const navigate = useNavigate();
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
-  const { createThread, setActiveThreadId, getThread, mutateThreadMessagesForThread } = useChatThreadContext();
+  const { createThread, setActiveThreadId, getThread, mutateThreadMessagesForThread, hydrateThreadMessages } = useChatThreadContext();
   const conversationStore = useConversationStore();
   const { messages, setMessages, addMessage, updateMessage, removeMessage, clearConversation: clearConversationStore } = conversationStore;
   const { streamChat, isStreaming } = useChatStream();
@@ -269,6 +269,8 @@ export const useChat = () => {
     let accumulatedContent = '';
     let metadata: any = null;
     let hasReceivedMetadata = false;
+    let persistedUserMessageId: string | undefined;
+    let persistedAssistantMessageId: string | undefined;
 
     const composerThread = (options?.composerEntities ?? [])
       .map(toComposerThreadEntity)
@@ -293,7 +295,15 @@ export const useChat = () => {
           setLoadingProgress(70 + contentProgress);
         },
         (meta) => {
-          metadata = meta;
+          metadata = { ...(metadata ?? {}), ...meta };
+          if (meta.messageId) {
+            persistedUserMessageId = meta.messageId;
+            updateStreamMessage(userMessage.id, { id: meta.messageId });
+          }
+          if (meta.assistantMessageId) {
+            persistedAssistantMessageId = meta.assistantMessageId;
+            updateStreamMessage(assistantMessageId, { id: meta.assistantMessageId });
+          }
           if (progressIntervalRef.current) {
             clearInterval(progressIntervalRef.current);
             progressIntervalRef.current = null;
@@ -322,6 +332,7 @@ export const useChat = () => {
           updateStreamMessage(
             assistantMessageId,
             {
+              id: persistedAssistantMessageId ?? assistantMessageId,
               content: accumulatedContent,
               isStreaming: false,
               ...metadata,
@@ -351,6 +362,15 @@ export const useChat = () => {
           },
           { touchActivity: true }
           );
+
+          if (persistedUserMessageId) {
+            updateStreamMessage(userMessage.id, { id: persistedUserMessageId });
+          }
+
+          // Reconcile with durable server copy after persistence settles.
+          setTimeout(() => {
+            void hydrateThreadMessages(streamThreadId).catch(() => {});
+          }, 1200);
 
           // If there's a disambiguation prompt, attach it to the user message
           if (metadata?.disambiguationPrompt) {
@@ -437,22 +457,20 @@ export const useChat = () => {
       const useDemoFallback = (isGuest || getGlobalMockDataEnabled()) && isBackendUnavailable(errMsg);
 
       if (useDemoFallback) {
-        // Replace the streaming placeholder with a demo response — no error shown, no console noise.
-        updateMessage(assistantMessageId, {
+        updateStreamMessage(assistantMessageId, {
           content: getDemoResponse(messageText),
-          isStreaming: false
+          isStreaming: false,
         });
       } else {
-        removeMessage(assistantMessageId);
-        addMessage({
-          id: `error-${Date.now()}`,
-          role: 'assistant',
-          content: friendlyErrorMessage(errMsg),
-          timestamp: new Date()
+        updateStreamMessage(assistantMessageId, {
+          content: accumulatedContent.trim()
+            ? accumulatedContent
+            : friendlyErrorMessage(errMsg),
+          isStreaming: false,
         });
       }
     }
-  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext, user, urlThreadId, createThread, setActiveThreadId, getThread, navigate]);
+  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext, user, urlThreadId, createThread, setActiveThreadId, getThread, navigate, mutateThreadMessagesForThread, hydrateThreadMessages]);
 
   const clearConversation = useCallback(() => {
     clearConversationStore();

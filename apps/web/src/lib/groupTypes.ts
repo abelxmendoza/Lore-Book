@@ -3,30 +3,33 @@ import type { GroupType } from '../components/organizations/OrganizationProfileC
 /** Canonical G1 group types — keep in sync with DB CHECK constraints. */
 export const CANONICAL_GROUP_TYPES: GroupType[] = [
   'friend_group', 'band', 'sports_team', 'company', 'club', 'nonprofit',
-  'family', 'martial_arts', 'scene', 'crew', 'collective', 'community',
-  'institution', 'public_entity', 'brand', 'vendor', 'other',
+  'family', 'household', 'martial_arts', 'scene', 'crew', 'collective', 'community',
+  'institution', 'public_entity', 'brand', 'vendor', 'team', 'project', 'event_group', 'other',
 ];
 
 export type OrganizationCategory =
   | 'all' | 'recent'
-  | 'crews' | 'bands' | 'scenes' | 'communities'
-  | 'companies' | 'brands' | 'vendors'
+  | 'companies' | 'communities' | 'families' | 'households' | 'teams'
+  | 'crews' | 'bands' | 'scenes'
+  | 'brands' | 'vendors'
   | 'clubs' | 'nonprofits'
-  | 'sports_teams' | 'family' | 'public_entities';
+  | 'sports_teams' | 'public_entities';
 
 export const ORGANIZATION_CATEGORIES: OrganizationCategory[] = [
   'all',
+  'companies',
+  'communities',
+  'families',
+  'households',
+  'teams',
   'crews',
   'bands',
   'scenes',
-  'communities',
-  'companies',
   'brands',
   'vendors',
   'sports_teams',
   'clubs',
   'nonprofits',
-  'family',
   'public_entities',
   'recent',
 ];
@@ -39,6 +42,7 @@ export const GROUP_TYPE_LABELS: Record<GroupType, string> = {
   club: 'Club',
   nonprofit: 'Nonprofit',
   family: 'Family',
+  household: 'Household',
   martial_arts: 'Martial Arts',
   scene: 'Scene',
   crew: 'Crew',
@@ -48,6 +52,9 @@ export const GROUP_TYPE_LABELS: Record<GroupType, string> = {
   public_entity: 'Public Entity',
   brand: 'Brand',
   vendor: 'Vendor',
+  team: 'Team',
+  project: 'Project',
+  event_group: 'Event Group',
   other: 'Other',
 };
 
@@ -74,6 +81,12 @@ export function groupTypeMatchesCategory(groupType: GroupType, category: Organiz
       return groupType === 'community';
     case 'companies':
       return groupType === 'company';
+    case 'families':
+      return groupType === 'family';
+    case 'households':
+      return groupType === 'household';
+    case 'teams':
+      return groupType === 'team' || groupType === 'sports_team' || groupType === 'martial_arts';
     case 'brands':
       return groupType === 'brand';
     case 'vendors':
@@ -84,8 +97,6 @@ export function groupTypeMatchesCategory(groupType: GroupType, category: Organiz
       return groupType === 'sports_team' || groupType === 'martial_arts';
     case 'nonprofits':
       return groupType === 'nonprofit';
-    case 'family':
-      return groupType === 'family';
     case 'public_entities':
       return groupType === 'public_entity' || groupType === 'institution';
     case 'recent':

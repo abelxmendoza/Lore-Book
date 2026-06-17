@@ -375,6 +375,10 @@ export type LocationProfile = {
   entries: LocationVisit[];
   sources: string[];
   metadata?: Record<string, unknown>;
+  root_type?: string | null;
+  spatial_category?: string | null;
+  spatial_subcategory?: string | null;
+  parent_location_id?: string | null;
 };
 
 export type MemoryGraphNodeType = 'entry' | 'event' | 'person' | 'place' | 'tag' | 'theme' | 'chapter';

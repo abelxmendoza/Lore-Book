@@ -44,6 +44,16 @@ vi.mock('../../hooks/useCharacterExtraction', () => ({
   useCharacterExtraction: () => ({ extractCharacters: vi.fn() })
 }));
 
+vi.mock('../../api/selfCharacter', () => ({
+  selfCharacterApi: {
+    rescanConversations: vi.fn().mockResolvedValue({ success: true, summary: {} }),
+    inferPublicFigures: vi.fn().mockResolvedValue({ success: true, updated: 0 }),
+    repairIdentity: vi.fn().mockResolvedValue({ success: true }),
+    ensureSelf: vi.fn().mockResolvedValue({ success: true, character: null }),
+    syncFromConversations: vi.fn().mockResolvedValue({ success: true, processed: 0 }),
+  },
+}));
+
 vi.mock('../../contexts/ChatThreadContext', () => ({
   ChatThreadProvider: ({ children }: { children?: React.ReactNode }) => children,
   useActiveChatMessages: () => [],
@@ -254,6 +264,12 @@ describe('CharacterBook', () => {
         }
         if (url === '/api/conversation/romantic-relationships') {
           return { success: true, relationships: [] };
+        }
+        if (url === '/api/characters/duplicates') {
+          return { duplicate_groups: [] };
+        }
+        if (typeof url === 'string' && url.startsWith('/api/characters/suggestions')) {
+          return { success: true, suggestions: [], count: 0 };
         }
         return {};
       });

@@ -19,10 +19,15 @@
     "find-unused": "cd apps/server && node scripts/find-unused-code.js",
     "mvp-diagnostic": "cd apps/server && npm run mvp-diagnostic",
     "lint:fix": "cd apps/server && npm run lint -- --fix && cd ../web && npm run lint -- --fix",
+    "migrate:ontology": "npx tsx scripts/run-ontology-migrations.ts",
+    "normalize:ontology": "npx tsx scripts/run-ontology-normalize.ts",
+    "inference:sync": "npx tsx scripts/run-inference-sync.ts",
+    "validate:inference": "npx tsx scripts/validate-inference.ts",
     "prepare": "husky"
   },
   "devDependencies": {
     "concurrently": "^10.0.3",
-    "husky": "^9.1.7"
+    "husky": "^9.1.7",
+    "pg": "^8.21.0"
   }
 }

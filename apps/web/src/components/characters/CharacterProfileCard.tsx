@@ -8,6 +8,12 @@ import { useState, useEffect } from 'react';
 import { fetchJson } from '../../lib/api';
 import { canCallAuthenticatedApi } from '../../lib/runtimeIdentity';
 import { getCharacterWittyTagline } from '../../lib/characterDisplay';
+import {
+  CONNECTION_STAGE_LABELS,
+  getPublicFigureConnection,
+  impactOnUserWithPublicFigureCap,
+  isPublicFigureCharacter,
+} from '../../lib/publicFigure';
 
 export type SocialMedia = {
   instagram?: string;
@@ -301,11 +307,7 @@ export const CharacterProfileCard = ({
 
   const phase = getRelationshipPhase();
 
-  // Impact on the user: user-set override wins over computed analytics
-  const impactOverride = (character.metadata as any)?.impact_override;
-  const impactOnUser = typeof impactOverride === 'number'
-    ? impactOverride
-    : (character.analytics?.character_influence_on_user ?? 0);
+  const impactOnUser = impactOnUserWithPublicFigureCap(character);
 
   return (
     <Card 
@@ -375,7 +377,8 @@ export const CharacterProfileCard = ({
 
             // Social standing — computed organization signal (never judgmental copy)
             const standing = (character.metadata as any)?.social_standing as { tier?: string; connector?: boolean } | undefined;
-            const isPublicFigure = Boolean((character.metadata as any)?.public_figure);
+            const isPublicFigure = isPublicFigureCharacter(character);
+            const pfConnection = getPublicFigureConnection(character);
             const figureType = ((character.metadata as any)?.figure_type as string | undefined) ?? 'public figure';
             const cloutLevel = (character.metadata as any)?.clout_level as string | undefined;
             // Stars scale with clout so reach reads at a glance.
@@ -404,10 +407,14 @@ export const CharacterProfileCard = ({
                   <Badge
                     variant="outline"
                     className="bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30 text-[8px] sm:text-[10px] px-1 py-0 sm:px-1.5 sm:py-0.5"
-                    title={`Public figure: ${figureType}${cloutLevel ? ` · clout: ${cloutLevel}` : ''}`}
+                    title={`Public figure: ${figureType}${cloutLevel ? ` · clout: ${cloutLevel}` : ''}${pfConnection?.stage ? ` · ${CONNECTION_STAGE_LABELS[pfConnection.stage] ?? pfConnection.stage}` : ''}`}
                   >
                     {cloutMark}
-                    <span className="hidden sm:inline ml-0.5">{cloutLevel ? `${figureType} · ${cloutLevel}` : figureType}</span>
+                    <span className="hidden sm:inline ml-0.5">
+                      {pfConnection?.stage
+                        ? CONNECTION_STAGE_LABELS[pfConnection.stage] ?? pfConnection.stage
+                        : cloutLevel ? `${figureType} · ${cloutLevel}` : figureType}
+                    </span>
                   </Badge>
                 )}
                 {extras.length > 0 && (

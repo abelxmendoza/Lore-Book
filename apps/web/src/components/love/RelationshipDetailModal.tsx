@@ -16,6 +16,7 @@ import {
 import { ProsConsView } from './ProsConsView';
 import { RelationshipTimeline } from './RelationshipTimeline';
 import { RelationshipAnalytics } from './RelationshipAnalytics';
+import { TheirConnectionsPanel } from './TheirConnectionsPanel';
 
 interface RelationshipDetailModalProps {
   relationshipId: string;
@@ -349,7 +350,7 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
           <div className="overflow-x-auto overflow-y-hidden scrollbar-hide [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <TabsList className="inline-flex min-w-max sm:grid sm:w-full sm:grid-cols-6 bg-black/40 border border-border/50 flex-wrap sm:flex-nowrap">
+            <TabsList className="inline-flex min-w-max sm:grid sm:w-full sm:grid-cols-7 bg-black/40 border border-border/50 flex-wrap sm:flex-nowrap">
               <TabsTrigger value="overview" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0">
                 <Heart className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span className="hidden min-[375px]:inline sm:inline">Overview</span>
@@ -374,6 +375,11 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
                 <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span className="hidden min-[375px]:inline sm:inline">Chat</span>
                 <span className="min-[375px]:hidden">Chat</span>
+              </TabsTrigger>
+              <TabsTrigger value="their-connections" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0" data-testid="tab-their-connections">
+                <GitBranch className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden min-[375px]:inline sm:inline">Their connections</span>
+                <span className="min-[375px]:hidden">Links</span>
               </TabsTrigger>
               <TabsTrigger value="life-impact" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 flex-shrink-0">
                 <Sparkles className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -768,6 +774,15 @@ export const RelationshipDetailModal = ({ relationshipId, onClose, onUpdate }: R
                 </Button>
               </div>
             </div>
+          </TabsContent>
+
+          {/* Their connections — vicarious romantic periphery */}
+          <TabsContent value="their-connections" className="mt-6">
+            <TheirConnectionsPanel
+              relationshipId={relationshipId}
+              anchorName={displayName}
+              onUpdate={onUpdate}
+            />
           </TabsContent>
 
           {/* Life Impact Tab */}

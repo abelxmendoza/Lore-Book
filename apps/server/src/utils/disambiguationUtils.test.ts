@@ -14,8 +14,8 @@ describe('messageReferencesMention', () => {
     expect(messageReferencesMention('I saw Fairy at the club', 'Fairy')).toBe(true);
   });
 
-  it('matches when mention is part of a multi-word name', () => {
-    expect(messageReferencesMention('Velvet Hour played last night', 'Fairy')).toBe(true);
+  it('does not match unrelated multi-word phrases as a bare mention', () => {
+    expect(messageReferencesMention('Velvet Hour played last night', 'Fairy')).toBe(false);
   });
 
   it('does not match unrelated messages', () => {
@@ -46,7 +46,7 @@ describe('messageReferencesMention', () => {
         "I didn't even mention Velvet Hour in this convo",
         'Fairy'
       )
-    ).toBe(true); // current message mentions Fairy — callers must gate on established history
+    ).toBe(false);
   });
 
   it('threadUserHistoryReferencesMention is false when mention never appeared in user turns', () => {
@@ -96,7 +96,7 @@ describe('normalizeDisambiguationCandidates', () => {
   it('collapses same normalized display names', () => {
     const result = collapseSameNameCandidates([
       { character_id: 'a', name: 'Velvet Hour' },
-      { character_id: 'b', name: 'hell fairy' },
+      { character_id: 'b', name: 'velvet hour' },
     ]);
     expect(result).toHaveLength(1);
   });

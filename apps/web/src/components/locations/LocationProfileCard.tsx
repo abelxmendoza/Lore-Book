@@ -1,5 +1,5 @@
 import { MapPin, Clock, Users, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
-import { classifyLocation, KIND_META, locationHierarchy } from '../../lib/locationTaxonomy';
+import { classifyLocation, KIND_META, locationHierarchy, isHouseholdLocation, countRoomsForHousehold } from '../../lib/locationTaxonomy';
 import { formatPlaceType, getPlaceTags, resolvePlaceType } from '../../lib/placeTypes';
 
 export type LocationProfile = {
@@ -19,6 +19,10 @@ export type LocationProfile = {
   timeline?: unknown[];
   currentState?: Record<string, unknown>;
   socialGraph?: Record<string, unknown>;
+  root_type?: string | null;
+  spatial_category?: string | null;
+  spatial_subcategory?: string | null;
+  parent_location_id?: string | null;
   visitCount: number;
   firstVisited?: string;
   lastVisited?: string;
@@ -38,6 +42,7 @@ export type LocationProfile = {
   }>;
   sources: string[];
   metadata?: Record<string, unknown> | null;
+  description?: string | null;
   analytics?: {
     visit_frequency: number;
     recency_score: number;
@@ -89,9 +94,16 @@ function accentClass(location: LocationProfile): string {
   return 'text-teal-400 bg-teal-500/10 border-teal-500/25';
 }
 
-type Props = { location: LocationProfile; onClick?: () => void; selectionMode?: boolean; selected?: boolean };
+type Props = {
+  location: LocationProfile;
+  onClick?: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  /** Full location list — used to show nested room count on household cards. */
+  allLocations?: LocationProfile[];
+};
 
-export const LocationProfileCard = ({ location, onClick, selectionMode, selected }: Props) => {
+export const LocationProfileCard = ({ location, onClick, selectionMode, selected, allLocations = [] }: Props) => {
   const ago    = relativeTime(location.lastVisited);
   const accent = accentClass(location);
   const trend  = location.analytics?.trend;
@@ -100,6 +112,9 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
   const hierarchy = locationHierarchy(location);
   const placeType = resolvePlaceType(location.type, location.name);
   const placeTags = getPlaceTags(location);
+  const roomCount = isHouseholdLocation(location) && allLocations.length > 0
+    ? countRoomsForHousehold(location, allLocations)
+    : 0;
 
   return (
     <button
@@ -177,6 +192,11 @@ export const LocationProfileCard = ({ location, onClick, selectionMode, selected
             <span className={`text-[10px] px-1.5 py-0.5 rounded border ${kindMeta.color}`}>
               <span aria-hidden>{kindMeta.icon}</span> {kindMeta.label}
             </span>
+            {roomCount > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-purple-500/10 text-purple-300 border-purple-500/30">
+                {roomCount} {roomCount === 1 ? 'room' : 'rooms'}
+              </span>
+            )}
             <span className="text-xs text-white/50">
               {location.visitCount} {location.visitCount === 1 ? 'visit' : 'visits'}
             </span>

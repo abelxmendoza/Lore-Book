@@ -5,8 +5,11 @@ import { fetchJson } from '../../lib/api';
 import type { LocationProfile } from './LocationProfileCard';
 
 export type LocationDuplicateGroup = {
-  match_type: 'exact' | 'containment';
+  match_type: 'exact' | 'containment' | 'alias';
   canonical_name: string;
+  confidence?: number;
+  reason?: string;
+  evidence?: string[];
   locations: Array<{
     id: string;
     name: string;
@@ -306,9 +309,19 @@ export const LocationMergePanel = ({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">
-                        {group.match_type === 'exact' ? 'Exact duplicate' : 'Possible duplicate'}
+                        {group.match_type === 'exact'
+                          ? 'Exact duplicate'
+                          : group.match_type === 'alias'
+                            ? 'Venue alias'
+                            : 'Possible duplicate'}
                       </p>
                       <p className="text-xs text-white/45">{group.canonical_name}</p>
+                      {group.confidence != null && (
+                        <p className="text-[10px] text-amber-200/80 mt-0.5">
+                          {(group.confidence * 100).toFixed(0)}% confidence
+                          {group.reason ? ` — ${group.reason}` : ''}
+                        </p>
+                      )}
                     </div>
                     <span className="text-[10px] uppercase tracking-wider text-white/35">
                       {group.locations.length} cards

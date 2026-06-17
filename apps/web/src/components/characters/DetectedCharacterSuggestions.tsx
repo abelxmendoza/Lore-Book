@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sparkles, Plus, X, ChevronDown, ChevronUp, RefreshCw, User } from 'lucide-react';
 import { characterSuggestionsApi, type CharacterSuggestion } from '../../api/entitySuggestions';
+import { selfCharacterApi } from '../../api/selfCharacter';
+import { romanticRelationshipsApi } from '../../api/romanticRelationships';
+import { apiCache } from '../../lib/cache';
 import { isNameAlreadyInBookList } from '../../lib/suggestionBookFilter';
 import { isIndividualPersonName } from '../../lib/personNameValidation';
 import { getMockCharacterSuggestions } from '../../mocks/characterSuggestions';
 
 type Props = {
   onCharacterAdded?: () => void;
+  onRescanComplete?: (summary?: {
+    charactersPromoted: number;
+    restoredFromEvidence: number;
+  }) => void;
   demoMode?: boolean;
   /** Names already in the Characters book — hide matching suggestions. */
   existingCharacterNames?: string[];
@@ -24,6 +31,7 @@ const keyFor = (s: CharacterSuggestion) => s.id;
 
 export const DetectedCharacterSuggestions = ({
   onCharacterAdded,
+  onRescanComplete,
   demoMode = false,
   existingCharacterNames = [],
   variant = 'general',
@@ -36,8 +44,10 @@ export const DetectedCharacterSuggestions = ({
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rescanning, setRescanning] = useState(false);
+  const [rescanNotice, setRescanNotice] = useState<string | null>(null);
 
-  const fetchSuggestions = useCallback(async () => {
+  const fetchSuggestions = useCallback(async (opts?: { rescan?: boolean }) => {
     if (showDemo) {
       setSuggestions(getMockCharacterSuggestions(variant));
       setLoading(false);
@@ -46,7 +56,9 @@ export const DetectedCharacterSuggestions = ({
     setLoading(true);
     try {
       const res = await characterSuggestionsApi.list(
-        variant === 'romantic' ? { context: 'romantic' } : undefined
+        variant === 'romantic'
+          ? { context: 'romantic', rescan: opts?.rescan }
+          : { rescan: opts?.rescan }
       );
       setSuggestions(res.suggestions ?? []);
     } catch {
@@ -58,9 +70,15 @@ export const DetectedCharacterSuggestions = ({
 
   useEffect(() => {
     void fetchSuggestions();
-    const interval = setInterval(() => { void fetchSuggestions(); }, 5 * 60 * 1000);
-    const onRefresh = () => { void fetchSuggestions(); };
+    const onRefresh = () => {
+      void fetchSuggestions();
+    };
     window.addEventListener('lk:characters-updated', onRefresh);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchSuggestions();
+      }
+    }, 5 * 60 * 1000);
     return () => {
       clearInterval(interval);
       window.removeEventListener('lk:characters-updated', onRefresh);
@@ -84,7 +102,51 @@ export const DetectedCharacterSuggestions = ({
       ? 'Romantic interests detected in your chats'
       : 'People detected in your chats';
 
-  if (!loading && visible.length === 0) return null;
+  const handleRescan = async () => {
+    if (showDemo) {
+      setRescanNotice(
+        variant === 'romantic'
+          ? 'Demo mode — sign in to rescan your real love story from conversations.'
+          : 'Demo mode — sign in to rescan your real conversations.'
+      );
+      return;
+    }
+    setRescanning(true);
+    setRescanNotice(null);
+    setError(null);
+    try {
+      apiCache.deletePattern(/\/api\/(characters|knowledge|conversation\/romantic)/);
+      if (variant === 'romantic') {
+        const romanticResult = await romanticRelationshipsApi.rescan();
+        await selfCharacterApi.rescanConversations();
+        const s = romanticResult.summary;
+        const total = s.relationshipsUpserted;
+        setRescanNotice(
+          total > 0
+            ? `Love story rescan — ${total} relationship${total === 1 ? '' : 's'} updated from ${s.romanticEpisodes} romantic episode${s.romanticEpisodes === 1 ? '' : 's'}.`
+            : 'Love story rescan complete — relationships are up to date.'
+        );
+        window.dispatchEvent(new CustomEvent('lk:romantic-relationships-updated'));
+      } else {
+        const result = await selfCharacterApi.rescanConversations();
+        const promoted = result.summary?.charactersPromoted ?? 0;
+        const restored = result.summary?.restoredFromEvidence ?? 0;
+        const total = promoted + restored;
+        setRescanNotice(
+          total > 0
+            ? `Rescan found ${total} character${total === 1 ? '' : 's'} to add or restore.`
+            : 'Rescan complete — your cast is up to date.'
+        );
+        onRescanComplete?.({ charactersPromoted: promoted, restoredFromEvidence: restored });
+      }
+      await fetchSuggestions({ rescan: true });
+      window.dispatchEvent(new CustomEvent('lk:characters-updated', { detail: {} }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Conversation rescan failed');
+    } finally {
+      setRescanning(false);
+    }
+  };
 
   const handleAdd = async (s: CharacterSuggestion) => {
     const k = keyFor(s);
@@ -92,6 +154,7 @@ export const DetectedCharacterSuggestions = ({
     setError(null);
     try {
       if (!showDemo) {
+        apiCache.deletePattern(/\/api\/(characters|knowledge)/);
         await characterSuggestionsApi.add(s);
       }
       setAdded(prev => new Set(prev).add(k));
@@ -126,12 +189,23 @@ export const DetectedCharacterSuggestions = ({
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
             type="button"
-            onClick={() => void fetchSuggestions()}
-            disabled={loading}
-            className="h-8 w-8 flex items-center justify-center rounded text-white/50 hover:text-amber-300 hover:bg-amber-500/10"
-            title="Re-scan conversations"
+            onClick={() => void handleRescan()}
+            disabled={loading || rescanning}
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+            title={variant === 'romantic' ? 'Rescan conversations for romantic relationships' : 'Rescan all conversations to find new or missing characters'}
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${rescanning ? 'animate-spin' : ''}`} />
+            {rescanning ? 'Rescanning…' : variant === 'romantic' ? 'Rescan love story' : 'Rescan conversations'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRescan()}
+            disabled={loading || rescanning}
+            className="sm:hidden h-8 w-8 flex items-center justify-center rounded text-white/50 hover:text-amber-300 hover:bg-amber-500/10 disabled:opacity-50"
+            title="Rescan conversations"
+            aria-label="Rescan conversations"
+          >
+            <RefreshCw className={`h-4 w-4 ${rescanning ? 'animate-spin' : ''}`} />
           </button>
           <button
             type="button"
@@ -153,8 +227,28 @@ export const DetectedCharacterSuggestions = ({
           {error && (
             <p className="text-xs text-red-400 rounded border border-red-500/30 bg-red-500/10 px-3 py-2">{error}</p>
           )}
+          {rescanNotice && (
+            <p className="text-xs text-emerald-200 rounded border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">
+              {rescanNotice}
+            </p>
+          )}
           {loading && visible.length === 0 ? (
             <p className="text-xs text-white/40 py-2">Scanning your conversations…</p>
+          ) : visible.length === 0 ? (
+            <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-3 space-y-2">
+              <p className="text-xs text-white/55 leading-relaxed">
+                No new people to add right now. Rescan your full chat and journal history to surface anyone missing from your book — including characters removed by mistake.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleRescan()}
+                disabled={rescanning}
+                className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-[11px] font-medium text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${rescanning ? 'animate-spin' : ''}`} />
+                {rescanning ? 'Rescanning conversations…' : 'Rescan conversations'}
+              </button>
+            </div>
           ) : (
             visible.map(s => {
               const k = keyFor(s);

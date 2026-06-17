@@ -72,16 +72,16 @@ class CharacterSuggestionService {
         await Promise.all([
           supabaseAdmin
             .from('characters')
-            .select('id, name, alias, metadata')
+            .select('id, name, alias, metadata, status')
             .eq('user_id', userId)
             .limit(500),
           supabaseAdmin
             .from('omega_entities')
             .select('id, primary_name, mention_count, mention_status, metadata')
             .eq('user_id', userId)
-            .eq('type', 'PERSON')
+            .in('type', ['PERSON', 'CHARACTER'])
             .eq('mention_status', 'mentioned_only')
-            .gte('mention_count', 2)
+            .gte('mention_count', 1)
             .order('mention_count', { ascending: false })
             .limit(40),
           supabaseAdmin
@@ -104,6 +104,7 @@ class CharacterSuggestionService {
       for (const c of characters ?? []) {
         const meta = (c.metadata as Record<string, unknown>) ?? {};
         if (meta.is_self || meta.is_user) continue;
+        if (c.status === 'archived') continue;
         bookCharacterIds.add(c.id);
         allNames.push(c.name);
         if (Array.isArray(c.alias)) {
@@ -122,6 +123,19 @@ class CharacterSuggestionService {
       const book = collectNameKeys(allNames);
       bookExact = book.exactKeys;
       bookEntries = book.entries;
+
+      for (const row of indexRows ?? []) {
+        const mention = String(row.mention ?? '').trim();
+        const linkedId = row.character_id;
+        if (!mention || !linkedId || bookCharacterIds.has(linkedId)) continue;
+        add({
+          name: mention,
+          mentionCount: 2,
+          confidence: 0.84,
+          source: 'chat_extract',
+          context: 'Previously in your Character Book — add to restore their card and knowledge links',
+        });
+      }
 
       for (const e of omegaEntities ?? []) {
         if (isNameAlreadyInBook(e.primary_name, bookExact, bookEntries)) continue;

@@ -1,0 +1,177 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import type { Message } from '../../message/ChatMessage';
+
+vi.mock('../../../../lib/supabase', () => ({
+  useAuth: vi.fn(),
+}));
+
+vi.mock('../../../../lib/api', () => ({
+  fetchJson: vi.fn(),
+}));
+
+vi.mock('../../services/runtimeDiagnostics', () => ({
+  runtimeDiagnostics: {
+    record: vi.fn(),
+    startTimer: vi.fn(),
+    recordTimed: vi.fn(),
+  },
+}));
+
+vi.mock('../../services/threadPersistenceTracker', () => ({
+  threadPersistenceTracker: {
+    markRestoredFromBackend: vi.fn(),
+    markPersistPending: vi.fn(),
+    markPersisted: vi.fn(),
+    markSyncFailed: vi.fn(),
+    markLocalOnly: vi.fn(),
+    markRestoredFromLocal: vi.fn(),
+    markOffline: vi.fn(),
+    remove: vi.fn(),
+  },
+}));
+
+import { useAuth } from '../../../../lib/supabase';
+import { fetchJson } from '../../../../lib/api';
+import { useChatThreads } from '../useChatThreads';
+
+const mockUseAuth = vi.mocked(useAuth);
+const mockFetchJson = vi.mocked(fetchJson);
+
+function msg(id: string, role: 'user' | 'assistant', content: string, extra?: Partial<Message>): Message {
+  return { id, role, content, timestamp: new Date(), ...extra };
+}
+
+function mockAuthenticatedBoot() {
+  mockUseAuth.mockReturnValue({
+    user: { id: 'user-hydrate-1' } as never,
+    loading: false,
+    session: null,
+    signOut: vi.fn(),
+  });
+  mockFetchJson.mockImplementation(async (url: string, opts?: RequestInit & { method?: string }) => {
+    const method = opts?.method;
+    if (method === 'DELETE' && String(url).includes('/threads/')) {
+      throw new Error('409 protected');
+    }
+    if (url.includes('/threads/recover-orphans')) return { success: true, recovered: 0 };
+    if (url.includes('/thread-health/repair')) return { repaired: 0, report: {} };
+    if (url.includes('/threads?')) {
+      return {
+        success: true,
+        threads: [
+          {
+            id: 'thread-1',
+            title: 'Test',
+            updated_at: '2026-06-01T00:00:00Z',
+            metadata: {},
+          },
+        ],
+        total: 1,
+        hasMore: false,
+        nextCursor: null,
+      };
+    }
+    if (url.includes('/ensure-visible')) {
+      return { success: true, thread: { title: 'Test', updatedAt: '2026-06-01T00:00:00Z' } };
+    }
+    if (url.includes('/messages')) {
+      return {
+        success: true,
+        messages: [
+          { id: 'db-u1', role: 'user', content: 'Who is Jerry?', created_at: '2026-06-01T00:00:00Z' },
+        ],
+      };
+    }
+    return { success: true };
+  });
+}
+
+describe('useChatThreads.hydrateThreadMessages', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mockAuthenticatedBoot();
+  });
+
+  it('merges local assistant bubble when server returns user-only snapshot', async () => {
+    const { result } = renderHook(() => useChatThreads());
+
+    await waitFor(() => expect(result.current.threadsReady).toBe(true));
+
+    act(() => {
+      result.current.updateThread('thread-1', {
+        messages: [
+          msg('local-u1', 'user', 'Who is Jerry?'),
+          msg('local-a1', 'assistant', 'Jerry is from the LifeLedger era.'),
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.getThread('thread-1')?.messages).toHaveLength(2);
+    });
+
+    await act(async () => {
+      await result.current.hydrateThreadMessages('thread-1');
+    });
+
+    const thread = result.current.getThread('thread-1');
+    expect(thread?.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(thread?.messages.find((m) => m.role === 'assistant')?.content).toContain('LifeLedger');
+  });
+
+  it('returns existing thread on hydrate fetch failure when local messages exist', async () => {
+    mockFetchJson.mockImplementation(async (url: string) => {
+      if (url.includes('/messages')) throw new Error('Network error');
+      if (url.includes('/threads/recover-orphans')) return { success: true };
+      if (url.includes('/thread-health/repair')) return { repaired: 0 };
+      if (url.includes('/threads?')) {
+        return {
+          success: true,
+          threads: [{ id: 'thread-1', title: 'T', updated_at: new Date().toISOString(), metadata: {} }],
+          total: 1,
+          hasMore: false,
+        };
+      }
+      if (url.includes('/ensure-visible')) return { success: true };
+      return { success: true };
+    });
+
+    const { result } = renderHook(() => useChatThreads());
+    await waitFor(() => expect(result.current.threadsReady).toBe(true));
+
+    act(() => {
+      result.current.updateThread('thread-1', {
+        messages: [msg('local-u1', 'user', 'keep me'), msg('local-a1', 'assistant', 'and me too')],
+      });
+    });
+
+    let hydrated: Awaited<ReturnType<typeof result.current.hydrateThreadMessages>> = null;
+    await act(async () => {
+      hydrated = await result.current.hydrateThreadMessages('thread-1');
+    });
+
+    expect(hydrated?.messages).toHaveLength(2);
+  });
+
+  it('restores thread in list when protected delete fails', async () => {
+    const { result } = renderHook(() => useChatThreads());
+    await waitFor(() => expect(result.current.threadsReady).toBe(true));
+
+    act(() => {
+      result.current.updateThread('thread-1', {
+        messages: [msg('u1', 'user', 'protected thread')],
+        updatedAt: new Date().toISOString(),
+      });
+    });
+
+    await act(async () => {
+      result.current.deleteThread('thread-1');
+    });
+
+    await waitFor(() => {
+      expect(result.current.threads.some((t) => t.id === 'thread-1')).toBe(true);
+    });
+  });
+});

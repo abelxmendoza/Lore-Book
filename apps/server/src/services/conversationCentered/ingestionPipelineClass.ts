@@ -4,6 +4,7 @@
 // =====================================================
 
 import { logger } from '../../logger';
+import { isIndividualPersonName } from '../../utils/personNameValidation';
 import { supabaseAdmin } from '../supabaseClient';
 import { memoryFeedbackBus, type MemoryFeedbackEvent } from '../memoryFeedbackBus';
 import { normalizationService } from './normalizationService';
@@ -32,6 +33,10 @@ import { entityAttributeDetector } from './entityAttributeDetector';
 import { skillNetworkBuilder } from './skillNetworkBuilder';
 import { groupNetworkBuilder } from './groupNetworkBuilder';
 import { romanticRelationshipDetector } from './romanticRelationshipDetector';
+import { ingestRomanticLexicalFromMessage } from '../romanticLexicalIngestionService';
+import { ingestVicariousFromMessage } from '../romanticPeripheralService';
+import { hasRomanticSignals } from '../ontology/romanticIntelligence';
+import { hasVicariousRomanticSignals } from '../ontology/vicariousRomanticIntelligence';
 import { relationshipDriftDetector } from './relationshipDriftDetector';
 import { relationshipCycleDetector } from './relationshipCycleDetector';
 import { breakupDetector } from './breakupDetector';
@@ -55,7 +60,6 @@ import { groupCandidateService } from '../groupCandidateService';
 import { shadowModeOrchestrator } from '../ingestion/shadowMode';
 import { hybridExtractor } from './hybridExtractor';
 import { resolveAllTemporalAnchors } from '../../utils/temporalAnchorResolver';
-import { graphRecoveryTrigger } from './graphRecoveryTrigger';
 import { episodeSegmentationTrigger } from './episodeSegmentationTrigger';
 
 /**
@@ -158,11 +162,9 @@ export class ConversationIngestionPipeline {
         });
       });
 
-      // Step 1 (Integration Sprint): promote relationship + event recovery from
-      // batch-only to live. Debounced per-user so a burst of turns collapses into
-      // one idempotent recovery run; keeps the scored graph current with chat
-      // instead of decaying between manual script runs.
-      graphRecoveryTrigger.schedule(userId);
+      // Debounced lore inference (graph, places, orgs, public figures, standing).
+      const { inferenceOrchestrator } = await import('../inference/inferenceOrchestrator');
+      inferenceOrchestrator.schedule(userId, 'chat_message');
       episodeSegmentationTrigger.schedule(userId, conversationSessionId);
     } catch (error) {
       // Log but don't throw - ingestion failures should not block chat
@@ -270,6 +272,79 @@ export class ConversationIngestionPipeline {
     logger.debug({ chatMessageId, knowledgeUnitCount: knowledgeUnits.length }, 'Memory feedback published');
   }
 
+  /** Post-detection hooks shared by lexical + LLM romantic paths. */
+  private runRomanticRelationshipFollowUps(
+    userId: string,
+    rawText: string,
+    messageId: string,
+    rel: {
+      relationshipId: string;
+      personId: string;
+      personType: 'character' | 'omega_entity';
+    },
+    options?: { logInteraction?: boolean }
+  ): void {
+    const { relationshipId, personId } = rel;
+
+    const dateEventPromise = romanticRelationshipDetector
+      .detectDateEvent(userId, rawText, relationshipId, personId, messageId);
+    void dateEventPromise.catch(err => {
+      logger.warn({ err }, 'Date event detection failed');
+    });
+
+    const breakupPromise = breakupDetector
+      .detectBreakup(userId, rawText, relationshipId, personId, messageId);
+    void breakupPromise.then(breakup => {
+      if (breakup) {
+        logger.debug({ userId, relationshipId }, 'Detected breakup');
+      }
+    }).catch(err => {
+      logger.warn({ err }, 'Breakup detection failed');
+    });
+
+    const loveDeclarationPromise = breakupDetector
+      .detectLoveDeclaration(userId, rawText, relationshipId, personId, messageId);
+    void loveDeclarationPromise.catch(err => {
+      logger.warn({ err }, 'Love declaration detection failed');
+    });
+
+    if (Math.random() < 0.1) {
+      const driftPromise = relationshipDriftDetector
+        .detectDrift(userId, relationshipId, personId, rel.personType);
+      void driftPromise.then(drift => {
+        if (drift) {
+          logger.debug(
+            { userId, relationshipId, driftType: drift.driftType },
+            'Detected relationship drift'
+          );
+        }
+      }).catch(err => {
+        logger.warn({ err }, 'Drift detection failed');
+      });
+    }
+
+    if (Math.random() < 0.05) {
+      const cyclesPromise = relationshipCycleDetector
+        .detectCycles(userId, relationshipId, personId, rel.personType);
+      void cyclesPromise.then(cycles => {
+        if (cycles.length > 0) {
+          logger.debug(
+            { userId, relationshipId, cyclesFound: cycles.length },
+            'Detected relationship cycles'
+          );
+        }
+      }).catch(err => {
+        logger.warn({ err }, 'Cycle detection failed');
+      });
+    }
+
+    if (options?.logInteraction !== false) {
+      void extractAndLogInteraction(userId, relationshipId, rawText, messageId).catch(err => {
+        logger.warn({ err }, 'Interaction extraction failed (non-blocking)');
+      });
+    }
+  }
+
   /** Detect romantic relationships asynchronously (non-blocking). */
   private async detectRomanticRelationshipsAsync(
     userId: string,
@@ -278,13 +353,53 @@ export class ConversationIngestionPipeline {
     messageId: string
   ): Promise<void> {
     try {
-      const resolved = await entityRegistry.resolveManyById(unitIds, userId);
-      const validEntities = resolved.map(e => ({
-        id: e.id,
-        name: e.name,
-        type: (e.source === 'character' ? 'character' : 'omega_entity') as 'character' | 'omega_entity',
-      }));
+      const resolved = unitIds.length > 0
+        ? await entityRegistry.resolveManyById(unitIds, userId)
+        : [];
+      const validEntities = resolved
+        .map(e => ({
+          id: e.id,
+          name: e.name,
+          type: (e.source === 'character' ? 'character' : 'omega_entity') as 'character' | 'omega_entity',
+        }))
+        .filter(e => isIndividualPersonName(e.name));
 
+      const scoreRelationships = () => {
+        void import('./romanticRelationshipScoring')
+          .then(({ romanticRelationshipScoring }) => romanticRelationshipScoring.scoreAllForUser(userId))
+          .catch(err => logger.debug({ err, userId }, 'Relationship scoring failed'));
+      };
+
+      // Phase 1: lexical fast path — glossary + ontology, no LLM.
+      const lexicalResult = await ingestRomanticLexicalFromMessage(
+        userId,
+        rawText,
+        messageId,
+        validEntities
+      );
+
+      if (lexicalResult.saved > 0) {
+        logger.debug(
+          { userId, relationshipsFound: lexicalResult.saved },
+          'Lexical romantic relationships ingested from live chat'
+        );
+        scoreRelationships();
+        for (const rel of lexicalResult.relationships) {
+          this.runRomanticRelationshipFollowUps(
+            userId,
+            rawText,
+            messageId,
+            {
+              relationshipId: rel.relationshipId,
+              personId: rel.personId,
+              personType: rel.personType,
+            },
+            { logInteraction: false }
+          );
+        }
+      }
+
+      // Phase 2: LLM refinement when people are mentioned in knowledge units.
       if (validEntities.length > 0) {
         const relationships = await romanticRelationshipDetector.detectRelationships(
           userId,
@@ -296,18 +411,12 @@ export class ConversationIngestionPipeline {
         if (relationships.length > 0) {
           logger.debug(
             { userId, relationshipsFound: relationships.length },
-            'Detected romantic relationships'
+            'Detected romantic relationships (LLM)'
           );
 
-          // Sprint AD: re-enrich all relationships with deterministic
-          // scores/flags/obsession signals + re-rank (no LLM, fire-and-forget).
-          void import('./romanticRelationshipScoring')
-            .then(({ romanticRelationshipScoring }) => romanticRelationshipScoring.scoreAllForUser(userId))
-            .catch(err => logger.debug({ err, userId }, 'Relationship scoring failed'));
+          scoreRelationships();
 
-          // For each detected relationship, try to detect date events
           for (const rel of relationships) {
-            // Get relationship ID
             const relationshipResult = await supabaseAdmin
               .from('romantic_relationships')
               .select('id')
@@ -321,80 +430,22 @@ export class ConversationIngestionPipeline {
             const relationship = relationshipResult.data;
 
             if (relationship) {
-              // Detect date events
-              const dateEventPromise = romanticRelationshipDetector
-                .detectDateEvent(userId, rawText, relationship.id, rel.personId, messageId);
-              void dateEventPromise.catch(err => {
-                logger.warn({ err }, 'Date event detection failed');
-              });
-
-              // Detect breakups
-              const breakupPromise = breakupDetector
-                .detectBreakup(userId, rawText, relationship.id, rel.personId, messageId);
-              void breakupPromise.then(breakup => {
-                if (breakup) {
-                  logger.debug({ userId, relationshipId: relationship.id }, 'Detected breakup');
-                }
-              }).catch(err => {
-                logger.warn({ err }, 'Breakup detection failed');
-              });
-
-              // Detect love declarations
-              const loveDeclarationPromise = breakupDetector
-                .detectLoveDeclaration(userId, rawText, relationship.id, rel.personId, messageId);
-              void loveDeclarationPromise.catch(err => {
-                logger.warn({ err }, 'Love declaration detection failed');
-              });
-
-              // Detect drift (async, less frequent)
-              if (Math.random() < 0.1) {
-                const driftPromise = relationshipDriftDetector
-                  .detectDrift(userId, relationship.id, rel.personId, rel.personType);
-                void driftPromise.then(drift => {
-                  if (drift) {
-                    logger.debug(
-                      { userId, relationshipId: relationship.id, driftType: drift.driftType },
-                      'Detected relationship drift'
-                    );
-                  }
-                }).catch(err => {
-                  logger.warn({ err }, 'Drift detection failed');
-                });
-              }
-
-              // Detect cycles (less frequent, weekly check)
-              if (Math.random() < 0.05) {
-                const cyclesPromise = relationshipCycleDetector
-                  .detectCycles(userId, relationship.id, rel.personId, rel.personType);
-                void cyclesPromise.then(cycles => {
-                  if (cycles.length > 0) {
-                    logger.debug(
-                      { userId, relationshipId: relationship.id, cyclesFound: cycles.length },
-                      'Detected relationship cycles'
-                    );
-                  }
-                }).catch(err => {
-                  logger.warn({ err }, 'Cycle detection failed');
-                });
-              }
-
-              // Chat-native interaction logging — fire-and-forget, never blocks.
-              // When the user describes a date, call, fight, or meetup in chat,
-              // this writes to romantic_interactions (and romantic_dates for milestones)
-              // without any form or prompt. The AI responds naturally; the record
-              // is captured silently in the background.
-              void extractAndLogInteraction(
-                userId,
-                relationship.id,
-                rawText,
-                messageId
-              ).catch(err => {
-                logger.warn({ err }, 'Interaction extraction failed (non-blocking)');
+              this.runRomanticRelationshipFollowUps(userId, rawText, messageId, {
+                relationshipId: relationship.id,
+                personId: rel.personId,
+                personType: rel.personType,
               });
             }
           }
         }
       }
+
+      // Phase 3: vicarious romantic periphery — other partners of relationship subjects.
+      const anchorNames = [
+        ...lexicalResult.relationships.map((r) => r.partnerName),
+        ...validEntities.map((e) => e.name),
+      ];
+      await ingestVicariousFromMessage(userId, rawText, messageId, anchorNames, validEntities);
     } catch (err) {
       logger.warn({ err }, 'Romantic relationship detection failed (non-blocking)');
     }
@@ -2206,9 +2257,8 @@ export class ConversationIngestionPipeline {
       }
 
       // Step 11.3: Detect romantic relationships (async, non-blocking)
-      if (unitIds.length > 0) {
+      if (sender === 'USER' && (unitIds.length > 0 || hasRomanticSignals(rawText) || hasVicariousRomanticSignals(rawText))) {
         try {
-          // SECURITY: Store promise in variable to avoid esbuild parsing issues
           const romanticDetectionPromise = this.detectRomanticRelationshipsAsync(userId, rawText, unitIds, messageId);
           romanticDetectionPromise.catch((err: unknown) => {
             logger.warn({ err }, 'Romantic relationship detection failed');

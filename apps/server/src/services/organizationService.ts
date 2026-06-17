@@ -18,6 +18,7 @@ export type GroupType =
   | 'club'
   | 'nonprofit'
   | 'family'
+  | 'household'
   | 'martial_arts'
   | 'scene'
   | 'community'
@@ -27,6 +28,9 @@ export type GroupType =
   | 'public_entity'
   | 'brand'
   | 'vendor'
+  | 'team'
+  | 'project'
+  | 'event_group'
   | 'other';
 
 // ── Membership model ──────────────────────────────────────────────────

@@ -24,6 +24,7 @@ export function mapGlossaryMatches(text: string): GlossaryMatch[] {
       relationshipHint: entry.relationshipHint,
       queryHint: entry.queryHint,
       actionHint: entry.actionHint,
+      surfaceTarget: entry.surfaceTarget,
       confidence: entry.confidence * entry.weight,
     });
   }

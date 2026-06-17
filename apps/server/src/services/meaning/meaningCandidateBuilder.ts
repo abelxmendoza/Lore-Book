@@ -87,11 +87,20 @@ export function buildOntologyActionCandidates(
   }
 
   if (lexical.intents.some((i) => i.kind === 'NAVIGATE')) {
-    const surface = /\bfamily|father|mother\b/i.test(text) ? 'family' : 'characters';
+    const navMatch = lexical.glossaryMatches.find(
+      (m) => m.actionHint === 'OPEN_SURFACE' && m.surfaceTarget
+    );
+    const surface = navMatch?.surfaceTarget
+      ?? (/\bfamily|father|mother\b/i.test(text) ? 'family' : 'characters');
+    const label = surface.startsWith('discovery/')
+      ? `Open ${surface.replace('discovery/', '').replace(/-/g, ' ')}`
+      : surface === 'family'
+        ? 'Open Family'
+        : 'Open Characters';
     actions.push({
       kind: 'navigate_surface',
-      label: surface === 'family' ? 'Open Family' : 'Open Characters',
-      confidence: 0.75,
+      label,
+      confidence: navMatch ? 0.85 : 0.75,
       requiresConfirmation: true,
       payload: { surface },
     });

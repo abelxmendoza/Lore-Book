@@ -28,6 +28,10 @@ export const EntityModalProvider: React.FC<{ children: ReactNode }> = ({ childre
     setTimeout(() => setSelectedEntity(null), 300);
   }, []);
 
+  const updateEntity = useCallback((entity: EntityData) => {
+    setSelectedEntity(prev => (prev ? { ...prev, ...entity } : entity));
+  }, []);
+
   const openMemory = useCallback((memory: any) => {
     openEntity({
       type: 'memory',
@@ -40,50 +44,61 @@ export const EntityModalProvider: React.FC<{ children: ReactNode }> = ({ childre
   }, [openEntity]);
 
   const openCharacter = useCallback(async (character: any) => {
-    // If only id/name provided, fetch full character
-    if (!character.character && character.id) {
-      try {
-        const { fetchJson } = await import('../lib/api');
-        const fullCharacter = await fetchJson(`/api/characters/${character.id}`);
-        character = { ...character, character: fullCharacter };
-      } catch (error) {
-        console.error('Error loading character:', error);
-      }
-    }
+    const seed = character.character || character;
     openEntity({
       type: 'character',
       id: character.id,
-      name: character.name || character.character?.name,
-      character: character.character || character,
-      description: character.description || character.character?.summary,
-      tags: character.tags || character.character?.tags
+      name: character.name || seed?.name,
+      character: seed,
+      description: character.description || seed?.summary,
+      tags: character.tags || seed?.tags,
     });
-  }, [openEntity]);
+    if (!character.character && character.id && !String(character.id).startsWith('dummy-')) {
+      try {
+        const { fetchJson } = await import('../lib/api');
+        const fullCharacter = await fetchJson(`/api/characters/${character.id}`);
+        updateEntity({
+          type: 'character',
+          id: character.id,
+          name: fullCharacter.name || character.name,
+          character: fullCharacter,
+          description: fullCharacter.summary ?? character.description,
+          tags: fullCharacter.tags ?? character.tags,
+        });
+      } catch (error) {
+        console.error('Error loading character:', error);
+        // Keep modal open with seed data — never clear on transient fetch failure.
+      }
+    }
+  }, [openEntity, updateEntity]);
 
   const openLocation = useCallback(async (location: any) => {
-    // If only id/name provided, fetch full location
+    const seed = location.location || location;
+    openEntity({
+      type: 'location',
+      id: location.id,
+      name: location.name || seed?.name,
+      location: seed,
+      description: location.description || seed?.description,
+      tags: location.tags || seed?.tags,
+    });
     if (!location.location && location.id) {
       try {
         const { fetchJson } = await import('../lib/api');
         const fullLocation = await fetchJson(`/api/locations/${location.id}`);
-        location = { ...location, location: fullLocation };
+        updateEntity({
+          type: 'location',
+          id: location.id,
+          name: fullLocation.name || location.name,
+          location: fullLocation,
+          description: fullLocation.description ?? location.description,
+          tags: fullLocation.tags ?? location.tags,
+        });
       } catch (error) {
         console.error('Error loading location:', error);
       }
     }
-    openEntity({
-      type: 'location',
-      id: location.id,
-      name: location.name || location.location?.name,
-      location: location.location || location,
-      description: location.description || location.location?.description,
-      tags: location.tags || location.location?.tags
-    });
-  }, [openEntity]);
-
-  const updateEntity = useCallback((entity: EntityData) => {
-    setSelectedEntity(prev => prev ? { ...prev, ...entity } : entity);
-  }, []);
+  }, [openEntity, updateEntity]);
 
   return (
     <EntityModalContext.Provider

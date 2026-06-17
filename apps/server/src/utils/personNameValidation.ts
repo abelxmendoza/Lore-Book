@@ -35,6 +35,14 @@ const COLLECTIVE_TAIL_WORDS = new Set([
 const COLLECTIVE_INLINE_PATTERN =
   /\b(?:team|crew|squad|group|department|division|unit|staff|roster|committee|guild|union|society|association|board|leadership|management|workforce|personnel)\b/i;
 
+const HONORIFIC_ONLY = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'sir', 'maam', "ma'am"]);
+
+const ROLE_DESCRIPTOR_WORDS =
+  /\b(?:dj|dancer|promoter|organizer|admirer|guardian|colleague|mentor|connection|recruiter|boyfriend|girlfriend|onboarding)\b/i;
+
+const ROLE_PHRASE_PATTERN =
+  /\bfrom\s+the\b|\bfor\b.+\b(?:show|meeting|event|scene|run)\b/i;
+
 export function normalizePersonNameKey(name: string): string {
   return (name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -73,10 +81,23 @@ export function isCollectivePersonName(name: string | null | undefined): boolean
   return false;
 }
 
+/** Epithet / role labels like "DJ for Hell Fairy's Show" — not stable person names. */
+export function isRoleDescriptorPersonName(name: string | null | undefined): boolean {
+  if (name == null || !String(name).trim()) return false;
+  const trimmed = String(name).trim();
+  const key = normalizePersonNameKey(trimmed);
+  const tokens = key.split(' ').filter(Boolean);
+  if (tokens.length === 1 && HONORIFIC_ONLY.has(key)) return true;
+  if (ROLE_PHRASE_PATTERN.test(trimmed)) return true;
+  if (/\bfrom\b.+\b(?:scene|underground|club|goth)\b/i.test(trimmed)) return true;
+  if (ROLE_DESCRIPTOR_WORDS.test(trimmed) && tokens.length >= 3) return true;
+  return false;
+}
+
 export function isDisplayablePersonName(name: string | null | undefined): boolean {
   return !isPlaceholderPersonName(name);
 }
 
 export function isIndividualPersonName(name: string | null | undefined): boolean {
-  return isDisplayablePersonName(name) && !isCollectivePersonName(name);
+  return isDisplayablePersonName(name) && !isCollectivePersonName(name) && !isRoleDescriptorPersonName(name);
 }

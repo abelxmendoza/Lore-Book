@@ -15,8 +15,11 @@ export type CharacterSuggestion = {
 };
 
 export const characterSuggestionsApi = {
-  list: (options?: { context?: 'general' | 'romantic' }) => {
-    const query = options?.context === 'romantic' ? '?context=romantic' : '';
+  list: (options?: { context?: 'general' | 'romantic'; rescan?: boolean }) => {
+    const params = new URLSearchParams();
+    if (options?.context === 'romantic') params.set('context', 'romantic');
+    if (options?.rescan) params.set('rescan', 'true');
+    const query = params.toString() ? `?${params.toString()}` : '';
     return fetchJson<{ success: boolean; suggestions: CharacterSuggestion[]; count: number }>(
       `/api/characters/suggestions${query}`
     );

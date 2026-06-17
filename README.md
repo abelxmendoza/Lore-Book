@@ -1,6 +1,6 @@
 # Lorekeeper
 
-<!-- © 2025 Abel Mendoza — Omega Technologies. All Rights Reserved. -->
+<!-- © 2026 Abel Mendoza — Omega Technologies. All Rights Reserved. -->
 
 **A system that gradually understands your life.**
 
@@ -26,6 +26,41 @@ The record accumulates across threads and sessions. The assistant reads from it 
 
 ---
 
+## Application Surfaces
+
+Lorekeeper is organized as a set of **Books** — full-page views for each domain of your life. All surfaces share the same card-grid + detail-modal pattern and refresh when ingestion updates story data.
+
+| Surface | Route | What it shows |
+| ------- | ----- | ------------- |
+| **Chat** | `/chat` | Primary conversational interface with thread list, suggested-action chips, and message correction |
+| **Characters** | `/characters` | People in your life — profiles, relationship intelligence, photo/message galleries, merge tools |
+| **Locations** | `/locations` | Canonical places with taxonomy (Home, Venue, City, …), merge panel, and place–character links |
+| **Projects** | `/projects` | Active pursuits (career, software, fitness, hobbies) with lexical auto-detection and duplicate merge |
+| **Skills** | `/skills` | Competencies with level, XP, practice history, and auto-detected suggestions |
+| **Family** | `/family` | Family tree, households, family groups, and relationship analytics |
+| **Groups** | `/organizations` | Organizations, communities, and social groups with hierarchy and network graph |
+| **Life Log** | `/events` | EventsBook — chronicle grid, recurring scenes, and the 4-tab event modal |
+| **Love & Relationships** | `/love` | Romantic relationships — drift, cycles, milestones, cross-relationship patterns |
+| **Timeline** | `/timeline` | OmniTimeline with search, hierarchy panel, and life-arc positioning |
+| **Life Saga** | `/saga` | Narrative arc view — eras, chapters, and turning points synthesized from your record |
+| **Quest Board** | `/quests` | Goals and pursuits with status, priority, progress, and detected suggestions |
+| **Documents** | `/documents` | File library — upload resumes, PDFs, and artifacts; parsed claims flow into career lore |
+| **Discovery Hub** | `/discovery` | Deep analytics panels: Revealed Self, contradictions, identity pulse, values, life arcs |
+| **Lorebook** | `/lorebook` | Unified knowledge browser across entities, facts, and story connections |
+| **Lore Editor** | `/memoir` | Biography editor for long-form narrative writing |
+| **Photos** | `/photos` | Photo album with entity tagging |
+| **Gossip & Claims** | `/perceptions` | How others perceive you — external perspectives and social standing |
+| **Knowledge Gaps** | `/gaps` | Timeline voids and sparse entities that need more context |
+| **Continuity** | `/continuity` | Contradictions, abandoned goals, identity drift, and emotional transitions |
+| **Entity Resolution** | `/entities` | Ambiguous entity inbox — confirm, merge, or dismiss detected duplicates |
+| **Intelligence Health** | `/intelligence` | Pipeline funnel dashboard (auth required) |
+| **What AI Knows** | `/what-ai-knows` | Identity custody — export everything the system holds about you, with truth states |
+| **Demo** | `/demo` | Auth-free showcase runtime with synthetic cognition (isolated from live data) |
+
+Narrative views previously at `/story` now live in **Timeline**, **Lorebook**, and **Life Saga**.
+
+---
+
 ## Architecture Overview
 
 ### The Intelligence Stack
@@ -37,6 +72,8 @@ Mode Router (classify: EXPERIENCE_INGESTION, ACTION_LOG, MEMORY_RECALL, ...)
    ↓
 Ingestion pipeline (~30 parallel extractors)
    ↓
+Episode Segmentation (time/entity/location/topic boundaries → episodes table)
+   ↓
 Event Assembly (resolved_events + 4-layer meaning extraction)
    ├── event_emotions, event_cognitions, event_identity_impacts, narrative_accounts
    ├── event_impacts (how events affect the user)
@@ -47,6 +84,10 @@ Event Assembly (resolved_events + 4-layer meaning extraction)
 Event candidates (recurring behavioral scenes)
    ↓
 Life arcs + chapters (named temporal containers)
+   ↓
+Revealed Preference Engine (stated vs revealed behavior from episodes)
+   ↓
+Contradiction Engine (proven divergences between stated identity and lived behavior)
    ↓
 Knowledge crystallization (behavioral patterns → durable claims with evidence)
    ↓
@@ -89,6 +130,21 @@ The system earns knowledge from behavioral evidence — what you repeatedly do, 
 
 AI-generated claims never count as evidence. Only behavioral observation does.
 
+### Episode Segmentation
+
+Threads are split into **episodes** — the primary conversational memory unit — using deterministic boundary signals: time gaps, entity shifts, location shifts, and topic shifts. Segmentation runs debounced in the background after chat activity and persists to the `episodes` table with full provenance (`source_message_ids`, `source_entity_ids`, `boundary_reason`). Episodes link to resolved events and feed the Revealed Preference and Contradiction engines.
+
+### Revealed Preference & Contradiction Engines
+
+Two deterministic engines compare what you **say** about yourself with what your **behavior** reveals:
+
+| Engine | Question it answers | API |
+| ------ | ------------------- | --- |
+| **Revealed Preference** (P2-A) | What do you actually prioritize, based on where you spend time and attention? | `GET /api/revealed-preference` |
+| **Contradiction** (P2-B) | Where does stated identity diverge from revealed behavior — with evidence? | `GET /api/contradictions` |
+
+Both engines are evidence-backed and accusation-free. Contradictions carry severity, confidence, sample episodes, and a lifecycle (`open` → `resolved`). The Discovery Hub surfaces both in dedicated panels.
+
 ### Relationship Intelligence
 
 Romantic relationships are tracked at full depth: drift direction, active cycles (push-pull, hot-cold, toxic patterns), recent interactions logged from natural conversation (no forms), cross-relationship pattern analysis across your full history, and a relationship influence view showing which relationships shaped your life and how.
@@ -129,9 +185,26 @@ Pattern matching runs first (<50ms). LLM classification fires only when confiden
 
 **Live graph recovery:** Relationship and event recovery (`relationshipFoundationService`, `eventRecoveryService`) run on the live chat path — debounced per user (`graphRecoveryTrigger`) so the relationship/event graph stays current as you chat, instead of only updating on batch script runs. Idempotent (re-runs create no duplicates); diagnostics recorded in `pipeline_runs` and surfaced at `GET /api/diagnostics/graph-recovery`.
 
+**Lexical project detection:** A fast keyword gate scans conversation text for project mentions (career moves, side projects, fitness goals) and surfaces suggestions in the Projects Book without repeated full-corpus scans.
+
+**File ingestion:** Uploads flow through a canonical `user_files` registry backed by private Supabase Storage. Resumes and documents are parsed into structured claims (employment, education, skills) that merge into career lore and the Documents library.
+
+### Chat & Thread Durability
+
+- **Thread persistence:** Server threads hydrate on load; stream updates pin to the send-time thread ID so messages never land in the wrong conversation.
+- **Temporal query retrieval:** Questions like "what did I do today?" or "what happened in March?" route through `temporalQueryService`, filtering by **occurrence time** (when something happened) rather than `created_at` (when you wrote it down).
+- **Message correction:** Edit any chat bubble to re-derive knowledge from the corrected text (`POST /api/corrections/:messageId`). The correction loop invalidates downstream extractions tied to that message.
+- **Suggested-action chips:** Contextual follow-up prompts appear after assistant responses to guide deeper sharing.
+
 ### Entity System
 
 Single `EntityRegistry` façade over four entity tables. Priority resolution: `characters` → `omega_entities` → `people_places` → `entities`. Jaro-Winkler similarity for near-duplicate detection. Character deduplication at all creation paths.
+
+**Canonical location authority:** All places consolidate into the `locations` table with taxonomy-aware typing (Home, Venue, City, Region, …). Orphan `people_places` rows promote to canonical locations; merge and edit paths resolve IDs consistently so the UI never shows stale location references.
+
+**Character media:** Character detail modals include Photo Gallery and Messages tabs — reference images and DM/screenshot uploads that Lorekeeper can discuss in character-scoped chat.
+
+**Projects authority:** Projects mirror the locations pattern — canonical `projects` table, duplicate detection, lexical ingestion suggestions, and org-fallback linking when a project maps to a workplace.
 
 ### Retrieval (RAG)
 
@@ -147,6 +220,8 @@ Lorekeeper only asserts what it has actually seen you share. It doesn't fabricat
 
 The design principle: one genuinely earned fact is worth more than ten inferred ones. Knowledge builds slowly and honestly.
 
+**Epistemic honesty:** Every fact carries a truth state (`CANONICAL`, `INFERRED`, `PENDING_VERIFICATION`, …). The UI and chat surface explicit unknowns rather than filling gaps with confident-sounding guesses. The `/what-ai-knows` page lets you audit and export the full record.
+
 ---
 
 ## What Gets Remembered
@@ -160,6 +235,12 @@ The design principle: one genuinely earned fact is worth more than ten inferred 
 **Relationships** — Romantic relationships tracked in depth: type, status, drift direction, behavioral cycles, key milestones, red/green flags, influence on the broader life arc graph.
 
 **Knowledge claims** — Behavioral patterns, values, lessons, and beliefs that crystallize from evidence over time. Each claim carries a confidence score and a full evidence trace.
+
+**Projects & skills** — Pursuits and competencies detected from conversation or uploaded documents, with progress tracking and duplicate merge.
+
+**Documents** — Resumes, PDFs, and uploaded artifacts parsed into structured career claims with provenance links back to source files.
+
+**Episodes** — Conversational segments within threads, bounded by time/entity/location/topic shifts, with provenance to source messages.
 
 **Decisions and beliefs** — Major choices and held positions, with the ability to revise them later.
 
@@ -183,8 +264,10 @@ Everything Lorekeeper knows about you comes from what you explicitly shared.
 
 - **Backend:** Node.js / Express, TypeScript, Supabase PostgreSQL + pgvector
 - **Frontend:** React + Vite, TypeScript, React Router
-- **Database:** 13 event intelligence tables, 160+ migrations, Row Level Security on all user data
+- **Database:** 170+ migrations, Row Level Security on all user data, private Supabase Storage for user files
 - **Auth:** Supabase JWT, Bearer token, dev bypass available locally
+- **Billing:** Stripe subscriptions with 7-day trial (see below)
+- **Security:** Cross-user tenant isolation on memory/diagnostics routes; anon RPC lockdown on SECURITY DEFINER functions
 
 ### Production Intelligence Tables
 
@@ -203,6 +286,11 @@ Everything Lorekeeper knows about you comes from what you explicitly shared.
 | `event_candidates` | Recurring behavioral scene patterns with continuity strength |
 | `event_unit_links` | Links extracted_units to resolved_events |
 | `character_timeline_events` | Events linked to specific characters (shared_experience, lore, mentioned) |
+| `episodes` | Thread segments with boundary provenance, participants, and linked events |
+| `user_files` | Canonical registry for uploads; all file ingestion flows through this table |
+| `projects` | Canonical project entities with type, status, tags, and lexical detection |
+| `preference_signals` | Stated vs revealed behavior counts per category (Revealed Preference Engine) |
+| `contradictions` | Proven stated-vs-revealed divergences with severity, evidence, and lifecycle |
 
 ---
 
@@ -233,6 +321,8 @@ Environment: copy `.env.example` → `.env`. Key dev flags:
 
 - `DISABLE_AUTH_FOR_DEV=true` — skip JWT (never in production)
 - `DEV_AI_FALLBACK=true` — stub AI responses on rate limits
+- `ENABLE_GROUP_DETECTION=false` — background group-detection worker (off by default; enable only after memory bounds are verified)
+- `EPISODE_SEGMENTATION_LIVE=1` — live episode segmentation on chat (on by default; set `0` to disable)
 
 ### Intelligence Health Dashboard
 
@@ -255,19 +345,29 @@ lorekeeper/
 ├── apps/
 │   ├── server/src/
 │   │   ├── services/
-│   │   │   ├── conversationCentered/       # event assembly, causal detection, impact detection
+│   │   │   ├── conversationCentered/       # event assembly, episode segmentation, ingestion
+│   │   │   │   ├── episodeSegmentationCore.ts # deterministic thread → episode boundaries
+│   │   │   │   ├── episodePersistenceService.ts # episodes table writes + provenance
 │   │   │   │   ├── eventAssemblyService.ts # assembles resolved_events + links event_records
 │   │   │   │   ├── eventCausalDetector.ts  # LLM-based causal chain detection
 │   │   │   │   ├── eventImpactDetector.ts  # how events affect the user
 │   │   │   │   └── ingestionPipelineClass.ts # 12-step pipeline with continuity detection
+│   │   │   ├── revealedPreference/         # stated-vs-revealed behavior analysis
+│   │   │   ├── contradiction/              # proven identity/behavior divergences
 │   │   │   ├── narrativeContinuityService.ts # entity-named continuity link generation
 │   │   │   ├── eventCandidates/            # recurring scene pattern detection
 │   │   │   ├── eventExtraction/            # 4-layer mode-router extraction (emotions/cognitions/identity)
 │   │   │   ├── knowledgeCrystallization/   # claims, confidence engine, lifecycle
+│   │   │   ├── temporal/                   # temporalQueryService for chat recall windows
 │   │   │   ├── chronology/                 # V1 engine, arc bridge, gap nodes
 │   │   │   └── chat/                       # systemPromptBuilder, ragBuilder, relationship context
 │   │   └── routes/
 │   │       ├── conversationCentered.ts     # event endpoints + intelligence-health stats
+│   │       ├── projects.ts                 # Projects Book API + lexical suggestions
+│   │       ├── documents.ts                # user_files registry + resume parsing
+│   │       ├── corrections.ts              # message correction loop
+│   │       ├── revealedPreference.ts       # Revealed Preference Engine API
+│   │       ├── contradictions.ts           # Contradiction Engine API
 │   │       ├── diagnostics.ts              # /intelligence-health dashboard endpoint
 │   │       ├── knowledge.ts                # claims viewer + evidence inspector
 │   │       └── characters.ts               # character management + deduplication
@@ -277,11 +377,19 @@ lorekeeper/
 │       │   │   ├── EventsBook.tsx          # chronicle grid with Recurring Scenes view
 │       │   │   ├── EventDetailModal.tsx    # 4-tab modal: Overview/Meaning/Connections/Sources
 │       │   │   └── EventProfileCard.tsx    # card with tone accent, names, type icons, tooltips
+│       │   ├── projects/ProjectBook.tsx    # card grid + lexical suggestion panel
+│       │   ├── documents/DocumentsBook.tsx # file library + resume claims inbox
+│       │   ├── skills/SkillsBook.tsx       # skills grid with filters and XP tracking
+│       │   ├── family/FamilyBook.tsx       # family tree, households, analytics
+│       │   ├── organizations/OrganizationsBook.tsx # groups + network graph
+│       │   ├── discovery/DiscoveryHub.tsx  # deep analytics panels (revealed self, contradictions, …)
+│       │   ├── saga/SagaScreen.tsx         # narrative arc and chapter view
+│       │   ├── quests/QuestBoard.tsx       # goals and pursuits board
 │       │   └── diagnostics/
 │       │       └── IntelligenceDashboard.tsx # /intelligence health dashboard
 │       └── pages/
-│           └── Router.tsx                  # all surface routes including /intelligence
-├── supabase/migrations/                    # 160+ migrations, event tables fully deployed
+│           └── Router.tsx                  # all surface routes
+├── supabase/migrations/                    # 170+ migrations
 ├── TEMPORAL_ARCHITECTURE.md               # canonical reference for all temporal systems
 └── docs/
 ```
@@ -296,7 +404,9 @@ lorekeeper/
 | [docs/guides/LOCAL_DEVELOPMENT.md](docs/guides/LOCAL_DEVELOPMENT.md) | Local setup, migrations, dev flags |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Full system architecture, request lifecycle |
 | [docs/architecture/COGNITION_RUNTIME.md](docs/architecture/COGNITION_RUNTIME.md) | Pipeline, mode router, extraction types |
+| [docs/thread-intelligence-architecture.md](docs/thread-intelligence-architecture.md) | Episode segmentation, thread cache, durability |
+| [docs/location-domain-health-report.md](docs/location-domain-health-report.md) | Canonical location authority consolidation |
 
 ---
 
-© 2025 Abel Mendoza — Omega Technologies. All Rights Reserved.
+© 2026 Abel Mendoza — Omega Technologies. All Rights Reserved.

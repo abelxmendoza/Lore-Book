@@ -13,6 +13,27 @@ vi.mock('../../src/services/peoplePlacesService', () => ({
   },
 }));
 
+vi.mock('../../src/services/characterAuthorityService', () => ({
+  characterAuthorityService: {
+    resolveByName: vi.fn().mockResolvedValue({ characterId: null, confidence: 0, method: 'none' }),
+    registerCharacterAuthority: vi.fn().mockResolvedValue(undefined),
+    linkSourceRecord: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock('../../src/services/characterImportanceService', () => ({
+  characterImportanceService: {
+    calculateImportance: vi.fn().mockResolvedValue({ importanceLevel: 'minor', importanceScore: 0.3 }),
+    updateCharacterImportance: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock('../../src/services/characterIdentityIndexService', () => ({
+  characterIdentityIndexService: {
+    rebuild: vi.fn().mockResolvedValue({ indexed: 0 }),
+  },
+}));
+
 vi.mock('../../src/services/supabaseClient', () => {
   const orderResolved = vi.fn().mockResolvedValue({ data: [], error: null });
   const chain = {
@@ -43,7 +64,7 @@ describe('Characters API Routes', () => {
   const mockUser = { id: 'user-123', email: 'test@example.com' };
   const mockCharacter = {
     id: 'char-1',
-    name: 'Test Character',
+    name: 'Tía Maria',
     user_id: 'user-123',
     created_at: new Date().toISOString()
   };
@@ -91,27 +112,32 @@ describe('Characters API Routes', () => {
 
   describe('POST /api/characters', () => {
     it('should create a new character', async () => {
-      // Mock supabase insert
       const mockFrom = vi.mocked(supabaseAdmin.from);
-      const mockInsert = vi.fn().mockReturnThis();
-      const mockSelect = vi.fn().mockReturnThis();
-      const mockSingle = vi.fn().mockResolvedValue({
-        data: mockCharacter,
-        error: null,
-      });
 
-      // Route calls select() for dedup checks before insert; provide empty returns for those
-      const mockEq = vi.fn().mockResolvedValue({ data: [], error: null });
-      const mockSelectQuery = vi.fn().mockReturnValue({ eq: mockEq, limit: vi.fn().mockResolvedValue({ data: [], error: null }) });
-
-      mockFrom.mockReturnValue({
-        select: mockSelectQuery,
-        insert: mockInsert.mockReturnValue({
-          select: mockSelect.mockReturnValue({
-            single: mockSingle,
+      mockFrom.mockImplementation((table: string) => {
+        const chain: Record<string, unknown> = {};
+        chain.select = vi.fn().mockReturnValue(chain);
+        chain.eq = vi.fn().mockReturnValue(chain);
+        chain.ilike = vi.fn().mockReturnValue(chain);
+        chain.in = vi.fn().mockReturnValue(chain);
+        chain.or = vi.fn().mockReturnValue(chain);
+        chain.order = vi.fn().mockReturnValue(chain);
+        chain.limit = vi.fn().mockReturnValue(chain);
+        chain.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+        chain.single = vi.fn().mockResolvedValue({ data: mockCharacter, error: null });
+        chain.insert = vi.fn().mockImplementation(() => ({
+          select: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: mockCharacter, error: null }),
           }),
-        }),
-      } as any);
+        }));
+        Object.assign(chain, {
+          then(onFulfilled: (v: { data: unknown; error: null }) => unknown) {
+            const data = table === 'characters' ? [] : [];
+            return Promise.resolve(onFulfilled({ data, error: null }));
+          },
+        });
+        return chain as never;
+      });
 
       // Mock avatar and cache functions
       const { characterAvatarUrl, avatarStyleFor } = await import('../../src/utils/avatar');
@@ -123,14 +149,14 @@ describe('Characters API Routes', () => {
       const response = await request(app)
         .post('/api/characters')
         .send({
-          name: 'Test Character',
-          firstName: 'Test',
-          lastName: 'Character'
+          name: 'Tía Maria',
+          firstName: 'Maria',
+          lastName: undefined,
         })
         .expect(201);
 
       expect(response.body).toHaveProperty('character');
-      expect(response.body.character.name).toBe('Test Character');
+      expect(response.body.character.name).toBe('Tía Maria');
     });
 
     it('should validate character schema', async () => {

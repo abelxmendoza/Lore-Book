@@ -87,8 +87,6 @@ export async function loadThreadMessages(
     metadata: (m.metadata as Record<string, unknown>) ?? null,
   }));
 
-  if (fromChat.length > 0) return fromChat;
-
   const fromConversation = (convMsgs ?? []).map((m) => ({
     id: m.id,
     role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
@@ -98,7 +96,10 @@ export async function loadThreadMessages(
   }));
   const fromMeta = metadataMessages(session?.metadata as Record<string, unknown> | null);
 
-  return mergeMessageSources([fromConversation, fromMeta]);
+  // Always merge — chat_messages can be user-only while assistant lives in a fallback source.
+  return mergeMessageSources([fromChat, fromConversation, fromMeta]).filter(
+    (m) => m.content.trim().length > 0
+  );
 }
 
 export async function threadMessageCount(userId: string, sessionId: string): Promise<number> {

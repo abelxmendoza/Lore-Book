@@ -63,8 +63,20 @@ function makeStoredThread(id: string, title: string, messages: any[] = [makeMess
 }
 
 function mockBackendThreadLoad(threads: ReturnType<typeof makeDbThread>[]) {
-  mockFetchJson.mockResolvedValueOnce({ threads, success: true });
-  mockFetchJson.mockResolvedValue({ success: true, recovered: 0 });
+  mockFetchJson.mockImplementation(async (url: string) => {
+    if (url.includes('/thread-health/repair')) return { repaired: 0, report: {} };
+    if (url.includes('recover-orphans')) return { success: true, recovered: 0 };
+    if (url.includes('/threads?')) {
+      return {
+        threads,
+        success: true,
+        total: threads.length,
+        hasMore: false,
+        nextCursor: null,
+      };
+    }
+    return { success: true };
+  });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -157,7 +169,12 @@ describe('useChatThreads', () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
     const stored = [makeStoredThread('local-1', 'Local thread')];
     localStorage.setItem('lorekeeper_chat_threads_user-1', JSON.stringify(stored));
-    mockFetchJson.mockRejectedValueOnce(new Error('Network error'));
+    mockFetchJson.mockImplementation(async (url: string) => {
+      if (url.includes('/thread-health/repair')) return { repaired: 0 };
+      if (url.includes('recover-orphans')) return { success: true };
+      if (url.includes('/threads?')) throw new Error('Network error');
+      return { success: true };
+    });
 
     const { result } = renderHook(() => useChatThreads());
 
@@ -265,7 +282,7 @@ describe('useChatThreads', () => {
 
   it('deleteThread removes thread after local message update', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
-    mockFetchJson.mockResolvedValue({ threads: [], success: true });
+    mockBackendThreadLoad([]);
 
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));
@@ -288,7 +305,7 @@ describe('useChatThreads', () => {
 
   it('updateThread with touchActivity PATCHes activity only (no messages)', async () => {
     mockUseAuth.mockReturnValue(makeAuthState({ userId: 'user-1' }));
-    mockFetchJson.mockResolvedValue({ threads: [], success: true });
+    mockBackendThreadLoad([]);
 
     const { result } = renderHook(() => useChatThreads());
     await waitFor(() => expect(result.current.threadsLoading).toBe(false));

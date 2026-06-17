@@ -11,6 +11,14 @@ import { glossaryAliases, lookupKeyword, type ActionHint, type GlossaryEntry, ty
 
 const norm = (s: string) => (s ?? '').toLowerCase().replace(/['’]/g, "'").replace(/\s+/g, ' ').trim();
 
+/** Categories that emit hints only — never discovered as standalone entities. */
+const HINT_ONLY_CATEGORIES = new Set([
+  'RELATIONSHIP_VERB', 'IDENTITY_VERB', 'DISAMBIGUATION', 'NAV_VERB',
+  'ESSENCE_SIGNAL', 'SHADOW_SIGNAL', 'IDENTITY_SIGNAL', 'CONTRADICTION_SIGNAL',
+  'DECISION_SIGNAL', 'MEMORY_SIGNAL', 'CORRECTION_VERB', 'RECALL_VERB',
+  'ENTITY_AUTHORITY', 'ANALYTICS_SIGNAL', 'INSIGHT_SIGNAL', 'HABIT', 'VALUE',
+]);
+
 // Scene/persona words that REDUCE kinship likelihood for a trailing kinship word
 // (e.g. "Goth Tio" — goth + nightlife scene → persona, not uncle).
 const SCENE_WORDS = /\b(goth|punk|club|dj|scene|stage|show|band|rave|set|warehouse|nightlife|metal|emo|drag|rapper|mc|producer)\b/;
@@ -119,9 +127,9 @@ export function discoverEntities(text: string): DiscoveredEntity[] {
     out.push({ surface: `${owner}'s ${m[2]}`, name: `${titleCase(owner)}'s ${titleCase(m[2])}`, domain: 'LOCATION', category: 'DWELLING', subcategory: 'RESIDENCE', confidence: 0.78, reason: 'possessive dwelling composition' });
   }
 
-  // Glossary alias scan (longest-first; skip relationship verbs + time cues — those are hints/queries).
+  // Glossary alias scan (longest-first; skip hint-only categories and time cues).
   for (const { alias, entry } of glossaryAliases()) {
-    if (entry.category === 'RELATIONSHIP_VERB' || entry.domain === 'TIME') continue;
+    if (HINT_ONLY_CATEGORIES.has(entry.category) || entry.domain === 'TIME') continue;
     if (t.includes(` ${alias} `) || t.includes(` ${alias}'s `)) {
       out.push({ surface: alias, name: titleCase(alias), domain: entry.domain, category: entry.category, subcategory: entry.subcategory, confidence: entry.confidence, reason: `glossary:${entry.domain}/${entry.category}` });
     }
@@ -189,6 +197,78 @@ export function classifyActionIntent(text: string): {
     queryType: classifyQueryType(text),
     relationshipHints: discoverRelationshipHints(text),
   };
+}
+
+export interface DiscoverySurfaceHit {
+  surface: string;
+  cue: string;
+  confidence: number;
+}
+
+/** Map natural language to a Discovery Hub or Book surface target. */
+export function classifyDiscoverySurface(text: string): DiscoverySurfaceHit | null {
+  const t = ` ${norm(text)} `;
+  let best: DiscoverySurfaceHit | null = null;
+  for (const { alias, entry } of glossaryAliases()) {
+    if (entry.actionHint !== 'OPEN_SURFACE' || !entry.surfaceTarget) continue;
+    if (!t.includes(alias)) continue;
+    const score = entry.confidence * entry.weight;
+    if (!best || score > best.confidence) {
+      best = { surface: entry.surfaceTarget, cue: alias, confidence: score };
+    }
+  }
+  return best;
+}
+
+export interface InsightSignalHit {
+  category: string;
+  subcategory?: string;
+  cue: string;
+  queryHint?: QueryHint;
+  confidence: number;
+}
+
+/** Detect Discovery-relevant insight signals (essence, shadow, contradiction, etc.). */
+export function discoverInsightSignals(text: string): InsightSignalHit[] {
+  const t = ` ${norm(text)} `;
+  const hits: InsightSignalHit[] = [];
+  for (const { alias, entry } of glossaryAliases()) {
+    if (!['ESSENCE_SIGNAL', 'SHADOW_SIGNAL', 'IDENTITY_SIGNAL', 'CONTRADICTION_SIGNAL',
+      'DECISION_SIGNAL', 'ANALYTICS_SIGNAL', 'INSIGHT_SIGNAL', 'MEMORY_SIGNAL'].includes(entry.category)) {
+      continue;
+    }
+    if (!t.includes(alias)) continue;
+    hits.push({
+      category: entry.category,
+      subcategory: entry.subcategory,
+      cue: alias,
+      queryHint: entry.queryHint,
+      confidence: entry.confidence * entry.weight,
+    });
+  }
+  return dedupeBy(hits, (h) => `${h.category}:${h.subcategory ?? h.cue}`);
+}
+
+/** Detect entity authority intents (merge, alias, dismiss duplicate). */
+export function discoverEntityAuthoritySignals(text: string): Array<{
+  subcategory?: string;
+  cue: string;
+  surfaceTarget?: string;
+  confidence: number;
+}> {
+  const t = ` ${norm(text)} `;
+  const hits: Array<{ subcategory?: string; cue: string; surfaceTarget?: string; confidence: number }> = [];
+  for (const { alias, entry } of glossaryAliases()) {
+    if (entry.category !== 'ENTITY_AUTHORITY') continue;
+    if (!t.includes(alias)) continue;
+    hits.push({
+      subcategory: entry.subcategory,
+      cue: alias,
+      surfaceTarget: entry.surfaceTarget,
+      confidence: entry.confidence * entry.weight,
+    });
+  }
+  return dedupeBy(hits, (h) => h.subcategory ?? h.cue);
 }
 
 /** Extract a proper-name claim from identity/disambiguation sentences. */

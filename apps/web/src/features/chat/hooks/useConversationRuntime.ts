@@ -37,6 +37,10 @@ export const useConversationRuntime = () => {
     threads,
     threadsLoading,
     threadsReady,
+    threadsHasMore,
+    threadsTotal,
+    threadsLoadingMore,
+    loadMoreThreads,
     currentThreadId,
     setCurrentThreadId,
     createThread,
@@ -146,6 +150,41 @@ export const useConversationRuntime = () => {
       }
 
       const thread = getThread(threadIdParam);
+      const isStreamingActive = thread?.messages.some((m) => m.isStreaming) ?? false;
+
+      if (thread && thread.messages.length > 0 && !isStreamingActive) {
+        // Reconcile with server in background — never skip when assistant turns may be missing.
+        if (hydrationRequestRef.current === threadIdParam) return;
+        hydrationRequestRef.current = threadIdParam;
+        runtimeDiagnostics.startTimer('hydration');
+        hydrateThreadMessages(threadIdParam)
+          .then((hydratedThread) => {
+            if (hydrationRequestRef.current !== threadIdParam) return;
+            hydrationRequestRef.current = null;
+            if (hydratedThread) applyHydratedThread(threadIdParam);
+          })
+          .catch(() => {
+            if (hydrationRequestRef.current === threadIdParam) hydrationRequestRef.current = null;
+          });
+        intendedThreadRef.current = threadIdParam;
+        isHydratedRef.current = true;
+        setActiveThreadId(threadIdParam);
+        switchThread(threadIdParam);
+        return;
+      }
+
+      if (thread && thread.messages.length > 0 && isStreamingActive) {
+        intendedThreadRef.current = threadIdParam;
+        isHydratedRef.current = true;
+        setActiveThreadId(threadIdParam);
+        switchThread(threadIdParam);
+        runtimeDiagnostics.record('hydration_skip', {
+          threadId: threadIdParam,
+          meta: { reason: 'streaming_active' },
+        });
+        return;
+      }
+
       if (thread) {
         if (
           isHydratedRef.current &&
@@ -481,6 +520,10 @@ export const useConversationRuntime = () => {
     threads,
     threadsLoading,
     threadsReady,
+    threadsHasMore,
+    threadsTotal,
+    threadsLoadingMore,
+    loadMoreThreads,
     activeThreadId: threadIdParam ?? activeThreadId ?? currentThreadId,
     activeThread: threadIdParam ? getThread(threadIdParam) : null,
     activeMessages,

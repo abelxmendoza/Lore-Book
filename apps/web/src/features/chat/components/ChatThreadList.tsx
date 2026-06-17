@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { MessageSquarePlus, MessageSquareText, Pencil, Trash2, PanelLeftClose, PanelLeft, X, Search, Brain, Sparkles, Loader2 } from 'lucide-react';
+import { MessageSquarePlus, MessageSquareText, Pencil, Trash2, PanelLeftClose, PanelLeft, X, Search, Brain, Sparkles, Loader2, ScanSearch } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import type { ChatThread } from '../hooks/useChatThreads';
 import { isGenericThreadTitle, resolveThreadDisplayTitle } from '../utils/threadTitleUtils';
 import { disambiguateThreadTitles } from '../utils/threadDedupeUtils';
 import { useThreadExplorer } from '../hooks/useThreadExplorer';
 import type { ThreadExploreHit } from '../../../api/threadExplorer';
+import { lexicalRescanApi, type KeywordRescanSummary } from '../../../api/lexicalRescan';
 
 type ChatThreadListProps = {
   threads: ChatThread[];
@@ -19,6 +20,10 @@ type ChatThreadListProps = {
   mobileOpen?: boolean;
   onMobileClose?: () => void;
   isMobile?: boolean;
+  hasMoreThreads?: boolean;
+  loadingMoreThreads?: boolean;
+  threadsTotal?: number | null;
+  onLoadMoreThreads?: () => void;
 };
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -369,9 +374,19 @@ export const ChatThreadList = ({
   mobileOpen = false,
   onMobileClose,
   isMobile = false,
+  hasMoreThreads = false,
+  loadingMoreThreads = false,
+  threadsTotal = null,
+  onLoadMoreThreads,
 }: ChatThreadListProps) => {
   const drawerSwipeStartX = useRef<number | null>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [lexicalKeywords, setLexicalKeywords] = useState('');
+  const [lexicalScanning, setLexicalScanning] = useState(false);
+  const [lexicalResult, setLexicalResult] = useState<KeywordRescanSummary | null>(null);
+  const [lexicalError, setLexicalError] = useState<string | null>(null);
+  const [showLexicalPanel, setShowLexicalPanel] = useState(false);
   const {
     hits: exploreHits,
     facets,
@@ -397,6 +412,43 @@ export const ChatThreadList = ({
   };
 
   const hitByThreadId = new Map(exploreHits.map(h => [h.threadId, h]));
+
+  useEffect(() => {
+    if (!onLoadMoreThreads || !hasMoreThreads || exploreActive || searchQuery.trim()) return;
+    const el = loadMoreSentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !loadingMoreThreads) {
+          onLoadMoreThreads();
+        }
+      },
+      { rootMargin: '120px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onLoadMoreThreads, hasMoreThreads, loadingMoreThreads, exploreActive, searchQuery, threads.length]);
+
+  const runLexicalScan = async () => {
+    const keywords = lexicalKeywords
+      .split(/[,;\n]+/)
+      .map((k) => k.trim())
+      .filter((k) => k.length >= 2);
+    if (keywords.length === 0) {
+      setLexicalError('Enter at least one keyword (2+ characters), separated by commas.');
+      return;
+    }
+    setLexicalScanning(true);
+    setLexicalError(null);
+    try {
+      const result = await lexicalRescanApi.scan(keywords, { promote: true });
+      setLexicalResult(result.summary);
+    } catch (err) {
+      setLexicalError(err instanceof Error ? err.message : 'Lexical scan failed');
+    } finally {
+      setLexicalScanning(false);
+    }
+  };
 
   const displayThreads: ChatThread[] = exploreActive
     ? exploreHits.map(hit => {
@@ -458,7 +510,7 @@ export const ChatThreadList = ({
 
       {/* Search */}
       {!collapsed && (
-        <div className="px-3 py-2 border-b border-white/6 flex-shrink-0">
+        <div className="px-3 py-2 border-b border-white/6 flex-shrink-0 space-y-2">
           <div className="relative flex items-center">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/25 pointer-events-none" />
             <input
@@ -481,8 +533,70 @@ export const ChatThreadList = ({
               </button>
             ) : null}
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowLexicalPanel((v) => !v)}
+              className={cn(
+                'flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md border transition-colors',
+                showLexicalPanel
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-white/10 text-white/45 hover:text-white/70 hover:border-white/20'
+              )}
+            >
+              <ScanSearch className="h-3 w-3" />
+              Keyword scan
+            </button>
+            {threadsTotal != null && threadsTotal > threads.length && (
+              <span className="text-[10px] text-white/30 ml-auto">
+                Showing {threads.length} of {threadsTotal}
+              </span>
+            )}
+          </div>
+          {showLexicalPanel && (
+            <div className="rounded-lg border border-white/10 bg-black/30 p-2 space-y-2">
+              <input
+                type="text"
+                placeholder="Keywords: Abuela, warehouse, Tio…"
+                value={lexicalKeywords}
+                onChange={(e) => setLexicalKeywords(e.target.value)}
+                className="w-full bg-black/40 border border-white/12 rounded-md px-2.5 py-1.5 text-xs text-white/90 placeholder:text-white/25 focus:outline-none focus:border-primary/40"
+              />
+              <button
+                type="button"
+                onClick={() => void runLexicalScan()}
+                disabled={lexicalScanning}
+                className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-md bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-50"
+              >
+                {lexicalScanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Brain className="h-3 w-3" />}
+                {lexicalScanning ? 'Scanning all conversations…' : 'Scan & correct with lexical intelligence'}
+              </button>
+              {lexicalError && <p className="text-[10px] text-red-400/90">{lexicalError}</p>}
+              {lexicalResult && (
+                <div className="text-[10px] text-white/50 space-y-1 max-h-32 overflow-y-auto">
+                  <p>
+                    {lexicalResult.hitCount} hits across {lexicalResult.scannedMessages} messages +{' '}
+                    {lexicalResult.scannedJournals} journal entries · {lexicalResult.charactersPromoted} promoted ·{' '}
+                    {lexicalResult.restoredFromEvidence} restored
+                  </p>
+                  {lexicalResult.hits.slice(0, 5).map((hit, i) => (
+                    <button
+                      key={`${hit.sourceId}-${hit.keyword}-${i}`}
+                      type="button"
+                      className="block w-full text-left hover:text-white/80"
+                      onClick={() => {
+                        if (hit.sessionId) handleSelectThread(hit.sessionId);
+                      }}
+                    >
+                      <span className="text-primary/80">{hit.keyword}</span> — {hit.excerpt}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {(facets?.entities?.length ?? 0) > 0 && (
-            <div className="flex gap-1 mt-2 flex-wrap max-h-16 overflow-y-auto chat-scrollbar">
+            <div className="flex gap-1 flex-wrap max-h-16 overflow-y-auto chat-scrollbar">
               {facets!.entities.slice(0, 10).map(({ name }) => (
                 <button
                   key={name}
@@ -501,7 +615,7 @@ export const ChatThreadList = ({
             </div>
           )}
           {entityFilter && (
-            <div className="flex items-center gap-1 mt-1.5 text-[10px] text-primary/80">
+            <div className="flex items-center gap-1 text-[10px] text-primary/80">
               <Sparkles className="h-3 w-3" />
               <span>Filtered by {entityFilter}</span>
               <button type="button" onClick={() => setEntityFilter(null)} className="text-white/40 hover:text-white ml-1">
@@ -589,6 +703,21 @@ export const ChatThreadList = ({
                 </ul>
               </div>
             ))}
+            {hasMoreThreads && !exploreActive && !searchQuery.trim() && (
+              <div ref={loadMoreSentinelRef} className="py-3 flex justify-center">
+                {loadingMoreThreads ? (
+                  <Loader2 className="h-4 w-4 text-primary/60 animate-spin" />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onLoadMoreThreads?.()}
+                    className="text-[10px] text-white/35 hover:text-white/60"
+                  >
+                    Load older threads
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

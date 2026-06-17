@@ -158,17 +158,56 @@ export class EntityAttributeDetector {
 
   private async getOrCreateUserCharacter(userId: string): Promise<{ id: string; name: string } | null> {
     try {
-      // First, try to find existing user character
-      const { data: existing } = await supabaseAdmin
+      const { data: existingRows, error: existingError } = await supabaseAdmin
         .from('characters')
-        .select('id, name')
+        .select('id, name, metadata, importance_level, created_at')
         .eq('user_id', userId)
         .or('metadata->>is_self.eq.true,metadata->>is_user.eq.true,name.ilike.me,name.ilike.myself,name.ilike.self')
-        .limit(1)
-        .single();
+        .order('created_at', { ascending: true })
+        .limit(25);
 
-      if (existing) {
-        return { id: existing.id, name: existing.name };
+      if (existingError) {
+        logger.debug({ error: existingError, userId }, 'Failed to query self character candidates');
+      }
+
+      const identityNames = await (async () => {
+        try {
+          const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
+          const fullName = String(data.user?.user_metadata?.full_name ?? data.user?.user_metadata?.name ?? '').trim();
+          if (!fullName) return [] as string[];
+          const names = new Set<string>();
+          const key = fullName.toLowerCase().replace(/\s+/g, ' ');
+          names.add(key);
+          fullName.split(/\s+/).filter((part) => part.length > 1).forEach((part) => names.add(part.toLowerCase()));
+          return Array.from(names);
+        } catch {
+          return [] as string[];
+        }
+      })();
+
+      const scoreCandidate = (row: { name?: string | null; metadata?: Record<string, unknown> | null; importance_level?: string | null }) => {
+        const metadata = row.metadata ?? {};
+        if (metadata.distinct_from_self === true || metadata.confirmed_distinct === true) return -1000;
+        let score = 0;
+        const name = String(row.name ?? '');
+        const realName = typeof metadata.real_name === 'string' ? metadata.real_name : '';
+        if (/^(me|myself|self|you)$/i.test(name)) score += 120;
+        if (realName.trim()) score += 80;
+        if (metadata.is_self === true) score += 40;
+        if (metadata.is_user === true) score += 30;
+        if (row.importance_level === 'protagonist') score += 15;
+        const matchesIdentity = identityNames.some((identity) => {
+          const key = name.toLowerCase().replace(/\s+/g, ' ');
+          return key === identity || key.includes(identity) || identity.includes(key);
+        });
+        if (matchesIdentity) score += 90;
+        if (identityNames.length > 0 && !/^(me|myself|self|you)$/i.test(name) && !matchesIdentity) score -= 60;
+        return score;
+      };
+
+      const best = [...(existingRows ?? [])].sort((a, b) => scoreCandidate(b) - scoreCandidate(a))[0];
+      if (best && scoreCandidate(best) >= 0) {
+        return { id: best.id, name: best.name };
       }
 
       // Try to get user's name from auth or profile

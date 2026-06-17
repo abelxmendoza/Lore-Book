@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Briefcase, Plus, GitMerge, Search as SearchIcon } from 'lucide-react';
+import { Briefcase, Plus, GitMerge, Search as SearchIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { fetchJson } from '../../lib/api';
 import { useMockData } from '../../contexts/MockDataContext';
@@ -22,6 +22,29 @@ const DEMO_PROJECTS: ProjectCardData[] = [
   { id: 'demo-robotics', name: 'Robotics Build', type: 'hobby', status: 'completed', description: 'Weekend robotics project with the crew.', tags: ['robotics'], updated_at: new Date(Date.now() - 40 * 864e5).toISOString(), metadata: { source: 'demo' } },
 ];
 
+const PAGE_SIZE = 9; // 3 × 3 grid on desktop
+
+const STATUS_LABELS: Record<string, string> = {
+  active: 'Active',
+  paused: 'Paused',
+  completed: 'Completed',
+  abandoned: 'Abandoned',
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  software: 'Software',
+  business: 'Business',
+  creative: 'Creative',
+  fitness: 'Fitness',
+  education: 'Education',
+  career: 'Career',
+  hobby: 'Hobby',
+  project: 'Project',
+};
+
+const titleizeFilter = (value: string, labels: Record<string, string>) =>
+  labels[value] ?? value.charAt(0).toUpperCase() + value.slice(1);
+
 /**
  * Projects Book — card grid + detail modal (Locations/Skills book pattern).
  */
@@ -31,6 +54,9 @@ export const ProjectBook = () => {
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
   const [newName, setNewName] = useState('');
   const [selectionMode, setSelectionMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -69,12 +95,49 @@ export const ProjectBook = () => {
     }, 'projects');
   }, [isMockDataEnabled]);
 
+  // Available status / type filters, derived from the loaded projects (with counts).
+  const statusOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of projects) {
+      const s = (p.status ?? 'active').toLowerCase();
+      counts.set(s, (counts.get(s) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([id, count]) => ({ id, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [projects]);
+
+  const typeOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of projects) {
+      const t = (p.type ?? 'project').toLowerCase();
+      counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([id, count]) => ({ id, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [projects]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter((p) =>
-      p.name.toLowerCase().includes(q) || (p.description ?? '').toLowerCase().includes(q));
-  }, [projects, search]);
+    return projects.filter((p) => {
+      if (statusFilter !== 'all' && (p.status ?? 'active').toLowerCase() !== statusFilter) return false;
+      if (typeFilter !== 'all' && (p.type ?? 'project').toLowerCase() !== typeFilter) return false;
+      if (!q) return true;
+      return p.name.toLowerCase().includes(q) || (p.description ?? '').toLowerCase().includes(q);
+    });
+  }, [projects, search, statusFilter, typeFilter]);
+
+  // Reset to the first page whenever the result set changes.
+  useEffect(() => { setPage(1); }, [search, statusFilter, typeFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageStart = (safePage - 1) * PAGE_SIZE;
+  const paginated = useMemo(
+    () => filtered.slice(pageStart, pageStart + PAGE_SIZE),
+    [filtered, pageStart]
+  );
 
   const createProject = async () => {
     const name = newName.trim();
@@ -179,6 +242,42 @@ export const ProjectBook = () => {
         </div>
       </div>
 
+      {/* Status + type filters (derived from your projects) */}
+      {(statusOptions.length > 1 || typeOptions.length > 1) && (
+        <div className="flex flex-col gap-2 mb-5">
+          {statusOptions.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-white/35 mr-1">Status</span>
+              <FilterChip label="All" count={projects.length} active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
+              {statusOptions.map(({ id, count }) => (
+                <FilterChip
+                  key={id}
+                  label={titleizeFilter(id, STATUS_LABELS)}
+                  count={count}
+                  active={statusFilter === id}
+                  onClick={() => setStatusFilter((cur) => (cur === id ? 'all' : id))}
+                />
+              ))}
+            </div>
+          )}
+          {typeOptions.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-white/35 mr-1">Type</span>
+              <FilterChip label="All" count={projects.length} active={typeFilter === 'all'} onClick={() => setTypeFilter('all')} />
+              {typeOptions.map(({ id, count }) => (
+                <FilterChip
+                  key={id}
+                  label={titleizeFilter(id, TYPE_LABELS)}
+                  count={count}
+                  active={typeFilter === id}
+                  onClick={() => setTypeFilter((cur) => (cur === id ? 'all' : id))}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {notice && <div className="mb-3 rounded-xl bg-primary/10 border border-primary/30 px-4 py-2.5 text-sm text-primary">{notice}</div>}
       {error && <div className="mb-3 rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-2.5 text-sm text-red-300">{error}</div>}
 
@@ -211,13 +310,28 @@ export const ProjectBook = () => {
       {!loading && filtered.length === 0 && (
         <div className="rounded-2xl border border-dashed border-white/15 py-20 px-6 text-center">
           <Briefcase className="h-10 w-10 text-white/20 mx-auto mb-3" />
-          <p className="text-white/50 text-sm">No projects yet.</p>
-          <p className="text-white/30 text-xs mt-1">Add one above or mention projects in chat — they'll appear here.</p>
+          {projects.length === 0 ? (
+            <>
+              <p className="text-white/50 text-sm">No projects yet.</p>
+              <p className="text-white/30 text-xs mt-1">Add one above or mention projects in chat — they'll appear here.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-white/50 text-sm">No projects match these filters.</p>
+              <button
+                type="button"
+                onClick={() => { setSearch(''); setStatusFilter('all'); setTypeFilter('all'); }}
+                className="text-primary text-xs mt-2 hover:underline"
+              >
+                Clear filters
+              </button>
+            </>
+          )}
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((p) => (
+        {paginated.map((p) => (
           <ProjectProfileCard
             key={p.id}
             project={p}
@@ -227,6 +341,30 @@ export const ProjectBook = () => {
           />
         ))}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-4 mt-6">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage === 1}
+            className="flex items-center gap-1 rounded-xl border border-white/10 px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:border-primary/30 transition disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            <ChevronLeft className="h-4 w-4" /> Previous
+          </button>
+          <span className="text-xs text-white/45 font-mono">
+            Page {safePage} of {totalPages} · {filtered.length} project{filtered.length === 1 ? '' : 's'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage === totalPages}
+            className="flex items-center gap-1 rounded-xl border border-white/10 px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:border-primary/30 transition disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            Next <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {active && (
         <ProjectDetailModal
@@ -255,5 +393,32 @@ export const ProjectBook = () => {
     </div>
   );
 };
+
+function FilterChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+        active
+          ? 'bg-primary/15 border-primary/40 text-primary'
+          : 'bg-white/4 border-white/10 text-white/50 hover:border-white/25 hover:text-white/70'
+      }`}
+    >
+      {label}
+      <span className="text-[10px] text-white/40">{count}</span>
+    </button>
+  );
+}
 
 export default ProjectBook;

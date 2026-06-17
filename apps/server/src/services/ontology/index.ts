@@ -8,3 +8,7 @@ export * from './ontology';
 export * from './lexicalIntelligence';
 export * from './actionPlanService';
 export * from './ontologyEnrichmentService';
+export * from './placeIntelligence';
+export * from './groupIntelligence';
+export * from './romanticIntelligence';
+export * from './vicariousRomanticIntelligence';

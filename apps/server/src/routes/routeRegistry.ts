@@ -59,6 +59,7 @@ import { integrationsRouter } from './integrations';
 import { legalRouter } from './legal';
 import { locationsRouter } from './locations';
 import { projectsRouter } from './projects';
+import { entityAuthorityRouter } from './entityAuthority';
 import { memoirRouter } from './memoir';
 import { moodsRouter } from './moods';
 import { memoryGraphRouter } from './memoryGraph';
@@ -150,6 +151,7 @@ import familyTreesRouter from './familyTrees';
 import familyRouter from './family';
 import groupCandidatesRouter from './groupCandidates';
 import lifeArcRouter from './lifeArc';
+import lifeArcRecentRouter from './lifeArcRecent';
 import { lifeRouter } from './life';
 import { storyRouter } from './story';
 import { ontologyRouter } from './ontology';
@@ -164,6 +166,7 @@ import continuityProfileRouter from './continuityProfile';
 import contradictionAlertsRouter from './contradictionAlerts';
 import knowledgeRouter from './knowledge';
 import diagnosticsRouter from './diagnostics';
+import { inferenceRouter } from './inference';
 import { personalStrategyRouter } from './personalStrategy';
 import { photosRouter } from './photos';
 import { summaryRouter } from './summary';
@@ -213,6 +216,13 @@ export const routeRegistry: RouteEntry[] = [
     requiresAuth: false,
     classification: 'CORE_RUNTIME',
     description: 'Runtime diagnostics',
+  },
+  {
+    path: '/api/inference',
+    router: inferenceRouter,
+    requiresAuth: true,
+    classification: 'CORE_RUNTIME',
+    description: 'Lore inference orchestrator — sync materialized views across books',
   },
   {
     path: '/api/counts',
@@ -399,8 +409,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/mrq',
     router: memoryReviewQueueRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Memory review queue',
+    classification: 'CORE_RUNTIME',
+    description: 'Memory review queue — Discovery Hub memory review panel',
   },
 
   // ---- CONTINUITY ---------------------------------------------------------
@@ -529,6 +539,12 @@ export const routeRegistry: RouteEntry[] = [
     description: 'Life arc CRUD — list, create, update, delete arcs and relationships',
   },
   {
+    path: '/api/life-arc',
+    router: lifeArcRecentRouter,
+    classification: 'CORE_RUNTIME',
+    description: 'Recent life narrative — significant events, patterns, and summary',
+  },
+  {
     path: '/api/life',
     router: lifeRouter,
     classification: 'EXPERIMENTAL',
@@ -629,6 +645,13 @@ export const routeRegistry: RouteEntry[] = [
     requiresAuth: false,
     classification: 'CORE_RUNTIME',
     description: 'Projects Book — canonical project entities (mirrors locations authority)',
+  },
+  {
+    path: '/api/entity-authority',
+    router: entityAuthorityRouter,
+    requiresAuth: false,
+    classification: 'CORE_RUNTIME',
+    description: 'Entity authority — confirm/dismiss merge/link/parent-child decisions (one canonical entity)',
   },
   {
     path: '/api/location-resolution',
@@ -745,8 +768,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/habits',
     router: habitsRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Habit detection and tracking',
+    classification: 'CORE_RUNTIME',
+    description: 'Habit detection and tracking — Discovery Hub values & habits panel',
   },
   {
     path: '/api/resilience',
@@ -781,8 +804,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/values',
     router: valuesRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Values extraction and tracking',
+    classification: 'CORE_RUNTIME',
+    description: 'Values extraction and tracking — Discovery Hub values & habits panel',
   },
   {
     path: '/api/dreams',
@@ -829,8 +852,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/decisions',
     router: decisionsRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Decision tracking and analysis',
+    classification: 'CORE_RUNTIME',
+    description: 'Decision tracking and analysis — Discovery Hub decision memory panel',
   },
   {
     path: '/api/goals',
@@ -879,8 +902,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/essence',
     router: essenceRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Essence refinement',
+    classification: 'CORE_RUNTIME',
+    description: 'Essence refinement — Discovery Hub soul profile panel',
   },
   {
     path: '/api/story-of-self',
@@ -971,14 +994,14 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/reactions',
     router: reactionsRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Reaction pattern analysis',
+    classification: 'CORE_RUNTIME',
+    description: 'Reaction pattern analysis — Discovery Hub reactions panel',
   },
   {
     path: '/api/perception-reaction-engine',
     router: perceptionReactionEngineRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Perception-reaction correlation engine',
+    classification: 'CORE_RUNTIME',
+    description: 'Perception-reaction correlation engine — Discovery Hub reactions panel',
   },
   {
     path: '/api/moods',
@@ -1051,8 +1074,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/achievements',
     router: achievementsRouter,
-    classification: 'EXPERIMENTAL',
-    description: 'Achievement system',
+    classification: 'CORE_RUNTIME',
+    description: 'Achievement system — Discovery Hub achievements panel',
   },
   {
     path: '/api/resume',
@@ -1176,8 +1199,8 @@ export const routeRegistry: RouteEntry[] = [
   {
     path: '/api/analytics',
     router: analyticsRouter,
-    classification: 'ADMIN',
-    description: 'Platform analytics',
+    classification: 'CORE_RUNTIME',
+    description: 'Discovery Hub analytics — identity, relationships, shadow, XP, and more',
   },
 
   // ---- RESEARCH -----------------------------------------------------------

@@ -15,20 +15,58 @@ export type ExtractedProject = {
 };
 
 const PROJECT_CUE_PATTERNS: Array<{ re: RegExp; confidence: number; type?: string }> = [
-  { re: /\b(?:working on|building|developing|creating|launching|shipping)\s+(?:the\s+)?([A-Z][\w'&.-]{1,48}(?:\s+[A-Z][\w'&.-]{1,24}){0,3})/g, confidence: 0.82, type: 'software' },
+  { re: /\b(?:working on|building|developing|creating|launching|shipping)\s+(?:the\s+|my\s+|our\s+|a\s+)?([A-Z][\w'&.-]{1,48}(?:\s+[A-Z][\w'&.-]{1,24}){0,3})/gi, confidence: 0.82, type: 'software' },
   { re: /\b(?:my|our)\s+(?:side\s+)?project\s+(?:called\s+)?["']?([A-Z][\w'&.-]{1,48}(?:\s+[A-Z][\w'&.-]{1,24}){0,2})/gi, confidence: 0.88, type: 'project' },
   { re: /\bproject\s+(?:called|named)\s+["']?([A-Z][\w'&.-]{1,48}(?:\s+[A-Z][\w'&.-]{1,24}){0,2})/gi, confidence: 0.9, type: 'project' },
   { re: /\b(?:app|startup|business)\s+(?:called\s+)?["']?([A-Z][\w'&.-]{1,40})/gi, confidence: 0.85, type: 'software' },
+  { re: /\b(?:designing|prototyping|writing|recording|producing)\s+(?:the\s+|my\s+|our\s+)?([A-Z][\w'&.-]{1,48}(?:\s+[A-Z][\w'&.-]{1,24}){0,2})/gi, confidence: 0.78, type: 'creative' },
   { re: /\b(lorebook|lore book)\b/gi, confidence: 0.92, type: 'software' },
 ];
 
 const STOP_NAMES = new Set([
   'i', 'me', 'my', 'the', 'a', 'an', 'this', 'that', 'it', 'we', 'our', 'today', 'yesterday',
   'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+  // Bare gerund/common verbs the glossary can mistake for a project name.
+  'building', 'working', 'making', 'doing', 'planning', 'starting', 'creating', 'developing',
+  'designing', 'writing', 'recording', 'producing', 'launching', 'shipping',
 ]);
 
 const QUICK_PROJECT_SIGNAL =
-  /\b(project|app|startup|business|building|working on|developing|creating|launching|shipping|milestone|deployed|lorebook)\b/i;
+  /\b(project|app|startup|business|building|working on|developing|creating|launching|shipping|designing|prototyping|recording|producing|milestone|deployed|released|lorebook)\b/i;
+
+// Keyword → project type classification. First match wins, so order by specificity.
+const TYPE_KEYWORDS: Array<{ re: RegExp; type: string }> = [
+  { re: /\b(app|application|website|web app|platform|saas|software|api|dashboard|code|coding|programming|repo|deploy(?:ed|ing)?|backend|frontend|feature|bug|ship(?:ped|ping)?)\b/i, type: 'software' },
+  { re: /\b(startup|business|company|venture|founders?|fundrais\w*|revenue|customers?|clients?|launch(?:ed|ing)? a product)\b/i, type: 'business' },
+  { re: /\b(album|ep\b|song|track|mixtape|record(?:ing)?|paint\w*|novel|writing|short story|film|video|design(?:ing)?|portfolio|art\b)\b/i, type: 'creative' },
+  { re: /\b(training|workout|gym|marathon|5k|10k|lift(?:ing)?|mma|jiu[- ]?jitsu|boxing|fitness|cut\b|bulk\b)\b/i, type: 'fitness' },
+  { re: /\b(course|class|bootcamp|certification|degree|studying|learning|tutorial|exam)\b/i, type: 'education' },
+  { re: /\b(career|new job|onboarding|promotion|interview|internship|ramp[- ]?up|new role)\b/i, type: 'career' },
+];
+
+// Keyword → lifecycle status. First match wins.
+const STATUS_CUES: Array<{ re: RegExp; status: NonNullable<ExtractedProject['status']> }> = [
+  { re: /\b(shipped|launched|finished|completed|released|wrapped up|delivered|went live|done with)\b/i, status: 'completed' },
+  { re: /\b(paused|on hold|shelv(?:ed|ing)|took a break|stepped away|back ?burner)\b/i, status: 'paused' },
+  { re: /\b(abandon(?:ed|ing)?|gave up on|scrapp?ed|killed (?:off|it)|quit|walked away from)\b/i, status: 'abandoned' },
+];
+
+/** Classify a project's type from its name + surrounding text, preferring an explicit cue type. */
+function inferProjectType(name: string, context: string, fallback?: string): string {
+  const hay = `${name} ${context}`;
+  for (const { re, type } of TYPE_KEYWORDS) {
+    if (re.test(hay)) return type;
+  }
+  return fallback ?? 'project';
+}
+
+/** Infer lifecycle status from lexical cues in the surrounding text. Defaults to active. */
+function inferProjectStatus(context: string): NonNullable<ExtractedProject['status']> {
+  for (const { re, status } of STATUS_CUES) {
+    if (re.test(context)) return status;
+  }
+  return 'active';
+}
 
 function cleanProjectName(raw: string): string | null {
   const name = raw
@@ -63,6 +101,8 @@ export function extractProjectsLexical(text: string): ExtractedProject[] {
     text: trimmed,
   });
 
+  const status = inferProjectStatus(trimmed);
+
   for (const { re, confidence, type } of PROJECT_CUE_PATTERNS) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
@@ -70,9 +110,11 @@ export function extractProjectsLexical(text: string): ExtractedProject[] {
       const captured = m[1] ?? m[0];
       const name = cleanProjectName(captured);
       if (!name) continue;
+      const displayName = name.toLowerCase() === 'lore book' ? 'LoreBook' : name;
       pushUnique(out, seen, {
-        name: name.toLowerCase() === 'lore book' ? 'LoreBook' : name,
-        type,
+        name: displayName,
+        type: inferProjectType(displayName, trimmed, type),
+        status,
         confidence,
         reasoning: 'Detected from project language in your message',
         evidence: [m[0].trim().slice(0, 120)],
@@ -88,7 +130,8 @@ export function extractProjectsLexical(text: string): ExtractedProject[] {
       if (name) {
         pushUnique(out, seen, {
           name,
-          type: 'project',
+          type: inferProjectType(name, trimmed, 'project'),
+          status,
           confidence: Math.max(0.75, event.confidence),
           reasoning: 'Project milestone detected in conversation',
           evidence: [event.cue],
@@ -102,7 +145,8 @@ export function extractProjectsLexical(text: string): ExtractedProject[] {
     if (!name) continue;
     pushUnique(out, seen, {
       name,
-      type: 'project',
+      type: inferProjectType(name, trimmed, 'project'),
+      status,
       confidence: entity.confidence,
       reasoning: 'Initiative detected via lexical intelligence',
       evidence: [entity.source ?? trimmed.slice(0, 80)],

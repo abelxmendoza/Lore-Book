@@ -9,24 +9,12 @@ type SessionRow = {
   updated_at: string;
 };
 
-function normalizeContent(text: string): string {
-  return text.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
 function metadataMessages(row: SessionRow): Array<{ role: string; content: string }> {
   const raw = row.metadata?.messages;
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((m): m is { role: string; content: string } => !!m && typeof m === 'object')
     .map((m) => ({ role: m.role, content: String(m.content ?? '') }));
-}
-
-function conversationFingerprint(messages: Array<{ role: string; content: string }>): string | null {
-  const parts = messages
-    .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content?.trim())
-    .map((m) => `${m.role === 'user' ? 'u' : 'a'}:${normalizeContent(m.content)}`);
-  if (parts.length === 0) return null;
-  return parts.join('\n');
 }
 
 function pickSurvivorIds(rows: SessionRow[], scores: Map<string, number>): string {
@@ -37,15 +25,25 @@ function pickSurvivorIds(rows: SessionRow[], scores: Map<string, number>): strin
   })[0].id;
 }
 
-async function loadMessagesForSession(sessionId: string, userId: string, row: SessionRow) {
+async function loadMessagesForSession(sessionId: string, userId: string) {
   return loadThreadMessages(userId, sessionId);
 }
 
 async function deleteSessions(userId: string, ids: string[]) {
   if (ids.length === 0) return;
-  await supabaseAdmin.from('chat_messages').delete().eq('user_id', userId).in('session_id', ids);
-  await supabaseAdmin.from('conversation_messages').delete().eq('user_id', userId).in('session_id', ids);
-  await supabaseAdmin.from('conversation_sessions').delete().eq('user_id', userId).in('id', ids);
+  // Never delete sessions that still have durable chat_messages — data loss guard.
+  const safeIds: string[] = [];
+  for (const id of ids) {
+    const { count } = await supabaseAdmin
+      .from('chat_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('session_id', id);
+    if ((count ?? 0) === 0) safeIds.push(id);
+  }
+  if (safeIds.length === 0) return;
+  await supabaseAdmin.from('conversation_messages').delete().eq('user_id', userId).in('session_id', safeIds);
+  await supabaseAdmin.from('conversation_sessions').delete().eq('user_id', userId).in('id', safeIds);
 }
 
 export async function ensureUniqueThreadTitle(
@@ -87,32 +85,15 @@ export async function dedupeUserConversationThreads(userId: string): Promise<{
   const scores = new Map<string, number>();
 
   for (const row of sessions) {
-    const messages = await loadMessagesForSession(row.id, userId, row);
+    const messages = await loadMessagesForSession(row.id, userId);
     messageCache.set(row.id, messages);
     scores.set(row.id, messages.length);
   }
 
   const toDelete = new Set<string>();
 
-  const byFingerprint = new Map<string, SessionRow[]>();
-  for (const row of sessions) {
-    const fp = conversationFingerprint(messageCache.get(row.id) ?? []);
-    if (!fp) continue;
-    const group = byFingerprint.get(fp) ?? [];
-    group.push(row);
-    byFingerprint.set(fp, group);
-  }
-
-  for (const group of byFingerprint.values()) {
-    if (group.length <= 1) continue;
-    const keepId = pickSurvivorIds(group, scores);
-    for (const row of group) {
-      if (row.id !== keepId) {
-        const protectedThread = await isThreadProtected(userId, row.id);
-        if (!protectedThread) toDelete.add(row.id);
-      }
-    }
-  }
+  // Fingerprint dedupe disabled — identical conversations are kept rather than deleted.
+  // Users expect every thread they created to remain addressable.
 
   const emptyDrafts = sessions.filter((row) => {
     const msgs = messageCache.get(row.id) ?? [];

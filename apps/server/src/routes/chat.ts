@@ -88,7 +88,9 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
 
   // Track whether the client closed the connection before we finished writing.
   let clientGone = false;
-  req.on('close', () => { clientGone = true; });
+  res.on('close', () => {
+    if (!res.writableEnded) clientGone = true;
+  });
 
   // Safe write helper — no-ops if client disconnected or response already ended.
   const sseWrite = (payload: object): boolean => {
@@ -172,40 +174,82 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
     sseWrite({ type: 'metadata', data: result.metadata });
 
     // ── Durable assistant persistence ──────────────────────────────────────────
-    // The assistant message MUST survive even if the stream throws mid-way or the
-    // client disconnects (root cause of "missing assistant messages / user-only
-    // threads"). We persist whatever streamed, with a status, exactly once, and
-    // bump the thread's updated_at so ordering reflects the assistant turn.
+    // Placeholder row at stream start so the assistant turn exists even if the
+    // client disconnects mid-stream; updated once with final/partial content.
     let fullResponse = '';
     let assistantPersisted = false;
     const persistSessionId = result.metadata.sessionId ?? threadId ?? null;
+    let assistantRowId: string | null = null;
+
+    if (req.user?.id && persistSessionId) {
+      try {
+        const { data: placeholder, error: phErr } = await supabaseAdmin
+          .from('chat_messages')
+          .insert({
+            user_id: req.user.id,
+            session_id: persistSessionId,
+            role: 'assistant',
+            content: '',
+            metadata: { saved_from_stream: true, stream_status: 'streaming' },
+          })
+          .select('id')
+          .single();
+        if (!phErr && placeholder?.id) {
+          assistantRowId = placeholder.id;
+          result.metadata.assistantMessageId = placeholder.id;
+          sseWrite({ type: 'metadata', data: { assistantMessageId: placeholder.id } });
+        }
+      } catch (err) {
+        logger.warn({ err, sessionId: persistSessionId }, 'Assistant placeholder insert failed — will insert on complete');
+      }
+    }
+
     const persistAssistant = async (status: 'complete' | 'partial' | 'failed'): Promise<void> => {
       if (assistantPersisted || !req.user?.id || !persistSessionId) return;
-      if (fullResponse.trim().length === 0) return; // nothing to save; user msg already durable
+      if (fullResponse.trim().length === 0) {
+        // Remove empty placeholder so we do not leave blank assistant bubbles in DB.
+        if (assistantRowId) {
+          await supabaseAdmin.from('chat_messages').delete().eq('id', assistantRowId).eq('user_id', req.user.id);
+        }
+        return;
+      }
       assistantPersisted = true;
       const nowIso = new Date().toISOString();
+      const rowMetadata = {
+        sources: result.metadata.sources,
+        connections: result.metadata.connections,
+        continuityWarnings: result.metadata.continuityWarnings,
+        response_mode: result.metadata.response_mode,
+        recall_sources: result.metadata.recall_sources,
+        saved_from_stream: true,
+        stream_status: status,
+      };
       try {
-        const { error } = await supabaseAdmin.from('chat_messages').insert({
-          user_id: req.user.id,
-          session_id: persistSessionId,
-          role: 'assistant',
-          content: fullResponse,
-          metadata: {
-            sources: result.metadata.sources,
-            connections: result.metadata.connections,
-            continuityWarnings: result.metadata.continuityWarnings,
-            response_mode: result.metadata.response_mode,
-            recall_sources: result.metadata.recall_sources,
-            saved_from_stream: true,
-            stream_status: status,
-          },
-        });
-        if (error) {
-          assistantPersisted = false;
-          logger.error({ err: error, status, sessionId: persistSessionId }, 'Failed to persist assistant message');
-          return;
+        if (assistantRowId) {
+          const { error } = await supabaseAdmin
+            .from('chat_messages')
+            .update({ content: fullResponse, metadata: rowMetadata })
+            .eq('id', assistantRowId)
+            .eq('user_id', req.user.id);
+          if (error) {
+            assistantPersisted = false;
+            logger.error({ err: error, status, sessionId: persistSessionId }, 'Failed to update assistant message');
+            return;
+          }
+        } else {
+          const { error } = await supabaseAdmin.from('chat_messages').insert({
+            user_id: req.user.id,
+            session_id: persistSessionId,
+            role: 'assistant',
+            content: fullResponse,
+            metadata: rowMetadata,
+          });
+          if (error) {
+            assistantPersisted = false;
+            logger.error({ err: error, status, sessionId: persistSessionId }, 'Failed to persist assistant message');
+            return;
+          }
         }
-        // Ordering: thread rises to top on assistant completion (Task 3).
         await supabaseAdmin.from('conversation_sessions')
           .update({ updated_at: nowIso }).eq('id', persistSessionId).eq('user_id', req.user.id);
       } catch (err) {
@@ -223,12 +267,13 @@ router.post('/stream', aiRateLimit, optionalAuth, checkAiRequestLimit, async (re
           sseWrite({ type: 'chunk', content });
         }
       }
-      if (!clientGone) {
-        sseWrite({ type: 'done' });
+      await persistAssistant(clientGone ? 'partial' : 'complete');
+      if (!res.writableEnded) {
+        if (!clientGone) {
+          sseWrite({ type: 'done' });
+        }
         res.end();
       }
-      // Persist on success (or partial if the client vanished mid-stream).
-      await persistAssistant(clientGone ? 'partial' : 'complete');
       // Advisory hallucination guard — never blocks the stream; flags
       // responses that claim memory about names absent from the entity graph.
       if (fullResponse.length > 0 && req.user?.id) {

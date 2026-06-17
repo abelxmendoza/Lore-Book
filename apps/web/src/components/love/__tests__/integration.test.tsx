@@ -35,6 +35,14 @@ vi.mock('../../../lib/api', () => ({
   fetchJson: vi.fn()
 }));
 
+vi.mock('../RomanticStoryShowcase', () => ({
+  RomanticStoryShowcase: () => null,
+}));
+
+vi.mock('../RomanticLexicalInsights', () => ({
+  RomanticLexicalInsights: () => null,
+}));
+
 describe('Love & Relationships Integration Tests', () => {
   const mockRelationships = [
     {

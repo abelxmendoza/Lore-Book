@@ -107,7 +107,7 @@ describe('lexicalAnalyzerService', () => {
   it('detects ambiguity on identity disambiguation', () => {
     const msg = "Abel Mendoza is actually me but it's also my estranged father";
     const result = lexicalAnalyzerService.analyzeMessage({ ...baseInput, text: msg });
-    expect(result.ambiguityFlags).toContain('identity_disambiguation_needed');
+    expect(result.ambiguityFlags).toContain('same_name_multiple_roles');
     expect(result.needsClarification).toBe(true);
   });
 

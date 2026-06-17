@@ -4,12 +4,12 @@ import { clustersMatch, normalizeMemberKey, sharedMemberCount } from './clusterM
 
 describe('clusterMatch', () => {
   it('normalizes accents and casing', () => {
-    expect(normalizeMemberKey('Uncle James')).toBe('tio juan');
+    expect(normalizeMemberKey('Uncle James')).toBe('uncle james');
     expect(normalizeMemberKey('  ABUELA ')).toBe('abuela');
   });
 
   it('counts shared members regardless of accent/case', () => {
-    expect(sharedMemberCount(['Uncle James', 'Grandma Rose'], ['tio juan', 'ABUELA', 'Mom'])).toBe(2);
+    expect(sharedMemberCount(['Uncle James', 'Grandma Rose'], ['uncle james', 'grandma rose', 'Mom'])).toBe(2);
     expect(sharedMemberCount(['Sam'], ['Kelly'])).toBe(0);
   });
 
@@ -19,7 +19,7 @@ describe('clusterMatch', () => {
   });
 
   it('matches clusters with the same name even without member overlap', () => {
-    expect(clustersMatch([], [], 'Neon Collective', 'los goths')).toBe(true);
+    expect(clustersMatch([], [], 'Neon Collective', 'neon collective')).toBe(true);
     expect(clustersMatch([], [], 'Neon Collective', 'My Family')).toBe(false);
   });
 

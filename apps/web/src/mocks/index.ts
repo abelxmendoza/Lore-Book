@@ -36,6 +36,18 @@ export {
   type DemoLoreChapter,
 } from './lorebooks';
 
+// Family mock data
+export {
+  DEMO_FAMILY_TREE,
+  DEMO_FAMILY_HOUSEHOLDS,
+  DEMO_FAMILY_GROUPS,
+  DEMO_FAMILY_ANALYTICS,
+  DEMO_FAMILY_SUMMARY,
+  DEMO_FAMILY_CHARACTERS_BY_ID,
+  type FamilySummaryMock,
+  type FamilyGroupMock,
+} from './family';
+
 export { generateMockTimelines, generateMockChronologyEntries } from './timelineMockData';
 
 // Entity Relationship Diagrams
@@ -82,6 +94,12 @@ export {
 
 // Other mock data
 export { generateMockRomanticRelationships, getMockRomanticRelationships } from './romanticRelationships';
+export {
+  ROMANTIC_LORE_SYNOPSIS,
+  ROMANTIC_LORE_TEST_CASES,
+  ROMANTIC_LORE_CHARACTERS,
+} from './romanticLoreStory';
+export { MOCK_ROMANTIC_PERIPHERALS, getMockPeripheralsForRelationship } from './romanticPeripherals';
 export { MOCK_GOALS_VALUES_DATA } from './goalsValues';
 export { MOCK_MEMORY_PROPOSALS } from './memoryProposals';
 export { mockContradictions, mockContradictionDetails } from './contradictionData';

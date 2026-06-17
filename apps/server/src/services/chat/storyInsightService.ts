@@ -27,7 +27,7 @@ const INSIGHT_RULES: InsightRule[] = [
     },
   },
   {
-    pattern: /\bcostco\b.*\babuela\b|\babuela\b.*\bcostco\b/i,
+    pattern: /\bcostco\b.*\b(abuela|grandma|grandmother)\b|\b(abuela|grandma|grandmother)\b.*\bcostco\b/i,
     transform: () =>
       "The highlight wasn't Costco. It was that Abuela was still there.",
   },

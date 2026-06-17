@@ -12,6 +12,7 @@ import {
   deriveTitleFromMessages,
 } from '../utils/threadTitleUtils';
 import { dedupeConversationThreads, ensureLocalUniqueTitle } from '../utils/threadDedupeUtils';
+import { mergeThreadMessages, countMissingAssistantTurns } from '../utils/mergeThreadMessages';
 
 export type ChatThread = {
   id: string;
@@ -101,6 +102,10 @@ export const useChatThreads = () => {
 
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [currentThreadId, setCurrentThreadIdState] = useState<string | null>(null);
+  const [threadsHasMore, setThreadsHasMore] = useState(false);
+  const [threadsTotal, setThreadsTotal] = useState<number | null>(null);
+  const [threadsLoadingMore, setThreadsLoadingMore] = useState(false);
+  const threadsNextCursorRef = useRef<string | null>(null);
   // threadsLoading: true until we've finished the FIRST authoritative load (backend or localStorage).
   const [threadsLoading, setThreadsLoading] = useState(true);
   // threadsReady: true after a successful backend load — used to gate "thread not found" redirects.
@@ -165,10 +170,25 @@ export const useChatThreads = () => {
     runtimeDiagnostics.startTimer('backend_load');
     setThreadsLoading(true);
     try {
-      // Dedupe/empty purge deferred — running on every boot caused thread loss races.
-      const data = await fetchJson<{ threads: any[]; success: boolean }>('/api/conversation/threads');
+      // Repair + recover before listing — ensures nothing is orphaned or drifted.
+      await fetchJson('/api/diagnostics/thread-health/repair', { method: 'POST' }).catch(() => {});
+      await fetchJson<{ success: boolean; recovered?: number }>(
+        '/api/conversation/threads/recover-orphans',
+        { method: 'POST' }
+      ).catch(() => {});
+
+      const data = await fetchJson<{
+        threads: any[];
+        success: boolean;
+        total?: number;
+        hasMore?: boolean;
+        nextCursor?: string | null;
+      }>('/api/conversation/threads?limit=30');
       const loaded = dedupeThreads((data.threads || []).map(dbRowToThread));
       setThreads(loaded);
+      threadsNextCursorRef.current = data.nextCursor ?? null;
+      setThreadsHasMore(data.hasMore ?? false);
+      setThreadsTotal(typeof data.total === 'number' ? data.total : loaded.length);
       for (const t of loaded) threadPersistenceTracker.markRestoredFromBackend(t.id);
       // Upgrade legacy generic titles in the background.
       for (const t of loaded) {
@@ -190,23 +210,6 @@ export const useChatThreads = () => {
       runtimeDiagnostics.recordTimed('backend_load_complete', 'backend_load', {
         meta: { threadCount: loaded.length },
       });
-      // Recover sessions deleted while chat_messages still exist (e.g. empty-on-open race)
-      fetchJson<{ success: boolean; recovered?: number }>('/api/conversation/threads/recover-orphans', {
-        method: 'POST',
-      })
-        .then(async (r) => {
-          if ((r.recovered ?? 0) > 0) {
-            const data = await fetchJson<{ threads: any[]; success: boolean }>('/api/conversation/threads');
-            const reloaded = dedupeThreads((data.threads || []).map(dbRowToThread));
-            setThreads(reloaded);
-          }
-        })
-        .catch(() => {});
-      // Background maintenance only — never block or mutate list during initial load.
-      setTimeout(() => {
-        fetchJson('/api/conversation/threads/dedupe', { method: 'DELETE' }).catch(() => {});
-        fetchJson('/api/conversation/threads/empty', { method: 'DELETE' }).catch(() => {});
-      }, 60_000);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       runtimeDiagnostics.recordTimed('backend_load_fallback', 'backend_load', {
@@ -223,6 +226,37 @@ export const useChatThreads = () => {
       setThreadsLoading(false);
     }
   }, [userId, loadFromLocalStorage]);
+
+  const loadMoreThreads = useCallback(async () => {
+    if (!isAuthenticated || threadsLoadingMore || !threadsHasMore) return;
+    const cursor = threadsNextCursorRef.current;
+    if (!cursor) return;
+
+    setThreadsLoadingMore(true);
+    try {
+      const data = await fetchJson<{
+        threads: any[];
+        success: boolean;
+        hasMore?: boolean;
+        nextCursor?: string | null;
+      }>(`/api/conversation/threads?limit=30&cursor=${encodeURIComponent(cursor)}`);
+      const page = dedupeThreads((data.threads || []).map(dbRowToThread));
+      setThreads((prev) => {
+        const seen = new Set(prev.map((t) => t.id));
+        const merged = [...prev, ...page.filter((t) => !seen.has(t.id))];
+        threadsRef.current = merged;
+        return merged;
+      });
+      for (const t of page) threadPersistenceTracker.markRestoredFromBackend(t.id);
+      threadsNextCursorRef.current = data.nextCursor ?? null;
+      setThreadsHasMore(data.hasMore ?? false);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      runtimeDiagnostics.record('backend_load_error', { meta: { op: 'load_more_threads', error: errMsg } });
+    } finally {
+      setThreadsLoadingMore(false);
+    }
+  }, [isAuthenticated, threadsHasMore, threadsLoadingMore]);
 
   // ── Boot: wait for auth to resolve, then load from the right source ─────────
   useEffect(() => {
@@ -319,12 +353,14 @@ export const useChatThreads = () => {
         let messages = (result.messages || []).map(dbMessageToMessage);
         const localMessages = existing?.messages ?? [];
 
-        // Never replace a longer in-flight local cache with a shorter server snapshot.
-        // This prevents multi-turn conversations collapsing to a single Q&A during hydration.
-        if (localMessages.length > messages.length) {
-          messages = localMessages;
-        } else if (messages.length === 0 && localMessages.length > 0) {
-          messages = localMessages;
+        messages = mergeThreadMessages(localMessages, messages);
+
+        // If server snapshot is still missing assistant replies, keep local cache entirely.
+        if (
+          countMissingAssistantTurns(messages) > countMissingAssistantTurns(localMessages) &&
+          localMessages.length > 0
+        ) {
+          messages = mergeThreadMessages(localMessages, messages);
         }
 
         if (messages.length === 0) {
@@ -553,6 +589,7 @@ export const useChatThreads = () => {
 
   const deleteThread = useCallback(
     (id: string) => {
+      const removed = threadsRef.current.find((t) => t.id === id);
       setThreads((prev) => {
         const next = prev.filter((t) => t.id !== id);
         if (!isAuthenticated) persistLocal(next, currentThreadIdRef.current);
@@ -571,10 +608,26 @@ export const useChatThreads = () => {
               threadId: id,
               meta: { reason: 'entity_linked', error: errMsg },
             });
+            if (removed) {
+              setThreads((prev) => {
+                if (prev.some((t) => t.id === id)) return prev;
+                const next = sortThreadsByActivity([removed, ...prev]);
+                threadsRef.current = next;
+                return next;
+              });
+            }
             return;
           }
           runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'delete_thread', error: errMsg } });
           console.error('[useChatThreads] deleteThread failed:', errMsg);
+          if (removed) {
+            setThreads((prev) => {
+              if (prev.some((t) => t.id === id)) return prev;
+              const next = sortThreadsByActivity([removed, ...prev]);
+              threadsRef.current = next;
+              return next;
+            });
+          }
         });
       }
     },
@@ -604,6 +657,10 @@ export const useChatThreads = () => {
     threads,
     threadsLoading,
     threadsReady,
+    threadsHasMore,
+    threadsTotal,
+    threadsLoadingMore,
+    loadMoreThreads,
     currentThreadId,
     setCurrentThreadId,
     createThread,

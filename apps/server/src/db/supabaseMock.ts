@@ -27,7 +27,9 @@ class QueryChain implements PromiseLike<MockResult> {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   select(_fields?: string, _opts?: { count?: string; head?: boolean }) {
-    this.result = { data: defaultRows, error: null, count: null };
+    if (!Array.isArray(this.result.data) || this.result.data.length === 0) {
+      this.result = { data: defaultRows, error: null, count: null };
+    }
     return this;
   }
 
@@ -112,7 +114,15 @@ class QueryChain implements PromiseLike<MockResult> {
   }
 
   single() {
-    this.result = { data: defaultSingle, error: null, count: null };
+    if (Array.isArray(this.result.data)) {
+      this.result = {
+        data: this.result.data.length > 0 ? this.result.data[0] : defaultSingle,
+        error: null,
+        count: null,
+      };
+    } else if (!this.result.data) {
+      this.result = { data: defaultSingle, error: null, count: null };
+    }
     return this;
   }
 

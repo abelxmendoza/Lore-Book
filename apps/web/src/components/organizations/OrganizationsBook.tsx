@@ -17,6 +17,7 @@ import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import { GroupSuggestions } from '../groups/GroupSuggestions';
 import { GroupMergePanel } from '../groups/GroupMergePanel';
 import { deriveOrganizationProfile } from '../../lib/organizationProfile';
+import { isEventGroup, isTopLevelGroup } from '../../lib/groupTaxonomy';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { fetchJson } from '../../lib/api';
 import { onStoryDataUpdated } from '../../lib/storyRefresh';
@@ -972,6 +973,9 @@ export const OrganizationsBook: React.FC = () => {
 
   useEffect(() => {
     void loadOrganizations();
+    const onInference = () => { void loadOrganizations(); };
+    window.addEventListener('lk:inference-complete', onInference);
+    return () => window.removeEventListener('lk:inference-complete', onInference);
   }, [isMockDataEnabled]);
 
   useEffect(() => {
@@ -1061,7 +1065,7 @@ export const OrganizationsBook: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Failed to load organizations:', err);
-      setOrganizations(mergeCreated([]));
+      setOrganizations((prev) => mergeCreated(prev.length > 0 ? prev : []));
       setError(err.message || 'Failed to load organizations');
     } finally {
       setLoading(false);
@@ -1141,6 +1145,11 @@ export const OrganizationsBook: React.FC = () => {
 
   const filteredOrganizations = useMemo(() => {
     let filtered = [...organizations];
+
+    // Hide event-groups from the main "all" view
+    if (activeCategory === 'all') {
+      filtered = filtered.filter((org) => isTopLevelGroup(org) && !isEventGroup(org));
+    }
 
     if (activeCategory !== 'all') {
       filtered = filtered.filter(org => {
@@ -1575,6 +1584,33 @@ export const OrganizationsBook: React.FC = () => {
                 Companies
               </TabsTrigger>
             )}
+            {availableCategories.includes('families') && (
+              <TabsTrigger
+                value="families"
+                className="flex items-center gap-2 data-[state=active]:bg-rose-500/20 data-[state=active]:text-rose-400"
+              >
+                <Heart className="h-4 w-4" />
+                Families
+              </TabsTrigger>
+            )}
+            {availableCategories.includes('households') && (
+              <TabsTrigger
+                value="households"
+                className="flex items-center gap-2 data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-300"
+              >
+                <TreePine className="h-4 w-4" />
+                Households
+              </TabsTrigger>
+            )}
+            {availableCategories.includes('teams') && (
+              <TabsTrigger
+                value="teams"
+                className="flex items-center gap-2 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400"
+              >
+                <Users className="h-4 w-4" />
+                Teams
+              </TabsTrigger>
+            )}
             {availableCategories.includes('brands') && (
               <TabsTrigger
                 value="brands"
@@ -1618,15 +1654,6 @@ export const OrganizationsBook: React.FC = () => {
               >
                 <Building2 className="h-4 w-4" />
                 Nonprofits
-              </TabsTrigger>
-            )}
-            {availableCategories.includes('family') && (
-              <TabsTrigger
-                value="family"
-                className="flex items-center gap-2 data-[state=active]:bg-rose-500/20 data-[state=active]:text-rose-400"
-              >
-                <Heart className="h-4 w-4" />
-                Families
               </TabsTrigger>
             )}
             {availableCategories.includes('public_entities') && (
@@ -1795,6 +1822,8 @@ export const OrganizationsBook: React.FC = () => {
       {selectedOrganization && (
         <OrganizationDetailModal
           organization={selectedOrganization}
+          allOrganizations={organizations}
+          onSelectOrganization={setSelectedOrganization}
           onClose={() => setSelectedOrganization(null)}
           onUpdate={() => {
             void loadOrganizations();

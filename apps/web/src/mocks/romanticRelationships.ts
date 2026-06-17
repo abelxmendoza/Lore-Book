@@ -43,6 +43,9 @@ export type MockRomanticRelationship = {
  * like real, enriched relationships do.
  */
 const FIXATION_TYPES = new Set(['crush', 'obsession', 'infatuation', 'lust', 'situationship']);
+
+import { getLoreLexicalSnippetMap } from './romanticLoreStory';
+
 function withDemoSignals(rel: MockRomanticRelationship): MockRomanticRelationship {
   const status = rel.status.toLowerCase();
   const type = rel.relationship_type.toLowerCase();
@@ -72,14 +75,40 @@ function withDemoSignals(rel: MockRomanticRelationship): MockRomanticRelationshi
     : evidence_strength >= 0.6 ? 'high'
     : 'moderate';
 
+  const lexical = getLoreLexicalSnippetMap()[rel.person_name];
+  const glossary_cues = lexical
+    ? [lexical.cue]
+    : type === 'situationship'
+      ? ['situationship']
+      : type.startsWith('ex_')
+        ? ['my ex', 'broke up']
+        : ['dating'];
+
   return {
     ...rel,
     metadata: {
       ...(rel.metadata ?? {}),
       signals: { obsession_score, attachment_intensity, evidence_strength, signal_strength },
+      lexical_evidence: lexical?.snippet ?? rel.pros[0] ?? rel.strengths[0],
+      glossary_cues,
+      ontology_tags: ['CONCEPT/RELATIONSHIP_VERB'],
+      parsing: 'lexical_intelligence',
+      lore_chapter: ROMANTIC_LORE_CHAPTER_BY_NAME[rel.person_name],
     },
   };
 }
+
+const ROMANTIC_LORE_CHAPTER_BY_NAME: Record<string, number> = {
+  Morgan: 1,
+  Nova: 1,
+  Taylor: 2,
+  Jordan: 2,
+  Alex: 3,
+  Sam: 3,
+  Casey: 3,
+  Riley: 4,
+  Elena: 4,
+};
 
 export type MockDateEvent = {
   id: string;

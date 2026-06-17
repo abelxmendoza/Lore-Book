@@ -58,6 +58,7 @@ export const CATEGORIES: Category[] = [
     revealed: [
       { kind: 'activity', pattern: /\b(built|building|build|coded|coding|worked on|working on|shipped|deployed|fixed|debugg(ed|ing)|designed)\b[^.!?]*\blore\s?book\b/i },
       { kind: 'activity', pattern: /\blore\s?book\b[^.!?]*\b(built|building|coded|coding|shipped|deployed|feature|migration|sprint|bug)\b/i },
+      { kind: 'activity', pattern: /\bspent\b[^.!?]*\bon\s+lore\s?book\b/i },
     ],
   },
   {

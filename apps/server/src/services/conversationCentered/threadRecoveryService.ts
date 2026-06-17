@@ -15,6 +15,7 @@ import { logger } from '../../logger';
 import { supabaseAdmin } from '../supabaseClient';
 import { countMissingAssistantTurns, hasOrderingConflict } from './threadDurabilityChecks';
 import { isGenericThreadTitle, deriveTitleFromMessages } from '../../utils/threadTitleUtils';
+import { loadThreadMessages } from './threadContentService';
 
 const ORPHAN_AGE_MS = 60 * 60 * 1000;
 
@@ -128,6 +129,44 @@ class ThreadRecoveryService {
     return (firstUser.content ?? '').trim().replace(/\s+/g, ' ').toLowerCase().slice(0, 120);
   }
 
+  /** Insert assistant rows that exist only in legacy/metadata sources into chat_messages. */
+  private async backfillMissingAssistants(userId: string, sessionId: string): Promise<number> {
+    const { data: chatOnly } = await supabaseAdmin
+      .from('chat_messages')
+      .select('role, content')
+      .eq('user_id', userId)
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true });
+
+    const chatRows = (chatOnly ?? []) as Array<{ role: string; content: string | null }>;
+    if (countMissingAssistantTurns(chatRows) === 0) return 0;
+
+    const merged = await loadThreadMessages(userId, sessionId);
+    const norm = (role: string, content: string) =>
+      `${role}:${(content ?? '').trim().replace(/\s+/g, ' ').toLowerCase()}`;
+    const existing = new Set(chatRows.map((m) => norm(m.role, m.content ?? '')));
+
+    let inserted = 0;
+    for (const row of merged) {
+      if (row.role !== 'assistant' || !row.content.trim()) continue;
+      const fp = norm(row.role, row.content);
+      if (existing.has(fp)) continue;
+      const { error } = await supabaseAdmin.from('chat_messages').insert({
+        user_id: userId,
+        session_id: sessionId,
+        role: 'assistant',
+        content: row.content,
+        created_at: row.created_at,
+        metadata: { ...(row.metadata ?? {}), recovered_from_legacy: true },
+      });
+      if (!error) {
+        existing.add(fp);
+        inserted += 1;
+      }
+    }
+    return inserted;
+  }
+
   /** Fix ordering and broken titles from chat_messages — no metadata snapshot rebuild. */
   async repairThread(userId: string, sessionId: string): Promise<RepairResult> {
     const { data: msgs } = await supabaseAdmin
@@ -174,8 +213,17 @@ class ThreadRecoveryService {
     for (const s of sessions) {
       const msgs = bySession.get(s.id) ?? [];
       if (msgs.length === 0) continue;
-      const last = msgs[msgs.length - 1].created_at;
-      const orderingOff = hasOrderingConflict(s.updated_at, last);
+      const backfilled = await this.backfillMissingAssistants(userId, s.id);
+      if (backfilled > 0) {
+        results.push({
+          sessionId: s.id,
+          rebuiltSnapshot: true,
+          bumpedOrdering: false,
+          messageCount: msgs.length + backfilled,
+        });
+      }
+      const last = msgs[msgs.length - 1]?.created_at ?? s.updated_at;
+      const orderingOff = msgs.length > 0 && hasOrderingConflict(s.updated_at, last);
       const titleBroken = s.metadata?.titleSource !== 'user' && isGenericThreadTitle(s.title);
       if (orderingOff || titleBroken) {
         results.push(await this.repairThread(userId, s.id));

@@ -12,7 +12,7 @@ import type { LocationProfile } from './LocationProfileCard';
 export type { LocationProfile } from './LocationProfileCard';
 import { useMockData } from '../../contexts/MockDataContext';
 import { schedulePostChatRefresh } from '../../lib/storyRefresh';
-import { classifyLocation, KIND_META, locationHierarchy, computeChildren } from '../../lib/locationTaxonomy';
+import { classifyLocation, KIND_META, locationHierarchy, computeChildren, isHouseholdLocation, isRoomLocation } from '../../lib/locationTaxonomy';
 import {
   formatPlaceType,
   formatPlaceSignificance,
@@ -22,6 +22,7 @@ import {
   type PlaceSignificance,
 } from '../../lib/placeTypes';
 import { PlaceProfileEditor, type PlaceProfileDraft } from './PlaceProfileEditor';
+import { HouseholdDetailPanel } from './HouseholdDetailPanel';
 import { Button } from '../ui/button';
 import { Pencil } from 'lucide-react';
 
@@ -70,7 +71,7 @@ export const LocationDetailModal = ({
         onLocationUpdated?.(updated);
       }
     } catch {
-      // non-blocking
+      // Keep showing current profile on transient errors.
     }
   };
   const { useMockData: isMockDataEnabled } = useMockData();
@@ -425,12 +426,30 @@ export const LocationDetailModal = ({
           {/* ── OVERVIEW ── */}
           {activeTab === 'overview' && (
             <div className="space-y-5">
+              <HouseholdDetailPanel
+                location={location}
+                allLocations={allLocations}
+                onSelectLocation={onSelectLocation}
+                onOpenMemoriesTab={() => setActiveTab('memories')}
+              />
+
+              {isRoomLocation(location) && (
+                <div className="rounded-xl bg-purple-500/8 border border-purple-500/20 px-4 py-3 text-xs text-purple-200/80">
+                  This is a <span className="font-semibold">room</span> inside a household — not a standalone place card.
+                  {typeof location.metadata?.parent_household_name === 'string' && (
+                    <span> Part of <span className="font-medium text-white">{location.metadata.parent_household_name}</span>.</span>
+                  )}
+                </div>
+              )}
+
               {/* Hierarchy + nesting — kind, what it's part of, and places within */}
               {(() => {
                 const kind = classifyLocation(location);
                 const meta = KIND_META[kind];
                 const hierarchy = locationHierarchy(location);
-                const children = computeChildren(location, allLocations);
+                const children = isHouseholdLocation(location)
+                  ? [] // rooms shown in HouseholdDetailPanel
+                  : computeChildren(location, allLocations);
                 const findByName = (name: string) =>
                   allLocations.find(l => l.name.toLowerCase() === name.toLowerCase());
                 if (kind === 'other' && hierarchy.length === 0 && children.length === 0) return null;

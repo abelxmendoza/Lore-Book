@@ -11,8 +11,9 @@ import { format, parseISO } from 'date-fns';
 // ── G1 canonical types ────────────────────────────────────────────────
 export type GroupType =
   | 'friend_group' | 'band' | 'sports_team' | 'company' | 'club' | 'nonprofit'
-  | 'family' | 'martial_arts' | 'scene' | 'crew' | 'collective'
-  | 'community' | 'institution' | 'public_entity' | 'brand' | 'vendor' | 'other';
+  | 'family' | 'household' | 'martial_arts' | 'scene' | 'crew' | 'collective'
+  | 'community' | 'institution' | 'public_entity' | 'brand' | 'vendor'
+  | 'team' | 'project' | 'event_group' | 'other';
 
 export type MembershipModel = 'strict' | 'fuzzy' | 'none';
 
@@ -112,9 +113,12 @@ export type Organization = {
   created_at: string;
   updated_at: string;
   metadata?: Record<string, any>;
+  root_type?: string | null;
+  social_category?: string | null;
+  social_subcategory?: string | null;
+  parent_group_id?: string | null;
 
   // Rich "personality" profile (mission, culture, structure, reputation, …).
-  // Canonically stored under metadata.profile; mirrored here for convenience.
   profile?: import('../../lib/organizationProfile').OrganizationProfile;
 
   // Analytics

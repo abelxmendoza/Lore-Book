@@ -44,6 +44,12 @@ import { CharacterMediaPanel } from './CharacterMediaPanel';
 import { isSelfCharacter, isSyntheticSelfId } from '../../lib/isSelfCharacter';
 import { selfCharacterApi } from '../../api/selfCharacter';
 import {
+  CONNECTION_STAGE_LABELS,
+  getPublicFigureConnection,
+  getSceneNetwork,
+  isPublicFigureCharacter,
+} from '../../lib/publicFigure';
+import {
   getCharacterContextHooks,
   getCharacterRealName,
   getCharacterWittyTagline,
@@ -217,16 +223,19 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
     }
   };
 
-  const deleteCharacter = async () => {
+  const archiveCharacter = async () => {
     setDeleteBusy(true);
     setDeleteError(null);
     try {
-      await fetchJson(`/api/characters/${character.id}?redistribute=true`, { method: 'DELETE' });
+      await fetchJson(`/api/characters/${character.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'archived' }),
+      });
       onUpdate();
       onClose();
     } catch (err) {
-      console.error('Failed to delete character:', err);
-      setDeleteError(err instanceof Error ? err.message : 'Failed to delete character');
+      console.error('Failed to archive character:', err);
+      setDeleteError(err instanceof Error ? err.message : 'Failed to archive character');
     } finally {
       setDeleteBusy(false);
     }
@@ -1828,6 +1837,10 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
   ];
   const behaviorAttributes = attributesByType(['personality_trait', 'communication_style', 'temperament', 'lifestyle_pattern', 'habit', 'decision_style', 'stress_response']);
   const socialStanding = (editedCharacter.metadata as any)?.social_standing as { tier?: string; score?: number; connector?: boolean } | undefined;
+  const publicFigureConnection = getPublicFigureConnection(editedCharacter);
+  const isPublicFigureChar = isPublicFigureCharacter(editedCharacter);
+  const sceneNetwork = getSceneNetwork(editedCharacter);
+  const connectionStageLabels = CONNECTION_STAGE_LABELS;
 
   const openCharacterByRelationship = async (rel: Relationship) => {
     if (isMockDataEnabled) {
@@ -2129,7 +2142,7 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               })}
             </div>
             {canDeleteCharacter && (
-              <div className="mt-auto border-t border-red-500/15 p-2 sm:p-3">
+              <div className="mt-auto border-t border-amber-500/15 p-2 sm:p-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -2137,11 +2150,11 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                     setDeleteConfirmText('');
                     setDeleteError(null);
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs sm:text-sm font-medium text-red-300/80 hover:text-red-200 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition text-left"
-                  aria-label="Delete character"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs sm:text-sm font-medium text-amber-200/80 hover:text-amber-100 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20 transition text-left"
+                  aria-label="Archive character"
                 >
                   <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
-                  <span>Delete character</span>
+                  <span>Archive character</span>
                 </button>
               </div>
             )}
@@ -2395,6 +2408,32 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                         <p className="text-[11px] text-white/35 leading-relaxed">
                           Calculated from mentions, relationship links, organizations, influence, reputation signals, and how often they shape your story.
                         </p>
+                        {isPublicFigureChar && publicFigureConnection && (
+                          <div className="rounded-lg border border-fuchsia-500/20 bg-fuchsia-500/5 px-3 py-2 space-y-2">
+                            <p className="text-xs text-fuchsia-200/80 font-medium">Public figure connection</p>
+                            <p className="text-sm text-white/85 capitalize">
+                              {connectionStageLabels[publicFigureConnection.stage ?? ''] ?? publicFigureConnection.stage?.replace(/_/g, ' ')}
+                              {publicFigureConnection.inferred_met ? ' · met in your story' : ' · not yet met'}
+                            </p>
+                            {(publicFigureConnection.interactions ?? []).slice(0, 2).map((hit, i) => (
+                              <p key={i} className="text-[10px] text-white/40 line-clamp-2" title={hit.evidence}>
+                                {hit.type?.replace(/_/g, ' ')} — {hit.evidence}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                        {isMainCharacter && sceneNetwork && (
+                          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 space-y-1">
+                            <p className="text-xs text-amber-200/80 font-medium">Scene network</p>
+                            <p className="text-sm text-white/85 capitalize">
+                              {sceneNetwork.tier?.replace(/_/g, ' ')} · score {sceneNetwork.score ?? 0}
+                            </p>
+                            <p className="text-[10px] text-white/40">
+                              {sceneNetwork.public_figure_count ?? 0} public figure{(sceneNetwork.public_figure_count ?? 0) === 1 ? '' : 's'} in your orbit
+                              {sceneNetwork.deepest_stage ? ` · deepest: ${connectionStageLabels[sceneNetwork.deepest_stage] ?? sceneNetwork.deepest_stage}` : ''}
+                            </p>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </div>
@@ -4715,19 +4754,19 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
               <div className="min-w-0">
                 {deleteStep === 'warn' ? (
                   <>
-                    <h3 className="text-lg font-semibold text-white">Delete {displayName}?</h3>
+                    <h3 className="text-lg font-semibold text-white">Archive {displayName}?</h3>
                     <p className="text-sm text-white/60 mt-1">
-                      This removes the character card, facts, relationships, and memory links. Timeline events stay, but this cannot be undone.
+                      This hides their card from your Character Book but keeps their knowledge, facts, and conversation links in your database. Use Rescan conversations to restore them if needed.
                     </p>
                     <p className="text-xs text-white/45 mt-2">
-                      Step 1 of 2 — you will need to type the character name to confirm.
+                      Step 1 of 2 — type the character name to confirm.
                     </p>
                   </>
                 ) : (
                   <>
                     <h3 className="text-lg font-semibold text-white">Type the name to confirm</h3>
                     <p className="text-sm text-white/60 mt-1">
-                      Enter <span className="font-mono text-red-200">{displayName}</span> to permanently delete this character.
+                      Enter <span className="font-mono text-amber-200">{displayName}</span> to archive this character.
                     </p>
                     <Input
                       className="mt-3 bg-black/40 border-red-500/20"
@@ -4758,12 +4797,12 @@ export const CharacterDetailModal = ({ character, onClose, onUpdate, relationshi
                 </Button>
               ) : (
                 <Button
-                  onClick={() => void deleteCharacter()}
+                  onClick={() => void archiveCharacter()}
                   disabled={deleteBusy || deleteConfirmText.trim() !== displayName}
-                  className="bg-red-500/20 hover:bg-red-500/30 text-red-100 border border-red-500/30 disabled:opacity-40"
+                  className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-100 border border-amber-500/30 disabled:opacity-40"
                   leftIcon={<Trash2 className="h-4 w-4" />}
                 >
-                  {deleteBusy ? 'Deleting...' : 'Delete permanently'}
+                  {deleteBusy ? 'Archiving...' : 'Archive character'}
                 </Button>
               )}
             </div>

@@ -1,12 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { DetectedCharacterSuggestions } from './DetectedCharacterSuggestions';
+import { characterSuggestionsApi } from '../../api/entitySuggestions';
 import { getMockCharacterSuggestionBookNames } from '../../mocks/characterSuggestions';
 
 vi.mock('../../api/entitySuggestions', () => ({
   characterSuggestionsApi: {
     list: vi.fn(),
     add: vi.fn(),
+  },
+}));
+
+vi.mock('../../api/selfCharacter', () => ({
+  selfCharacterApi: {
+    rescanConversations: vi.fn(),
   },
 }));
 
@@ -42,5 +49,18 @@ describe('DetectedCharacterSuggestions', () => {
 
     expect(screen.getByText(/Romantic interests detected/i)).toBeInTheDocument();
     expect(screen.getByText('Priya')).toBeInTheDocument();
+  });
+
+  it('keeps rescan controls visible when there are no live suggestions', async () => {
+    vi.mocked(characterSuggestionsApi.list).mockResolvedValue({
+      success: true,
+      suggestions: [],
+      count: 0,
+    });
+
+    render(<DetectedCharacterSuggestions existingCharacterNames={[]} />);
+
+    expect(await screen.findByText(/No new people to add right now/i)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /Rescan conversations/i }).length).toBeGreaterThan(0);
   });
 });

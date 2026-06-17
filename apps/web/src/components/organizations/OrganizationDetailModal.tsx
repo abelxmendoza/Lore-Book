@@ -22,6 +22,7 @@ import { schedulePostChatRefresh, onStoryDataUpdated } from '../../lib/storyRefr
 import { MarkdownRenderer } from '../chat/MarkdownRenderer';
 import { EventTimelineSwimlanes, type SwimlaneEvent } from '../timeline/EventTimelineSwimlanes';
 import { OrganizationProfilePanel } from './OrganizationProfilePanel';
+import { GroupDetailPanel } from './GroupDetailPanel';
 import { FamilyTreePanel } from '../family/FamilyTreePanel';
 import { OrganizationGroupNetwork } from './OrganizationGroupNetwork';
 import type { Organization, OrganizationMember, OrganizationStory, OrganizationEvent, OrganizationLocation, OrganizationRelationship, OrgRelationshipType } from './OrganizationProfileCard';
@@ -30,6 +31,8 @@ import type { LocationProfile } from '../locations/LocationProfileCard';
 
 type OrganizationDetailModalProps = {
   organization: Organization;
+  allOrganizations?: Organization[];
+  onSelectOrganization?: (org: Organization) => void;
   onClose: () => void;
   onUpdate?: () => void;
 };
@@ -118,7 +121,7 @@ const BASE_TABS: Array<{ key: TabKey; label: string; icon: typeof FileText }> = 
   { key: 'timeline', label: 'Timeline', icon: Clock },
 ];
 
-export const OrganizationDetailModal = ({ organization, onClose, onUpdate }: OrganizationDetailModalProps) => {
+export const OrganizationDetailModal = ({ organization, allOrganizations = [], onSelectOrganization, onClose, onUpdate }: OrganizationDetailModalProps) => {
   const [editedOrg, setEditedOrg] = useState<Organization>(organization);
   const tabs = useMemo(() => {
     const list = [...BASE_TABS];
@@ -819,6 +822,16 @@ User's message: ${currentInput}`;
           <div className="flex-1 overflow-y-auto p-6">
             {/* Info Tab */}
             <TabsContent value="info" className="space-y-6 mt-4">
+              <GroupDetailPanel
+                organization={organization}
+                allOrganizations={allOrganizations}
+                onSelectOrganization={onSelectOrganization}
+                onOpenMembersTab={() => setActiveTab('members')}
+                onOpenLocationsTab={() => setActiveTab('locations')}
+                onOpenTimelineTab={() => setActiveTab('timeline')}
+                onOpenFamilyTab={() => setActiveTab('family')}
+              />
+
               {/* Read-Only Notice */}
               <Card className="bg-gradient-to-r from-purple-500/20 via-purple-600/15 to-purple-500/20 border-2 border-purple-500/40 shadow-lg shadow-purple-500/10">
                 <CardContent className="p-5">

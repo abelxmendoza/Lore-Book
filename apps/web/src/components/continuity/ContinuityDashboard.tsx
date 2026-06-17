@@ -225,7 +225,7 @@ export const ContinuityDashboard = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="continuity-dashboard">
       {/* Mock Data Banner */}
       {isMockDataEnabled && (
         <div className="text-xs text-yellow-400/80 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
