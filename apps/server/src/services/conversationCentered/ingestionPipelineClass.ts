@@ -36,6 +36,14 @@ import { romanticRelationshipDetector } from './romanticRelationshipDetector';
 import { ingestRomanticLexicalFromMessage } from '../romanticLexicalIngestionService';
 import { ingestRelationshipPeripheralsFromMessage } from '../relationshipPeripheralService';
 import { hasRomanticSignals } from '../ontology/romanticIntelligence';
+import {
+  hasQuestSignal,
+  hasProgressSignal,
+  hasSkillSignal,
+  hasProjectSignal,
+  hasInterestSignal,
+  hasLifeChangeSignal,
+} from './extractionSignals';
 import { hasVicariousRelationshipSignals } from '../ontology/vicariousRelationshipIntelligence';
 import { relationshipDriftDetector } from './relationshipDriftDetector';
 import { relationshipCycleDetector } from './relationshipCycleDetector';
@@ -2024,7 +2032,9 @@ export class ConversationIngestionPipeline {
       }
 
       // Step 12.11: Detect interests from message text (async, non-blocking)
-      if (sender === 'USER' && rawText.length > 10) {
+      // Gated on a cheap keyword signal — see extractionSignals.ts. Skips the LLM
+      // call for the many messages with no interest content (the 429 fan-out fix).
+      if (sender === 'USER' && rawText.length > 10 && hasInterestSignal(rawText)) {
         interestDetector
           .detectInterests(userId, rawText, undefined, messageId)
           .then(async (detectedInterests) => {
@@ -2064,21 +2074,27 @@ export class ConversationIngestionPipeline {
           });
       }
 
-      // Step 12.12: Detect quests from user messages → pending suggestions (user confirms on Quest Board)
+      // Step 12.12: Detect quests/progress/skills/projects/life-changes from user
+      // messages. Each extractor is an independent LLM call, so each is gated on a
+      // cheap keyword signal (extractionSignals.ts) to avoid firing the full
+      // cluster on messages with no such content — the core 429 fan-out fix.
       if (sender === 'USER' && rawText.length > 10) {
-        const { questSuggestionService } = await import('../quests/questSuggestionService');
-        questSuggestionService
-          .processChatMessageForQuestSuggestions(userId, messageId, rawText, conversationHistory)
-          .then((count) => {
-            if (count > 0) {
-              logger.debug({ userId, messageId, count }, 'Queued quest suggestions from chat');
-            }
-          })
-          .catch(err => {
-            logger.warn({ err, userId, messageId }, 'Quest suggestion extraction failed (non-blocking)');
-          });
+        if (hasQuestSignal(rawText)) {
+          const { questSuggestionService } = await import('../quests/questSuggestionService');
+          questSuggestionService
+            .processChatMessageForQuestSuggestions(userId, messageId, rawText, conversationHistory)
+            .then((count) => {
+              if (count > 0) {
+                logger.debug({ userId, messageId, count }, 'Queued quest suggestions from chat');
+              }
+            })
+            .catch(err => {
+              logger.warn({ err, userId, messageId }, 'Quest suggestion extraction failed (non-blocking)');
+            });
+        }
 
         // 12.12.2: Extract progress updates and update existing quests
+        if (hasProgressSignal(rawText)) {
         questExtractor
           .extractProgressUpdates(userId, rawText, conversationHistory)
           .then(async (progressUpdates) => {
@@ -2095,8 +2111,10 @@ export class ConversationIngestionPipeline {
           .catch(err => {
             logger.warn({ err, userId, messageId }, 'Progress update extraction failed (non-blocking)');
           });
+        }
 
         // 12.12.2b: Detect skills from chat → pending suggestions (user confirms in Skills book)
+        if (hasSkillSignal(rawText)) {
         skillExtractionService
           .processChatMessageForSkillSuggestions(userId, messageId, rawText)
           .then((count) => {
@@ -2107,20 +2125,24 @@ export class ConversationIngestionPipeline {
           .catch((err) => {
             logger.warn({ err, userId, messageId }, 'Skill suggestion extraction failed (non-blocking)');
           });
+        }
 
-        const { projectSuggestionService } = await import('../projects/projectSuggestionService');
-        projectSuggestionService
-          .processChatMessageForProjectSuggestions(userId, messageId, rawText, conversationHistory)
-          .then((count) => {
-            if (count > 0) {
-              logger.debug({ userId, messageId, count }, 'Queued project suggestions from chat');
-            }
-          })
-          .catch((err) => {
-            logger.warn({ err, userId, messageId }, 'Project suggestion extraction failed (non-blocking)');
-          });
+        if (hasProjectSignal(rawText)) {
+          const { projectSuggestionService } = await import('../projects/projectSuggestionService');
+          projectSuggestionService
+            .processChatMessageForProjectSuggestions(userId, messageId, rawText, conversationHistory)
+            .then((count) => {
+              if (count > 0) {
+                logger.debug({ userId, messageId, count }, 'Queued project suggestions from chat');
+              }
+            })
+            .catch((err) => {
+              logger.warn({ err, userId, messageId }, 'Project suggestion extraction failed (non-blocking)');
+            });
+        }
 
         // 12.12.3: Detect life changes and handle conflicting quests
+        if (hasLifeChangeSignal(rawText)) {
         questExtractor
           .detectLifeChanges(userId, rawText, conversationHistory)
           .then(async (lifeChanges) => {
@@ -2173,6 +2195,7 @@ export class ConversationIngestionPipeline {
           .catch(err => {
             logger.warn({ err, userId, messageId }, 'Life change detection failed (non-blocking)');
           });
+        }
       } // End of Step 12.12 quest extraction block
 
       // Step 11: Detect skill and group relationships (async, non-blocking)
