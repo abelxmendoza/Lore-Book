@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { BrowserRouter } from 'react-router-dom';
 import { render } from '../../test/utils';
 import { CharacterBook } from './CharacterBook';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
 
-const { mockFetchJson, impactDemoMode, impactDemoCharacters } = vi.hoisted(() => ({
+const { mockFetchJson, impactDemoMode, impactDemoCharacters, mockGetWithFallbackCharacters } = vi.hoisted(() => ({
   mockFetchJson: vi.fn().mockResolvedValue({}),
   impactDemoMode: { current: false },
   impactDemoCharacters: { current: [] as unknown[] },
+  mockGetWithFallbackCharacters: vi.fn(),
 }));
 
 vi.mock('../../hooks/useLoreKeeper', () => ({
@@ -21,10 +23,7 @@ vi.mock('../../services/mockDataService', () => ({
       characters: vi.fn(),
     },
     getWithFallback: {
-      characters: (realData?: unknown[] | null, useMock?: boolean) => ({
-        data: useMock ? impactDemoCharacters.current : (realData ?? []),
-        metadata: { isMock: !!useMock, source: useMock ? 'mock' : 'real' },
-      }),
+      characters: (...args: unknown[]) => mockGetWithFallbackCharacters(...args),
     },
   },
 }));
@@ -298,6 +297,10 @@ describe('CharacterBook', () => {
     beforeEach(() => {
       impactDemoMode.current = true;
       impactDemoCharacters.current = charactersWithAnalytics;
+      mockGetWithFallbackCharacters.mockImplementation((realData?: unknown[] | null, useMock?: boolean) => ({
+        data: useMock ? charactersWithAnalytics : (realData ?? []),
+        metadata: { isMock: !!useMock, source: useMock ? 'mock' : 'real' },
+      }));
 
       mockUseLoreKeeper.mockReturnValue({
         characters: charactersWithAnalytics,
@@ -323,21 +326,30 @@ describe('CharacterBook', () => {
       });
     });
 
+    function renderImpactBook() {
+      return rtlRender(
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <CharacterBook />
+        </BrowserRouter>
+      );
+    }
+
     async function waitForCharactersLoaded() {
       await waitFor(() => {
+        expect(mockGetWithFallbackCharacters).toHaveBeenCalledWith(null, true);
         expect(screen.getByText('High Impact Minor')).toBeInTheDocument();
       }, { timeout: 8000 });
     }
 
     it('shows "High impact on me (70+)" filter option', async () => {
-      render(<CharacterBook />);
+      renderImpactBook();
       await waitFor(() => {
         expect(screen.getByText(/High impact on me \(70\+\)/)).toBeInTheDocument();
       }, { timeout: 5000 });
     });
 
     it('shows "By impact on me" sort option', async () => {
-      render(<CharacterBook />);
+      renderImpactBook();
       await waitFor(() => {
         expect(screen.getByTestId('character-book-sort')).toBeInTheDocument();
       }, { timeout: 5000 });
@@ -346,7 +358,7 @@ describe('CharacterBook', () => {
 
     it('shows "People by impact on you" when sort is By impact on me', async () => {
       const user = userEvent.setup();
-      render(<CharacterBook />);
+      renderImpactBook();
       await waitForCharactersLoaded();
       const sortSelect = screen.getByTestId('character-book-sort');
       await user.selectOptions(sortSelect, 'impact');
@@ -357,7 +369,7 @@ describe('CharacterBook', () => {
 
     it('filters to high-influence characters when "High impact on me (70+)" is selected', async () => {
       const user = userEvent.setup();
-      render(<CharacterBook />);
+      renderImpactBook();
       await waitForCharactersLoaded();
       const filterSelect = screen.getByTestId('character-book-filter');
       await user.selectOptions(filterSelect, 'high_impact');
