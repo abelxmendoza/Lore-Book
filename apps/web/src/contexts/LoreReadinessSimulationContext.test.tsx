@@ -5,13 +5,17 @@ import { LoreReadinessSimulationProvider, useLoreReadinessSimulation } from './L
 
 vi.mock('../hooks/useShouldUseMockData', () => ({
   useShouldUseMockData: () => false,
+  shouldUseMockData: () => false,
 }));
 
 vi.mock('../config/env', () => ({
   config: {
     dev: { allowMockData: true },
-    api: { url: '' },
   },
+}));
+
+vi.mock('../lib/supabase', () => ({
+  useAuth: () => ({ user: null, loading: false }),
 }));
 
 function SimulationProbe() {

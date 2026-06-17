@@ -13,7 +13,9 @@ import {
   type ReactNode,
 } from 'react';
 import { config } from '../config/env';
-import { useShouldUseMockData } from '../hooks/useShouldUseMockData';
+import { subscribeToMockDataState } from '../contexts/MockDataContext';
+import { shouldUseMockData } from '../hooks/useShouldUseMockData';
+import { useAuth } from '../lib/supabase';
 import type {
   LoreReadinessCompiledMode,
   LoreReadinessKnowledgePreset,
@@ -64,14 +66,22 @@ const LoreReadinessSimulationContext = createContext<LoreReadinessSimulationCont
 );
 
 export function LoreReadinessSimulationProvider({ children }: { children: ReactNode }) {
-  const shouldUseMock = useShouldUseMockData();
+  const { user } = useAuth();
+  const [mockRevision, setMockRevision] = useState(0);
   const [stored, setStored] = useState<StoredSimulation>(() =>
     typeof window !== 'undefined' ? readStored() : DEFAULT_STORED
   );
 
   useEffect(() => {
+    return subscribeToMockDataState(() => setMockRevision((n) => n + 1));
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   }, [stored]);
+
+  const shouldUseMock = user ? false : shouldUseMockData();
+  void mockRevision;
 
   const showSimulator = shouldUseMock || config.dev.allowMockData;
   const isSimulating = shouldUseMock || (showSimulator && stored.enabled);

@@ -134,9 +134,9 @@ if (!rootElement) {
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <ChatThreadProvider>
           <MockDataProvider>
+            <LoreReadinessSimulationProvider>
             <LoreKeeperProvider>
             <GuestProvider>
-              <LoreReadinessSimulationProvider>
               <EntityModalProvider>
                 <CurrentContextProvider>
                   <SoulProfileChatProvider>
@@ -147,9 +147,9 @@ if (!rootElement) {
                   </SoulProfileChatProvider>
                 </CurrentContextProvider>
               </EntityModalProvider>
-              </LoreReadinessSimulationProvider>
             </GuestProvider>
             </LoreKeeperProvider>
+            </LoreReadinessSimulationProvider>
           </MockDataProvider>
           </ChatThreadProvider>
         </BrowserRouter>
