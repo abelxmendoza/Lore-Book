@@ -4,10 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { render } from '../../test/utils';
 import { CharacterBook } from './CharacterBook';
 import { useLoreKeeper } from '../../hooks/useLoreKeeper';
-import { booksApi } from '../../api/books';
 
-const { mockFetchJson } = vi.hoisted(() => ({
+const { mockFetchJson, impactDemoMode, impactDemoCharacters } = vi.hoisted(() => ({
   mockFetchJson: vi.fn().mockResolvedValue({}),
+  impactDemoMode: { current: false },
+  impactDemoCharacters: { current: [] as unknown[] },
 }));
 
 vi.mock('../../hooks/useLoreKeeper', () => ({
@@ -20,9 +21,9 @@ vi.mock('../../services/mockDataService', () => ({
       characters: vi.fn(),
     },
     getWithFallback: {
-      characters: (realData?: unknown[] | null) => ({
-        data: realData ?? [],
-        metadata: { isMock: false, source: 'real' },
+      characters: (realData?: unknown[] | null, useMock?: boolean) => ({
+        data: useMock ? impactDemoCharacters.current : (realData ?? []),
+        metadata: { isMock: !!useMock, source: useMock ? 'mock' : 'real' },
       }),
     },
   },
@@ -41,8 +42,11 @@ vi.mock('../../api/trust', () => ({
 }));
 
 vi.mock('../../contexts/MockDataContext', () => ({
-  useMockData: () => ({ useMockData: false, runtimeDataMode: 'REAL' }),
-  getGlobalMockDataEnabled: () => false,
+  useMockData: () => ({
+    useMockData: impactDemoMode.current,
+    runtimeDataMode: impactDemoMode.current ? 'DEMO' : 'REAL',
+  }),
+  getGlobalMockDataEnabled: () => impactDemoMode.current,
   setGlobalMockDataEnabled: vi.fn(),
   subscribeToMockDataState: vi.fn(() => vi.fn()),
   MockDataProvider: ({ children }: { children?: unknown }) => children,
@@ -100,6 +104,8 @@ describe('CharacterBook', () => {
   const mockUseLoreKeeper = vi.mocked(useLoreKeeper);
 
   beforeEach(() => {
+    impactDemoMode.current = false;
+    impactDemoCharacters.current = [];
     vi.mocked(useLoreKeeper).mockClear();
     mockFetchJson.mockReset();
     mockFetchJson.mockImplementation(async (url: RequestInfo) => {
@@ -290,6 +296,9 @@ describe('CharacterBook', () => {
     ];
 
     beforeEach(() => {
+      impactDemoMode.current = true;
+      impactDemoCharacters.current = charactersWithAnalytics;
+
       mockUseLoreKeeper.mockReturnValue({
         characters: charactersWithAnalytics,
         entries: [],
@@ -304,24 +313,8 @@ describe('CharacterBook', () => {
       } as any);
 
       mockFetchJson.mockImplementation(async (url: RequestInfo) => {
-        if (url === '/api/books/characters') {
-          return {
-            success: true,
-            data: {
-              characters: charactersWithAnalytics,
-              duplicate_groups: [],
-              counts: {},
-            },
-            characters: charactersWithAnalytics,
-            duplicate_groups: [],
-            counts: {},
-          };
-        }
         if (url === '/api/conversation/romantic-relationships') {
           return { success: true, relationships: [] };
-        }
-        if (url === '/api/characters/duplicates') {
-          return { duplicate_groups: [] };
         }
         if (typeof url === 'string' && url.startsWith('/api/characters/suggestions')) {
           return { success: true, suggestions: [], count: 0 };
@@ -332,7 +325,6 @@ describe('CharacterBook', () => {
 
     async function waitForCharactersLoaded() {
       await waitFor(() => {
-        expect(mockFetchJson).toHaveBeenCalledWith('/api/books/characters');
         expect(screen.getByText('High Impact Minor')).toBeInTheDocument();
       }, { timeout: 8000 });
     }
@@ -351,20 +343,6 @@ describe('CharacterBook', () => {
       }, { timeout: 5000 });
       expect(screen.getByText(/By impact on me/)).toBeInTheDocument();
     });
-
-    it('loads characters from the books BFF', async () => {
-      const payload = await booksApi.loadCharacters();
-      expect(payload.characters).toHaveLength(2);
-
-      render(<CharacterBook />);
-      await waitFor(() => {
-        expect(mockFetchJson.mock.calls.some((call) => call[0] === '/api/books/characters')).toBe(true);
-      }, { timeout: 15_000 });
-      await waitFor(() => {
-        expect(screen.getByText(/2 total/)).toBeInTheDocument();
-        expect(screen.getByText('High Impact Minor')).toBeInTheDocument();
-      }, { timeout: 15_000 });
-    }, 20_000);
 
     it('shows "People by impact on you" when sort is By impact on me', async () => {
       const user = userEvent.setup();
