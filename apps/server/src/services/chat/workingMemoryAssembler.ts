@@ -1,16 +1,37 @@
 import { supabaseAdmin } from '../supabaseClient';
 import { classifyEntity, type EntityClass } from '../entities/entityClassifier';
 import { normalizeNameKey } from '../../utils/nameNormalization';
+import {
+  classifyTemporalQuery,
+  occurredInWindow,
+  type ResolvedTemporalQuery,
+} from '../temporal/temporalQueryService';
+import type { TemporalWindow } from '../../utils/temporalAnchorResolver';
 
 export type WorkingMemoryIntent =
   | 'PERSON_QUERY'
   | 'PLACE_QUERY'
   | 'PROJECT_QUERY'
+  | 'GOAL_QUERY'
+  | 'SKILL_QUERY'
+  | 'COMMUNITY_QUERY'
   | 'EVENT_QUERY'
   | 'LIFE_REVIEW'
   | 'RELATIONSHIP_QUERY'
   | 'IDENTITY_QUERY'
-  | 'DEBUG_QUERY';
+  | 'ARC_QUERY'
+  | 'CHAPTER_QUERY'
+  | 'CONFLICT_QUERY'
+  | 'DIRECTION_QUERY'
+  | 'MOMENTUM_QUERY'
+  | 'DEBUG_QUERY'
+  | 'TODAY_QUERY'
+  | 'YESTERDAY_QUERY'
+  | 'THIS_WEEK_QUERY'
+  | 'THIS_MONTH_QUERY'
+  | 'TIME_RANGE_QUERY'
+  | 'TEMPORAL_COMPARISON_QUERY'
+  | 'TIMELINE_QUERY';
 
 export type WorkingMemoryEntity = {
   id: string | null;
@@ -26,6 +47,9 @@ export type WorkingMemoryItem = {
     | 'episode'
     | 'event'
     | 'project'
+    | 'goal'
+    | 'skill'
+    | 'community'
     | 'relationship'
     | 'preference'
     | 'timeline'
@@ -47,6 +71,9 @@ export type WorkingMemoryAssembly = {
   episodes: WorkingMemoryItem[];
   events: WorkingMemoryItem[];
   projects: WorkingMemoryItem[];
+  goals: WorkingMemoryItem[];
+  skills: WorkingMemoryItem[];
+  communities: WorkingMemoryItem[];
   relationships: WorkingMemoryItem[];
   preferences: WorkingMemoryItem[];
   timeline: WorkingMemoryItem[];
@@ -64,6 +91,9 @@ export type WorkingMemoryPacket = {
   people: WorkingMemoryItem[];
   places: WorkingMemoryItem[];
   projects: WorkingMemoryItem[];
+  goals: WorkingMemoryItem[];
+  skills: WorkingMemoryItem[];
+  communities: WorkingMemoryItem[];
   events: WorkingMemoryItem[];
   episodes: WorkingMemoryItem[];
   relationships: WorkingMemoryItem[];
@@ -296,12 +326,20 @@ const DEFAULT_BUDGET = 20;
 
 const INTENT_RULES: Array<{ intent: WorkingMemoryIntent; pattern: RegExp }> = [
   { intent: 'DEBUG_QUERY', pattern: /\b(did you save|did you store|what did you save|debug|memory status|was that saved)\b/i },
-  { intent: 'LIFE_REVIEW', pattern: /\b(what have i been doing lately|what have i done lately|what's been going on|recently|lately|recap my life|life review)\b/i },
-  { intent: 'IDENTITY_QUERY', pattern: /\b(what kind of person am i|who am i|what do you know about me|my identity|my values|what matters to me)\b/i },
-  { intent: 'EVENT_QUERY', pattern: /\b(what happened at .*(graduation|party|wedding|funeral|birthday)|what happened during|tell me about .*graduation|what did i do with|event)\b/i },
+  { intent: 'CHAPTER_QUERY', pattern: /\b(what chapter (?:am i|of life)|what chapter am i in|current chapter|what phase of life|what era am i in|summarize my current life chapter|what period of life|what(?:'s| is) happening in my life)\b/i },
+  { intent: 'CONFLICT_QUERY', pattern: /\b(what conflicts?|conflicts? keep|tensions?|competing priorities|what.*(?:pulling|torn)|tradeoffs?|what keeps getting in the way|obstacles? between)\b/i },
+  { intent: 'MOMENTUM_QUERY', pattern: /\b(what(?:'s| is) gaining momentum|what(?:'s| is) fading|what(?:'s| is) growing|what(?:'s| is) declining|momentum|what deserves attention|what needs attention)\b/i },
+  { intent: 'DIRECTION_QUERY', pattern: /\b(where is (?:my )?life (?:heading|moving)|where am i headed|life direction|what direction|where is life going|what am i building toward)\b/i },
+  { intent: 'ARC_QUERY', pattern: /\b(what stor(?:y|ies) am i living|life arcs?|major arcs?|what arcs?|dominant arcs?|narrative threads?|what story am i living|what is my story|tell me about my .* arc|my .* arc)\b/i },
+  { intent: 'GOAL_QUERY', pattern: /\b(my goals?|what are my (?:current )?goals?|what.*\bgoals?\b|what.*(?:working toward|working towards)|what have i abandoned|abandoned goals?|what am i trying to do with my life|trying to do with my life|what is changing|aspirations?|what do i want to (?:achieve|accomplish|do)|my objectives?|what am i aiming (?:for|at)|my (?:dreams|ambitions)|am i (?:on track|making progress) (?:on|toward|with) my|current goals?|my priorities|what matters most|what should i focus on)\b/i },
+  { intent: 'SKILL_QUERY', pattern: /\b(my skills?|what skills|what skills do i have|skills (?:define|describe) me|what (?:can i do|am i good at)|what am i (?:learning|practicing|building)|my abilities|how good am i at|am i (?:improving|getting better) at|am i leveling|my proficienc)\b/i },
+  { intent: 'PROJECT_QUERY', pattern: /\b(projects? am i (?:working on|building)|what projects|my projects|how is .* progressing|progress on|status of|how's .* going|projects?\b|lorebook)\b/i },
+  { intent: 'COMMUNITY_QUERY', pattern: /\b(my communities|communities am i|social circles?|groups am i part of|what communities|communities matter|my crew|my circles?|organizations i belong|clubs am i in|who are my .* people)\b/i },
+  { intent: 'EVENT_QUERY', pattern: /\b(what happened at .*(graduation|party|wedding|funeral|birthday)|what happened during|what happened last|what did i do last|last summer|last year|last month|last week|tell me about .*graduation|what did i do with|event)\b/i },
   { intent: 'PLACE_QUERY', pattern: /\b(what happened at|what went on at|what was it like at|memories at|remember at)\b/i },
-  { intent: 'PROJECT_QUERY', pattern: /\b(how is .* progressing|progress on|status of|how's .* going|project|lorebook)\b/i },
-  { intent: 'RELATIONSHIP_QUERY', pattern: /\b(what do you remember about|relationship with|what happened with|story with|between me and|how am i related to|who lives with me|who do i live with|what role did)\b/i },
+  { intent: 'RELATIONSHIP_QUERY', pattern: /\b(what do you remember about|relationship with|what happened with|story with|between me and|how am i related to|who lives with me|who do i live with|what role did|my family|about my family|summarize.*family|family members)\b/i },
+  { intent: 'LIFE_REVIEW', pattern: /\b(what have i been doing lately|what have i done lately|what's been going on|recap my life|life review)\b/i },
+  { intent: 'IDENTITY_QUERY', pattern: /\b(what kind of person am i|who am i|what do you know about me|my identity|my values|what matters to me|what defines me)\b/i },
   { intent: 'PERSON_QUERY', pattern: /\b(what do you know about|who is|who was|tell me about|do you remember)\b/i },
 ];
 
@@ -316,10 +354,24 @@ const TARGET_PATTERNS = [
 ];
 
 function classifyIntent(question: string): WorkingMemoryIntent {
+  const temporal = classifyTemporalQuery(question);
+  if (temporal.intent) return temporal.intent as WorkingMemoryIntent;
   for (const rule of INTENT_RULES) {
     if (rule.pattern.test(question)) return rule.intent;
   }
   return 'LIFE_REVIEW';
+}
+
+function isTemporalIntent(intent: WorkingMemoryIntent): boolean {
+  return [
+    'TODAY_QUERY',
+    'YESTERDAY_QUERY',
+    'THIS_WEEK_QUERY',
+    'THIS_MONTH_QUERY',
+    'TIME_RANGE_QUERY',
+    'TEMPORAL_COMPARISON_QUERY',
+    'TIMELINE_QUERY',
+  ].includes(intent);
 }
 
 function eventSearchOrClause(target: string): string {
@@ -401,6 +453,9 @@ function distribute(items: WorkingMemoryItem[]): Omit<WorkingMemoryAssembly, 'in
     episodes: items.filter((item) => item.type === 'episode'),
     events: items.filter((item) => item.type === 'event'),
     projects: items.filter((item) => item.type === 'project'),
+    goals: items.filter((item) => item.type === 'goal'),
+    skills: items.filter((item) => item.type === 'skill'),
+    communities: items.filter((item) => item.type === 'community'),
     relationships: items.filter((item) => item.type === 'relationship'),
     preferences: items.filter((item) => item.type === 'preference'),
     timeline: items.filter((item) => item.type === 'timeline'),
@@ -478,6 +533,9 @@ export function buildWorkingMemoryPacket(assembly: WorkingMemoryAssembly): Worki
     section('People', people),
     section('Places', places),
     section('Projects', assembly.projects),
+    section('Goals', assembly.goals),
+    section('Skills', assembly.skills),
+    section('Communities', assembly.communities),
     section('Events', assembly.events),
     section('Episodes', assembly.episodes),
     section('Relationships', assembly.relationships),
@@ -492,6 +550,9 @@ export function buildWorkingMemoryPacket(assembly: WorkingMemoryAssembly): Worki
     people,
     places,
     projects: assembly.projects,
+    goals: assembly.goals,
+    skills: assembly.skills,
+    communities: assembly.communities,
     events: assembly.events,
     episodes: assembly.episodes,
     relationships: assembly.relationships,
@@ -819,22 +880,35 @@ async function loadTextualCandidates(
   userId: string,
   target: string | null,
   intent: WorkingMemoryIntent,
-  threadId?: string
+  threadId?: string,
+  temporalWindow?: TemporalWindow | null
 ): Promise<Candidate[]> {
   const like = `%${target ?? ''}%`;
   const wantsTarget = Boolean(target);
-  const [entries, chats, timeline, eventTargetHits, projects, biography] = await Promise.all([
+  const temporal = isTemporalIntent(intent);
+  const isoRange = temporalWindow ? { gte: temporalWindow.start.toISOString(), lte: temporalWindow.end.toISOString() } : null;
+
+  const applyDateRange = <T extends { gte: (col: string, val: string) => T; lte: (col: string, val: string) => T }>(
+    q: T,
+    column: string
+  ): T => {
+    if (!isoRange) return q;
+    return q.gte(column, isoRange.gte).lte(column, isoRange.lte);
+  };
+
+  const [entries, chats, timeline, eventTargetHits, projects, biography, resolvedEvents] = await Promise.all([
     scope.traced(
       'journal_entries',
-      'recent journal entries',
+      temporal ? 'journal entries in temporal window' : 'recent journal entries',
       `journal_entries:${intent}`,
-      () =>
-        supabaseAdmin
+      () => {
+        let q = supabaseAdmin
           .from('journal_entries')
           .select('id, content, summary, date, tags, source, metadata')
-          .eq('user_id', userId)
-          .order('date', { ascending: false })
-          .limit(intent === 'LIFE_REVIEW' ? 8 : 6)
+          .eq('user_id', userId);
+        q = applyDateRange(q, 'date');
+        return q.order('date', { ascending: false }).limit(temporal ? 12 : intent === 'LIFE_REVIEW' ? 8 : 6);
+      }
     ),
     threadId
       ? scope.traced(
@@ -866,15 +940,18 @@ async function loadTextualCandidates(
         ),
     scope.traced(
       'character_timeline_events',
-      'recent timeline events',
+      temporal ? 'timeline events in window' : 'recent timeline events',
       `timeline_events:recent:${intent}`,
-      () =>
-        supabaseAdmin
+      () => {
+        let q = supabaseAdmin
           .from('character_timeline_events')
           .select('id, event_title, event_type, event_date, event_summary, confidence, metadata')
-          .eq('user_id', userId)
+          .eq('user_id', userId);
+        q = applyDateRange(q, 'event_date');
+        return q
           .order('event_date', { ascending: false })
-          .limit(intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' ? 8 : 4)
+          .limit(temporal || intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' ? 12 : 4);
+      }
     ),
     intent === 'EVENT_QUERY' && target
       ? scope.traced(
@@ -892,7 +969,9 @@ async function loadTextualCandidates(
         )
       : Promise.resolve([] as any[]),
     fetchProjectsForTextual(scope, userId),
-    scope.traced(
+    temporal
+      ? Promise.resolve([] as any[])
+      : scope.traced(
       'narrative_accounts',
       'narrative accounts',
       `narrative_accounts:${intent}`,
@@ -903,6 +982,32 @@ async function loadTextualCandidates(
           .eq('user_id', userId)
           .order('recorded_at', { ascending: false })
           .limit(intent === 'IDENTITY_QUERY' || intent === 'LIFE_REVIEW' ? 4 : 2)
+    ),
+    // Event coverage fix: resolved_events is the recovery-populated event store
+    // (the WMA previously read only character_timeline_events, which is sparser).
+    // Read both and dedupe so EVENT_QUERY/LIFE_REVIEW actually return events.
+    scope.traced(
+      'resolved_events',
+      'resolved events (recovery store)',
+      `resolved_events:${intent}:${normalizeNameKey(target ?? '')}`,
+      () => {
+        const base = supabaseAdmin
+          .from('resolved_events')
+          .select('id, title, summary, type, start_time, confidence, tags, people, locations, metadata')
+          .eq('user_id', userId);
+        let scoped = wantsTarget && intent === 'EVENT_QUERY'
+          ? base.or(
+              (target!.match(/\b[a-z]{4,}/gi) ?? [target!])
+                .slice(0, 4)
+                .flatMap((tk) => [`title.ilike.%${escapeIlike(tk)}%`, `summary.ilike.%${escapeIlike(tk)}%`])
+                .join(',') || `title.ilike.%${escapeIlike(target!.slice(0, 24))}%`
+            )
+          : base;
+        scoped = applyDateRange(scoped, 'start_time');
+        return scoped
+          .order('start_time', { ascending: false, nullsFirst: false })
+          .limit(temporal || intent === 'LIFE_REVIEW' || intent === 'EVENT_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 12 : 5);
+      }
     ),
   ]);
 
@@ -916,6 +1021,7 @@ async function loadTextualCandidates(
 
   for (const entry of (entries ?? []) as any[]) {
     const text = String(entry.summary ?? entry.content ?? '');
+    if (temporalWindow && !occurredInWindow(entry.date, temporalWindow)) continue;
     if (wantsTarget && !includeByIntent(text) && !['LIFE_REVIEW', 'IDENTITY_QUERY'].includes(intent)) continue;
     out.push({
       id: `episode:${entry.id}`,
@@ -925,7 +1031,7 @@ async function loadTextualCandidates(
       source: 'journal_entries',
       date: entry.date,
       confidence: 0.72,
-      relevance: wantsTarget ? (includeByIntent(text) ? 0.84 : 0.35) : 0.7,
+      relevance: temporal ? 0.95 : wantsTarget ? (includeByIntent(text) ? 0.84 : 0.35) : 0.7,
       importance: 0.5,
       significance: Array.isArray(entry.tags) && entry.tags.length > 0 ? 0.6 : 0.45,
       relationshipDistance: 0.5,
@@ -935,6 +1041,7 @@ async function loadTextualCandidates(
 
   for (const chat of (chats ?? []) as any[]) {
     const text = String(chat.content ?? '');
+    if (temporalWindow && !occurredInWindow(chat.created_at, temporalWindow)) continue;
     if (wantsTarget && !includeByIntent(text) && !threadId) continue;
     out.push({
       id: `chat:${chat.id}`,
@@ -958,6 +1065,7 @@ async function loadTextualCandidates(
     if (seenEventIds.has(event.id)) continue;
     seenEventIds.add(event.id);
     const text = `${event.event_title ?? ''} ${event.event_summary ?? ''}`;
+    if (temporalWindow && !occurredInWindow(event.event_date, temporalWindow)) continue;
     if (wantsTarget && !includeByIntent(text) && !['LIFE_REVIEW', 'EVENT_QUERY'].includes(intent)) continue;
     out.push({
       id: `timeline:${event.id}`,
@@ -975,10 +1083,31 @@ async function loadTextualCandidates(
     });
   }
 
+  for (const event of (resolvedEvents ?? []) as any[]) {
+    const text = `${event.title ?? ''} ${event.summary ?? ''}`;
+    if (temporalWindow && !occurredInWindow(event.start_time, temporalWindow)) continue;
+    if (wantsTarget && !includeByIntent(text) && !['LIFE_REVIEW', 'EVENT_QUERY'].includes(intent)) continue;
+    out.push({
+      id: `resolved_event:${event.id}`,
+      type: intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY' ? 'timeline' : 'event',
+      title: String(event.title ?? event.type ?? 'Event'),
+      content: String(event.summary ?? event.title ?? ''),
+      source: 'resolved_events',
+      date: event.start_time,
+      confidence: Number(event.confidence ?? 0.75),
+      relevance: includeByIntent(text) ? (intent === 'EVENT_QUERY' ? 0.97 : 0.78) : 0.6,
+      importance: 0.68,
+      significance: Number((event.metadata as Record<string, unknown>)?.significance_score ?? 60) / 100,
+      relationshipDistance: 0.5,
+      reasons: includeByIntent(text) ? ['resolved event matches target'] : ['recent resolved event'],
+      metadata: { people: event.people, locations: event.locations, tags: event.tags },
+    });
+  }
+
   for (const project of projects) {
     const name = String(project.name ?? project.title ?? '');
     const text = `${name} ${project.description ?? ''} ${project.status ?? ''}`;
-    if (intent !== 'PROJECT_QUERY' && (wantsTarget ? !includeByIntent(text) : true)) continue;
+    if (intent !== 'PROJECT_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && (wantsTarget ? !includeByIntent(text) : true)) continue;
     out.push({
       id: `project:${project.id}`,
       type: 'project',
@@ -1017,11 +1146,466 @@ async function loadTextualCandidates(
   return out;
 }
 
-function selectBudget(candidates: Candidate[], maxItems: number): { selected: WorkingMemoryItem[]; rejected: Array<WorkingMemoryItem & { rejectedReason: string }> } {
-  const ranked = candidates
+async function loadSkillCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  target: string | null,
+  intent: WorkingMemoryIntent
+): Promise<Candidate[]> {
+  if (intent !== 'SKILL_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && !target) {
+    return [];
+  }
+  const rows = await scope.traced(
+    'skills',
+    'skills for user',
+    `skills:${userId}`,
+    () =>
+      supabaseAdmin
+        .from('skills')
+        .select('id, skill_name, skill_category, description, current_level, total_xp, practice_count, last_practiced_at, confidence_score, is_active, metadata')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('practice_count', { ascending: false })
+        .limit(12)
+  );
+  const targetKey = normalizeNameKey(target ?? '');
+  const out: Candidate[] = [];
+  for (const row of (rows ?? []) as any[]) {
+    const name = String(row.skill_name ?? '');
+    if (!name) continue;
+    const matches = targetKey ? normalizeNameKey(name).includes(targetKey) || targetKey.includes(normalizeNameKey(name)) : false;
+    if (intent !== 'SKILL_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && !matches) continue;
+    const level = Number(row.current_level ?? 1);
+    const practice = Number(row.practice_count ?? 0);
+    const category = String(row.skill_category ?? 'other');
+    const isProfessional = category === 'professional' || category === 'technical';
+    out.push({
+      id: `skill:${row.id}`,
+      type: 'skill',
+      title: `${name} (${category})`,
+      content: String(
+        row.description ??
+          `${name} — level ${level}, practiced ${practice}×, ${isProfessional ? 'professional' : 'personal'} skill`
+      ),
+      source: 'skills',
+      date: row.last_practiced_at ?? null,
+      confidence: Number(row.confidence_score ?? 0.7),
+      relevance: matches ? 0.95 : intent === 'SKILL_QUERY' ? 0.9 : 0.55,
+      importance: clamp01(level / 10 + practice / 50),
+      significance: clamp01(0.4 + practice / 40),
+      relationshipDistance: 0.5,
+      reasons: matches ? ['skill matches target'] : practice >= 5 ? ['frequently practiced skill'] : ['active skill'],
+      metadata: { level, total_xp: row.total_xp, practice_count: practice, category, is_professional: isProfessional },
+    });
+  }
+  return out;
+}
+
+async function loadGoalCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  target: string | null,
+  intent: WorkingMemoryIntent,
+  question = ''
+): Promise<Candidate[]> {
+  if (intent !== 'GOAL_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY') {
+    return [];
+  }
+  const wantsAbandoned = /\babandon(ed|ing)?\b/i.test(question);
+  const [goalRows, insightRows] = await Promise.all([
+    scope.traced(
+      'goals',
+      'goals for user',
+      `goals:${userId}:${wantsAbandoned ? 'abandoned' : 'active'}`,
+      () => {
+        let query = supabaseAdmin
+          .from('goals')
+          .select('id, title, description, status, milestones, probability, last_action_at, updated_at, metadata, source')
+          .eq('user_id', userId);
+        if (wantsAbandoned) {
+          query = query.eq('status', 'abandoned');
+        } else {
+          query = query.neq('status', 'abandoned');
+        }
+        return query.order('updated_at', { ascending: false }).limit(12);
+      }
+    ),
+    scope.traced(
+      'goal_insights',
+      'goal insights for user',
+      `goal_insights:${userId}`,
+      () =>
+        supabaseAdmin
+          .from('goal_insights')
+          .select('id, type, message, confidence, timestamp, related_goal_id, metadata')
+          .eq('user_id', userId)
+          .order('timestamp', { ascending: false })
+          .limit(10)
+    ),
+  ]);
+
+  const insightsByGoal = new Map<string, any[]>();
+  for (const insight of (insightRows ?? []) as any[]) {
+    const gid = insight.related_goal_id as string | null;
+    if (!gid) continue;
+    const list = insightsByGoal.get(gid) ?? [];
+    list.push(insight);
+    insightsByGoal.set(gid, list);
+  }
+
+  const targetKey = normalizeNameKey(target ?? '');
+  const out: Candidate[] = [];
+  for (const row of (goalRows ?? []) as any[]) {
+    const title = String(row.title ?? '');
+    if (!title) continue;
+    const text = `${title} ${row.description ?? ''}`;
+    const matches = targetKey ? normalizeNameKey(text).includes(targetKey) : false;
+    const status = String(row.status ?? 'active').toLowerCase();
+    const active = status === 'active';
+    const stalled =
+      status === 'paused' ||
+      (row.last_action_at &&
+        daysAgo(row.last_action_at) != null &&
+        (daysAgo(row.last_action_at) ?? 0) > 30);
+    const completed = status === 'completed';
+    const insights = insightsByGoal.get(row.id) ?? [];
+    const progressNotes = insights
+      .filter((i) => ['progress', 'milestone', 'success_probability'].includes(String(i.type)))
+      .slice(0, 2)
+      .map((i) => String(i.message))
+      .join('; ');
+    const blockers = insights
+      .filter((i) => ['stagnation', 'dependency_warning'].includes(String(i.type)))
+      .slice(0, 2)
+      .map((i) => String(i.message))
+      .join('; ');
+    const milestoneCount = Array.isArray(row.milestones) ? row.milestones.length : 0;
+    const contentParts = [
+      row.description ?? title,
+      active ? 'status: active' : completed ? 'status: completed' : stalled ? 'status: stalled/paused' : `status: ${status}`,
+      milestoneCount ? `milestones: ${milestoneCount}` : '',
+      row.probability != null ? `probability: ${Number(row.probability).toFixed(2)}` : '',
+      progressNotes ? `progress: ${progressNotes}` : '',
+      blockers ? `blockers: ${blockers}` : '',
+    ].filter(Boolean);
+
+    out.push({
+      id: `goal:${row.id}`,
+      type: 'goal',
+      title: completed ? `${title} [completed]` : stalled ? `${title} [stalled]` : title,
+      content: contentParts.join(' | ').slice(0, 900),
+      source: 'goals',
+      date: row.updated_at ?? row.last_action_at ?? null,
+      confidence: Number(row.probability ?? insights[0]?.confidence ?? 0.7),
+      relevance: matches ? 0.95 : intent === 'GOAL_QUERY' ? (active ? 0.92 : 0.78) : 0.55,
+      importance: active ? 0.85 : completed ? 0.6 : 0.5,
+      significance: milestoneCount > 0 ? 0.75 : 0.6,
+      relationshipDistance: 0.5,
+      reasons: matches ? ['goal matches target'] : active ? ['active goal'] : completed ? ['completed goal'] : ['goal'],
+      metadata: { status, milestone_count: milestoneCount, source: row.source, has_blockers: Boolean(blockers) },
+    });
+  }
+
+  // Fallback when goals table is empty/missing — mine goal language from journal entries.
+  if (out.length === 0 && intent === 'GOAL_QUERY') {
+    const journalGoals = await scope.traced(
+      'journal_entries',
+      'journal goal mentions',
+      `journal:goal_mentions:${userId}`,
+      () =>
+        supabaseAdmin
+          .from('journal_entries')
+          .select('id, summary, content, date, tags, metadata')
+          .eq('user_id', userId)
+          .or('summary.ilike.%goal%,content.ilike.%goal%,summary.ilike.%want to%,content.ilike.%working toward%,summary.ilike.%aspir%,tags.cs.{goal}')
+          .order('date', { ascending: false })
+          .limit(8)
+    );
+    for (const entry of (journalGoals ?? []) as any[]) {
+      const text = String(entry.summary ?? entry.content ?? '');
+      if (!text.trim()) continue;
+      out.push({
+        id: `goal:journal:${entry.id}`,
+        type: 'goal',
+        title: String(entry.summary ?? 'Goal mention').slice(0, 80),
+        content: text.slice(0, 700),
+        source: 'journal_entries',
+        date: entry.date,
+        confidence: 0.65,
+        relevance: 0.8,
+        importance: 0.7,
+        significance: 0.65,
+        relationshipDistance: 0.5,
+        reasons: ['journal goal mention (goals table unavailable)'],
+      });
+    }
+  }
+
+  return out;
+}
+
+async function loadCommunityCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  intent: WorkingMemoryIntent
+): Promise<Candidate[]> {
+  if (intent !== 'COMMUNITY_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY') {
+    return [];
+  }
+  const [communities, organizations] = await Promise.all([
+    scope.traced(
+      'social_communities',
+      'social communities for user',
+      `social_communities:${userId}`,
+      () =>
+        supabaseAdmin
+          .from('social_communities')
+          .select('id, theme, members, cohesion, size, metadata, updated_at')
+          .eq('user_id', userId)
+          .order('size', { ascending: false })
+          .limit(10)
+    ),
+    scope.traced(
+      'organizations',
+      'organizations for user',
+      `organizations:community:${userId}`,
+      () =>
+        supabaseAdmin
+          .from('organizations')
+          .select('id, name, description, type, group_type, status, importance_score, metadata, updated_at')
+          .eq('user_id', userId)
+          .order('updated_at', { ascending: false })
+          .limit(8)
+    ),
+  ]);
+
+  const out: Candidate[] = [];
+  for (const row of (communities ?? []) as any[]) {
+    const theme = String(row.theme ?? 'Community');
+    const members = Array.isArray(row.members) ? row.members.slice(0, 8).join(', ') : '';
+    const cohesion = Number(row.cohesion ?? 0.5);
+    const size = Number(row.size ?? 0);
+    const declining = cohesion < 0.35;
+    const active = cohesion >= 0.5 && size >= 2;
+    out.push({
+      id: `community:${row.id}`,
+      type: 'community',
+      title: theme,
+      content: `Members: ${members || 'unknown'} | size=${size} | cohesion=${cohesion.toFixed(2)}${declining ? ' | declining' : active ? ' | active' : ''}`,
+      source: 'social_communities',
+      date: row.updated_at ?? null,
+      confidence: clamp01(cohesion + 0.2),
+      relevance: intent === 'COMMUNITY_QUERY' ? (active ? 0.92 : 0.78) : 0.55,
+      importance: clamp01(size / 10 + cohesion / 2),
+      significance: cohesion,
+      relationshipDistance: 0.6,
+      reasons: [active ? 'active community' : declining ? 'declining community' : 'social cluster'],
+      metadata: { size, cohesion, members: row.members },
+    });
+  }
+
+  for (const org of (organizations ?? []) as any[]) {
+    const name = String(org.name ?? 'Organization');
+    const orgKind = org.group_type ?? org.type;
+    const isCommunity =
+      orgKind === 'family' ||
+      /goth|household|crew|club|community|scene|circle|family/i.test(`${name} ${org.description ?? ''}`);
+    out.push({
+      id: `community:org:${org.id}`,
+      type: 'community',
+      title: `${name}${orgKind ? ` (${orgKind})` : ''}`,
+      content: String(org.description ?? name),
+      source: 'organizations',
+      date: org.updated_at ?? null,
+      confidence: 0.78,
+      relevance: intent === 'COMMUNITY_QUERY' ? (isCommunity ? 0.9 : 0.72) : 0.5,
+      importance: Number(org.importance_score ?? 0.65),
+      significance: 0.6,
+      relationshipDistance: 0.55,
+      reasons: [isCommunity ? 'community organization' : 'organization / group membership'],
+    });
+  }
+  return out;
+}
+
+async function loadProjectCandidates(
+  scope: WmaRequestScope,
+  userId: string,
+  target: string | null,
+  intent: WorkingMemoryIntent
+): Promise<Candidate[]> {
+  if (intent !== 'PROJECT_QUERY' && intent !== 'LIFE_REVIEW' && intent !== 'IDENTITY_QUERY' && !target) {
+    return [];
+  }
+  const rows = await scope.traced(
+    'projects',
+    'projects for user',
+    `projects:all:${userId}`,
+    () =>
+      supabaseAdmin
+        .from('projects')
+        .select('id, name, title, description, status, updated_at, metadata')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .limit(10)
+  );
+
+  const out: Candidate[] = [];
+  const targetKey = normalizeNameKey(target ?? '');
+
+  const mapProjectRow = (project: ProjectRow & { id: string }, source: string) => {
+    const name = String(project.name ?? project.title ?? '');
+    const text = `${name} ${project.description ?? ''} ${project.status ?? ''}`;
+    const matches = targetKey ? normalizeNameKey(text).includes(targetKey) : false;
+    const status = String(project.status ?? 'active').toLowerCase();
+    const dormant = status === 'paused' || status === 'dormant' || status === 'on_hold';
+    const meta = (project.metadata as Record<string, unknown>) ?? {};
+    const blockers = meta.blockers ?? meta.blocker;
+    const milestones = meta.milestones;
+    out.push({
+      id: `${source === 'projects' ? 'project' : 'project:org'}:${project.id}`,
+      type: 'project',
+      title: dormant ? `${name || 'Project'} [dormant]` : name || 'Project',
+      content: [
+        project.description ?? project.status ?? name,
+        blockers ? `blockers: ${String(blockers)}` : '',
+        Array.isArray(milestones) ? `milestones: ${milestones.length}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | ')
+        .slice(0, 700),
+      source,
+      date: project.updated_at ?? null,
+      confidence: 0.78,
+      relevance: matches ? 0.96 : intent === 'PROJECT_QUERY' ? (dormant ? 0.75 : 0.9) : 0.6,
+      importance: dormant ? 0.45 : 0.75,
+      significance: 0.65,
+      relationshipDistance: 0.5,
+      reasons: matches ? ['project matches target'] : dormant ? ['dormant project'] : ['active project'],
+      metadata: { status, blockers, milestone_count: Array.isArray(milestones) ? milestones.length : 0 },
+    });
+  };
+
+  for (const project of rows ?? []) {
+    mapProjectRow(project, 'projects');
+  }
+
+  // Fallback when projects table is empty/missing — use organizations + journal mentions.
+  if (out.length === 0) {
+    const [orgs, journalHits] = await Promise.all([
+      scope.traced(
+        'organizations',
+        'organizations as project fallback',
+        `organizations:project_fallback:${userId}`,
+        () =>
+          supabaseAdmin
+            .from('organizations')
+            .select('id, name, description, status, updated_at, metadata, type')
+            .eq('user_id', userId)
+            .order('updated_at', { ascending: false })
+            .limit(8)
+      ),
+      scope.traced(
+        'journal_entries',
+        'journal project mentions',
+        `journal:project_mentions:${userId}`,
+        () =>
+          supabaseAdmin
+            .from('journal_entries')
+            .select('id, summary, content, date, tags, metadata')
+            .eq('user_id', userId)
+            .or('summary.ilike.%lorebook%,content.ilike.%lorebook%,summary.ilike.%lifeledger%,content.ilike.%project%,summary.ilike.%building%')
+            .order('date', { ascending: false })
+            .limit(6)
+      ),
+    ]);
+
+    for (const org of (orgs ?? []) as any[]) {
+      const name = String(org.name ?? '');
+      const desc = String(org.description ?? '');
+      const looksLikeProject =
+        /bootcamp|lorebook|lifeledger|building|startup|app|side project|working on/i.test(`${name} ${desc}`) ||
+        org.metadata?.detected_from === 'chat_threads';
+      if (intent === 'PROJECT_QUERY' && !looksLikeProject && org.type === 'family') continue;
+      mapProjectRow(
+        {
+          id: org.id,
+          name: org.name,
+          title: org.name,
+          description: org.description,
+          status: org.status,
+          updated_at: org.updated_at,
+          metadata: org.metadata,
+        },
+        'organizations'
+      );
+    }
+
+    for (const entry of (journalHits ?? []) as any[]) {
+      const text = String(entry.summary ?? entry.content ?? '');
+      if (!text.trim()) continue;
+      out.push({
+        id: `project:journal:${entry.id}`,
+        type: 'project',
+        title: String(entry.summary ?? 'Project journal mention').slice(0, 80),
+        content: text.slice(0, 700),
+        source: 'journal_entries',
+        date: entry.date,
+        confidence: 0.7,
+        relevance: intent === 'PROJECT_QUERY' ? 0.82 : 0.55,
+        importance: 0.65,
+        significance: 0.6,
+        relationshipDistance: 0.5,
+        reasons: ['journal project mention'],
+      });
+    }
+  }
+
+  return out;
+}
+
+const INTENT_QUOTA: Partial<Record<WorkingMemoryIntent, { types: WorkingMemoryItem['type'][]; min: number }>> = {
+  GOAL_QUERY: { types: ['goal'], min: 3 },
+  DIRECTION_QUERY: { types: ['goal'], min: 2 },
+  PROJECT_QUERY: { types: ['project'], min: 3 },
+  SKILL_QUERY: { types: ['skill'], min: 3 },
+  COMMUNITY_QUERY: { types: ['community'], min: 3 },
+  RELATIONSHIP_QUERY: { types: ['relationship'], min: 2 },
+  IDENTITY_QUERY: { types: ['goal', 'preference'], min: 2 },
+};
+
+function boostCandidatesForIntent(candidates: Candidate[], intent: WorkingMemoryIntent): Candidate[] {
+  const quota = INTENT_QUOTA[intent];
+  if (!quota) return candidates;
+  return candidates.map((c) =>
+    quota.types.includes(c.type) ? { ...c, relevance: clamp01(Math.max(c.relevance, 0.88)) } : c
+  );
+}
+
+function selectBudget(
+  candidates: Candidate[],
+  maxItems: number,
+  intent: WorkingMemoryIntent
+): { selected: WorkingMemoryItem[]; rejected: Array<WorkingMemoryItem & { rejectedReason: string }> } {
+  const boosted = boostCandidatesForIntent(candidates, intent);
+  const ranked = boosted
     .map(scoreCandidate)
     .sort((a, b) => b.score - a.score || b.confidence - a.confidence);
-  const selected = ranked.slice(0, maxItems);
+
+  const quota = INTENT_QUOTA[intent];
+  const mustInclude: WorkingMemoryItem[] = [];
+  if (quota) {
+    for (const type of quota.types) {
+      const picks = ranked.filter((item) => item.type === type).slice(0, quota.min);
+      for (const pick of picks) {
+        if (!mustInclude.some((m) => m.id === pick.id)) mustInclude.push(pick);
+      }
+    }
+  }
+
+  const mustIds = new Set(mustInclude.map((item) => item.id));
+  const rest = ranked.filter((item) => !mustIds.has(item.id));
+  const selected = [...mustInclude, ...rest].slice(0, maxItems);
   const selectedIds = new Set(selected.map((item) => item.id));
   const rejected = ranked
     .filter((item) => !selectedIds.has(item.id))
@@ -1042,6 +1626,10 @@ function assemblyConfidence(intent: WorkingMemoryIntent, entities: WorkingMemory
   return Number(clamp01(avgItem + entityBoost + intentBoost).toFixed(2));
 }
 
+export function classifyIntentForAudit(question: string): WorkingMemoryIntent {
+  return classifyIntent(question);
+}
+
 export async function assembleWorkingMemory(
   input: { question: string; userId: string; threadId?: string | null },
   options: AssembleOptions = {}
@@ -1051,8 +1639,10 @@ export async function assembleWorkingMemory(
   const scope = new WmaRequestScope();
 
   const entityStarted = Date.now();
+  const temporalResolved: ResolvedTemporalQuery = classifyTemporalQuery(input.question);
   const intent = classifyIntent(input.question);
   const target = extractQuestionTarget(input.question);
+  const temporalQuery = isTemporalIntent(intent);
   const entities = await resolveTargetEntities(scope, input.userId, target);
   const entityResolutionMs = Date.now() - entityStarted;
 
@@ -1071,27 +1661,57 @@ export async function assembleWorkingMemory(
 
   const candidateStarted = Date.now();
   const wantsHousehold = /\b(who lives with me|who do i live with|my household)\b/i.test(input.question);
+  const isPersonish =
+    intent !== 'EVENT_QUERY' &&
+    !!primaryEntity &&
+    (primaryEntity.type === 'PERSON' || intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY');
+  // Relationship coverage fix: previously relationships only loaded when the target
+  // resolved to a `characters` row (loadPersonCandidates) or for explicit household
+  // queries. That left RELATIONSHIP_QUERY/LIFE_REVIEW/IDENTITY with zero relationships
+  // when the target resolved to people_places (or not at all). Pull protagonist edges
+  // for those intents too, and whenever a relationship-shaped query found no character.
+  const wantsProtagonistRels =
+    wantsHousehold ||
+    intent === 'RELATIONSHIP_QUERY' ||
+    intent === 'LIFE_REVIEW' ||
+    intent === 'IDENTITY_QUERY' ||
+    intent === 'COMMUNITY_QUERY' ||
+    (intent === 'PERSON_QUERY' && !isPersonish);
 
-  const [personCandidates, textualCandidates] = await Promise.all([
-    wantsHousehold
-      ? loadProtagonistRelationshipCandidates(scope, input.userId)
-      : intent !== 'EVENT_QUERY' &&
-          primaryEntity &&
-          (primaryEntity.type === 'PERSON' || intent === 'PERSON_QUERY' || intent === 'RELATIONSHIP_QUERY')
-        ? loadPersonCandidates(
-            scope,
-            input.userId,
-            primaryEntity,
-            target ?? primaryEntity.name,
-            characterRow
-          )
+  const [personCandidates, relationshipCandidates, goalCandidates, skillCandidates, communityCandidates, projectCandidates, textualCandidates] =
+    await Promise.all([
+      !temporalQuery && isPersonish
+        ? loadPersonCandidates(scope, input.userId, primaryEntity!, target ?? primaryEntity!.name, characterRow)
         : Promise.resolve([] as Candidate[]),
-    loadTextualCandidates(scope, input.userId, target, intent, input.threadId ?? undefined),
-  ]);
+      !temporalQuery && wantsProtagonistRels
+        ? loadProtagonistRelationshipCandidates(scope, input.userId)
+        : Promise.resolve([] as Candidate[]),
+      !temporalQuery ? loadGoalCandidates(scope, input.userId, target, intent, input.question) : Promise.resolve([] as Candidate[]),
+      !temporalQuery ? loadSkillCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
+      !temporalQuery ? loadCommunityCandidates(scope, input.userId, intent) : Promise.resolve([] as Candidate[]),
+      !temporalQuery ? loadProjectCandidates(scope, input.userId, target, intent) : Promise.resolve([] as Candidate[]),
+      loadTextualCandidates(scope, input.userId, target, intent, input.threadId ?? undefined, temporalResolved.window),
+    ]);
   const candidateGenerationMs = Date.now() - candidateStarted;
 
   const rankingStarted = Date.now();
-  const { selected, rejected } = selectBudget([...personCandidates, ...textualCandidates], maxItems);
+  const merged = [
+    ...personCandidates,
+    ...relationshipCandidates,
+    ...goalCandidates,
+    ...skillCandidates,
+    ...communityCandidates,
+    ...projectCandidates,
+    ...textualCandidates,
+  ];
+  // Dedupe project rows that appear in both dedicated loader and textual loader
+  const seenIds = new Set<string>();
+  const deduped = merged.filter((c) => {
+    if (seenIds.has(c.id)) return false;
+    seenIds.add(c.id);
+    return true;
+  });
+  const { selected, rejected } = selectBudget(deduped, maxItems, intent);
   const rankingMs = Date.now() - rankingStarted;
   const distributed = distribute(selected);
 

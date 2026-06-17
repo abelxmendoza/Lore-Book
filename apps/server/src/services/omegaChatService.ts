@@ -29,7 +29,8 @@ import { epiphanySessionManager } from './epiphanyEngine/epiphanySessionManager'
 import { intentDetectionService } from './intentDetectionService';
 import { locationService } from './locationService';
 import { memoirService } from './memoirService';
-import { peoplePlacesService } from './peoplePlacesService';
+import { resolveMessageEntitiesForDisplay } from './chat/messageEntityDisplayService';
+import { loadEntityAnalyticsForContext } from './chat/entityAnalyticsLoader';
 import { perceptionService } from './perceptionService';
 import { ragPacketCacheService } from './ragPacketCacheService';
 import { buildRAGPacket as _buildRAGPacket } from './chat/ragBuilderService';
@@ -92,7 +93,14 @@ export type OmegaChatResponse = {
   citations?: Array<{ text: string; sourceId: string; sourceType: string }>;
   memories?: MemoryClaim[]; // Memory claims used in this response
   memorySuggestion?: MemorySuggestion; // Proactive memory suggestion
-  mentionedEntities?: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }>;
+  mentionedEntities?: Array<{
+    id: string;
+    name: string;
+    type: 'character' | 'location' | 'organization';
+    confidence?: number;
+    provenance?: 'character_book' | 'location_book' | 'organization_book' | 'omega_entity';
+    mentionStatus?: 'confirmed' | 'mentioned_only';
+  }>;
   suggestedActions?: ChatSuggestedAction[];
 };
 
@@ -611,6 +619,75 @@ class OmegaChatService {
     return `\n\n**THREAD CONFIRMED ENTITIES**: This conversation has established context with:\n${lines.join('\n')}\nBuild on what is already known about these entities from prior thread messages and their records. Do not treat them as newly discovered unless the user introduces genuinely new information.`;
   }
 
+  /** Persist user message before routing, retrieval, or generation (Chat Trust Recovery). */
+  private async persistUserMessageEarly(
+    userId: string,
+    sessionId: string,
+    message: string,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+    entityContext?: { type: string; id: string }
+  ): Promise<string | undefined> {
+    if (isTrivialMessage(message)) {
+      const { data: savedMessage, error: saveError } = await supabaseAdmin
+        .from('chat_messages')
+        .insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'user',
+          content: message,
+          metadata: { trivial: true },
+        })
+        .select('id')
+        .single();
+      if (saveError || !savedMessage?.id) {
+        logger.warn({ error: saveError, userId, sessionId }, 'Failed to persist trivial user message');
+        return undefined;
+      }
+      await supabaseAdmin
+        .from('conversation_sessions')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('user_id', userId);
+      return savedMessage.id;
+    }
+
+    const { data: savedMessage, error: saveError } = await supabaseAdmin
+      .from('chat_messages')
+      .insert({
+        user_id: userId,
+        session_id: sessionId,
+        role: 'user',
+        content: message,
+      })
+      .select('id')
+      .single();
+
+    if (saveError || !savedMessage?.id) {
+      logger.error({ error: saveError, userId, sessionId }, 'Failed to persist user message before routing');
+      throw new Error('Failed to save your message. Please try again.');
+    }
+
+    await supabaseAdmin
+      .from('conversation_sessions')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', sessionId)
+      .eq('user_id', userId);
+
+    if (!entityContext) {
+      ingestionQueue.enqueue(
+        {
+          userId,
+          chatMessageId: savedMessage.id,
+          sessionId,
+          conversationHistory,
+        },
+        'NORMAL'
+      );
+    }
+
+    return savedMessage.id;
+  }
+
   async chatStream(
     userId: string,
     message: string,
@@ -625,6 +702,20 @@ class OmegaChatService {
     // Use the UI thread as the session so messages, recall scoping, and
     // ingestion all stay attached to the thread the user is actually in.
     const sessionId = threadId ?? await this.getOrCreateChatSession(userId);
+
+    let entryId: string | undefined;
+    try {
+      entryId = await this.persistUserMessageEarly(
+        userId,
+        sessionId,
+        message,
+        conversationHistory,
+        entityContext
+      );
+    } catch (persistErr) {
+      logger.error({ err: persistErr, userId, sessionId }, 'User message early persist failed');
+      throw persistErr;
+    }
 
     // Phase 4.5: follow-up after recall (expand / correct)
     try {
@@ -647,17 +738,6 @@ class OmegaChatService {
           lastAssistantMessage: { content: lastAssistant.content ?? '', metadata: lastAssistant.metadata as { recall_sources?: Array<{ entry_id: string }> } },
         });
         if (followUp) {
-          supabaseAdmin
-            .from('chat_messages')
-            .insert({
-              user_id: userId,
-              session_id: sessionId,
-              role: 'assistant',
-              content: followUp.content,
-              metadata: { ...followUp.metadata, response_mode: followUp.response_mode },
-            })
-            .then(() => {})
-            .catch(() => {});
           return {
             content: followUp.content,
             metadata: { ...followUp.metadata, response_mode: followUp.response_mode },
@@ -810,40 +890,8 @@ class OmegaChatService {
         routing.mode !== 'UNKNOWN' &&
         !(workingMemoryPrimary && (routing.mode === 'MEMORY_RECALL' || routing.mode === 'FOUNDATION_RECALL'))
       ) {
-        // For EXPERIENCE_INGESTION and ACTION_LOG, we need messageId - save message first
-        let messageId: string | undefined;
-        if (routing.mode === 'EXPERIENCE_INGESTION' || routing.mode === 'ACTION_LOG') {
-          const { data: savedMessage, error: saveError } = await supabaseAdmin
-            .from('chat_messages')
-            .insert({
-              user_id: userId,
-              session_id: sessionId,
-              role: 'user',
-              content: message,
-            })
-            .select('id')
-            .single();
-          
-          if (!saveError && savedMessage) {
-            messageId = savedMessage.id;
+        const messageId = entryId;
 
-            // CRITICAL: route mode-handled messages through the tracked ingestion
-            // pipeline, same as the normal chat flow. Until 2026-06-11 this branch
-            // returned after a warm "I've captured this" acknowledgment WITHOUT
-            // ingesting — the recall spine (entities, characters, facts, scenes)
-            // never ran for exactly the experience-sharing messages it exists for,
-            // and pipeline_runs stayed empty.
-            ingestionQueue.enqueue({
-              userId,
-              chatMessageId: savedMessage.id,
-              sessionId,
-              conversationHistory,
-            }, 'NORMAL');
-          } else {
-            logger.warn({ error: saveError, mode: routing.mode }, 'Failed to save message for ingestion/logging');
-          }
-        }
-        
         // Handle mode — continuityContext keeps mode-handled replies oriented
         // when the user returns to a thread after a gap.
         const handlerResponse = await modeHandlers.handleMode(
@@ -858,25 +906,7 @@ class OmegaChatService {
           }
         );
 
-        // Phase 4.5: persist assistant with recall_sources for recall modes
-        if (
-          (routing.mode === 'MEMORY_RECALL' || routing.mode === 'FOUNDATION_RECALL') &&
-          (handlerResponse.metadata?.recall_sources as unknown[] | undefined)?.length
-        ) {
-          supabaseAdmin
-            .from('chat_messages')
-            .insert({
-              user_id: userId,
-              session_id: sessionId,
-              role: 'assistant',
-              content: handlerResponse.content,
-              metadata: { recall_sources: handlerResponse.metadata.recall_sources, response_mode: 'RECALL' },
-            })
-            .then(() => {})
-            .catch(() => {});
-        }
-
-        // Format and return response
+        // Assistant persistence handled by chat.ts persistAssistant
         return formatModeResponse(handlerResponse, routing.mode);
       }
     } catch (error) {
@@ -938,19 +968,6 @@ class OmegaChatService {
 
         // Format recall response
         const recallResponse = formatRecallChatResponse(recallResult, forcedPersona);
-
-        // Phase 4.5: persist assistant with recall_sources for follow-up expand/correct
-        supabaseAdmin
-          .from('chat_messages')
-          .insert({
-            user_id: userId,
-            session_id: sessionId,
-            role: 'assistant',
-            content: recallResponse.content,
-            metadata: { recall_sources: recallResponse.recall_sources, response_mode: 'RECALL' },
-          })
-          .then(() => {})
-          .catch(() => {});
 
         // Return recall response as immediate stream (single chunk)
         return {
@@ -1204,10 +1221,10 @@ class OmegaChatService {
       logger.debug({ error, userId }, 'Entity ambiguity detection failed, continuing without');
     }
 
-    // Entity analytics (chatStream does not fetch yet; pass null so buildSystemPrompt skips entity block)
-    const entityAnalytics: any = null;
-    const entityConfidence: number | null = null;
-    const analyticsGate: any = null;
+    const { entityAnalytics, entityConfidence, analyticsGate } = await loadEntityAnalyticsForContext(
+      userId,
+      entityContext ? { type: entityContext.type, id: entityContext.id } : undefined
+    );
 
     // RL: Select optimal persona blend
     let personaBlend;
@@ -1548,80 +1565,25 @@ class OmegaChatService {
       userId,
     });
 
-    // Save chat message and ingest through pipeline (all non-trivial messages)
-    let entryId: string | undefined;
+    // User message already persisted at stream start (entryId)
     const timelineUpdates: string[] = [];
 
-    // Only exclude truly trivial messages (hi, ok, thanks, etc.)
-    if (!isTrivialMessage(message)) {
-      // sessionId from the top of chatStream — thread-aware when threadId was provided
+    if (entryId && !isTrivialMessage(message)) {
+      epiphanySessionManager.feedEntry(userId, {
+        id: entryId,
+        content: message,
+        date: new Date().toISOString(),
+      }).catch(err => logger.warn({ err, userId }, 'epiphany feed failed'));
 
-      // Save message to chat_messages table
-      const { data: savedMessage, error: saveError } = await supabaseAdmin
-        .from('chat_messages')
-        .insert({
-          user_id: userId,
-          session_id: sessionId,
-          role: 'user',
-          content: message,
-          metadata: {
-            extractedDates,
-            connections: connections.length,
-            hasContinuityWarnings: continuityWarnings.length > 0,
-            sourcesUsed: sources.length,
-          },
-        })
-        .select('id')
-        .single();
-
-      if (saveError || !savedMessage || !savedMessage.id) {
-        logger.warn({ error: saveError, userId }, 'Failed to save chat message');
-      } else {
-        // Set entryId for tracking and RL
-        entryId = savedMessage.id;
-
-        // Ordering: thread rises to top when the user sends a message.
-        void supabaseAdmin
-          .from('conversation_sessions')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', sessionId)
-          .eq('user_id', userId);
-
-        // Enqueue ingestion — fully off the chat critical path.
-        // Skip when entityContext is set: ingestMessageWithContext() fires separately
-        // and handles the full pipeline for entity-scoped sessions. Enqueueing here
-        // too would double-ingest the same content → duplicate entities and events.
-        if (!entityContext) {
-          ingestionQueue.enqueue({
-            userId,
-            chatMessageId: savedMessage.id,
-            sessionId,
-            conversationHistory,
-          }, 'NORMAL');
-        }
-
-        // Fire-and-forget: retroactive pattern detection across journal/chat
-        epiphanySessionManager.feedEntry(userId, {
-          id: savedMessage.id,
-          content: message,
-          date: new Date().toISOString(),
-        }).catch(err => logger.warn({ err, userId }, 'epiphany feed failed'));
-
-        // Pipeline status intentionally not surfaced to user — trust > transparency of ops
-      }
-
-      // Auto-update memoir (fire and forget)
       memoirService.autoUpdateMemoir(userId).catch(err => {
         logger.warn({ err }, 'Failed to auto-update memoir after chat');
       });
 
-      // Auto-update main lifestory biography (fire and forget)
       const { mainLifestoryService } = await import('./mainLifestoryService');
       mainLifestoryService.updateAfterChatEntry(userId).catch(err => {
         logger.warn({ err }, 'Failed to update main lifestory after chat');
       });
 
-      // Extract essence insights after conversation (fire and forget)
       const fullHistory = [...conversationHistory, { role: 'user' as const, content: message }];
       essenceProfileService.extractEssence(userId, fullHistory, ragPacket.relatedEntries)
         .then(insights => {
@@ -1634,26 +1596,17 @@ class OmegaChatService {
         });
     }
 
-    // Extract characters (check both names and aliases/nicknames)
-    const characters = await peoplePlacesService.listEntities(userId);
-    const messageLower = message.toLowerCase();
-    const mentionedCharacters = characters.filter(char => {
-      const nameMatch = messageLower.includes(char.name.toLowerCase());
-      // Also check corrected names (nicknames/aliases)
-      const aliasMatch = char.corrected_names && Array.isArray(char.corrected_names) 
-        ? char.corrected_names.some((alias: string) => messageLower.includes(alias.toLowerCase()))
-        : false;
-      return nameMatch || aliasMatch;
-    });
-    const characterIds = mentionedCharacters.map(c => c.id);
-    const mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }> =
-      mentionedCharacters.map(c => ({
-        id: c.id,
-        name: c.name,
-        type: c.type === 'place' ? 'location' as const
-            : (c.type === 'organization' || c.type === 'platform') ? 'organization' as const
-            : 'character' as const,
-      }));
+    // Resolve entities from character/location/org books + omega_entities (not legacy people_places)
+    const displayEntities = await resolveMessageEntitiesForDisplay(userId, message);
+    const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
+    const mentionedEntities = displayEntities.map(({ id, name, type, confidence, provenance, mentionStatus }) => ({
+      id,
+      name,
+      type,
+      confidence,
+      provenance,
+      mentionStatus,
+    }));
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');
@@ -2263,44 +2216,43 @@ class OmegaChatService {
       continuity_warnings: continuityWarnings,
     };
 
-    // Save assistant message (fire-and-forget)
-    supabaseAdmin
-      .from('chat_messages')
-      .insert({
-        user_id: userId,
-        session_id: sessionId,
-        role: 'assistant',
-        content: answer,
-        metadata: assistantMetadata,
-      })
-      .select('id')
-      .single()
-      .then(async (result) => {
-        if (result.data && result.data.id) {
-          logger.debug({ userId, sessionId }, 'Saved assistant response');
+    // Save assistant message — awaited for durability (non-stream path)
+    try {
+      const { data: assistantRow, error: assistantErr } = await supabaseAdmin
+        .from('chat_messages')
+        .insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'assistant',
+          content: answer,
+          metadata: assistantMetadata,
+        })
+        .select('id')
+        .single();
 
-          void supabaseAdmin
-            .from('conversation_sessions')
-            .update({ updated_at: new Date().toISOString() })
-            .eq('id', sessionId)
-            .eq('user_id', userId);
-          
-          // Enqueue AI response ingestion at LOW priority (user messages take precedence).
-          // Skip when entityContext is set — entity-scoped sessions are handled by
-          // ingestMessageWithContext and enqueueing here would double-ingest.
-          if (!entityContext) {
-            ingestionQueue.enqueue({
-              userId,
-              chatMessageId: result.data.id,
-              sessionId,
-              conversationHistory,
-            }, 'LOW');
-          }
+      if (assistantErr) {
+        logger.error({ err: assistantErr, userId, sessionId }, 'Failed to save assistant response');
+      } else if (assistantRow?.id) {
+        logger.debug({ userId, sessionId }, 'Saved assistant response');
+
+        await supabaseAdmin
+          .from('conversation_sessions')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', sessionId)
+          .eq('user_id', userId);
+
+        if (!entityContext) {
+          ingestionQueue.enqueue({
+            userId,
+            chatMessageId: assistantRow.id,
+            sessionId,
+            conversationHistory,
+          }, 'LOW');
         }
-      })
-      .catch(err => {
-        logger.debug({ err }, 'Failed to save assistant response (non-blocking)');
-      });
+      }
+    } catch (err) {
+      logger.error({ err, userId, sessionId }, 'Assistant persistence threw (non-stream)');
+    }
     if (rlContext && personaBlend) {
       this.personaRL.saveChatContext(
         userId,
@@ -2402,20 +2354,17 @@ class OmegaChatService {
         });
     }
 
-    // Extract characters and detect unnamed characters with nicknames
-    const characters = await peoplePlacesService.listEntities(userId);
-    const mentionedCharacters = characters.filter(char =>
-      message.toLowerCase().includes(char.name.toLowerCase())
-    );
-    const characterIds = mentionedCharacters.map(c => c.id);
-    const mentionedEntities: Array<{ id: string; name: string; type: 'character' | 'location' | 'organization' }> =
-      mentionedCharacters.map(c => ({
-        id: c.id,
-        name: c.name,
-        type: c.type === 'place' ? 'location' as const
-            : (c.type === 'organization' || c.type === 'platform') ? 'organization' as const
-            : 'character' as const,
-      }));
+    // Resolve entities from character/location/org books + omega_entities (not legacy people_places)
+    const displayEntities = await resolveMessageEntitiesForDisplay(userId, message);
+    const characterIds = displayEntities.filter((e) => e.type === 'character').map((e) => e.id);
+    const mentionedEntities = displayEntities.map(({ id, name, type, confidence, provenance, mentionStatus }) => ({
+      id,
+      name,
+      type,
+      confidence,
+      provenance,
+      mentionStatus,
+    }));
 
     // Detect unnamed characters and generate nicknames (fire and forget)
     const { characterNicknameService } = await import('./characterNicknameService');

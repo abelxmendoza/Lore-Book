@@ -193,6 +193,8 @@ export const useChatStream = () => {
       let buffer = '';
       let capturedMessageId: string | undefined;
 
+      let streamCompleted = false;
+
       while (true) {
         const { done, value } = await reader.read();
 
@@ -220,6 +222,7 @@ export const useChatStream = () => {
           } else if (data.type === 'chunk' && data.content) {
             onChunk(data.content);
           } else if (data.type === 'done') {
+            streamCompleted = true;
             onComplete();
             setIsStreaming(false);
             if (onMemoryFeedback && capturedMessageId) {
@@ -229,6 +232,14 @@ export const useChatStream = () => {
           } else if (data.type === 'error') {
             throw new Error(data.error || 'Stream error');
           }
+        }
+      }
+
+      // Connection closed without explicit done — finalize so UI doesn't hang.
+      if (!streamCompleted && !abortController.signal.aborted) {
+        onComplete();
+        if (onMemoryFeedback && capturedMessageId) {
+          pollMemoryFeedback(capturedMessageId, token, onMemoryFeedback);
         }
       }
 

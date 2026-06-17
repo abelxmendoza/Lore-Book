@@ -56,7 +56,7 @@ export class MemoryRetriever {
           .from('journal_entries')
           .select('*')
           .eq('user_id', userId)
-          .order('timestamp', { ascending: false })
+          .order('date', { ascending: false })
           .limit(max);
 
         if (entriesError) {

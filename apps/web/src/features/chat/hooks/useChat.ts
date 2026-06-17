@@ -103,7 +103,7 @@ function getDemoResponse(message: string): string {
 export const useChat = () => {
   const navigate = useNavigate();
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
-  const { createThread, setActiveThreadId } = useChatThreadContext();
+  const { createThread, setActiveThreadId, getThread, mutateThreadMessagesForThread } = useChatThreadContext();
   const conversationStore = useConversationStore();
   const { messages, setMessages, addMessage, updateMessage, removeMessage, clearConversation: clearConversationStore } = conversationStore;
   const { streamChat, isStreaming } = useChatStream();
@@ -175,7 +175,6 @@ export const useChat = () => {
     if (!threadId) {
       threadId = createThread();
       setActiveThreadId(threadId);
-      navigate(`/chat/${threadId}`, { replace: true });
     }
 
     // Create user message
@@ -187,6 +186,21 @@ export const useChat = () => {
     };
 
     addMessage(userMessage, { touchActivity: true });
+
+    // Pin all stream updates to the thread that initiated this send.
+    const streamThreadId = threadId;
+    const updateStreamMessage = (messageId: string, updates: Partial<Message>, opts?: { touchActivity?: boolean }) => {
+      mutateThreadMessagesForThread(
+        streamThreadId,
+        (prev) => prev.map((msg) => (msg.id === messageId ? { ...msg, ...updates } : msg)),
+        opts
+      );
+    };
+
+    if (!urlThreadId) {
+      navigate(`/chat/${threadId}`, { replace: true });
+    }
+
     setLoading(true);
     setLoadingStage('analyzing');
     setLoadingProgress(0);
@@ -202,8 +216,9 @@ export const useChat = () => {
       isGuest: isGuest,
     });
 
-    // Build conversation history
-    const conversationHistory = [...messages, userMessage]
+    // Build conversation history from canonical thread cache (not stale React closure)
+    const priorMessages = getThread(threadId)?.messages ?? messages;
+    const conversationHistory = [...priorMessages.filter((m) => m.id !== userMessage.id), userMessage]
       .slice(-10)
       .map(msg => ({
         role: msg.role,
@@ -261,7 +276,7 @@ export const useChat = () => {
         conversationHistory.slice(0, -1),
         (chunk) => {
           accumulatedContent += chunk;
-          updateMessage(assistantMessageId, { content: accumulatedContent });
+          updateStreamMessage(assistantMessageId, { content: accumulatedContent });
           
           if (!hasReceivedMetadata) {
             setLoadingStage('generating');
@@ -299,7 +314,7 @@ export const useChat = () => {
           setLoadingStage('generating');
           setLoadingProgress(100);
           
-          updateMessage(
+          updateStreamMessage(
             assistantMessageId,
             {
               content: accumulatedContent,
@@ -334,7 +349,7 @@ export const useChat = () => {
 
           // If there's a disambiguation prompt, attach it to the user message
           if (metadata?.disambiguationPrompt) {
-            updateMessage(userMessage.id, {
+            updateStreamMessage(userMessage.id, {
               disambiguation_prompt: metadata.disambiguationPrompt
             });
           }
@@ -390,7 +405,7 @@ export const useChat = () => {
           // In guest/mock-data mode, swap backend-unavailable errors for a demo response
           // so there is no console spam and no scary error text.
           const useDemoFallback = (isGuest || getGlobalMockDataEnabled()) && isBackendUnavailable(error);
-          updateMessage(assistantMessageId, {
+          updateStreamMessage(assistantMessageId, {
             content: useDemoFallback ? getDemoResponse(messageText) : friendlyErrorMessage(String(error)),
             isStreaming: false
           });
@@ -432,7 +447,7 @@ export const useChat = () => {
         });
       }
     }
-  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext, user, urlThreadId, createThread, setActiveThreadId, navigate]);
+  }, [messages, loading, isGuest, canSendChatMessage, guestState, addMessage, updateMessage, removeMessage, streamChat, refreshEntries, refreshTimeline, refreshChapters, incrementChatMessage, currentContext, soulProfileContext, user, urlThreadId, createThread, setActiveThreadId, getThread, navigate]);
 
   const clearConversation = useCallback(() => {
     clearConversationStore();

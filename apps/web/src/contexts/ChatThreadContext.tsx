@@ -32,7 +32,12 @@ export type ChatThreadContextValue = ReturnType<typeof useChatThreads> & {
     updater: Message[] | ((prev: Message[]) => Message[]),
     opts?: UpdateActiveMessagesOptions
   ) => void;
-  clearActiveMessages: () => void;
+  /** Update messages for any thread (pin in-flight streams to send-time thread). */
+  mutateThreadMessagesForThread: (
+    threadId: string,
+    updater: (prev: Message[]) => Message[],
+    opts?: UpdateActiveMessagesOptions
+  ) => void;
 };
 
 const ChatThreadContext = createContext<ChatThreadContextValue | null>(null);
@@ -59,12 +64,26 @@ export function ChatThreadProvider({ children }: { children: ReactNode }) {
     ) => {
       const id = activeThreadIdRef.current;
       if (!id) return;
-      const prev = threadApi.getThread(id)?.messages ?? [];
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      threadApi.updateThread(id, {
-        messages: next,
-        ...(opts?.touchActivity ? { touchActivity: true } : {}),
-      });
+      threadApi.mutateThreadMessages(
+        id,
+        (prev) => (typeof updater === 'function' ? updater(prev) : updater),
+        opts
+      );
+    },
+    [threadApi]
+  );
+
+  const mutateThreadMessagesForThread = useCallback(
+    (
+      threadId: string,
+      updater: (prev: Message[]) => Message[],
+      opts?: UpdateActiveMessagesOptions
+    ) => {
+      threadApi.mutateThreadMessages(
+        threadId,
+        (prev) => updater(prev),
+        opts
+      );
     },
     [threadApi]
   );
@@ -82,9 +101,10 @@ export function ChatThreadProvider({ children }: { children: ReactNode }) {
       setActiveThreadId,
       activeMessages,
       updateActiveMessages,
+      mutateThreadMessagesForThread,
       clearActiveMessages,
     }),
-    [threadApi, activeThreadId, setActiveThreadId, activeMessages, updateActiveMessages, clearActiveMessages]
+    [threadApi, activeThreadId, setActiveThreadId, activeMessages, updateActiveMessages, mutateThreadMessagesForThread, clearActiveMessages]
   );
 
   return <ChatThreadContext.Provider value={value}>{children}</ChatThreadContext.Provider>;

@@ -43,6 +43,7 @@ async function loadMessagesForSession(sessionId: string, userId: string, row: Se
 
 async function deleteSessions(userId: string, ids: string[]) {
   if (ids.length === 0) return;
+  await supabaseAdmin.from('chat_messages').delete().eq('user_id', userId).in('session_id', ids);
   await supabaseAdmin.from('conversation_messages').delete().eq('user_id', userId).in('session_id', ids);
   await supabaseAdmin.from('conversation_sessions').delete().eq('user_id', userId).in('id', ids);
 }

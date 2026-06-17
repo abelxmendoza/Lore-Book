@@ -168,16 +168,20 @@ export const useConversationRuntime = () => {
             .then((hydratedThread) => {
               if (hydrationRequestRef.current !== threadIdParam) return;
               hydrationRequestRef.current = null;
-              if (!hydratedThread || hydratedThread.messages.length === 0) {
-                removeEmptyThread(threadIdParam);
+              if (!hydratedThread) {
+                runtimeDiagnostics.record('hydration_empty', { threadId: threadIdParam, meta: { reason: 'not_found' } });
+                navigate('/chat', { replace: true });
                 return;
               }
               applyHydratedThread(threadIdParam);
             })
-            .catch(() => {
+            .catch((err) => {
               if (hydrationRequestRef.current === threadIdParam) {
                 hydrationRequestRef.current = null;
-                removeEmptyThread(threadIdParam);
+                runtimeDiagnostics.record('hydration_error', {
+                  threadId: threadIdParam,
+                  meta: { error: err instanceof Error ? err.message : String(err) },
+                });
               }
             });
           return;
@@ -197,16 +201,20 @@ export const useConversationRuntime = () => {
           .then((hydratedThread) => {
             if (hydrationRequestRef.current !== threadIdParam) return;
             hydrationRequestRef.current = null;
-            if (!hydratedThread || hydratedThread.messages.length === 0) {
-              removeEmptyThread(threadIdParam);
+            if (!hydratedThread) {
+              runtimeDiagnostics.record('hydration_empty', { threadId: threadIdParam, meta: { reason: 'not_found' } });
+              navigate('/chat', { replace: true });
               return;
             }
             applyHydratedThread(threadIdParam);
           })
-          .catch(() => {
+          .catch((err) => {
             if (hydrationRequestRef.current === threadIdParam) {
               hydrationRequestRef.current = null;
-              removeEmptyThread(threadIdParam);
+              runtimeDiagnostics.record('hydration_error', {
+                threadId: threadIdParam,
+                meta: { error: err instanceof Error ? err.message : String(err) },
+              });
             }
           });
       }
@@ -225,11 +233,10 @@ export const useConversationRuntime = () => {
     hydrateThreadMessages,
     switchThread,
     setCurrentThreadId,
-    removeEmptyThread,
     applyHydratedThread,
     setActiveThreadId,
     activeThreadId,
-    threads,
+    navigate,
   ]);
 
   useEffect(() => {

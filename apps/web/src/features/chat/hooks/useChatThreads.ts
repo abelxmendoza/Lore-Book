@@ -22,6 +22,8 @@ export type ChatThread = {
   dominantEntities?: string[];
   messages: Message[];
   updatedAt: string;
+  /** Server-side message count — used for sidebar filtering without hydrating messages */
+  messageCount?: number;
 };
 
 // ── Storage keys ─────────────────────────────────────────────────────────────
@@ -48,6 +50,7 @@ function messagesToJson(messages: Message[]) {
 }
 
 function dbRowToThread(t: any): ChatThread {
+  const messageCount = typeof t.message_count === 'number' ? t.message_count : undefined;
   const thread: ChatThread = {
     id: t.id,
     title: t.title || DRAFT_THREAD_TITLE,
@@ -55,6 +58,7 @@ function dbRowToThread(t: any): ChatThread {
     dominantEntities: Array.isArray(t.metadata?.dominantEntities) ? t.metadata.dominantEntities : undefined,
     messages: [],
     updatedAt: t.updated_at || t.created_at || new Date().toISOString(),
+    ...(messageCount !== undefined ? { messageCount } : {}),
   };
   return normalizeThreadTitle(thread);
 }
@@ -71,9 +75,10 @@ function dbMessageToMessage(row: any): Message {
 
 const STALE_EMPTY_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-/** Returns false for threads that are permanently broken: no messages and not recently created. */
-function isUsableThread(t: ChatThread): boolean {
-  if (t.messages.length > 0) return true;
+/** Guest-only: hide stale empty drafts from localStorage. Server threads are never age-filtered. */
+function isUsableGuestThread(t: ChatThread): boolean {
+  if ((t.messages?.length ?? 0) > 0) return true;
+  if ((t.messageCount ?? 0) > 0) return true;
   const age = Date.now() - new Date(t.updatedAt).getTime();
   return age < STALE_EMPTY_THRESHOLD_MS;
 }
@@ -139,7 +144,7 @@ export const useChatThreads = () => {
             messages: (t.messages || []).map(parseStoredMessage),
             updatedAt: t.updatedAt || new Date(0).toISOString(),
           }))
-          .filter(isUsableThread)
+          .filter(isUsableGuestThread)
       );
       setThreads(hydrated);
       for (const t of hydrated) threadPersistenceTracker.markRestoredFromLocal(t.id);
@@ -160,11 +165,9 @@ export const useChatThreads = () => {
     runtimeDiagnostics.startTimer('backend_load');
     setThreadsLoading(true);
     try {
-      await fetchJson('/api/conversation/threads/dedupe', { method: 'DELETE' }).catch(() => {});
+      // Dedupe/empty purge deferred — running on every boot caused thread loss races.
       const data = await fetchJson<{ threads: any[]; success: boolean }>('/api/conversation/threads');
-      const loaded = dedupeThreads(
-        (data.threads || []).map(dbRowToThread).filter(isUsableThread)
-      );
+      const loaded = dedupeThreads((data.threads || []).map(dbRowToThread));
       setThreads(loaded);
       for (const t of loaded) threadPersistenceTracker.markRestoredFromBackend(t.id);
       // Upgrade legacy generic titles in the background.
@@ -194,15 +197,16 @@ export const useChatThreads = () => {
         .then(async (r) => {
           if ((r.recovered ?? 0) > 0) {
             const data = await fetchJson<{ threads: any[]; success: boolean }>('/api/conversation/threads');
-            const reloaded = dedupeThreads(
-              (data.threads || []).map(dbRowToThread).filter(isUsableThread)
-            );
+            const reloaded = dedupeThreads((data.threads || []).map(dbRowToThread));
             setThreads(reloaded);
           }
         })
         .catch(() => {});
-      // Purge stale empty threads from the DB (fire-and-forget — failures are silent).
-      fetchJson('/api/conversation/threads/empty', { method: 'DELETE' }).catch(() => {});
+      // Background maintenance only — never block or mutate list during initial load.
+      setTimeout(() => {
+        fetchJson('/api/conversation/threads/dedupe', { method: 'DELETE' }).catch(() => {});
+        fetchJson('/api/conversation/threads/empty', { method: 'DELETE' }).catch(() => {});
+      }, 60_000);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       runtimeDiagnostics.recordTimed('backend_load_fallback', 'backend_load', {
@@ -282,8 +286,8 @@ export const useChatThreads = () => {
   }, [isAuthenticated, userId, persistLocal]);
 
   const getThread = useCallback(
-    (id: string) => threads.find((t) => t.id === id),
-    [threads]
+    (id: string) => threadsRef.current.find((t) => t.id === id),
+    []
   );
 
   const hydrateThreadMessages = useCallback(
@@ -313,10 +317,36 @@ export const useChatThreads = () => {
         if (!result.success) return null;
 
         let messages = (result.messages || []).map(dbMessageToMessage);
-        if (messages.length === 0 && existing?.messages.length) {
-          messages = existing.messages;
+        const localMessages = existing?.messages ?? [];
+
+        // Never replace a longer in-flight local cache with a shorter server snapshot.
+        // This prevents multi-turn conversations collapsing to a single Q&A during hydration.
+        if (localMessages.length > messages.length) {
+          messages = localMessages;
+        } else if (messages.length === 0 && localMessages.length > 0) {
+          messages = localMessages;
         }
-        if (messages.length === 0) return null;
+
+        if (messages.length === 0) {
+          let emptyThread: ChatThread | null = null;
+          setThreads((prev) => {
+            const row = prev.find((t) => t.id === id);
+            emptyThread = {
+              id,
+              title: ensuredMeta.title || row?.title || existing?.title || DRAFT_THREAD_TITLE,
+              subtitle: ensuredMeta.subtitle ?? row?.subtitle ?? existing?.subtitle,
+              dominantEntities: row?.dominantEntities ?? existing?.dominantEntities,
+              messages: [],
+              updatedAt: ensuredMeta.updatedAt ?? row?.updatedAt ?? existing?.updatedAt ?? new Date().toISOString(),
+            };
+            const next = row
+              ? prev.map((t) => (t.id === id ? { ...t, ...emptyThread! } : t))
+              : [emptyThread, ...prev];
+            threadsRef.current = next;
+            return next;
+          });
+          return emptyThread;
+        }
 
         let hydratedThread: ChatThread | null = null;
         setThreads((prev) => {
@@ -335,10 +365,11 @@ export const useChatThreads = () => {
             updatedAt: row?.updatedAt && row.updatedAt > updatedAt ? row.updatedAt : updatedAt,
           };
 
-          if (row) {
-            return prev.map((t) => (t.id === id ? { ...t, ...hydratedThread! } : t));
-          }
-          return [hydratedThread, ...prev];
+          const next = row
+            ? prev.map((t) => (t.id === id ? { ...t, ...hydratedThread! } : t))
+            : [hydratedThread, ...prev];
+          threadsRef.current = next;
+          return next;
         });
 
         return hydratedThread;
@@ -358,10 +389,10 @@ export const useChatThreads = () => {
       if (isAuthenticated) {
         localStorage.setItem(lastThreadKey(userId), id);
       } else {
-        persistLocal(threads, id);
+        persistLocal(threadsRef.current, id);
       }
     },
-    [isAuthenticated, userId, threads, persistLocal]
+    [isAuthenticated, userId, persistLocal]
   );
 
   const updateThread = useCallback(
@@ -406,6 +437,7 @@ export const useChatThreads = () => {
             : t
         );
         const sorted = touchActivity ? sortThreadsByActivity(next) : next;
+        threadsRef.current = sorted;
         if (!isAuthenticated) persistLocal(sorted, currentThreadIdRef.current);
         return sorted;
       });
@@ -435,6 +467,59 @@ export const useChatThreads = () => {
             runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'touch_activity', error: errMsg } });
           });
         }
+      }
+    },
+    [isAuthenticated, persistLocal]
+  );
+
+  /** Functional message update — avoids stale reads when multiple messages append in one turn. */
+  const mutateThreadMessages = useCallback(
+    (
+      id: string,
+      updater: (prev: Message[]) => Message[],
+      opts?: { touchActivity?: boolean }
+    ) => {
+      const touchActivity = opts?.touchActivity === true;
+      const updatedAt = touchActivity ? new Date().toISOString() : undefined;
+
+      setThreads((prev) => {
+        const row = prev.find((t) => t.id === id);
+        if (!row) return prev;
+
+        const messages = updater(row.messages);
+        let derivedTitle: string | undefined;
+        if (isGenericThreadTitle(row.title)) {
+          derivedTitle = deriveTitleFromMessages(messages) ?? undefined;
+        }
+        const titleToApply =
+          derivedTitle !== undefined
+            ? ensureLocalUniqueTitle(derivedTitle, id, prev)
+            : undefined;
+
+        const next = prev.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                messages,
+                ...(titleToApply !== undefined && { title: titleToApply }),
+                ...(updatedAt !== undefined && { updatedAt }),
+              }
+            : t
+        );
+        const sorted = touchActivity ? sortThreadsByActivity(next) : next;
+        threadsRef.current = sorted;
+        if (!isAuthenticated) persistLocal(sorted, currentThreadIdRef.current);
+        return sorted;
+      });
+
+      if (isAuthenticated && touchActivity) {
+        fetchJson(`/api/conversation/threads/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ touchActivity: true }),
+        }).catch((err: unknown) => {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          runtimeDiagnostics.record('save_error', { threadId: id, meta: { op: 'touch_activity', error: errMsg } });
+        });
       }
     },
     [isAuthenticated, persistLocal]
@@ -503,10 +588,10 @@ export const useChatThreads = () => {
         if (id) localStorage.setItem(lastThreadKey(userId), id);
         else localStorage.removeItem(lastThreadKey(userId));
       } else {
-        persistLocal(threads, id);
+        persistLocal(threadsRef.current, id);
       }
     },
-    [isAuthenticated, userId, threads, persistLocal]
+    [isAuthenticated, userId, persistLocal]
   );
 
   const loadThreads = useCallback(() => {
@@ -526,6 +611,7 @@ export const useChatThreads = () => {
     hydrateThreadMessages,
     switchThread,
     updateThread,
+    mutateThreadMessages,
     renameThread,
     deleteThread,
     flushSave,
