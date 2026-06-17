@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth, supabase } from '../lib/supabase';
 import { ActivityTab } from '../components/account/ActivityTab';
+import { GuestExperienceCard } from '../components/guest/GuestExperienceCard';
 import { useGuest } from '../contexts/GuestContext';
 import { SubscriptionManagement } from '../components/subscription/SubscriptionManagement';
 import { useAccountAuthority } from '../hooks/useAccountAuthority';
@@ -116,7 +117,7 @@ function ToggleRow({
 
 export default function AccountCenter() {
   const { user } = useAuth();
-  const { isGuest, guestState, endGuestSession } = useGuest();
+  const { isGuest, endGuestSession } = useGuest();
   const navigate = useNavigate();
 
   const displayEmail = getDisplayEmail(user);
@@ -246,35 +247,20 @@ export default function AccountCenter() {
   // ── Guest view ────────────────────────────────────────────────────────────
 
   if (isGuest && !user) {
-    const messagesLeft = guestState?.chatLimit
-      ? guestState.chatLimit - (guestState.chatMessagesUsed || 0)
-      : 0;
     return (
       <div className="min-h-screen bg-[#080510] text-white">
-        <div className="max-w-lg mx-auto px-4 py-14">
-          <button onClick={() => navigate('/')} className="text-white/35 hover:text-white text-sm mb-8 transition flex items-center gap-1">
-            ← Back
+        <div className="fixed inset-0 pointer-events-none">
+          <div className="absolute top-0 right-0 w-[500px] h-[300px] bg-primary/6 rounded-full blur-[120px] translate-x-1/4 -translate-y-1/3" />
+        </div>
+        <div className="relative z-10 max-w-lg mx-auto px-4 py-10 sm:py-14">
+          <button
+            onClick={() => navigate('/')}
+            className="text-white/35 hover:text-white text-sm mb-8 transition flex items-center gap-1"
+          >
+            ← Back to app
           </button>
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-8 text-center">
-            <div className="w-16 h-16 rounded-full bg-white/8 flex items-center justify-center mx-auto mb-5">
-              <User className="h-8 w-8 text-white/40" />
-            </div>
-            <p className="text-lg font-bold text-white mb-1">Guest Session</p>
-            <p className="text-sm text-white/40 mb-6">
-              {messagesLeft > 0 ? `${messagesLeft} messages remaining` : 'Message limit reached'}
-            </p>
-            <button
-              onClick={() => navigate('/login')}
-              className="w-full py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold text-sm transition mb-3"
-            >
-              Create a free account
-            </button>
-            <button
-              onClick={handleLogout}
-              className="w-full py-2 rounded-xl border border-white/10 text-white/40 text-sm hover:text-white transition"
-            >
-              End session
-            </button>
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-6 sm:p-8">
+            <GuestExperienceCard variant="panel" onEndSession={handleLogout} />
           </div>
         </div>
       </div>

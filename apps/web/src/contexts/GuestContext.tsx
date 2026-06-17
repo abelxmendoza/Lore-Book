@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, ReactNode } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { setGlobalIsGuest } from './MockDataContext';
+import { clearGuestLore } from '../services/guestLoreStore';
 
 export interface GuestState {
   isGuest: boolean;
@@ -41,6 +42,7 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
       const now = Date.now();
       const dayInMs = 24 * 60 * 60 * 1000;
       if (now - guestState.createdAt > dayInMs) {
+        clearGuestLore(guestState.guestId);
         clearGuestState();
         setGlobalIsGuest(false);
       }
@@ -76,6 +78,7 @@ export const GuestProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const endGuestSession = () => {
+    if (guestState?.guestId) clearGuestLore(guestState.guestId);
     clearGuestState();
     setGlobalIsGuest(false);
   };

@@ -14,6 +14,7 @@ vi.mock('../../src/services/conversationCentered/ingestionPipeline', () => ({
   conversationIngestionPipeline: { ingestMessage: vi.fn(), ingestFromChatMessage: vi.fn() },
 }));
 vi.mock('../../src/services/mainLifestoryService');
+vi.mock('../../src/services/biographySectionService');
 vi.mock('../../src/services/biographyGeneration');
 vi.mock('../../src/services/lifeledger/lifeledgerSearchParser');
 vi.mock('../../src/services/lifeledger/lifeledgerRecommendationEngine');
@@ -257,6 +258,25 @@ describe('Biography Routes', () => {
           version: 'main',
         })
         .expect(500);
+    });
+  });
+
+  describe('PATCH /api/biography/section', () => {
+    it('should update a biography section', async () => {
+      const { updateBiographySection } = await import('../../src/services/biographySectionService');
+      vi.mocked(updateBiographySection).mockResolvedValue(undefined);
+
+      await request(app)
+        .patch('/api/biography/section')
+        .send({ sectionId: 'ch-1', title: 'Updated', content: 'New prose' })
+        .expect(200);
+
+      expect(updateBiographySection).toHaveBeenCalledWith(
+        'test-user-id',
+        'ch-1',
+        { title: 'Updated', content: 'New prose' },
+        undefined
+      );
     });
   });
 

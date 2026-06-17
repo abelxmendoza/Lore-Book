@@ -26,7 +26,11 @@ const CATEGORIES: BookCategory[] = [
   { id: 'event',        label: 'An Event',         icon: Calendar,   prompt: 'the story of ',                gradient: 'from-violet-600 to-purple-700',   description: 'One moment, zoomed in' },
 ];
 
+import { cn } from '../../lib/cn';
 import { DEMO_LOREBOOK_CATALOG } from '../../mocks/lorebooks';
+import { LoreReadinessPanel } from './LoreReadinessPanel';
+import { useLoreReadiness } from '../../hooks/useLoreReadiness';
+import { READINESS_COLORS, READINESS_LABELS } from '../../lib/loreReadiness';
 
 interface LibraryLandingProps {
   onGenerate: (query: string) => void;
@@ -47,6 +51,7 @@ export const LibraryLanding = ({
   bottomSlot,
 }: LibraryLandingProps) => {
   const navigate = useNavigate();
+  const { readiness, compiledBooks, loading: readinessLoading } = useLoreReadiness();
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
@@ -156,22 +161,65 @@ export const LibraryLanding = ({
           </div>
         </div>
 
-        {/* Global lore editor — not tied to a specific generated book */}
+        {/* Knowledge readiness — compile before edit */}
+        {readiness && (
+          <div className="mb-8 sm:mb-10">
+            <LoreReadinessPanel
+              readiness={readiness}
+              compiledBooks={compiledBooks}
+              loading={readinessLoading}
+              variant="compact"
+              onGenerateTopic={() => handleSubmit()}
+              onGoToChat={() => navigate('/')}
+            />
+          </div>
+        )}
+
+        {/* Editor entry — only when compiled books exist */}
         <div className="mb-8 sm:mb-10">
-          <button
-            type="button"
-            onClick={() => navigate('/memoir')}
-            className="group w-full flex items-center gap-3 rounded-xl border border-white/8 bg-white/3 hover:bg-white/5 hover:border-primary/25 px-4 py-3.5 text-left transition-all"
-          >
-            <div className="shrink-0 p-2 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-700 opacity-80 group-hover:opacity-100 transition-opacity">
-              <Edit3 className="h-4 w-4 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white/70 group-hover:text-white transition-colors">Edit living lore</p>
-              <p className="text-xs text-white/35 mt-0.5">Browse and edit biography sections, characters, locations, and chapters</p>
-            </div>
-            <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-white/50 group-hover:translate-x-0.5 shrink-0 transition-all" />
-          </button>
+          {compiledBooks.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/memoir?book=${encodeURIComponent(compiledBooks[0].id)}`)}
+              className="group w-full flex items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 hover:bg-emerald-500/10 px-4 py-3.5 text-left transition-all"
+            >
+              <div className="shrink-0 p-2 rounded-lg bg-gradient-to-br from-emerald-600 to-teal-700 opacity-90 group-hover:opacity-100 transition-opacity">
+                <Edit3 className="h-4 w-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white group-hover:text-emerald-100 transition-colors">Edit compiled lorebook</p>
+                <p className="text-xs text-white/40 mt-0.5">
+                  {compiledBooks.length} compiled · opens the editor on generated chapters
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-emerald-400/50 group-hover:translate-x-0.5 shrink-0 transition-all" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate('/memoir')}
+              className="group w-full flex items-center gap-3 rounded-xl border border-white/8 bg-white/3 hover:bg-white/5 px-4 py-3.5 text-left transition-all opacity-90"
+            >
+              <div className="shrink-0 p-2 rounded-lg bg-gradient-to-br from-indigo-600/60 to-violet-700/60">
+                <Edit3 className="h-4 w-4 text-white/70" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white/60">Lore editor (locked)</p>
+                <p className="text-xs text-white/35 mt-0.5">
+                  {readiness?.canGenerateAnyBook
+                    ? 'Compile a lorebook first — then editing unlocks'
+                    : readiness
+                      ? `${READINESS_LABELS[readiness.overallLevel]} · keep chatting to build knowledge`
+                      : 'Compile a lorebook before editing'}
+                </p>
+              </div>
+              {readiness && (
+                <span className={cn('text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border shrink-0', READINESS_COLORS[readiness.overallLevel])}>
+                  {READINESS_LABELS[readiness.overallLevel]}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Your library */}
